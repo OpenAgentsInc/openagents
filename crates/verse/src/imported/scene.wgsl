@@ -49,7 +49,6 @@ fn occlusion(index:u32,p:vec3<f32>,normal:vec3<f32>)->f32{
  for(var y=-1;y<=1;y++){for(var x=-1;x<=1;x++){visibility+=textureSampleCompareLevel(shadows,shadow_sampler,uv+vec2(f32(x),f32(y))/512.0,i32(layer),ndc.z-0.001);}}
  return visibility/9.0;
 }
-fn tone(x:vec3<f32>)->vec3<f32>{return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),vec3(0.0),vec3(1.0));}
 // Derive a cotangent frame from the posed surface and UV gradients. Degenerate
 // UVs retain the geometric normal instead of producing an undefined direction.
 fn surface_normal(v:Out,geometric:vec3<f32>)->vec3<f32>{
@@ -137,6 +136,9 @@ fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,diffuse_color:vec3<f32
  }
  emission+=select(vec3(0.0),albedo*0.7,material.params.x>0.5);
  lit+=emission;
- let fog=1.0-exp(-length(frame.eye.xyz-v.pos)*frame.fog.w);let color=tone(mix(lit,frame.fog.rgb,fog)*frame.ambient.w);
+ // Exposed linear radiance into the floating-point scene target. The shared
+ // output pass (pbr/post.wgsl) adds bloom, grades, and tone-maps it, as it
+ // does for the physical path; the cap keeps half floats finite.
+ let fog=1.0-exp(-length(frame.eye.xyz-v.pos)*frame.fog.w);let color=min(mix(lit,frame.fog.rgb,fog)*frame.ambient.w,vec3(60000.0));
  return vec4(color,select(alpha,1.0,material.params.y==0.0));
 }

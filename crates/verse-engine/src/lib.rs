@@ -17,6 +17,7 @@ pub mod material;
 pub mod motion;
 pub mod overlay;
 pub mod presentation;
+pub mod quality;
 pub mod render_graph;
 pub mod render_world;
 pub mod residency;

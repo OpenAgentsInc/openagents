@@ -707,6 +707,13 @@ they are tested headless; GPU passes and shaders belong in `crates/verse`.
 equal exposure; a WebGL2 run selects the low tier and still draws every
 phase 2 item.
 
+**Status:** P1 and T1 are implemented under issue #10561. The output pass is
+`crates/verse/src/pbr/output.rs`; grades are `verse_engine::lighting::Grade`
+and tiers `verse_engine::quality`. The table holds the scene-referred grade
+only: Neutral and the hue-preserving shoulder scale by a color's peak, which
+a 32³ table interpolates with errors near 10% at the shoulder, so the curve
+stays analytic after the table.
+
 ### Phase 2 — Sky light and fog
 
 | ID | Item | Size | Crate | Verdict |

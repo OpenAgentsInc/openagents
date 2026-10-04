@@ -7,17 +7,26 @@
 //! bloom mip chain; exposure adaptation; the output transform into the
 //! surface; and the HUD on top. When the adapter cannot render a floating-point
 //! target, the scene pass tone-maps in place and post-processing is skipped.
+//! The bloom, adaptation, and graded output passes live in [`super::output`],
+//! which the summoning chamber shares.
+//!
+//! [`Capability`] also fixes the quality tier
+//! ([`verse_engine::quality::Tier`]) from the adapter and the platform; the
+//! tier selects the sun shadow filter and material detail through pipeline
+//! constants.
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
+use super::output::{self, Look, Output, OutputTargets};
 use super::textured::{self, Pass, TexturedMaterial, TexturedScene, TexturedVertex};
 use super::{GlowVertex, LitVertex, Neon, ProbeGrid, Sky, sky};
+use verse_engine::lighting::Grade;
+use verse_engine::quality::{Platform, Probe, Quality, ShadowFilter, Tier};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const SHADOW_SIZE: u32 = 2048;
-const BLOOM_LEVELS: u32 = 6;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -52,18 +61,6 @@ struct Frame {
     sky_zenith: [f32; 4],
     sky_horizon: [f32; 4],
     sky_sun: [f32; 4],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct Post {
-    source: [f32; 4],
-    look: [f32; 4],
-    lens: [f32; 4],
-    balance: [f32; 4],
-    adapt: [f32; 4],
-    /// x: the output ceiling, the display's headroom over reference white.
-    output: [f32; 4],
 }
 
 #[repr(C)]
@@ -124,6 +121,9 @@ pub(crate) struct Capability {
     pub samples: u32,
     /// Whether shaders compile to GLSL ES, which takes the `GLES` variants.
     pub gles: bool,
+    /// The quality tier and everything it fixes. `VERSE_QUALITY` (`low`,
+    /// `medium`, or `high`) lowers it; it never raises it past the device.
+    pub quality: Quality,
 }
 
 impl Capability {
@@ -167,11 +167,39 @@ impl Capability {
         } else {
             1
         };
+        let gles = crate::gles::is_gles(adapter.get_info().backend);
+        let probe = Probe {
+            platform: Platform::current(),
+            gles,
+            float_target: hdr.is_some(),
+            compute: adapter
+                .get_downlevel_capabilities()
+                .flags
+                .contains(wgpu::DownlevelFlags::COMPUTE_SHADERS)
+                && device.limits().max_storage_buffers_per_shader_stage > 0,
+            samples,
+        };
+        let asked = std::env::var("VERSE_QUALITY")
+            .ok()
+            .and_then(|name| Tier::parse(&name));
         Self {
             hdr,
             samples,
-            gles: crate::gles::is_gles(adapter.get_info().backend),
+            gles,
+            quality: probe.select(asked).quality(),
         }
+    }
+
+    /// The pipeline constants the tier sets in `photo.wgsl`.
+    fn tier_constants(&self) -> [(&'static str, f64); 2] {
+        let flag = |on: bool| if on { 1.0 } else { 0.0 };
+        [
+            (
+                "PCSS",
+                flag(self.quality.shadow_filter == ShadowFilter::Soft),
+            ),
+            ("DETAIL", flag(self.quality.materials.detail_normals)),
+        ]
     }
 }
 
@@ -216,38 +244,26 @@ impl TexturedGpu {
     }
 }
 
-struct PostPipelines {
-    layout: wgpu::BindGroupLayout,
-    down: wgpu::RenderPipeline,
-    up: wgpu::RenderPipeline,
-    adapt: wgpu::RenderPipeline,
-    output: wgpu::RenderPipeline,
-}
-
 /// Size-dependent targets for the physical path.
 pub(crate) struct PhotoTargets {
     size: [u32; 2],
     msaa: Option<wgpu::TextureView>,
     scene: wgpu::TextureView,
     depth: wgpu::TextureView,
-    bloom_views: Vec<wgpu::TextureView>,
-    bloom_all: wgpu::TextureView,
-    adapt: [wgpu::TextureView; 2],
-    /// Bind groups for each bloom down pass, each up pass, the two adapt
-    /// passes, and the two output passes (one per adapt texture).
-    down: Vec<wgpu::BindGroup>,
-    up: Vec<wgpu::BindGroup>,
-    adapt_groups: [wgpu::BindGroup; 2],
-    output_groups: [wgpu::BindGroup; 2],
+    /// Bloom and adaptation, when the scene renders to a float target.
+    output: Option<OutputTargets>,
     /// The adapted luminance for guides, indexed by the texture last written.
     guide_groups: [wgpu::BindGroup; 2],
-    frame_post: wgpu::Buffer,
-    parity: usize,
 }
 
 impl PhotoTargets {
     pub fn size(&self) -> [u32; 2] {
         self.size
+    }
+
+    /// The adapt texture the next frame writes.
+    fn parity(&self) -> usize {
+        self.output.as_ref().map_or(0, |output| output.parity)
     }
 }
 
@@ -277,14 +293,13 @@ pub(crate) struct Photo {
     empty_group: wgpu::BindGroup,
     /// Repeating, trilinear sampling for base-color images.
     textured_sampler: wgpu::Sampler,
-    post: Option<PostPipelines>,
+    post: Option<Output>,
     stars: wgpu::Buffer,
     star_count: u32,
     pub dynamic_lit: Stream,
     pub glow: Stream,
     /// The display's headroom over reference white for space frames.
     pub headroom: f32,
-    last_time: Option<f32>,
 }
 
 fn shader(device: &wgpu::Device, label: &str, source: &str) -> wgpu::ShaderModule {
@@ -535,9 +550,12 @@ impl Photo {
             .ok()
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(0);
+        let [pcss, detail] = capability.tier_constants();
         let constants = [
             ("DIRECT", if direct { 1.0 } else { 0.0 }),
             ("DEBUG", f64::from(debug)),
+            pcss,
+            detail,
         ];
         let options = wgpu::PipelineCompilationOptions {
             constants: &constants,
@@ -894,7 +912,7 @@ impl Photo {
         });
         let post = capability
             .hdr
-            .map(|hdr| post_pipelines(device, hdr, output_format));
+            .map(|hdr| Output::new(device, hdr, output_format));
         let star_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse stars"),
             size: std::mem::size_of::<StarInstance>() as u64,
@@ -927,7 +945,6 @@ impl Photo {
             dynamic_lit: Stream::new(device, "verse dynamic lit"),
             glow: Stream::new(device, "verse glow"),
             headroom: 1.0,
-            last_time: None,
         })
     }
 
@@ -1213,125 +1230,11 @@ impl Photo {
             attach,
         )
         .create_view(&Default::default());
-        let (bw, bh) = ((width / 2).max(1), (height / 2).max(1));
-        let levels = BLOOM_LEVELS.min(32 - bw.min(bh).leading_zeros()).max(1);
-        let bloom = texture("verse bloom", scene_format, bw, bh, 1, levels, sampled);
-        let bloom_views: Vec<_> = (0..levels)
-            .map(|level| {
-                bloom.create_view(&wgpu::TextureViewDescriptor {
-                    base_mip_level: level,
-                    mip_level_count: Some(1),
-                    ..Default::default()
-                })
-            })
-            .collect();
-        let bloom_all = bloom.create_view(&Default::default());
-        let adapt = [0, 1].map(|_| {
-            texture("verse adapt", scene_format, 1, 1, 1, 1, sampled)
-                .create_view(&Default::default())
-        });
-        let frame_post = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("verse post frame"),
-            size: std::mem::size_of::<Post>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let empty = || Vec::new();
-        let (mut down, mut up) = (empty(), empty());
-        let mut adapt_groups = None;
-        let mut output_groups = None;
-        if let Some(post) = &self.post {
-            let group = |uniform: &wgpu::Buffer,
-                         source: &wgpu::TextureView,
-                         bloom: &wgpu::TextureView,
-                         adapted: &wgpu::TextureView| {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("verse post"),
-                    layout: &post.layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: uniform.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(source),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::Sampler(&self.linear_clamp),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: wgpu::BindingResource::TextureView(bloom),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 4,
-                            resource: wgpu::BindingResource::TextureView(adapted),
-                        },
-                    ],
-                })
-            };
-            let fixed = |source_size: [u32; 2], karis: bool| {
-                let post = Post {
-                    source: [
-                        1.0 / source_size[0] as f32,
-                        1.0 / source_size[1] as f32,
-                        f32::from(u8::from(karis)),
-                        0.0,
-                    ],
-                    look: [0.0; 4],
-                    lens: [0.0; 4],
-                    balance: [1.0, 1.0, 1.0, 0.0],
-                    adapt: [0.0; 4],
-                    output: [1.0, 0.0, 0.0, 0.0],
-                };
-                device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("verse bloom pass"),
-                    contents: bytemuck::bytes_of(&post),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                })
-            };
-            let mip_size = |level: u32| [(bw >> level).max(1), (bh >> level).max(1)];
-            for level in 0..levels {
-                let (source, size, karis) = if level == 0 {
-                    (&scene, [width, height], true)
-                } else {
-                    (&bloom_views[level as usize - 1], mip_size(level - 1), false)
-                };
-                down.push(group(&fixed(size, karis), source, &adapt[0], &adapt[1]));
-            }
-            for level in 0..levels.saturating_sub(1) {
-                let source = &bloom_views[level as usize + 1];
-                up.push(group(
-                    &fixed(mip_size(level + 1), false),
-                    source,
-                    &adapt[0],
-                    &adapt[1],
-                ));
-            }
-            adapt_groups = Some([
-                group(&frame_post, &scene, &bloom_all, &adapt[1]),
-                group(&frame_post, &scene, &bloom_all, &adapt[0]),
-            ]);
-            output_groups = Some([
-                group(&frame_post, &scene, &bloom_all, &adapt[0]),
-                group(&frame_post, &scene, &bloom_all, &adapt[1]),
-            ]);
-        }
-        let placeholder = || {
-            // Direct mode never samples post groups; bind the scene layout's
-            // simplest group so the struct stays uniform.
-            let dummy = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("verse post unused"),
-                layout: &device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: None,
-                    entries: &[],
-                }),
-                entries: &[],
-            });
-            [dummy.clone(), dummy]
-        };
+        let adapt = output::adapt_textures(device, scene_format);
+        let chain = self
+            .post
+            .as_ref()
+            .map(|post| post.targets(device, &scene, &adapt, width, height));
         let guide_groups = [0, 1].map(|k| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("verse photo guides"),
@@ -1348,15 +1251,7 @@ impl Photo {
             msaa,
             scene,
             depth,
-            bloom_views,
-            bloom_all,
-            adapt,
-            down,
-            up,
-            adapt_groups: adapt_groups.unwrap_or_else(placeholder),
-            output_groups: output_groups.unwrap_or_else(placeholder),
-            frame_post,
-            parity: 0,
+            output: chain,
         }
     }
 
@@ -1564,7 +1459,7 @@ impl Photo {
                 }
             }
             // The texture written last frame holds the newest adaptation.
-            pass.set_bind_group(1, &targets.guide_groups[targets.parity ^ 1], &[]);
+            pass.set_bind_group(1, &targets.guide_groups[targets.parity() ^ 1], &[]);
             for which in [Pass::Opaque, Pass::Masked] {
                 self.draw_textured(&mut pass, world.textured, &order, which);
                 self.draw_textured(&mut pass, world.figure, &figure_order, which);
@@ -1610,11 +1505,13 @@ impl Photo {
                 fringe: camera.fringe,
                 ghosts: camera.ghosts,
                 auto: camera.auto_exposure,
-                balance: white_balance(camera.white_balance),
                 gain_min: 2f32.powf(camera.ev100 - camera.ev_max),
                 gain_max: 2f32.powf(camera.ev100 - camera.ev_min),
-                hue_preserving: false,
-                ceiling: self.headroom,
+                grade: Grade {
+                    balance: Vec3::from(white_balance(camera.white_balance)),
+                    ceiling: self.headroom,
+                    ..Grade::NEUTRAL
+                },
                 time: sky.time,
             },
         );
@@ -1887,18 +1784,17 @@ impl Photo {
                 fringe: 0.0,
                 ghosts: 0.0,
                 auto: false,
-                balance: [1.0; 3],
                 gain_min: 1.0,
                 gain_max: 1.0,
-                hue_preserving: true,
                 // The plaza keeps its standard-range look on HDR displays.
-                ceiling: 1.0,
+                grade: Grade::STAGE,
                 time: neon.time,
             },
         );
     }
 
-    /// Bloom, exposure adaptation, and the output transform into `output`.
+    /// Bloom, exposure adaptation, and the graded output transform into
+    /// `output`. Direct mode has no float target and skips it.
     fn post_chain(
         &mut self,
         queue: &wgpu::Queue,
@@ -1907,124 +1803,10 @@ impl Photo {
         targets: &mut PhotoTargets,
         look: &Look,
     ) {
-        let [width, height] = targets.size;
-        if let Some(post) = &self.post {
-            let dt = self
-                .last_time
-                .map_or(0.0, |last| (look.time - last).clamp(0.0, 0.5));
-            self.last_time = Some(look.time);
-            let levels = targets.bloom_views.len();
-            let uniform = Post {
-                source: [
-                    1.0 / width as f32,
-                    1.0 / height as f32,
-                    0.0,
-                    1.0 / levels as f32,
-                ],
-                look: [look.bloom, look.local, look.grain, look.vignette],
-                lens: [
-                    look.fringe,
-                    look.ghosts,
-                    look.time,
-                    f32::from(u8::from(look.auto)),
-                ],
-                balance: [
-                    look.balance[0],
-                    look.balance[1],
-                    look.balance[2],
-                    1.0 - (-dt * 1.5).exp(),
-                ],
-                adapt: [
-                    0.18,
-                    look.gain_min,
-                    look.gain_max,
-                    f32::from(u8::from(look.hue_preserving)),
-                ],
-                output: [look.ceiling, 0.0, 0.0, 0.0],
-            };
-            queue.write_buffer(&targets.frame_post, 0, bytemuck::bytes_of(&uniform));
-            let pass = |encoder: &mut wgpu::CommandEncoder,
-                        view: &wgpu::TextureView,
-                        pipeline: &wgpu::RenderPipeline,
-                        group: &wgpu::BindGroup,
-                        load: wgpu::LoadOp<wgpu::Color>| {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("verse post"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view,
-                        depth_slice: None,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                    multiview_mask: None,
-                });
-                pass.set_pipeline(pipeline);
-                pass.set_bind_group(0, group, &[]);
-                pass.draw(0..3, 0..1);
-            };
-            let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
-            for (level, group) in targets.down.iter().enumerate() {
-                pass(
-                    encoder,
-                    &targets.bloom_views[level],
-                    &post.down,
-                    group,
-                    clear,
-                );
-            }
-            for level in (0..targets.up.len()).rev() {
-                pass(
-                    encoder,
-                    &targets.bloom_views[level],
-                    &post.up,
-                    &targets.up[level],
-                    wgpu::LoadOp::Load,
-                );
-            }
-            // Adapt into one texture while the output reads it this frame.
-            let write = targets.parity;
-            pass(
-                encoder,
-                &targets.adapt[write],
-                &post.adapt,
-                &targets.adapt_groups[write],
-                clear,
-            );
-            pass(
-                encoder,
-                output,
-                &post.output,
-                &targets.output_groups[write],
-                clear,
-            );
-            targets.parity ^= 1;
+        if let (Some(post), Some(chain)) = (&mut self.post, &mut targets.output) {
+            post.encode(queue, encoder, output, chain, look);
         }
-        let _ = &targets.bloom_all;
     }
-}
-
-/// What the post chain does to one frame.
-struct Look {
-    bloom: f32,
-    local: f32,
-    grain: f32,
-    vignette: f32,
-    fringe: f32,
-    ghosts: f32,
-    auto: bool,
-    balance: [f32; 3],
-    gain_min: f32,
-    gain_max: f32,
-    hue_preserving: bool,
-    /// Highest output value: 1.0 on standard displays, the headroom on HDR.
-    ceiling: f32,
-    time: f32,
 }
 
 /// The scene a physical frame shows.
@@ -2101,88 +1883,6 @@ fn earth_illuminance(sky: &Sky) -> [f32; 3] {
 fn white_balance(kelvin: f32) -> [f32; 3] {
     let c = sky::blackbody_color(kelvin.clamp(2_000.0, 12_000.0));
     [1.0 / c[0], 1.0 / c[1], 1.0 / c[2]]
-}
-
-fn post_pipelines(
-    device: &wgpu::Device,
-    hdr: wgpu::TextureFormat,
-    output: wgpu::TextureFormat,
-) -> PostPipelines {
-    let module = shader(device, "verse post", include_str!("post.wgsl"));
-    let float = wgpu::TextureSampleType::Float { filterable: true };
-    let tex = |binding| wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::FRAGMENT,
-        ty: wgpu::BindingType::Texture {
-            sample_type: float,
-            view_dimension: wgpu::TextureViewDimension::D2,
-            multisampled: false,
-        },
-        count: None,
-    };
-    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("verse post"),
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            },
-            tex(1),
-            wgpu::BindGroupLayoutEntry {
-                binding: 2,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                count: None,
-            },
-            tex(3),
-            tex(4),
-        ],
-    });
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("verse post"),
-        bind_group_layouts: &[Some(&layout)],
-        immediate_size: 0,
-    });
-    let make = |label, fs, format, blend| {
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(label),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &module,
-                entry_point: Some("vs"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &module,
-                entry_point: Some(fs),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        })
-    };
-    PostPipelines {
-        down: make("verse bloom down", "fs_down", hdr, None),
-        up: make("verse bloom up", "fs_up", hdr, Some(ADDITIVE)),
-        adapt: make("verse adapt", "fs_adapt", hdr, None),
-        output: make("verse output", "fs_output", output, None),
-        layout,
-    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2546,6 +2246,26 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tier_sets_the_shadow_filter_and_material_detail_constants() {
+        let capability = |tier: Tier| Capability {
+            hdr: None,
+            samples: 1,
+            gles: true,
+            quality: tier.quality(),
+        };
+        assert_eq!(
+            capability(Tier::Low).tier_constants(),
+            [("PCSS", 0.0), ("DETAIL", 0.0)]
+        );
+        for tier in [Tier::Medium, Tier::High] {
+            assert_eq!(
+                capability(tier).tier_constants(),
+                [("PCSS", 1.0), ("DETAIL", 1.0)]
+            );
+        }
+    }
 
     #[test]
     fn earthshine_at_l1_is_a_few_millionths_of_sunlight() {

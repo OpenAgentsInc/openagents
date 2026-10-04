@@ -270,9 +270,18 @@ pub struct Renderer {
     pub pack_receipt: verse_engine::loading::Receipt,
     width: u32,
     height: u32,
+    /// The display-referred frame: the output pass, then the overlay, write
+    /// it; captures and the window read it.
     target: wgpu::Texture,
     target_view: wgpu::TextureView,
+    /// Four-sample world color in [`SCENE_FORMAT`], resolved into `scene_view`.
     multisample_view: wgpu::TextureView,
+    scene_view: wgpu::TextureView,
+    /// The adapted-luminance pair the output pass meters into.
+    adapt: [wgpu::TextureView; 2],
+    /// Bloom and the graded output transform, shared with the physical path.
+    output: crate::pbr::output::Output,
+    output_targets: crate::pbr::output::OutputTargets,
     target_revision: u64,
     depth: wgpu::TextureView,
     readback: wgpu::Buffer,
@@ -312,6 +321,12 @@ pub struct Renderer {
     pub adapter_name: String,
     pub last_timings: FrameTimings,
 }
+/// The world pass's floating-point scene format. Every backend the chamber
+/// runs on renders, blends, filters, and multisamples it.
+const SCENE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+/// Fraction of bloom energy the output pass mixes in, as on the Everglade stage.
+const CHAMBER_BLOOM: f32 = 0.04;
+
 fn buffer(
     device: &wgpu::Device,
     label: &str,
@@ -905,6 +920,7 @@ impl Renderer {
             );
         }
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let scene_format = SCENE_FORMAT;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Verse imported WGSL"),
             source: wgpu::ShaderSource::Wgsl(include_str!("scene.wgsl").into()),
@@ -920,7 +936,7 @@ impl Renderer {
         });
         let mut pipelines = Vec::new();
         for blend in 0..4 {
-            pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:Default::default()}),multisample:wgpu::MultisampleState{count:4,..Default::default()},fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
+            pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:Default::default()}),multisample:wgpu::MultisampleState{count:4,..Default::default()},fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format:scene_format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
         }
         let shadow_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -971,11 +987,27 @@ impl Renderer {
                 mip_level_count: 1,
                 sample_count: 4,
                 dimension: wgpu::TextureDimension::D2,
-                format,
+                format: scene_format,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
             })
             .create_view(&Default::default());
+        let scene_view = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("Verse resolved scene"),
+                size: extent(width, height),
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: scene_format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&Default::default());
+        let output = crate::pbr::output::Output::new(&device, scene_format, format);
+        let adapt = crate::pbr::output::adapt_textures(&device, scene_format);
+        let output_targets = output.targets(&device, &scene_view, &adapt, width, height);
         let depth = device
             .create_texture(&wgpu::TextureDescriptor {
                 label: None,
@@ -1028,6 +1060,10 @@ impl Renderer {
             target,
             target_view,
             multisample_view,
+            scene_view,
+            adapt,
+            output,
+            output_targets,
             target_revision: 0,
             depth,
             readback,
@@ -1101,11 +1137,21 @@ impl Renderer {
         self.target_view = self.target.create_view(&Default::default());
         self.multisample_view = texture(
             "Verse four-sample color",
-            wgpu::TextureFormat::Rgba8UnormSrgb,
+            SCENE_FORMAT,
             4,
             wgpu::TextureUsages::RENDER_ATTACHMENT,
         )
         .create_view(&Default::default());
+        self.scene_view = texture(
+            "Verse resolved scene",
+            SCENE_FORMAT,
+            1,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        )
+        .create_view(&Default::default());
+        self.output_targets =
+            self.output
+                .targets(&self.device, &self.scene_view, &self.adapt, width, height);
         self.depth = texture(
             "Verse four-sample depth",
             wgpu::TextureFormat::Depth32Float,
@@ -1679,7 +1725,7 @@ impl Renderer {
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &self.multisample_view,
                             depth_slice: None,
-                            resolve_target: Some(&self.target_view),
+                            resolve_target: Some(&self.scene_view),
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                                 store: wgpu::StoreOp::Discard,
@@ -1734,6 +1780,28 @@ impl Renderer {
                     }
 
                     drop(pass);
+                    // Bloom, the chamber's grade, and the tone curve into the
+                    // display-referred target, as on the physical path.
+                    let look = crate::pbr::output::Look {
+                        bloom: CHAMBER_BLOOM,
+                        local: 0.0,
+                        grain: 0.0,
+                        vignette: 0.0,
+                        fringe: 0.0,
+                        ghosts: 0.0,
+                        auto: false,
+                        gain_min: 1.0,
+                        gain_max: 1.0,
+                        grade: verse_engine::lighting::Grade::CHAMBER,
+                        time: lighting.time,
+                    };
+                    self.output.encode(
+                        &self.queue,
+                        &mut encoder,
+                        &self.target_view,
+                        &mut self.output_targets,
+                        &look,
+                    );
                     world_encoded = Instant::now();
                 }
                 ChamberPass::Overlay => {
@@ -1860,7 +1928,7 @@ impl Renderer {
             self.device
                 .create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
                     label: Some("Verse reusable world commands"),
-                    color_formats: &[Some(wgpu::TextureFormat::Rgba8UnormSrgb)],
+                    color_formats: &[Some(SCENE_FORMAT)],
                     depth_stencil: Some(wgpu::RenderBundleDepthStencil {
                         format: wgpu::TextureFormat::Depth32Float,
                         depth_read_only: false,

@@ -4,9 +4,11 @@
 // Bloom is the energy-conserving mip chain of Jimenez, "Next Generation Post
 // Processing in Call of Duty: Advanced Warfare" (SIGGRAPH 2014): a 13-tap
 // downsample with a Karis average on the first level, then tent upsampling.
-// The output transform is the Khronos PBR Neutral tone mapper (Khronos Group,
-// Apache-2.0 reference), after white balance, local exposure, lens ghosts,
-// lateral chromatic aberration, and vignetting; sensor grain follows it.
+// The output transform is the zone's grade, read from a 3D table, then the
+// Khronos PBR Neutral tone mapper (Khronos Group, Apache-2.0 reference) or a
+// hue-preserving shoulder, after local exposure, lens ghosts, lateral
+// chromatic aberration, and vignetting; sensor grain follows it. The physical
+// path and the summoning chamber both end here.
 
 struct Post {
     // x texel width, y texel height of the source; z Karis flag; w, in the
@@ -16,13 +18,16 @@ struct Post {
     look: vec4<f32>,
     // x fringe (pixels); y ghosts; z time; w auto exposure (0 or 1).
     lens: vec4<f32>,
-    // rgb white-balance gains; w adaptation blend this frame.
+    // rgb unused (white balance is in the grade table); w adaptation blend
+    // this frame.
     balance: vec4<f32>,
     // x target signal for auto exposure; y min gain; z max gain; w 1 for the
     // hue-preserving output curve.
     adapt: vec4<f32>,
     // x the output ceiling: 1.0 on a standard display, the headroom over
-    // reference white on an extended-range (HDR) surface.
+    // reference white on an extended-range (HDR) surface. y, z, and w shape
+    // the grade table's coordinates: its floor, one over its span in stops,
+    // and its edge length.
     output: vec4<f32>,
 };
 
@@ -31,6 +36,9 @@ struct Post {
 @group(0) @binding(2) var clamp_linear: sampler;
 @group(0) @binding(3) var bloom: texture_2d<f32>;
 @group(0) @binding(4) var adapted: texture_2d<f32>;
+// The grade's change to each scene color, over log-shaped coordinates
+// (`verse_engine::lighting::Grade::bake`).
+@group(0) @binding(5) var grade_lut: texture_3d<f32>;
 
 struct Out {
     @builtin(position) clip: vec4<f32>,
@@ -175,6 +183,18 @@ fn hue_shoulder(color: vec3<f32>, ceiling: f32) -> vec3<f32> {
     return color * ((ceiling - d * d / (peak + d - start)) / peak);
 }
 
+// The scene-referred grade: white balance, exposure offset, saturation,
+// contrast, and color gain. The table holds each texel's change to its input,
+// so an identity grade passes colors through exactly. The explicit level
+// keeps the fetch valid outside uniform control flow.
+fn graded(color: vec3<f32>) -> vec3<f32> {
+    let n = p.output.w;
+    let u = clamp(log2(color / p.output.y + 1.0) * p.output.z, vec3<f32>(0.0), vec3<f32>(1.0));
+    let coord = (u * (n - 1.0) + 0.5) / n;
+    let change = textureSampleLevel(grade_lut, clamp_linear, coord, 0.0).rgb;
+    return max(color + change, vec3<f32>(0.0));
+}
+
 fn hash(q: vec2<f32>) -> f32 {
     var r = fract(q * vec2<f32>(123.34, 456.21));
     r += dot(r, r + 45.32);
@@ -225,15 +245,15 @@ fn fs_output(i: Out) -> @location(0) vec4<f32> {
         // Keep highlights intact: fade the lift out as the pixel brightens.
         c *= mix(lift, 1.0, smoothstep(0.05, 0.6, here));
     }
-    c *= p.balance.rgb;
     // Natural vignetting, cos⁴ of the field angle.
     let r2 = dot(from_center, from_center) * 2.0;
     c *= mix(1.0, pow(1.0 / (1.0 + r2), 2.0), p.look.w);
+    c = graded(max(c, vec3<f32>(0.0)));
     var o: vec3<f32>;
     if p.adapt.w > 0.5 {
-        o = hue_shoulder(max(c, vec3<f32>(0.0)), p.output.x);
+        o = hue_shoulder(c, p.output.x);
     } else {
-        o = neutral(max(c, vec3<f32>(0.0)), p.output.x);
+        o = neutral(c, p.output.x);
     }
     // Sensor grain, stronger in shadows, applied in display space.
     if p.look.z > 0.0 {

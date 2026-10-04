@@ -5,7 +5,9 @@
 //! [`GlowVertex`] quads, and one [`Sky`] per frame. When a frame carries a
 //! [`Sky`], the renderer switches to the path in `gpu.rs`: a sun shadow map,
 //! a floating-point scene in pre-exposed luminance, the Sun, Earth, Moon, and
-//! catalogue stars drawn at infinity, bloom, exposure, and tone mapping.
+//! catalogue stars drawn at infinity, bloom, exposure, the zone's color grade,
+//! and tone mapping. The last four are `output.rs`, which the summoning
+//! chamber shares.
 //!
 //! Units are photometric. Illuminance is in lux and luminance in candela per
 //! square meter. Shaders multiply every luminance by the camera's exposure
@@ -23,6 +25,7 @@
 
 pub mod bake;
 pub(crate) mod gpu;
+pub(crate) mod output;
 pub mod sky;
 pub mod textured;
 

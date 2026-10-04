@@ -86,6 +86,8 @@ mod tests {
             &[
                 ("DIRECT", &[0.0, 1.0]),
                 ("DEBUG", &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
+                ("PCSS", &[0.0, 1.0]),
+                ("DETAIL", &[0.0, 1.0]),
             ],
         ),
         ("pbr/post.wgsl", include_str!("pbr/post.wgsl"), &[]),

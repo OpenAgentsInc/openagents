@@ -96,6 +96,11 @@ override DIRECT: bool = false;
 // Development views (VERSE_PHOTO_DEBUG): 1 direct light, 2 probe diffuse,
 // 3 probe specular, 4 ambient occlusion, 5 sun shadow.
 override DEBUG: u32 = 0u;
+// The quality tier (`verse_engine::quality`). PCSS: a blocker search sets each
+// penumbra; without it the penumbra is fixed, as on GLSL ES. DETAIL:
+// procedural surface normals, such as crinkled foil facets.
+override PCSS: bool = true;
+override DETAIL: bool = true;
 
 // Khronos PBR Neutral, duplicated from post.wgsl for the direct path.
 fn neutral(color: vec3<f32>) -> vec3<f32> {
@@ -539,7 +544,11 @@ fn sun_shadow(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> f32 {
     let tan_r = tan(f.sun_disc.x);
     let angle = noise_ign(pixel) * 2.0 * PI;
     let rot = mat2x2<f32>(cos(angle), sin(angle), -sin(angle), cos(angle));
-    let radius = penumbra(uv, c.z, size, rot, tan_r, texel);
+    // A fixed penumbra, as if every occluder stood 1 m from the receiver.
+    var radius = clamp(tan_r / texel, 0.8, 12.0);
+    if PCSS {
+        radius = penumbra(uv, c.z, size, rot, tan_r, texel);
+    }
     if radius <= 0.0 {
         return 1.0;
     }
@@ -595,11 +604,17 @@ fn shade(i: Shading) -> vec3<f32> {
     if code == 2 {
         // Facets smaller than about two pixels would sparkle; fold their
         // tilt into roughness instead (LEAN mapping, Olano and Baker 2010).
+        // A tier without detail normals folds all of it.
         let cell = 0.09;
-        let resolved = clamp(cell / max(footprint, 1e-5) * 0.5 - 0.5, 0.0, 1.0);
-        let tilt = crinkle(i.local, cell);
-        n = normalize(n + (t * tilt.x + b * tilt.y) * resolved);
-        t = normalize(t - n * dot(t, n));
+        var resolved = 0.0;
+        if DETAIL {
+            resolved = clamp(cell / max(footprint, 1e-5) * 0.5 - 0.5, 0.0, 1.0);
+        }
+        if resolved > 0.0 {
+            let tilt = crinkle(i.local, cell);
+            n = normalize(n + (t * tilt.x + b * tilt.y) * resolved);
+            t = normalize(t - n * dot(t, n));
+        }
         roughness = sqrt(roughness * roughness + (1.0 - resolved) * 0.13);
     }
     let bb = cross(n, t);
