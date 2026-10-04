@@ -1,0 +1,30 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "stability": "All twenty connections and native/load/host processes complete successfully after opposing-plane recovery.",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "compiled_revisions": {
+      "host": "f2613f39f1",
+      "clients": "f2613f39f1"
+    },
+    "fixture_revision": "1a1e3b0b1ecf3b3a077ac9a0bc6f6e7e9771a021",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "limits": [
+    "The host combat constructor replaces authored cultist health with 15; live hostile occupancy averages 8.7 and falls to one. This is not sustained forty-NPC acceptance.",
+    "Native frame p95 is 87.127 ms; render submission p95 is 81.236 ms and preparation p95 is 7.310 ms.",
+    "Prediction correction p95 is 0.907 m and capture drops are 212.",
+    "Proxy errors are six despite successful process exits; they require classification.",
+    "Server CPU and isolated GPU execution are not measured."
+  ]
+}

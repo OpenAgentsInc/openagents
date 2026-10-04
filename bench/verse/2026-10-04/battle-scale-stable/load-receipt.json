@@ -1,0 +1,654 @@
+{
+  "schema": "verse.multiplayer.load.v1",
+  "seconds": 90,
+  "players": [
+    {
+      "player": 0,
+      "snapshots": 419,
+      "snapshot_bytes": 27931403,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 361,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.96398891966759
+      },
+      "movement_inputs": 2350,
+      "input_pressure": 0,
+      "refusals": 376,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 1,
+        "Grease": 2,
+        "Light": 4,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 4,
+        "Shoot Bow": 2,
+        "Thunderwave": 4,
+        "Web": 3
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 2277,
+        "p95": 220.909167,
+        "max": 365.661583
+      }
+    },
+    {
+      "player": 1,
+      "snapshots": 435,
+      "snapshot_bytes": 28952620,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 378,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.444444444444445
+      },
+      "movement_inputs": 2352,
+      "input_pressure": 0,
+      "refusals": 288,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 2,
+        "Grease": 4,
+        "Light": 4,
+        "Magic Missile": 1,
+        "Misty Step": 4,
+        "Shield": 4,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 2
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 2288,
+        "p95": 216.65324999999999,
+        "max": 409.941708
+      }
+    },
+    {
+      "player": 2,
+      "snapshots": 435,
+      "snapshot_bytes": 28980246,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 378,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.658730158730158
+      },
+      "movement_inputs": 2352,
+      "input_pressure": 0,
+      "refusals": 300,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 1,
+        "Grease": 2,
+        "Light": 2,
+        "Magic Missile": 3,
+        "Misty Step": 3,
+        "Shield": 4,
+        "Shoot Bow": 3,
+        "Thunderwave": 4,
+        "Web": 2
+      },
+      "minimum_hp": 184,
+      "binding_to_outcome_ms": {
+        "samples": 2295,
+        "p95": 216.39308400000002,
+        "max": 408.757917
+      }
+    },
+    {
+      "player": 3,
+      "snapshots": 409,
+      "snapshot_bytes": 27260624,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 352,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.889204545454545
+      },
+      "movement_inputs": 2349,
+      "input_pressure": 0,
+      "refusals": 400,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 1,
+        "Grease": 3,
+        "Light": 4,
+        "Magic Missile": 1,
+        "Misty Step": 2,
+        "Shield": 4,
+        "Shoot Bow": 1,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 176,
+      "binding_to_outcome_ms": {
+        "samples": 2278,
+        "p95": 223.325125,
+        "max": 330.197417
+      }
+    },
+    {
+      "player": 4,
+      "snapshots": 442,
+      "snapshot_bytes": 29419916,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 385,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.394805194805194
+      },
+      "movement_inputs": 2352,
+      "input_pressure": 0,
+      "refusals": 274,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 4,
+        "Misty Step": 2,
+        "Shield": 4,
+        "Shoot Bow": 3,
+        "Thunderwave": 4,
+        "Web": 2
+      },
+      "minimum_hp": 182,
+      "binding_to_outcome_ms": {
+        "samples": 2286,
+        "p95": 219.975209,
+        "max": 369.715959
+      }
+    },
+    {
+      "player": 5,
+      "snapshots": 415,
+      "snapshot_bytes": 27653389,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 358,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.835195530726256
+      },
+      "movement_inputs": 2352,
+      "input_pressure": 0,
+      "refusals": 396,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 2,
+        "Shield": 4,
+        "Shoot Bow": 4,
+        "Thunderwave": 3,
+        "Web": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 2259,
+        "p95": 225.65283399999998,
+        "max": 369.55075
+      }
+    },
+    {
+      "player": 6,
+      "snapshots": 441,
+      "snapshot_bytes": 29353342,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 384,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.544270833333334
+      },
+      "movement_inputs": 2351,
+      "input_pressure": 0,
+      "refusals": 300,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 4,
+        "Magic Missile": 2,
+        "Misty Step": 4,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 2268,
+        "p95": 218.614,
+        "max": 385.32887500000004
+      }
+    },
+    {
+      "player": 7,
+      "snapshots": 435,
+      "snapshot_bytes": 28966523,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 378,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.515873015873016
+      },
+      "movement_inputs": 2349,
+      "input_pressure": 0,
+      "refusals": 309,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 2,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 2,
+        "Shield": 4,
+        "Shoot Bow": 1,
+        "Thunderwave": 4,
+        "Web": 3
+      },
+      "minimum_hp": 160,
+      "binding_to_outcome_ms": {
+        "samples": 2293,
+        "p95": 218.717375,
+        "max": 395.677541
+      }
+    },
+    {
+      "player": 8,
+      "snapshots": 431,
+      "snapshot_bytes": 28699520,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 374,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.526737967914439
+      },
+      "movement_inputs": 2349,
+      "input_pressure": 0,
+      "refusals": 297,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 2,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 4,
+        "Web": 2
+      },
+      "minimum_hp": 166,
+      "binding_to_outcome_ms": {
+        "samples": 2284,
+        "p95": 222.846125,
+        "max": 356.64633299999997
+      }
+    },
+    {
+      "player": 9,
+      "snapshots": 416,
+      "snapshot_bytes": 27742931,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 359,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.874651810584957
+      },
+      "movement_inputs": 2350,
+      "input_pressure": 0,
+      "refusals": 356,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 2,
+        "Magic Missile": 3,
+        "Misty Step": 2,
+        "Shield": 2,
+        "Shoot Bow": 4,
+        "Thunderwave": 4,
+        "Web": 3
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 2278,
+        "p95": 220.73612500000002,
+        "max": 395.720083
+      }
+    },
+    {
+      "player": 10,
+      "snapshots": 413,
+      "snapshot_bytes": 27535989,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 356,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.834269662921349
+      },
+      "movement_inputs": 2349,
+      "input_pressure": 0,
+      "refusals": 377,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 1,
+        "Grease": 2,
+        "Light": 4,
+        "Magic Missile": 2,
+        "Misty Step": 2,
+        "Shield": 4,
+        "Shoot Bow": 1,
+        "Thunderwave": 4,
+        "Web": 3
+      },
+      "minimum_hp": 194,
+      "binding_to_outcome_ms": {
+        "samples": 2286,
+        "p95": 220.051458,
+        "max": 403.672625
+      }
+    },
+    {
+      "player": 11,
+      "snapshots": 435,
+      "snapshot_bytes": 28967782,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 378,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.537037037037036
+      },
+      "movement_inputs": 2349,
+      "input_pressure": 0,
+      "refusals": 259,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 2,
+        "Magic Missile": 2,
+        "Misty Step": 3,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 4,
+        "Web": 2
+      },
+      "minimum_hp": 192,
+      "binding_to_outcome_ms": {
+        "samples": 2295,
+        "p95": 214.47429200000002,
+        "max": 386.466542
+      }
+    },
+    {
+      "player": 12,
+      "snapshots": 421,
+      "snapshot_bytes": 28052148,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 364,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.85989010989011
+      },
+      "movement_inputs": 2351,
+      "input_pressure": 0,
+      "refusals": 340,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 2,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 2,
+        "Shield": 4,
+        "Shoot Bow": 3,
+        "Thunderwave": 4,
+        "Web": 1
+      },
+      "minimum_hp": 184,
+      "binding_to_outcome_ms": {
+        "samples": 2279,
+        "p95": 219.737833,
+        "max": 376.13345799999996
+      }
+    },
+    {
+      "player": 13,
+      "snapshots": 391,
+      "snapshot_bytes": 26085018,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 334,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 9.062874251497005
+      },
+      "movement_inputs": 2349,
+      "input_pressure": 0,
+      "refusals": 474,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 3,
+        "Misty Step": 2,
+        "Shield": 4,
+        "Thunderwave": 4,
+        "Web": 3
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 2247,
+        "p95": 223.684834,
+        "max": 389.691042
+      }
+    },
+    {
+      "player": 14,
+      "snapshots": 421,
+      "snapshot_bytes": 28062720,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 364,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.826923076923077
+      },
+      "movement_inputs": 2352,
+      "input_pressure": 0,
+      "refusals": 343,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 1,
+        "Grease": 1,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 1,
+        "Shield": 4,
+        "Shoot Bow": 2,
+        "Thunderwave": 4,
+        "Web": 1
+      },
+      "minimum_hp": 182,
+      "binding_to_outcome_ms": {
+        "samples": 2272,
+        "p95": 222.38116599999998,
+        "max": 384.871458
+      }
+    },
+    {
+      "player": 15,
+      "snapshots": 419,
+      "snapshot_bytes": 27896632,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 362,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.287292817679559
+      },
+      "movement_inputs": 2349,
+      "input_pressure": 0,
+      "refusals": 421,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 2,
+        "Grease": 4,
+        "Light": 3,
+        "Magic Missile": 3,
+        "Misty Step": 4,
+        "Shield": 4,
+        "Shoot Bow": 3,
+        "Thunderwave": 4,
+        "Web": 1
+      },
+      "minimum_hp": 182,
+      "binding_to_outcome_ms": {
+        "samples": 2272,
+        "p95": 225.291042,
+        "max": 384.792708
+      }
+    },
+    {
+      "player": 16,
+      "snapshots": 419,
+      "snapshot_bytes": 27902211,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 362,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.616022099447514
+      },
+      "movement_inputs": 2349,
+      "input_pressure": 0,
+      "refusals": 325,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Grease": 3,
+        "Light": 4,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 4,
+        "Shoot Bow": 3,
+        "Thunderwave": 4,
+        "Web": 2
+      },
+      "minimum_hp": 192,
+      "binding_to_outcome_ms": {
+        "samples": 2277,
+        "p95": 220.049084,
+        "max": 362.3415
+      }
+    },
+    {
+      "player": 17,
+      "snapshots": 413,
+      "snapshot_bytes": 27526875,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 356,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 8.668539325842696
+      },
+      "movement_inputs": 2350,
+      "input_pressure": 0,
+      "refusals": 387,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 4,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 3,
+        "Misty Step": 4,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 4,
+        "Web": 1
+      },
+      "minimum_hp": 164,
+      "binding_to_outcome_ms": {
+        "samples": 2270,
+        "p95": 224.25025000000002,
+        "max": 369.488667
+      }
+    },
+    {
+      "player": 18,
+      "snapshots": 400,
+      "snapshot_bytes": 26688050,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 344,
+        "minimum_live_hostiles": 1,
+        "mean_live_hostiles": 9.209302325581396
+      },
+      "movement_inputs": 2354,
+      "input_pressure": 0,
+      "refusals": 470,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 1,
+        "Grease": 2,
+        "Light": 4,
+        "Magic Missile": 2,
+        "Misty Step": 2,
+        "Shield": 4,
+        "Shoot Bow": 1,
+        "Thunderwave": 3,
+        "Web": 2
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 2266,
+        "p95": 227.312667,
+        "max": 395.90825
+      }
+    }
+  ],
+  "limits": [
+    "Headless authenticated clients measure transport and authority load, not rendering.",
+    "Binding-to-outcome includes server processing and client delivery, not isolated RTT.",
+    "Timing retains at most 8192 samples per player."
+  ]
+}
