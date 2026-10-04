@@ -40,6 +40,7 @@ pub mod character;
 pub mod clock;
 pub mod collision;
 pub mod contact;
+pub mod continuous;
 pub mod joint;
 pub mod kinematic;
 pub mod ledger;
