@@ -1035,11 +1035,17 @@ readline.createInterface({ input: process.stdin });
         assert_eq!(init["account"]["email"], "t@example.com");
         assert_eq!(query.supported_models().unwrap()[0]["value"], "sonnet");
 
-        // Drop the query so the child exits and flushes the log.
+        // Wait for the fake to log both lines; dropping the query kills it.
+        let mut recorded = String::new();
+        for _ in 0..100 {
+            recorded = fs::read_to_string(&log).unwrap_or_default();
+            if recorded.lines().filter(|line| !line.is_empty()).count() >= 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
         drop(query);
-        tokio::time::sleep(Duration::from_millis(50)).await;
 
-        let recorded = fs::read_to_string(&log).unwrap();
         let lines: Vec<&str> = recorded.lines().filter(|line| !line.is_empty()).collect();
         assert!(
             lines.len() >= 2,
