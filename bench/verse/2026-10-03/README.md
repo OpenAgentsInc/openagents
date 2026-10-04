@@ -138,3 +138,20 @@ ignored), 47 world tests, 47 Lagrange tests, 16 Physics Lab tests, the Standard
 outfit animation test, formatting, and both native chamber example builds.
 Compiled navigation, body lifetime integration, relative-motion projectile CCD,
 multiplayer, and tools remain roadmap work.
+
+## Compiled navigation
+
+`compiled-navigation.mp4` records 12 seconds of native 1280 × 720 frames at
+30 FPS. An admitted NPC goal sends a cultist around a live blocker and up the
+side stairs. The simulation removes the blocker at frame 120; the cultist
+replans and reaches the adventurer's elevation. The PNG shows the stair climb.
+The JSON receipt records 360 command ticks, 1,440 physics substeps, 24 route
+plans across the encounter, and zero navigation budget refusals.
+
+The `verse-chamber-owned-v3` profile retains route and dynamic blocker state for
+exact checkpoint replay. Checks: 93 runnable physics tests (the existing external
+Genesis oracle remains ignored), 51 world tests, 12 focused renderer tests, five
+Lagrange conservation tests, 16 Physics Lab tests, formatting, and both native
+example builds. The combat controller still uses all ten abilities, defeats
+12 cultists in its focused fixture, and loses to Claude. The capture proves
+navigation, not finished lighting or nameplate layout.

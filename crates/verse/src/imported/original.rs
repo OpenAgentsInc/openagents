@@ -248,6 +248,9 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
         world_box(b.center, b.half, b.color, b.emissive);
     }
     pack.models.insert("chamber".into(), room);
+    let mut blocker = model("navigation-blocker", 1.);
+    cuboid(&mut blocker, [0.; 3], [0.5; 3], [0.65, 0.32, 0.1], 0, false);
+    pack.models.insert("navigation-blocker".into(), blocker);
     pack.placements.push(Placement {
         model: "chamber".into(),
         position: [0.; 3],

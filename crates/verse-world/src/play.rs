@@ -125,12 +125,36 @@ pub struct DamageNumber {
     pub serial: u64,
 }
 #[derive(serde::Serialize, serde::Deserialize)]
+struct NavigationGoal {
+    life: verse_engine::core::LifeId,
+    target: Vec3,
+    speed: f32,
+}
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Route {
+    life: verse_engine::core::LifeId,
+    target: Vec3,
+    planned_at: f32,
+    blocker_revision: u64,
+    points: Vec<glam::DVec3>,
+    cursor: usize,
+    stuck_steps: u32,
+    refusal: Option<String>,
+}
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Game {
     admission: crate::Admission,
     pending_movement: Option<[f32; 2]>,
     pending_jump: bool,
     character: physics::character::Character,
     npc_characters: BTreeMap<u64, physics::character::Character>,
+    routes: BTreeMap<u64, Route>,
+    navigation_goals: BTreeMap<u64, NavigationGoal>,
+    blockers: physics::walkable::Blockers,
+    pub navigation_plans: u64,
+    pub navigation_budget_refusals: u64,
+    #[serde(skip)]
+    navigation: Option<std::sync::Arc<physics::walkable::Navigation>>,
     pub physics_clock: physics::FixedStep,
     pub physics_steps: u64,
     previous_player: Vec3,
@@ -242,7 +266,7 @@ impl Game {
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
         self.simulation.validate()?;
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v2", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v3", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -262,13 +286,37 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v2" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v3" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
         world.scene.validate()?;
         world.simulation.validate()?;
         world.controls.validate()?;
+        world.blockers.validate()?;
+        if world.navigation_goals.iter().any(|(actor, goal)| {
+            world.lives.get(actor) != Some(&goal.life)
+                || !goal.target.is_finite()
+                || !goal.speed.is_finite()
+                || !(0.01..=6.4).contains(&goal.speed)
+        }) {
+            return Err("Invalid directed navigation checkpoint".into());
+        }
+        if world.blockers.instance != world.admission.actor().instance
+            || world.routes.iter().any(|(id, route)| {
+                world.lives.get(id) != Some(&route.life)
+                    || !route.target.is_finite()
+                    || !route.planned_at.is_finite()
+                    || route.planned_at > world.time
+                    || route.blocker_revision > world.blockers.revision
+                    || route.points.len() > 1024
+                    || route.points.iter().any(|p| !p.is_finite())
+                    || route.cursor > route.points.len()
+                    || route.refusal.as_ref().is_some_and(|text| text.len() > 128)
+            })
+        {
+            return Err("Invalid world navigation checkpoint".into());
+        }
         world.character.validate()?;
         for character in world.npc_characters.values() {
             character.validate()?;
@@ -355,6 +403,30 @@ impl Game {
         {
             return Err("Invalid world movement checkpoint".into());
         }
+        world.navigation = if world.colliders.is_empty() {
+            None
+        } else {
+            Some(crate::room::navigation(world.admission.actor().instance)?)
+        };
+        for collider in world.blockers.colliders()? {
+            world.colliders.push(physics::kinematic::Aabb {
+                min: collider
+                    .mesh
+                    .triangles()
+                    .iter()
+                    .flat_map(|t| t.0)
+                    .reduce(glam::DVec3::min)
+                    .unwrap(),
+                max: collider
+                    .mesh
+                    .triangles()
+                    .iter()
+                    .flat_map(|t| t.0)
+                    .reduce(glam::DVec3::max)
+                    .unwrap(),
+            });
+            world.query_scene.insert(collider)?;
+        }
         world.simulation.set_colliders(world.colliders.clone());
         Ok(world)
     }
@@ -376,37 +448,244 @@ impl Game {
         .as_vec3())
     }
 
+    /// Directs a living NPC through planning and collision, without placing it.
+    pub fn direct_npc_navigation(
+        &mut self,
+        life: verse_engine::core::LifeId,
+        target: Vec3,
+        speed: f32,
+    ) -> Result<(), String> {
+        if self.actor_life(life.actor) != Some(life)
+            || !target.is_finite()
+            || target.abs().max_element() > 1_000_000.
+            || !speed.is_finite()
+            || !(0.01..=6.4).contains(&speed)
+            || self.ids.get(&life.actor).is_none_or(|id| {
+                !self
+                    .snapshot()
+                    .actors
+                    .iter()
+                    .any(|a| a.id == *id && a.alive)
+            })
+        {
+            return Err("Invalid directed NPC navigation intent".into());
+        }
+        if let Some(encounter) = &mut self.encounter {
+            encounter
+                .casts
+                .retain(|cast| cast.life != life || self.time >= cast.release);
+        }
+        self.routes.remove(&life.actor);
+        self.navigation_goals.insert(
+            life.actor,
+            NavigationGoal {
+                life,
+                target,
+                speed,
+            },
+        );
+        Ok(())
+    }
+    pub fn clear_npc_navigation(&mut self, life: verse_engine::core::LifeId) -> bool {
+        if !self
+            .navigation_goals
+            .get(&life.actor)
+            .is_some_and(|goal| goal.life == life)
+        {
+            return false;
+        }
+        self.navigation_goals.remove(&life.actor);
+        self.routes.remove(&life.actor);
+        true
+    }
+    pub(super) fn navigation_directed(&self, actor: u64) -> bool {
+        self.navigation_goals.contains_key(&actor)
+    }
+    pub fn navigation_blockers(&self) -> &physics::walkable::Blockers {
+        &self.blockers
+    }
+    /// Changes a trusted world prop; player commands cannot call this mutation.
+    pub fn set_navigation_blocker(
+        &mut self,
+        life: physics::queries::Life,
+        min: glam::DVec3,
+        max: glam::DVec3,
+    ) -> Result<(), String> {
+        let mut next = self.blockers.clone();
+        next.upsert(life, min, max)?;
+        self.replace_blockers(next)
+    }
+    pub fn remove_navigation_blocker(
+        &mut self,
+        life: physics::queries::Life,
+    ) -> Result<bool, String> {
+        let mut next = self.blockers.clone();
+        if !next.remove(life)? {
+            return Ok(false);
+        }
+        self.replace_blockers(next)?;
+        Ok(true)
+    }
+    fn replace_blockers(&mut self, next: physics::walkable::Blockers) -> Result<(), String> {
+        if self.navigation.is_none() {
+            return Err("World profile has no compiled navigation".into());
+        }
+        let mut scene = crate::room::query_scene(self.admission.actor().instance)?;
+        let mut bounds = crate::room::colliders();
+        for collider in next.colliders()? {
+            bounds.push(physics::kinematic::Aabb {
+                min: collider
+                    .mesh
+                    .triangles()
+                    .iter()
+                    .flat_map(|t| t.0)
+                    .reduce(glam::DVec3::min)
+                    .unwrap(),
+                max: collider
+                    .mesh
+                    .triangles()
+                    .iter()
+                    .flat_map(|t| t.0)
+                    .reduce(glam::DVec3::max)
+                    .unwrap(),
+            });
+            scene.insert(collider)?;
+        }
+        self.query_scene = scene;
+        self.colliders = bounds;
+        self.blockers = next;
+        self.simulation.set_colliders(self.colliders.clone());
+        Ok(())
+    }
     pub(super) fn move_hostile(
-        &self,
+        &mut self,
+        actor: u64,
         position: Vec3,
         target: Vec3,
         distance: f32,
     ) -> Result<Vec3, String> {
+        if !position.is_finite()
+            || !target.is_finite()
+            || !distance.is_finite()
+            || !(0. ..=1.).contains(&distance)
+        {
+            return Err("Invalid hostile movement request".into());
+        }
         if self.colliders.is_empty() {
             let mut p = position + (target - position).normalize_or_zero() * distance;
             p.x = p.x.clamp(-11., 11.);
             p.z = p.z.clamp(-24., 10.);
             return Ok(p);
         }
-        let center = position.as_dvec3() + glam::DVec3::Y * 0.9;
-        let goal = glam::DVec3::new(target.x as f64, center.y, target.z as f64);
-        let half = glam::DVec3::new(0.35, 0.9, 0.35);
-        let Some(waypoint) =
-            physics::navigation::next_waypoint(center, goal, half, &self.colliders)?
-        else {
+        let life = self
+            .actor_life(actor)
+            .ok_or("Hostile movement life is missing")?;
+        let instance = self.admission.actor().instance;
+        let ignore = Some(physics::queries::Life {
+            instance,
+            entity: actor,
+            generation: life.generation,
+        });
+        let replan = self.routes.get(&actor).is_none_or(|route| {
+            route.life != life
+                || route.blocker_revision != self.blockers.revision
+                || self.time - route.planned_at >= 0.5
+                    && (route.target.distance(target) > 0.5
+                        || route.stuck_steps >= 8
+                        || route.points.is_empty())
+        });
+        if replan {
+            self.navigation_plans = self
+                .navigation_plans
+                .checked_add(1)
+                .ok_or("Navigation plan counter exhausted")?;
+            let result = self
+                .navigation
+                .as_ref()
+                .ok_or("Compiled navigation is missing")?
+                .path(
+                    &self.query_scene,
+                    &self.blockers,
+                    instance,
+                    position.as_dvec3(),
+                    target.as_dvec3(),
+                    ignore,
+                    physics::walkable::Budget {
+                        nodes: 16_384,
+                        ..Default::default()
+                    },
+                );
+            let (points, refusal) = match result {
+                Ok(Some(path)) => (path.points, None),
+                Ok(None) => (vec![], Some("No walkable path".into())),
+                Err(error)
+                    if matches!(
+                        error.as_str(),
+                        "Navigation path work budget exceeded"
+                            | "Navigation collision work budget exceeded"
+                    ) =>
+                {
+                    self.navigation_budget_refusals = self
+                        .navigation_budget_refusals
+                        .checked_add(1)
+                        .ok_or("Navigation refusal counter exhausted")?;
+                    (vec![], Some(error))
+                }
+                Err(error) => return Err(error),
+            };
+            self.routes.insert(
+                actor,
+                Route {
+                    life,
+                    target,
+                    planned_at: self.time,
+                    blocker_revision: self.blockers.revision,
+                    points,
+                    cursor: 0,
+                    stuck_steps: 0,
+                    refusal,
+                },
+            );
+        }
+        let route = self.routes.get_mut(&actor).unwrap();
+        while route.points.get(route.cursor).is_some_and(|p| {
+            let delta = *p - position.as_dvec3();
+            glam::DVec3::new(delta.x, 0., delta.z).length()
+                < if route.cursor + 1 == route.points.len() {
+                    0.001
+                } else {
+                    0.08
+                }
+                && delta.y.abs() < 0.12
+        }) {
+            route.cursor += 1;
+        }
+        let Some(waypoint) = route.points.get(route.cursor).copied() else {
             return Ok(position);
         };
-        let delta = waypoint - center;
-        let movement = delta.normalize_or_zero() * delta.length().min(distance as f64);
-        Ok(physics::character::slide(
-            &self.query_scene,
-            physics::queries::Filter::blocking(self.admission.actor().instance),
-            physics::character::Settings::default(),
-            position.as_dvec3(),
-            movement,
-            true,
-        )?
-        .as_vec3())
+        let delta = waypoint - position.as_dvec3();
+        let horizontal = glam::DVec3::new(delta.x, 0., delta.z);
+        let movement = horizontal.normalize_or_zero() * horizontal.length().min(distance as f64);
+        let steps = (movement.length() / 0.05).ceil().max(1.) as usize;
+        let mut character = physics::character::Character::new(position.as_dvec3());
+        let mut filter = physics::queries::Filter::blocking(instance);
+        filter.ignore = ignore;
+        for _ in 0..steps {
+            character.step(
+                &self.query_scene,
+                filter,
+                physics::character::Settings::default(),
+                movement * (120. / steps as f64),
+                false,
+                1. / 120.,
+            )?;
+        }
+        if character.feet.distance(position.as_dvec3()) < distance as f64 * 0.1 {
+            route.stuck_steps = route.stuck_steps.saturating_add(1);
+        } else {
+            route.stuck_steps = 0;
+        }
+        Ok(character.feet.as_vec3())
     }
     pub(super) fn attack_clear(&self, start: Vec3, end: Vec3) -> bool {
         physics::kinematic::sweep_box(
@@ -486,6 +765,16 @@ impl Game {
             pending_jump: false,
             character: physics::character::Character::new(player.as_dvec3()),
             npc_characters: BTreeMap::new(),
+            routes: BTreeMap::new(),
+            navigation_goals: BTreeMap::new(),
+            blockers: physics::walkable::Blockers::new(0),
+            navigation_plans: 0,
+            navigation_budget_refusals: 0,
+            navigation: if colliders.is_empty() {
+                None
+            } else {
+                Some(crate::room::navigation(0)?)
+            },
             physics_clock: physics::FixedStep::new(1. / 120., 12),
             physics_steps: 0,
             previous_player: player,
@@ -657,6 +946,28 @@ impl Game {
                             .copied()
                             .unwrap_or_else(|| (-direction.x).atan2(-direction.z));
                     }
+                    if self.encounter.is_none() && self.navigation_directed(a.actor.id) {
+                        a.animation = if self
+                            .npc_motion
+                            .get(&a.actor.id)
+                            .is_some_and(|v| v.length_squared() > 0.01)
+                        {
+                            4
+                        } else {
+                            109
+                        };
+                        a.animation_time = if a.animation == 4 {
+                            self.npc_motion_clock
+                                .get(&a.actor.id)
+                                .copied()
+                                .unwrap_or(0.)
+                        } else {
+                            self.time
+                        };
+                        if let Some(yaw) = self.npc_yaw.get(&a.actor.id) {
+                            a.actor.yaw = *yaw;
+                        }
+                    }
                     if self.controls.held(*id) {
                         a.animation = if a.actor.model.starts_with("cultist")
                             && self.encounter.as_ref().is_some_and(|e| e.ended.is_none())
@@ -751,11 +1062,6 @@ impl Game {
                     .map(|actor| (*id, Vec3::from(actor.pos)))
             })
             .collect();
-        let previous = self
-            .encounter
-            .as_ref()
-            .map(|e| e.positions.clone())
-            .unwrap_or_default();
         if dt > 0. {
             self.authority_tick = self
                 .authority_tick
@@ -845,26 +1151,38 @@ impl Game {
         self.moving = travelled > 0.00001;
         let source_actors = self.snapshot().actors;
         for a in self.scene.frame(self.time).actors {
-            if let Some(id) = self.ids.get(&a.actor.id) {
-                if !source_actors.iter().any(|a| a.id == *id) {
+            if let Some(id) = self.ids.get(&a.actor.id).copied() {
+                if !source_actors.iter().any(|a| a.id == id) {
                     continue;
                 }
-                let desired = self.controls.position(
-                    *id,
-                    self.encounter
-                        .as_ref()
-                        .and_then(|e| e.positions.get(&a.actor.id))
-                        .copied()
-                        .unwrap_or(a.actor.position),
-                    self.time,
-                );
+                let mut authored = self
+                    .encounter
+                    .as_ref()
+                    .and_then(|e| e.positions.get(&a.actor.id))
+                    .copied()
+                    .unwrap_or(a.actor.position);
+                if let Some(goal) = self.navigation_goals.get(&a.actor.id) {
+                    let (target, speed) = (goal.target, goal.speed);
+                    let position = Vec3::from(
+                        source_actors
+                            .iter()
+                            .find(|actor| actor.id == id)
+                            .unwrap()
+                            .pos,
+                    );
+                    authored = self.move_hostile(a.actor.id, position, target, speed * dt)?;
+                    if let Some(encounter) = &mut self.encounter {
+                        encounter.positions.insert(a.actor.id, authored);
+                    }
+                }
+                let desired = self.controls.position(id, authored, self.time);
                 let position = if self.colliders.is_empty() {
                     desired
                 } else {
                     let previous = Vec3::from(
                         source_actors
                             .iter()
-                            .find(|actor| actor.id == *id)
+                            .find(|actor| actor.id == id)
                             .unwrap()
                             .pos,
                     );
@@ -896,7 +1214,7 @@ impl Game {
                     character.feet.as_vec3()
                 };
                 self.simulation
-                    .place_chamber_actor(*id, position.to_array(), a.actor.yaw)?;
+                    .place_chamber_actor(id, position.to_array(), a.actor.yaw)?;
             }
         }
         let mut remaining = Vec::new();
@@ -953,20 +1271,23 @@ impl Game {
             encounter.step(self, dt)?;
             self.encounter = Some(encounter);
         }
-        if dt > 0.0 {
-            if let Some(e) = &self.encounter {
-                for (id, position) in &e.positions {
-                    *self.npc_motion_clock.entry(*id).or_default() +=
-                        position.distance(previous.get(id).copied().unwrap_or(*position)) / 2.4;
-                    self.npc_motion.insert(
-                        *id,
-                        (*position - previous.get(id).copied().unwrap_or(*position)) / dt,
-                    );
+        let snapshot = self.snapshot();
+        if dt > 0. {
+            for (id, sim_id) in &self.ids {
+                if let Some(source) = snapshot.actors.iter().find(|actor| actor.id == *sim_id) {
+                    let position = Vec3::from(source.pos);
+                    let previous = self.previous_npc.get(id).copied().unwrap_or(position);
+                    let delta = if source.alive {
+                        position - previous
+                    } else {
+                        Vec3::ZERO
+                    };
+                    *self.npc_motion_clock.entry(*id).or_default() += delta.length() / 2.4;
+                    self.npc_motion.insert(*id, delta / dt);
                 }
             }
         }
-        let snapshot = self.snapshot();
-        if self.encounter.is_some() {
+        if self.encounter.is_some() || !self.navigation_goals.is_empty() {
             for actor in &self.scene.actors {
                 let Some(source) = self
                     .ids
@@ -1064,6 +1385,8 @@ impl Game {
             self.controls.forget_actor(old);
             self.npc_deaths.remove(&actor.id);
             self.npc_characters.remove(&actor.id);
+            self.routes.remove(&actor.id);
+            self.navigation_goals.remove(&actor.id);
             self.previous_npc.remove(&actor.id);
             self.npc_motion.remove(&actor.id);
             self.npc_motion_clock.remove(&actor.id);
@@ -1872,14 +2195,19 @@ mod original_collision_tests {
     }
     #[test]
     fn original_hostile_routes_around_a_real_chamber_column() {
-        let g = game();
+        let mut g = game();
         let mut position = Vec3::new(13., 0., -13.);
         let target = Vec3::new(17., 0., -13.);
         let mut detoured = false;
         for _ in 0..150 {
-            position = g.move_hostile(position, target, 0.09).unwrap();
+            position = g.move_hostile(2, position, target, 0.09).unwrap();
             detoured |= (position.z + 13.).abs() > 1.;
-            assert!(!(position.x > 13.95 && position.x < 16.05 && (position.z + 13.).abs() < 1.05));
+            let dx = ((position.x - 15.).abs() - 0.7).max(0.);
+            let dz = ((position.z + 13.).abs() - 0.7).max(0.);
+            assert!(
+                dx.hypot(dz) >= 0.35 - 1e-4,
+                "Capsule crossed the column: {position:?}"
+            );
         }
         assert!(detoured && position.distance(target) < 0.02);
     }
@@ -2164,5 +2492,121 @@ mod grounded_movement_tests {
         }
         assert_eq!(poses[0], poses[1]);
         assert_eq!(poses[1], poses[2]);
+    }
+}
+
+#[cfg(test)]
+mod compiled_navigation_tests {
+    use super::*;
+    fn game() -> Game {
+        let scene =
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap();
+        let mut game = Game::new(scene).unwrap();
+        game.time = 30.;
+        game
+    }
+    #[test]
+    fn cultist_climbs_authored_stairs_without_teleporting() {
+        let mut game = game();
+        let mut position = Vec3::new(18., 0., -32.);
+        let target = Vec3::new(18., 1.5, -25.);
+        for _ in 0..300 {
+            let next = game.move_hostile(2, position, target, 0.03).unwrap();
+            assert!(Vec3::new(next.x - position.x, 0., next.z - position.z).length() <= 0.0301);
+            position = next;
+            game.time += 1. / 30.;
+        }
+        assert!(position.distance(target) < 0.02, "{position:?}");
+        assert_eq!(game.navigation_budget_refusals, 0);
+        assert!(game.navigation_plans < 5);
+    }
+    #[test]
+    fn directed_intent_advances_in_authority_and_replays_through_stairs() {
+        let mut scene =
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap();
+        scene
+            .actors
+            .iter_mut()
+            .find(|a| a.id == 2)
+            .unwrap()
+            .position = Vec3::new(18., 0., -32.);
+        let mut game = Game::new(scene).unwrap();
+        game.time = 30.;
+        let life = game.actor_life(2).unwrap();
+        let target = Vec3::new(18.8, 1.5, -25.);
+        game.direct_npc_navigation(life, target, 1.2).unwrap();
+        for _ in 0..120 {
+            game.tick(1. / 30., [0.; 2]).unwrap();
+        }
+        let frame = game.frame();
+        let walking = frame.actors.iter().find(|a| a.actor.id == 2).unwrap();
+        assert_eq!(walking.animation, 4);
+        let mut restored = Game::restore(&game.checkpoint().unwrap()).unwrap();
+        for _ in 0..180 {
+            game.tick(1. / 30., [0.; 2]).unwrap();
+            restored.tick(1. / 30., [0.; 2]).unwrap();
+            assert_eq!(game.checkpoint().unwrap(), restored.checkpoint().unwrap());
+        }
+        let frame = game.frame();
+        let arrived = frame.actors.iter().find(|a| a.actor.id == 2).unwrap();
+        assert!(
+            arrived.actor.position.distance(target) < 0.1,
+            "{:?}",
+            arrived.actor.position
+        );
+        assert!(!game.clear_npc_navigation(life.next().unwrap()));
+        assert!(game.clear_npc_navigation(life));
+        game.restart_combat(false).unwrap();
+        assert!(game.direct_npc_navigation(life, target, 1.2).is_err());
+    }
+    #[test]
+    fn blocker_replanning_collision_and_checkpoint_keep_the_same_life() {
+        let mut game = game();
+        let life = physics::queries::Life {
+            instance: 0,
+            entity: 9001,
+            generation: 0,
+        };
+        game.set_navigation_blocker(
+            life,
+            glam::DVec3::new(-0.6, 0., -15.6),
+            glam::DVec3::new(0.6, 3., -14.4),
+        )
+        .unwrap();
+        let start = Vec3::new(-2., 0., -15.);
+        let target = Vec3::new(2., 0., -15.);
+        let mut position = start;
+        let mut detoured = false;
+        for _ in 0..180 {
+            position = game.move_hostile(2, position, target, 0.04).unwrap();
+            detoured |= (position.z + 15.).abs() > 0.95;
+            game.time += 1. / 30.;
+        }
+        assert!(detoured && position.distance(target) < 0.02, "{position:?}");
+        assert!(game.move_player(start, Vec3::X * 5.).unwrap().x < -0.94);
+        let mut restored = Game::restore(&game.checkpoint().unwrap()).unwrap();
+        assert_eq!(game.checkpoint().unwrap(), restored.checkpoint().unwrap());
+        assert!(game.remove_navigation_blocker(life).unwrap());
+        assert!(restored.remove_navigation_blocker(life).unwrap());
+        let direct = game.move_hostile(2, start, target, 0.04).unwrap();
+        let replay = restored.move_hostile(2, start, target, 0.04).unwrap();
+        assert_eq!(direct, replay);
+        assert_eq!(game.checkpoint().unwrap(), restored.checkpoint().unwrap());
+        assert!(
+            game.set_navigation_blocker(life, glam::DVec3::ZERO, glam::DVec3::ONE)
+                .is_err()
+        );
+        let next = physics::queries::Life {
+            generation: 1,
+            ..life
+        };
+        game.set_navigation_blocker(
+            next,
+            glam::DVec3::new(-0.6, 0., -15.6),
+            glam::DVec3::new(0.6, 3., -14.4),
+        )
+        .unwrap();
+        assert!(!game.remove_navigation_blocker(life).unwrap());
+        assert!(game.move_player(start, Vec3::X * 5.).unwrap().x < -0.94);
     }
 }

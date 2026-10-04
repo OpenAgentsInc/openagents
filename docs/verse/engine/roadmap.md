@@ -111,11 +111,22 @@ rejection, solid-box spawn recovery, checked teleport endpoints, and moving
 platform poses. Rigid poses reuse compiled mesh hierarchies. Player and NPC
 movement run four 120 Hz substeps per 30 Hz chamber command tick; the clock
 records dropped time. Space submits an admitted jump; presentation interpolates
-player and NPC positions without changing authority. The owned profile is now
+player and NPC positions without changing authority. That milestone uses
 `verse-chamber-owned-v2`; checkpoints include movement state and preserve exact
 floating-point replay. Native side stairs share rendered and collision geometry.
-Compiled navigation, general entity/body lifetime integration, and relative-motion
-projectile CCD remain VE-2 work; the existing box navigation remains in use.
+[#10440](https://github.com/OpenAgentsInc/openagents/issues/10440) replaces box
+navigation with a compiled multilayer walkable grid, using capsule clearance,
+slope and step admission, and collision-checked connections and shortcuts.
+Deterministic routes distinguish unavailable paths from work-budget refusals.
+Generation-fenced dynamic blockers update navigation and authoritative collision;
+trusted NPC goals still move through the capsule controller. Checkpoints retain
+routes and blocker revisions under `verse-chamber-owned-v3`. The native navigation
+capture shows a cultist detouring, replanning after blocker removal, and climbing
+the side stairs. This independently implemented grid uses public concepts from
+[Recast's navigation configuration](https://recastnav.com/structrcConfig.html);
+it does not import Recast or implement polygonization or funnel routing.
+General entity/body lifetime integration and relative-motion projectile CCD remain
+VE-2 work. Renderer lighting and overlapping nameplates remain visual work.
 
 ## Reuse inventory
 

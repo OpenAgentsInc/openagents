@@ -29,6 +29,7 @@ struct App {
     last: Instant,
     schedule: verse_engine::core::FixedSchedule,
     interpolation: f32,
+    capture_view: Option<(Vec3, Vec3, f32)>,
     keys: HashSet<KeyCode>,
     cursor: [f32; 2],
     controls: ClassicControls,
@@ -119,7 +120,12 @@ impl App {
             .motion(delta, &mut self.game.yaw, &mut self.game.camera);
     }
     fn draw_frame(&mut self) -> Result<Vec<u8>, String> {
-        let frame = self.game.interpolated_frame(self.interpolation)?;
+        let mut frame = self.game.interpolated_frame(self.interpolation)?;
+        if let Some((eye, target, fov)) = self.capture_view {
+            frame.eye = eye;
+            frame.target = target;
+            frame.fov = fov;
+        }
         let view = View {
             view_proj: frame.view_projection(1280.0 / 720.0),
             eye: frame.eye,
@@ -146,6 +152,7 @@ impl App {
         overlay::action_bar(&mut ui, &self.atlas, &self.game, 1280.0, 720.0, hover);
         let mut actors = chamber::instances(&self.pack, &frame);
         actors.extend(chamber::spell_instances(&self.game));
+        actors.extend(chamber::blocker_instances(&self.pack, &self.game));
         let lighting = chamber::combat_lighting(&self.game);
         self.renderer
             .as_mut()
@@ -528,6 +535,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
         last: Instant::now(),
         schedule: verse_engine::core::FixedSchedule::new(30, 3)?,
         interpolation: 1.,
+        capture_view: None,
         keys: HashSet::new(),
         cursor: [0.0; 2],
         controls: ClassicControls::default(),
@@ -544,19 +552,20 @@ pub fn run(original_default: bool) -> Result<(), String> {
     if original && mode.is_none() {
         app.game = Game::combat(app.game.scene.clone(), false)?;
     }
-    if matches!(
-        mode.as_deref(),
-        Some(
-            "--demo" | "--utility-demo" | "--combat-demo" | "--navigation-demo" | "--movement-demo"
-        )
-    ) {
+    let demonstration = match mode.as_deref() {
+        Some("--demo") => Some(Demo::Spells),
+        Some("--utility-demo") => Some(Demo::Utilities),
+        Some("--combat-demo") => Some(Demo::Combat),
+        Some("--navigation-demo") => Some(Demo::Navigation),
+        Some("--movement-demo") => Some(Demo::Movement),
+        Some("--stair-navigation-demo") => Some(Demo::StairNavigation),
+        _ => None,
+    };
+    if let Some(demonstration) = demonstration {
         return demo(
             &mut app,
             PathBuf::from(args.next().ok_or("Expected demo.mp4")?),
-            mode.as_deref() == Some("--utility-demo"),
-            mode.as_deref() == Some("--combat-demo"),
-            mode.as_deref() == Some("--navigation-demo"),
-            mode.as_deref() == Some("--movement-demo"),
+            demonstration,
         );
     }
     if matches!(mode.as_deref(), Some("--agent" | "--combat")) {
@@ -596,14 +605,21 @@ pub fn run(original_default: bool) -> Result<(), String> {
     event_loop.run_app(&mut app).map_err(|e| e.to_string())
 }
 
-fn demo(
-    app: &mut App,
-    output: PathBuf,
-    utility: bool,
-    combat: bool,
-    navigation: bool,
-    movement_demo: bool,
-) -> Result<(), String> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Demo {
+    Spells,
+    Utilities,
+    Combat,
+    Navigation,
+    Movement,
+    StairNavigation,
+}
+fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
+    let utility = mode == Demo::Utilities;
+    let combat = mode == Demo::Combat;
+    let navigation = mode == Demo::Navigation;
+    let movement_demo = mode == Demo::Movement;
+    let stair_navigation = mode == Demo::StairNavigation;
     use std::io::Write;
     if combat {
         app.game = Game::combat(app.game.scene.clone(), true)?;
@@ -621,6 +637,47 @@ fn demo(
         app.game.yaw = std::f32::consts::PI;
         app.game.camera.yaw = app.game.yaw;
         app.game.camera.pitch = 0.25;
+        app.game.camera.distance = 7.;
+    }
+    if stair_navigation {
+        app.capture_view = Some((Vec3::new(20.5, 6., -35.), Vec3::new(18., 2., -28.5), 1.05));
+        let mut scene = app.game.scene.clone();
+        scene
+            .actors
+            .iter_mut()
+            .find(|a| a.id == 14)
+            .unwrap()
+            .position = Vec3::new(18., 1.5, -25.);
+        scene
+            .actors
+            .iter_mut()
+            .find(|a| a.id == 2)
+            .unwrap()
+            .position = Vec3::new(18., 0., -32.);
+        app.game = Game::combat(scene, false)?;
+        app.game.time = 20.;
+        app.game
+            .encounter
+            .as_mut()
+            .unwrap()
+            .postpone_casts_until(50.)?;
+        app.game.direct_npc_navigation(
+            app.game.actor_life(2).unwrap(),
+            Vec3::new(18.8, 1.5, -25.),
+            1.2,
+        )?;
+        app.game.set_navigation_blocker(
+            physics::queries::Life {
+                instance: 0,
+                entity: 9001,
+                generation: 0,
+            },
+            glam::DVec3::new(17.6, 0., -31.2),
+            glam::DVec3::new(18.4, 1.2, -30.6),
+        )?;
+        app.game.yaw = std::f32::consts::PI;
+        app.game.camera.yaw = std::f32::consts::PI - 0.5;
+        app.game.camera.pitch = 0.3;
         app.game.camera.distance = 7.;
     }
     if navigation {
@@ -704,11 +761,20 @@ fn demo(
     app.interpolation = 1.;
     for frame in 0..if combat {
         3600
+    } else if stair_navigation {
+        360
     } else if navigation || movement_demo {
         300
     } else {
         480
     } {
+        if stair_navigation && frame == 120 {
+            app.game.remove_navigation_blocker(physics::queries::Life {
+                instance: 0,
+                entity: 9001,
+                generation: 0,
+            })?;
+        }
         if movement_demo && frame == 110 {
             app.game.jump()?;
         }
@@ -739,7 +805,7 @@ fn demo(
             ]
         };
         for (at, ability) in sequence {
-            if !combat && !navigation && !movement_demo && frame == at {
+            if !combat && !navigation && !movement_demo && !stair_navigation && frame == at {
                 if ability == Ability::Thunderwave {
                     let target = app
                         .game
@@ -773,11 +839,39 @@ fn demo(
                 return Err("Movement capture did not climb, jump, and land".into());
             }
             std::fs::write(output.with_extension("json"),serde_json::to_vec_pretty(&serde_json::json!({
-                "schema":"openagents.verse.grounded-movement.v1", "rules_revision":"verse-chamber-owned-v2",
+                "schema":"openagents.verse.grounded-movement.v1", "rules_revision":"verse-chamber-owned-v3",
                 "authority_tick":app.game.authority_tick, "physics_steps":app.game.physics_steps,
                 "physics_dropped_seconds":app.game.physics_clock.dropped,"max_height_m":movement_max_height,
                 "final_feet":app.game.player.to_array(),"jump_command_frame":110,
                 "renderer":"native GPU frames; programmatic admitted movement and jump; no grading"
+            })).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+        }
+        if stair_navigation && frame == 100 {
+            save_png(&output.with_extension("png"), &pixels)?;
+        }
+        if stair_navigation && frame == 359 {
+            let position = app
+                .game
+                .frame()
+                .actors
+                .iter()
+                .find(|a| a.actor.id == 2)
+                .unwrap()
+                .actor
+                .position;
+            let target = Vec3::new(18.8, 1.5, -25.);
+            if position.distance(target) > 0.1 || app.game.navigation_budget_refusals > 0 {
+                return Err(format!(
+                    "Cultist did not reach the stair goal: {position:?}"
+                ));
+            }
+            std::fs::write(output.with_extension("json"),serde_json::to_vec_pretty(&serde_json::json!({
+                "schema":"openagents.verse.navigation.v2","rules_revision":"verse-chamber-owned-v3",
+                "start":[18.,0.,-32.],"target":target.to_array(),"cultist_final":position.to_array(),
+                "authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,
+                "navigation_plans":app.game.navigation_plans,"navigation_budget_refusals":app.game.navigation_budget_refusals,
+                "blocker_revision":app.game.navigation_blockers().revision,"blocker_removed_at_frame":120,
+                "renderer":"native GPU frames; admitted NPC intent; no teleport or grading"
             })).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
         }
         if navigation && frame == 299 {
@@ -807,7 +901,7 @@ fn demo(
             }
             if encounter.ended.is_some_and(|at| app.game.time - at >= 5.0) {
                 save_png(&output.with_extension("png"), &pixels)?;
-                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":"verse-chamber-owned-v2","authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,"physics_dropped_seconds":app.game.physics_clock.dropped,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
+                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":"verse-chamber-owned-v3","authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,"physics_dropped_seconds":app.game.physics_clock.dropped,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
                 std::fs::write(
                     output.with_extension("json"),
                     serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,

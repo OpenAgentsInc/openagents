@@ -106,6 +106,35 @@ pub fn query_scene(instance: u64) -> Result<physics::queries::Scene, String> {
     Ok(scene)
 }
 
+/// Caches immutable walkable geometry; each instance keeps its own blocker book.
+pub fn navigation(instance: u64) -> Result<std::sync::Arc<physics::walkable::Navigation>, String> {
+    use physics::walkable::{Config, Navigation};
+    static COMPILED: std::sync::OnceLock<Result<std::sync::Arc<Navigation>, String>> =
+        std::sync::OnceLock::new();
+    let template = COMPILED
+        .get_or_init(|| {
+            let scene = query_scene(0)?;
+            Ok(std::sync::Arc::new(Navigation::compile(
+                &scene,
+                Config {
+                    instance: 0,
+                    layers: 1,
+                    min: glam::DVec3::new(-21., -0.01, -36.),
+                    max: glam::DVec3::new(21., 2., 16.),
+                    cell: 0.5,
+                    character: physics::character::Settings::default(),
+                    work_budget: 40_000_000,
+                },
+            )?))
+        })
+        .clone()?;
+    Ok(if instance == 0 {
+        template
+    } else {
+        std::sync::Arc::new(template.bind_instance(instance))
+    })
+}
+
 #[cfg(test)]
 mod query_tests {
     use super::*;
@@ -136,5 +165,43 @@ mod query_tests {
                 .hits
                 .is_empty()
         );
+    }
+}
+
+#[cfg(test)]
+mod navigation_tests {
+    use super::*;
+    #[test]
+    fn original_chamber_compiles_stairs_and_column_routes() {
+        let scene = query_scene(0).unwrap();
+        let nav = navigation(0).unwrap();
+        eprintln!("Chamber navigation: {:?}", nav.stats);
+        let blockers = physics::walkable::Blockers::new(0);
+        let route = nav
+            .path(
+                &scene,
+                &blockers,
+                0,
+                glam::DVec3::new(13., 0., -13.),
+                glam::DVec3::new(17., 0., -13.),
+                None,
+                Default::default(),
+            )
+            .unwrap()
+            .unwrap();
+        assert!(route.points.iter().any(|p| (p.z + 13.).abs() > 1.));
+        let stairs = nav
+            .path(
+                &scene,
+                &blockers,
+                0,
+                glam::DVec3::new(18., 0., -32.),
+                glam::DVec3::new(18., 1.5, -25.),
+                None,
+                Default::default(),
+            )
+            .unwrap()
+            .unwrap();
+        assert!(stairs.points.iter().any(|p| p.y > 1.4));
     }
 }

@@ -190,6 +190,9 @@ impl Encounter {
             .filter(|a| a.actor.nameplate && a.health > 0)
         {
             let boss = actor.actor.model == "claude";
+            if game.navigation_directed(actor.actor.id) {
+                continue;
+            }
             let delta = game.player - actor.actor.position;
             let distance = Vec3::new(delta.x, 0.0, delta.z).length();
             let blocked = game.controls.prone(actor.actor.position, game.time);
@@ -213,6 +216,7 @@ impl Encounter {
                     .get_mut(&actor.actor.id)
                     .ok_or("Missing combat actor")?;
                 *position = game.move_hostile(
+                    actor.actor.id,
                     *position,
                     game.player,
                     dt * if actor.actor.id % 3 == 0 { 1.8 } else { 0.9 },
@@ -351,6 +355,45 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
             });
         }
         for ability in candidates {
+            let previous_aim = (game.selected, game.yaw);
+            if ability == Ability::Fireball {
+                let cluster = frame
+                    .actors
+                    .iter()
+                    .filter(|a| {
+                        a.actor.nameplate
+                            && a.health > 0
+                            && a.actor.position.distance(game.player) <= 45.72
+                            && game.attack_clear(
+                                game.player + Vec3::Y * 1.4,
+                                a.actor.position + Vec3::Y * 1.1,
+                            )
+                    })
+                    .map(|candidate| {
+                        let count = frame
+                            .actors
+                            .iter()
+                            .filter(|other| {
+                                other.actor.nameplate
+                                    && other.health > 0
+                                    && other.actor.model != "claude"
+                                    && other.actor.position.distance(candidate.actor.position)
+                                        <= 6.096
+                                    && game.attack_clear(
+                                        candidate.actor.position + Vec3::Y * 1.1,
+                                        other.actor.position + Vec3::Y * 1.1,
+                                    )
+                            })
+                            .count();
+                        (candidate, count)
+                    })
+                    .max_by(|(a, ac), (b, bc)| ac.cmp(bc).then(b.actor.id.cmp(&a.actor.id)));
+                if let Some((target, _)) = cluster.filter(|(_, count)| *count >= 2) {
+                    game.selected = target.actor.id;
+                    let delta = target.actor.position - game.player;
+                    game.yaw = (-delta.x).atan2(-delta.z);
+                }
+            }
             if game.activate(ability).is_ok() {
                 let e = game.encounter.as_mut().unwrap();
                 if opening < OPENING.len() && ability == OPENING[opening] {
@@ -360,6 +403,7 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
                 e.next_action = game.time + 0.95;
                 return Ok([0.0; 2]);
             }
+            (game.selected, game.yaw) = previous_aim;
         }
     }
     let forward = if (opening == 8 && distance > 3.5)

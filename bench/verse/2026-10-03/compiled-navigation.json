@@ -1,0 +1,26 @@
+{
+  "schema": "openagents.verse.navigation.v2",
+  "rules_revision": "verse-chamber-owned-v3",
+  "start": [
+    18.0,
+    0.0,
+    -32.0
+  ],
+  "target": [
+    18.799999237060547,
+    1.5,
+    -25.0
+  ],
+  "cultist_final": [
+    18.799999237060547,
+    1.5000100135803223,
+    -25.0
+  ],
+  "authority_tick": 360,
+  "physics_steps": 1440,
+  "navigation_plans": 24,
+  "navigation_budget_refusals": 0,
+  "blocker_revision": 2,
+  "blocker_removed_at_frame": 120,
+  "renderer": "native GPU frames; admitted NPC intent; no teleport or grading"
+}

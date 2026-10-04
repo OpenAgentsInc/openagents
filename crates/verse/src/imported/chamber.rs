@@ -69,6 +69,26 @@ pub fn instances(pack: &Pack, frame: &verse_engine::director::Frame) -> Vec<Inst
     actors
 }
 
+/// Projects admitted world props using the same bounds as collision and routing.
+pub fn blocker_instances(pack: &Pack, game: &super::play::Game) -> Vec<Instance> {
+    if !pack.models.contains_key("navigation-blocker") {
+        return vec![];
+    }
+    game.navigation_blockers()
+        .active_bounds()
+        .map(|(_, min, max)| Instance {
+            actor: None,
+            model: "navigation-blocker".into(),
+            transform: Mat4::from_translation(((min + max) * 0.5).as_vec3())
+                * Mat4::from_scale((max - min).as_vec3() / 0.9144)
+                * basis(),
+            animation: 0,
+            time: game.time,
+            emission: Vec3::ONE,
+        })
+        .collect()
+}
+
 pub fn classic_atlas(dir: &std::path::Path) -> Result<Atlas, String> {
     let font = std::fs::read(dir.join("FRIZQT__.TTF"))
         .map_err(|e| format!("Import Classic UI assets with wow-import --ui-only: {e}"))?;
