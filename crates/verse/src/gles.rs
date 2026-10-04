@@ -287,6 +287,36 @@ mod tests {
         }
     }
 
+    /// The daylight sky is a plain full-screen fragment entry over the frame
+    /// uniform: it validates, translates to GLSL ES 3.00 and Metal at both
+    /// `DIRECT` settings, and binds no texture, so WebGL2 draws it as
+    /// desktops do.
+    #[test]
+    fn daylight_sky_validates_without_textures() {
+        for gles in [false, true] {
+            let source = wgsl(include_str!("pbr/photo.wgsl"), gles);
+            let (module, info) = parse("pbr/photo.wgsl", &source);
+            let entry = module
+                .entry_points
+                .iter()
+                .find(|e| e.name == "fs_daylight")
+                .expect("photo.wgsl has fs_daylight");
+            assert_eq!(entry.stage, naga::ShaderStage::Fragment);
+            for set in constant_sets(&[("DIRECT", &[0.0, 1.0])]) {
+                let (glsl, pairs) = write_gles(
+                    &module,
+                    &info,
+                    naga::ShaderStage::Fragment,
+                    "fs_daylight",
+                    &set,
+                )
+                .unwrap();
+                assert!(pairs.is_empty(), "the sky samples {pairs:?}");
+                assert!(!glsl.contains("texture("), "the sky samples a texture");
+            }
+        }
+    }
+
     /// The GLES side replaces exactly the constructs GLSL ES lacks: the
     /// default side still uses them, so the preprocessor did not drop the
     /// wrong branch.

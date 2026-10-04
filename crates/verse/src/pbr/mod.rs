@@ -278,6 +278,48 @@ pub struct Neon {
     /// Studio light for physically lit geometry on the stage. Without it the
     /// stage draws no lit geometry.
     pub key: Option<Key>,
+    /// A daytime sky drawn behind the stage instead of the flat field. Fog
+    /// then fades toward the sky's color along each view ray. Without it the
+    /// stage clears to its field.
+    pub daylight: Option<Daylight>,
+}
+
+/// A stylized daytime sky for a neon stage, in the stage's display-linear
+/// colors (values the hue-preserving curve leaves alone stay below 0.76).
+///
+/// The model follows the structure of a physical sky without its cost: a
+/// gradient from a hazy horizon to the zenith stands in for Rayleigh
+/// scattering's optical depth, a forward lobe around the Sun stands in for
+/// Mie scattering (Cornette and Shanks 1992), and fog takes the sky's color
+/// along the view ray as a single-scattering aerial perspective, so distant
+/// ground meets the horizon without a seam (Hillaire, "A Scalable and
+/// Production Ready Sky and Atmosphere Rendering Technique", EGSR 2020).
+/// Clouds are value-noise octaves on a plane overhead. The Sun sits in the
+/// stage key's direction, so the disc agrees with the shadows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Daylight {
+    /// Sky color straight up.
+    pub zenith: [f32; 3],
+    /// Haze color at the horizon, which is also the fog color.
+    pub horizon: [f32; 3],
+    /// The Sun's tint: its disc, its glow, and sunlit cloud tops.
+    pub sun: [f32; 3],
+    /// Cloud cover from 0 (clear) to 1 (overcast).
+    pub clouds: f32,
+}
+
+impl Daylight {
+    /// Whether every color is a finite display color and the cover a
+    /// fraction.
+    #[must_use]
+    pub fn valid(&self) -> bool {
+        self.zenith
+            .iter()
+            .chain(&self.horizon)
+            .chain(&self.sun)
+            .all(|c| c.is_finite() && (0.0..=1.0).contains(c))
+            && (0.0..=1.0).contains(&self.clouds)
+    }
 }
 
 /// Studio light for lit geometry on a neon stage: a shadowed key light, an
@@ -351,6 +393,7 @@ impl Neon {
             vignette: 0.2,
             time,
             key: None,
+            daylight: None,
         }
     }
 
@@ -389,4 +432,32 @@ pub struct Sky {
     pub probes: Option<Arc<ProbeGrid>>,
     /// Seconds, for grain and other animated effects.
     pub time: f32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Only zones that opt in draw a daylight sky; the plaza and the bare
+    /// world keep their flat field.
+    #[test]
+    fn stages_draw_daylight_only_when_asked() {
+        assert!(Neon::plaza(0.0).daylight.is_none());
+        assert!(Neon::neutral(0.0).daylight.is_none());
+        let day = Daylight {
+            zenith: [0.1, 0.3, 0.7],
+            horizon: [0.7, 0.65, 0.5],
+            sun: [1.0, 0.9, 0.6],
+            clouds: 0.4,
+        };
+        assert!(day.valid());
+        assert!(!Daylight { clouds: 1.5, ..day }.valid());
+        assert!(
+            !Daylight {
+                zenith: [f32::NAN, 0.0, 0.0],
+                ..day
+            }
+            .valid()
+        );
+    }
 }

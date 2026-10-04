@@ -47,6 +47,11 @@ struct Frame {
     metering: [f32; 4],
     neon: [f32; 4],
     field: [f32; 4],
+    /// The neon stage's daylight sky: zenith (w 1 when drawn), horizon (w
+    /// cloud cover), and Sun tint (w disc angular radius).
+    sky_zenith: [f32; 4],
+    sky_horizon: [f32; 4],
+    sky_sun: [f32; 4],
 }
 
 #[repr(C)]
@@ -174,6 +179,8 @@ struct Pipelines {
     shadow: wgpu::RenderPipeline,
     lit: wgpu::RenderPipeline,
     background: wgpu::RenderPipeline,
+    /// The neon stage's daylight sky, a full-screen triangle.
+    daylight: wgpu::RenderPipeline,
     stars: wgpu::RenderPipeline,
     bodies: wgpu::RenderPipeline,
     flare: wgpu::RenderPipeline,
@@ -757,6 +764,17 @@ impl Photo {
                 "verse photo sky",
                 "vs_fullscreen",
                 Some("fs_background"),
+                &[],
+                triangles,
+                sky_depth.clone(),
+                None,
+                samples,
+            ),
+            daylight: make(
+                &layout,
+                "verse neon daylight",
+                "vs_fullscreen",
+                Some("fs_daylight"),
                 &[],
                 triangles,
                 sky_depth.clone(),
@@ -1476,6 +1494,9 @@ impl Photo {
             ],
             neon: [0.0, 0.0, 1.6, 0.0],
             field: [0.0; 4],
+            sky_zenith: [0.0; 4],
+            sky_horizon: [0.0; 4],
+            sky_sun: [0.0; 4],
         };
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
 
@@ -1706,8 +1727,21 @@ impl Photo {
             metering: [0.18, 1.0, 1.0, 0.0],
             neon: [neon.fog_start, neon.fog_end, width_px, mode],
             field: [neon.field[0], neon.field[1], neon.field[2], 0.0],
+            sky_zenith: [0.0; 4],
+            sky_horizon: [0.0; 4],
+            sky_sun: [0.0; 4],
         };
         let mut uniform = frame(reversed, neon.line_width, 1.0);
+        let daylight = neon.daylight.filter(super::Daylight::valid);
+        if let Some(day) = &daylight {
+            // The Sun stands where the key light comes from, or overhead.
+            let sun = neon.key.map_or(Vec3::Y, |k| k.dir.normalize_or(Vec3::Y));
+            let radius = neon.key.map_or(0.03, |k| k.angular_radius);
+            uniform.sun = sun.extend(0.0).to_array();
+            uniform.sky_zenith = [day.zenith[0], day.zenith[1], day.zenith[2], 1.0];
+            uniform.sky_horizon = [day.horizon[0], day.horizon[1], day.horizon[2], day.clouds];
+            uniform.sky_sun = [day.sun[0], day.sun[1], day.sun[2], radius];
+        }
         let lit = neon.key.filter(|_| {
             world.lit.1 > 0
                 || self.dynamic_lit.count > 0
@@ -1797,6 +1831,11 @@ impl Photo {
             });
             pass.set_bind_group(1, &targets.guide_groups[0], &[]);
             pass.set_bind_group(0, &self.scene_group, &[]);
+            if daylight.is_some() {
+                // Drawn first, at infinity, without depth: everything covers it.
+                pass.set_pipeline(&self.pipelines.daylight);
+                pass.draw(0..3, 0..1);
+            }
             if lit.is_some() {
                 pass.set_pipeline(&self.pipelines.lit);
                 for (buffer, count) in [

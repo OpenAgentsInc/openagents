@@ -33,7 +33,7 @@ mod tests;
 use crate::{
     controller::{Footprint, InputState, PlayerController},
     mesh::Mesh,
-    pbr::{Key, Neon},
+    pbr::{Daylight, Key, Neon},
     world::World,
 };
 use glam::Vec3;
@@ -259,9 +259,10 @@ impl Everglade {
         })
     }
 
-    /// The physical stage: the zone's green-gold air as background and fog,
-    /// a warm afternoon sun from behind the approach that casts shadows
-    /// over the clearing, and sky and ground fill. Textured meshes draw only
+    /// The physical stage: a late-morning daylight sky whose horizon haze is
+    /// the zone's air and fog, a warm sun from behind the approach that
+    /// casts shadows over the clearing and stands in the sky where the
+    /// shadows say it is, and sky and ground fill. Textured meshes draw only
     /// on a lit stage.
     fn stage(time: f32) -> Mesh {
         let air = super::atmosphere(super::ZoneId::Everglade);
@@ -287,6 +288,12 @@ impl Everglade {
                     ev100: 10.0,
                     shadow_center: Vec3::new(0.0, 0.0, -4.0),
                     shadow_half: 40.0,
+                }),
+                daylight: Some(Daylight {
+                    zenith: [0.10, 0.30, 0.73],
+                    horizon: air.color,
+                    sun: [1.0, 0.86, 0.62],
+                    clouds: 0.38,
                 }),
             }),
             ..Mesh::default()

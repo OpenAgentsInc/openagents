@@ -50,6 +50,12 @@ struct Frame {
     neon: vec4<f32>,
     // rgb field color; w unused.
     field: vec4<f32>,
+    // Neon stage daylight sky: rgb zenith, w 1 when the sky is drawn.
+    sky_zenith: vec4<f32>,
+    // rgb horizon haze; w cloud cover from 0 to 1.
+    sky_horizon: vec4<f32>,
+    // rgb Sun tint; w the disc's angular radius (rad).
+    sky_sun: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -132,13 +138,132 @@ fn expose(luminance: vec3<f32>) -> vec3<f32> {
 }
 
 // Distance fog toward the field, as the amber world's own shader applies it.
+// Under a daylight sky the fog takes the sky's color along the view ray, a
+// single-scattering aerial perspective: fully fogged ground matches the sky
+// behind it, so the horizon has no seam.
 fn neon_fog(color: vec3<f32>, world: vec3<f32>, weight: f32) -> vec3<f32> {
     if f.neon.w < 0.5 {
         return color;
     }
     let d = distance(world.xz, f.eye.xz);
     let t = clamp((d - f.neon.x) / max(f.neon.y - f.neon.x, 1e-3), 0.0, 1.0);
-    return mix(color, f.field.rgb, t * t * weight);
+    var air = f.field.rgb;
+    if f.sky_zenith.w > 0.5 {
+        let ray = world - f.eye.xyz;
+        air = daylight_air(ray / max(length(ray), 1e-4));
+    }
+    return mix(color, air, t * t * weight);
+}
+
+// ---------------------------------------------------------------------------
+// Daylight sky for a neon stage, in display-linear color. A cheap stand-in
+// for a physical atmosphere: the horizon-to-zenith gradient plays the part of
+// Rayleigh scattering's growing optical depth toward the horizon, and a
+// forward lobe around the Sun plays Mie scattering's. No textures, no
+// derivatives, and no branches on varying values, so every backend, WebGL2
+// included, runs it in uniform control flow.
+
+// The shape of the Cornette-Shanks phase function (without its 1 / 4π
+// normalization): a forward lobe whose width `g` sets.
+fn mie_lobe(mu: f32, g: f32) -> f32 {
+    let g2 = g * g;
+    let denom = pow(max(1.0 + g2 - 2.0 * g * mu, 1e-4), 1.5);
+    return (1.0 - g2) * (1.0 + mu * mu) / (2.0 * denom);
+}
+
+// The sky without its Sun disc or clouds: also the fog color along `d`.
+fn daylight_air(d: vec3<f32>) -> vec3<f32> {
+    let sun = f.sun.xyz;
+    let up = max(d.y, 0.0);
+    // Optical depth grows toward the horizon; the haze band is narrow.
+    let haze = pow(1.0 - up, 5.0);
+    var c = mix(f.sky_zenith.rgb, f.sky_horizon.rgb, haze);
+    // The horizon is warmer and brighter on the Sun's side of the sky.
+    let flat_d = normalize(vec3<f32>(d.x, 0.0, d.z) + vec3<f32>(1e-4, 0.0, 0.0));
+    let flat_s = normalize(vec3<f32>(sun.x, 0.0, sun.z) + vec3<f32>(1e-4, 0.0, 0.0));
+    let toward = dot(flat_d, flat_s) * 0.5 + 0.5;
+    c = c * (1.0 + 0.12 * haze * (toward - 0.5));
+    c = mix(c, c * f.sky_sun.rgb * 1.08, haze * toward * 0.35);
+    // Below the horizon the haze stays: distant fogged ground matches it.
+    let below = clamp(-d.y * 4.0, 0.0, 1.0);
+    c = mix(c, f.sky_horizon.rgb * 0.94, below);
+    // Forward scattering around the Sun: a wide halo and a tight glow.
+    let mu = dot(d, sun);
+    let halo = mie_lobe(mu, 0.76);
+    c += f.sky_sun.rgb * (0.025 * halo + 0.22 * pow(max(mu, 0.0), 48.0));
+    return c;
+}
+
+// Smooth value noise on the plane.
+fn sky_hash(p: vec2<f32>) -> f32 {
+    var q = fract(vec3<f32>(p.x, p.y, p.x) * 0.1031);
+    q += dot(q, q.yzx + 33.33);
+    return fract((q.x + q.y) * q.z);
+}
+
+fn sky_noise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let u = fract(p);
+    let s = u * u * (3.0 - 2.0 * u);
+    let a = sky_hash(i);
+    let b = sky_hash(i + vec2<f32>(1.0, 0.0));
+    let c = sky_hash(i + vec2<f32>(0.0, 1.0));
+    let e = sky_hash(i + vec2<f32>(1.0, 1.0));
+    return mix(mix(a, b, s.x), mix(c, e, s.x), s.y);
+}
+
+// Four octaves, rotated between octaves to hide the lattice.
+fn sky_fbm(p: vec2<f32>) -> f32 {
+    let r = mat2x2<f32>(0.8, -0.6, 0.6, 0.8);
+    var q = p;
+    var sum = 0.0;
+    var amp = 0.5;
+    for (var o = 0; o < 4; o += 1) {
+        sum += amp * sky_noise(q);
+        q = r * q * 2.03 + vec2<f32>(17.1, 9.2);
+        amp *= 0.5;
+    }
+    return sum / 0.9375;
+}
+
+@fragment
+fn fs_daylight(i: SkyOut) -> @location(0) vec4<f32> {
+    let d = view_ray(i.ndc);
+    let sun = f.sun.xyz;
+    var c = daylight_air(d);
+    // Clouds on a plane overhead; the offset keeps the projection finite at
+    // the horizon, where they thin into the haze.
+    let up = max(d.y, 0.0);
+    let plane = d.xz / (up + 0.12);
+    let wind = vec2<f32>(0.004, 0.0015) * f.params.y;
+    // Offset from the origin, where the hash's lattice is least varied.
+    let p = plane * 2.4 + wind + vec2<f32>(41.3, 87.9);
+    let n = sky_fbm(p);
+    let cover = f.sky_horizon.w;
+    // The octaves' sum has a median near 0.38 and a 95th percentile near
+    // 0.62; the cover moves the threshold through that range.
+    let low = mix(0.56, 0.24, cover);
+    let density = smoothstep(low, low + 0.2, n) * smoothstep(0.02, 0.3, up);
+    // Light from the Sun's side: a sample nudged toward the Sun is denser
+    // when this point faces away from the light.
+    let toward = normalize(sun.xz + vec2<f32>(1e-4, 0.0)) * 0.12;
+    let lee = sky_fbm(p + toward);
+    let lit = clamp(0.62 + (n - lee) * 3.0, 0.0, 1.0);
+    let mu = dot(d, sun);
+    let shade = mix(f.sky_horizon.rgb * vec3<f32>(0.80, 0.84, 0.95), vec3<f32>(0.97, 0.95, 0.92) * mix(vec3<f32>(1.0), f.sky_sun.rgb, 0.35), lit);
+    // Silver lining where thin cloud crosses the Sun's glow.
+    let rim = f.sky_sun.rgb * pow(max(mu, 0.0), 12.0) * (1.0 - density) * 0.6;
+    // Distant clouds fade into the haze, as aerial perspective would.
+    let cloud = mix(shade + rim, daylight_air(d), pow(1.0 - up, 6.0) * 0.6);
+    c = mix(c, cloud, density * 0.92);
+    // The Sun's disc with a soft edge, dimmed but not hidden behind cloud.
+    let r = max(f.sky_sun.w, 1e-3);
+    let angle = acos(clamp(mu, -1.0, 1.0));
+    let disc = 1.0 - smoothstep(r * 0.75, r * 1.15, angle);
+    c += f.sky_sun.rgb * disc * 6.0 * (1.0 - 0.8 * density);
+    // Dither below one 8-bit step against banding in the gradient.
+    c += (noise_ign(i.clip.xy) - 0.5) / 255.0;
+    return vec4<f32>(expose(max(c, vec3<f32>(0.0))), 1.0);
 }
 
 

@@ -107,8 +107,11 @@ The zone renderer gains textured static meshes:
   `imported::merge` does for the lair; there is no GPU instancing to depend on.
 - The same shaders run on desktop and on phones, within the GLES 3.0 limits
   every backend requests (no storage buffers or compute).
-- Everglade's atmosphere has its own colors: a green-gold day sky, warm fog,
-  and lamplight inside the workshop. Amber stays the plaza's palette.
+- Everglade's atmosphere has its own colors: a late-morning daylight sky
+  (`pbr::Daylight`) from warm horizon haze to a blue zenith, a Sun in the key
+  light's direction, value-noise clouds, fog that takes the sky's color along
+  each view ray so distant ground meets the horizon, and lamplight inside the
+  workshop. Amber stays the plaza's palette.
 - The player is the ritual chamber's outfitted character (the Universal male
   Ranger that `verse_play` binds as `adventurer`), not the Grid's boxy
   avatar, and no spade companion follows in Everglade. The pack carries it as

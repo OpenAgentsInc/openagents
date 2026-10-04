@@ -120,6 +120,14 @@ fn the_everglade_portal_loads_the_pinned_pack_and_returns_to_the_plaza_pose() {
     let stage = dynamic.neon.expect("a lit stage");
     assert!(stage.key.is_some());
     assert_eq!(stage.field, atmosphere(ZoneId::Everglade).color);
+    // A daylight sky replaces the flat field: its horizon is the zone's air,
+    // so fogged ground meets it, and its zenith is bluer than the haze.
+    let day = stage.daylight.expect("a daylight sky");
+    assert!(day.valid());
+    assert_eq!(day.horizon, atmosphere(ZoneId::Everglade).color);
+    assert!(day.zenith[2] > day.zenith[0] && day.zenith[2] > day.horizon[2]);
+    // The Sun stands above the horizon, where the key light comes from.
+    assert!(stage.key.unwrap().dir.y > 0.3);
     // Walking works on the generated ground.
     let start = runtime.player.pos;
     for _ in 0..20 {
@@ -191,8 +199,8 @@ fn identity_and_atmosphere_are_the_zones_own() {
     );
     let air = atmosphere(ZoneId::Everglade).validate().unwrap();
     assert_ne!(air, atmosphere(ZoneId::Plaza));
-    // Green-gold: green leads, and red stays above blue.
-    assert!(air.color[1] > air.color[0] && air.color[0] > air.color[2]);
+    // Warm haze: red leads, and green stays above blue.
+    assert!(air.color[0] > air.color[1] && air.color[1] > air.color[2]);
     // The fog closes the view before the edge of the square.
     assert!(air.fog_end < HALF_EXTENT * 2.0 * std::f32::consts::SQRT_2);
     let portal = ZoneId::Everglade.portal();

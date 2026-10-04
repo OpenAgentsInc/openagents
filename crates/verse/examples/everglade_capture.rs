@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|yard|hall|lane-east|lane-west|studio-yard|studio-hall|studio-atrium] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|sky|yard|hall|lane-east|lane-west|studio-yard|studio-hall|studio-atrium] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -7,6 +7,8 @@
 //!
 //! - `approach` (the default): from the stepping stones near the return
 //!   portal, up the path through the gate toward the workshop.
+//! - `sky`: from the approach, turned toward the Sun and looking up, for
+//!   the daylight sky and its clouds.
 //! - `yard`: from above the yard's south edge, over the Task Wall, the
 //!   proving ring, and the podium to the hall's facade.
 //! - `hall`: inside the hall, over the desks and their monitors toward the
@@ -27,6 +29,9 @@ use verse::{
     runtime::{Action, WorldRuntime},
     zones::{self, everglade_pack},
 };
+
+const SKY_YAW: f32 = -2.48;
+const SKY_TILT: f32 = -250.0;
 
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
@@ -55,6 +60,8 @@ fn main() -> Result<(), String> {
     }
     let (at, yaw, tilt) = match view.as_str() {
         "approach" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
+        // From the approach, turned toward the Sun and tilted up at the sky.
+        "sky" => (glam::Vec3::new(0.0, 0.0, -29.0), SKY_YAW, SKY_TILT),
         "yard" | "studio-yard" => (glam::Vec3::new(-3.0, 0.0, -15.0), 0.25, 80.0),
         // At the desks station; the camera stays inside, by the doors.
         // From the yard toward the café pavilion and the reading room.
@@ -66,7 +73,7 @@ fn main() -> Result<(), String> {
         "studio-atrium" => (glam::Vec3::new(2.8, 0.0, -13.3), 0.5, 10.0),
         other => {
             return Err(format!(
-                "unknown view `{other}`; use approach, yard, hall, lane-east, lane-west, studio-yard, studio-hall, \
+                "unknown view `{other}`; use approach, sky, yard, hall, lane-east, lane-west, studio-yard, studio-hall, \
                  or studio-atrium"
             ));
         }

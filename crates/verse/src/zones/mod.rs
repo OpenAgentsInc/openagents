@@ -162,9 +162,10 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             fog_start: 30.0,
             fog_end: 90.0,
         },
-        // A green-gold day sky; warm haze softens the tree ring.
+        // Warm late-morning haze: the horizon of Everglade's daylight sky,
+        // which fades the tree ring into it.
         ZoneId::Everglade => Atmosphere {
-            color: [0.4, 0.44, 0.22],
+            color: [0.72, 0.66, 0.50],
             fog_start: 40.0,
             fog_end: 170.0,
         },
