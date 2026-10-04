@@ -244,6 +244,7 @@ impl Client {
                 {
                     return Err("Invalid chamber snapshot life bindings".into());
                 }
+                state.presentation.validate(self.instance, &state.actors)?;
                 Ok(())
             }
             (Reply::Events { page }, Body::Events { after, limit }) => {
@@ -345,6 +346,15 @@ mod tests {
         assert_eq!(a.control().unwrap().accepted_sequence, 2);
         assert!(a.connected());
         let state_a = a.snapshot().await.unwrap();
+        assert_eq!(
+            state_a
+                .presentation
+                .effects
+                .iter()
+                .filter(|e| e.shield > 0)
+                .count(),
+            2
+        );
         let observed = spectator.snapshot().await.unwrap();
         assert_eq!(
             serde_json::to_vec(&state_a.actors).unwrap(),

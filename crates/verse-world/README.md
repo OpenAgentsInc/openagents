@@ -74,9 +74,9 @@ instance, host-assigned connection, deadline, and key. Authenticated dispatch
 accepts a transport-retained connection handle, with no request-supplied principal
 or controller. Pending and authenticated connections share a 128-entry budget.
 The host supplies monotonic time; expired, replayed, malformed, foreign, and
-unenrolled proofs are refused. TLS/listener integration, durable grants, and
-replication remain; this is not a Nostr authentication protocol.
-`service::wire` provides version-one JSON opening challenges and bounded request/
+unenrolled proofs are refused. Executable/deployment integration, durable grants,
+and replication remain; this is not a Nostr authentication protocol.
+`service::wire` provides version-two JSON opening challenges and bounded request/
 response messages. Requests carry correlation IDs and command life/epoch/sequence
 fences, with no caller-selected principal, controller, or connection. Replies
 include the host tick and the player’s current control state, including consumed
@@ -105,8 +105,16 @@ Commands derive their life, epoch, and next sequence from acknowledged state;
 valid gameplay refusals retain their consumed sequence. Ten-second IO deadlines,
 protocol failures, and cancellation of uncertain requests drop the socket without
 automatic replay. Poll snapshots at the replication cadence before issuing input;
-this client does not yet predict ticks or subscribe to streaming snapshots. Revocation leaves an uncontrolled actor in the
-world; actor retirement and capacity reclamation remain lifecycle work.
+this client does not yet predict ticks or subscribe to streaming snapshots.
+Version-two snapshots also carry life-bound actor appearances, animation selection/
+phase, health/visibility, and each player’s public shield, light, and area effects.
+The shared authority extracts these alongside the combat snapshot on the same
+tick. Client admission checks finite poses/times, actor/effect uniqueness, life
+bindings, and budgets. The primary player’s presented health now follows actual
+resources, including zero-health death poses. Version-one peers are refused;
+streaming cadence and native service rendering remain separate integration work.
+
+Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the
 [engine roadmap](../../docs/verse/engine/roadmap.md).

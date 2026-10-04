@@ -9,6 +9,8 @@ pub mod client;
 #[cfg(feature = "service-net")]
 pub mod net;
 #[cfg(feature = "service-auth")]
+pub mod presentation;
+#[cfg(feature = "service-auth")]
 pub mod wire;
 
 use std::collections::BTreeMap;

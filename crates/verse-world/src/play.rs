@@ -1241,6 +1241,7 @@ impl Game {
                 continue;
             }
             if a.actor.id == self.player_actor() {
+                a.health = snapshot.player.hp.max(0) as u32;
                 a.animation_time = if self.moving {
                     self.motion_clock
                 } else {

@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -169,6 +169,7 @@ pub struct ActorBinding {
 #[serde(deny_unknown_fields)]
 pub struct State {
     pub snapshot: Snapshot,
+    pub presentation: super::presentation::Presentation,
     pub actors: Vec<ActorBinding>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -283,7 +284,7 @@ impl Gateway {
             }
             Body::Snapshot {} => {
                 let snapshot = self.snapshot(id).map_err(|e| ("authentication", e))?;
-                let actors = snapshot
+                let actors: Vec<_> = snapshot
                     .actors
                     .iter()
                     .filter_map(|actor| {
@@ -301,7 +302,14 @@ impl Gateway {
                     })
                     .collect();
                 Ok(Reply::Snapshot {
-                    state: State { snapshot, actors },
+                    state: State {
+                        presentation: super::presentation::Presentation::extract(
+                            self.game(),
+                            &actors,
+                        ),
+                        snapshot,
+                        actors,
+                    },
                 })
             }
             Body::Events { after, limit } => {
@@ -492,15 +500,213 @@ mod tests {
         );
     }
     #[test]
+    fn presentation_keeps_independent_movement_and_spell_visuals_on_one_tick() {
+        let mut g = gateway();
+        let ka = key(18);
+        let kb = key(19);
+        g.enroll_primary(public(&ka)).unwrap();
+        g.enroll_player(public(&kb), Vec3::new(3., 0., -22.))
+            .unwrap();
+        let a = join(&mut g, &ka);
+        let b = join(&mut g, &kb);
+        for (id, ability) in [
+            (a, Ability::Shield),
+            (b, Ability::Shield),
+            (a, Ability::Light),
+        ] {
+            let command = g
+                .admission(id)
+                .unwrap()
+                .command(
+                    g.game().authority_tick,
+                    Intent::Cast {
+                        ability,
+                        target: None,
+                        aim: [0., 0., 1.],
+                    },
+                )
+                .unwrap();
+            assert!(matches!(
+                send(
+                    &mut g,
+                    id,
+                    2,
+                    Body::Command {
+                        command: command.into()
+                    }
+                )
+                .body,
+                Reply::Accepted
+            ));
+        }
+        let own = g.admission(b).unwrap().actor();
+        let position = g.game().actor_position(own.actor).unwrap();
+        let target = g
+            .game()
+            .frame()
+            .actors
+            .into_iter()
+            .filter(|p| {
+                p.actor.nameplate
+                    && g.game()
+                        .attack_clear(position + Vec3::Y * 1.4, p.actor.position + Vec3::Y * 1.1)
+            })
+            .min_by(|x, y| {
+                x.actor
+                    .position
+                    .distance_squared(position)
+                    .total_cmp(&y.actor.position.distance_squared(position))
+            })
+            .unwrap();
+        let direction = Vec3::new(
+            target.actor.position.x - position.x,
+            0.,
+            target.actor.position.z - position.z,
+        )
+        .normalize();
+        let command = g
+            .admission(b)
+            .unwrap()
+            .command(
+                g.game().authority_tick,
+                Intent::Cast {
+                    ability: Ability::Web,
+                    target: target.life,
+                    aim: direction.to_array(),
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            send(
+                &mut g,
+                b,
+                3,
+                Body::Command {
+                    command: command.into()
+                }
+            )
+            .body,
+            Reply::Accepted
+        ));
+        for _ in 0..36 {
+            g.tick(1. / 30.).unwrap();
+        }
+        for (id, axes) in [(a, [0., 1.]), (b, [0., -1.])] {
+            let command = g
+                .admission(id)
+                .unwrap()
+                .command(g.game().authority_tick, Intent::Move { axes, yaw: 0. })
+                .unwrap();
+            assert!(matches!(
+                send(
+                    &mut g,
+                    id,
+                    4,
+                    Body::Command {
+                        command: command.into()
+                    }
+                )
+                .body,
+                Reply::Accepted
+            ));
+        }
+        g.tick(1. / 30.).unwrap();
+        let Reply::Snapshot { state } = send(&mut g, a, 5, Body::Snapshot {}).body else {
+            panic!()
+        };
+        state.presentation.validate(110, &state.actors).unwrap();
+        assert_eq!(state.presentation.time, g.game().time);
+        assert_eq!(
+            state
+                .presentation
+                .effects
+                .iter()
+                .filter(|e| e.shield > 0)
+                .count(),
+            2
+        );
+        assert_eq!(
+            state
+                .presentation
+                .effects
+                .iter()
+                .filter(|e| e.light.is_some())
+                .count(),
+            1
+        );
+        assert!(
+            state
+                .presentation
+                .effects
+                .iter()
+                .find(|e| e.life.actor == own.actor)
+                .unwrap()
+                .areas
+                .iter()
+                .any(|e| e.kind == crate::utilities::Utility::Web)
+        );
+        let primary = state
+            .presentation
+            .actors
+            .iter()
+            .find(|p| p.life.actor == g.game().player_life().actor)
+            .unwrap();
+        let extra = state
+            .presentation
+            .actors
+            .iter()
+            .find(|p| p.life.actor == own.actor)
+            .unwrap();
+        assert_eq!(primary.animation, verse_engine::motion::State::Run.into());
+        assert_eq!(
+            extra.animation,
+            verse_engine::motion::State::Backpedal.into()
+        );
+        assert!(primary.animation_time > 0. && extra.animation_time > 0.);
+        let mut invalid = state.presentation.clone();
+        invalid.actors[0].life.generation += 1;
+        assert!(invalid.validate(110, &state.actors).is_err());
+        let mut invalid = state.presentation.clone();
+        invalid.effects.push(invalid.effects[0].clone());
+        assert!(invalid.validate(110, &state.actors).is_err());
+        let mut invalid = state.presentation.clone();
+        invalid.actors[0].actor.position.x = f32::NAN;
+        assert!(invalid.validate(110, &state.actors).is_err());
+        let mut invalid = state.presentation;
+        invalid.effects[0].areas.resize(
+            129,
+            crate::utilities::Area {
+                kind: crate::utilities::Utility::Web,
+                position: Vec3::ZERO,
+                until: 20.,
+            },
+        );
+        assert!(invalid.validate(110, &state.actors).is_err());
+        let primary = g.admission(a).unwrap().actor();
+        g.chamber.game.hostile_hit_player(primary, 1000).unwrap();
+        let Reply::Snapshot { state: dead } = send(&mut g, a, 6, Body::Snapshot {}).body else {
+            panic!()
+        };
+        let corpse = dead
+            .presentation
+            .actors
+            .iter()
+            .find(|p| p.life.actor == primary.actor)
+            .unwrap();
+        assert_eq!(corpse.health, 0);
+        assert_eq!(corpse.animation, verse_engine::motion::State::Death.into());
+    }
+
+    #[test]
     fn strict_request_budget_versions_and_nested_fields_are_enforced() {
         let mut g = gateway();
         let (id, _) = g.open(0).unwrap();
         let reply = send(&mut g, id, 1, Body::Snapshot {});
         assert!(matches!(reply.body, Reply::Refused { .. }));
         for bytes in [
-            br#"{"version":2,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":1,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":1,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
+            br#"{"version":3,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":2,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":2,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
                 .to_vec(),
             vec![b' '; MAX_REQUEST_BYTES + 1],
         ] {
@@ -516,7 +722,7 @@ mod tests {
             .unwrap()
             .into();
         let mut value = serde_json::to_value(Request {
-            version: 1,
+            version: VERSION,
             request_id: 3,
             body: Body::Command { command: input },
         })
