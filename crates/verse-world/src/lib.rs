@@ -235,4 +235,5 @@ pub mod events;
 pub mod play;
 pub mod room;
 pub mod rules;
+pub mod telekinesis;
 pub mod utilities;
