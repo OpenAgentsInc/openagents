@@ -1732,11 +1732,21 @@ mod tests {
     #[test]
     fn textured_skin_shader_validates() {
         let module = naga::front::wgsl::parse_str(include_str!("scene.wgsl")).unwrap();
-        naga::valid::Validator::new(
+        let info = naga::valid::Validator::new(
             naga::valid::ValidationFlags::all(),
             naga::valid::Capabilities::all(),
         )
         .validate(&module)
+        .unwrap();
+        naga::back::msl::write_string(
+            &module,
+            &info,
+            &naga::back::msl::Options {
+                lang_version: (2, 3),
+                ..Default::default()
+            },
+            &naga::back::msl::PipelineOptions::default(),
+        )
         .unwrap();
         assert_eq!(std::mem::size_of::<super::GpuVertex>(), 76);
     }

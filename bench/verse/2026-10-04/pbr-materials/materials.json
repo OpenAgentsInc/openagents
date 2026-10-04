@@ -1,0 +1,1242 @@
+{
+  "schema": "openagents.verse.material-coverage.v1",
+  "runtime_pack_sha256": "c463a27f6f7762d3bed8e563e541e7ad9f411fc77e1c85838d01c46bf392570d",
+  "shader_sha256": "79450b50a97798fde9e9a84982596bd3f644cf503923be350ab3caedd3dfc639",
+  "textures": 51,
+  "surfaces": 199,
+  "channels": {
+    "normal_texture": [
+      {
+        "model": "adventurer",
+        "surface": 0,
+        "texture": 18
+      },
+      {
+        "model": "adventurer",
+        "surface": 1,
+        "texture": 18
+      },
+      {
+        "model": "adventurer",
+        "surface": 2,
+        "texture": 21
+      },
+      {
+        "model": "adventurer",
+        "surface": 3,
+        "texture": 18
+      },
+      {
+        "model": "adventurer",
+        "surface": 4,
+        "texture": 18
+      },
+      {
+        "model": "adventurer",
+        "surface": 5,
+        "texture": 18
+      },
+      {
+        "model": "adventurer",
+        "surface": 6,
+        "texture": 18
+      },
+      {
+        "model": "adventurer",
+        "surface": 7,
+        "texture": 18
+      },
+      {
+        "model": "adventurer",
+        "surface": 8,
+        "texture": 18
+      },
+      {
+        "model": "adventurer",
+        "surface": 9,
+        "texture": 18
+      },
+      {
+        "model": "adventurer",
+        "surface": 10,
+        "texture": 11
+      },
+      {
+        "model": "adventurer",
+        "surface": 11,
+        "texture": 13
+      },
+      {
+        "model": "adventurer",
+        "surface": 12,
+        "texture": 15
+      },
+      {
+        "model": "claude",
+        "surface": 0,
+        "texture": 35
+      },
+      {
+        "model": "claude",
+        "surface": 1,
+        "texture": 35
+      },
+      {
+        "model": "claude",
+        "surface": 2,
+        "texture": 35
+      },
+      {
+        "model": "cultist",
+        "surface": 0,
+        "texture": 18
+      },
+      {
+        "model": "cultist",
+        "surface": 1,
+        "texture": 18
+      },
+      {
+        "model": "cultist",
+        "surface": 2,
+        "texture": 21
+      },
+      {
+        "model": "cultist",
+        "surface": 3,
+        "texture": 18
+      },
+      {
+        "model": "cultist",
+        "surface": 4,
+        "texture": 18
+      },
+      {
+        "model": "cultist",
+        "surface": 5,
+        "texture": 18
+      },
+      {
+        "model": "cultist",
+        "surface": 6,
+        "texture": 18
+      },
+      {
+        "model": "cultist",
+        "surface": 7,
+        "texture": 18
+      },
+      {
+        "model": "cultist",
+        "surface": 8,
+        "texture": 18
+      },
+      {
+        "model": "cultist",
+        "surface": 9,
+        "texture": 18
+      },
+      {
+        "model": "cultist",
+        "surface": 10,
+        "texture": 11
+      },
+      {
+        "model": "cultist",
+        "surface": 11,
+        "texture": 13
+      },
+      {
+        "model": "cultist",
+        "surface": 12,
+        "texture": 15
+      },
+      {
+        "model": "cultist-female",
+        "surface": 0,
+        "texture": 18
+      },
+      {
+        "model": "cultist-female",
+        "surface": 1,
+        "texture": 18
+      },
+      {
+        "model": "cultist-female",
+        "surface": 2,
+        "texture": 29
+      },
+      {
+        "model": "cultist-female",
+        "surface": 3,
+        "texture": 18
+      },
+      {
+        "model": "cultist-female",
+        "surface": 4,
+        "texture": 18
+      },
+      {
+        "model": "cultist-female",
+        "surface": 5,
+        "texture": 18
+      },
+      {
+        "model": "cultist-female",
+        "surface": 6,
+        "texture": 18
+      },
+      {
+        "model": "cultist-female",
+        "surface": 7,
+        "texture": 18
+      },
+      {
+        "model": "cultist-female",
+        "surface": 8,
+        "texture": 18
+      },
+      {
+        "model": "cultist-female",
+        "surface": 9,
+        "texture": 18
+      },
+      {
+        "model": "cultist-female",
+        "surface": 10,
+        "texture": 24
+      },
+      {
+        "model": "cultist-female",
+        "surface": 11,
+        "texture": 13
+      },
+      {
+        "model": "cultist-female",
+        "surface": 12,
+        "texture": 26
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 0,
+        "texture": 32
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 1,
+        "texture": 21
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 2,
+        "texture": 32
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 3,
+        "texture": 32
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 4,
+        "texture": 32
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 5,
+        "texture": 11
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 6,
+        "texture": 13
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 7,
+        "texture": 15
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 8,
+        "texture": 11
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 0,
+        "texture": 32
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 1,
+        "texture": 32
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 2,
+        "texture": 32
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 3,
+        "texture": 32
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 4,
+        "texture": 24
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 5,
+        "texture": 13
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 6,
+        "texture": 26
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 7,
+        "texture": 24
+      },
+      {
+        "model": "prop/Banner_2",
+        "surface": 0,
+        "texture": 42
+      },
+      {
+        "model": "prop/Banner_2",
+        "surface": 1,
+        "texture": 39
+      },
+      {
+        "model": "prop/Banner_2",
+        "surface": 2,
+        "texture": 49
+      },
+      {
+        "model": "prop/Barrel",
+        "surface": 0,
+        "texture": 42
+      },
+      {
+        "model": "prop/Barrel",
+        "surface": 1,
+        "texture": 39
+      },
+      {
+        "model": "prop/Book_Stack_1",
+        "surface": 0,
+        "texture": 45
+      },
+      {
+        "model": "prop/Cage_Small",
+        "surface": 0,
+        "texture": 39
+      },
+      {
+        "model": "prop/CandleStick_Stand",
+        "surface": 0,
+        "texture": 39
+      },
+      {
+        "model": "prop/CandleStick_Stand",
+        "surface": 1,
+        "texture": 45
+      },
+      {
+        "model": "prop/CandleStick_Triple",
+        "surface": 0,
+        "texture": 39
+      },
+      {
+        "model": "prop/CandleStick_Triple",
+        "surface": 1,
+        "texture": 45
+      },
+      {
+        "model": "prop/Cauldron",
+        "surface": 0,
+        "texture": 39
+      },
+      {
+        "model": "prop/Chandelier",
+        "surface": 0,
+        "texture": 39
+      },
+      {
+        "model": "prop/Chandelier",
+        "surface": 1,
+        "texture": 42
+      },
+      {
+        "model": "prop/Chandelier",
+        "surface": 2,
+        "texture": 45
+      },
+      {
+        "model": "prop/Chest_Wood",
+        "surface": 0,
+        "texture": 42
+      },
+      {
+        "model": "prop/Chest_Wood",
+        "surface": 1,
+        "texture": 39
+      },
+      {
+        "model": "prop/Chest_Wood",
+        "surface": 2,
+        "texture": 42
+      },
+      {
+        "model": "prop/Chest_Wood",
+        "surface": 3,
+        "texture": 39
+      },
+      {
+        "model": "prop/Lantern_Wall",
+        "surface": 0,
+        "texture": 39
+      },
+      {
+        "model": "prop/Potion_1",
+        "surface": 0,
+        "texture": 45
+      },
+      {
+        "model": "prop/Scroll_1",
+        "surface": 1,
+        "texture": 45
+      },
+      {
+        "model": "prop/Table_Large",
+        "surface": 0,
+        "texture": 42
+      },
+      {
+        "model": "prop/Table_Large",
+        "surface": 1,
+        "texture": 39
+      },
+      {
+        "model": "prop/Torch_Metal",
+        "surface": 0,
+        "texture": 39
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 0,
+        "texture": 32
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 1,
+        "texture": 32
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 2,
+        "texture": 32
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 3,
+        "texture": 32
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 4,
+        "texture": 24
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 5,
+        "texture": 13
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 6,
+        "texture": 26
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 7,
+        "texture": 24
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 0,
+        "texture": 18
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 1,
+        "texture": 18
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 2,
+        "texture": 29
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 3,
+        "texture": 18
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 4,
+        "texture": 18
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 5,
+        "texture": 18
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 6,
+        "texture": 18
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 7,
+        "texture": 18
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 8,
+        "texture": 18
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 9,
+        "texture": 18
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 10,
+        "texture": 24
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 11,
+        "texture": 13
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 12,
+        "texture": 26
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 0,
+        "texture": 32
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 1,
+        "texture": 21
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 2,
+        "texture": 32
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 3,
+        "texture": 32
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 4,
+        "texture": 32
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 5,
+        "texture": 11
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 6,
+        "texture": 13
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 7,
+        "texture": 15
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 8,
+        "texture": 11
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 0,
+        "texture": 18
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 1,
+        "texture": 18
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 2,
+        "texture": 21
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 3,
+        "texture": 18
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 4,
+        "texture": 18
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 5,
+        "texture": 18
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 6,
+        "texture": 18
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 7,
+        "texture": 18
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 8,
+        "texture": 18
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 9,
+        "texture": 18
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 10,
+        "texture": 11
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 11,
+        "texture": 13
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 12,
+        "texture": 15
+      },
+      {
+        "model": "universal-superhero-female",
+        "surface": 0,
+        "texture": 24
+      },
+      {
+        "model": "universal-superhero-female",
+        "surface": 1,
+        "texture": 13
+      },
+      {
+        "model": "universal-superhero-female",
+        "surface": 2,
+        "texture": 26
+      },
+      {
+        "model": "universal-superhero-female",
+        "surface": 3,
+        "texture": 24
+      },
+      {
+        "model": "universal-superhero-male",
+        "surface": 0,
+        "texture": 11
+      },
+      {
+        "model": "universal-superhero-male",
+        "surface": 1,
+        "texture": 13
+      },
+      {
+        "model": "universal-superhero-male",
+        "surface": 2,
+        "texture": 15
+      },
+      {
+        "model": "universal-superhero-male",
+        "surface": 3,
+        "texture": 11
+      }
+    ],
+    "metallic_roughness_texture": [
+      {
+        "model": "adventurer",
+        "surface": 0,
+        "texture": 19
+      },
+      {
+        "model": "adventurer",
+        "surface": 1,
+        "texture": 19
+      },
+      {
+        "model": "adventurer",
+        "surface": 2,
+        "texture": 22
+      },
+      {
+        "model": "adventurer",
+        "surface": 3,
+        "texture": 19
+      },
+      {
+        "model": "adventurer",
+        "surface": 4,
+        "texture": 19
+      },
+      {
+        "model": "adventurer",
+        "surface": 5,
+        "texture": 19
+      },
+      {
+        "model": "adventurer",
+        "surface": 6,
+        "texture": 19
+      },
+      {
+        "model": "adventurer",
+        "surface": 7,
+        "texture": 19
+      },
+      {
+        "model": "adventurer",
+        "surface": 8,
+        "texture": 19
+      },
+      {
+        "model": "adventurer",
+        "surface": 9,
+        "texture": 19
+      },
+      {
+        "model": "adventurer",
+        "surface": 12,
+        "texture": 16
+      },
+      {
+        "model": "claude",
+        "surface": 0,
+        "texture": 36
+      },
+      {
+        "model": "claude",
+        "surface": 1,
+        "texture": 36
+      },
+      {
+        "model": "claude",
+        "surface": 2,
+        "texture": 36
+      },
+      {
+        "model": "cultist",
+        "surface": 0,
+        "texture": 19
+      },
+      {
+        "model": "cultist",
+        "surface": 1,
+        "texture": 19
+      },
+      {
+        "model": "cultist",
+        "surface": 2,
+        "texture": 22
+      },
+      {
+        "model": "cultist",
+        "surface": 3,
+        "texture": 19
+      },
+      {
+        "model": "cultist",
+        "surface": 4,
+        "texture": 19
+      },
+      {
+        "model": "cultist",
+        "surface": 5,
+        "texture": 19
+      },
+      {
+        "model": "cultist",
+        "surface": 6,
+        "texture": 19
+      },
+      {
+        "model": "cultist",
+        "surface": 7,
+        "texture": 19
+      },
+      {
+        "model": "cultist",
+        "surface": 8,
+        "texture": 19
+      },
+      {
+        "model": "cultist",
+        "surface": 9,
+        "texture": 19
+      },
+      {
+        "model": "cultist",
+        "surface": 12,
+        "texture": 16
+      },
+      {
+        "model": "cultist-female",
+        "surface": 0,
+        "texture": 19
+      },
+      {
+        "model": "cultist-female",
+        "surface": 1,
+        "texture": 19
+      },
+      {
+        "model": "cultist-female",
+        "surface": 2,
+        "texture": 30
+      },
+      {
+        "model": "cultist-female",
+        "surface": 3,
+        "texture": 19
+      },
+      {
+        "model": "cultist-female",
+        "surface": 4,
+        "texture": 19
+      },
+      {
+        "model": "cultist-female",
+        "surface": 5,
+        "texture": 19
+      },
+      {
+        "model": "cultist-female",
+        "surface": 6,
+        "texture": 19
+      },
+      {
+        "model": "cultist-female",
+        "surface": 7,
+        "texture": 19
+      },
+      {
+        "model": "cultist-female",
+        "surface": 8,
+        "texture": 19
+      },
+      {
+        "model": "cultist-female",
+        "surface": 9,
+        "texture": 19
+      },
+      {
+        "model": "cultist-female",
+        "surface": 12,
+        "texture": 27
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 0,
+        "texture": 33
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 1,
+        "texture": 22
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 2,
+        "texture": 33
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 3,
+        "texture": 33
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 4,
+        "texture": 33
+      },
+      {
+        "model": "cultist-peasant",
+        "surface": 7,
+        "texture": 16
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 0,
+        "texture": 33
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 1,
+        "texture": 33
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 2,
+        "texture": 33
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 3,
+        "texture": 33
+      },
+      {
+        "model": "cultist-peasant-female",
+        "surface": 6,
+        "texture": 27
+      },
+      {
+        "model": "prop/Banner_2",
+        "surface": 0,
+        "texture": 43
+      },
+      {
+        "model": "prop/Banner_2",
+        "surface": 1,
+        "texture": 40
+      },
+      {
+        "model": "prop/Banner_2",
+        "surface": 2,
+        "texture": 50
+      },
+      {
+        "model": "prop/Barrel",
+        "surface": 0,
+        "texture": 43
+      },
+      {
+        "model": "prop/Barrel",
+        "surface": 1,
+        "texture": 40
+      },
+      {
+        "model": "prop/Book_Stack_1",
+        "surface": 0,
+        "texture": 46
+      },
+      {
+        "model": "prop/Cage_Small",
+        "surface": 0,
+        "texture": 40
+      },
+      {
+        "model": "prop/CandleStick_Stand",
+        "surface": 0,
+        "texture": 40
+      },
+      {
+        "model": "prop/CandleStick_Stand",
+        "surface": 1,
+        "texture": 46
+      },
+      {
+        "model": "prop/CandleStick_Triple",
+        "surface": 0,
+        "texture": 40
+      },
+      {
+        "model": "prop/CandleStick_Triple",
+        "surface": 1,
+        "texture": 46
+      },
+      {
+        "model": "prop/Cauldron",
+        "surface": 0,
+        "texture": 40
+      },
+      {
+        "model": "prop/Chandelier",
+        "surface": 0,
+        "texture": 40
+      },
+      {
+        "model": "prop/Chandelier",
+        "surface": 1,
+        "texture": 43
+      },
+      {
+        "model": "prop/Chandelier",
+        "surface": 2,
+        "texture": 46
+      },
+      {
+        "model": "prop/Chest_Wood",
+        "surface": 0,
+        "texture": 43
+      },
+      {
+        "model": "prop/Chest_Wood",
+        "surface": 1,
+        "texture": 40
+      },
+      {
+        "model": "prop/Chest_Wood",
+        "surface": 2,
+        "texture": 43
+      },
+      {
+        "model": "prop/Chest_Wood",
+        "surface": 3,
+        "texture": 40
+      },
+      {
+        "model": "prop/Lantern_Wall",
+        "surface": 0,
+        "texture": 40
+      },
+      {
+        "model": "prop/Potion_1",
+        "surface": 0,
+        "texture": 46
+      },
+      {
+        "model": "prop/Scroll_1",
+        "surface": 1,
+        "texture": 46
+      },
+      {
+        "model": "prop/Table_Large",
+        "surface": 0,
+        "texture": 43
+      },
+      {
+        "model": "prop/Table_Large",
+        "surface": 1,
+        "texture": 40
+      },
+      {
+        "model": "prop/Torch_Metal",
+        "surface": 0,
+        "texture": 40
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 0,
+        "texture": 33
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 1,
+        "texture": 33
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 2,
+        "texture": 33
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 3,
+        "texture": 33
+      },
+      {
+        "model": "universal-female-peasant",
+        "surface": 6,
+        "texture": 27
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 0,
+        "texture": 19
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 1,
+        "texture": 19
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 2,
+        "texture": 30
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 3,
+        "texture": 19
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 4,
+        "texture": 19
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 5,
+        "texture": 19
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 6,
+        "texture": 19
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 7,
+        "texture": 19
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 8,
+        "texture": 19
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 9,
+        "texture": 19
+      },
+      {
+        "model": "universal-female-ranger",
+        "surface": 12,
+        "texture": 27
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 0,
+        "texture": 33
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 1,
+        "texture": 22
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 2,
+        "texture": 33
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 3,
+        "texture": 33
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 4,
+        "texture": 33
+      },
+      {
+        "model": "universal-male-peasant",
+        "surface": 7,
+        "texture": 16
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 0,
+        "texture": 19
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 1,
+        "texture": 19
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 2,
+        "texture": 22
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 3,
+        "texture": 19
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 4,
+        "texture": 19
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 5,
+        "texture": 19
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 6,
+        "texture": 19
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 7,
+        "texture": 19
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 8,
+        "texture": 19
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 9,
+        "texture": 19
+      },
+      {
+        "model": "universal-male-ranger",
+        "surface": 12,
+        "texture": 16
+      },
+      {
+        "model": "universal-superhero-female",
+        "surface": 2,
+        "texture": 27
+      },
+      {
+        "model": "universal-superhero-male",
+        "surface": 2,
+        "texture": 16
+      }
+    ],
+    "occlusion_texture": [],
+    "emissive_texture": [
+      {
+        "model": "claude",
+        "surface": 0,
+        "texture": 37
+      },
+      {
+        "model": "claude",
+        "surface": 1,
+        "texture": 37
+      },
+      {
+        "model": "claude",
+        "surface": 2,
+        "texture": 37
+      }
+    ]
+  },
+  "evidence": "Native 1920x1080 four-sample capture; actual material evaluation on the Metal GPU."
+}

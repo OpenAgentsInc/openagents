@@ -37,7 +37,7 @@ struct Out { @builtin(position) clip:vec4<f32>,@location(0) pos:vec3<f32>,@locat
  let model=pose.model*skin;let world=model*vec4(v.pos,1.0);var o:Out;o.clip=frame.view*world;o.pos=world.xyz;o.normal=normalize((model*vec4(v.normal,0.0)).xyz);o.uv=v.uv;o.tint=v.tint;return o;
 }
 @fragment fn shadow_fs(v:Out){
- if material.params.y==1.0 && textureSample(image,tex_sampler,v.uv).a<0.5 {discard;}
+ if material.params.y==1.0 && textureSample(image,tex_sampler,v.uv).a*material.channels.z<material.channels.w {discard;}
 }
 fn occlusion(index:u32,p:vec3<f32>,normal:vec3<f32>)->f32{
  if index>=u32(frame.settings.z){return 1.0;}
@@ -50,6 +50,39 @@ fn occlusion(index:u32,p:vec3<f32>,normal:vec3<f32>)->f32{
  return visibility/9.0;
 }
 fn tone(x:vec3<f32>)->vec3<f32>{return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),vec3(0.0),vec3(1.0));}
+// Derive a cotangent frame from the posed surface and UV gradients. Degenerate
+// UVs retain the geometric normal instead of producing an undefined direction.
+fn surface_normal(v:Out,geometric:vec3<f32>)->vec3<f32>{
+ if material.maps.x<0.5{return geometric;}
+ let px=dpdx(v.pos);let py=dpdy(v.pos);let ux=dpdx(v.uv);let uy=dpdy(v.uv);
+ let a=cross(py,geometric);let b=cross(geometric,px);
+ let tangent=a*ux.x+b*uy.x;let bitangent=a*ux.y+b*uy.y;
+ let length_squared=max(dot(tangent,tangent),dot(bitangent,bitangent));
+ let sample=textureSample(normal_image,tex_sampler,v.uv).xyz*2.0-1.0;
+ let mapped=sample*vec3(material.channels.x,material.channels.x,1.0);
+ let scale=inverseSqrt(max(length_squared,0.000000000001));
+ let world=tangent*scale*mapped.x+bitangent*scale*mapped.y+geometric*mapped.z;
+ if length_squared<0.000000000001 || dot(world,world)<0.000000000001{return geometric;}
+ return normalize(world);
+}
+// Independently implemented GGX distribution, correlated Smith visibility, and
+// Schlick Fresnel. Point strengths retain the chamber's Lambert normalization.
+fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,albedo:vec3<f32>,roughness:f32,metallic:f32)->vec3<f32>{
+ let nl=max(dot(n,light),0.0);let nv=max(dot(n,view),0.0001);
+ let sum=view+light;let half=sum/max(length(sum),0.0001);
+ let nh=max(dot(n,half),0.0);let vh=clamp(dot(view,half),0.0,1.0);
+ let alpha=roughness*roughness;let a2=alpha*alpha;
+ let denominator=nh*nh*(a2-1.0)+1.0;
+ let distribution=a2/(3.14159265*denominator*denominator);
+ let lambda_v=nl*sqrt(nv*nv*(1.0-a2)+a2);
+ let lambda_l=nv*sqrt(nl*nl*(1.0-a2)+a2);
+ let visibility=0.5/max(lambda_v+lambda_l,0.00001);
+ let f0=mix(vec3(0.04),albedo,metallic);
+ let grazing=1.0-vh;let g2=grazing*grazing;
+ let fresnel=f0+(vec3(1.0)-f0)*(g2*g2*grazing);
+ let diffuse=(vec3(1.0)-fresnel)*(1.0-metallic)*albedo/3.14159265;
+ return (diffuse+distribution*visibility*fresnel)*nl*3.14159265;
+}
 @fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{
  if pose.params.x>1.5 {
   let tex=textureSample(image,tex_sampler,v.uv);
@@ -63,20 +96,36 @@ fn tone(x:vec3<f32>)->vec3<f32>{return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+
   let opacity=(0.04+rim*0.2)*turbulence*pose.params.y;
   return vec4(v.tint*2.0,opacity);
  }
- let tex=textureSample(image,tex_sampler,v.uv);if material.params.y==1.0 && tex.a<0.5{discard;}
- let n=normalize(select(-v.normal,v.normal,front));var light=frame.ambient.rgb;
+ let tex=textureSample(image,tex_sampler,v.uv);
+ let geometric=normalize(select(-v.normal,v.normal,front));let n=surface_normal(v,geometric);
+ var roughness=material.params.z;var metallic=material.params.w;
+ if material.maps.y>0.5 {
+  let orm=textureSample(orm_image,tex_sampler,v.uv);
+  roughness*=orm.g;metallic*=orm.b;
+ }
+ roughness=clamp(roughness,0.07,1.0);metallic=clamp(metallic,0.0,1.0);
+ var ao=1.0;
+ if material.maps.z>0.5 {ao=mix(1.0,textureSample(occlusion_image,tex_sampler,v.uv).r,material.channels.y);}
+ var emission=material.emission.rgb;
+ if material.maps.w>0.5 {emission*=textureSample(emission_image,tex_sampler,v.uv).rgb;}
+ let alpha=tex.a*material.channels.z;
+ if material.params.y==1.0 && alpha<material.channels.w{discard;}
+ let albedo=tex.rgb*v.tint;
+ var lit=albedo*(1.0-metallic)*frame.ambient.rgb*ao;
+ let view_delta=frame.eye.xyz-v.pos;let view_direction=view_delta/max(length(view_delta),0.0001);
  for(var i=0u;i<u32(frame.settings.x);i++){
   let source=frame.lights[i*2u];let radiance=frame.lights[i*2u+1u];
   let delta=source.xyz-v.pos;let distance_squared=dot(delta,delta);
-  // Zero-contribution lights cannot affect this fragment or its shadows.
   if distance_squared>=source.w*source.w || radiance.w<=0.0 {continue;}
-  let d=sqrt(distance_squared);let lambert=max(dot(n,delta/max(d,0.001)),0.0);
-  if lambert<=0.0 {continue;}
+  let d=sqrt(distance_squared);let direction=delta/max(d,0.001);
+  if dot(n,direction)<=0.0 {continue;}
   let attenuation=max(1.0-d/source.w,0.0);
   let falloff=attenuation*attenuation/(1.0+distance_squared);
-  light+=radiance.rgb*radiance.w*falloff*lambert*occlusion(i,v.pos,n);
+  lit+=reflectance(n,view_direction,direction,albedo,roughness,metallic)
+      *radiance.rgb*radiance.w*falloff*occlusion(i,v.pos,geometric);
  }
- let albedo=tex.rgb*v.tint;let emission=select(vec3(0.0),albedo*0.7,material.params.x>0.5);let lit=albedo*light+emission;
+ emission+=select(vec3(0.0),albedo*0.7,material.params.x>0.5);
+ lit+=emission;
  let fog=1.0-exp(-length(frame.eye.xyz-v.pos)*frame.fog.w);let color=tone(mix(lit,frame.fog.rgb,fog)*frame.ambient.w);
- return vec4(color,tex.a);
+ return vec4(color,select(alpha,1.0,material.params.y==0.0));
 }
