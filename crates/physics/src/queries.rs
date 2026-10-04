@@ -1,4 +1,4 @@
-//! Instance-scoped, read-only triangle mesh queries in double-precision meters.
+//! Instance-scoped, read-only mesh and capsule queries in double-precision meters.
 use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -60,11 +60,14 @@ impl Filter {
         Ok(())
     }
     fn admits(self, collider: &MeshCollider) -> bool {
-        collider.key.life.instance == self.instance
-            && collider.layers & self.layers != 0
-            && collider.usage.bit() & self.usages != 0
-            && self.ignore != Some(collider.key.life)
-            && self.exclude != Some(collider.key)
+        self.admits_shape(collider.key, collider.layers, collider.usage)
+    }
+    fn admits_shape(self, key: ColliderKey, layers: u32, usage: Usage) -> bool {
+        key.life.instance == self.instance
+            && layers & self.layers != 0
+            && usage.bit() & self.usages != 0
+            && self.ignore != Some(key.life)
+            && self.exclude != Some(key)
     }
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -276,13 +279,13 @@ impl Capsule {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Hit {
     pub collider: ColliderKey,
-    /// Source triangle index, or `usize::MAX` for a solid-volume recovery hit.
+    /// Source triangle index, or `usize::MAX` for a primitive contact.
     pub triangle: usize,
     pub fraction: f64,
     pub distance: f64,
     pub position: DVec3,
     pub normal: DVec3,
-    /// Oriented triangle plane normal, distinct from a rounded edge contact.
+    /// Surface normal; mesh plane normals differ from rounded edge contacts.
     pub surface_normal: DVec3,
     pub penetration: f64,
 }
@@ -340,6 +343,15 @@ impl Collector {
 pub struct Scene {
     poses: BTreeMap<ColliderKey, Pose>,
     colliders: BTreeMap<ColliderKey, MeshCollider>,
+    capsules: BTreeMap<ColliderKey, CapsuleCollider>,
+}
+/// A local-space capsule retains its exact life and query usage.
+#[derive(Clone, Copy, Debug)]
+pub struct CapsuleCollider {
+    pub key: ColliderKey,
+    pub capsule: Capsule,
+    pub layers: u32,
+    pub usage: Usage,
 }
 /// A rigid pose preserves a compiled mesh hierarchy without rescaling it.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -371,9 +383,45 @@ impl Pose {
     }
 }
 impl Scene {
+    pub fn capsule_keys(&self) -> impl Iterator<Item = ColliderKey> + '_ {
+        self.capsules.keys().copied()
+    }
+    pub fn insert_capsule(&mut self, collider: CapsuleCollider) -> Result<(), String> {
+        collider.capsule.validate()?;
+        if self.colliders.contains_key(&collider.key) || self.capsules.contains_key(&collider.key) {
+            return Err("Collision identity already exists".into());
+        }
+        if self.colliders.len() + self.capsules.len() >= 4096 {
+            return Err("Collision scene budget exceeded".into());
+        }
+        self.capsules.insert(collider.key, collider);
+        Ok(())
+    }
+    pub fn remove_capsule(&mut self, key: ColliderKey) -> Option<CapsuleCollider> {
+        if !self.capsules.contains_key(&key) {
+            return None;
+        }
+        self.poses.remove(&key);
+        self.capsules.remove(&key)
+    }
+    fn capsule_shapes(&self, filter: Filter) -> impl Iterator<Item = (ColliderKey, Capsule)> + '_ {
+        self.capsules
+            .values()
+            .filter(move |c| filter.admits_shape(c.key, c.layers, c.usage))
+            .map(|c| {
+                let pose = self.pose(c.key).unwrap();
+                (
+                    c.key,
+                    Capsule {
+                        a: pose.point(c.capsule.a),
+                        b: pose.point(c.capsule.b),
+                        radius: c.capsule.radius,
+                    },
+                )
+            })
+    }
     pub fn pose(&self, key: ColliderKey) -> Option<Pose> {
-        self.colliders
-            .contains_key(&key)
+        (self.colliders.contains_key(&key) || self.capsules.contains_key(&key))
             .then(|| self.poses.get(&key).copied().unwrap_or_default())
     }
     pub fn set_pose(&mut self, key: ColliderKey, pose: Pose) -> Result<(), String> {
@@ -381,17 +429,17 @@ impl Scene {
         if !pose.rotation.is_finite() || (pose.rotation.length_squared() - 1.).abs() > 1e-8 {
             return Err("Invalid collision pose".into());
         }
-        if !self.colliders.contains_key(&key) {
+        if !self.colliders.contains_key(&key) && !self.capsules.contains_key(&key) {
             return Err("Collision identity does not exist".into());
         }
         self.poses.insert(key, pose);
         Ok(())
     }
     pub fn insert(&mut self, collider: MeshCollider) -> Result<(), String> {
-        if self.colliders.contains_key(&collider.key) {
+        if self.colliders.contains_key(&collider.key) || self.capsules.contains_key(&collider.key) {
             return Err("Collision identity already exists".into());
         }
-        if self.colliders.len() >= 4096 {
+        if self.colliders.len() + self.capsules.len() >= 4096 {
             return Err("Collision scene budget exceeded".into());
         }
         if self
@@ -408,7 +456,9 @@ impl Scene {
         Ok(())
     }
     pub fn remove(&mut self, key: ColliderKey) -> Option<MeshCollider> {
-        self.poses.remove(&key);
+        if self.colliders.contains_key(&key) {
+            self.poses.remove(&key);
+        }
         self.colliders.remove(&key)
     }
     pub fn ray(
@@ -429,6 +479,18 @@ impl Scene {
         }
         let mut out = Collector::new(filter.limit);
         let mut stats = Stats::default();
+        for (key, target) in self.capsule_shapes(filter) {
+            stats.nodes += 1;
+            // A zero-radius point uses the same convex sweep as capsule queries.
+            let point = Capsule {
+                a: origin,
+                b: origin,
+                radius: 0.,
+            };
+            if let Some(hit) = sweep_capsule(point, direction * distance, target, key)? {
+                out.push(hit);
+            }
+        }
         for collider in self.colliders.values().filter(|c| filter.admits(c)) {
             let pose = self.pose(collider.key).unwrap();
             let origin = pose.inverse_point(origin);
@@ -465,6 +527,24 @@ impl Scene {
         filter.validate()?;
         let mut out = Collector::new(filter.limit);
         let mut stats = Stats::default();
+        for (key, target) in self.capsule_shapes(filter) {
+            stats.nodes += 1;
+            let (axis, point) = segment_pair(capsule.a, capsule.b, target.a, target.b);
+            let separation = axis.distance(point) - capsule.radius - target.radius;
+            if separation <= EPS {
+                let normal = capsule_normal(axis, point, capsule, target);
+                out.push(Hit {
+                    collider: key,
+                    triangle: usize::MAX,
+                    fraction: 0.,
+                    distance: 0.,
+                    position: point + normal * target.radius,
+                    normal,
+                    surface_normal: normal,
+                    penetration: (-separation).max(0.),
+                });
+            }
+        }
         for collider in self.colliders.values().filter(|c| filter.admits(c)) {
             let pose = self.pose(collider.key).unwrap();
             let capsule = pose.capsule(capsule);
@@ -517,6 +597,19 @@ impl Scene {
         }
         let mut out = Collector::new(filter.limit);
         let mut stats = Stats::default();
+        for (key, target) in self.capsule_shapes(filter) {
+            stats.nodes += 1;
+            if !capsule
+                .bounds()
+                .union(capsule.translated(delta).bounds())
+                .intersects(target.bounds())
+            {
+                continue;
+            }
+            if let Some(hit) = sweep_capsule(capsule, delta, target, key)? {
+                out.push(hit);
+            }
+        }
         for collider in self.colliders.values().filter(|c| filter.admits(c)) {
             let pose = self.pose(collider.key).unwrap();
             let capsule = pose.capsule(capsule);
@@ -557,6 +650,54 @@ impl Scene {
         }
         Ok(out.finish(stats))
     }
+}
+fn capsule_normal(axis: DVec3, point: DVec3, capsule: Capsule, target: Capsule) -> DVec3 {
+    (axis - point)
+        .try_normalize()
+        .or_else(|| ((capsule.a + capsule.b) - (target.a + target.b)).try_normalize())
+        .unwrap_or(DVec3::X)
+}
+fn sweep_capsule(
+    capsule: Capsule,
+    delta: DVec3,
+    target: Capsule,
+    key: ColliderKey,
+) -> Result<Option<Hit>, String> {
+    let mut time = 0.;
+    for _ in 0..64 {
+        let moved = capsule.translated(delta * time);
+        let (axis, point) = segment_pair(moved.a, moved.b, target.a, target.b);
+        let normal = capsule_normal(axis, point, moved, target);
+        let separation = axis.distance(point) - capsule.radius - target.radius;
+        let closing = -normal.dot(delta);
+        if separation <= EPS {
+            if time == 0. && separation >= -EPS && closing <= 1e-12 {
+                return Ok(None);
+            }
+            return Ok(Some(Hit {
+                collider: key,
+                triangle: usize::MAX,
+                fraction: time,
+                distance: delta.length() * time,
+                position: point + normal * target.radius,
+                normal,
+                surface_normal: normal,
+                penetration: (-separation).max(0.),
+            }));
+        }
+        if closing <= 1e-12 {
+            return Ok(None);
+        }
+        let next = time + separation / closing;
+        if next > 1. {
+            return Ok(None);
+        }
+        if next <= time {
+            return Err("Capsule contact failed to converge".into());
+        }
+        time = next;
+    }
+    Err("Capsule contact iteration budget exceeded".into())
 }
 fn valid_point(point: DVec3) -> Result<(), String> {
     if !point.is_finite() || point.abs().max_element() > 1_000_000. {
@@ -998,6 +1139,117 @@ fn oriented_normal(triangle: Triangle, contact: DVec3) -> DVec3 {
 // Filled occupancy is available only for explicitly compiled solid boxes.
 // Arbitrary triangle meshes remain two-sided surfaces. Upright solid recovery
 // chooses a horizontal or upward exit so a buried spawn does not cross its floor.
+#[cfg(test)]
+mod capsule_contact_tests {
+    use super::*;
+    fn fixture() -> (Scene, ColliderKey, Capsule) {
+        let key = ColliderKey {
+            life: Life {
+                instance: 7,
+                entity: 9,
+                generation: 3,
+            },
+            shape: 0,
+        };
+        let capsule = Capsule {
+            a: DVec3::Y * 0.35,
+            b: DVec3::Y * 1.45,
+            radius: 0.35,
+        };
+        let mut scene = Scene::default();
+        scene
+            .insert_capsule(CapsuleCollider {
+                key,
+                capsule,
+                layers: 2,
+                usage: Usage::Blocking,
+            })
+            .unwrap();
+        (scene, key, capsule)
+    }
+    #[test]
+    fn fast_capsules_stop_at_exact_contact_and_tangent_travel_is_free() {
+        let (scene, key, capsule) = fixture();
+        let start = capsule.translated(-DVec3::X * 10.);
+        let hit = scene
+            .sweep(start, DVec3::X * 100., Filter::blocking(7))
+            .unwrap()
+            .hits[0];
+        assert_eq!(hit.collider, key);
+        assert!((hit.fraction - 0.093).abs() < 1e-9);
+        assert!(hit.normal.distance(-DVec3::X) < 1e-9);
+        let touching = capsule.translated(-DVec3::X * 0.7);
+        assert!(
+            scene
+                .sweep(touching, DVec3::Z, Filter::blocking(7))
+                .unwrap()
+                .hits
+                .is_empty()
+        );
+        assert!(
+            scene
+                .sweep(touching, -DVec3::X, Filter::blocking(7))
+                .unwrap()
+                .hits
+                .is_empty()
+        );
+        assert!(
+            !scene
+                .sweep(touching, DVec3::X, Filter::blocking(7))
+                .unwrap()
+                .hits
+                .is_empty()
+        );
+    }
+    #[test]
+    fn capsule_queries_obey_pose_life_instance_layers_and_removal() {
+        let (mut scene, key, capsule) = fixture();
+        let pose = Pose {
+            position: DVec3::new(3., 2., -1.),
+            rotation: DQuat::from_rotation_z(std::f64::consts::FRAC_PI_2),
+        };
+        scene.set_pose(key, pose).unwrap();
+        let center = pose.point((capsule.a + capsule.b) * 0.5);
+        let point = Capsule {
+            a: center,
+            b: center,
+            radius: 0.1,
+        };
+        let filter = Filter::blocking(7);
+        assert_eq!(scene.overlap(point, filter).unwrap().hits[0].collider, key);
+        assert_eq!(
+            scene
+                .ray(center - DVec3::Z * 2., DVec3::Z, 4., filter)
+                .unwrap()
+                .hits[0]
+                .collider,
+            key
+        );
+        assert!(
+            scene
+                .overlap(point, Filter::blocking(8))
+                .unwrap()
+                .hits
+                .is_empty()
+        );
+        let mut ignored = filter;
+        ignored.ignore = Some(key.life);
+        assert!(scene.overlap(point, ignored).unwrap().hits.is_empty());
+        ignored.ignore = Some(Life {
+            generation: 2,
+            ..key.life
+        });
+        assert!(!scene.overlap(point, ignored).unwrap().hits.is_empty());
+        ignored.layers = 1;
+        assert!(scene.overlap(point, ignored).unwrap().hits.is_empty());
+        assert!(scene.remove(key).is_none());
+        assert_eq!(scene.pose(key).unwrap().position, pose.position);
+        assert!(scene.remove_capsule(key).is_some());
+        assert!(scene.pose(key).is_none());
+        assert!(scene.overlap(point, filter).unwrap().hits.is_empty());
+    }
+}
+
 fn inside_box(capsule: Capsule, bounds: Bounds) -> Option<(DVec3, f64, DVec3)> {
     let delta = capsule.b - capsule.a;
     let mut enter: f64 = 0.;

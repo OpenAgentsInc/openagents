@@ -147,7 +147,13 @@ player controller trajectories and cover. Capsule contact can resolve before
 nominal area arrival; area impacts sample the player at impact time. Shields
 use the shared damage path, and checkpoints validate source and target lives
 and stored flight positions.
-Live-body contacts and unified clock ownership
+The `verse-chamber-owned-v10` profile admits live PC and NPC capsule contacts
+through shared sweep, overlap, and pose queries. Controllers ignore their own
+life; admitted movement updates body poses for subsequent actors. Navigation
+plans retain static geometry while controllers resolve living obstructions.
+Death replaces the live capsule with corpse collision, and loading rebuilds
+live colliders from owned bodies. Defeat cancels pending player casts.
+Unified clock ownership
 remain VE-2 work. Renderer lighting and overlapping nameplates
 remain visual work.
 

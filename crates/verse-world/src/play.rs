@@ -296,7 +296,7 @@ impl Game {
             encounter.validate(self)?;
         }
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v9", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v10", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -316,7 +316,7 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v9" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v10" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
@@ -461,6 +461,7 @@ impl Game {
             world.query_scene.insert(collider)?;
         }
         world.simulation.set_colliders(world.colliders.clone());
+        world.sync_actor_colliders()?;
         Ok(world)
     }
     fn move_player(&self, position: Vec3, delta: Vec3) -> Result<Vec3, String> {
@@ -472,7 +473,7 @@ impl Game {
         }
         Ok(physics::character::slide(
             &self.query_scene,
-            physics::queries::Filter::blocking(self.admission.actor().instance),
+            self.actor_filter(self.admission.actor()),
             physics::character::Settings::default(),
             position.as_dvec3(),
             delta.as_dvec3(),
@@ -622,6 +623,86 @@ impl Game {
     pub fn physics_bodies(&self) -> &physics::lifetimes::Bodies {
         &self.bodies
     }
+    fn actor_filter(&self, life: verse_engine::core::LifeId) -> physics::queries::Filter {
+        let mut filter = physics::queries::Filter::blocking(life.instance);
+        filter.ignore = Some(physics::queries::Life {
+            instance: life.instance,
+            entity: life.actor,
+            generation: life.generation,
+        });
+        filter
+    }
+    fn sync_actor_colliders(&mut self) -> Result<(), String> {
+        use physics::{
+            lifetimes::{Hull, Phase},
+            queries::{Capsule, CapsuleCollider, Pose, Usage},
+        };
+        let keys: Vec<_> = self.query_scene.capsule_keys().collect();
+        for key in keys {
+            self.query_scene.remove_capsule(key);
+        }
+        if self.colliders.is_empty() {
+            return Ok(());
+        }
+        for record in self
+            .bodies
+            .records()
+            .filter(|r| r.actor && r.phase == Phase::Alive)
+        {
+            let Hull::UprightCapsule { radius, height } = record.hull else {
+                return Err("Living actor requires a capsule body".into());
+            };
+            self.query_scene.insert_capsule(CapsuleCollider {
+                key: record.key(),
+                capsule: Capsule {
+                    a: glam::DVec3::Y * (radius - height * 0.5),
+                    b: glam::DVec3::Y * (height * 0.5 - radius),
+                    radius,
+                },
+                layers: 2,
+                usage: Usage::Blocking,
+            })?;
+            self.query_scene.set_pose(
+                record.key(),
+                Pose {
+                    position: record.body.pos,
+                    rotation: record.body.orientation,
+                },
+            )?;
+        }
+        Ok(())
+    }
+    fn place_actor_body(
+        &mut self,
+        life: verse_engine::core::LifeId,
+        feet: Vec3,
+        dt: f64,
+    ) -> Result<(), String> {
+        let physical = physics::queries::Life {
+            instance: life.instance,
+            entity: life.actor,
+            generation: life.generation,
+        };
+        let Some(record) = self.bodies.get(physical) else {
+            return Ok(());
+        };
+        if record.phase != physics::lifetimes::Phase::Alive {
+            return Ok(());
+        }
+        let key = record.key();
+        let position = feet.as_dvec3() + glam::DVec3::Y * 0.9;
+        self.bodies.place(physical, position, dt.min(0.1))?;
+        if self.query_scene.pose(key).is_some() {
+            self.query_scene.set_pose(
+                key,
+                physics::queries::Pose {
+                    position,
+                    rotation: glam::DQuat::IDENTITY,
+                },
+            )?;
+        }
+        Ok(())
+    }
     fn sync_bodies(&mut self, dt: f32) -> Result<(), String> {
         use physics::lifetimes::{Hull, Phase};
         let snapshot = self.snapshot();
@@ -688,6 +769,7 @@ impl Game {
         if changed {
             self.replace_blockers(next)?;
         }
+        self.sync_actor_colliders()?;
         Ok(())
     }
     pub fn navigation_blockers(&self) -> &physics::walkable::Blockers {
@@ -755,6 +837,7 @@ impl Game {
         self.colliders = bounds;
         self.blockers = next;
         self.simulation.set_colliders(self.colliders.clone());
+        self.sync_actor_colliders()?;
         Ok(())
     }
     pub(super) fn move_hostile(
@@ -1278,6 +1361,9 @@ impl Game {
         self.respawn_cultists()?;
         self.sync_bodies(0.)?;
         let dead = self.snapshot().player.hp == 0;
+        if dead {
+            self.casting = None;
+        }
         if !dead && (self.agent_controlled || self.pending_movement.is_none()) {
             let movement = if self.agent_controlled {
                 super::combat::drive(self, dt)?
@@ -1336,10 +1422,11 @@ impl Game {
                 glam::DVec3::ZERO
             };
             player_path.push(self.character.feet.as_vec3().to_array());
+            let filter = self.actor_filter(self.admission.actor());
             for step in 0..steps {
                 self.character.step(
                     &self.query_scene,
-                    physics::queries::Filter::blocking(self.admission.actor().instance),
+                    filter,
                     physics::character::Settings::default(),
                     velocity,
                     jump && step == 0,
@@ -1353,6 +1440,7 @@ impl Game {
                 .ok_or("Physics step counter exhausted")?;
             self.player = self.character.feet.as_vec3();
         }
+        self.place_actor_body(self.admission.actor(), self.player, dt as f64)?;
         let travelled = self.player.distance(previous_player);
         self.motion_clock += travelled / speed;
         self.moving = travelled > 0.00001;
@@ -1390,6 +1478,8 @@ impl Game {
                 }
                 let desired = self.controls.position(id, authored, self.time);
                 let mut npc_path = vec![];
+                let life = self.lives[&a.actor.id];
+                let filter = self.actor_filter(life);
                 let position = if self.colliders.is_empty() {
                     desired
                 } else {
@@ -1419,7 +1509,7 @@ impl Game {
                     for _ in 0..physics_steps {
                         character.step(
                             &self.query_scene,
-                            physics::queries::Filter::blocking(self.admission.actor().instance),
+                            filter,
                             physics::character::Settings::default(),
                             velocity,
                             false,
@@ -1431,6 +1521,7 @@ impl Game {
                 };
                 self.simulation
                     .place_chamber_actor(id, position.to_array(), a.actor.yaw)?;
+                self.place_actor_body(life, position, dt as f64)?;
                 if npc_path.len() >= 2 {
                     self.simulation.record_motion_path(id, npc_path)?;
                 }
@@ -1822,7 +1913,7 @@ impl Game {
                 let mut check = self.character;
                 check.teleport(
                     &self.query_scene,
-                    physics::queries::Filter::blocking(self.admission.actor().instance),
+                    self.actor_filter(self.admission.actor()),
                     physics::character::Settings::default(),
                     destination.as_dvec3(),
                 )?;
@@ -2825,6 +2916,34 @@ mod body_lifetime_tests {
             false,
         )
         .unwrap()
+    }
+    #[test]
+    fn living_capsules_block_other_lives_ignore_self_and_rebuild_on_load() {
+        let mut g = game();
+        g.time = 30.;
+        g.player = Vec3::new(0., 0., -15.);
+        g.simulation
+            .place_chamber_actor(0, g.player.to_array(), 0.)
+            .unwrap();
+        g.simulation
+            .place_chamber_actor(g.ids[&2], [1.2, 0., -15.], 0.)
+            .unwrap();
+        g.sync_bodies(0.).unwrap();
+        let stop = g.move_player(g.player, Vec3::X * 4.).unwrap();
+        assert!(stop.x <= 0.5001 && stop.x > 0.45, "{stop:?}");
+        assert!(g.move_player(g.player, -Vec3::X).unwrap().x < -0.99);
+        let restored = Game::restore(&g.checkpoint().unwrap()).unwrap();
+        assert_eq!(
+            stop,
+            restored.move_player(restored.player, Vec3::X * 4.).unwrap()
+        );
+        let life = g.actor_life(2).unwrap();
+        g.place_actor_body(life, Vec3::new(-1.2, 0., -15.), 0.)
+            .unwrap();
+        let moved = g
+            .move_hostile(2, Vec3::new(-1.2, 0., -15.), g.player, 1.)
+            .unwrap();
+        assert!(moved.x <= -0.6999 && moved.x > -1.19, "{moved:?}");
     }
     #[test]
     fn corpse_collision_navigation_and_respawn_share_exact_life() {
