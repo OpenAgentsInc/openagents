@@ -1,9 +1,10 @@
 # Everglade
 
-Status: proposed specification, October 4, 2026. Delivery step 1 is
-implemented: the admitted sources under `assets/verse/everglade/` and the pack
-compiler and loader in `verse::zones::everglade_pack`. Delivery step 3 is
-implemented: `ZoneId::Everglade` with generated ground and the plaza arch in
+Status: implemented on desktop, October 4, 2026; the phones observe only.
+Delivery step 1 is implemented: the admitted sources under
+`assets/verse/everglade/` and the pack compiler and loader in
+`verse::zones::everglade_pack`. Delivery step 3 is implemented:
+`ZoneId::Everglade` with generated ground and the plaza arch in
 [`zones/everglade/`](../../crates/verse/src/zones/everglade/mod.rs). Delivery
 step 4 is implemented: the pack loads on entry, and the layout in
 [`zones/everglade/layout.rs`](../../crates/verse/src/zones/everglade/layout.rs)
@@ -11,10 +12,13 @@ places the glade, the workshop, and each station's furniture with their
 blockers. Delivery step 5 is implemented on desktop in
 [`zones/everglade/studio.rs`](../../crates/verse/src/zones/everglade/studio.rs)
 and [`panels/studio.rs`](../../crates/verse/src/panels/studio.rs): seats walk
-between stations from studio snapshots, stations open read-only panels, and
-`verse --studio-sim` or `everglade_capture` with a `studio-` view plays the
-simulated team. Sending intents from Verse and the phones are not
-implemented yet. Everglade also runs in a browser through
+between stations from a live host's studio snapshots, and the panels send the
+studio's intents to that host (`verse --everglade`, or `--studio-socket PATH`
+for another host's control socket). `verse --studio-sim` and the
+`everglade_capture` example's `studio-` views play the simulated team, a
+read-only replay with no host behind it (#10572). On phones the studio panels
+observe only (#10570). The [Agent Studio audit](agent-studio-audit.md) lists
+what has and hasn't run end to end. Everglade also runs in a browser through
 [`crates/everglade-web`](../../crates/everglade-web/README.md), without the
 studio.
 
@@ -174,7 +178,7 @@ Everglade is the Agent Studio's place in the world:
 - Data loads only while the player is in Everglade, as the Gym loads only
   while the player is inside.
 - On phones, stations open the same panels through the hosts' native mounting
-  (#10476).
+  (#10476). They observe only; acting from them is #10570.
 - The OpenAgents app's Grid opens Everglade through a walk-in arch, with the
   shared pack loader's progress, Cancel, and Retry; see
   [the Grid's portal to Everglade](mobile.md#the-grids-portal-to-everglade).

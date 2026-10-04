@@ -148,28 +148,47 @@ rendering or mounting defect.
 ## Agent Studio mixed-engine run (#10477)
 
 Run the studio once with real engines, on a scratch host, from current
-`main`. The code paths are covered by the simulated team and by the
-scratch-host acceptance test (`cargo test -p verse --test studio_host`), but
-no real engine has driven them; the repository's velocity rules leave live
-engine runs to the owner.
+`main`. The code paths are covered by unit tests and by the scratch-host
+acceptance test (`cargo test -p verse --test studio_host`), but no real engine
+has driven them; the repository's velocity rules leave live engine runs to
+the owner. The [Agent Studio audit](docs/verse/agent-studio-audit.md) lists
+what a scratch host already showed and the defects to expect. The simulated
+team is a read-only replay inside Verse and can't stand in for this run
+(#10572).
 
-1. Start a scratch host with a temporary `HOME` and `--state`, `--root`, and
+1. Build `openagents`, `coder`, and `verse` from current `main` into the
+   agent slot's target directory and call them by path. The `openagents` on
+   `PATH` is an older program with no `studio` command.
+2. Start a scratch host with a temporary `HOME` and `--state`, `--root`, and
    `--tasks` under a temporary directory, admitting a scratch Git repository
-   as a workspace (`coder host init --workspace scratch=PATH`).
-2. Add seats with `openagents studio seat set`: a Codex lead
-   (`--role lead --route codex:...`) and Claude Code, OpenCode, and Microcoder
-   workers. Turn on auto-start for the workspace with those routes.
-3. Open Verse with `--studio-socket` pointing at the scratch host's control
-   socket, walk into Everglade, and submit a two-task goal from the notice
+   as a workspace (`coder host init --workspace scratch=PATH`). The
+   repository needs a clean checkout and no remote: a merge fast-forwards the
+   checked-out branch locally and pushes nothing.
+3. Add seats with `openagents studio seat set`: a Codex lead
+   (`--role lead --route codex:MODEL`) and Claude Code (`claude:MODEL`),
+   OpenCode (`opencode:PROVIDER/MODEL`), and Codex (`codex:MODEL`) workers.
+   Turn on auto-start for the workspace with `full` access and exactly those
+   routes. Microcoder isn't a route: a `codex` seat runs Microcoder's loop by
+   default (`coder.codex` is `loop`), and a `claude` seat runs a Claude Code
+   session (`coder.claude` is `session`). These settings apply to the whole
+   host until #10568 lets each seat choose its engine.
+4. Open Verse with `--everglade --studio-socket PATH`, pointing at the
+   scratch host's control socket, and submit a two-task goal from the notice
    board's console.
-4. Confirm that at least two tasks run in parallel, seats walk to the
+5. Confirm that at least two tasks run in parallel, seats walk to the
    stations their work implies, one question and one approval are answered at
    the podium, one change is requested at the merge station with a line
-   comment and fixed, and one task is merged from the review. A merge that
-   lands needs a forge remote on the scratch repository.
-5. Quit Verse mid-run and reopen it, then restart the host mid-run, and
+   comment and fixed, and one task is merged from the review. Only
+   Microcoder's loop raises questions and approvals; Claude Code and Codex
+   sessions run with permission bypass flags. Answering, reviewing, and
+   merging need Verse until #10566 adds them to `openagents studio`. Merge
+   only finished tasks, because the host doesn't refuse an unfinished one
+   yet (#10567).
+6. Quit Verse mid-run and reopen it, then restart the host mid-run, and
    confirm that no state is lost.
-6. Archive every task the run created before deleting the scratch host.
+7. Archive every task the run created (`coder task archive TASK_ID --reason
+   "studio trial"` against the scratch task store) before deleting the
+   scratch host.
 
 Open a follow-up issue for any defect, with the seat routes and the step it
 failed at.

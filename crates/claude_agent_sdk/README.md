@@ -4,6 +4,13 @@ A Rust SDK for programmatically building AI agents with Claude Code's capabiliti
 
 This SDK is a Rust implementation of Anthropic's official [Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview), providing the same functionality with native Rust ergonomics.
 
+Status, October 4, 2026: no crate in this workspace depends on this one yet,
+and no Agent Studio seat runs on it. Studio Claude seats run a Claude Code
+session or Microcoder's loop instead. Running a seat on this SDK, with its
+permission callback raising studio approvals, is
+[#10571](https://github.com/OpenAgentsInc/openagents/issues/10571); see the
+[Agent Studio audit](../../docs/verse/agent-studio-audit.md).
+
 ## Installation
 
 Add to your `Cargo.toml`:
@@ -27,11 +34,11 @@ npm install -g @anthropic-ai/claude-code
 brew install anthropic/tap/claude-code
 ```
 
-Set your API key:
-
-```bash
-export ANTHROPIC_API_KEY=your_api_key_here
-```
+Sign in to Claude Code. The SDK runs the `claude` CLI as a child process
+with your environment, so the CLI's own sign-in applies: a Claude
+subscription login (`claude`, then `/login`) works, and the SDK needs no API
+key. An `ANTHROPIC_API_KEY` in the environment also works, and Claude Code
+uses it instead of the subscription.
 
 ## Quick Start
 
@@ -463,9 +470,15 @@ match result {
 
 ## Environment Variables
 
-- `ANTHROPIC_API_KEY` - Your Anthropic API key (required)
-- `CLAUDE_CODE_EXECUTABLE` - Path to Claude executable (optional)
-- `DEBUG_CLAUDE_AGENT_SDK` - Enable debug logging (optional)
+The SDK reads no settings from the environment. The CLI inherits your
+environment plus `QueryOptions::env`, so the CLI's variables apply:
+
+- `ANTHROPIC_API_KEY` - Optional. Claude Code uses this key instead of your
+  subscription login.
+
+The SDK finds `claude` on `PATH`, then in `~/.claude/local/claude`,
+`/usr/local/bin/claude`, and `/opt/homebrew/bin/claude`. To use another
+binary, set `path` in `QueryOptions::executable`.
 
 ## Architecture
 

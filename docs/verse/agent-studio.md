@@ -1,11 +1,33 @@
 # Agent Studio
 
-Status: proposed specification, October 4, 2026. Nothing in this document is
-implemented yet. It describes a place in Verse where a team of coding agents
-does real work on a real repository, and where people watch, steer, answer,
-and approve that work by walking around. Any engine the Coder host can run
-works there, not only Claude. The world borrows its idea from AgentCraft; the
-panels for reading, answering, and reviewing are harvested from Zeron.
+Status: partly implemented, October 4, 2026. This document began as the
+specification of a place in Verse where a team of coding agents does real work
+on a real repository, and where people watch, steer, answer, and approve that
+work by walking around. Any engine the Coder host can run works there, not
+only Claude. The world borrows its idea from AgentCraft; the panels for
+reading, answering, and reviewing are harvested from Zeron.
+
+What runs today, per the [Agent Studio audit](agent-studio-audit.md):
+
+- The host's studio coordinator takes a goal, raises a decision when the
+  lead's plan is missing or invalid, releases planned tasks as their
+  dependencies clear, gives each task its own worktree and branch, serves
+  reviews at exact revisions, and merges locally without pushing. Every
+  steering intent returns a receipt over NIP-HOST.
+- On the desktop, [Everglade](everglade.md) draws the studio from a live
+  host's snapshots, and its panels send every intent in this document.
+  Phones observe only (#10570).
+- No real engine has driven a studio goal yet. The mixed-engine run (#10477)
+  is an owner step in [`NEEDS_OWNER.md`](../../NEEDS_OWNER.md).
+- `openagents studio` sets up seats, submits goals, lists goals and plans,
+  messages seats, keeps shared memory, and runs `up` and `down`. It can't
+  list or answer task decisions, open a review, merge, request changes,
+  reject, or pause, resume, stop, cancel, retry, reassign, or prioritize.
+  Those steps need Verse on the desktop until #10566 adds them.
+- A merge can land a task that hasn't finished, and a refusal reaches the
+  client as a bare code (#10567).
+- The simulated team is a read-only replay inside Verse, not a host route.
+  See [Simulated team](#simulated-team).
 
 ## Reference: AgentCraft
 
@@ -89,12 +111,20 @@ through the existing paths:
 
 | Engine | How the host runs it today | Reference |
 | --- | --- | --- |
-| Microcoder loop | In process, on the first provider with capacity | [Microcoder](../coder/guides/microcoder.md) |
-| Codex | Codex login and the Codex Responses transport, or the loop | [Delegate door](../coder/runtime/delegate-door.md) |
-| Claude Code | `claude` CLI login, or the loop | [Delegate door](../coder/runtime/delegate-door.md) |
+| Codex (`codex:MODEL`) | Microcoder's loop on the Codex login by default (`coder.codex` is `loop`), or a `codex exec` session with `coder.codex session` | [Delegate door](../coder/runtime/delegate-door.md) |
+| Claude Code (`claude:MODEL`) | A Claude Code session on the `claude` CLI login by default (`coder.claude` is `session`), or Microcoder's loop with Claude as the model | [Delegate door](../coder/runtime/delegate-door.md) |
 | Devin | `devin acp` over the Agent Client Protocol | [Devin route](../coder/runtime/devin.md) |
 | OpenCode | `opencode acp` | [OpenCode route](../coder/runtime/opencode.md) |
 | Grok Build | `grok agent stdio` | [Grok route](../coder/runtime/grok.md) |
+
+Microcoder's loop is not a route of its own. It is the loop mode of a `codex`
+or `claude` route ([Microcoder](../coder/guides/microcoder.md)), and the
+`coder.codex` and `coder.claude` settings choose it for the whole host, not
+per seat; #10568 lets each seat choose its engine. Unless the policy grants
+`full` access, a Claude or Codex seat runs the loop rather than a session. No
+seat runs on the Claude Agent SDK port in
+[`crates/claude_agent_sdk`](../../crates/claude_agent_sdk/README.md) yet
+(#10571).
 
 The studio adds no engine adapter. A new engine becomes a studio worker by
 becoming a Coder route. Routes, capacity, and failover stay in the
@@ -426,10 +456,20 @@ instructions.
 
 ## Simulated team
 
-A `sim` route in the host runs a scripted team against a scratch repository:
-real worktrees, real commits, real reviews, a question, an approval, a merge
-conflict, and a request for changes, on a fixed clock. It drives every studio
-feature with no model spend, and it is the fixture for:
+Status: a read-only replay inside Verse. `verse --studio-sim` and
+`openagents studio up --sim` play a recorded script
+([`zones/everglade/studio/fixture.rs`](../../crates/verse/src/zones/everglade/studio/fixture.rs))
+with no host behind it. The fixture holds no rights and refuses every intent
+as `unsupported`, so a person can watch the team but can't answer, steer, or
+merge, and the command line can't see it. It drives the `everglade_capture`
+example's `studio-` views and demos with no model spend. #10572 replaces it
+with the design below: a scratch host whose studio is the scripted team, so
+Verse and `openagents studio` both act on it.
+
+The design: a `sim` route in the host runs a scripted team against a scratch
+repository: real worktrees, real commits, real reviews, a question, an
+approval, a merge conflict, and a request for changes, on a fixed clock. It
+drives every studio feature with no model spend, and it is the fixture for:
 
 - Host tests of the coordinator's dependency, steering, stale-review, and
   restart behavior.
@@ -463,7 +503,7 @@ Each stage lands as its own issue, with its own checks.
    panel, review comments, and plan panel. Then mount them in the phone
    hosts.
 7. **Mixed-engine acceptance.** One goal on a scratch repository with a
-   Codex lead and Claude Code, OpenCode, and Microcoder workers: at least two
+   Codex lead and Claude Code, OpenCode, and Microcoder-loop workers: at least two
    tasks run in parallel, one question and one approval are answered in Verse,
    one change is requested and fixed, and the owner merges from the review
    screen. The client restarts mid-run and the host restarts mid-run without
