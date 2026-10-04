@@ -262,6 +262,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10517](https://github.com/OpenAgentsInc/openagents/issues/10517) assembles admitted remote native scenes from one replica sample. Frames retain lives and animation phases; shield anchors follow interpolated bodies, and prop/blocker transforms, attachments, particles, and dynamic lighting share existing native helpers. Empty views wait for admission and invalid camera/interpolation/lighting inputs are refused. Tests cover sampled frame/effect alignment and local/native assembly parity. Window/transport mounting, scene/pack admission, camera/audio routing, and full service acceptance remain.
 
+[#10518](https://github.com/OpenAgentsInc/openagents/issues/10518) mounts the authenticated worker and admitted renderer in a native window through `verse_remote`. Explicit configuration supplies TLS trust/name, enrolled signing-key file, instance, and local scene/pack paths. Bounded updates drive nameplates, programmatic dialogue, damage, owned/target HUD, and cinematic-to-follow camera. Classic controls submit shared-kit movement, jump, spells, target cycling, and respawn; movement waits for queue space without accumulating stale commands. Exit stops and joins the worker. Targeted tests cover key mapping, spectator input gates, queue pressure/disconnection, and native entry compilation. No live remote window/video acceptance is claimed. Standalone host configuration, scene/pack identity matching, audio, prediction, and full two-player acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

@@ -21,6 +21,8 @@ pub mod original;
 pub mod overlay;
 pub mod play;
 pub mod props;
+#[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
+pub mod remote_window;
 mod shadow_cache;
 use lighting::{Frame, Lighting};
 use std::{

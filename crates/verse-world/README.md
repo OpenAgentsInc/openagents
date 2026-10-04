@@ -186,7 +186,26 @@ A remote scene sample now supplies the frame, sampled prop/blocker bounds, and
 combat visuals together. Native assembly shares actor/attachment, particle, prop,
 cover, and lighting helpers behind Verse's `remote-chamber` feature; shield
 anchors follow sampled body positions.
-Remote window mounting remains.
+The `verse_remote` example mounts an authenticated worker in a native window,
+with bounded update consumption, Classic controls, the shared ten-slot HUD,
+respawn, targets, nameplates, committed damage, and cinematic-to-follow camera.
+Movement submissions wait for an empty input queue to avoid accumulating stale
+movement behind casts. Window exit stops and joins the worker.
+
+Run it with:
+
+```sh
+cargo run -p verse --no-default-features --features imported-desktop,remote-chamber --example verse_remote -- CONFIG.json
+```
+The JSON configuration requires `address` (socket address), `server_name` (TLS
+name), `instance` (host instance), `trust_der` (DER trust certificate path),
+`key_file` (owner-only file containing the enrolled 32-byte signing key as hex),
+`pack` (local pack manifest path), `scene` (local scene JSON path), and `dir`
+(local pack asset directory). Paths resolve from the working directory. The key
+is used during login and is not passed to the window or worker. Callers must
+supply matching original scene/assets and a configured host; automatic host
+setup, scene/pack identity matching, remote audio, prediction, and native live
+acceptance remain.
 
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer

@@ -161,3 +161,7 @@ required-features = ["imported-desktop"]
 [[example]]
 name = "universal_characters"
 required-features = ["imported-desktop"]
+
+[[example]]
+name = "verse_remote"
+required-features = ["imported-desktop", "remote-chamber"]
