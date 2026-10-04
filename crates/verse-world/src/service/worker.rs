@@ -1,4 +1,4 @@
-//! Bounded sequential network worker for remote presentation adapters.
+//! Bounded duplex network worker for remote presentation adapters.
 use super::{
     client::Client,
     event_cursor::{Cursor, Delivery},
@@ -109,7 +109,7 @@ fn coalesce_movement(
 /// Bounded output backpressure pauses polling and input; no updates are dropped.
 /// Shutdown cancels uncertain IO and closes the owned connection without replay.
 pub async fn run(
-    mut client: Client,
+    client: Client,
     mut cursor: Cursor,
     cadence: Duration,
     mut inputs: mpsc::Receiver<Input>,
@@ -126,100 +126,206 @@ pub async fn run(
         return Err("Invalid chamber replication cadence".into());
     }
     let work = async {
+        let mut client = client.pipeline()?;
         let mut interval = tokio::time::interval(cadence);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut next_inventory = tokio::time::Instant::now();
         let mut inventory_life = None;
         let mut last_token = 0;
         let mut deferred = None;
+        let mut staged = None;
         let mut last_response = None;
+        let mut snapshot_pending = false;
+        let mut events_pending = false;
+        let mut inventory_pending = false;
+        let mut refreshed = false;
+        let mut barrier = false;
+        let mut input_closed = false;
         loop {
-            let mut polling = false;
-            let update = tokio::select! {
-                _ = interval.tick() => {
-                    polling = true;
-                    let response = client.request(Body::Snapshot {}).await?;
-                    if let Reply::Refused { message, .. } = &response.body {
-                        return Err(message.clone());
-                    }
-                    updates.send(Update::Snapshot(response)).await
+            if !client.available() && client.pending() == 0 {
+                return Err("Chamber pipeline is disconnected".into());
+            }
+            if input_closed && client.pending() == 0 {
+                return Ok(());
+            }
+            if staged.is_some() && client.available() && !barrier {
+                let input = staged.take().expect("Staged chamber input");
+                let (input, retired) = coalesce_movement(input, &mut inputs, &mut deferred);
+                for token in retired {
+                    let Input::TrackedCommand {
+                        token: replacement, ..
+                    } = &input
+                    else {
+                        unreachable!()
+                    };
+                    updates
+                        .send(Update::MovementSuperseded {
+                            token,
+                            replacement: *replacement,
+                        })
+                        .await
                         .map_err(|_| "Chamber update consumer closed")?;
-                    let delivery = client.delivered_events(&mut cursor, 64).await?;
-                    Update::Events { delivery, checkpoint: cursor.checkpoint()? }
                 }
-                input = async {
-                    match deferred.take() { Some(input) => Some(input), None => inputs.recv().await }
-                } => {
-                    let Some(input) = input else { return Ok(()); };
-                    let (mut input, retired) = coalesce_movement(input, &mut inputs, &mut deferred);
-                    for token in retired {
-                        updates.send(Update::MovementSuperseded { token, replacement: match &input { Input::TrackedCommand {token,..} => *token, _ => unreachable!() } }).await
-                            .map_err(|_| "Chamber update consumer closed")?;
+                let lifecycle = !matches!(input, Input::Command(_) | Input::TrackedCommand { .. });
+                if lifecycle && client.pending() > 0 {
+                    staged = Some(input);
+                } else if !refreshed && !fresh_control(&input, client.control(), last_response) {
+                    if !snapshot_pending {
+                        client.send(Body::Snapshot {})?;
+                        snapshot_pending = true;
                     }
-                    // Retirement delivery can wait on output backpressure; check freshness afterward.
-                    if !fresh_control(&input, client.control(), last_response) {
-                        let response = client.request(Body::Snapshot {}).await?;
-                        if let Reply::Refused { message, .. } = &response.body {
-                            return Err(message.clone());
-                        }
-                        updates.send(Update::Snapshot(response)).await
-                            .map_err(|_| "Chamber update consumer closed")?;
-                    }
-                    // Input may have changed while the refresh was in flight.
-                    let (latest, retired) = coalesce_movement(input, &mut inputs, &mut deferred);
-                    input = latest;
-                    for token in retired {
-                        updates.send(Update::MovementSuperseded {token,replacement:match &input {Input::TrackedCommand {token,..}=>*token,_=>unreachable!()}}).await
-                            .map_err(|_| "Chamber update consumer closed")?;
-                    }
-                    let response = match input {
-                        Input::TrackedCommand { token, life, epoch, intent } => {
+                    staged = Some(input);
+                } else {
+                    refreshed = false;
+                    let body = match input {
+                        Input::TrackedCommand {
+                            token,
+                            life,
+                            epoch,
+                            intent,
+                        } => {
                             let binding = if token == 0 || token <= last_token {
                                 Err("Tracked input token must increase".into())
                             } else {
                                 last_token = token;
                                 match client.control() {
-                                    Some(control) if control.life == life.into() && control.epoch == epoch => client.prepare_command(intent),
-                                    _ => Err("Tracked input control changed before transmission".into()),
+                                    Some(control)
+                                        if control.life == life.into()
+                                            && control.epoch == epoch =>
+                                    {
+                                        client.prepare_command(intent)
+                                    }
+                                    _ => {
+                                        Err("Tracked input control changed before transmission"
+                                            .into())
+                                    }
                                 }
                             };
                             let command = binding.as_ref().ok().cloned();
-                            updates.send(Update::CommandBound { token, binding }).await
+                            updates
+                                .send(Update::CommandBound { token, binding })
+                                .await
                                 .map_err(|_| "Chamber update consumer closed")?;
-                            let Some(command) = command else { continue; };
-                            client.request(Body::Command { command: command.into() }).await?
+                            let Some(command) = command else {
+                                continue;
+                            };
+                            Body::Command {
+                                command: command.into(),
+                            }
                         }
-                        Input::Command(intent) => client.command(intent).await?,
-                        Input::Respawn => client.respawn().await?,
-                        Input::EquipGear(slot,item) => {let mut operation=[0;16];getrandom::fill(&mut operation).map_err(|_|"Cannot generate equipment retry identity")?;next_inventory=tokio::time::Instant::now();client.equip_gear(slot,item,operation).await?}
-                        Input::EquipOutfit(outfit) => {let mut operation=[0;16];getrandom::fill(&mut operation).map_err(|_|"Cannot generate outfit retry identity")?;next_inventory=tokio::time::Instant::now();client.equip_outfit(outfit,operation).await?}
-                        Input::UseItem(item) => {let mut operation=[0;16];getrandom::fill(&mut operation).map_err(|_|"Cannot generate item retry identity")?;next_inventory=tokio::time::Instant::now();client.use_item(item,operation).await?}
-                        Input::AcceptQuest(quest,giver) => {next_inventory=tokio::time::Instant::now();client.accept_quest(quest,giver).await?}
-                        Input::ClaimQuest(quest) => {next_inventory=tokio::time::Instant::now();client.claim_quest(quest).await?}
+                        Input::Command(intent) => Body::Command {
+                            command: client.prepare_command(intent)?.into(),
+                        },
+                        action => {
+                            let control = client
+                                .control()
+                                .ok_or("Client has no admitted adventurer")?
+                                .clone();
+                            next_inventory = tokio::time::Instant::now();
+                            match action {
+                                Input::Respawn => Body::Respawn { life: control.life },
+                                Input::AcceptQuest(quest, giver) => Body::AcceptQuest {
+                                    life: control.life,
+                                    epoch: control.epoch,
+                                    quest,
+                                    giver: giver.into(),
+                                },
+                                Input::ClaimQuest(quest) => Body::ClaimQuest {
+                                    life: control.life,
+                                    epoch: control.epoch,
+                                    quest,
+                                },
+                                action => {
+                                    let mut operation = [0; 16];
+                                    getrandom::fill(&mut operation).map_err(
+                                        |_| "Cannot generate chamber operation identity",
+                                    )?;
+                                    match action {
+                                        Input::EquipGear(slot, item) => Body::EquipGear {
+                                            life: control.life,
+                                            epoch: control.epoch,
+                                            slot,
+                                            item,
+                                            operation,
+                                        },
+                                        Input::EquipOutfit(outfit) => Body::EquipOutfit {
+                                            life: control.life,
+                                            epoch: control.epoch,
+                                            outfit,
+                                            operation,
+                                        },
+                                        Input::UseItem(item) => Body::UseItem {
+                                            life: control.life,
+                                            epoch: control.epoch,
+                                            item,
+                                            operation,
+                                        },
+                                        _ => unreachable!(),
+                                    }
+                                }
+                            }
+                        }
                     };
-                    Update::Outcome(response)
+                    client.send(body)?;
+                    barrier = lifecycle;
                 }
-            };
-            last_response = Some(Instant::now());
-            updates
-                .send(update)
-                .await
-                .map_err(|_| "Chamber update consumer closed")?;
-            let life = client.control().map(|c| c.life);
-            if polling
-                && life.is_some()
-                && (life != inventory_life || tokio::time::Instant::now() >= next_inventory)
-            {
-                let response = client.request(Body::Inventory {}).await?;
-                if let Reply::Refused { message, .. } = &response.body {
-                    return Err(message.clone());
+            }
+            tokio::select! {
+                response = client.receive(), if client.pending() > 0 => {
+                    let (body,response) = response?;
+                    last_response = Some(Instant::now());
+                    let update = match body {
+                        Body::Snapshot {} => {
+                            snapshot_pending = false;
+                            refreshed = staged.is_some();
+                            if let Reply::Refused { message, .. } = &response.body { return Err(message.clone()); }
+                            Update::Snapshot(response)
+                        }
+                        Body::Events { after,limit } => {
+                            events_pending = false;
+                            if let Reply::Refused { message, .. } = &response.body { return Err(message.clone()); }
+                            let delivery = cursor.admit(&response,after,limit)?;
+                            Update::Events { delivery, checkpoint: cursor.checkpoint()? }
+                        }
+                        Body::Inventory {} => {
+                            inventory_pending = false;
+                            if let Reply::Refused { message, .. } = &response.body { return Err(message.clone()); }
+                            inventory_life = client.control().map(|c| c.life);
+                            next_inventory = tokio::time::Instant::now() + Duration::from_secs(1);
+                            Update::Inventory(response)
+                        }
+                        Body::Command { .. } => Update::Outcome(response),
+                        _ => { barrier = false; Update::Outcome(response) }
+                    };
+                    updates.send(update).await.map_err(|_| "Chamber update consumer closed")?;
                 }
-                inventory_life = client.control().map(|c| c.life);
-                next_inventory = tokio::time::Instant::now() + Duration::from_secs(1);
-                updates
-                    .send(Update::Inventory(response))
-                    .await
-                    .map_err(|_| "Chamber update consumer closed")?;
+                _ = interval.tick() => {
+                    // One outstanding request per read class bounds stale work and event cursors.
+                    // A staged lifecycle action drains previous IO before changing its context.
+                    if input_closed || barrier || staged.is_some() { continue; }
+                    if client.available() && !snapshot_pending {
+                        client.send(Body::Snapshot {})?;
+                        snapshot_pending = true;
+                    }
+                    if client.available() && !events_pending {
+                        client.send(Body::Events { after: cursor.after(), limit: 64 })?;
+                        events_pending = true;
+                    }
+                    let life = client.control().map(|c| c.life);
+                    if client.available() && !inventory_pending && life.is_some()
+                        && (life != inventory_life || tokio::time::Instant::now() >= next_inventory) {
+                        client.send(Body::Inventory {})?;
+                        inventory_pending = true;
+                    }
+                }
+                input = async {
+                    match deferred.take() { Some(input) => Some(input), None => inputs.recv().await }
+                }, if !input_closed && staged.is_none() && client.available() && !barrier => {
+                    match input {
+                        Some(input) => staged = Some(input),
+                        None => input_closed = true,
+                    }
+                }
             }
         }
     };
@@ -250,6 +356,156 @@ mod tests {
     };
     use rustls::pki_types::ServerName;
     use tokio::time::timeout;
+
+    #[tokio::test]
+    async fn worker_pipelines_ordered_actions_before_command_acknowledgments() {
+        use crate::service::net::{
+            read_frame,
+            tests::{gateway, tls},
+            write_frame,
+        };
+        use crate::service::wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request};
+        use tokio::net::TcpListener;
+        use tokio_rustls::TlsAcceptor;
+        let keys = [key(204), key(205), key(206)];
+        let mut gateway = gateway(&keys);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let (peer_stop, peer_stopped) = oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = TlsAcceptor::from(server_tls).accept(socket).await.unwrap();
+            let (id, hello) = gateway.open_json(0).unwrap();
+            write_frame(&mut socket, &hello, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let auth = read_frame(&mut socket, MAX_REQUEST_BYTES).await.unwrap();
+            let response = gateway.dispatch_json(id, 0, &auth).unwrap();
+            write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let mut commands = Vec::new();
+            let mut held = Vec::new();
+            while commands.len() < 3 {
+                let bytes = timeout(
+                    Duration::from_secs(3),
+                    read_frame(&mut socket, MAX_REQUEST_BYTES),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                let request = Request::decode(&bytes).unwrap();
+                if let Body::Command { command } = request.body {
+                    commands.push(command);
+                }
+                let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
+                if commands.is_empty() {
+                    write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                        .await
+                        .unwrap();
+                } else {
+                    held.push(response);
+                }
+            }
+            assert_eq!(
+                commands.iter().map(|c| c.sequence).collect::<Vec<_>>(),
+                vec![1, 2, 3]
+            );
+            assert!(matches!(
+                commands[0].intent,
+                crate::service::wire::Action::Move { .. }
+            ));
+            assert!(matches!(
+                commands[1].intent,
+                crate::service::wire::Action::Jump {}
+            ));
+            assert!(matches!(
+                commands[2].intent,
+                crate::service::wire::Action::Move { .. }
+            ));
+            for response in held {
+                write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                    .await
+                    .unwrap();
+            }
+            let _ = peer_stopped.await;
+        });
+        let client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let control = client.control().unwrap().clone();
+        let (input, inputs, updates, mut output) = channels();
+        for (index, intent) in [
+            Intent::Move {
+                axes: [0., 0.],
+                yaw: 0.,
+            },
+            Intent::Jump,
+            Intent::Move {
+                axes: [0., 0.],
+                yaw: 0.,
+            },
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            input
+                .send(Input::TrackedCommand {
+                    token: index as u64 + 1,
+                    life: control.life.into(),
+                    epoch: control.epoch,
+                    intent,
+                })
+                .await
+                .unwrap();
+        }
+        drop(input);
+        let (_stop, stopped) = oneshot::channel();
+        let worker = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            NATIVE_CADENCE,
+            inputs,
+            updates,
+            stopped,
+        ));
+        let mut bound = 0;
+        let mut outcomes = 0;
+        timeout(Duration::from_secs(4), async {
+            while outcomes < 3 {
+                match output.recv().await.unwrap() {
+                    Update::CommandBound { token, binding } => {
+                        bound += 1;
+                        assert_eq!(token, bound);
+                        assert_eq!(binding.unwrap().sequence, bound);
+                    }
+                    Update::Outcome(response) => {
+                        assert_eq!(bound, 3);
+                        assert!(matches!(response.body, Reply::Accepted));
+                        outcomes += 1;
+                    }
+                    Update::MovementSuperseded { .. } => panic!("Movement crossed a jump barrier"),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        timeout(Duration::from_secs(3), worker)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        peer_stop.send(()).unwrap();
+        peer.await.unwrap();
+    }
 
     #[test]
     fn verified_control_reuse_requires_recent_exact_life_and_epoch() {
