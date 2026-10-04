@@ -1870,8 +1870,17 @@ impl App {
         }
     }
 
+    /// Everglade draws no map and no zone banner (owner, 2026-10-04): the
+    /// glade is the screen, and the player leaves through the arch. The
+    /// banner still shows a load in progress or a failed one.
+    fn in_bare_everglade(&self) -> bool {
+        self.runtime.zone == zones::ZoneId::Everglade
+            && self.runtime.zone_load_state() == zones::LoadState::Idle
+    }
+
     fn map_visible(&self) -> bool {
-        !self.runtime.zone_loading()
+        !self.in_bare_everglade()
+            && !self.runtime.zone_loading()
             && !self.chat.open
             && !self.board_open
             && !self.gym_open
@@ -2843,7 +2852,8 @@ impl App {
                         && !self.chat.open
                         && !self.board_open
                         && !self.gym_open
-                        && self.picker.is_none(),
+                        && self.picker.is_none()
+                        && !self.in_bare_everglade(),
                 ));
                 if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.zone_frame) {
                     ui.vertices
