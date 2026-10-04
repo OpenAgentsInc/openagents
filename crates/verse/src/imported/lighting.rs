@@ -1,42 +1,10 @@
 //! Scene-controlled local illumination, cube shadow views, and atmosphere.
 use crate::render::View;
 use bytemuck::{Pod, Zeroable};
+#[cfg(test)]
 use glam::{Mat4, Vec3};
 
-pub const MAX_LIGHTS: usize = 32;
-
-/// A point source in meters. The first four sources receive cube shadow maps.
-#[derive(Clone, Copy, Debug)]
-pub struct Light {
-    pub position: Vec3,
-    pub color: Vec3,
-    pub intensity: f32,
-    pub range: f32,
-}
-/// Linear scene lighting, independent of the UI layer.
-#[derive(Clone, Debug)]
-pub struct Lighting {
-    pub ambient: Vec3,
-    pub exposure: f32,
-    pub fog: Vec3,
-    pub density: f32,
-    pub time: f32,
-    pub lights: Vec<Light>,
-    pub shadowed: usize,
-}
-impl Default for Lighting {
-    fn default() -> Self {
-        Self {
-            ambient: Vec3::splat(0.025),
-            exposure: 1.0,
-            fog: Vec3::new(0.009, 0.012, 0.016),
-            density: 0.008,
-            time: 0.0,
-            lights: vec![],
-            shadowed: 4,
-        }
-    }
-}
+pub use verse_engine::lighting::{Light, Lighting, MAX_LIGHTS};
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub(super) struct Frame {
@@ -49,17 +17,7 @@ pub(super) struct Frame {
     pub shadow: [[[f32; 4]; 4]; 24],
 }
 pub(super) fn frame(view: View, lighting: &Lighting) -> Result<Frame, String> {
-    if lighting.lights.len() > MAX_LIGHTS
-        || !lighting.ambient.is_finite()
-        || !lighting.fog.is_finite()
-        || !lighting.exposure.is_finite()
-        || lighting.exposure <= 0.0
-        || !lighting.density.is_finite()
-        || lighting.density < 0.0
-        || !lighting.time.is_finite()
-    {
-        return Err("Invalid imported lighting".into());
-    }
+    lighting.validate(view)?;
     let mut f = Frame::zeroed();
     f.view = view.view_proj.to_cols_array_2d();
     f.eye = [view.eye.x, view.eye.y, view.eye.z, 0.0];
@@ -81,29 +39,12 @@ pub(super) fn frame(view: View, lighting: &Lighting) -> Result<Frame, String> {
         lighting.lights.len().min(lighting.shadowed).min(4) as f32,
         0.0,
     ];
-    let directions = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z];
-    let ups = [-Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z, -Vec3::Y, -Vec3::Y];
     for (i, l) in lighting.lights.iter().enumerate() {
-        if !l.position.is_finite()
-            || !l.color.is_finite()
-            || !l.intensity.is_finite()
-            || l.intensity < 0.0
-            || !l.range.is_finite()
-            || l.range <= 0.2
-        {
-            return Err("Invalid point source".into());
-        }
         f.lights[i * 2] = [l.position.x, l.position.y, l.position.z, l.range];
-        let flicker = 1.0
-            + 0.04 * (lighting.time * 13.0 + i as f32).sin()
-            + 0.025 * (lighting.time * 19.0 + i as f32 * 2.0).sin();
-        f.lights[i * 2 + 1] = [l.color.x, l.color.y, l.color.z, l.intensity * flicker];
+        f.lights[i * 2 + 1] = [l.color.x, l.color.y, l.color.z, l.sample(lighting.time, i)?];
         if i < 4 {
-            for face in 0..6 {
-                f.shadow[i * 6 + face] =
-                    (Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 1.0, 0.15, l.range)
-                        * Mat4::look_to_rh(l.position, directions[face], ups[face]))
-                    .to_cols_array_2d();
+            for (face, matrix) in l.shadow_views()?.iter().enumerate() {
+                f.shadow[i * 6 + face] = matrix.to_cols_array_2d();
             }
         }
     }

@@ -14,6 +14,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
+#[cfg(test)]
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 #[cfg(feature = "desktop")]
@@ -45,14 +46,7 @@ pub const BARE_FOG_START: f32 = 6.0;
 /// so the grid ends in the field without a visible border.
 pub const BARE_FOG_END: f32 = 110.0;
 
-/// Where the camera is for one frame.
-#[derive(Clone, Copy, Debug)]
-pub struct View {
-    /// Projection times view.
-    pub view_proj: Mat4,
-    /// Eye position, for fog.
-    pub eye: Vec3,
-}
+pub use verse_engine::presentation::View;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]

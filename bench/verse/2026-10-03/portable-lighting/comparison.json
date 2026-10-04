@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.verse.pixel-comparison.v1",
+  "files": [
+    {
+      "file": "player-dead.png",
+      "previous_sha256": "d44bc31c5812dfae2e9495f1ee4ddc4f1e6a43e147247f402e9a04ca455c2360",
+      "current_sha256": "d44bc31c5812dfae2e9495f1ee4ddc4f1e6a43e147247f402e9a04ca455c2360",
+      "unchanged": true
+    },
+    {
+      "file": "player-respawned.png",
+      "previous_sha256": "f14b5f2229bb35e099d62457f15023ecefc87d6999a45058339fc11c96a7e502",
+      "current_sha256": "f14b5f2229bb35e099d62457f15023ecefc87d6999a45058339fc11c96a7e502",
+      "unchanged": true
+    }
+  ]
+}

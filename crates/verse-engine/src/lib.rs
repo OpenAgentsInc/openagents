@@ -6,6 +6,7 @@ pub mod assets;
 pub mod core;
 pub mod director;
 pub mod inventory;
+pub mod lighting;
 #[cfg(feature = "asset-io")]
 pub mod loading;
 pub mod motion;

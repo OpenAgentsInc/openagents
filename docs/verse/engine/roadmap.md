@@ -198,6 +198,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10448](https://github.com/OpenAgentsInc/openagents/issues/10448) moves instance presentation and catalog-bound frame extraction into the headless engine. Native drawing consumes the portable contract, preserving borrowed values, life identities, and animation selections. Extraction bounds instance counts and rejects missing models and nonfinite transforms, animation times, or emissions; submission rejects stale catalogs even for empty frames. Camera, lighting, UI extraction, complete render-world scheduling, and other VE-3 requirements remain.
 
+[#10449](https://github.com/OpenAgentsInc/openagents/issues/10449) extracts camera and local-light values, admission, authored flicker, and cube-shadow camera construction into the headless engine. Native uniform packing consumes those contracts with its existing shader layout. Portable tests cover outward cube projections, capacity, nonfinite camera data, and derived intensity/projection overflow. The [native comparison](../../../bench/verse/2026-10-03/portable-lighting/comparison.json) confirms byte-identical death and respawn captures after extraction. UI extraction, generic render-world scheduling, material schemas, and service acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

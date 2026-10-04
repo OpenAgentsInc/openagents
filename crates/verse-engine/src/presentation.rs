@@ -6,6 +6,21 @@ use crate::{
 };
 use glam::{Mat4, Vec3};
 
+/// A camera projection and eye position in the presentation coordinate frame.
+#[derive(Clone, Copy, Debug)]
+pub struct View {
+    pub view_proj: Mat4,
+    pub eye: Vec3,
+}
+impl View {
+    pub fn validate(self) -> Result<(), String> {
+        if !self.view_proj.is_finite() || !self.eye.is_finite() {
+            return Err("Camera contains nonfinite values".into());
+        }
+        Ok(())
+    }
+}
+
 /// Presentation values contain no GPU resources or mutable simulation authority.
 #[derive(Clone, Debug)]
 pub struct Instance {
