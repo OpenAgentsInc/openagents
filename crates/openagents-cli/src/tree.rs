@@ -183,6 +183,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             alias: true,
         },
         group("zone", Some(crate::zone::USAGE), crate::zone::EFFECTS),
+        group(
+            "chamber",
+            Some(crate::chamber::USAGE),
+            crate::chamber::EFFECTS,
+        ),
         group("sov", Some(crate::sov::USAGE), crate::sov::EFFECTS),
         group("eval", Some(crate::eval::USAGE), crate::eval::EFFECTS),
         group("gym", Some(crate::gym::USAGE), crate::gym::EFFECTS),

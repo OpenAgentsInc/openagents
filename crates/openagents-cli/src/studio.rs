@@ -39,11 +39,18 @@ pub(crate) const USAGE: &str = "usage: openagents studio COMMAND [OPTIONS]
   down            Stop and undo only what up started and changed.
   seat set NAME --route ROUTE [--role ROLE] [--look LOOK] [--desk N]
                   Add a seat or change one: a lead plans goals, a worker
-                  (the default ROLE) works plan entries. ROUTE is PROVIDER:MODEL, the
-                  form the host's auto-start routes use.
+                  (the default ROLE) works plan entries. ROUTE is
+                  PROVIDER[/ENGINE]:MODEL, the form the host's auto-start
+                  routes use; a claude or codex route may name its engine,
+                  session or loop, which overrides the owner's host-wide
+                  engine setting for the seat's tasks.
   seat list       Every seat with its route, desk, and current task.
   seat remove NAME
                   Remove a seat that holds no task waiting to start.
+  lead-review on|off|status
+                  Whether the lead reviews a worker's green change before
+                  the person's merge decision (on by default), or print
+                  the current setting.
   seat pause|resume|stop SEAT
                   Pause a seat (it keeps its task and takes no new one),
                   resume it, or stop it: cancel its task, return that task
@@ -120,6 +127,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("seat set", Effect::LocalWrite),
     Declared::computer("seat list", Effect::ReadOnly),
     Declared::computer("seat remove", Effect::LocalWrite),
+    Declared::computer("lead-review on", Effect::LocalWrite),
+    Declared::computer("lead-review off", Effect::LocalWrite),
+    Declared::computer("lead-review status", Effect::ReadOnly),
     Declared::computer("seat pause", Effect::Publishes),
     Declared::computer("seat resume", Effect::Publishes),
     Declared::computer("seat stop", Effect::Publishes),
@@ -197,6 +207,17 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             });
             Ok(())
         }),
+        ["lead-review", "status"] => read_studio(&store, &root).map(|studio| {
+            lead_review(output, studio.as_ref().is_none_or(Studio::lead_review));
+        }),
+        ["lead-review", value @ ("on" | "off")] => {
+            open(&store, &root).and_then(|(_, mut studio)| {
+                let on = *value == "on";
+                studio.set_lead_review(on).map_err(|e| e.to_string())?;
+                lead_review(output, on);
+                Ok(())
+            })
+        }
         ["goal", "submit", text @ ..] if !text.is_empty() => {
             goal_submit(output, &store, &root, &text.join(" "), &args, now)
         }
@@ -234,6 +255,25 @@ fn open(store: &Path, root: &Path) -> Result<(Store, Studio), String> {
         .with_host_root(root)
         .with_worktrees(coder::task::studio::git::worktrees_dir(root));
     Ok((tasks, studio))
+}
+
+/// The studio the store holds, or none when it holds no studio (nothing
+/// is created to read it).
+fn read_studio(store: &Path, root: &Path) -> Result<Option<Studio>, String> {
+    if !Studio::present(store) {
+        return Ok(None);
+    }
+    open(store, root).map(|(_, studio)| Some(studio))
+}
+
+fn lead_review(output: &Output, on: bool) {
+    output.emit(&json!({"lead_review": on}), |_| {
+        if on {
+            "The lead reviews each green change before the merge decision.".into()
+        } else {
+            "Green changes go to the merge decision without the lead's review.".into()
+        }
+    });
 }
 
 /// The studio's view after a reconciliation, or an empty one when the

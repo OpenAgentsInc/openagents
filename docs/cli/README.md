@@ -378,7 +378,17 @@ openagents studio seat list
 openagents --json studio goal list
 openagents studio plan list GOAL
 openagents studio memory add "Run cargo fmt before committing." --kind convention
+openagents studio lead-review off
 ```
+
+A route is `PROVIDER[/ENGINE]:MODEL`. A `claude` or `codex` route may name
+its engine: `session` runs the seat's tasks in one Claude Code or Codex CLI
+session, `loop` runs Microcoder's loop on the provider. The engine
+overrides the owner's host-wide `coder.claude` or `coder.codex` setting for
+that seat's tasks, and the host refuses a `session` route under any access
+but full. `openagents studio lead-review on|off|status` sets or reads whether
+the lead reviews a worker's green change before the person's merge decision;
+it is on by default.
 
 The resident host runs the same reconciliation with each auto-start sweep;
 `openagents studio sync` runs it now.
@@ -495,6 +505,60 @@ The first change saves an explicit list in
 so removing the OpenAgents referee stays effective across restarts.
 Portals, replays, and captures stay desktop-only: they are local
 demonstrations with no event on the wire to drive.
+
+## Chamber (`openagents chamber`, the authoritative world)
+
+The chamber is the host-owned 30 Hz world the Verse desktop plays combat in
+(`verse-world::service`, [networking](../verse/networking.md)): TLS over
+TCP, framed JSON, every command signed by the player's key and admitted
+by the host's enrollment list. NIP-MV presence (`openagents verse`) says
+who is in the world; the chamber says where their adventurer is, what it
+hit, and what it carries. `openagents chamber` hosts one and plays in one
+from the command line:
+
+```sh
+openagents chamber pack ~/chamber/assets           # the compiled ritual pack
+openagents chamber tls ~/chamber                   # cert.der and key.der
+openagents key show --as primary                   # a key to enroll
+openagents chamber host ~/chamber/host.json        # until stopped
+```
+
+`host.json` is the host's configuration: `listen`, `instance`, `scene`
+(`assets/verse/original/ritual.json`), `pack`, `certificate_der`,
+`private_key_der`, and `enrollments`, each a public key with a role
+(`{"type":"primary"}`, `{"type":"player","spawn":[3,0,-22]}`, or
+`{"type":"spectator"}`). `state_dir` makes the host durable across
+restarts. The host prints a `listening` line with the content identity its
+clients must present.
+
+Clients name the host with `--to HOST:PORT --instance N --trust cert.der
+[--server-name NAME] [--content HEX]`, or put the same fields in a file and
+pass `--chamber FILE`; `--as PROFILE` picks the key (the enrolled one):
+
+```sh
+openagents chamber status --chamber client.json --as player     # admission, tick, actors
+openagents chamber move 0,1 --ticks 30 --chamber client.json --as player
+openagents chamber jump --chamber client.json --as player
+openagents chamber cast magic-missile --target 2 --chamber client.json --as player
+openagents chamber cast fireball --aim 1,-1 --chamber client.json --as player
+openagents chamber respawn --chamber client.json --as player
+openagents chamber inventory --chamber client.json --as player
+openagents chamber use ITEM | equip main-hand ITEM | equip outfit ID
+openagents chamber quest accept ID --giver ACTOR | quest claim ID
+openagents --json chamber events --after 0 --limit 64 --chamber client.json --as player
+openagents --json chamber watch --wait 30 --hz 2 --chamber client.json --as player
+```
+
+Every refusal is the host's own rule, printed as it was sent: a command
+before the scene's opening cut ends, a cast while another is in flight, a
+target that is not a living hostile, a respawn while alive, and a row-two
+catalog spell from a remote player (the host serves those only to its
+local caster). A spectator enrollment reads `status`, `snapshot`, `events`,
+and `watch` and holds no adventurer. `events` pages the committed authority
+log (dialogue, camera handoff, damage, death, respawn) by serial, and
+`watch` prints snapshots and new events as NDJSON until the wait ends.
+Host discovery, NIP-HOST grants, and Nostr identity binding for the
+chamber are the convergence work tracked in #10552.
 
 ## Zone (Lagrange construction)
 
