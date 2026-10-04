@@ -50,11 +50,17 @@ pub const SPACING: f64 = 2.;
 /// Dexterity modifier of the player wizard: chamber tuning.
 pub const PLAYER_DEXTERITY: i32 = 2;
 /// Game ticks between flame cues on a falling meteor.
-pub const TRAIL_EVERY: u64 = 4;
+pub const TRAIL_EVERY: u64 = 9;
 /// Game ticks between flame cues on burning objects.
 pub const FLAMES_EVERY: u64 = 12;
 /// Burning objects that get a flame cue each time.
-pub const MAX_FLAMES: usize = 8;
+pub const MAX_FLAMES: usize = 4;
+/// Small flame cues alive at once, trails and fires together. Each draws
+/// as about seven render instances for 0.6 s, and a frame holds at most
+/// 256 instances, shared with characters and props.
+pub const MAX_FLAME_CUES: usize = 8;
+/// How long the renderer draws an impact cue, s.
+pub const CUE_LIFETIME: f32 = 0.6;
 /// Detonations kept for presentation and evidence.
 pub const MAX_IMPACTS: usize = 32;
 /// Live casts at once.
@@ -638,18 +644,31 @@ fn resolve(game: &mut Game, impact: &Impact, saves: &[Save]) -> Result<(), Strin
     Ok(())
 }
 
+/// Small flame cues alive now, of every source.
+pub fn live_flame_cues(game: &Game) -> usize {
+    game.impacts
+        .iter()
+        .filter(|(_, at, kind)| *kind == FLAME_CUE && game.time - at < CUE_LIFETIME)
+        .count()
+}
+
 /// Flame cues along falling meteors and on a rotating handful of burning
-/// objects.
+/// objects, within [`MAX_FLAME_CUES`].
 fn cues(game: &mut Game, state: &State) {
+    let mut room = MAX_FLAME_CUES.saturating_sub(live_flame_cues(game));
     if state.frames % TRAIL_EVERY == 0 {
         for cast in &state.casts {
             for body in cast.swarm.falling() {
+                if room == 0 {
+                    return;
+                }
                 let at = game.spells.world[body].pos.as_vec3();
                 game.impacts.push((at, game.time, FLAME_CUE));
+                room -= 1;
             }
         }
     }
-    if state.frames % FLAMES_EVERY != 0 {
+    if state.frames % FLAMES_EVERY != 0 || room == 0 {
         return;
     }
     let tick = game.spells.world.tick;
@@ -663,7 +682,7 @@ fn cues(game: &mut Game, state: &State) {
         return;
     }
     let start = (state.frames / FLAMES_EVERY) as usize * MAX_FLAMES % burning.len();
-    for n in 0..MAX_FLAMES.min(burning.len()) {
+    for n in 0..MAX_FLAMES.min(burning.len()).min(room) {
         let at = burning[(start + n) % burning.len()];
         game.impacts.push((at, game.time, FLAME_CUE));
     }
@@ -701,54 +720,46 @@ pub fn scenario() -> crate::playground::Scenario {
         populate: |game, _| {
             use super::{PropKind, PropSpec};
             let crate_spec = PropSpec::reference(PropKind::Crate);
-            // Two crate pyramids (3, 2, 1) beside the first point.
-            for (stack, base) in [
-                (1, Vec3::new(-4.4, 0., -19.0)),
-                (2, Vec3::new(-8.6, 0., -16.0)),
-            ] {
-                for row in 0..3 {
-                    for i in 0..3 - row {
-                        let x = (i as f32 - (2 - row) as f32 * 0.5) * 0.61;
-                        let y = 0.3 + 0.602 * row as f32;
-                        game.spawn_prop(
-                            &format!("Crate {stack}-{}-{}", row + 1, i + 1),
-                            crate_spec.clone(),
-                            base + Vec3::new(x, y, 0.),
-                            0.,
-                        )?;
-                    }
-                }
-            }
-            // A barrel pyramid (3, 2, 1) east of the third point.
-            let barrel = PropSpec::reference(PropKind::Barrel);
+            // Props are few and large: every piece and every flame is a
+            // render instance, and a frame holds at most 256.
+            // A crate pyramid (3, 2, 1) beside the first point.
             for row in 0..3 {
                 for i in 0..3 - row {
-                    let x = 6.6 + (i as f32 - (2 - row) as f32 * 0.5) * 0.65;
+                    let x = (i as f32 - (2 - row) as f32 * 0.5) * 0.61;
                     game.spawn_prop(
-                        &format!("Barrel {}-{}", row + 1, i + 1),
-                        barrel.clone(),
-                        Vec3::new(x, 0.45 + 0.902 * row as f32, -20.3),
+                        &format!("Crate {}-{}", row + 1, i + 1),
+                        crate_spec.clone(),
+                        Vec3::new(-4.4 + x, 0.3 + 0.602 * row as f32, -19.0),
                         0.,
                     )?;
                 }
             }
-            // A wooden fence of five boards west of it.
+            // A barrel pyramid (2, 1) east of the third point.
+            let barrel = PropSpec::reference(PropKind::Barrel);
+            for (name, x, y) in [
+                ("Barrel 1-1", 6.275, 0.45),
+                ("Barrel 1-2", 6.925, 0.45),
+                ("Barrel 2-1", 6.6, 1.352),
+            ] {
+                game.spawn_prop(name, barrel.clone(), Vec3::new(x, y, -20.3), 0.)?;
+            }
+            // A wooden fence of three boards west of it.
             let board = PropSpec {
-                dimensions: glam::DVec3::new(0.12, 1.1, 0.9),
-                mass: 12.,
+                dimensions: glam::DVec3::new(0.12, 1.1, 1.2),
+                mass: 16.,
                 ..PropSpec::reference(PropKind::Crate)
             };
-            for n in 0..5 {
+            for n in 0..3 {
                 game.spawn_prop(
                     &format!("Fence board {}", n + 1),
                     board.clone(),
-                    Vec3::new(1.4, 0.55, -21.8 + 0.9 * n as f32),
+                    Vec3::new(1.4, 0.55, -21.6 + 1.2 * n as f32),
                     0.,
                 )?;
             }
-            // A five-block stone tower beyond the second point.
+            // A four-block stone tower beyond the second point.
             let block = PropSpec::reference(PropKind::StoneBlock);
-            for n in 0..5 {
+            for n in 0..4 {
                 game.spawn_prop(
                     &format!("Tower block {}", n + 1),
                     block.clone(),

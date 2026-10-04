@@ -213,6 +213,48 @@ fn a_checkpoint_mid_fall_replays_identically() {
     );
 }
 
+/// Render instances a frame of `game` needs, counted the way the native
+/// chamber presentation draws them: one per character plus the bow, one
+/// per live prop, an impact and six sparks per small cue, an impact and
+/// sixteen sparks per blast, and four per spell projectile.
+fn presentation_instances(game: &Game) -> usize {
+    let actors = game.frame().actors.len() + 1;
+    let props = game.spells.props.iter().filter(|p| !p.removed).count();
+    let cues: usize = game
+        .impacts
+        .iter()
+        .filter(|(_, at, _)| game.time - at < CUE_LIFETIME)
+        .map(|(_, _, kind)| match *kind {
+            3 => 0,
+            BLAST_CUE => 17,
+            _ => 7,
+        })
+        .sum();
+    actors + props + cues + 4 * game.snapshot().projectiles.len()
+}
+
+#[test]
+fn the_busiest_playground_frame_stays_within_the_instance_budget() {
+    let mut run = Run::new(scenario()).unwrap();
+    let mut busiest = (0, 0.);
+    while !run.done() {
+        run.advance().unwrap();
+        let count = presentation_instances(&run.game);
+        if count > busiest.0 {
+            busiest = (count, run.game.time);
+        }
+    }
+    // The engine refuses a frame over 256 instances; leave room for the
+    // hall and anything else on screen.
+    assert!(
+        busiest.0 <= 200,
+        "{} instances at {:.2} s",
+        busiest.0,
+        busiest.1
+    );
+    assert!(live_flame_cues(run.result()) <= MAX_FLAME_CUES);
+}
+
 #[test]
 fn the_playground_scenario_passes_its_check() {
     let mut run = Run::new(scenario()).unwrap();

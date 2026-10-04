@@ -80,9 +80,10 @@ pub const BURN_DAMAGE: i32 = 3;
 pub const BURN_INTERVAL: f64 = 1.0;
 /// How long an object burns, s. Fire spread is out of scope.
 pub const BURN_DURATION: f64 = 30.0;
-/// Debris chunks per broken object: the four quarters of its bounds,
-/// split across its two horizontal axes.
-pub const DEBRIS_CHUNKS: usize = 4;
+/// Debris chunks per broken object: the two halves of its bounds across
+/// its longer horizontal axis. Few pieces keep a busy frame within the
+/// renderer's instance budget.
+pub const DEBRIS_CHUNKS: usize = 2;
 /// Ledger term for every blast impulse.
 pub const LEDGER_TERM: &str = "spell:meteor_swarm";
 /// The overlay's SRD line.
@@ -709,11 +710,11 @@ pub struct Chunk {
     pub material: physics::Material,
 }
 
-/// The debris of `body`: the four quarters of its first collider's bounds
-/// across the collider's x and z axes. Each chunk carries a quarter of the
-/// mass and the rigid velocity at its center, so linear momentum is
-/// preserved exactly, and angular momentum too for a box, since the
-/// quarters tile it.
+/// The debris of `body`: the two halves of its first collider's bounds
+/// across the longer of the collider's x and z axes. Each chunk carries
+/// half the mass and the rigid velocity at its center, so linear momentum
+/// is preserved exactly, and angular momentum too for a box, since the
+/// halves tile it.
 #[must_use]
 pub fn debris(world: &World, body: BodyId) -> Vec<Chunk> {
     let parent = world[body];
@@ -721,16 +722,16 @@ pub fn debris(world: &World, body: BodyId) -> Vec<Chunk> {
         return Vec::new();
     };
     let full = bounds(collider.shape);
-    let half = DVec3::new(full.x / 2.0, full.y, full.z / 2.0);
+    let axis = if full.x >= full.z { DVec3::X } else { DVec3::Z };
+    let half = full - axis * (full.dot(axis) / 2.0);
     let mass = parent.mass / DEBRIS_CHUNKS as f64;
     let omega = parent.omega_world();
     let rotation = parent.orientation * collider.rotation;
     let center = parent.pos + parent.orientation * collider.offset;
-    (0..DEBRIS_CHUNKS)
-        .map(|corner| {
-            let sign = |bit: usize| if corner & bit == 0 { -1.0 } else { 1.0 };
-            let local = DVec3::new(sign(1) * half.x, 0.0, sign(2) * half.z);
-            let at = center + rotation * local;
+    [-1.0, 1.0]
+        .into_iter()
+        .map(|sign| {
+            let at = center + rotation * (axis * sign * half.dot(axis));
             let mut chunk = Body::new(mass, Body::box_inertia(mass, half * 2.0), at);
             chunk.orientation = rotation;
             chunk.prev_orientation = rotation;
