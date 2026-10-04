@@ -1717,17 +1717,42 @@ impl Renderer {
                     pass.set_pipeline(&self.shadow_pipeline);
                     pass.set_bind_group(0, &self.shadow_groups[layer], &[]);
                     let shadow_view = Mat4::from_cols_array_2d(&frame.shadow[layer]);
-                    pass.execute_bundles(instances.iter().enumerate().filter_map(|(i, _)| {
+                    let mut groups: Vec<(verse_engine::residency::ModelHandle, Vec<usize>)> =
+                        Vec::new();
+                    for (i, model) in resolved.models().iter().enumerate() {
                         let actor = &self.actors[i + 1];
                         if actor.shadow_count == 0
                             || frozen[i].is_some()
                             || actor_bounds[i].is_some_and(|bounds| !bounds.visible(shadow_view))
                         {
-                            return None;
+                            continue;
                         }
-                        shadow_draws += actor.shadow_count;
-                        Some(actor.shadow_bundles[layer].as_ref().unwrap())
-                    }));
+                        if let Some((_, actors)) = groups.iter_mut().find(|(key, _)| key == model) {
+                            actors.push(i + 1);
+                        } else {
+                            groups.push((*model, vec![i + 1]));
+                        }
+                    }
+                    // Depth-only draws can share geometry and material state across actors.
+                    // Each draw retains its own skeletal palette and model transform.
+                    for (model, actors) in groups {
+                        for batch in self.models[&model]
+                            .iter()
+                            .filter(|batch| batch.blend < 2 && !batch.emissive)
+                        {
+                            pass.set_bind_group(1, &self.shadow_materials[&batch.material], &[]);
+                            pass.set_vertex_buffer(0, batch.vertices.slice(..));
+                            pass.set_index_buffer(
+                                batch.indices.slice(..),
+                                wgpu::IndexFormat::Uint32,
+                            );
+                            for actor in &actors {
+                                pass.set_bind_group(2, &self.actors[*actor].group, &[]);
+                                pass.draw_indexed(0..batch.count, 0, 0..1);
+                                shadow_draws += 1;
+                            }
+                        }
+                    }
                 }
                 ChamberPass::WorldResolve => {
                     shadows_encoded = Instant::now();

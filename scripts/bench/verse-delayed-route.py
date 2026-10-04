@@ -13,6 +13,7 @@ async def run(args):
              "jitter_ms": args.jitter_ms, "connections": 0,
              "upstream_bytes": 0, "downstream_bytes": 0,
              "forwarded_chunks": 0, "errors": 0, "refused_connections": 0,
+             "error_details": [], "omitted_error_details": 0,
              "limits": ["Delay applies to each TCP read chunk, not decrypted game messages.",
                         "TCP preserves byte order; this fixture does not simulate packet loss."]}
     stopped = asyncio.Event()
@@ -20,6 +21,16 @@ async def run(args):
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stopped.set)
+
+    def record_error(error, direction):
+        stats["errors"] += 1
+        if len(stats["error_details"]) < 128:
+            stats["error_details"].append({"elapsed_seconds": time.monotonic() - started,
+                                           "direction": direction,
+                                           "type": type(error).__name__,
+                                           "errno": getattr(error, "errno", None)})
+        else:
+            stats["omitted_error_details"] += 1
 
     async def copy(reader, writer, direction):
         count = 0
@@ -41,21 +52,24 @@ async def run(args):
         tasks.add(task)
         upstream = None
         stats["connections"] += 1
+        direction = "connect"
         try:
             remote, upstream = await asyncio.wait_for(
                 asyncio.open_connection("127.0.0.1", args.destination_port), 5)
             pipes = [asyncio.create_task(copy(reader, upstream, "upstream")),
                      asyncio.create_task(copy(remote, writer, "downstream"))]
+            direction = "forward"
             try:
                 done, pending = await asyncio.wait(pipes, return_when=asyncio.FIRST_COMPLETED)
                 for finished in done:
+                    direction = "upstream" if finished is pipes[0] else "downstream"
                     finished.result()
             finally:
                 for pipe in pipes:
                     pipe.cancel()
                 await asyncio.gather(*pipes, return_exceptions=True)
-        except (OSError, asyncio.TimeoutError):
-            stats["errors"] += 1
+        except (OSError, asyncio.TimeoutError) as error:
+            record_error(error, direction)
         finally:
             writer.close()
             if upstream:
