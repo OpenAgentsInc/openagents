@@ -2,7 +2,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--listen ADDRESS] \
-[--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT]";
+[--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
+[--everglade DIRECTORY]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,6 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--public-host" => config.public_hosts.push(value),
             "--pay-host" => pay_host = Some(value),
             "--upstream" => upstream = Some(value),
+            "--everglade" => config.everglade = Some(PathBuf::from(value)),
             _ => return Err(USAGE.into()),
         }
     }

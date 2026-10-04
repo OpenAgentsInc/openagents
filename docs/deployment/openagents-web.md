@@ -229,3 +229,26 @@ coder-web-bbed5d89af=100`). `/`, `/live`, `/stats`, `/efficiency` and
 ## 2026-10-03: coder-web-6522f448de
 
 Serves `/.well-known/agent-card.json`, the skills index and `SKILL.md` from the discovery crate (#10318, 6522f448de). Applied as tag `new` from the live spec (pay-host VPC and env kept), checked `/`, `/live`, `/stats`, `/efficiency`, `/api/stats` and the agent card at 200, then moved 100% of traffic. `openagents discover --origin https://openagents.com` reads the live card. Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-530b207410=100`.
+
+## Everglade at `/everglade` (#10525)
+
+The image carries the Everglade web build (#10524) at `/srv/everglade`: a
+Dockerfile stage adds the `wasm32-unknown-unknown` target, installs
+`wasm-bindgen-cli` at the `wasm-bindgen` version `Cargo.lock` pins, runs
+`scripts/build-everglade-web.sh` into a directory, adds the pinned pack
+(`assets/verse/everglade/*.vtp`) under its `pack/`, and the runtime image
+copies that directory to `/srv/everglade`. `web.gcloudignore` lets through `assets/`, `.cargo/`, and the
+build script for that stage. The server serves the directory given by
+`--everglade DIR`, which the image's `CMD` passes. The live revision spec
+sets the `web` container's arguments itself, so a deploy that should serve
+Everglade adds `--everglade` and `/srv/everglade` to them; without it,
+`/everglade` says Everglade is unavailable and every other page is
+unchanged.
+
+The page runs one same-origin loader (`static/everglade.js`) under a policy
+that allows same-origin scripts and requests and `'wasm-unsafe-eval'`; no
+other page's policy changed. Build files (`everglade_web.js`,
+`everglade_web_bg.wasm`) are cached for five minutes, since their names
+carry no digest; the pack (`/everglade/pack/<PACK_SHA256>.vtp`) is cached
+for a year as immutable. After a deploy, check `/everglade` and the pack on
+the `new` tag before moving traffic.

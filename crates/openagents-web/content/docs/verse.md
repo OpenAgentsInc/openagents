@@ -34,6 +34,12 @@ phones.
 The Verse page is on macOS and Linux, not Windows. **Reduce motion** in
 Settings keeps the watching camera still.
 
+## In your browser
+
+[Everglade](/everglade), a forest glade with a small workshop, runs on
+this site with nothing to install. Its first download is large; your
+browser keeps it after that. Move and look as on your Mac.
+
 ## Shared things
 
 Walk into the ball to push it; it rolls with real physics. Everyone shares

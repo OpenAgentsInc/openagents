@@ -6,12 +6,14 @@ download page, and the landing page for the pairing QR code. It also serves a
 local, read-only task browser at `/app`.
 
 The site is drawn in four intensities of white on
-near-black (`src/palette.rs`). Two pages run a script, each under a
+near-black (`src/palette.rs`). Three pages run a script, each under a
 policy that allows its one same-site script and same-origin requests: the
-homepage's terminal (`static/ask.js`, requests to `/ask`) and `/live`'s
+homepage's terminal (`static/ask.js`, requests to `/ask`), `/live`'s
 map (`static/flow.js`, requests to `/api/flow/*`, drawn on a canvas in the
-desktop map's colors); every other response carries a content security
-policy that allows none.
+desktop map's colors), and `/everglade`'s loader (`static/everglade.js`),
+whose policy also allows `'wasm-unsafe-eval'` to compile the Everglade
+build; every other response carries a content security policy that allows
+none.
 
 The pages follow the private Coder service's site (`bins/coder-serve` in
 the `coder` repository), reimplemented here. openagents.com still deploys
@@ -35,6 +37,7 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--store DIRECTORY` | `~/.openagents/tasks` | The task store `/app` reads. It is never created. |
 | `--listen ADDRESS` | `127.0.0.1:4300` | The address to bind. |
 | `--public-host HOST` | none | Another `Host` header the public pages answer, such as `openagents.com`. Repeatable. The task browser still answers only the local hosts. |
+| `--everglade DIRECTORY` | none | The Everglade web build (`scripts/build-everglade-web.sh`'s output, `everglade_web.js` and `everglade_web_bg.wasm`) with the pinned pack under `pack/`, served at `/everglade`. Without it, `/everglade` says Everglade is unavailable. |
 
 A development server needs no secrets and makes no network requests:
 everything it serves is compiled in or read from this repository.
@@ -49,6 +52,7 @@ everything it serves is compiled in or read from this repository.
 | `POST /ask` | The homepage terminal's questions (`src/ask.rs`, #10106): a NIP-CJ job to the OpenAgents chat worker through `relay.openagents.com`, surface `web`, signed with a key derived from the visitor's `oa_visitor` cookie and the server's secret (`OPENAGENTS_WEB_ASK_SALT`, random per process when unset). The worker answers about OpenAgents only and never offers Coder, a computer, a command, or a screen. One question at a time and 6 a minute per visitor, 32 waiting at once for everyone, besides the worker's quotas. Streams newline-delimited JSON | Answers from the live chat worker. |
 | `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, download (`/docs/install` redirects to `/docs/download`), connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, the Grid (with its screenshot, `static/verse-grid.jpg`, captured from the live relay with `crates/verse/examples/overlook_capture.rs`), privacy and security, and help | Renders. |
 | `/live` | `src/pages/live.rs` and `static/flow.js` (#10197): the route map drawn from the pay host's flow snapshot, each streamed event animated as the desktop deck's `routes-live` scene does (white request out, gold payment back, gold share to the author, gold payout to the wallet, a ring for a bonus), a totals ticker, the last event's time, and the recent events. Reads `/api/flow/snapshot` and `/api/flow/stream` on this origin (#10195); never draws synthetic traffic. The mapping's tests are `static/flow.test.js` (`node --test`) | Says the flow stream is unreachable until `/api/flow/*` answers. |
+| `/everglade` | `src/pages/everglade.rs` and `static/everglade.js` (#10525): a canvas and a loader that imports the Everglade web build's glue (#10524) and calls its `init()`. `/everglade/{file}` serves the `.js` and `.wasm` files in the `--everglade` directory (five minutes' cache) and `/everglade/pack/{sha256}.vtp` the digest-named pack in its `pack/` (a year's immutable cache); nothing else on disk. Policy: same-origin scripts and requests and `'wasm-unsafe-eval'`. The Verse guide links it. The glue's file name is `GLUE` in `src/pages/everglade.rs` and must match the build script's output | Says Everglade is unavailable unless started with `--everglade DIR`. |
 | `/stats` | `src/pages/stats.rs` (#10196): drawn on the server from the pay host's public `/stats` and `/flow/snapshot` (#10195): received, paid out, pending, calls, and author earnings; plugins (calls, earned, paid out); authors (earned, paid out, pending); the 20 most recent author payouts; 24 hour and 30 day bars of sats received (inline SVG); the reconciliation state and the last event's time. Linked from `/live` and linking back. No script; public fields only, never a payer | Says the statistics are unreachable without a pay host, and "No payments yet" with an empty ledger. |
 | `/terms`, `/privacy` | `content/legal/*.md`, the published text (2026-09-03), compiled in | Renders. |
 | `/connect` | Landing page for `https://openagents.com/connect#<code>` | Renders; no script, no referrer. |
@@ -92,7 +96,10 @@ cargo test -p openagents-web
 
 The tests check that every public page answers `200` on a development
 server with the header, the footer's links to the terms and the policy, and
-no script except the homepage terminal's and `/live`'s map (`/stats` is drawn on the server); the homepage's single download
+no script except the homepage terminal's, `/live`'s map, and
+`/everglade`'s loader (`/stats` is drawn on the server); `/everglade`'s
+policy, its build files' and pack's content types and caches, and that no
+other file or path outside its directory is served; the homepage's single download
 link and its terminal; The Grid guide's screenshot; `/ask`'s stream, cookie,
 bounds, and one-at-a-time rule, against an in-process door;
 the download page and the `/install`, `/desktop`, and `/docs/install` redirects; that the legal pages carry the

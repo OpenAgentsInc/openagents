@@ -4,10 +4,11 @@
 //! page, the terms and the privacy policy, the pairing link's landing page,
 //! and profiles) and the local, read-only task browser at `/app`.
 //!
-//! Two pages run a script: the homepage's terminal (`static/ask.js`), which
-//! posts questions to [`ask`] (#10106), and `/live`'s map of the flow
-//! stream (`static/flow.js`, #10197). Pages that need the production account store
-//! read through [`backend::Backend`]; a
+//! Three pages run a script: the homepage's terminal (`static/ask.js`),
+//! which posts questions to [`ask`] (#10106), `/live`'s map of the flow
+//! stream (`static/flow.js`, #10197), and `/everglade`'s loader for the
+//! Everglade wasm build (`static/everglade.js`, #10525). Pages that need
+//! the production account store read through [`backend::Backend`]; a
 //! development server uses [`backend::Development`] and renders every page
 //! without records or secrets. The design follows the private Coder
 //! service's site, reimplemented here.
@@ -67,6 +68,10 @@ pub struct Config {
     pub upstream: Option<Arc<upstream::Upstream>>,
     /// The pay host for same-origin public flow and stats reads.
     pub pay_upstream: Option<Arc<upstream::Upstream>>,
+    /// The Everglade web build and its pack (`--everglade DIR`), served
+    /// under `/everglade/`. Without it, `/everglade` says Everglade is
+    /// unavailable.
+    pub everglade: Option<PathBuf>,
 }
 
 impl Config {
@@ -83,6 +88,7 @@ impl Config {
             secure_cookies: false,
             upstream: None,
             pay_upstream: None,
+            everglade: None,
         }
     }
 }
@@ -122,6 +128,7 @@ pub fn router(config: Config) -> Router {
         .route("/static/verse-grid.jpg", get(verse_grid))
         .route("/static/ask.js", get(ask_script))
         .route("/static/flow.js", get(flow_script))
+        .route("/static/everglade.js", get(everglade_script))
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
@@ -223,6 +230,18 @@ async fn flow_script() -> Response {
             (header::CACHE_CONTROL, "public, max-age=300"),
         ],
         include_str!("../static/flow.js"),
+    )
+        .into_response()
+}
+
+/// The `/everglade` page's loader for the wasm build (#10525).
+async fn everglade_script() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        include_str!("../static/everglade.js"),
     )
         .into_response()
 }

@@ -1,14 +1,22 @@
 # Build context for the openagents-web image (crates/openagents-web/Dockerfile),
 # uploaded from the repository root by crates/openagents-web/cloudbuild.yaml.
 # The workspace manifest, every crate, and the files outside crates/ that the
-# site's dependencies compile in (include_str!/include_bytes!); nothing else.
+# site's dependencies compile in (include_str!/include_bytes!), and what the
+# Everglade web build stage needs: its build script, and the Verse assets
+# the build compiles in plus the pinned pack it copies (assets/verse/), and
+# Cargo's configuration, where the wasm32 getrandom backend flag lives.
 /*
 !/Cargo.toml
 !/Cargo.lock
+!/.cargo/
 !/crates/
 !/migrations/
 !/nips/
 !/tests/
+!/assets/
+!/scripts/
+/scripts/*
+!/scripts/build-everglade-web.sh
 !/programs/
 !/questions/
 !/packages/

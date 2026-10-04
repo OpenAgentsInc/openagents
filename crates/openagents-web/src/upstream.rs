@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 25] = [
+const OWNED_EXACT: [&str; 27] = [
     "/",
     "/download",
     "/install",
@@ -45,6 +45,7 @@ const OWNED_EXACT: [&str; 25] = [
     "/live",
     "/stats",
     "/efficiency",
+    "/everglade",
     "/ask",
     "/health",
     "/app",
@@ -56,6 +57,7 @@ const OWNED_EXACT: [&str; 25] = [
     "/static/site.css",
     "/static/ask.js",
     "/static/flow.js",
+    "/static/everglade.js",
     "/static/verse-grid.jpg",
     "/favicon.svg",
     "/favicon.ico",
@@ -66,7 +68,7 @@ const OWNED_EXACT: [&str; 25] = [
 /// which are proxied, load their own (`/static/coder.css`,
 /// `/static/webtui.css`, `/static/favicon.png`), so the rest of `/static/`
 /// goes upstream.
-const OWNED_PREFIXES: [&str; 2] = ["/docs/", "/app/"];
+const OWNED_PREFIXES: [&str; 3] = ["/docs/", "/app/", "/everglade/"];
 
 /// The sections removed at the owner's direction (2026-09-29). They answer
 /// `404` here and are never proxied, with everything under them.

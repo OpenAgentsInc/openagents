@@ -65,9 +65,10 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 39] = [
+const PAGES: [&str; 40] = [
     "/",
     "/live",
+    "/everglade",
     "/stats",
     "/efficiency",
     "/download",
@@ -274,6 +275,143 @@ async fn the_live_page_draws_the_flow_stream_on_the_route_map() {
             String::from_utf8_lossy(&out.stderr)
         ),
         Err(_) => eprintln!("node is not installed; static/flow.test.js did not run"),
+    }
+}
+
+/// A server started with `--everglade DIR` holding a stand-in build and
+/// pack, and the pack's file name.
+fn with_everglade(root: &std::path::Path) -> (Config, String) {
+    let build = root.join("everglade");
+    std::fs::create_dir_all(build.join("pack")).unwrap();
+    std::fs::write(
+        build.join(pages::GLUE),
+        "export default async function init() {}",
+    )
+    .unwrap();
+    std::fs::write(build.join(pages::WASM), b"\0asm\x01\0\0\0").unwrap();
+    std::fs::write(build.join("snippets.js"), "export {};").unwrap();
+    std::fs::write(build.join("notes.txt"), "not served").unwrap();
+    let pack = format!("{}.vtp", "ab".repeat(32));
+    std::fs::write(build.join("pack").join(&pack), b"VTP pack bytes").unwrap();
+    std::fs::write(root.join("secret.js"), "outside the build").unwrap();
+    let mut config = config(root.join("tasks"));
+    config.everglade = Some(build);
+    (config, pack)
+}
+
+/// `/everglade` (#10525): the canvas, the one same-origin loader, the glue
+/// and the wasm from the build directory with their types, the
+/// digest-named pack with an immutable cache, and nothing else from disk.
+#[tokio::test]
+async fn the_everglade_page_serves_the_web_build_and_its_pack() {
+    let root = tempfile::tempdir().unwrap();
+    let (config, pack) = with_everglade(root.path());
+    let (status, headers, html) = get_with(router(config.clone()), "/everglade", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains(&format!("<canvas id=\"{}\"", pages::CANVAS_ID)));
+    assert!(html.contains(&format!("data-module=\"/everglade/{}\"", pages::GLUE)));
+    assert!(html.contains(&format!("data-wasm=\"/everglade/{}\"", pages::WASM)));
+    assert!(html.contains("data-pack=\"/everglade/pack/\""));
+    let lower = html.to_ascii_lowercase();
+    assert_eq!(lower.matches("<script").count(), 1, "one script");
+    assert!(html.contains("<script type=\"module\" src=\"/static/everglade.js\"></script>"));
+    assert_eq!(
+        headers[header::CONTENT_SECURITY_POLICY],
+        pages::EVERGLADE_POLICY
+    );
+    assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+
+    let (status, headers, script) =
+        get_with(router(config.clone()), "/static/everglade.js", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        headers[header::CONTENT_TYPE],
+        "text/javascript; charset=utf-8"
+    );
+    assert!(script.contains("import(glue)"));
+    assert!(script.contains("module.default({ module_or_path: wasm })"));
+    assert!(!script.contains("http://") && !script.contains("https://"));
+    assert!(!script.contains("innerHTML"));
+
+    for (uri, content_type, cache) in [
+        (
+            format!("/everglade/{}", pages::GLUE),
+            "text/javascript; charset=utf-8",
+            "public, max-age=300",
+        ),
+        (
+            "/everglade/snippets.js".to_owned(),
+            "text/javascript; charset=utf-8",
+            "public, max-age=300",
+        ),
+        (
+            format!("/everglade/{}", pages::WASM),
+            "application/wasm",
+            "public, max-age=300",
+        ),
+        (
+            format!("/everglade/pack/{pack}"),
+            "application/octet-stream",
+            "public, max-age=31536000, immutable",
+        ),
+    ] {
+        let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::CONTENT_TYPE], content_type, "{uri}");
+        assert_eq!(headers[header::CACHE_CONTROL], cache, "{uri}");
+    }
+    let (_, _, wasm) = get_bytes(
+        router(config.clone()),
+        &format!("/everglade/{}", pages::WASM),
+    )
+    .await;
+    assert!(wasm.starts_with(b"\0asm"));
+    let (_, _, bytes) = get_bytes(router(config.clone()), &format!("/everglade/pack/{pack}")).await;
+    assert_eq!(bytes, b"VTP pack bytes");
+
+    // Other files, other names, and every way out of the directory are 404.
+    let other_pack = format!("/everglade/pack/{}.vtp", "cd".repeat(32));
+    let upper_pack = format!("/everglade/pack/{}", pack.to_uppercase());
+    for uri in [
+        "/everglade/notes.txt",
+        "/everglade/missing.js",
+        "/everglade/..%2Fsecret.js",
+        "/everglade/%2E%2E%2Fsecret.js",
+        "/everglade/../secret.js",
+        "/everglade/pack/notes.txt",
+        "/everglade/pack/..%2F..%2Fsecret.js",
+        "/everglade/pack/a/b.vtp",
+        other_pack.as_str(),
+        upper_pack.as_str(),
+    ] {
+        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+}
+
+/// Without the build directory, or without the glue in it, the page says
+/// Everglade is unavailable, runs no script, keeps the site's policy, and
+/// serves no build file.
+#[tokio::test]
+async fn the_everglade_page_says_it_is_unavailable_without_the_build() {
+    let root = tempfile::tempdir().unwrap();
+    let mut absent = config(root.path().join("tasks"));
+    absent.everglade = Some(root.path().join("nowhere"));
+    let (no_glue, _) = with_everglade(root.path());
+    std::fs::remove_file(root.path().join("everglade").join(pages::GLUE)).unwrap();
+    for config in [config(root.path().join("tasks")), absent, no_glue] {
+        let (status, headers, html) = get_with(router(config.clone()), "/everglade", LOCAL).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(
+            html.contains("Everglade is unavailable on this server"),
+            "{html}"
+        );
+        assert!(!html.to_ascii_lowercase().contains("<script"));
+        let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+        assert!(!policy.contains("script-src"), "{policy}");
+        let (status, _, _) =
+            get_bytes(router(config), &format!("/everglade/{}", pages::WASM)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }
 
@@ -790,6 +928,9 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/live",
         "/stats",
         "/efficiency",
+        "/everglade",
+        "/everglade/everglade_web.js",
+        "/everglade/pack/x.vtp",
         "/ask",
         "/health",
         "/.well-known/apple-app-site-association",
@@ -797,6 +938,7 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/static/site.css",
         "/static/ask.js",
         "/static/flow.js",
+        "/static/everglade.js",
         "/static/verse-grid.jpg",
         "/favicon.svg",
         "/favicon.ico",

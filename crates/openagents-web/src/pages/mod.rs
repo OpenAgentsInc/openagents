@@ -4,6 +4,7 @@ mod connect;
 mod content;
 mod download;
 mod efficiency;
+mod everglade;
 mod home;
 mod live;
 mod profile;
@@ -20,6 +21,8 @@ pub(crate) use content::DOCS;
 #[cfg(test)]
 pub(crate) use download::{MAC_DMG, SOURCE, TERMINAL_PS1, TERMINAL_SH};
 #[cfg(test)]
+pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
+#[cfg(test)]
 pub(crate) use stats::utc;
 
 pub(crate) fn routes() -> Router<App> {
@@ -28,6 +31,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(live::routes())
         .merge(stats::routes())
         .merge(efficiency::routes())
+        .merge(everglade::routes())
         .merge(content::routes())
         .merge(download::routes())
         .merge(connect::routes())
