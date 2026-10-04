@@ -5,6 +5,8 @@ pub mod animation;
 pub mod assets;
 pub mod core;
 pub mod director;
+#[cfg(feature = "asset-io")]
+pub mod loading;
 pub mod motion;
 
 /// Converts version-one pack source coordinates to Y-up meters.

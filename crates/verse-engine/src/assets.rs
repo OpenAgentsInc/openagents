@@ -3,7 +3,7 @@
 //! This schema carries data only; shaders and
 //! executable scene behavior belong to the compiled Verse engine.
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::Path};
+use std::{collections::BTreeMap, io::Read, path::Path};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Vertex {
@@ -148,12 +148,20 @@ pub struct Pack {
 
 impl Pack {
     pub fn read(path: &Path) -> Result<Self, String> {
-        let size = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
-        if size > 128 * 1024 * 1024 {
+        const LIMIT: u64 = 128 * 1024 * 1024;
+        let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+        let metadata = file.metadata().map_err(|e| e.to_string())?;
+        if !metadata.is_file() || metadata.len() > LIMIT {
+            return Err("Asset manifest is not a bounded regular file".into());
+        }
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        file.take(LIMIT + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() as u64 > LIMIT {
             return Err("Asset manifest exceeds 128 MiB".into());
         }
-        let pack: Self = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
+        let pack: Self = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
         pack.validate()?;
         Ok(pack)
     }
@@ -165,6 +173,21 @@ impl Pack {
             || self.textures.len() > 512
         {
             return Err("Unsupported or oversized asset pack".into());
+        }
+        if self.placements.len() > 100_000
+            || self.placements.iter().any(|placement| {
+                !self.models.contains_key(&placement.model)
+                    || placement
+                        .position
+                        .iter()
+                        .chain(&placement.rotation)
+                        .any(|v| !v.is_finite())
+                    || !placement.scale.is_finite()
+                    || placement.scale == 0.
+                    || glam::Quat::from_array(placement.rotation).length_squared() < 1e-8
+            })
+        {
+            return Err("Invalid asset placement dependency or transform".into());
         }
         for texture in &self.textures {
             if texture.file.contains('/')
@@ -236,6 +259,7 @@ impl Pack {
                 if vertices > 2_000_000
                     || surface.texture >= self.textures.len()
                     || surface.blend > 3
+                    || surface.tint.iter().any(|v| !v.is_finite())
                     || surface.indices.len() % 3 != 0
                     || surface
                         .indices

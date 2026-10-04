@@ -17,3 +17,5 @@ Game authority, physics integration, persistence, and multiplayer are separate
 boundaries on the [roadmap](../../docs/verse/engine/roadmap.md).
 
 Original scenes select semantic states instead of source clip numbers. Each model declares its clip reference, loop or hold behavior, and transition duration. Playback blends local transforms and resets when the actor life changes. Numeric selection remains an explicit compatibility path for retained research packs.
+
+The optional `asset-io` feature prepares a complete pack from an explicit directory before GPU allocation. It verifies every texture digest and static eight-bit RGBA declaration, rejects symlink files and invalid references, and enforces manifest, encoded-file, aggregate encoded/decoded, and decoder-workspace budgets. Prepared bytes are immutable; the receipt records digests and exact byte and geometry counts. Default authority builds do not enable this loader or its PNG decoder.

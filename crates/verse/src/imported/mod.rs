@@ -133,6 +133,7 @@ pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pack: Pack,
+    pub pack_receipt: verse_engine::loading::Receipt,
     width: u32,
     height: u32,
     target: wgpu::Texture,
@@ -280,7 +281,18 @@ impl Renderer {
         atlas: &Atlas,
         static_instances: &[Instance],
     ) -> Result<Self, String> {
-        pack.validate()?;
+        let prepared = verse_engine::loading::Prepared::load(pack, dir, Default::default())?;
+        Self::from_prepared(prepared, width, height, atlas, static_instances)
+    }
+    /// Uploads a completely admitted pack; this path performs no file reads or decoding.
+    pub fn from_prepared(
+        prepared: verse_engine::loading::Prepared,
+        width: u32,
+        height: u32,
+        atlas: &Atlas,
+        static_instances: &[Instance],
+    ) -> Result<Self, String> {
+        let (pack, decoded, pack_receipt) = prepared.into_parts();
         if width == 0 || height == 0 || width > 4096 || height > 4096 {
             return Err("Invalid imported viewport".into());
         }
@@ -446,21 +458,7 @@ impl Renderer {
             ..Default::default()
         });
         let mut textures = Vec::new();
-        for t in &pack.textures {
-            let bytes = std::fs::read(dir.join(&t.file)).map_err(|e| e.to_string())?;
-            if format!("{:x}", sha2::Sha256::digest(&bytes)) != t.sha256 {
-                return Err("Texture digest mismatch".into());
-            }
-            let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
-            let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
-            let mut pixels = vec![0; reader.output_buffer_size().ok_or("Invalid texture size")?];
-            let info = reader.next_frame(&mut pixels).map_err(|e| e.to_string())?;
-            if info.width != t.width
-                || info.height != t.height
-                || info.color_type != png::ColorType::Rgba
-            {
-                return Err("Invalid private RGBA texture".into());
-            }
+        for (t, pixels) in pack.textures.iter().zip(&decoded) {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(&t.file),
                 size: extent(t.width, t.height),
@@ -478,7 +476,7 @@ impl Renderer {
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
-                &pixels,
+                pixels.rgba(),
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(t.width * 4),
@@ -604,7 +602,6 @@ impl Renderer {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        use sha2::Digest;
         let bounds = pack
             .models
             .iter()
@@ -618,6 +615,7 @@ impl Renderer {
             device,
             queue,
             pack,
+            pack_receipt,
             width,
             height,
             target,

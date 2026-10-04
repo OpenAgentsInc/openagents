@@ -1,0 +1,36 @@
+{
+  "schema": "openagents.verse.prepared-pack-comparison.v1",
+  "prior_commit": "c2eca77773",
+  "renderer": "native owned GPU; no grading",
+  "image_checks": [
+    {
+      "file": "player-dead.png",
+      "prior_file": "../named-animation-respawn/player-dead.png",
+      "sha256": "d44bc31c5812dfae2e9495f1ee4ddc4f1e6a43e147247f402e9a04ca455c2360",
+      "byte_identical": true
+    },
+    {
+      "file": "player-respawned.png",
+      "prior_file": "../named-animation-respawn/player-respawned.png",
+      "sha256": "f14b5f2229bb35e099d62457f15023ecefc87d6999a45058339fc11c96a7e502",
+      "byte_identical": true
+    }
+  ],
+  "manifest_sha256": "6edc191ce6869c9dea6502cc8cc44076e888bf0d9d24c47782c536ab0b5935a8",
+  "manifest_bytes": 71657219,
+  "texture_count": 20,
+  "encoded_bytes": 5756991,
+  "rgba_bytes": 38141960,
+  "checks": {
+    "asset_io_tests": 23,
+    "portable_engine_tests": 14,
+    "imported_renderer_tests": 17,
+    "native_examples_built": [
+      "verse_play",
+      "wow_play",
+      "wow_capture",
+      "universal_characters"
+    ]
+  },
+  "scope": "Explicit-root local preparation and GPU upload. Typed residency, provenance distribution, asynchronous streaming, and atomic GPU reload remain."
+}
