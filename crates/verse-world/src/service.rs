@@ -2,6 +2,9 @@
 //!
 //! Principals and session handles are adapter values, not bearer credentials.
 //! Never deserialize a principal from an untrusted command and call it verified.
+#[cfg(feature = "service-auth")]
+pub mod auth;
+
 use std::collections::BTreeMap;
 
 use glam::Vec3;

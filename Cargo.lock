@@ -14872,10 +14872,13 @@ dependencies = [
 name = "verse-world"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.3.4",
  "glam",
  "physics",
+ "secp256k1 0.31.1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "verse-engine",
 ]
 

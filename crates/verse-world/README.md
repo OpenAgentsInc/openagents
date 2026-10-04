@@ -67,8 +67,15 @@ handles. Player commands derive controller identity from the connection;
 spectators cannot act. Reconnect, disconnect, revocation, and instance reset
 fence queued input. Only the host advances the world clock. Grants and connections
 are bounded and remain in memory; handles are adapter bindings, not bearer tokens.
-Cryptographic authentication, network dispatch, durable grants, and replication
-still need service integration. Revocation leaves an uncontrolled actor in the
+The optional `service-auth` feature adds `service::auth::Gateway`: enrolled
+x-only public keys sign a versioned SHA-256 challenge with secp256k1 Schnorr.
+OS-generated nonces bind each 30-second, single-use challenge to server lifetime,
+instance, host-assigned connection, deadline, and key. Authenticated dispatch
+accepts a transport-retained connection handle, with no request-supplied principal
+or controller. Pending and authenticated connections share a 128-entry budget.
+The host supplies monotonic time; expired, replayed, malformed, foreign, and
+unenrolled proofs are refused. TLS/listener integration, durable grants, and
+replication remain; this is not a Nostr authentication protocol. Revocation leaves an uncontrolled actor in the
 world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the
