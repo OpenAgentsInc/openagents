@@ -38,7 +38,10 @@ pub mod minimap;
 pub mod mv;
 pub mod nav;
 pub mod net;
+pub mod overlay;
 pub mod palette;
+#[cfg(feature = "panels")]
+pub mod panels;
 pub mod pbr;
 pub mod pillar;
 pub mod render;

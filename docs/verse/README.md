@@ -398,6 +398,7 @@ Beyond following and emoting, the agent only plays [run replays](#run-replays). 
 | `N` | Switch the world chat window between WORLD and live NOSTR notes. |
 | `B` | Open or close the quest board. |
 | `R` | Open or close the [run replay](#run-replays) list. `1`, `2`, and `3` set a replay's speed, `P` pauses it, and `Home` restarts it. |
+| `C` | Open or close the agent panel: the replay's transcript and a diff tab, drawn as Rust Native views over the world. Click the panel to give it the keys; `Esc` or a click outside returns them to the world. |
 | `Page Up` / `Page Down` | Scroll the open quest board. The mouse wheel over it does too. |
 | `/` | Open the chat line with a shortcut: `/a`, `/$`, `/z`, `/n`, `/h`, `/r room`, `/name`. |
 | `Esc` | Close the chat line, the quest board, or the replay list; stop a replay; or quit. |

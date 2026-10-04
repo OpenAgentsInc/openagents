@@ -503,6 +503,10 @@ struct App {
     gym_selected: usize,
     gym_scroll: usize,
     gym_notice: Option<String>,
+    /// The Rust Native panel over the world, while it is open (C).
+    panel: Option<crate::panels::Panel>,
+    /// Whether the panel took the left button's last press.
+    panel_press: bool,
 }
 
 /// The replay list: the retained `beats-winner` runs and which is chosen.
@@ -718,7 +722,107 @@ impl App {
             gym_selected: 0,
             gym_scroll: 0,
             gym_notice: None,
+            panel: None,
+            panel_press: false,
         })
+    }
+
+    /// Opens the panel, or closes it when it is open.
+    fn toggle_panel(&mut self) {
+        self.panel = match self.panel.take() {
+            Some(_) => None,
+            None => Some(crate::panels::Panel::new("Agent transcript")),
+        };
+        self.panel_press = false;
+    }
+
+    /// Hands a key to the panel while it has focus. Every key is consumed
+    /// then, so none reaches the character controller. Returns false when
+    /// the world should handle the key.
+    fn panel_key(&mut self, code: KeyCode, pressed: bool) -> bool {
+        use crate::panels::Key;
+        let Some(panel) = self.panel.as_mut().filter(|p| p.focused()) else {
+            return false;
+        };
+        if !pressed {
+            return true;
+        }
+        let key = match code {
+            KeyCode::Escape => Key::Escape,
+            KeyCode::Tab => Key::Tab,
+            KeyCode::ArrowUp => Key::Up,
+            KeyCode::ArrowDown => Key::Down,
+            KeyCode::PageUp => Key::PageUp,
+            KeyCode::PageDown => Key::PageDown,
+            KeyCode::Home => Key::Home,
+            KeyCode::End => Key::End,
+            _ => Key::Other,
+        };
+        if let Some(intent) = panel.key(key)
+            && !panel.apply(intent)
+        {
+            self.panel = None;
+        }
+        true
+    }
+
+    /// Gives the panel a left-button press or release. Returns true when
+    /// the panel took it, so the world does not.
+    fn panel_button(&mut self, pressed: bool) -> bool {
+        let at = self.cursor.map(|v| v / self.scale);
+        let Some(panel) = &mut self.panel else {
+            return false;
+        };
+        if pressed {
+            let was = panel.focused();
+            self.panel_press = panel.press(at);
+            if self.panel_press && !was {
+                // The character stops when the panel takes focus.
+                self.keys = Keys::default();
+                self.capture(false);
+            }
+            return self.panel_press;
+        }
+        if !std::mem::take(&mut self.panel_press) {
+            return false;
+        }
+        if let Some(intent) = panel.release(at)
+            && !panel.apply(intent)
+        {
+            self.panel = None;
+        }
+        true
+    }
+
+    /// The replay's visits so far, as transcript rows, for the panel.
+    fn panel_rows(&self) -> Vec<rust_native::Node<()>> {
+        let Some(r) = &self.replay else {
+            return Vec::new();
+        };
+        let t = r.clock.elapsed_ms;
+        let Some(current) = r.mine.current(t) else {
+            return Vec::new();
+        };
+        let done = r.mine.done(t);
+        let first = (current + 1).saturating_sub(200);
+        r.mine.visits[first..=current.min(r.mine.visits.len().saturating_sub(1))]
+            .iter()
+            .enumerate()
+            .map(|(i, visit)| {
+                let index = first + i;
+                crate::panels::tool(
+                    &format!("visit-{index}"),
+                    visit.place.name(),
+                    &visit.what,
+                    "",
+                    if index == current && !done {
+                        rust_native::ToolState::Running
+                    } else {
+                        rust_native::ToolState::Done
+                    },
+                )
+            })
+            .collect()
     }
 
     fn plaza_interactive(&self) -> bool {
@@ -1576,6 +1680,7 @@ impl App {
                     r.clock.playing = true;
                 }
             }
+            KeyCode::KeyC if pressed => self.toggle_panel(),
             KeyCode::KeyT if pressed => {
                 self.method = Channel::Agent;
                 self.open_chat("");
@@ -1750,6 +1855,19 @@ impl App {
     }
 
     fn button(&mut self, button: MouseButton, pressed: bool) {
+        if button == MouseButton::Left && self.panel_button(pressed) {
+            return;
+        }
+        // Other buttons pressed over the panel do not reach the world.
+        if pressed
+            && button != MouseButton::Left
+            && self
+                .panel
+                .as_ref()
+                .is_some_and(|p| p.bounds().contains(self.cursor.map(|v| v / self.scale)))
+        {
+            return;
+        }
         if button == MouseButton::Left {
             let at = self.cursor.map(|value| value / self.scale);
             if !pressed && self.map.captured(1) {
@@ -2278,7 +2396,20 @@ impl App {
             None => crate::ui::UiBatch::default(),
         };
         dynamic.extend(&entities);
+        let rows = self.panel.is_some().then(|| self.panel_rows());
+        let px = [size[0] as u32, size[1] as u32];
+        let overlay = match (&mut self.panel, rows) {
+            (Some(panel), Some(rows)) => {
+                panel.set_rows(rows);
+                panel.image(px, self.scale).map(Some)
+            }
+            _ => Ok(None),
+        };
         if let Some(renderer) = &mut self.renderer {
+            if let Err(error) = overlay.and_then(|image| renderer.set_overlay(image)) {
+                eprintln!("verse: panel not drawn: {error}");
+                self.panel = None;
+            }
             #[cfg(target_os = "macos")]
             renderer.set_headroom(crate::edr::current_headroom());
             match renderer.draw(view, &dynamic, &ui) {
@@ -2502,6 +2633,11 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
+                if let PhysicalKey::Code(code) = event.physical_key
+                    && self.panel_key(code, event.state == ElementState::Pressed)
+                {
+                    return;
+                }
                 if self.chat.open {
                     self.chat_key(&event);
                 } else if let PhysicalKey::Code(code) = event.physical_key
@@ -2525,6 +2661,9 @@ impl ApplicationHandler for App {
                 }
                 self.map
                     .moved(1, self.cursor.map(|value| value / self.scale));
+                if let Some(panel) = &mut self.panel {
+                    panel.moved(self.cursor.map(|v| v / self.scale));
+                }
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 self.button(button, state == ElementState::Pressed);
@@ -2533,6 +2672,18 @@ impl ApplicationHandler for App {
                 self.zone_press = None;
                 self.companion_press = None;
                 self.door_press = None;
+                let panel_lines = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
+                };
+                let at = self.cursor.map(|v| v / self.scale);
+                if self
+                    .panel
+                    .as_mut()
+                    .is_some_and(|panel| panel.wheel(at, panel_lines))
+                {
+                    return;
+                }
                 if self.cursor_on_map()
                     || self.map.captured(1)
                     || self.cursor_on_door_hud()
@@ -2683,6 +2834,40 @@ mod tests {
             ..Options::default()
         })
         .expect("offline desktop state")
+    }
+
+    #[test]
+    fn a_focused_panel_takes_keys_and_presses_from_the_character() {
+        let mut app = offline_app();
+        app.scale = 1.0;
+        app.toggle_panel();
+        let panel = app.panel.as_mut().unwrap();
+        let _ = panel.image([1280, 800], 1.0).unwrap();
+        let bounds = panel.bounds();
+        // Unfocused, keys still move the character.
+        assert!(!app.panel_key(KeyCode::KeyW, true));
+        // A press inside focuses the panel and stops the character.
+        app.keys.w = true;
+        app.cursor = [bounds.x + bounds.w / 2.0, bounds.y + bounds.h / 2.0];
+        assert!(app.panel_button(true));
+        assert!(app.panel_button(false));
+        assert!(!app.keys.w && !app.keys.input().forward);
+        for code in [KeyCode::KeyW, KeyCode::KeyA, KeyCode::Space, KeyCode::KeyT] {
+            assert!(app.panel_key(code, true));
+            assert!(app.panel_key(code, false));
+        }
+        assert!(!app.keys.input().forward && !app.keys.input().left);
+        assert!(!app.chat.open);
+        // Escape gives focus back; the world handles keys again.
+        assert!(app.panel_key(KeyCode::Escape, true));
+        assert!(app.panel.as_ref().is_some_and(|p| !p.focused()));
+        assert!(!app.panel_key(KeyCode::KeyW, true));
+        // A press outside the panel is the world's.
+        app.cursor = [4.0, 4.0];
+        assert!(!app.panel_button(true));
+        assert!(!app.panel_button(false));
+        app.toggle_panel();
+        assert!(app.panel.is_none());
     }
 
     fn ruins_pack() -> std::path::PathBuf {

@@ -167,6 +167,8 @@ pub struct Renderer {
     max_extent: u32,
     drawable: bool,
     hdr: bool,
+    /// A panel drawn over the finished frame, created when first shown.
+    overlay: Option<crate::overlay::Overlay>,
 }
 
 /// OpenGL ES presentation. wgpu's GLES backend offers an sRGB surface only
@@ -527,6 +529,7 @@ impl Renderer {
             max_extent,
             drawable: true,
             hdr,
+            overlay: None,
         })
     }
 
@@ -642,6 +645,24 @@ impl Renderer {
         Ok(())
     }
 
+    /// Shows `image` over every following frame, or no panel for `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the image breaks its bounds.
+    pub fn set_overlay(
+        &mut self,
+        image: Option<&crate::overlay::OverlayImage>,
+    ) -> Result<(), String> {
+        if image.is_none() && self.overlay.is_none() {
+            return Ok(());
+        }
+        let format = self.scene.format;
+        self.overlay
+            .get_or_insert_with(|| crate::overlay::Overlay::new(&self.device, format))
+            .set(&self.device, &self.queue, image)
+    }
+
     /// Draws one frame. Lost surfaces require a fresh native attachment;
     /// skipped frames never report that they were presented.
     pub fn draw(&mut self, view: View, dynamic: &Mesh, ui: &UiBatch) -> DrawStatus {
@@ -679,16 +700,20 @@ impl Renderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("verse frame"),
             });
+        let drawn = self.present.as_ref().map_or(&output, |p| &p.frame);
         self.scene.encode(
             &self.device,
             &self.queue,
             &mut encoder,
-            self.present.as_ref().map_or(&output, |p| &p.frame),
+            drawn,
             &mut self.targets,
             view,
             dynamic,
             ui,
         );
+        if let Some(overlay) = &self.overlay {
+            overlay.encode(&self.queue, &mut encoder, drawn, self.targets.size);
+        }
         if let Some(present) = &self.present {
             present.encode(&mut encoder, &output);
         }
@@ -958,6 +983,27 @@ pub fn capture_with_atmosphere(
     atlas: &Atlas,
     atmosphere: crate::zones::Atmosphere,
 ) -> Result<(), String> {
+    capture_with_overlay(
+        path, width, height, world, view, dynamic, ui, atlas, atmosphere, None,
+    )
+}
+
+/// Render a frame with `overlay`, a rasterized panel, composited over the
+/// world and the HUD as the window draws it.
+#[cfg(feature = "capture")]
+#[allow(clippy::too_many_arguments)]
+pub fn capture_with_overlay(
+    path: &Path,
+    width: u32,
+    height: u32,
+    world: &Mesh,
+    view: View,
+    dynamic: &Mesh,
+    ui: &UiBatch,
+    atlas: &Atlas,
+    atmosphere: crate::zones::Atmosphere,
+    overlay: Option<&crate::overlay::OverlayImage>,
+) -> Result<(), String> {
     let pixels = offscreen(
         width,
         height,
@@ -969,6 +1015,7 @@ pub fn capture_with_atmosphere(
         atmosphere,
         CAPTURE_FORMAT,
         1.0,
+        overlay,
     )?;
     let file = std::fs::File::create(path)
         .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
@@ -997,6 +1044,7 @@ fn offscreen(
     atmosphere: crate::zones::Atmosphere,
     format: wgpu::TextureFormat,
     headroom: f32,
+    overlay: Option<&crate::overlay::OverlayImage>,
 ) -> Result<Vec<u8>, String> {
     let texel = format
         .block_copy_size(None)
@@ -1011,6 +1059,14 @@ fn offscreen(
     scene.atmosphere = atmosphere;
     scene.headroom = headroom;
     let mut targets = Targets::new(&device, format, width, height, scene.samples);
+    let panel = match overlay {
+        Some(image) => {
+            let mut panel = crate::overlay::Overlay::new(&device, format);
+            panel.set(&device, &queue, Some(image))?;
+            Some(panel)
+        }
+        None => None,
+    };
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("verse capture"),
         size: extent(width, height),
@@ -1064,6 +1120,9 @@ fn offscreen(
         dynamic,
         ui,
     );
+    if let Some(panel) = &panel {
+        panel.encode(&queue, &mut encoder, &output, targets.size);
+    }
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {
             texture: &texture,
@@ -1135,6 +1194,7 @@ pub fn capture_extended(
         atmosphere,
         wgpu::TextureFormat::Rgba16Float,
         headroom.clamp(1.0, 16.0),
+        None,
     )?;
     Ok(bytes
         .chunks_exact(8)
