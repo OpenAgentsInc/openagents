@@ -173,3 +173,13 @@ engine runs to the owner.
 
 Open a follow-up issue for any defect, with the seat routes and the step it
 failed at.
+
+## Everglade from the Grid, as the ranger (#10530, #10534)
+
+On TestFlight build 46 (iPhone) and an Android device: on the Grid, walk
+through the arch lettered EVERGLADE. The first visit shows download progress
+with Cancel; cancel once, then Retry with the network off and on. In
+Everglade, confirm you play the hooded ranger, it idles, walks, runs, and
+jumps with the stick, and no spade follows you. Return by the arch lettered
+THE GRID and by **The Grid**, and check you land beside the EVERGLADE arch
+with other players visible again. A second visit opens from the cache.
