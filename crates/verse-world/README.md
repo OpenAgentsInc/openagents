@@ -214,6 +214,17 @@ Run the configured host with:
 cargo run -p verse --no-default-features --features remote-chamber --example verse_host -- HOST.json
 ```
 
+The remote client configuration can include
+`"record":{"output":"combat.mp4","seconds":45,"controller":true}` to run a
+bounded programmatic shared-kit controller and record submitted GPU frames.
+Recording requires `ffmpeg`, accepts 1–120 seconds, and uses a two-frame
+readback/encoder queue. Its 1280 × 720, 30 FPS video preserves elapsed capture
+time with reported duplicate frames when sampling is slower. The companion JSON
+records sampled/duplicate/dropped counts, native dimensions, acknowledged cast
+commands, committed damage/dialogue counts, and final admitted state. It does not
+prove every acknowledged spell caused damage or establish gameplay frame budgets.
+Without `record`, the window remains in human-control mode.
+
 Host JSON requires `listen` (socket address), nonzero `instance`, `scene`, `pack`,
 `certificate_der`, `private_key_der`, and `enrollments`. Paths resolve from the
 working directory. Each enrollment contains a 64-character x-only `public_key`

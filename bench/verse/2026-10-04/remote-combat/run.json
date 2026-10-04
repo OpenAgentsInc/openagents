@@ -1,0 +1,50 @@
+{
+  "schema": "verse.remote.run.v1",
+  "client_code_revision": "fcc3f7bf77",
+  "host_code_revision": "029e3718fb",
+  "transport": "loopback TLS with temporary synthetic identities",
+  "wire_version": 8,
+  "configured_content_identity_enforced": true,
+  "asset_pack": "verse-bestiary-ritual-v1",
+  "native_dimensions": [
+    2560,
+    1440
+  ],
+  "video_dimensions": [
+    1280,
+    720
+  ],
+  "video_seconds": 45,
+  "video_frames": 1350,
+  "connected_clients": 1,
+  "enrolled_roles": {
+    "primary": 1,
+    "additional_player": 1,
+    "spectator": 1
+  },
+  "host": {
+    "ticks": 2407,
+    "requests": 4519,
+    "completed_connections": 1,
+    "dropped_seconds": 0.0
+  },
+  "checks": {
+    "client_exit": 0,
+    "host_exit": 0,
+    "shared_abilities_acknowledged": 10,
+    "damage_events": 51,
+    "dialogue_events": 5,
+    "minimum_owned_hp": 0
+  },
+  "limits": [
+    "One connected player; additional player and spectator were enrolled but not connected.",
+    "Acknowledged commands do not prove every spell damaged its target.",
+    "No remote audio, restart/retry, respawn interaction, or gameplay frame-budget acceptance.",
+    "Dead NPC retirement and full remote lifecycle presentation still need acceptance."
+  ],
+  "artifacts": {
+    "combat.mp4": "21088a882497fcb8efcf5b6ce647b34dabccec3f0f94a3f747fcb2cdc63f030c",
+    "combat.json": "26ec02043cd424dc734e96c9d02f84cd5270804e95e6b0ec507550a1b700f6b1",
+    "combat-18.png": "42e3b0c2f7bec5027aa6f7097e543396c585d2341ec69c1777f298f320230396"
+  }
+}
