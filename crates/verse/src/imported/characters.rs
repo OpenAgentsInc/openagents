@@ -1035,6 +1035,20 @@ mod tests {
         for name in APPEARANCES {
             let model = &pack.models[&format!("universal-{name}")];
             assert!(model.surfaces.iter().all(|s| !s.indices.is_empty()));
+            for id in [4, 5, 13, 14, 15] {
+                let track = model.markers.iter().find(|track| track.clip == id).unwrap();
+                track.track.validate().unwrap();
+                assert_eq!(track.track.markers.len(), 2);
+                assert_eq!(
+                    track.track.markers[0].id,
+                    verse_engine::markers::FOOTSTEP_LEFT
+                );
+                assert_eq!(
+                    track.track.markers[1].id,
+                    verse_engine::markers::FOOTSTEP_RIGHT
+                );
+            }
+
             for id in [
                 0, 1, 4, 5, 13, 14, 15, 25, 37, 46, 51, 52, 53, 64, 68, 100, 109,
             ] {

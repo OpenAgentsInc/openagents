@@ -185,6 +185,33 @@ pub(super) fn bind_states(model: &mut Model) {
             },
         );
     }
+    // Authored alternating foot cues at quarter and three-quarter cycle phases.
+    // These are presentation events; they do not move actors or apply damage.
+    for clip_id in [4, 5, 13, 14, 15] {
+        let Some(clip) = model.clips.iter().find(|clip| clip.id == clip_id) else {
+            continue;
+        };
+        if clip.duration <= 0. || model.markers.iter().any(|track| track.clip == clip_id) {
+            continue;
+        }
+        let duration = f64::from(clip.duration);
+        model.markers.push(verse_engine::markers::ClipTrack {
+            clip: clip_id,
+            track: verse_engine::markers::Track {
+                duration,
+                markers: vec![
+                    verse_engine::markers::Marker {
+                        id: verse_engine::markers::FOOTSTEP_LEFT,
+                        seconds: duration * 0.25,
+                    },
+                    verse_engine::markers::Marker {
+                        id: verse_engine::markers::FOOTSTEP_RIGHT,
+                        seconds: duration * 0.75,
+                    },
+                ],
+            },
+        });
+    }
 }
 fn actor(name: &str, robe: [f32; 3], monster: bool) -> Model {
     let mut m = model(name, 2.35);

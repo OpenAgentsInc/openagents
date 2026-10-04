@@ -133,7 +133,7 @@ pub struct FrameTimings {
     pub marker_events: usize,
 }
 /// A presentation marker sampled at the actor's current world placement.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct MarkerEvent {
     pub model: String,
     pub position: [f32; 3],

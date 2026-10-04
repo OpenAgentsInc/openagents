@@ -362,6 +362,7 @@ impl App {
             renderer.draw_live(view, &actors, &ui, &lighting)?;
             vec![]
         };
+        let animation_markers = renderer.take_marker_events();
         if let Some(profile) = &mut self.profile {
             let renderer = self.renderer.as_ref().unwrap();
             let timing = renderer.last_timings;
@@ -381,6 +382,7 @@ impl App {
                 "world_ms":self.world_ms,
                 "projection_ms":projection_ms,
                 "render":timing,
+                "animation_markers":animation_markers,
                 "frame_work_ms":self.world_ms + projection_ms + timing.total_ms,
                 "navigation_plans":self.game.navigation_plans,
                 "physics_steps":self.game.physics_steps,

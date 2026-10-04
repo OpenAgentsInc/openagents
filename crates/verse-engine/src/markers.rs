@@ -2,6 +2,9 @@
 use crate::core::LifeId;
 use serde::{Deserialize, Serialize};
 
+pub const FOOTSTEP_LEFT: u32 = 1;
+pub const FOOTSTEP_RIGHT: u32 = 2;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Marker {
@@ -45,7 +48,7 @@ pub struct ClipTrack {
     pub track: Track,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub struct Event {
     pub life: LifeId,
     pub selection_epoch: u64,
