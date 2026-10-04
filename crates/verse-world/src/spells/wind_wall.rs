@@ -104,6 +104,12 @@ pub struct Wind {
     pub deflected: u32,
     /// Highest point each lightweight body reached while a wall stood, m.
     pub highest: BTreeMap<u32, f64>,
+    /// Ordinary flights first seen while a wall stood.
+    #[serde(default)]
+    pub launched: u32,
+    /// The creature whose health the running arrow count reports.
+    #[serde(default)]
+    pub watch: Option<u64>,
 }
 
 impl Wind {
@@ -367,13 +373,6 @@ pub(crate) fn after_flights(game: &mut Game) -> Result<(), String> {
         trail.points.push(*point);
         trail.deflected = Some(trail.points.len() - 1);
     }
-    for (id, point) in deflections {
-        let text = format!(
-            "Arrow {id} deflected upward at ({:.1}, {:.1}, {:.1}); {} deflected, misses automatically",
-            point.x, point.y, point.z, game.spells.wind.deflected
-        );
-        game.spells.record(game.time, NAME, text, None);
-    }
     if standing || !game.spells.wind.trails.is_empty() {
         let projectiles = game.simulation.snapshot().projectiles;
         let wind = &mut game.spells.wind;
@@ -386,6 +385,9 @@ pub(crate) fn after_flights(game: &mut Game) -> Result<(), String> {
             }
             let at = Vec3::from(p.pos);
             let trail = trail(wind, p.id);
+            if trail.points.is_empty() {
+                trail.points.push(at);
+            }
             if trail.points.len() < TRAIL_POINTS
                 && trail
                     .points
@@ -419,13 +421,44 @@ pub(crate) fn after_flights(game: &mut Game) -> Result<(), String> {
             );
         }
     }
+    if !deflections.is_empty() {
+        status(game);
+    }
     Ok(())
+}
+
+/// Keeps one running line in the spell log for the arrows the walls
+/// turned, in place of a line per arrow.
+fn status(game: &mut Game) {
+    const PREFIX: &str = "Arrows deflected:";
+    let wind = &game.spells.wind;
+    let mut text = format!("{PREFIX} {} of {}", wind.deflected, wind.launched);
+    if let Some(actor) = wind.watch {
+        let health = game
+            .frame()
+            .actors
+            .iter()
+            .find(|a| a.actor.id == actor)
+            .map(|a| (a.health, a.actor.health));
+        if let Some((now, full)) = health {
+            let name = game.actor_name(actor);
+            text += &format!(
+                "; {name} {} ({now}/{full} HP)",
+                if now == full { "unhurt" } else { "HIT" }
+            );
+        }
+    }
+    game.spells
+        .log
+        .retain(|r| !(r.spell == NAME && r.text.starts_with(PREFIX)));
+    game.spells.record(game.time, NAME, text, None);
 }
 
 fn trail(wind: &mut Wind, id: u32) -> &mut Trail {
     if let Some(index) = wind.trails.iter().position(|t| t.id == id) {
         return &mut wind.trails[index];
     }
+    wind.launched += 1;
     if wind.trails.len() >= TRAILS {
         wind.trails.remove(0);
     }
@@ -502,12 +535,12 @@ mod hall {
     /// The dummy the catapult boulder is aimed at.
     pub const SIEGE_TARGET: Vec3 = Vec3::new(4.2, 0., -1.);
     /// Two dummies standing where the arc wall rises.
-    pub const ARC_FAILS: Vec3 = Vec3::new(3.63, 0., -2.12);
+    pub const ARC_FAILS: Vec3 = Vec3::new(6.78, 0., -2.82);
     pub const ARC_SAVES: Vec3 = Vec3::new(4.25, 0., 2.6);
     /// The arrow turret's muzzle.
     pub const TURRET: Vec3 = Vec3::new(-5., 1.4, 0.);
     /// Where the boulder rests before the catapult throws it.
-    pub const BOULDER: Vec3 = Vec3::new(-7., 0.3, -1.);
+    pub const BOULDER: Vec3 = Vec3::new(-7., 0.45, -1.);
     /// Flight time the catapult aims for, s.
     pub const BOULDER_FLIGHT: f32 = 1.2;
 }
@@ -517,6 +550,8 @@ const SIEGE_ID: u64 = 102;
 const FAILS_ID: u64 = 103;
 const SAVES_ID: u64 = 104;
 const VOLLEY: usize = 20;
+/// Paper and leaf sheets in the pile.
+const SHEETS: usize = 12;
 
 fn turret_arrow(game: &mut Game) -> Result<(), String> {
     // The turret walks its aim across the dummy's body, arrow by arrow.
@@ -538,6 +573,22 @@ fn catapult(game: &mut Game) -> Result<(), String> {
     let body = game.spells.props[index].body;
     let mass = game.spells.world[body].mass;
     let at = game.spells.world[body].pos;
+    if let Some(feet) = game.actor_position(SIEGE_ID) {
+        game.spells.track(Track {
+            label: "Siege dummy".into(),
+            target: Target::Actor(SIEGE_ID),
+            spell: NAME.into(),
+            at: game.time,
+            start: feet.as_dvec3(),
+            requested: 0.,
+        });
+    }
+    game.spells.record(
+        game.time,
+        NAME,
+        "Catapult hurls a 150 kg boulder (siege): the wall does not touch it".into(),
+        None,
+    );
     game.spells
         .impulse_prop(index, velocity.as_dvec3() * mass, at, "catapult")
 }
@@ -545,9 +596,7 @@ fn catapult(game: &mut Game) -> Result<(), String> {
 fn bellows(game: &mut Game) -> Result<(), String> {
     // A scripted gust sweeps the pile toward the wall.
     for index in 0..game.spells.props.len() {
-        if !game.spells.props[index].name.starts_with("Paper")
-            && !game.spells.props[index].name.starts_with("Leaves")
-        {
+        if game.spells.props[index].spec.kind != super::PropKind::Sheet {
             continue;
         }
         let body = game.spells.props[index].body;
@@ -573,7 +622,14 @@ fn throw_crate(game: &mut Game) -> Result<(), String> {
         requested: 0.,
     });
     game.spells
-        .impulse_prop(index, DVec3::new(6.5, 3.5, 0.) * mass, at, "throw")
+        .impulse_prop(index, DVec3::new(6.5, 3.5, 0.) * mass, at, "throw")?;
+    game.spells.record(
+        game.time,
+        NAME,
+        "A 20 kg crate is thrown at the wall (airborne, Small)".into(),
+        None,
+    );
+    Ok(())
 }
 
 fn shove_crate(game: &mut Game) -> Result<(), String> {
@@ -587,8 +643,14 @@ fn shove_crate(game: &mut Game) -> Result<(), String> {
         requested: 10. * FEET,
     });
     game.spells
-        .push_prop(index, DVec3::X, 10. * FEET, "shove")
-        .map(|_| ())
+        .push_prop(index, DVec3::X, 10. * FEET, "shove")?;
+    game.spells.record(
+        game.time,
+        NAME,
+        "A 20 kg crate is shoved along the floor (grounded)".into(),
+        None,
+    );
+    Ok(())
 }
 
 fn choose_arc(game: &mut Game) -> Result<(), String> {
@@ -640,45 +702,39 @@ pub fn scenario() -> crate::playground::Scenario {
             Ok(())
         },
         populate: |game, _| {
-            use super::{PropKind, PropSpec, Size};
+            use super::{PropKind, PropSpec};
             let crate_spec = PropSpec::reference(PropKind::Crate);
-            game.spawn_prop(
-                "Arrow turret",
-                crate_spec.clone().secured(),
-                hall::TURRET - Vec3::new(0.3, 1.1, 0.),
+            // The turret: two secured crates under the muzzle.
+            for (name, y) in [("Arrow turret", 0.3), ("Arrow turret top", 0.9)] {
+                game.spawn_prop(
+                    name,
+                    crate_spec.clone().secured(),
+                    Vec3::new(hall::TURRET.x - 0.4, y, hall::TURRET.z),
+                    0.,
+                )?;
+            }
+            let index = game.spawn_prop(
+                "Catapult boulder",
+                PropSpec::reference(PropKind::Boulder),
+                hall::BOULDER,
                 0.,
             )?;
-            let mut boulder = PropSpec::reference(PropKind::StoneBlock);
-            boulder.dimensions = DVec3::splat(0.6);
-            boulder.mass = 150.;
-            let index = game.spawn_prop("Catapult boulder", boulder, hall::BOULDER, 0.)?;
             let body = game.spells.props[index].body;
             game.spells.wind.siege.push(Siege {
                 body,
                 target: SIEGE_ID,
                 struck: false,
             });
-            // Paper and leaves: 2 kg or less, so the wall lifts them.
-            let light = |mass: f64, dimensions: DVec3| {
-                let mut spec = PropSpec::reference(PropKind::Crate);
-                spec.size = Size::Tiny;
-                spec.mass = mass;
-                spec.dimensions = dimensions;
-                spec
-            };
-            for (i, (name, mass, dimensions)) in [
-                ("Paper 1", 0.2, DVec3::new(0.3, 0.05, 0.22)),
-                ("Paper 2", 0.2, DVec3::new(0.3, 0.05, 0.22)),
-                ("Paper 3", 0.4, DVec3::new(0.3, 0.08, 0.22)),
-                ("Leaves 1", 0.3, DVec3::new(0.2, 0.1, 0.2)),
-                ("Leaves 2", 0.6, DVec3::new(0.25, 0.12, 0.25)),
-                ("Leaves 3", 1.5, DVec3::new(0.3, 0.15, 0.3)),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                let at = Vec3::new(1.2, dimensions.y as f32 * 0.5, 2.3 + 0.4 * i as f32);
-                game.spawn_prop(name, light(mass, dimensions), at, 0.)?;
+            game.spells.wind.watch = Some(TARGET_ID);
+            // Paper and leaves: sheets of 2 kg or less, so the wall lifts
+            // them. A row on the floor and a second layer on every other one.
+            for i in 0..SHEETS {
+                let mut sheet = PropSpec::reference(PropKind::Sheet);
+                sheet.mass = 0.3 + 0.15 * i as f64;
+                let z = 0.4 + 0.5 * (i % 8) as f32;
+                let y = if i < 8 { 0.025 } else { 0.075 };
+                let z = if i < 8 { z } else { 0.4 + 1.0 * (i - 8) as f32 };
+                game.spawn_prop(&format!("Sheet {}", i + 1), sheet, Vec3::new(0.9, y, z), 0.)?;
             }
             game.spawn_prop(
                 "Thrown crate",
@@ -707,15 +763,15 @@ pub fn scenario() -> crate::playground::Scenario {
                     step: Step::Device(Device(catapult)),
                 },
                 Cue {
-                    at: 9.0,
+                    at: 9.6,
                     step: Step::Device(Device(bellows)),
                 },
                 Cue {
-                    at: 11.8,
+                    at: 12.4,
                     step: Step::Device(Device(throw_crate)),
                 },
                 Cue {
-                    at: 12.4,
+                    at: 12.8,
                     step: Step::Device(Device(shove_crate)),
                 },
                 Cue {
@@ -742,17 +798,29 @@ pub fn scenario() -> crate::playground::Scenario {
             cues
         },
         camera: || {
-            let side = (Vec3::new(0.0, 3.6, -9.5), Vec3::new(0.6, 2.4, 0.6));
-            let pile = (Vec3::new(-2.6, 3.4, 7.8), Vec3::new(2.3, 3.0, 2.0));
-            let crates = (Vec3::new(-1.2, 2.8, -9.0), Vec3::new(2.0, 1.2, -2.6));
+            // From the north (+z) the turret is on the left, the wall on the
+            // right, and the arrows kick up below the overlay panel.
+            let volley = (Vec3::new(-1.4, 2.2, 6.6), Vec3::new(-0.4, 2.5, -0.4));
+            // The boulder from the south, followed across the wall.
+            let launch = (Vec3::new(-6.5, 2.2, -7.5), Vec3::new(-6.0, 1.8, -1.0));
+            let crossing = (Vec3::new(-1.5, 2.6, -8.0), Vec3::new(-1.0, 2.4, -1.0));
+            let strike = (Vec3::new(3.0, 2.2, -7.5), Vec3::new(3.6, 1.8, -1.0));
+            // Square to the wall's face, the pile mid-frame.
+            let pile = (Vec3::new(-6.5, 2.6, 0.8), Vec3::new(2.0, 4.2, 0.8));
+            let crates = (Vec3::new(0.9, 1.9, -7.4), Vec3::new(1.4, 1.6, -3.0));
             let arc = (Vec3::new(1.2, 8.5, -7.5), Vec3::new(5.0, 0.8, 0.5));
             [
-                (0., side),
-                (8.6, side),
-                (9.2, pile),
-                (11.5, pile),
-                (11.9, crates),
-                (13.6, crates),
+                (0., volley),
+                (6.3, volley),
+                (6.6, launch),
+                (6.9, launch),
+                (7.4, crossing),
+                (8.0, strike),
+                (8.9, strike),
+                (9.3, pile),
+                (11.9, pile),
+                (12.2, crates),
+                (13.7, crates),
                 (14.0, arc),
                 (17.5, arc),
             ]
@@ -760,7 +828,7 @@ pub fn scenario() -> crate::playground::Scenario {
             .map(|(at, (eye, target))| Shot { at, eye, target })
             .collect()
         },
-        replay_camera: (Vec3::new(-0.5, 2.6, -5.0), Vec3::new(1.6, 2.2, 0.8)),
+        replay_camera: (Vec3::new(-0.2, 1.9, 4.6), Vec3::new(1.4, 2.1, 0.6)),
         check: |game| {
             let health = |actor: u64| {
                 game.frame()
@@ -783,7 +851,7 @@ pub fn scenario() -> crate::playground::Scenario {
                 return Err("The siege boulder never reached its dummy".into());
             }
             for (i, p) in game.spells.props.iter().enumerate() {
-                if !(p.name.starts_with("Paper") || p.name.starts_with("Leaves")) {
+                if p.spec.kind != super::PropKind::Sheet {
                     continue;
                 }
                 let peak = wind.highest.get(&p.body.0).copied().unwrap_or(0.);

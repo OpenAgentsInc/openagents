@@ -60,6 +60,10 @@ pub enum PropKind {
     StoneBlock,
     /// A body a spell creates, such as a stone panel or a meteor.
     SpellBody,
+    /// A rough boulder of the kind giants and siege engines hurl.
+    Boulder,
+    /// Loose, lightweight material: a sheet of paper or a mat of leaves.
+    Sheet,
 }
 impl PropKind {
     /// Pack model the renderer draws for this kind; `secured` props use a
@@ -72,6 +76,8 @@ impl PropKind {
             Self::TrainingDummy => "prop-dummy",
             Self::Anvil => "prop-anvil",
             Self::StoneBlock | Self::SpellBody => "prop-stone",
+            Self::Boulder => "prop-boulder",
+            Self::Sheet => "prop-sheet",
         }
     }
 }
@@ -140,6 +146,22 @@ impl PropSpec {
                 1_000.,
                 Material::Stone,
                 false,
+                DVec3::ZERO,
+            ),
+            PropKind::Boulder => (
+                Size::Small,
+                DVec3::splat(0.9),
+                150.,
+                Material::Stone,
+                false,
+                DVec3::ZERO,
+            ),
+            PropKind::Sheet => (
+                Size::Tiny,
+                DVec3::new(0.6, 0.05, 0.45),
+                0.5,
+                Material::Straw,
+                true,
                 DVec3::ZERO,
             ),
         };
