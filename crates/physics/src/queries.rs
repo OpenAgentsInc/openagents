@@ -3,6 +3,9 @@ use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+mod snapshot;
+pub use snapshot::{GeometrySnapshot, SceneSnapshot, ShapeSnapshot};
+
 const EPS: f64 = 1e-7;
 const MAX_TRIANGLES: usize = 1_000_000;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]

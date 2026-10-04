@@ -371,6 +371,7 @@ pub(super) mod tests {
             control: None,
             body: Reply::Snapshot {
                 state: State {
+                    collision: None,
                     movement: None,
                     hud: None,
                     snapshot,

@@ -274,15 +274,19 @@ Quest catalogs can include bounded authored offer, objective-reminder, and turn-
 dialogue. Owned quest progress carries that text; the native giver panel selects
 the offer, reminder, or turn-in text from enrollment and objective state.
 
-Wire version 18 adds an owned movement baseline with the exact capsule state,
+Wire version 19 retains an owned movement baseline with the exact capsule state,
 yaw, life, control epoch, and applied sequence. Snapshots withhold it while
 movement or jump input is pending, during cinematic/controller control, and
 after death; spectators receive none. Client prediction and reconciliation
 remain in progress. The portable `prediction::History` bounds retained movement
 to 64 intervals and 256 substeps, replays only unapplied input, and retires
 history on a newer life or control epoch. Its snapshot observation ordering
-allows multiple corrections within one server tick. Native input binding and
-render integration remain required.
+allows multiple corrections within one server tick. Tracked worker inputs bind
+their local token to the exact transmitted command and reject stale control.
+Owned snapshots also carry bounded collision source geometry with exact collider
+lives, layers, usage, and poses. Rebuilding preserves solid boxes, triangle
+meshes, and capsules; spectators omit this prediction data. Native prediction
+and render integration remain required.
 
 ## Spell physics and the spell playground
 

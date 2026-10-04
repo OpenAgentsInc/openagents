@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 18;
+pub const VERSION: u16 = 19;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -180,8 +180,14 @@ impl State {
         {
             return Err("Owned HUD does not match admitted control".into());
         }
+        if self.collision.is_some() && control.is_none() {
+            return Err("Collision snapshot has no admitted control".into());
+        }
         if let Some(movement) = &self.movement {
             movement.validate()?;
+            if self.collision.is_none() {
+                return Err("Movement baseline has no collision snapshot".into());
+            }
             let control = control
                 .as_ref()
                 .ok_or("Movement baseline has no admitted control")?;
@@ -244,6 +250,9 @@ impl State {
     }
     /// Admits the shared snapshot and its complete presentation life bindings.
     pub fn validate(&self, instance: u64) -> Result<(), String> {
+        if let Some(collision) = &self.collision {
+            collision.validate(instance)?;
+        }
         let mut sources = std::collections::BTreeSet::new();
         let mut lives = std::collections::BTreeSet::new();
         let snapshot_sources: std::collections::BTreeSet<_> =
@@ -339,6 +348,8 @@ pub struct ActorBinding {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collision: Option<physics::queries::SceneSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub movement: Option<crate::movement::Baseline>,
     pub hud: Option<crate::hud::Own>,
@@ -658,6 +669,16 @@ impl Gateway {
                 }
                 Ok(Reply::Snapshot {
                     state: State {
+                        collision: self
+                            .admission(id)
+                            .ok()
+                            .map(|_| {
+                                self.game()
+                                    .query_scene
+                                    .snapshot(self.game().player_life().instance)
+                            })
+                            .transpose()
+                            .map_err(|e| ("collision", e))?,
                         movement: self
                             .admission(id)
                             .ok()
@@ -820,6 +841,50 @@ mod tests {
             };
             state.validate_control(110, &initial.control).unwrap();
             let baseline = state.movement.unwrap();
+            let geometry = state.collision.as_ref().unwrap();
+            let reconstructed = geometry.compile(110).unwrap();
+            assert_eq!(
+                serde_json::to_vec(geometry).unwrap(),
+                serde_json::to_vec(&g.game().query_scene.snapshot(110).unwrap()).unwrap()
+            );
+            let mut filter = physics::queries::Filter::blocking(110);
+            filter.ignore = Some(physics::queries::Life {
+                instance: 110,
+                entity: baseline.life.actor,
+                generation: baseline.life.generation,
+            });
+            let mut original = baseline.character;
+            let mut rebuilt = baseline.character;
+            crate::movement::advance(
+                &mut original,
+                &g.game().query_scene,
+                filter,
+                glam::DVec3::X * 6.4008,
+                true,
+                4,
+                1. / 120.,
+            )
+            .unwrap();
+            crate::movement::advance(
+                &mut rebuilt,
+                &reconstructed,
+                filter,
+                glam::DVec3::X * 6.4008,
+                true,
+                4,
+                1. / 120.,
+            )
+            .unwrap();
+            assert_eq!(
+                serde_json::to_vec(&original).unwrap(),
+                serde_json::to_vec(&rebuilt).unwrap()
+            );
+            let mut missing = state.clone();
+            missing.collision = None;
+            assert!(missing.validate_control(110, &initial.control).is_err());
+            let mut foreign = state.clone();
+            foreign.collision.as_mut().unwrap().instance = 111;
+            assert!(foreign.validate_control(110, &initial.control).is_err());
             assert_eq!(baseline.applied_sequence, 0);
             let command = g
                 .admission(id)
@@ -871,6 +936,7 @@ mod tests {
             panic!("Expected snapshot");
         };
         assert!(state.movement.is_none());
+        assert!(state.collision.is_none());
         state.validate_control(110, &observer.control).unwrap();
         let life = g.admission(player).unwrap().actor();
         let mut stale = life;
