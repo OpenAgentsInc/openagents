@@ -431,6 +431,10 @@ fn every_seat_reaches_its_desk_and_faces_its_monitor() {
     for desk in DESKS {
         let route = crate::nav::plan(spawn, desk.seat, blockers, HALF_EXTENT);
         assert!(route.is_ok(), "{:?}: {route:?}", desk.seat);
+        // The seat itself works beside the standing point, on open floor.
+        let figure = studio::at_desk(&desk);
+        let route = crate::nav::plan(spawn, figure, blockers, HALF_EXTENT);
+        assert!(route.is_ok(), "{figure:?}: {route:?}");
         // The seat faces +z; its monitor is ahead, facing back at it.
         let monitor = desk.monitor;
         assert!(monitor.center.z > desk.seat[1]);

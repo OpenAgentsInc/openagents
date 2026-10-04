@@ -27,7 +27,10 @@
 //! is inside: leaving stops the source and drops every seat, card, and log
 //! line it drew.
 
-use super::{HALF_EXTENT, STATIONS, Station as Place, boards, height, layout::DESKS};
+use super::{
+    HALF_EXTENT, HALL, STATIONS, Station as Place, boards, height,
+    layout::{DESKS, Desk},
+};
 use crate::{
     avatar::{self, Gait},
     controller::Footprint,
@@ -51,14 +54,35 @@ pub const MAX_WALK: f32 = 12.0;
 /// How far from a desk's standing point the player stands to use that
 /// seat's desk, m.
 pub const DESK_RANGE: f32 = 1.4;
+/// How far a seat at its desk works beside the desk's standing point,
+/// toward the middle of the hall, m. The player uses a desk from its
+/// standing point with the camera behind them, so the seat stands beside
+/// the player, out of the camera's path, rather than in the player's place.
+pub const DESK_ASIDE: f32 = 0.7;
 /// Space between seats sharing one station, m.
 const SLOT: f32 = 0.9;
 /// Within this distance of a waypoint, a seat takes the next, m.
 const ARRIVED: f32 = 0.05;
 /// Height of a seat's lamp over its feet, m.
 const LAMP: f32 = 2.2;
-/// Height of the bottom of a seat's nameplate over its feet, m.
+/// Height of the bottom of a seat's nameplate over its feet, m, for an
+/// eye above it.
 const PLATE: f32 = 2.45;
+/// The lowest a nameplate hangs over a seat's feet, m: just over its head.
+/// Under the hall's low camera a plate hangs lower than [`PLATE`], so it
+/// stays inside the view instead of across its top edge.
+const PLATE_LOW: f32 = 2.0;
+/// A nameplate's height at full size, m: its three rows.
+const PLATE_TALL: f32 = 0.42;
+/// The most a nameplate subtends vertically at the eye, radians. Nearer
+/// than `PLATE_TALL / PLATE_ANGLE` (6 m), a plate shrinks to keep this, as
+/// the plaza's overhead names keep one size on screen.
+pub const PLATE_ANGLE: f32 = 0.07;
+/// Nearer the eye than this, m, a nameplate is not drawn.
+const PLATE_HIDE: f32 = 1.0;
+/// How far a nameplate stands out of its seat toward the eye, m, so the
+/// seat's lamp does not cover it.
+const PLATE_OUT: f32 = 0.2;
 /// Height of a waiting seat's beacon over its feet, m.
 const BEACON: f32 = 7.0;
 /// The most characters a nameplate line shows.
@@ -201,15 +225,16 @@ fn place(id: &str) -> &'static Place {
         .unwrap_or(&STATIONS[2])
 }
 
-/// Where a seat stands for `station`: its own desk's standing point for
-/// the desk, else the station's point moved sideways to `slot` of `count`
-/// seats there. Returns the point on the ground and the heading to face.
+/// Where a seat stands for `station`: beside its own desk ([`at_desk`])
+/// for the desk, else the station's point moved sideways to `slot` of
+/// `count` seats there. Returns the point on the ground and the heading to
+/// face.
 #[must_use]
 pub fn standing(station: wire::Station, desk: u32, slot: usize, count: usize) -> ([f32; 2], f32) {
     if station == wire::Station::Desk
         && let Some(desk) = usize::try_from(desk).ok().and_then(|i| DESKS.get(i))
     {
-        return (desk.seat, 0.0);
+        return (at_desk(desk), 0.0);
     }
     let place = place(place_id(station));
     // Sideways to the heading: forward is (sin, cos), so right is
@@ -219,6 +244,45 @@ pub fn standing(station: wire::Station, desk: u32, slot: usize, count: usize) ->
     (
         [place.at[0] + cos * shift, place.at[1] - sin * shift],
         place.facing,
+    )
+}
+
+/// Where a seat works at `desk`: [`DESK_ASIDE`] from the desk's standing
+/// point toward the middle of the hall, at the same depth, facing the
+/// bench.
+#[must_use]
+pub fn at_desk(desk: &Desk) -> [f32; 2] {
+    let [x, z] = desk.seat;
+    [x - DESK_ASIDE * (x - HALL.0[0]).signum(), z]
+}
+
+/// Plate space to the glade for the nameplate of a seat at `feet` seen
+/// from `eye`, or `None` when the plate is too near the eye to draw.
+///
+/// The plate turns toward the eye and stands a little out of the seat
+/// toward it. It hangs at [`PLATE`] for an eye above that, and lower, down
+/// to [`PLATE_LOW`], for a lower eye, such as the camera under the hall's
+/// ceiling. Nearer than `PLATE_TALL / PLATE_ANGLE` it shrinks, so it never
+/// subtends more than about [`PLATE_ANGLE`] however near the eye comes.
+fn plate_transform(feet: Vec3, eye: Vec3) -> Option<Mat4> {
+    // An eye level with the plate looks at its lower rows.
+    let lift = (eye.y - feet.y - PLATE_TALL / 4.0).clamp(PLATE_LOW, PLATE);
+    let mut anchor = feet + Vec3::Y * lift;
+    let level = Vec3::new(eye.x - anchor.x, 0.0, eye.z - anchor.z);
+    if level.length() > 2.0 * PLATE_OUT {
+        anchor += level.normalize() * PLATE_OUT;
+    }
+    let toward = eye - anchor;
+    let distance = toward.length();
+    if !distance.is_finite() || distance < PLATE_HIDE {
+        return None;
+    }
+    let scale = (distance * PLATE_ANGLE / PLATE_TALL).min(1.0);
+    let facing = toward.x.atan2(toward.z);
+    Some(
+        Mat4::from_translation(anchor)
+            * Mat4::from_rotation_y(facing + std::f32::consts::PI)
+            * Mat4::from_scale(Vec3::splat(scale)),
     )
 }
 
@@ -557,8 +621,8 @@ impl Studio {
         PanelKind::at_station(station.id)
     }
 
-    /// The seats, their lamps and nameplates turned toward `eye`, and the
-    /// live boards.
+    /// The seats, their lamps and nameplates turned toward `eye` and
+    /// bounded in size there ([`PLATE_ANGLE`]), and the live boards.
     #[must_use]
     pub fn mesh(&self, eye: Vec3) -> Mesh {
         let mut mesh = Mesh::default();
@@ -593,11 +657,9 @@ impl Studio {
                     }
                 }
             }
-            let anchor = seat.pos + Vec3::Y * PLATE;
-            let toward = eye - anchor;
-            let facing = toward.x.atan2(toward.z);
-            let transform = Mat4::from_translation(anchor)
-                * Mat4::from_rotation_y(facing + std::f32::consts::PI);
+            let Some(transform) = plate_transform(seat.pos, eye) else {
+                continue;
+            };
             mesh.faces.extend(seat.plate.faces.iter().map(|v| Vertex {
                 pos: transform.transform_point3(Vec3::from(v.pos)).to_array(),
                 ..*v

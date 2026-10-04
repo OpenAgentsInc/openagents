@@ -45,7 +45,7 @@ fn walk(studio: &mut Studio, seconds: f32) {
 #[test]
 fn a_seat_stands_at_its_own_desk_and_seats_share_other_stations() {
     for (i, desk) in DESKS.iter().enumerate() {
-        assert_eq!(standing(At::Desk, i as u32, 0, 1), (desk.seat, 0.0));
+        assert_eq!(standing(At::Desk, i as u32, 0, 1), (at_desk(desk), 0.0));
     }
     // A seat with no desk of its own stands at the desks station.
     let desks = STATIONS.iter().find(|s| s.id == "desks").unwrap();
@@ -97,6 +97,113 @@ fn stations_open_their_panels() {
 }
 
 #[test]
+fn a_seat_at_its_desk_stands_out_of_the_players_camera_path() {
+    for (i, desk) in DESKS.iter().enumerate() {
+        let figure = at_desk(desk);
+        // Beside the desk's standing point, at the same depth, nearer the
+        // hall's middle.
+        assert!((figure[1] - desk.seat[1]).abs() < 1e-6);
+        assert!(((figure[0] - desk.seat[0]).abs() - DESK_ASIDE).abs() < 1e-6);
+        assert!(figure[0].abs() < desk.seat[0].abs());
+        // A player using the desk stands at its standing point with the
+        // camera behind them, facing the bench (+z): the seat stays clear
+        // of the line from the camera to the player.
+        let [px, pz] = desk.seat;
+        for back in [2.5_f32, 9.0] {
+            let camera = [px, pz - back];
+            let t = ((figure[1] - camera[1]) / back).clamp(0.0, 1.0);
+            let nearest = [camera[0], camera[1] + t * back];
+            let clear = (figure[0] - nearest[0]).hypot(figure[1] - nearest[1]);
+            assert!(clear >= 0.6, "{clear}");
+        }
+        // The seat's own spot still opens its desk.
+        assert_eq!(
+            Studio::panel_at(ground(figure)),
+            Some(PanelKind::Desk(i as u32))
+        );
+    }
+}
+
+/// The highest and lowest elevation, radians, at which `eye` sees the
+/// nameplate of a seat at `feet`, and the plate's height in the glade.
+fn plate_seen(plate: &Mesh, feet: Vec3, eye: Vec3) -> Option<(f32, f32, f32)> {
+    let transform = plate_transform(feet, eye)?;
+    let (mut low, mut high) = (f32::INFINITY, f32::NEG_INFINITY);
+    let (mut bottom, mut top) = (f32::INFINITY, f32::NEG_INFINITY);
+    for v in &plate.faces {
+        let p = transform.transform_point3(Vec3::from(v.pos));
+        let d = p - eye;
+        let elevation = d.y.atan2(d.x.hypot(d.z));
+        low = low.min(elevation);
+        high = high.max(elevation);
+        bottom = bottom.min(p.y);
+        top = top.max(p.y);
+    }
+    Some((low, high, top - bottom))
+}
+
+#[test]
+fn a_nameplate_never_grows_past_its_screen_bound() {
+    let plate = plate(
+        &nameplate(&seat("grace", 2, Activity::Editing)),
+        Attention::Working,
+    );
+    // The plate's rows reach exactly its full height.
+    let top = plate
+        .faces
+        .iter()
+        .map(|v| v.pos[1])
+        .fold(f32::MIN, f32::max);
+    let bottom = plate
+        .faces
+        .iter()
+        .map(|v| v.pos[1])
+        .fold(f32::MAX, f32::min);
+    assert!((top - bottom - PLATE_TALL).abs() < 1e-4, "{}", top - bottom);
+
+    let feet = ground(at_desk(&DESKS[2]));
+    // Far away, the plate draws at full size over the seat's head.
+    let far = feet + Vec3::new(0.0, 6.0, -30.0);
+    let (_, _, tall) = plate_seen(&plate, feet, far).unwrap();
+    assert!((tall - PLATE_TALL).abs() < 1e-3, "{tall}");
+    // However near the eye comes, from level or above, the plate
+    // subtends at most about PLATE_ANGLE.
+    for back in [1.2_f32, 1.6, 2.5, 4.0, 6.0, 10.0] {
+        for rise in [1.6_f32, 2.2, 3.0, 5.0] {
+            let eye = feet + Vec3::new(0.3, rise, -back);
+            let (low, high, _) = plate_seen(&plate, feet, eye).unwrap();
+            assert!(
+                high - low <= PLATE_ANGLE * 1.1,
+                "{back} m back, {rise} m up: {}",
+                high - low
+            );
+        }
+    }
+    // An eye at the seat draws no plate.
+    assert!(plate_transform(feet, feet + Vec3::Y * 2.0).is_none());
+}
+
+#[test]
+fn the_hall_camera_sees_desk_nameplates_whole() {
+    // The `studio-hall` capture: the player at the desks station facing the
+    // desks, the camera pulled in under the hall's ceiling and pitched down
+    // 20.6 degrees with a vertical field of view of one radian, so the top
+    // of the view is about 8 degrees over level.
+    let eye = Vec3::new(0.0, 2.2, 3.4);
+    let top_of_view = 0.5 - 0.36;
+    let plate = plate(
+        &nameplate(&seat("grace", 2, Activity::Editing)),
+        Attention::Working,
+    );
+    for desk in &DESKS {
+        let feet = ground(at_desk(desk));
+        let (low, high, _) = plate_seen(&plate, feet, eye).unwrap();
+        assert!(high < top_of_view - 0.02, "{:?}: {high}", desk.seat);
+        assert!(high - low <= PLATE_ANGLE * 1.1);
+    }
+}
+
+#[test]
 fn lettering_keeps_the_board_alphabet() {
     assert_eq!(lettering("codex:studio-sim", 24), "CODEX STUDIO SIM");
     assert_eq!(lettering("Plan: a/b.c", 24), "PLAN  A/B.C");
@@ -109,7 +216,8 @@ fn seats_walk_to_their_station_and_skip_ahead_when_activity_outruns_them() {
     studio.active = true;
     studio.apply(snapshot(1, vec![seat("ada", 1, Activity::Editing)]), &[]);
     // A seat seen first stands at its station at once.
-    assert_eq!(studio.seat_position("ada"), Some(ground(DESKS[1].seat)));
+    let desk = ground(at_desk(&DESKS[1]));
+    assert_eq!(studio.seat_position("ada"), Some(desk));
     assert!(!studio.seat_walking("ada"));
 
     // A nearby station: the seat walks there.
@@ -118,8 +226,8 @@ fn seats_walk_to_their_station_and_skip_ahead_when_activity_outruns_them() {
     assert!(studio.seat_walking("ada"));
     studio.tick(0.1);
     let moved = studio.seat_position("ada").unwrap();
-    assert!(moved != ground(DESKS[1].seat));
-    assert!(moved.distance(ground(DESKS[1].seat)) <= WALK_SPEED * 0.1 + 1e-3);
+    assert!(moved != desk);
+    assert!(moved.distance(desk) <= WALK_SPEED * 0.1 + 1e-3);
 
     // The activity changes again before it arrives: it skips ahead.
     studio.apply(snapshot(3, vec![seat("ada", 1, Activity::Judging)]), &[]);
