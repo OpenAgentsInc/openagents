@@ -192,6 +192,7 @@ pub fn scenarios() -> Vec<Scenario> {
         crate::spells::black_tentacles::scenario(),
         bow_stance(),
         crate::reverse_gravity::game::scenario(),
+        crate::spells::meteor_swarm::scenario(),
     ]
 }
 

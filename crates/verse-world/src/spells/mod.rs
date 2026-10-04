@@ -16,6 +16,7 @@ pub mod feather_fall;
 pub mod fields;
 pub mod gust_of_wind;
 pub mod levitate;
+pub mod meteor_swarm;
 pub mod props;
 pub mod thunderwave;
 pub mod wall_of_stone;
@@ -81,6 +82,7 @@ pub const CATALOG: &[SpellDef] = &[
     feather_fall::SPELL,
     wall_of_stone::DEF,
     black_tentacles::DEF,
+    meteor_swarm::DEF,
 ];
 
 pub fn spell_in_slot(slot: u8) -> Option<&'static SpellDef> {
@@ -208,6 +210,9 @@ pub struct SpellWorld {
     /// the live chamber turns it on.
     #[serde(default)]
     pub agent_tentacles: bool,
+    /// Meteors in flight and the objects their Spheres reached.
+    #[serde(default)]
+    pub meteor_swarm: meteor_swarm::State,
 }
 
 impl Default for SpellWorld {
@@ -260,6 +265,7 @@ impl SpellWorld {
             tentacle_damage: vec![],
             time: 0.,
             agent_tentacles: false,
+            meteor_swarm: meteor_swarm::State::default(),
         }
     }
 
@@ -320,6 +326,7 @@ impl SpellWorld {
         {
             return Err("Invalid spell world checkpoint".into());
         }
+        self.meteor_swarm.validate(&self.world)?;
         Ok(())
     }
 
@@ -454,6 +461,7 @@ impl SpellWorld {
             collider,
             owner,
             removed: false,
+            passable: false,
         });
         self.previous.clear();
         Ok(self.props.len() - 1)
@@ -788,7 +796,11 @@ impl SpellWorld {
             scene.insert(MeshCollider {
                 key: prop.query_key(),
                 layers: 1,
-                usage: Usage::Blocking,
+                usage: if prop.passable {
+                    Usage::Trigger
+                } else {
+                    Usage::Blocking
+                },
                 mesh: Mesh::from_box(offset - half, offset + half)?,
             })?;
         }

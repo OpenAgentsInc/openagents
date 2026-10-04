@@ -237,6 +237,10 @@ pub struct Prop {
     /// The cast that created it; the prop leaves when that spell ends.
     pub owner: Option<u64>,
     pub removed: bool,
+    /// Characters move through it, as through a falling meteor or small
+    /// debris; it still collides with other bodies.
+    #[serde(default)]
+    pub passable: bool,
 }
 impl Prop {
     pub fn query_key(&self) -> physics::queries::ColliderKey {

@@ -2335,6 +2335,7 @@ impl Game {
         crate::reverse_gravity::game::step(self, dt)?;
         crate::telekinesis::after_step(self, steps)?;
         crate::spells::black_tentacles::apply(self, dt)?;
+        crate::spells::meteor_swarm::after_step(self)?;
         let masses: BTreeMap<u64, f64> = std::iter::once(self.player_actor())
             .chain(self.additional_players.keys().copied())
             .chain(living.iter().copied())
