@@ -45,16 +45,12 @@ pub fn instances(
         if let Some(hand) = model.attachments.iter().find(|a| a.id == 2) {
             let pose =
                 verse_engine::animation::pose_selected(model, a.animation, a.animation_time)?;
-            let hand_position = (Mat4::from_translation(a.actor.position)
+            let transform = Mat4::from_translation(a.actor.position)
                 * Mat4::from_rotation_y(a.actor.yaw)
+                * Mat4::from_scale(Vec3::splat(a.actor.scale))
                 * basis()
-                * pose[hand.bone])
-                .transform_point3(hand.position.into());
-            let transform = Mat4::from_translation(hand_position)
-                * Mat4::from_rotation_y(a.actor.yaw)
-                * basis()
-                * Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2)
-                * Mat4::from_rotation_y(-std::f32::consts::FRAC_PI_2);
+                * pose[hand.bone]
+                * Mat4::from_translation(hand.position.into());
             actors.push(Instance {
                 actor: None,
                 model: "bow".into(),

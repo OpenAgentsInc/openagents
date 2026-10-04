@@ -79,6 +79,56 @@ fn cuboid(
     }
     m.surfaces.push(s);
 }
+fn bow() -> Model {
+    let mut bow = model("bow", 1.4);
+    // Tapered curved limbs in the pack's Z-up coordinates, centered on the grip.
+    let points = [
+        [0.0, -0.18, -0.7],
+        [0.0, -0.08, -0.58],
+        [0.0, 0.06, -0.36],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.06, 0.36],
+        [0.0, -0.08, 0.58],
+        [0.0, -0.18, 0.7],
+    ];
+    for (i, ends) in points.windows(2).enumerate() {
+        let start = Vec3::from_array(ends[0]);
+        let end = Vec3::from_array(ends[1]);
+        let direction = end - start;
+        let thickness = if i == 0 || i == 5 { 0.012 } else { 0.022 };
+        cuboid(
+            &mut bow,
+            [0.; 3],
+            [thickness, thickness, direction.length() * 0.5],
+            [0.42, 0.21, 0.075],
+            0,
+            false,
+        );
+        let rotation = Quat::from_rotation_arc(Vec3::Z, direction.normalize());
+        for vertex in &mut bow.surfaces.last_mut().unwrap().vertices {
+            vertex.position =
+                (rotation * Vec3::from_array(vertex.position) + (start + end) * 0.5).to_array();
+            vertex.normal = (rotation * Vec3::from_array(vertex.normal)).to_array();
+        }
+    }
+    cuboid(
+        &mut bow,
+        [0.; 3],
+        [0.026, 0.028, 0.09],
+        [0.16, 0.095, 0.055],
+        0,
+        false,
+    );
+    cuboid(
+        &mut bow,
+        [0., -0.18, 0.],
+        [0.002, 0.002, 0.7],
+        [0.75, 0.7, 0.58],
+        0,
+        false,
+    );
+    bow
+}
 /// Compiles chamber semantics into explicit per-model clip bindings.
 /// Clip numbers are compiler-local references, never gameplay selectors.
 pub(super) fn bind_states(model: &mut Model) {
@@ -315,10 +365,8 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
         rotation: [0., 0., 0., 1.],
         scale: 1.,
     });
-    for (name, half, color) in [
-        ("bow", [0.05, 0.07, 0.7], [0.55, 0.29, 0.1]),
-        ("arrow", [0.55, 0.025, 0.025], [0.75, 0.65, 0.35]),
-    ] {
+    pack.models.insert("bow".into(), bow());
+    for (name, half, color) in [("arrow", [0.55, 0.025, 0.025], [0.75, 0.65, 0.35])] {
         let mut m = model(name, 1.4);
         cuboid(&mut m, [0.; 3], half, color, 0, false);
         pack.models.insert(name.into(), m);
