@@ -19,6 +19,7 @@ mod culling;
 #[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
 pub mod giver_panel;
 pub mod icons;
+mod instancing;
 pub mod inventory;
 pub mod lighting;
 mod material_gpu;
@@ -296,6 +297,7 @@ pub struct Renderer {
     shadow_groups: Vec<wgpu::BindGroup>,
     shadow_buffers: Vec<wgpu::Buffer>,
     shadow_pipeline: wgpu::RenderPipeline,
+    instanced_shadows: Option<instancing::Shadows>,
     pose_layout: wgpu::BindGroupLayout,
     materials: BTreeMap<material_gpu::Key, wgpu::BindGroup>,
     shadow_materials: BTreeMap<material_gpu::Key, wgpu::BindGroup>,
@@ -951,6 +953,8 @@ impl Renderer {
                 immediate_size: 0,
             });
         let shadow_pipeline=device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse skinned local shadow"),layout:Some(&shadow_pipeline_layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(true),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:wgpu::DepthBiasState{constant:1,slope_scale:1.0,clamp:0.0}}),multisample:Default::default(),fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("shadow_fs"),compilation_options:Default::default(),targets:&[]}),multiview_mask:None,cache:None});
+        let instanced_shadows =
+            instancing::Shadows::new(&device, &shadow_layout, &shadow_material_layout);
         let static_batches = upload(&device, merge(&pack, static_instances));
         let mut models = HashMap::new();
         for (name, model) in &pack.models {
@@ -1080,6 +1084,7 @@ impl Renderer {
             shadow_groups,
             shadow_buffers,
             shadow_pipeline,
+            instanced_shadows,
             pose_layout,
             materials,
             shadow_materials,
@@ -1631,7 +1636,14 @@ impl Renderer {
             self.queue
                 .write_buffer(&self.actors[i + 1].buffer, 0, bytemuck::bytes_of(palette));
         }
+        if let Some(instancing) = &self.instanced_shadows {
+            if !palettes.is_empty() {
+                self.queue
+                    .write_buffer(&instancing.poses, 0, bytemuck::cast_slice(&palettes));
+            }
+        }
         let prepared = Instant::now();
+        let mut instance_cursor = 0u32;
         let mut shadow_draws = 0;
         let mut encoder = self.device.create_command_encoder(&Default::default());
         use verse_engine::render_graph::ChamberPass;
@@ -1736,6 +1748,25 @@ impl Renderer {
                     // Depth-only draws can share geometry and material state across actors.
                     // Each draw retains its own skeletal palette and model transform.
                     for (model, actors) in groups {
+                        let start = instance_cursor;
+                        let end = start + actors.len() as u32;
+                        if let Some(instancing) = &self.instanced_shadows {
+                            if end > instancing::INDEX_CAPACITY {
+                                return Err(
+                                    "Shadow instance indices exceed the frame budget".into()
+                                );
+                            }
+                            let indices: Vec<u32> =
+                                actors.iter().map(|actor| (*actor - 1) as u32).collect();
+                            self.queue.write_buffer(
+                                &instancing.indices,
+                                u64::from(start) * 4,
+                                bytemuck::cast_slice(&indices),
+                            );
+                            instance_cursor = end;
+                            pass.set_pipeline(&instancing.pipeline);
+                            pass.set_bind_group(2, &instancing.group, &[]);
+                        }
                         for batch in self.models[&model]
                             .iter()
                             .filter(|batch| batch.blend < 2 && !batch.emissive)
@@ -1746,10 +1777,15 @@ impl Renderer {
                                 batch.indices.slice(..),
                                 wgpu::IndexFormat::Uint32,
                             );
-                            for actor in &actors {
-                                pass.set_bind_group(2, &self.actors[*actor].group, &[]);
-                                pass.draw_indexed(0..batch.count, 0, 0..1);
+                            if self.instanced_shadows.is_some() {
+                                pass.draw_indexed(0..batch.count, 0, start..end);
                                 shadow_draws += 1;
+                            } else {
+                                for actor in &actors {
+                                    pass.set_bind_group(2, &self.actors[*actor].group, &[]);
+                                    pass.draw_indexed(0..batch.count, 0, 0..1);
+                                    shadow_draws += 1;
+                                }
                             }
                         }
                     }
