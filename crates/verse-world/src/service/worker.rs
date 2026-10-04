@@ -10,6 +10,8 @@ use tokio::sync::{mpsc, oneshot};
 
 pub const INPUT_CAPACITY: usize = 32;
 pub const UPDATE_CAPACITY: usize = 8;
+/// Leaves request capacity for 30 Hz input refreshes and spell commands.
+pub const NATIVE_CADENCE: Duration = Duration::from_millis(50);
 
 /// Local input requests contain no principal, controller, or transport handle.
 pub enum Input {
@@ -110,6 +112,87 @@ mod tests {
     };
     use rustls::pki_types::ServerName;
     use tokio::time::timeout;
+
+    #[tokio::test]
+    async fn native_polling_and_sustained_movement_fit_the_tls_request_budget() {
+        let keys = [key(81), key(82), key(83)];
+        let (address, connector, server_stop, server) = start(&keys).await;
+        let client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let (input, inputs, updates, mut output) = channels();
+        let (stop, stopped) = oneshot::channel();
+        let worker = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            NATIVE_CADENCE,
+            inputs,
+            updates,
+            stopped,
+        ));
+        let feeder = tokio::spawn(async move {
+            let mut clock = tokio::time::interval(Duration::from_millis(33));
+            clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            for index in 0..90 {
+                clock.tick().await;
+                input
+                    .send(Input::Command(Intent::Move {
+                        axes: [0., 0.],
+                        yaw: 0.,
+                    }))
+                    .await
+                    .unwrap();
+                if index % 30 == 0 {
+                    input
+                        .send(Input::Command(Intent::Cast {
+                            ability: Ability::Shield,
+                            target: None,
+                            aim: [0., 0., 1.],
+                        }))
+                        .await
+                        .unwrap();
+                }
+            }
+            input
+        });
+        let mut outcomes = 0;
+        let mut accepted = 0;
+        let mut snapshots = 0;
+        timeout(Duration::from_secs(8), async {
+            while outcomes < 93 {
+                match output
+                    .recv()
+                    .await
+                    .expect("Worker disconnected during sustained input")
+                {
+                    Update::Snapshot(_) => snapshots += 1,
+                    Update::Outcome(response) => {
+                        outcomes += 1;
+                        if matches!(response.body, Reply::Accepted) {
+                            accepted += 1;
+                        }
+                    }
+                    Update::Events { .. } => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let input = feeder.await.unwrap();
+        assert!(snapshots >= 93);
+        assert!(accepted >= 90);
+        stop.send(()).unwrap();
+        assert!(worker.await.unwrap().is_ok());
+        drop(input);
+        server_stop.send(()).unwrap();
+        assert!(server.await.unwrap().failure.is_none());
+    }
 
     #[tokio::test]
     async fn tls_worker_polls_admits_commands_and_stops_under_backpressure() {
