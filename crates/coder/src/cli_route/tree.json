@@ -481,7 +481,7 @@
               "serve"
             ],
             "usage": [
-              "serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR] [--listen-websocket ADDR] [--allow-nonloopback] [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME] [--advertise lan|tailnet|public=HOST:PORT|URL]... [--tailnet-admission RIGHTS [--no-tailnet-chats]] [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback] [--no-telemetry] [--iroh [--iroh-relay URL | --no-iroh-relay] [--iroh-bind ADDR]...] [--control | --control-socket PATH] [--keychain | --keys DIR] [--label NAME]"
+              "serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR] [--listen-websocket ADDR] [--allow-nonloopback] [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME] [--advertise lan|tailnet|public=HOST:PORT|URL]... [--tailnet-admission RIGHTS [--no-tailnet-chats]] [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback] [--no-telemetry] [--iroh [--iroh-relay URL | --no-iroh-relay] [--iroh-bind ADDR]...] [--control | --control-socket PATH] [--keychain | --keys DIR] [--label NAME] [--studio-sim]"
             ],
             "forms": [
               {
@@ -667,6 +667,11 @@
                     "name": "label",
                     "value": "NAME",
                     "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "studio-sim",
                     "optional": true
                   }
                 ]
@@ -913,7 +918,13 @@
         },
         {
           "kind": "option",
-          "name": "control`:",
+          "name": "studio-sim",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "sim`):",
           "optional": true,
           "repeated": true
         },
@@ -930,6 +941,12 @@
           "name": "root",
           "value": "DIR",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "control`:",
           "optional": true,
           "repeated": true
         },
