@@ -1782,7 +1782,10 @@ impl Game {
                     // A knocked character does not walk; its authored place
                     // follows wherever the shove leaves it.
                     // A creature held by Telekinesis is moved by the grip.
-                    let knocked = character.knocked() || self.spells.holds_creature(a.actor.id);
+                    // So is one Restrained by Black Tentacles, through their pull.
+                    let knocked = character.knocked()
+                        || self.spells.holds_creature(a.actor.id)
+                        || crate::spells::black_tentacles::restrained(&self.spells, a.actor.id);
                     // A levitated character moves only by pushing off.
                     let levitated = self.spells.levitations.holds(a.actor.id);
                     let velocity = if knocked || levitated {
@@ -1811,7 +1814,9 @@ impl Game {
                         npc_path.push(character.feet.as_vec3().to_array());
                     }
                     let feet = character.feet.as_vec3();
-                    if knocked || levitated || character.knocked() {
+                    // A navigated route starts from where the character is,
+                    // so only authored places carry the shove as an offset.
+                    if (knocked || levitated || character.knocked()) && !navigated {
                         self.controls.displace(id, feet - previous);
                     }
                     if fell > 0. {
