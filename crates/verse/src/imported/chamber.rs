@@ -88,10 +88,11 @@ pub fn blocker_instances(pack: &Pack, game: &super::play::Game) -> Vec<Instance>
     game.navigation_blockers()
         .active_bounds()
         .filter(|(life, _, _)| {
-            !game
-                .physics_bodies()
-                .get(*life)
-                .is_some_and(|body| matches!(body.phase, physics::lifetimes::Phase::Corpse { .. }))
+            !(pack.models.contains_key("prop/Table_Large")
+                && (10_000..10_256).contains(&life.entity))
+                && !game.physics_bodies().get(*life).is_some_and(|body| {
+                    matches!(body.phase, physics::lifetimes::Phase::Corpse { .. })
+                })
         })
         .map(|(_, min, max)| Instance {
             actor: None,
@@ -178,7 +179,12 @@ pub fn static_instances(pack: &Pack, origin: Vec3) -> Vec<Instance> {
                 ),
             animation: 0.into(),
             time: 0.0,
-            emission: if pack.models[&p.model]
+            emission: if matches!(
+                p.model.as_str(),
+                "prop/flame" | "prop/ritual-liquid" | "prop/summoning-seal"
+            ) {
+                Vec3::splat(4.)
+            } else if pack.models[&p.model]
                 .source
                 .ends_with("scholme_greencandelabra.m2")
             {
@@ -213,23 +219,51 @@ pub fn lighting(origin: Vec3) -> super::lighting::Lighting {
     }
     if origin == Vec3::ZERO {
         lights.lights.clear();
-        for x in [-15., 15.] {
-            for z in [-25., -13., 0., 12.] {
+        lights.ambient = Vec3::new(0.021, 0.018, 0.025);
+        lights.exposure = 1.1;
+        lights.density = 0.008;
+        // Warm visible flames lead into the cooler summoning circle.
+        for z in [-12., 0., -24., 11.] {
+            for x in [-14., 14.] {
                 lights.lights.push(super::lighting::Light {
-                    position: Vec3::new(x, 3.6, z),
-                    color: Vec3::new(0.12, 1., 0.22),
-                    intensity: 180.,
-                    range: 18.,
+                    position: Vec3::new(x, 4.3, z),
+                    color: Vec3::new(1., 0.54, 0.19),
+                    intensity: 90.,
+                    range: 20.,
                 });
             }
         }
-    }
-    if origin == Vec3::ZERO {
+        for x in [-9., 9.] {
+            lights.lights.push(super::lighting::Light {
+                position: Vec3::new(x, 2.7, -6.7),
+                color: Vec3::new(1., 0.65, 0.3),
+                intensity: 45.,
+                range: 12.,
+            });
+            lights.lights.push(super::lighting::Light {
+                position: Vec3::new(x, 1.8, 5.),
+                color: Vec3::new(0.2, 1., 0.32),
+                intensity: 65.,
+                range: 10.,
+            });
+            lights.lights.push(super::lighting::Light {
+                position: Vec3::new(x * 0.7, 2.5, 2.5),
+                color: Vec3::new(1., 0.65, 0.3),
+                intensity: 35.,
+                range: 10.,
+            });
+        }
         lights.lights.push(super::lighting::Light {
-            position: Vec3::new(0., 4., -5.),
+            position: Vec3::new(0., 6.8, -10.),
+            color: Vec3::new(1., 0.7, 0.35),
+            intensity: 95.,
+            range: 20.,
+        });
+        lights.lights.push(super::lighting::Light {
+            position: Vec3::new(0., 4., -1.),
             color: Vec3::new(0.55, 0.13, 1.),
-            intensity: 110.,
-            range: 13.,
+            intensity: 120.,
+            range: 14.,
         });
     }
     lights

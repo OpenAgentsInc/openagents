@@ -373,14 +373,14 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
 /// Builds original UI art and uses the bundled OFL font.
 pub fn atlas() -> Result<Atlas, String> {
     let font = include_bytes!("../../assets/FiraMono-Medium.ttf");
-    let mut atlas = Atlas::from_font(font, 18.)?;
+    let mut atlas = Atlas::from_font(font, 54.)?;
     for (name, size) in [
         ("small", 10.),
         ("combat", 28.),
         ("hotkey", 12.),
         ("numbers", 14.),
     ] {
-        atlas.add_font(name, font, size)?;
+        atlas.add_font(name, font, size * 3.)?;
     }
     for (i, name) in [
         "unit-frame",
@@ -453,6 +453,7 @@ pub fn atlas() -> Result<Atlas, String> {
         }
         atlas.add_sprite(name, 64, 64, &pixels)?;
     }
+    atlas.use_logical_metrics(3.);
     Ok(atlas)
 }
 

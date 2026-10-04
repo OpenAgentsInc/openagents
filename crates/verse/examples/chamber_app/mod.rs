@@ -59,6 +59,7 @@ struct Stress {
     started: Option<Instant>,
     next_cast: f32,
     casts: u64,
+    move_forward: bool,
 }
 impl App {
     fn start_reload(&mut self) -> Result<(), String> {
@@ -154,13 +155,30 @@ impl App {
         if let Some(stress) = &mut self.stress {
             self.keys.clear();
             if self.game.casting.is_none() && self.game.time >= stress.next_cast {
+                self.game.selected = 1;
                 if self.game.activate(Ability::Fireball).is_ok() {
                     stress.casts += 1;
                 }
                 stress.next_cast = self.game.time + 3.;
             }
+            if self.game.player.z > -16. {
+                stress.move_forward = false;
+            }
+            if self.game.player.z < -24. {
+                stress.move_forward = true;
+            }
             if self.game.casting.is_none() {
-                self.keys.extend([KeyCode::KeyW, KeyCode::KeyD]);
+                self.keys.insert(if stress.move_forward {
+                    KeyCode::KeyW
+                } else {
+                    KeyCode::KeyS
+                });
+                if self.game.player.x > 2. {
+                    self.keys.insert(KeyCode::KeyE);
+                }
+                if self.game.player.x < -2. {
+                    self.keys.insert(KeyCode::KeyQ);
+                }
             }
             let age = stress
                 .started
@@ -172,7 +190,10 @@ impl App {
                 .button(true, look, &mut self.game.yaw, &self.game.camera);
             if look {
                 self.controls.motion(
-                    [-elapsed * 120., elapsed * 10. * age.sin()],
+                    [
+                        -elapsed * 24. * if (age / 15.) as u64 % 2 == 0 { 1. } else { -1. },
+                        elapsed * 10. * age.sin(),
+                    ],
                     &mut self.game.yaw,
                     &mut self.game.camera,
                 );
@@ -255,8 +276,28 @@ impl App {
         self.proof = proof;
         result
     }
+    fn overlay_size(&self) -> [f32; 2] {
+        let size = self
+            .window
+            .as_ref()
+            .map(|w| {
+                let s = w.inner_size();
+                [s.width, s.height]
+            })
+            .unwrap_or([1280, 720]);
+        [720. * size[0].max(1) as f32 / size[1].max(1) as f32, 720.]
+    }
     fn draw_frame(&mut self) -> Result<Vec<u8>, String> {
         let started = Instant::now();
+        let [width, height] = self.overlay_size();
+        if self.presenter.is_some() {
+            let size = self.window.as_ref().unwrap().inner_size();
+            self.renderer
+                .as_mut()
+                .unwrap()
+                .resize(size.width, size.height)?;
+        }
+        let dimensions = self.renderer.as_ref().unwrap().dimensions();
         let mut frame = self.game.interpolated_frame(self.interpolation)?;
         if self.game.scene.collision_profile.as_deref() == Some("original-chamber-v1")
             && frame
@@ -272,7 +313,7 @@ impl App {
             frame.fov = fov;
         }
         let view = View {
-            view_proj: frame.view_projection(1280.0 / 720.0),
+            view_proj: frame.view_projection(dimensions[0] as f32 / dimensions[1] as f32),
             eye: frame.eye,
         };
         let mut ui = overlay::cinematic(
@@ -280,8 +321,8 @@ impl App {
             &frame,
             &self.heights,
             view.view_proj,
-            1280.0,
-            720.0,
+            width,
+            height,
         );
         overlay::damage_numbers(
             &mut ui,
@@ -290,11 +331,11 @@ impl App {
             &frame,
             &self.heights,
             view.view_proj,
-            1280.0,
-            720.0,
+            width,
+            height,
         );
-        let hover = overlay::action_at(self.cursor[0], self.cursor[1], 1280.0, 720.0);
-        overlay::action_bar(&mut ui, &self.atlas, &self.game, 1280.0, 720.0, hover);
+        let hover = overlay::action_at(self.cursor[0], self.cursor[1], width, height);
+        overlay::action_bar(&mut ui, &self.atlas, &self.game, width, height, hover);
         if !self.reload_status.is_empty() {
             ui.text(
                 &self.atlas,
@@ -309,6 +350,7 @@ impl App {
         actors.extend(chamber::blocker_instances(&self.pack, &self.game));
         let lighting = chamber::combat_lighting(&self.game);
         let renderer = self.renderer.as_mut().unwrap();
+        renderer.set_overlay_size(width, height);
         let pixels = if self.presenter.is_none() || self.proof.is_some() {
             renderer.draw(view, &actors, &ui, &lighting)?
         } else {
@@ -323,6 +365,8 @@ impl App {
             let row = serde_json::json!({
                 "schema":"openagents.verse.frame-profile.v1",
                 "adapter":renderer.adapter_name,
+                "render_dimensions":renderer.dimensions(),
+                "samples":4,
                 "scene_time":self.game.time,
                 "player_hp":snapshot.player.hp,
                 "player_position":self.game.player.to_array(),
@@ -349,7 +393,9 @@ impl App {
     }
     fn select(&mut self) {
         let frame = self.game.frame();
-        let vp = frame.view_projection(1280.0 / 720.0);
+        let size = self.renderer.as_ref().unwrap().dimensions();
+        let vp = frame.view_projection(size[0] as f32 / size[1] as f32);
+        let [width, height] = self.overlay_size();
         let mut closest = None;
         for a in frame
             .actors
@@ -361,8 +407,8 @@ impl App {
                 continue;
             }
             let ndc = clip.truncate() / clip.w;
-            let dx = (ndc.x + 1.0) * 640.0 - self.cursor[0];
-            let dy = (1.0 - ndc.y) * 360.0 - self.cursor[1];
+            let dx = (ndc.x + 1.0) * width * 0.5 - self.cursor[0];
+            let dy = (1.0 - ndc.y) * height * 0.5 - self.cursor[1];
             let distance = dx * dx + dy * dy;
             if distance < 40.0 * 40.0 && closest.is_none_or(|(_, d)| distance < d) {
                 closest = Some((a.actor.id, distance));
@@ -388,15 +434,22 @@ impl ApplicationHandler for App {
                             } else {
                                 "The Verse — Scholomance"
                             })
-                            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0)),
+                            .with_inner_size(if self.reload_window_proof.is_some() {
+                                winit::dpi::LogicalSize::new(1728.0, 1084.0)
+                            } else {
+                                winit::dpi::LogicalSize::new(1280.0, 720.0)
+                            }),
                     )
                     .map_err(|e| e.to_string())?,
             );
+            if self.reload_window_proof.is_some() {
+                window.focus_window();
+            }
             let renderer = Renderer::new(
                 (*self.pack).clone(),
                 &self.dir,
-                1280,
-                720,
+                window.inner_size().width.max(1),
+                window.inner_size().height.max(1),
                 &self.atlas,
                 &chamber::static_instances(
                     &self.pack,
@@ -407,6 +460,12 @@ impl ApplicationHandler for App {
             self.window = Some(window);
             self.renderer = Some(renderer);
             self.presenter = Some(presenter);
+            let profile = self.profile.take();
+            let loading = self
+                .draw_frame()
+                .and_then(|_| self.renderer.as_ref().unwrap().finish_loading_frame());
+            self.profile = profile;
+            loading?;
             self.last = Instant::now();
             self.first_redraw = true;
             if let Some(stress) = &mut self.stress {
@@ -451,6 +510,11 @@ impl ApplicationHandler for App {
                                     self.game
                                         .restart_combat(key == KeyCode::F2)
                                         .expect("The loaded chamber admits combat");
+                                    verse::imported::props::admit_collision(
+                                        &self.pack,
+                                        &mut self.game,
+                                    )
+                                    .expect("The loaded furniture admits collision");
                                     self.schedule = verse_engine::core::FixedSchedule::new(30, 3)
                                         .expect("The chamber uses a valid fixed schedule");
                                     self.controls.clear();
@@ -510,8 +574,8 @@ impl ApplicationHandler for App {
                 } else {
                     self.pointer = [position.x, position.y];
                     self.cursor = [
-                        position.x as f32 / size.width.max(1) as f32 * 1280.0,
-                        position.y as f32 / size.height.max(1) as f32 * 720.0,
+                        position.x as f32 / size.width.max(1) as f32 * self.overlay_size()[0],
+                        position.y as f32 / size.height.max(1) as f32 * self.overlay_size()[1],
                     ];
                 }
             }
@@ -528,6 +592,7 @@ impl ApplicationHandler for App {
                 if self.game.unlocked() && !self.game.agent_controlled =>
             {
                 let down = state == ElementState::Pressed;
+                let [width, height] = self.overlay_size();
                 match button {
                     MouseButton::Right => {
                         if down {
@@ -539,7 +604,7 @@ impl ApplicationHandler for App {
                     MouseButton::Left => {
                         if down
                             && self.game.snapshot().player.hp == 0
-                            && overlay::respawn_at(self.cursor[0], self.cursor[1], 1280., 720.)
+                            && overlay::respawn_at(self.cursor[0], self.cursor[1], width, height)
                         {
                             match self.game.respawn_player() {
                                 Ok(()) => {
@@ -558,12 +623,12 @@ impl ApplicationHandler for App {
                         }
                         if down && !self.controls.looking() {
                             if let Some(ability) =
-                                overlay::action_at(self.cursor[0], self.cursor[1], 1280.0, 720.0)
+                                overlay::action_at(self.cursor[0], self.cursor[1], width, height)
                             {
                                 self.activate(ability);
                                 return;
                             }
-                            if overlay::chrome_at(self.cursor[0], self.cursor[1], 1280.0, 720.0) {
+                            if overlay::chrome_at(self.cursor[0], self.cursor[1], width, height) {
                                 return;
                             }
                             self.pending_select = true;
@@ -584,6 +649,9 @@ impl ApplicationHandler for App {
                 self.capture_pointer();
             }
             WindowEvent::RedrawRequested => {
+                if event_loop.exiting() {
+                    return;
+                }
                 if self.first_redraw {
                     self.last = Instant::now();
                     if let Some(stress) = &mut self.stress {
@@ -593,15 +661,32 @@ impl ApplicationHandler for App {
                 }
                 if let Some(proof) = &mut self.reload_window_proof {
                     proof.frames += 1;
+                    if proof.resize && proof.frames == 240 {
+                        let window = self.window.as_ref().unwrap();
+                        let size = window.inner_size();
+                        proof.original_size = Some([size.width, size.height]);
+                        let _ = window.request_inner_size(winit::dpi::PhysicalSize::new(
+                            size.width * 2 / 3,
+                            size.height * 3 / 4,
+                        ));
+                    }
+                    if proof.resize && proof.frames == 720 {
+                        let size = proof.original_size.unwrap();
+                        let _ =
+                            self.window.as_ref().unwrap().request_inner_size(
+                                winit::dpi::PhysicalSize::new(size[0], size[1]),
+                            );
+                    }
                     if proof.frames == 90 {
                         let output = proof.output.clone();
-                        let result = self.capture_frame().and_then(|pixels| {
-                            let writer = std::thread::spawn(move || {
-                                save_png(&output.join("before.png"), &pixels)
-                            });
-                            self.reload_window_proof.as_mut().unwrap().before = Some(writer);
-                            self.start_reload()
+                        let capture = self.renderer.as_ref().unwrap().capture_submitted();
+                        let dimensions = self.renderer.as_ref().unwrap().dimensions();
+                        let writer = std::thread::spawn(move || {
+                            let pixels = capture.finish()?;
+                            save_png_size(&output.join("before.png"), &pixels, dimensions)
                         });
+                        self.reload_window_proof.as_mut().unwrap().before = Some(writer);
+                        let result = self.start_reload();
                         if let Err(error) = result {
                             eprintln!("{error}");
                             event_loop.exit();
@@ -619,6 +704,12 @@ impl ApplicationHandler for App {
                         ) {
                             eprintln!("{e}");
                             event_loop.exit();
+                        }
+                        if let Some(proof) = &mut self.reload_window_proof {
+                            let dimensions = self.renderer.as_ref().unwrap().dimensions();
+                            if proof.viewport_sizes.last() != Some(&dimensions) {
+                                proof.viewport_sizes.push(dimensions);
+                            }
                         }
                         if let Some(path) = self.proof.take() {
                             if let Err(e) = save_png(&path, &pixels) {
@@ -641,7 +732,11 @@ impl ApplicationHandler for App {
                                     .finish(self)
                                     .and_then(|_| self.capture_frame())
                                     .and_then(|pixels| {
-                                        save_png(&output.join("after.png"), &pixels)
+                                        save_png_size(
+                                            &output.join("after.png"),
+                                            &pixels,
+                                            self.renderer.as_ref().unwrap().dimensions(),
+                                        )
                                     });
                                 if let Err(error) = result {
                                     eprintln!("{error}");
@@ -672,10 +767,17 @@ impl ApplicationHandler for App {
     }
 }
 fn save_png(path: &std::path::Path, pixels: &[u8]) -> Result<(), String> {
+    save_png_size(path, pixels, [1280, 720])
+}
+fn save_png_size(
+    path: &std::path::Path,
+    pixels: &[u8],
+    dimensions: [u32; 2],
+) -> Result<(), String> {
     let mut encoder = png::Encoder::new(
         std::fs::File::create(path).map_err(|e| e.to_string())?,
-        1280,
-        720,
+        dimensions[0],
+        dimensions[1],
     );
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
@@ -767,6 +869,13 @@ pub fn run(original_default: bool) -> Result<(), String> {
             admitted_bestiary = Some(frozen);
         }
     }
+    if original && !greybox {
+        let root =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/props/quaternius");
+        let snapshot = dir.join("source-fantasy-props");
+        verse::imported::inventory::snapshot_props(&root, &snapshot)?;
+        verse::imported::props::install(&mut pack, &dir, &snapshot)?;
+    }
     if !original {
         verse_wow::motion::bind(&mut pack)?;
         chamber::add_effect_models(&mut pack, &dir)?;
@@ -796,7 +905,8 @@ pub fn run(original_default: bool) -> Result<(), String> {
             claude.scale = 6.0 / (pack.models["claude"].height * 0.9144);
         }
     }
-    let game = Game::new(scene)?;
+    let mut game = Game::new(scene)?;
+    verse::imported::props::admit_collision(&pack, &mut game)?;
     let heights = pack
         .models
         .iter()
@@ -858,7 +968,10 @@ pub fn run(original_default: bool) -> Result<(), String> {
         proof: None,
     };
     let mode = args.next();
-    if mode.as_deref() == Some("--reload-window-proof") {
+    if matches!(
+        mode.as_deref(),
+        Some("--reload-window-proof" | "--resize-window-proof")
+    ) {
         let output = PathBuf::from(
             args.next()
                 .ok_or("Expected window reload proof directory")?,
@@ -891,11 +1004,14 @@ pub fn run(original_default: bool) -> Result<(), String> {
             commit: None,
             before: None,
             duration,
+            resize: mode.as_deref() == Some("--resize-window-proof"),
+            original_size: None,
+            viewport_sizes: vec![],
         });
         app.profile = Some(std::io::BufWriter::new(
             std::fs::File::create(output.join("frames.ndjson")).map_err(|e| e.to_string())?,
         ));
-        app.game = Game::combat(app.game.scene.clone(), false)?;
+        app.game = combat_game(&app.pack, app.game.scene.clone(), false)?;
         app.game.time = app.game.scene.cut_at;
         app.game
             .encounter
@@ -907,6 +1023,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
             started: None,
             next_cast: app.game.time + 1.,
             casts: 0,
+            move_forward: true,
         });
     }
     if mode.as_deref() == Some("--stress-demo") {
@@ -922,7 +1039,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
         app.profile = Some(std::io::BufWriter::new(
             std::fs::File::create(profile).map_err(|e| e.to_string())?,
         ));
-        app.game = Game::combat(app.game.scene.clone(), false)?;
+        app.game = combat_game(&app.pack, app.game.scene.clone(), false)?;
         app.game.time = app.game.scene.cut_at;
         app.game
             .encounter
@@ -934,10 +1051,11 @@ pub fn run(original_default: bool) -> Result<(), String> {
             started: None,
             next_cast: app.game.time + 1.,
             casts: 0,
+            move_forward: true,
         });
     }
     if original && mode.is_none() {
-        app.game = Game::combat(app.game.scene.clone(), false)?;
+        app.game = combat_game(&app.pack, app.game.scene.clone(), false)?;
     }
     if matches!(
         mode.as_deref(),
@@ -945,7 +1063,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
     ) {
         let output = PathBuf::from(args.next().ok_or("Expected proof directory")?);
         std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
-        app.game = Game::combat(app.game.scene.clone(), false)?;
+        app.game = combat_game(&app.pack, app.game.scene.clone(), false)?;
         while app.game.time < 150. && app.game.snapshot().player.hp > 0 {
             app.game.tick(1. / 30., [0.; 2])?;
         }
@@ -1041,6 +1159,42 @@ pub fn run(original_default: bool) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
         return Ok(());
     }
+    if mode.as_deref() == Some("--lair-proof") {
+        let output = PathBuf::from(args.next().ok_or("Expected lair proof directory")?);
+        std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
+        app.renderer = Some(Renderer::new(
+            (*app.pack).clone(),
+            &app.dir,
+            1920,
+            1080,
+            &app.atlas,
+            &chamber::static_instances(&app.pack, position_from_wow(app.game.scene.origin_wow)),
+        )?);
+        for (name, time) in [
+            ("ritual-wide", 4.),
+            ("summoning", 12.),
+            ("player-handoff", 20.8),
+        ] {
+            while app.game.time < time {
+                app.game.tick(1. / 30., [0.; 2])?;
+            }
+            app.interpolation = 1.;
+            save_png_size(
+                &output.join(format!("{name}.png")),
+                &app.draw_frame()?,
+                [1920, 1080],
+            )?;
+        }
+        let evidence = serde_json::json!({"schema":"openagents.verse.lair-proof.v1", "render_dimensions":[1920,1080], "samples":4, "props":app.pack.placements.len()-1,
+            "collision_props":app.game.navigation_blockers().active_bounds().count(), "source_admission":app.renderer.as_ref().unwrap().pack_receipt,
+            "lights":chamber::combat_lighting(&app.game).lights.len(), "lighting":"warm torches and candles, green cauldrons, violet summoning light"});
+        std::fs::write(
+            output.join("scene.json"),
+            serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
     let demonstration = match mode.as_deref() {
         Some("--demo") => Some(Demo::Spells),
         Some("--utility-demo") => Some(Demo::Utilities),
@@ -1059,7 +1213,11 @@ pub fn run(original_default: bool) -> Result<(), String> {
         );
     }
     if matches!(mode.as_deref(), Some("--agent" | "--combat")) {
-        app.game = Game::combat(app.game.scene.clone(), mode.as_deref() == Some("--agent"))?;
+        app.game = combat_game(
+            &app.pack,
+            app.game.scene.clone(),
+            mode.as_deref() == Some("--agent"),
+        )?;
         app.game.time = app.game.scene.cut_at - 3.0;
     }
     if mode.as_deref() == Some("--combat-proof") {
@@ -1072,7 +1230,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
         if !time.is_finite() || !(20.0..=120.0).contains(&time) {
             return Err("Encounter time must be between 20 and 120 seconds".into());
         }
-        app.game = Game::combat(app.game.scene.clone(), true)?;
+        app.game = combat_game(&app.pack, app.game.scene.clone(), true)?;
         for _ in 0..180 {
             app.game.tick(0.1, [0.0; 2])?;
         }
@@ -1114,10 +1272,10 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
     let stair_navigation = mode == Demo::StairNavigation;
     use std::io::Write;
     if combat {
-        app.game = Game::combat(app.game.scene.clone(), true)?;
+        app.game = combat_game(&app.pack, app.game.scene.clone(), true)?;
     }
     if stress {
-        app.game = Game::combat(app.game.scene.clone(), false)?;
+        app.game = combat_game(&app.pack, app.game.scene.clone(), false)?;
         app.game.time = app.game.scene.cut_at;
         app.game
             .encounter
@@ -1129,6 +1287,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
             started: None,
             next_cast: app.game.time + 1.,
             casts: 0,
+            move_forward: true,
         });
     }
     if movement_demo {
@@ -1140,6 +1299,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
             .unwrap()
             .position = Vec3::new(18., 0., -32.);
         app.game = Game::new(scene)?;
+        verse::imported::props::admit_collision(&app.pack, &mut app.game)?;
         app.game.time = 20.;
         app.game.yaw = std::f32::consts::PI;
         app.game.camera.yaw = app.game.yaw;
@@ -1161,7 +1321,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
             .find(|a| a.id == 2)
             .unwrap()
             .position = Vec3::new(18., 0., -32.);
-        app.game = Game::combat(scene, false)?;
+        app.game = combat_game(&app.pack, scene, false)?;
         app.game.time = 20.;
         app.game
             .encounter
@@ -1205,7 +1365,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
             .unwrap()
             .position = Vec3::new(17., 0., -13.);
         scene.validate()?;
-        app.game = Game::combat(scene, false)?;
+        app.game = combat_game(&app.pack, scene, false)?;
         app.game.time = 20.;
         app.game
             .encounter
@@ -1459,4 +1619,10 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
         snapshot.player.mana
     );
     Ok(())
+}
+
+fn combat_game(pack: &Pack, scene: Scene, agent: bool) -> Result<Game, String> {
+    let mut game = Game::combat(scene, agent)?;
+    verse::imported::props::admit_collision(pack, &mut game)?;
+    Ok(game)
 }

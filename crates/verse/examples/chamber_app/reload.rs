@@ -449,6 +449,9 @@ pub struct WindowProof {
     pub commit: Option<serde_json::Value>,
     pub before: Option<std::thread::JoinHandle<Result<(), String>>>,
     pub duration: f64,
+    pub resize: bool,
+    pub original_size: Option<[u32; 2]>,
+    pub viewport_sizes: Vec<[u32; 2]>,
 }
 impl WindowProof {
     pub fn finish(mut self, app: &super::App) -> Result<(), String> {
@@ -473,7 +476,14 @@ impl WindowProof {
         if !presenter.current_frame_presented(app.renderer.as_ref().unwrap()) {
             return Err("Window did not present the reloaded catalog".into());
         }
+        if self.resize
+            && (self.viewport_sizes.len() < 3
+                || self.viewport_sizes.first() != self.viewport_sizes.last())
+        {
+            return Err("Window proof did not resize and restore its native viewport".into());
+        }
         let evidence = serde_json::json!({"schema":"openagents.verse.window-reload-proof.v1", "commit":commit,
+            "viewport_resize":self.resize, "viewport_sizes":self.viewport_sizes,
             "presented_frames":presenter.presented_frames(), "current_catalog_presented":true,
             "scripted_human_controls":true, "completed_fireballs":app.stress.as_ref().unwrap().casts,
             "duration_seconds":self.duration, "initial_hostile_casts_deferred":true,

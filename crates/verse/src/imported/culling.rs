@@ -9,6 +9,14 @@ pub(super) struct Bounds {
     pub max: Vec3,
 }
 impl Bounds {
+    pub fn from_points(points: impl IntoIterator<Item = Vec3>) -> Option<Self> {
+        let mut points = points.into_iter();
+        let mut bounds = Self::point(points.next()?);
+        for point in points {
+            bounds.include(point);
+        }
+        Some(bounds)
+    }
     fn point(point: Vec3) -> Self {
         Self {
             min: point,

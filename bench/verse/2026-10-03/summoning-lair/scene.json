@@ -1,0 +1,387 @@
+{
+  "schema": "openagents.verse.lair-proof.v1",
+  "render_dimensions": [
+    1920,
+    1080
+  ],
+  "samples": 4,
+  "props": 56,
+  "collision_props": 12,
+  "source_admission": {
+    "inventory": {
+      "schema": "openagents.verse.asset-admission.v1",
+      "purpose": "original_local",
+      "compiler": "verse:compiler:original-chamber",
+      "compiler_revision": "b2b64b6effd5fe0ab4e4839052a9674de5371b2610c649e0f4534f64737457ba",
+      "assets": [
+        "verse:model:adventurer",
+        "verse:model:arrow",
+        "verse:model:bow",
+        "verse:model:chamber",
+        "verse:model:claude",
+        "verse:model:cultist",
+        "verse:model:cultist-female",
+        "verse:model:cultist-peasant",
+        "verse:model:cultist-peasant-female",
+        "verse:model:effect-fire",
+        "verse:model:effect-force",
+        "verse:model:effect-grease",
+        "verse:model:effect-impact",
+        "verse:model:effect-light",
+        "verse:model:effect-mist",
+        "verse:model:effect-ribbon",
+        "verse:model:effect-rune",
+        "verse:model:effect-shadow",
+        "verse:model:effect-shield",
+        "verse:model:effect-wave",
+        "verse:model:effect-web",
+        "verse:model:navigation-blocker",
+        "verse:model:particle-smoke",
+        "verse:model:particle-spark",
+        "verse:model:prop/Banner_2",
+        "verse:model:prop/Barrel",
+        "verse:model:prop/Book_Stack_1",
+        "verse:model:prop/Cage_Small",
+        "verse:model:prop/CandleStick_Stand",
+        "verse:model:prop/CandleStick_Triple",
+        "verse:model:prop/Cauldron",
+        "verse:model:prop/Chandelier",
+        "verse:model:prop/Chest_Wood",
+        "verse:model:prop/Lantern_Wall",
+        "verse:model:prop/Potion_1",
+        "verse:model:prop/Scroll_1",
+        "verse:model:prop/Table_Large",
+        "verse:model:prop/Torch_Metal",
+        "verse:model:prop/flame",
+        "verse:model:prop/ritual-liquid",
+        "verse:model:prop/summoning-seal",
+        "verse:model:universal-female-peasant",
+        "verse:model:universal-female-ranger",
+        "verse:model:universal-male-peasant",
+        "verse:model:universal-male-ranger",
+        "verse:model:universal-superhero-female",
+        "verse:model:universal-superhero-male",
+        "verse:source:bestiary-puglin",
+        "verse:source:fantasy-props",
+        "verse:source:fira-mono",
+        "verse:source:project",
+        "verse:source:quaternius",
+        "verse:texture:material/adventurer/0",
+        "verse:texture:material/adventurer/10",
+        "verse:texture:material/adventurer/11",
+        "verse:texture:material/adventurer/12",
+        "verse:texture:material/adventurer/2",
+        "verse:texture:material/claude/0",
+        "verse:texture:material/cultist-female/10",
+        "verse:texture:material/cultist-female/12",
+        "verse:texture:material/cultist-female/2",
+        "verse:texture:material/cultist-peasant/0",
+        "verse:texture:material/prop/Banner_2/0",
+        "verse:texture:material/prop/Banner_2/1",
+        "verse:texture:material/prop/Banner_2/2",
+        "verse:texture:material/prop/Book_Stack_1/0",
+        "verse:texture:material/prop/Scroll_1/0",
+        "verse:texture:original/effect-white",
+        "verse:texture:original/particle-arcane",
+        "verse:texture:original/particle-fire",
+        "verse:texture:original/particle-ribbon",
+        "verse:texture:original/particle-rune",
+        "verse:texture:original/particle-shadow",
+        "verse:texture:original/particle-smoke",
+        "verse:texture:original/particle-spark",
+        "verse:texture:original/particle-web",
+        "verse:texture:original/white"
+      ],
+      "origins": [
+        [
+          "verse:source:bestiary-puglin",
+          {
+            "creator": "Owner-supplied Bestiary Standard package",
+            "license": "owner_supplied_local",
+            "revision": "8d0a87d7165e5da0761418491511d2187e46de359e2f65110538f8b91a48e6af",
+            "format": "glb"
+          }
+        ],
+        [
+          "verse:source:fantasy-props",
+          {
+            "creator": "Quaternius",
+            "license": "cc0",
+            "revision": "9b1c13c4f32c7de235a2bfbe6260cf641a90869ebdb74eb3a9237692d0f28274",
+            "format": "gltf/bin/png/source-manifest"
+          }
+        ],
+        [
+          "verse:source:fira-mono",
+          {
+            "creator": "Mozilla Foundation and Telefonica S.A.",
+            "license": "ofl11",
+            "revision": "7011027e74361d5b83c013830a3040a274904dc5d70b226e23d3801520628020",
+            "format": "ttf"
+          }
+        ],
+        [
+          "verse:source:project",
+          {
+            "creator": "OpenAgents contributors",
+            "license": "apache2",
+            "revision": "b2b64b6effd5fe0ab4e4839052a9674de5371b2610c649e0f4534f64737457ba",
+            "format": "rust/wgsl/json"
+          }
+        ],
+        [
+          "verse:source:quaternius",
+          {
+            "creator": "Quaternius",
+            "license": "cc0",
+            "revision": "a35e061511a8f214a34acd8a57e3659943d779bcf3a1a6c786cde280f42c4e5a",
+            "format": "gltf/glb/png/source-manifest"
+          }
+        ]
+      ]
+    },
+    "schema": "openagents.verse.prepared-pack.v1",
+    "manifest_sha256": "7b017ed5eb16910b6a6c3a1f7535f0b4a11e0417ca8d10f5db2f1c0be70c0b48",
+    "manifest_bytes": 77218120,
+    "vertices": 253416,
+    "indices": 933741,
+    "encoded_bytes": 9219323,
+    "rgba_bytes": 59113480,
+    "budget": {
+      "manifest_bytes": 134217728,
+      "encoded_file_bytes": 67108864,
+      "encoded_total_bytes": 134217728,
+      "rgba_total_bytes": 268435456,
+      "decoder_workspace_bytes": 67108864
+    },
+    "textures": [
+      {
+        "asset": "verse:texture:original/white",
+        "file": "original-white.png",
+        "sha256": "78247bf90b4bfaa26d764f475805a099929ca39cd1ff8266fbf336391273ce0d",
+        "encoded_bytes": 68,
+        "rgba_bytes": 4,
+        "width": 1,
+        "height": 1
+      },
+      {
+        "asset": "verse:texture:original/effect-white",
+        "file": "verse-effect-white.png",
+        "sha256": "78247bf90b4bfaa26d764f475805a099929ca39cd1ff8266fbf336391273ce0d",
+        "encoded_bytes": 68,
+        "rgba_bytes": 4,
+        "width": 1,
+        "height": 1
+      },
+      {
+        "asset": "verse:texture:original/particle-fire",
+        "file": "particle-fire.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-arcane",
+        "file": "particle-arcane.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-smoke",
+        "file": "particle-smoke.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-web",
+        "file": "particle-web.png",
+        "sha256": "2f1d47e7b2c687e8ca1b9349ca370d625bec72095c58ea991687689e0235d65f",
+        "encoded_bytes": 822,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-shadow",
+        "file": "particle-shadow.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-spark",
+        "file": "particle-spark.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-ribbon",
+        "file": "particle-ribbon.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-rune",
+        "file": "particle-rune.png",
+        "sha256": "9d99395c2c1337f73120a58373e60e7d0c6bebf6e708ffd5b318878c624e4e68",
+        "encoded_bytes": 1207,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:material/adventurer/10",
+        "file": "universal-source-bc7aa863bd22ab0a995cd838cceb4d3a5186ee54ee2fb0108fad85d20c057e6e.png",
+        "sha256": "504e0b89e6cdcb6f38eb4011a510d098e10c58154590f7ece5d0e75615dee30c",
+        "encoded_bytes": 671786,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/11",
+        "file": "universal-source-d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025.png",
+        "sha256": "da2aed8a38fe919fde26929d4eff62dbd217bc97e40014f997eb7acfa5a5d06f",
+        "encoded_bytes": 36291,
+        "rgba_bytes": 262144,
+        "width": 256,
+        "height": 256
+      },
+      {
+        "asset": "verse:texture:material/adventurer/12",
+        "file": "universal-source-df680cbc1967a61e85998bfafb8f7bc0a36dd604bb3266486c4b06b1a184bb45.png",
+        "sha256": "f2c0d01daa3ebe00b02496f6da3394c09ca15b07d0e6e66e99659179abbf6f81",
+        "encoded_bytes": 565525,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/0",
+        "file": "universal-source-846ef2170b04ee584ad83bb8a1e86dab57a9a43b1193204505912c274d949925.png",
+        "sha256": "111d8914325aa89213e1967f4bf6e9f3740f1545e47817ad15fb2575c6e0cded",
+        "encoded_bytes": 918883,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/2",
+        "file": "universal-source-b4dcc0f4139aab548d7c070c4655bd2080ef16caeaaabee6c4aeb693c524e802.png",
+        "sha256": "6bc16963bb37207c73e4c15324518938824ff0efa63ed9fd8853c62513c1e028",
+        "encoded_bytes": 535675,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/10",
+        "file": "universal-source-f9f4f2fb3eeeefb0b6f0fdef38b0770fd6607640c1c680b8139dd76697e9f9b3.png",
+        "sha256": "731cad758ede589ebc65be0114d9820b6d08fe3bd5f19a3bff4669c1a79fac70",
+        "encoded_bytes": 751347,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/12",
+        "file": "universal-source-d366843ee7d9e9f37ec87a0e1c98c7f2e45573c08eeb80a51a6d9344e68cf288.png",
+        "sha256": "7345e17cfe1ca4b2900f50ffce493b7334b70e4f73096024a2e95b13f84a6890",
+        "encoded_bytes": 536788,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/2",
+        "file": "universal-source-3b6ab973f9f3d6f8961226a0dbd99cf6d1b72df3795a8a5c1620a55754c161c2.png",
+        "sha256": "ed9e0a53ec0a32e881acc9c866cac8ed3a2a957221cd29a7de34189faf863274",
+        "encoded_bytes": 552497,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-peasant/0",
+        "file": "universal-source-a43635628d95571cd62fd4db0cc3a6ea32778b2bc02f242dda224c89d07f1ade.png",
+        "sha256": "af7f025d4dd7fb9780beea93687fa749e77ebb4c55ff2c173379dd4a32cc315e",
+        "encoded_bytes": 728456,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/claude/0",
+        "file": "universal-source-609a1dc35ef8e3b1c632843835b8b48afb37a2e0925bb3631ba67292b970181d.png",
+        "sha256": "bda58b31932621c718dbb6ec6e991d7691b8738bfa2a439321c39c641683c48c",
+        "encoded_bytes": 448182,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/1",
+        "file": "universal-source-50422bbda9661effc259caf8b386224cac4b5ca811d2c5b3b8b25ae8efc714db.png",
+        "sha256": "c46fac44bebe74a61f032e7254efdbdbb64f1becef6103edde19fb5cf607fdfc",
+        "encoded_bytes": 530107,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/0",
+        "file": "universal-source-075fbc9ec2fabc15732bd4025b6f63a0b25762df38440d06bf30437565d39bab.png",
+        "sha256": "d1ff1415db250659520b20b41346cdbbf549206485c75c3756cc068decdba0d3",
+        "encoded_bytes": 854009,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Book_Stack_1/0",
+        "file": "universal-source-75225a4ccfd8cc358c871de7a7a3cab7118ef197419a88464e807b81716215c8.png",
+        "sha256": "20438b32577b787eac374fab72dcff24fb29252dbe7565cdae5857d522315aaa",
+        "encoded_bytes": 836205,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Scroll_1/0",
+        "file": "universal-source-4d4069a8d588dab3dcd36f9ea309fc617815b766ce225b78bcd487751585e312.png",
+        "sha256": "4ba6610a4dc0c818110e085d70c6a633b9420e69f058aaf4902f6f9075d14b50",
+        "encoded_bytes": 645824,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/2",
+        "file": "universal-source-c4d0e14506e05cc56e7ca62ebeeb2d45de055296a55e5a8e9c1330ff8ff1833a.png",
+        "sha256": "beddb28c79bd49814ce45604ac4a2daa60d08eaf9fe0783281c0394a73552c59",
+        "encoded_bytes": 596187,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      }
+    ]
+  },
+  "lights": 16,
+  "lighting": "warm torches and candles, green cauldrons, violet summoning light"
+}

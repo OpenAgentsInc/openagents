@@ -1,6 +1,6 @@
 //! Owned textured and skeletal rendering for imported worlds.
 //!
-//! Static geometry is merged by material and uploaded once. Each animated actor
+//! Static geometry is merged by spatial cell and material and uploaded once. Each animated actor
 //! updates only a bounded bone palette and placement. The same Verse glyph
 //! pipeline draws screen-space overlays after world rendering.
 use crate::{
@@ -19,6 +19,7 @@ pub mod lighting;
 pub mod original;
 pub mod overlay;
 pub mod play;
+pub mod props;
 use lighting::{Frame, Lighting};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -62,6 +63,7 @@ struct Pose {
     bones: [[[f32; 4]; 4]; 256],
 }
 struct Batch {
+    bounds: Option<culling::Bounds>,
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     count: u32,
@@ -72,6 +74,11 @@ struct Batch {
 struct Actor {
     buffer: wgpu::Buffer,
     group: wgpu::BindGroup,
+    shadow_model: Option<verse_engine::residency::ModelHandle>,
+    shadow_bundles: Vec<Option<wgpu::RenderBundle>>,
+    shadow_count: usize,
+    world_bundles: Vec<Option<wgpu::RenderBundle>>,
+    world_counts: [usize; 4],
 }
 struct Grounding {
     basis: [[f32; 4]; 3],
@@ -222,12 +229,18 @@ pub struct Renderer {
     height: u32,
     target: wgpu::Texture,
     target_view: wgpu::TextureView,
+    multisample_view: wgpu::TextureView,
+    target_revision: u64,
     depth: wgpu::TextureView,
     readback: wgpu::Buffer,
     row: u32,
     frame: wgpu::Buffer,
     frame_group: wgpu::BindGroup,
     shadow_views: Vec<wgpu::TextureView>,
+    shadow_texture: wgpu::Texture,
+    static_shadow_texture: wgpu::Texture,
+    static_shadow_views: Vec<wgpu::TextureView>,
+    static_shadow_keys: Vec<Option<[[f32; 4]; 4]>>,
     shadow_groups: Vec<wgpu::BindGroup>,
     shadow_buffers: Vec<wgpu::Buffer>,
     shadow_pipeline: wgpu::RenderPipeline,
@@ -237,6 +250,7 @@ pub struct Renderer {
     catalog: verse_engine::residency::Catalog,
     models: HashMap<verse_engine::residency::ModelHandle, Vec<Batch>>,
     static_batches: Vec<Batch>,
+    static_world_bundles: Vec<wgpu::RenderBundle>,
     actors: Vec<Actor>,
     playback: HashMap<(verse_engine::core::LifeId, String), animation::Playback>,
     grounding: HashMap<(Option<verse_engine::core::LifeId>, String), Grounding>,
@@ -267,13 +281,21 @@ fn extent(w: u32, h: u32) -> wgpu::Extent3d {
         depth_or_array_layers: 1,
     }
 }
-type Merged = BTreeMap<(usize, u8, bool), (Vec<GpuVertex>, Vec<u32>)>;
+type Merged = BTreeMap<(usize, u8, bool, i32, i32), (Vec<GpuVertex>, Vec<u32>)>;
 fn merge(pack: &Pack, instances: &[Instance]) -> Merged {
     let mut merged = Merged::new();
     for instance in instances {
         let model = &pack.models[&instance.model];
         for s in &model.surfaces {
-            let (v, i) = merged.entry((s.texture, s.blend, s.emissive)).or_default();
+            let (v, i) = merged
+                .entry((
+                    s.texture,
+                    s.blend,
+                    s.emissive,
+                    (instance.transform.w_axis.x / 8.).floor() as i32,
+                    (instance.transform.w_axis.z / 8.).floor() as i32,
+                ))
+                .or_default();
             let offset = v.len() as u32;
             v.extend(s.vertices.iter().map(|p| {
                 let mut v = GpuVertex::from(p);
@@ -308,7 +330,8 @@ fn upload(
     merged
         .into_iter()
         .filter(|(_, (_, i))| !i.is_empty())
-        .map(|((texture, blend, emissive), (v, i))| Batch {
+        .map(|((texture, blend, emissive, _, _), (v, i))| Batch {
+            bounds: culling::Bounds::from_points(v.iter().map(|v| Vec3::from(v.position))),
             vertices: buffer(
                 device,
                 "imported mesh",
@@ -361,7 +384,85 @@ fn make_pose(pack: &Pack, instance: Option<&Instance>) -> Result<Pose, String> {
     }
     Ok(pose)
 }
+/// A submitted copy of the last rendered target; mapping can run off the render thread.
+pub struct PendingCapture {
+    device: wgpu::Device,
+    buffer: wgpu::Buffer,
+    width: u32,
+    height: u32,
+    row: u32,
+}
+impl PendingCapture {
+    pub fn finish(self) -> Result<Vec<u8>, String> {
+        let slice = self.buffer.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            })
+            .map_err(|e| e.to_string())?;
+        receiver
+            .recv()
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+        let mapped = slice.get_mapped_range();
+        let mut pixels = Vec::with_capacity((self.width * self.height * 4) as usize);
+        for y in 0..self.height as usize {
+            pixels.extend_from_slice(
+                &mapped[y * self.row as usize..y * self.row as usize + self.width as usize * 4],
+            );
+        }
+        drop(mapped);
+        self.buffer.unmap();
+        Ok(pixels)
+    }
+}
+
 impl Renderer {
+    /// Submit a copy without redrawing, GPU waiting, or PNG encoding on the render thread.
+    pub fn capture_submitted(&self) -> PendingCapture {
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Verse asynchronous capture"),
+            size: self.row as u64 * self.height as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Verse capture copy"),
+            });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.target,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(self.row),
+                    rows_per_image: Some(self.height),
+                },
+            },
+            extent(self.width, self.height),
+        );
+        self.queue.submit([encoder.finish()]);
+        PendingCapture {
+            device: self.device.clone(),
+            buffer,
+            width: self.width,
+            height: self.height,
+            row: self.row,
+        }
+    }
+
     pub fn new(
         pack: Pack,
         dir: &Path,
@@ -517,9 +618,35 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+        let static_shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Verse immutable static shadow cache"),
+            size: wgpu::Extent3d {
+                width: 512,
+                height: 512,
+                depth_or_array_layers: 24,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let static_shadow_views = (0..24)
+            .map(|layer| {
+                static_shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: layer,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                })
+            })
+            .collect();
         let shadow_all = shadow_texture.create_view(&wgpu::TextureViewDescriptor {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
@@ -583,6 +710,8 @@ impl Renderer {
             address_mode_v: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            anisotropy_clamp: 4,
             ..Default::default()
         });
         let mut textures = Vec::new();
@@ -590,28 +719,55 @@ impl Renderer {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(&t.file),
                 size: extent(t.width, t.height),
-                mip_level_count: 1,
+                mip_level_count: 32 - t.width.max(t.height).leading_zeros(),
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &tex,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                pixels.rgba(),
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(t.width * 4),
-                    rows_per_image: Some(t.height),
-                },
-                extent(t.width, t.height),
-            );
+            let (mut width, mut height) = (t.width, t.height);
+            let mut rgba = pixels.rgba().to_vec();
+            for level in 0..tex.mip_level_count() {
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &tex,
+                        mip_level: level,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &rgba,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(width * 4),
+                        rows_per_image: Some(height),
+                    },
+                    extent(width, height),
+                );
+                if level + 1 < tex.mip_level_count() {
+                    let (next_width, next_height) = ((width / 2).max(1), (height / 2).max(1));
+                    let mut next = Vec::with_capacity((next_width * next_height * 4) as usize);
+                    for y in 0..next_height {
+                        for x in 0..next_width {
+                            let mut sum = [0u32; 4];
+                            let mut count = 0;
+                            for sy in y * height / next_height..(y + 1) * height / next_height {
+                                for sx in x * width / next_width..(x + 1) * width / next_width {
+                                    let offset = ((sy * width + sx) * 4) as usize;
+                                    for channel in 0..4 {
+                                        sum[channel] += u32::from(rgba[offset + channel]);
+                                    }
+                                    count += 1;
+                                }
+                            }
+                            next.extend(sum.map(|value| ((value + count / 2) / count) as u8));
+                        }
+                    }
+                    rgba = next;
+                    width = next_width;
+                    height = next_height;
+                }
+            }
             let view = tex.create_view(&Default::default());
             for flags in 0..8 {
                 let material = buffer(
@@ -656,7 +812,7 @@ impl Renderer {
         });
         let mut pipelines = Vec::new();
         for blend in 0..4 {
-            pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:Default::default()}),multisample:Default::default(),fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
+            pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:Default::default()}),multisample:wgpu::MultisampleState{count:4,..Default::default()},fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
         }
         let shadow_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -674,7 +830,9 @@ impl Renderer {
         for (name, model) in &pack.models {
             let mut merged = Merged::new();
             for s in &model.surfaces {
-                let (v, i) = merged.entry((s.texture, s.blend, s.emissive)).or_default();
+                let (v, i) = merged
+                    .entry((s.texture, s.blend, s.emissive, 0, 0))
+                    .or_default();
                 let offset = v.len() as u32;
                 v.extend(s.vertices.iter().map(|p| {
                     let mut v = GpuVertex::from(p);
@@ -698,12 +856,24 @@ impl Renderer {
             view_formats: &[],
         });
         let target_view = target.create_view(&Default::default());
+        let multisample_view = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("Verse four-sample color"),
+                size: extent(width, height),
+                mip_level_count: 1,
+                sample_count: 4,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            })
+            .create_view(&Default::default());
         let depth = device
             .create_texture(&wgpu::TextureDescriptor {
                 label: None,
                 size: extent(width, height),
                 mip_level_count: 1,
-                sample_count: 1,
+                sample_count: 4,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Depth32Float,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -718,7 +888,7 @@ impl Renderer {
             mapped_at_creation: false,
         });
         let (_, ui_pipeline, ui_group, ui_screen) =
-            crate::render::ui_pipeline(&device, &queue, format, 1, atlas);
+            crate::render::ui_pipeline(&device, &queue, format, 4, atlas);
         queue.write_buffer(
             &ui_screen,
             0,
@@ -749,12 +919,18 @@ impl Renderer {
             height,
             target,
             target_view,
+            multisample_view,
+            target_revision: 0,
             depth,
             readback,
             row,
             frame,
             frame_group,
             shadow_views,
+            shadow_texture,
+            static_shadow_texture,
+            static_shadow_views,
+            static_shadow_keys: vec![None; 24],
             shadow_groups,
             shadow_buffers,
             shadow_pipeline,
@@ -764,6 +940,7 @@ impl Renderer {
             catalog,
             models,
             static_batches,
+            static_world_bundles: vec![],
             actors: vec![],
             ui_pipeline,
             ui_group,
@@ -775,6 +952,82 @@ impl Renderer {
             adapter_name,
             last_timings: FrameTimings::default(),
         })
+    }
+    /// Reallocate viewport attachments without reloading scene assets or shadow caches.
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
+        if width == 0 || height == 0 {
+            return Ok(());
+        }
+        if width > 4096 || height > 4096 {
+            return Err("Viewport exceeds 4096 pixels".into());
+        }
+        if (width, height) == (self.width, self.height) {
+            return Ok(());
+        }
+        let texture = |label, format, samples, usage| {
+            self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: extent(width, height),
+                mip_level_count: 1,
+                sample_count: samples,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            })
+        };
+        self.target = texture(
+            "Verse native-resolution color",
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            1,
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+        );
+        self.target_view = self.target.create_view(&Default::default());
+        self.multisample_view = texture(
+            "Verse four-sample color",
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            4,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        )
+        .create_view(&Default::default());
+        self.depth = texture(
+            "Verse four-sample depth",
+            wgpu::TextureFormat::Depth32Float,
+            4,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        )
+        .create_view(&Default::default());
+        self.row = (width * 4).div_ceil(256) * 256;
+        self.readback = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Verse native-resolution capture"),
+            size: u64::from(self.row) * u64::from(height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        self.width = width;
+        self.height = height;
+        self.set_overlay_size(width as f32, height as f32);
+        self.target_revision = self.target_revision.wrapping_add(1);
+        Ok(())
+    }
+    pub fn set_overlay_size(&self, width: f32, height: f32) {
+        self.queue.write_buffer(
+            &self._ui_screen,
+            0,
+            bytemuck::cast_slice(&[width, height, 0.0, 0.0]),
+        );
+    }
+    /// Finish the loading frame before starting the interactive simulation clock.
+    pub fn finish_loading_frame(&self) -> Result<(), String> {
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    pub fn dimensions(&self) -> [u32; 2] {
+        [self.width, self.height]
     }
     pub fn reload_source(&self) -> ReloadSource {
         ReloadSource {
@@ -800,6 +1053,7 @@ impl Renderer {
         let mut playback = std::mem::take(&mut self.playback);
         playback.retain(|(_, model), _| candidate.keep_playback.contains(model));
         candidate.renderer.playback = playback;
+        candidate.renderer.resize(self.width, self.height)?;
         Ok(std::mem::replace(self, candidate.renderer))
     }
     pub fn draw(
@@ -899,7 +1153,15 @@ impl Renderer {
                     resource: buffer.as_entire_binding(),
                 }],
             });
-            self.actors.push(Actor { buffer, group });
+            self.actors.push(Actor {
+                buffer,
+                group,
+                shadow_model: None,
+                shadow_bundles: (0..24).map(|_| None).collect(),
+                shadow_count: 0,
+                world_bundles: (0..4).map(|_| None).collect(),
+                world_counts: [0; 4],
+            });
         }
         self.queue.write_buffer(
             &self.actors[0].buffer,
@@ -990,17 +1252,167 @@ impl Renderer {
             self.queue
                 .write_buffer(&self.actors[i + 1].buffer, 0, bytemuck::bytes_of(&palette));
         }
+        for (i, model) in resolved.models().iter().enumerate() {
+            let actor = &mut self.actors[i + 1];
+            if actor.shadow_model != Some(*model) {
+                actor.shadow_model = Some(*model);
+                actor.world_counts = std::array::from_fn(|blend| {
+                    self.models[model]
+                        .iter()
+                        .filter(|b| usize::from(b.blend) == blend)
+                        .count()
+                });
+                actor
+                    .shadow_bundles
+                    .iter_mut()
+                    .for_each(|bundle| *bundle = None);
+                actor
+                    .world_bundles
+                    .iter_mut()
+                    .for_each(|bundle| *bundle = None);
+                actor.shadow_count = self.models[model]
+                    .iter()
+                    .filter(|b| b.blend < 2 && !b.emissive)
+                    .count();
+            }
+            if actor.shadow_count == 0 {
+                continue;
+            }
+            for layer in 0..lighting.shadow_count() * 6 {
+                if actor.shadow_bundles[layer].is_some()
+                    || actor_bounds[i]
+                        .is_some_and(|b| !b.visible(Mat4::from_cols_array_2d(&frame.shadow[layer])))
+                {
+                    continue;
+                }
+                let mut bundle = self.device.create_render_bundle_encoder(
+                    &wgpu::RenderBundleEncoderDescriptor {
+                        label: Some("Verse reusable actor shadow commands"),
+                        color_formats: &[],
+                        depth_stencil: Some(wgpu::RenderBundleDepthStencil {
+                            format: wgpu::TextureFormat::Depth32Float,
+                            depth_read_only: false,
+                            stencil_read_only: true,
+                        }),
+                        sample_count: 1,
+                        multiview: None,
+                    },
+                );
+                bundle.set_pipeline(&self.shadow_pipeline);
+                bundle.set_bind_group(0, &self.shadow_groups[layer], &[]);
+                bundle.set_bind_group(2, &actor.group, &[]);
+                for batch in self.models[model]
+                    .iter()
+                    .filter(|b| b.blend < 2 && !b.emissive)
+                {
+                    bundle.set_bind_group(
+                        1,
+                        &self.textures[self.catalog.texture_slot(batch.texture)? * 8
+                            + usize::from(batch.emissive) * 4
+                            + usize::from(batch.blend)],
+                        &[],
+                    );
+                    bundle.set_vertex_buffer(0, batch.vertices.slice(..));
+                    bundle.set_index_buffer(batch.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    bundle.draw_indexed(0..batch.count, 0, 0..1);
+                }
+                actor.shadow_bundles[layer] = Some(bundle.finish(&wgpu::RenderBundleDescriptor {
+                    label: Some("Verse actor shadow commands"),
+                }));
+            }
+        }
+        if self.static_world_bundles.is_empty() {
+            self.static_world_bundles = self
+                .static_batches
+                .iter()
+                .map(|batch| {
+                    self.world_bundle(
+                        &self.actors[0].group,
+                        std::slice::from_ref(batch),
+                        batch.blend,
+                    )
+                })
+                .collect();
+        }
+        for (i, model) in resolved.models().iter().enumerate() {
+            for blend in 0..4 {
+                if self.actors[i + 1].world_counts[blend] > 0
+                    && self.actors[i + 1].world_bundles[blend].is_none()
+                {
+                    let bundle = self.world_bundle(
+                        &self.actors[i + 1].group,
+                        &self.models[model],
+                        blend as u8,
+                    );
+                    self.actors[i + 1].world_bundles[blend] = Some(bundle);
+                }
+            }
+        }
         let prepared = Instant::now();
         let mut shadow_draws = 0;
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        for layer in 0..lighting.lights.len().min(lighting.shadowed).min(4) * 6 {
+        for layer in 0..lighting.shadow_count() * 6 {
+            if self.static_shadow_keys[layer] != Some(frame.shadow[layer]) {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Verse static shadow cache refresh"),
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.static_shadow_views[layer],
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    ..Default::default()
+                });
+                pass.set_pipeline(&self.shadow_pipeline);
+                pass.set_bind_group(0, &self.shadow_groups[layer], &[]);
+                pass.set_bind_group(2, &self.actors[0].group, &[]);
+                for batch in self
+                    .static_batches
+                    .iter()
+                    .filter(|b| b.blend < 2 && !b.emissive)
+                {
+                    if batch
+                        .bounds
+                        .is_some_and(|b| !b.visible(Mat4::from_cols_array_2d(&frame.shadow[layer])))
+                    {
+                        continue;
+                    }
+                    self.draw_batch(&mut pass, batch);
+                    shadow_draws += 1;
+                }
+                drop(pass);
+                self.static_shadow_keys[layer] = Some(frame.shadow[layer]);
+            }
+            let origin = wgpu::Origin3d {
+                x: 0,
+                y: 0,
+                z: layer as u32,
+            };
+            encoder.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.static_shadow_texture,
+                    mip_level: 0,
+                    origin,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.shadow_texture,
+                    mip_level: 0,
+                    origin,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                extent(512, 512),
+            );
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Verse cube shadow face"),
+                label: Some("Verse dynamic shadow face"),
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.shadow_views[layer],
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
@@ -1009,48 +1421,38 @@ impl Renderer {
             });
             pass.set_pipeline(&self.shadow_pipeline);
             pass.set_bind_group(0, &self.shadow_groups[layer], &[]);
-            pass.set_bind_group(2, &self.actors[0].group, &[]);
-            for batch in self
-                .static_batches
-                .iter()
-                .filter(|b| b.blend < 2 && !b.emissive)
-            {
-                self.draw_batch(&mut pass, batch);
-                shadow_draws += 1;
-            }
             for (i, _) in instances.iter().enumerate() {
+                if self.actors[i + 1].shadow_count == 0 {
+                    continue;
+                }
                 if actor_bounds[i]
                     .is_some_and(|b| !b.visible(Mat4::from_cols_array_2d(&frame.shadow[layer])))
                 {
                     continue;
                 }
-                pass.set_bind_group(2, &self.actors[i + 1].group, &[]);
-                for batch in self.models[&resolved.models()[i]]
-                    .iter()
-                    .filter(|b| b.blend < 2 && !b.emissive)
-                {
-                    self.draw_batch(&mut pass, batch);
-                    shadow_draws += 1;
-                }
+                pass.execute_bundles(std::iter::once(
+                    self.actors[i + 1].shadow_bundles[layer].as_ref().unwrap(),
+                ));
+                shadow_draws += self.actors[i + 1].shadow_count;
             }
         }
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Verse imported world"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.target_view,
+                    view: &self.multisample_view,
                     depth_slice: None,
-                    resolve_target: None,
+                    resolve_target: Some(&self.target_view),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
+                        store: wgpu::StoreOp::Discard,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
+                        store: wgpu::StoreOp::Discard,
                     }),
                     stencil_ops: None,
                 }),
@@ -1058,14 +1460,14 @@ impl Renderer {
             });
             pass.set_bind_group(0, &self.frame_group, &[]);
             for blend in 0..4 {
-                pass.set_pipeline(&self.pipelines[blend]);
-                pass.set_bind_group(2, &self.actors[0].group, &[]);
-                for batch in self
-                    .static_batches
-                    .iter()
-                    .filter(|b| b.blend == blend as u8)
-                {
-                    self.draw_batch(&mut pass, batch);
+                for (index, batch) in self.static_batches.iter().enumerate() {
+                    if batch.blend == blend as u8
+                        && batch
+                            .bounds
+                            .is_none_or(|bounds| bounds.visible(view.view_proj))
+                    {
+                        pass.execute_bundles(std::iter::once(&self.static_world_bundles[index]));
+                    }
                 }
                 let mut order: Vec<_> = instances.iter().enumerate().collect();
                 if blend == 2 {
@@ -1078,13 +1480,15 @@ impl Renderer {
                     });
                 }
                 for (i, _) in order {
-                    pass.set_bind_group(2, &self.actors[i + 1].group, &[]);
-                    for batch in self.models[&resolved.models()[i]]
-                        .iter()
-                        .filter(|b| b.blend == blend as u8)
-                    {
-                        self.draw_batch(&mut pass, batch);
+                    if self.actors[i + 1].world_counts[blend] == 0 {
+                        continue;
                     }
+                    if actor_bounds[i].is_some_and(|bounds| !bounds.visible(view.view_proj)) {
+                        continue;
+                    }
+                    pass.execute_bundles(std::iter::once(
+                        self.actors[i + 1].world_bundles[blend].as_ref().unwrap(),
+                    ));
                 }
             }
         }
@@ -1171,6 +1575,48 @@ impl Renderer {
             shadow_draws,
         };
         Ok(out)
+    }
+    fn world_bundle(
+        &self,
+        pose: &wgpu::BindGroup,
+        batches: &[Batch],
+        blend: u8,
+    ) -> wgpu::RenderBundle {
+        let mut bundle =
+            self.device
+                .create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
+                    label: Some("Verse reusable world commands"),
+                    color_formats: &[Some(wgpu::TextureFormat::Rgba8UnormSrgb)],
+                    depth_stencil: Some(wgpu::RenderBundleDepthStencil {
+                        format: wgpu::TextureFormat::Depth32Float,
+                        depth_read_only: false,
+                        stencil_read_only: true,
+                    }),
+                    sample_count: 4,
+                    multiview: None,
+                });
+        bundle.set_pipeline(&self.pipelines[usize::from(blend)]);
+        bundle.set_bind_group(0, &self.frame_group, &[]);
+        bundle.set_bind_group(2, pose, &[]);
+        for batch in batches.iter().filter(|b| b.blend == blend) {
+            bundle.set_bind_group(
+                1,
+                &self.textures[self
+                    .catalog
+                    .texture_slot(batch.texture)
+                    .expect("Resident texture handle")
+                    * 8
+                    + usize::from(batch.emissive) * 4
+                    + usize::from(batch.blend)],
+                &[],
+            );
+            bundle.set_vertex_buffer(0, batch.vertices.slice(..));
+            bundle.set_index_buffer(batch.indices.slice(..), wgpu::IndexFormat::Uint32);
+            bundle.draw_indexed(0..batch.count, 0, 0..1);
+        }
+        bundle.finish(&wgpu::RenderBundleDescriptor {
+            label: Some("Verse world commands"),
+        })
     }
     fn draw_batch<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, batch: &'a Batch) {
         pass.set_bind_group(
@@ -1293,6 +1739,7 @@ pub struct WindowPresenter {
     catalog: verse_engine::residency::CatalogId,
     presented_catalog: Option<verse_engine::residency::CatalogId>,
     presented_frames: u64,
+    target_revision: u64,
 }
 #[cfg(feature = "imported-desktop")]
 impl WindowPresenter {
@@ -1407,13 +1854,14 @@ impl Renderer {
             catalog: self.catalog.id(),
             presented_catalog: None,
             presented_frames: 0,
+            target_revision: self.target_revision,
         })
     }
     pub fn present_window(&self, p: &mut WindowPresenter, size: [u32; 2]) -> Result<(), String> {
         if p.gpu_id != self.gpu_id {
             return Err("Presenter belongs to another GPU device".into());
         }
-        if p.catalog != self.catalog.id() {
+        if p.catalog != self.catalog.id() || p.target_revision != self.target_revision {
             p.group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Reloaded scene presentation"),
                 layout: &p.layout,
@@ -1429,6 +1877,8 @@ impl Renderer {
                 ],
             });
             p.catalog = self.catalog.id();
+            p.target_revision = self.target_revision;
+            p.presented_catalog = None;
         }
         if size[0] == 0 || size[1] == 0 {
             return Ok(());
@@ -1441,6 +1891,12 @@ impl Renderer {
         let texture = match p.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err("Window surface validation failed".into());
+            }
             _ => {
                 p.surface.configure(&self.device, &p.config);
                 return Ok(());

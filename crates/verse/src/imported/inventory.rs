@@ -10,6 +10,8 @@ use verse_engine::{
 };
 const CHARACTER_MANIFEST: &[u8] =
     include_bytes!("../../../../assets/verse/characters/quaternius/manifest.json");
+const PROP_MANIFEST: &[u8] =
+    include_bytes!("../../../../assets/verse/props/quaternius/manifest.json");
 const PUGLIN: &str = "8d0a87d7165e5da0761418491511d2187e46de359e2f65110538f8b91a48e6af";
 fn id(value: &str) -> Result<AssetId, String> {
     AssetId::new(value)
@@ -55,8 +57,13 @@ pub fn snapshot_characters(root: &Path, destination: &Path) -> Result<(), String
     prepare_characters(root, Some(destination))
 }
 fn prepare_characters(root: &Path, destination: Option<&Path>) -> Result<(), String> {
-    let manifest: serde_json::Value =
-        serde_json::from_slice(CHARACTER_MANIFEST).map_err(|e| e.to_string())?;
+    prepare_sources(root, destination, CHARACTER_MANIFEST)
+}
+pub fn snapshot_props(root: &Path, destination: &Path) -> Result<(), String> {
+    prepare_sources(root, Some(destination), PROP_MANIFEST)
+}
+fn prepare_sources(root: &Path, destination: Option<&Path>, pinned: &[u8]) -> Result<(), String> {
+    let manifest: serde_json::Value = serde_json::from_slice(pinned).map_err(|e| e.to_string())?;
     let root = root.canonicalize().map_err(|e| e.to_string())?;
     let mut total = 0u64;
     for (name, expected) in manifest["files"]
@@ -67,7 +74,8 @@ fn prepare_characters(root: &Path, destination: Option<&Path>) -> Result<(), Str
         let source = matches!(
             path.extension().and_then(|s| s.to_str()),
             Some("gltf" | "glb" | "bin" | "png")
-        ) || name.ends_with("-license.txt");
+        ) || name.ends_with("-license.txt")
+            || name == "license.txt";
         if !source {
             continue;
         }
@@ -143,12 +151,21 @@ pub fn snapshot_bestiary(path: &Path, destination: &Path) -> Result<(), String> 
 pub fn validate_model_sources(pack: &Pack) -> Result<(), String> {
     let manifest: serde_json::Value =
         serde_json::from_slice(CHARACTER_MANIFEST).map_err(|e| e.to_string())?;
-    let known: BTreeSet<_> = manifest["files"]
+    let mut known: BTreeSet<_> = manifest["files"]
         .as_object()
         .ok_or("Invalid character source manifest")?
         .values()
         .filter_map(|v| v.as_str())
         .collect();
+    let props: serde_json::Value =
+        serde_json::from_slice(PROP_MANIFEST).map_err(|e| e.to_string())?;
+    known.extend(
+        props["files"]
+            .as_object()
+            .ok_or("Invalid prop manifest")?
+            .values()
+            .filter_map(|v| v.as_str()),
+    );
     for (name, model) in &pack.models {
         let authored = [
             "verse/original/",
@@ -174,9 +191,19 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
     let project = id("verse:source:project")?;
     let cc0 = id("verse:source:quaternius")?;
     let bestiary = id("verse:source:bestiary-puglin")?;
+    let props_id = id("verse:source:fantasy-props")?;
+    let props: serde_json::Value =
+        serde_json::from_slice(PROP_MANIFEST).map_err(|e| e.to_string())?;
+    let props_known: BTreeSet<_> = props["files"]
+        .as_object()
+        .ok_or("Invalid prop manifest")?
+        .values()
+        .filter_map(|v| v.as_str())
+        .collect();
     let (revision, bytes) = bundle(&[
         include_bytes!("original.rs"),
         include_bytes!("characters.rs"),
+        include_bytes!("props.rs"),
         include_bytes!("chamber.rs"),
         include_bytes!("inventory.rs"),
         include_bytes!("scene.wgsl"),
@@ -225,6 +252,8 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
             project.clone()
         } else if known.contains(model.source_sha256.as_str()) {
             cc0.clone()
+        } else if props_known.contains(model.source_sha256.as_str()) {
+            props_id.clone()
         } else if model.source_sha256 == PUGLIN {
             bestiary.clone()
         } else {
@@ -233,6 +262,20 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
             ));
         };
         origins.insert(name.clone(), origin);
+    }
+    if origins.values().any(|s| s == &props_id) {
+        let (hash, bytes) = bundle(&[
+            PROP_MANIFEST,
+            include_bytes!("../../../../assets/verse/props/quaternius/license.txt"),
+        ]);
+        assets.push(source(
+            props_id.as_str(),
+            "Quaternius",
+            License::Cc0,
+            "gltf/bin/png/source-manifest",
+            hash,
+            bytes,
+        )?);
     }
     if origins.values().any(|s| s == &cc0 || s == &bestiary) {
         let (hash, bytes) = bundle(&[
@@ -305,6 +348,8 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
                 .and_then(|s| s.strip_suffix(".png"));
             if source_digest.is_some_and(|s| known.contains(s)) {
                 dependencies.insert(cc0.clone());
+            } else if source_digest.is_some_and(|s| props_known.contains(s)) {
+                dependencies.insert(props_id.clone());
             } else if users.iter().any(|(name, _)| origins[*name] == bestiary) {
                 dependencies.insert(bestiary.clone());
             } else {

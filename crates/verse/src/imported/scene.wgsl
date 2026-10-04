@@ -61,7 +61,17 @@ fn tone(x:vec3<f32>)->vec3<f32>{return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+
  }
  let tex=textureSample(image,tex_sampler,v.uv);if material.params.y==1.0 && tex.a<0.5{discard;}
  let n=normalize(select(-v.normal,v.normal,front));var light=frame.ambient.rgb;
- for(var i=0u;i<u32(frame.settings.x);i++){let source=frame.lights[i*2u];let radiance=frame.lights[i*2u+1u];let delta=source.xyz-v.pos;let d=length(delta);let falloff=pow(max(1.0-d/source.w,0.0),2.0)/(1.0+d*d);let lambert=max(dot(n,delta/max(d,0.001)),0.0);light+=radiance.rgb*radiance.w*falloff*lambert*occlusion(i,v.pos,n);}
+ for(var i=0u;i<u32(frame.settings.x);i++){
+  let source=frame.lights[i*2u];let radiance=frame.lights[i*2u+1u];
+  let delta=source.xyz-v.pos;let distance_squared=dot(delta,delta);
+  // Zero-contribution lights cannot affect this fragment or its shadows.
+  if distance_squared>=source.w*source.w || radiance.w<=0.0 {continue;}
+  let d=sqrt(distance_squared);let lambert=max(dot(n,delta/max(d,0.001)),0.0);
+  if lambert<=0.0 {continue;}
+  let attenuation=max(1.0-d/source.w,0.0);
+  let falloff=attenuation*attenuation/(1.0+distance_squared);
+  light+=radiance.rgb*radiance.w*falloff*lambert*occlusion(i,v.pos,n);
+ }
  let albedo=tex.rgb*v.tint;let emission=select(vec3(0.0),albedo*0.7,material.params.x>0.5);let lit=albedo*light+emission;
  let fog=1.0-exp(-length(frame.eye.xyz-v.pos)*frame.fog.w);let color=tone(mix(lit,frame.fog.rgb,fog)*frame.ambient.w);
  return vec4(color,tex.a);

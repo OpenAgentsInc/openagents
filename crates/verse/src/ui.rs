@@ -117,6 +117,21 @@ impl Atlas {
         })
     }
 
+    /// Keep high-density glyph bitmaps while expressing layout in logical pixels.
+    pub(crate) fn use_logical_metrics(&mut self, density: f32) {
+        assert!(density.is_finite() && (1.0..=8.0).contains(&density));
+        for (_, glyph) in &mut self.glyphs {
+            glyph.size = glyph.size.map(|v| v / density);
+            glyph.offset = glyph.offset.map(|v| v / density);
+            glyph.advance /= density;
+        }
+        self.advance /= density;
+        self.line /= density;
+        self.ascent /= density;
+        for font in self.fonts.values_mut() {
+            font.use_logical_metrics(density);
+        }
+    }
     /// Rasterizes the font at `px` pixels.
     ///
     /// # Panics

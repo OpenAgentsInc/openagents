@@ -171,12 +171,16 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
         let Some(mesh) = node.mesh() else {
             continue;
         };
-        let skin = node.skin().ok_or("Character mesh has no skin")?;
-        let joints: Vec<_> = skin.joints().map(|n| indices[n.index()]).collect();
-        if let Some(matrices) = skin
-            .reader(|b| Some(&buffers[b.index()].0))
-            .read_inverse_bind_matrices()
-        {
+        let skin = node.skin();
+        let joints: Vec<_> = if let Some(skin) = skin.as_ref() {
+            skin.joints().map(|n| indices[n.index()]).collect()
+        } else {
+            vec![indices[node.index()]]
+        };
+        if let Some(matrices) = skin.as_ref().and_then(|skin| {
+            skin.reader(|b| Some(&buffers[b.index()].0))
+                .read_inverse_bind_matrices()
+        }) {
             for (joint, matrix) in joints.iter().zip(matrices) {
                 model.skin.as_mut().unwrap().inverse_bind[*joint] =
                     Mat4::from_cols_array_2d(&matrix).to_cols_array();
@@ -200,16 +204,37 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
                 .ok_or("Missing character UVs")?
                 .into_f32()
                 .collect();
-            let bone_ids: Vec<_> = reader
-                .read_joints(0)
-                .ok_or("Missing character joints")?
-                .into_u16()
-                .collect();
-            let weights: Vec<_> = reader
-                .read_weights(0)
-                .ok_or("Missing character weights")?
-                .into_f32()
-                .collect();
+            let bone_ids: Vec<_> = if skin.is_some() {
+                reader
+                    .read_joints(0)
+                    .ok_or("Missing character joints")?
+                    .into_u16()
+                    .collect()
+            } else {
+                vec![[0; 4]; positions.len()]
+            };
+            let weights: Vec<_> = if skin.is_some() {
+                reader
+                    .read_weights(0)
+                    .ok_or("Missing character weights")?
+                    .into_f32()
+                    .collect()
+            } else {
+                vec![[1., 0., 0., 0.]; positions.len()]
+            };
+            if normals.len() != positions.len()
+                || uvs.len() != positions.len()
+                || bone_ids.len() != positions.len()
+                || weights.len() != positions.len()
+            {
+                return Err("Interchange vertex attributes have inconsistent lengths".into());
+            }
+            let vertex_basis = if skin.is_some() {
+                basis
+            } else {
+                basis * global[indices[node.index()]]
+            };
+            let normal_basis = vertex_basis.inverse().transpose();
             let material = primitive.material();
             let color = material.pbr_metallic_roughness().base_color_factor();
             let texture = if let Some(t) = material.pbr_metallic_roughness().base_color_texture() {
@@ -248,8 +273,8 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
                 .into_iter()
                 .enumerate()
                 .map(|(i, p)| Vertex {
-                    position: basis.transform_point3(p.into()).to_array(),
-                    normal: basis
+                    position: vertex_basis.transform_point3(p.into()).to_array(),
+                    normal: normal_basis
                         .transform_vector3(normals[i].into())
                         .normalize()
                         .to_array(),
