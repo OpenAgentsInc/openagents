@@ -16,6 +16,7 @@ pub mod net;
 pub mod persistence;
 #[cfg(feature = "service-auth")]
 pub mod presentation;
+pub mod progression;
 #[cfg(feature = "service-auth")]
 pub mod replica;
 pub mod rewards;
@@ -75,6 +76,7 @@ pub struct Chamber {
     rewards: rewards::Ledger,
     reward_policy: Vec<rewards::Policy>,
     reward_cursor: u64,
+    progression: progression::Config,
 }
 
 impl Chamber {
@@ -91,6 +93,7 @@ impl Chamber {
             rewards: rewards::Ledger::default(),
             reward_policy: Vec::new(),
             reward_cursor: 0,
+            progression: Default::default(),
         })
     }
 
@@ -109,6 +112,47 @@ impl Chamber {
         {
             return Err("Reward character or instance is foreign".into());
         }
+        if progression::reserved(&transaction.source) {
+            return Err("Campaign claim source is reserved".into());
+        }
+        self.rewards.apply(transaction)
+    }
+    fn restore_reward(
+        &mut self,
+        transaction: rewards::Transaction,
+    ) -> Result<rewards::Receipt, String> {
+        if transaction.instance != self.game.player_life().instance
+            || self.game.player_admission(transaction.actor).is_none()
+        {
+            return Err("Saved reward character or instance is foreign".into());
+        }
+        if progression::reserved(&transaction.source) {
+            self.progression
+                .validate_claim(&transaction, &self.rewards)?;
+        }
+        self.rewards.apply(transaction)
+    }
+    pub fn claim_quest(
+        &mut self,
+        principal: Principal,
+        session: Session,
+        life: LifeId,
+        epoch: u64,
+        quest: u64,
+    ) -> Result<rewards::Receipt, String> {
+        let admission = self.admission(principal, session)?;
+        if admission.actor() != life || admission.epoch() != epoch {
+            return Err("Quest claim life or control is stale or foreign".into());
+        }
+        let quest = self
+            .progression
+            .quests
+            .iter()
+            .find(|q| q.id == quest)
+            .ok_or("Campaign quest is not defined")?;
+        let transaction = quest.transaction(life.instance, life.actor);
+        self.progression
+            .validate_claim(&transaction, &self.rewards)?;
         self.rewards.apply(transaction)
     }
 

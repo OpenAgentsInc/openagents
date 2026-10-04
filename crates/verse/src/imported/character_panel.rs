@@ -11,6 +11,7 @@ pub enum Kind {
 pub struct Panel {
     pub kind: Option<Kind>,
     page: usize,
+    claim: Option<u64>,
 }
 fn inside(rect: [f32; 4], point: [f32; 2]) -> bool {
     point[0] >= rect[0]
@@ -82,19 +83,38 @@ impl Panel {
             Some(kind)
         };
         self.page = 0;
+        self.claim = None;
     }
     pub fn close(&mut self) -> bool {
+        self.claim = None;
         self.kind.take().is_some()
+    }
+    pub fn take_claim(&mut self) -> Option<u64> {
+        self.claim.take()
+    }
+    fn row_height(&self, inventory: Option<&Inventory>) -> f32 {
+        if self.kind == Some(Kind::Quests) && inventory.is_some_and(|i| !i.quest_log.is_empty()) {
+            56.
+        } else {
+            44.
+        }
+    }
+    fn row_count(&self, inventory: Option<&Inventory>, rect: [f32; 4]) -> usize {
+        ((rect[3] - 122.) / self.row_height(inventory))
+            .floor()
+            .max(1.) as usize
     }
     fn pages(&self, inventory: Option<&Inventory>, rect: [f32; 4]) -> usize {
         let count = inventory.map_or(0, |i| {
             if self.kind == Some(Kind::Inventory) {
                 i.items.len()
+            } else if !i.quest_log.is_empty() {
+                i.quest_log.len()
             } else {
                 i.quests.len()
             }
         });
-        count.div_ceil(rows(rect)).max(1)
+        count.div_ceil(self.row_count(inventory, rect)).max(1)
     }
     pub fn contains(&self, point: [f32; 2], width: f32, height: f32) -> bool {
         self.kind.is_some() && geometry(width, height).is_some_and(|rect| inside(rect, point))
@@ -127,8 +147,115 @@ impl Panel {
             self.page(false, inventory, width, height);
         } else if inside([x + w - 40., y + h - 36., 28., 24.], point) {
             self.page(true, inventory, width, height);
+        } else if self.kind == Some(Kind::Quests) {
+            if let Some(inventory) = inventory {
+                for (index, quest) in inventory
+                    .quest_log
+                    .iter()
+                    .skip(self.page * self.row_count(Some(inventory), [x, y, w, h]))
+                    .take(self.row_count(Some(inventory), [x, y, w, h]))
+                    .enumerate()
+                {
+                    if !quest.claimed
+                        && quest.progress == quest.goal
+                        && inside(
+                            [x + w - 96., y + 82. + index as f32 * 56. + 23., 80., 23.],
+                            point,
+                        )
+                    {
+                        self.claim = Some(quest.id);
+                        break;
+                    }
+                }
+            }
         }
         true
+    }
+    fn quest_rows(&self, ui: &mut UiBatch, atlas: &Atlas, inventory: &Inventory, rect: [f32; 4]) {
+        let [x, y, w, _] = rect;
+        let font = atlas.font("numbers");
+        let small = atlas.font("small");
+        let gold = [0.86, 0.68, 0.30, 1.];
+        for (index, quest) in inventory
+            .quest_log
+            .iter()
+            .skip(self.page * self.row_count(Some(inventory), rect))
+            .take(self.row_count(Some(inventory), rect))
+            .enumerate()
+        {
+            let row = y + 82. + index as f32 * 56.;
+            ui.rect(atlas, x + 12., row, w - 24., 52., [0.075, 0.055, 0.038, 1.]);
+            ui.frame(
+                atlas,
+                x + 16.,
+                row + 4.,
+                32.,
+                32.,
+                1.,
+                [0.39, 0.30, 0.16, 1.],
+            );
+            icon(ui, atlas, Kind::Quests, x + 18., row + 6.);
+            let name = font
+                .wrap(&quest.name, (w - 142.).max(60.))
+                .into_iter()
+                .next()
+                .unwrap_or_default();
+            ui.text(font, x + 58., row + 5., &name, gold);
+            let progress = format!("{} / {}", quest.progress, quest.goal);
+            ui.text(
+                small,
+                x + w - 20. - small.measure(&progress),
+                row + 7.,
+                &progress,
+                [0.92, 0.90, 0.82, 1.],
+            );
+            let ready = quest.progress == quest.goal;
+            ui.text(
+                small,
+                x + 58.,
+                row + 24.,
+                if quest.claimed {
+                    "Completed"
+                } else if ready {
+                    "Ready to complete"
+                } else {
+                    "In progress"
+                },
+                if quest.claimed {
+                    [0.5, 0.85, 0.5, 1.]
+                } else {
+                    gold
+                },
+            );
+            let reward = format!(
+                "Reward: {} XP{}",
+                quest.experience,
+                if quest.items.is_empty() {
+                    ""
+                } else {
+                    " + items"
+                }
+            );
+            ui.text(small, x + 58., row + 38., &reward, [0.92, 0.90, 0.82, 1.]);
+            if ready && !quest.claimed {
+                ui.rect(
+                    atlas,
+                    x + w - 96.,
+                    row + 23.,
+                    80.,
+                    23.,
+                    [0.24, 0.14, 0.035, 1.],
+                );
+                ui.frame(atlas, x + w - 96., row + 23., 80., 23., 1., gold);
+                ui.text(
+                    font,
+                    x + w - 56. - font.measure("Claim") * 0.5,
+                    row + 27.,
+                    "Claim",
+                    gold,
+                );
+            }
+        }
     }
     pub fn draw(
         &mut self,
@@ -195,79 +322,115 @@ impl Panel {
             font,
             x + 16.,
             y + 54.,
-            &format!("Experience: {}", inventory.experience),
+            &format!("Level {}", inventory.level.level),
             gold,
         );
-        let values = if kind == Kind::Inventory {
-            &inventory.items
-        } else {
-            &inventory.quests
-        };
-        let pages = self.pages(Some(inventory), rect);
-        self.page = self.page.min(pages - 1);
-        if values.is_empty() {
-            ui.text(
-                font,
-                x + 16.,
-                y + 92.,
-                if kind == Kind::Inventory {
-                    "Your inventory is empty."
-                } else {
-                    "No recorded quest progress."
-                },
-                white,
-            );
-        }
-        for (index, entry) in values
-            .iter()
-            .skip(self.page * rows(rect))
-            .take(rows(rect))
-            .enumerate()
-        {
-            let row = y + 82. + index as f32 * 44.;
-            ui.rect(atlas, x + 12., row, w - 24., 40., [0.075, 0.055, 0.038, 1.]);
-            ui.frame(
+        let experience = inventory.level.next.map_or_else(
+            || format!("Experience: {}", inventory.experience),
+            |next| format!("{} / {next} XP", inventory.experience),
+        );
+        ui.text(
+            font,
+            x + w - 16. - font.measure(&experience),
+            y + 54.,
+            &experience,
+            gold,
+        );
+        if let Some(next) = inventory.level.next {
+            let fraction = (inventory.experience - inventory.level.start) as f64
+                / (next - inventory.level.start) as f64;
+            ui.rect(
                 atlas,
                 x + 16.,
-                row + 4.,
-                32.,
-                32.,
-                1.,
-                [0.39, 0.30, 0.16, 1.],
+                y + 73.,
+                w - 32.,
+                4.,
+                [0.10, 0.065, 0.13, 1.],
             );
-            icon(ui, atlas, kind, x + 18., row + 6.);
-            let name = match (kind, entry.id) {
-                (Kind::Inventory, 1) => "Ritual ember".to_string(),
-                (Kind::Quests, 1) => "Disrupt the summoning".to_string(),
-                (Kind::Inventory, id) => format!("Item {id}"),
-                (Kind::Quests, id) => format!("Objective {id}"),
+            ui.rect(
+                atlas,
+                x + 16.,
+                y + 73.,
+                (w - 32.) * fraction.clamp(0., 1.) as f32,
+                4.,
+                [0.48, 0.22, 0.68, 1.],
+            );
+        }
+        let pages = self.pages(Some(inventory), rect);
+        self.page = self.page.min(pages - 1);
+        if kind == Kind::Quests && !inventory.quest_log.is_empty() {
+            self.quest_rows(ui, atlas, inventory, rect);
+        } else {
+            let values = if kind == Kind::Inventory {
+                &inventory.items
+            } else {
+                &inventory.quests
             };
-            // Fit unknown content labels within the row without covering the count.
-            let name = font
-                .wrap(&name, (w - 132.).max(60.))
-                .into_iter()
-                .next()
-                .unwrap_or_default();
-            ui.text(font, x + 58., row + 5., &name, gold);
-            ui.text(
-                small,
-                x + 58.,
-                row + 24.,
-                if kind == Kind::Inventory {
-                    "Collected"
-                } else {
-                    "Progress"
-                },
-                white,
-            );
-            let count = entry.count.to_string();
-            ui.text(
-                font,
-                x + w - 22. - font.measure(&count),
-                row + 13.,
-                &count,
-                white,
-            );
+
+            if values.is_empty() {
+                ui.text(
+                    font,
+                    x + 16.,
+                    y + 92.,
+                    if kind == Kind::Inventory {
+                        "Your inventory is empty."
+                    } else {
+                        "No recorded quest progress."
+                    },
+                    white,
+                );
+            }
+            for (index, entry) in values
+                .iter()
+                .skip(self.page * rows(rect))
+                .take(rows(rect))
+                .enumerate()
+            {
+                let row = y + 82. + index as f32 * 44.;
+                ui.rect(atlas, x + 12., row, w - 24., 40., [0.075, 0.055, 0.038, 1.]);
+                ui.frame(
+                    atlas,
+                    x + 16.,
+                    row + 4.,
+                    32.,
+                    32.,
+                    1.,
+                    [0.39, 0.30, 0.16, 1.],
+                );
+                icon(ui, atlas, kind, x + 18., row + 6.);
+                let name = match (kind, entry.id) {
+                    (Kind::Inventory, 1) => "Ritual ember".to_string(),
+                    (Kind::Quests, 1) => "Disrupt the summoning".to_string(),
+                    (Kind::Inventory, id) => format!("Item {id}"),
+                    (Kind::Quests, id) => format!("Objective {id}"),
+                };
+                // Fit unknown content labels within the row without covering the count.
+                let name = font
+                    .wrap(&name, (w - 132.).max(60.))
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
+                ui.text(font, x + 58., row + 5., &name, gold);
+                ui.text(
+                    small,
+                    x + 58.,
+                    row + 24.,
+                    if kind == Kind::Inventory {
+                        "Collected"
+                    } else {
+                        "Progress"
+                    },
+                    white,
+                );
+                let count = entry.count.to_string();
+                ui.text(
+                    font,
+                    x + w - 22. - font.measure(&count),
+                    row + 13.,
+                    &count,
+                    white,
+                );
+            }
         }
         for bx in [x + 12., x + w - 40.] {
             ui.rect(atlas, bx, y + h - 36., 28., 24., [0.16, 0.10, 0.055, 1.]);
@@ -300,6 +463,12 @@ mod tests {
             experience: 45,
             items: (1..=64).map(|id| Entry { id, count: 1 }).collect(),
             quests: vec![Entry { id: 1, count: 3 }],
+            level: verse_world::service::progression::Level {
+                level: 1,
+                start: 0,
+                next: None,
+            },
+            quest_log: vec![],
         }
     }
     #[test]
@@ -322,6 +491,33 @@ mod tests {
         assert!(!panel.close());
     }
     #[test]
+    fn quest_buttons_emit_only_ready_unclaimed_intents_without_changing_counters() {
+        let mut data = inventory();
+        data.quest_log = vec![verse_world::service::progression::Progress {
+            id: 1,
+            name: "Disrupt the summoning".into(),
+            progress: 2,
+            goal: 3,
+            claimed: false,
+            experience: 75,
+            items: vec![],
+        }];
+        let mut panel = Panel::default();
+        panel.toggle(Kind::Quests);
+        let [x, y, w, _] = geometry(1280., 720.).unwrap();
+        let point = [x + w - 56., y + 82. + 34.];
+        assert!(panel.click(point, Some(&data), 1280., 720.));
+        assert!(panel.take_claim().is_none());
+        data.quest_log[0].progress = 3;
+        assert!(panel.click(point, Some(&data), 1280., 720.));
+        assert_eq!(panel.take_claim(), Some(1));
+        assert_eq!(data.experience, 45);
+        assert!(!data.quest_log[0].claimed);
+        data.quest_log[0].claimed = true;
+        assert!(panel.click(point, Some(&data), 1280., 720.));
+        assert!(panel.take_claim().is_none());
+    }
+    #[test]
     #[ignore = "Explicit GPU acceptance capture"]
     fn capture_character_panels() {
         let output =
@@ -329,19 +525,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let pack = super::super::original::generate(dir.path()).unwrap();
         let atlas = super::super::original::atlas().unwrap();
-        let mut ui = UiBatch::default();
-        let mut data = inventory();
-        data.items = vec![Entry { id: 1, count: 2 }];
-        let mut panel = Panel::default();
-        panel.toggle(Kind::Inventory);
-        panel.draw(&mut ui, &atlas, Some(&data), 450., 620.);
-        let mut quests = UiBatch::default();
-        panel.toggle(Kind::Quests);
-        panel.draw(&mut quests, &atlas, Some(&data), 450., 620.);
-        for vertex in &mut quests.vertices {
-            vertex.pos[0] += 450.;
-        }
-        ui.vertices.extend(quests.vertices);
         let mut renderer =
             super::super::Renderer::new(pack, dir.path(), 2700, 1860, &atlas, &[]).unwrap();
         renderer.set_overlay_size(900., 620.);
@@ -351,21 +534,59 @@ mod tests {
                 * glam::Mat4::look_at_rh(eye, glam::Vec3::ZERO, glam::Vec3::Y),
             eye,
         };
-        let pixels = renderer
-            .draw(
-                camera,
-                &[],
-                &ui,
-                &super::super::chamber::lighting(glam::Vec3::ZERO),
-            )
-            .unwrap();
-        let mut encoder = png::Encoder::new(std::fs::File::create(output).unwrap(), 2700, 1860);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        encoder
-            .write_header()
-            .unwrap()
-            .write_image_data(&pixels)
-            .unwrap();
+        for completed in [false, true] {
+            let mut data = inventory();
+            data.experience = if completed { 120 } else { 45 };
+            data.items = vec![Entry {
+                id: 1,
+                count: if completed { 3 } else { 1 },
+            }];
+            data.level = verse_world::service::progression::Level {
+                level: if completed { 2 } else { 1 },
+                start: if completed { 100 } else { 0 },
+                next: Some(if completed { 300 } else { 100 }),
+            };
+            data.quest_log = vec![verse_world::service::progression::Progress {
+                id: 1,
+                name: "Disrupt the summoning".into(),
+                progress: 1,
+                goal: 1,
+                claimed: completed,
+                experience: 75,
+                items: vec![Entry { id: 1, count: 2 }],
+            }];
+            let mut ui = UiBatch::default();
+            let mut panel = Panel::default();
+            panel.toggle(Kind::Inventory);
+            panel.draw(&mut ui, &atlas, Some(&data), 450., 620.);
+            let mut quests = UiBatch::default();
+            panel.toggle(Kind::Quests);
+            panel.draw(&mut quests, &atlas, Some(&data), 450., 620.);
+            for vertex in &mut quests.vertices {
+                vertex.pos[0] += 450.;
+            }
+            ui.vertices.extend(quests.vertices);
+            let pixels = renderer
+                .draw(
+                    camera,
+                    &[],
+                    &ui,
+                    &super::super::chamber::lighting(glam::Vec3::ZERO),
+                )
+                .unwrap();
+            let path = if completed {
+                std::path::PathBuf::from(&output)
+            } else {
+                std::path::PathBuf::from(&output).with_file_name("ready.png")
+            };
+            let mut encoder = png::Encoder::new(std::fs::File::create(path).unwrap(), 2700, 1860);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder
+                .write_header()
+                .unwrap()
+                .write_image_data(&pixels)
+                .unwrap();
+        }
     }
 }

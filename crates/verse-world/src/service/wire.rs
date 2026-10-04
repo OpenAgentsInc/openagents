@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 10;
+pub const VERSION: u16 = 11;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -125,6 +125,11 @@ pub enum Body {
     },
     Snapshot {},
     Inventory {},
+    ClaimQuest {
+        life: Life,
+        epoch: u64,
+        quest: u64,
+    },
     Events {
         after: u64,
         limit: u16,
@@ -313,6 +318,8 @@ pub struct Inventory {
     pub experience: u64,
     pub items: Vec<super::rewards::Entry>,
     pub quests: Vec<super::rewards::Entry>,
+    pub level: super::progression::Level,
+    pub quest_log: Vec<super::progression::Progress>,
 }
 impl Inventory {
     pub fn validate(&self, control: &Option<Control>) -> Result<(), String> {
@@ -321,6 +328,8 @@ impl Inventory {
         }
         super::rewards::entries(&self.items)?;
         super::rewards::entries(&self.quests)?;
+        self.level.validate(self.experience)?;
+        super::progression::validate_progress(&self.quest_log)?;
         if self.revision > super::rewards::MAX_TRANSACTIONS as u64 {
             return Err("Inventory transaction budget exceeded".into());
         }
@@ -336,6 +345,7 @@ impl Inventory {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
     Accepted,
+    QuestClaimed { quest: u64, revision: u64 },
     Snapshot { state: State },
     Events { page: EventPage },
     Inventory { inventory: Inventory },
@@ -433,6 +443,15 @@ impl Gateway {
                 self.respawn(id, life.into()).map_err(|e| ("command", e))?;
                 Ok(Reply::Accepted)
             }
+            Body::ClaimQuest { life, epoch, quest } => {
+                let receipt = self
+                    .claim_quest(id, life.into(), epoch, quest)
+                    .map_err(|e| ("quest", e))?;
+                Ok(Reply::QuestClaimed {
+                    quest,
+                    revision: receipt.revision,
+                })
+            }
             Body::Snapshot {} => {
                 let snapshot = self.snapshot(id).map_err(|e| ("authentication", e))?;
                 let actors: Vec<_> = snapshot
@@ -482,6 +501,11 @@ impl Gateway {
                     inventory: Inventory {
                         life: life.into(),
                         revision,
+                        level: self
+                            .progression()
+                            .level(character.experience)
+                            .map_err(|e| ("progression", e))?,
+                        quest_log: self.quest_log(life.actor),
                         experience: character.experience,
                         items: entries(character.items),
                         quests: entries(character.quests),
@@ -1077,6 +1101,12 @@ mod tests {
             experience: 45,
             items: vec![super::super::rewards::Entry { id: 1, count: 1 }],
             quests: vec![],
+            level: super::super::progression::Level {
+                level: 1,
+                start: 0,
+                next: None,
+            },
+            quest_log: vec![],
         };
         inventory.validate(&control).unwrap();
         for case in 0..6 {
@@ -1108,9 +1138,9 @@ mod tests {
         let reply = send(&mut g, id, 1, Body::Snapshot {});
         assert!(matches!(reply.body, Reply::Refused { .. }));
         for bytes in [
-            br#"{"version":11,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":10,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":10,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
+            br#"{"version":12,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":11,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":11,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
                 .to_vec(),
             vec![b' '; MAX_REQUEST_BYTES + 1],
         ] {

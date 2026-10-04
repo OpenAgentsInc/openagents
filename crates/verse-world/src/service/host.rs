@@ -19,6 +19,8 @@ pub struct Config {
     pub state_dir: Option<PathBuf>,
     #[serde(default)]
     pub rewards: Vec<super::rewards::Policy>,
+    #[serde(default)]
+    pub progression: super::progression::Config,
 }
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -65,6 +67,7 @@ impl Config {
             return Err("Host state directory must be explicit".into());
         }
         super::rewards::Policy::validate(&self.rewards)?;
+        self.progression.validate()?;
         let mut keys = BTreeSet::new();
         let mut primary = 0;
         let mut players = 0;
@@ -109,7 +112,9 @@ impl Config {
                 Role::Spectator {} => gateway.enroll_spectator(key)?,
             }
         }
-        gateway.with_rewards(self.rewards.clone())
+        gateway
+            .with_rewards(self.rewards.clone())?
+            .with_progression(self.progression.clone())
     }
     /// Refuses changed startup rights instead of silently replacing saved character ownership.
     pub fn validate_recovered(&self, gateway: &Gateway) -> Result<(), String> {
@@ -117,6 +122,7 @@ impl Config {
         if gateway.game().player_life().instance != self.instance
             || gateway.chamber.grants.len() != self.enrollments.len()
             || gateway.reward_policy() != self.rewards
+            || gateway.progression() != &self.progression
         {
             return Err("Recovered host enrollment context is incompatible".into());
         }
@@ -208,6 +214,7 @@ mod tests {
             }],
             state_dir: None,
             rewards: Vec::new(),
+            progression: Default::default(),
         }
     }
     fn game(instance: u64) -> Game {
@@ -241,7 +248,7 @@ mod tests {
         config
             .validate_recovered_scene(&recovered, &game(config.instance))
             .unwrap();
-        for case in 0..5 {
+        for case in 0..6 {
             let mut changed = config.clone();
             match case {
                 0 => changed.enrollments[1].public_key = key(54),
@@ -254,7 +261,8 @@ mod tests {
                 3 => {
                     changed.enrollments.pop();
                 }
-                _ => changed.state_dir = Some(PathBuf::new()),
+                4 => changed.state_dir = Some(PathBuf::new()),
+                _ => changed.progression.levels = vec![0, 100],
             }
             assert!(changed.validate_recovered(&recovered).is_err());
         }

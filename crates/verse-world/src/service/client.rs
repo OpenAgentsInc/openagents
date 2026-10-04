@@ -159,6 +159,15 @@ impl Client {
             _ => Err("Unexpected inventory response".into()),
         }
     }
+    pub async fn claim_quest(&mut self, quest: u64) -> Result<Response, String> {
+        let control = self.control().ok_or("Client has no admitted adventurer")?;
+        self.request(Body::ClaimQuest {
+            life: control.life,
+            epoch: control.epoch,
+            quest,
+        })
+        .await
+    }
     pub async fn command(&mut self, intent: Intent<Ability>) -> Result<Response, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
         let command = Command {
@@ -271,6 +280,26 @@ impl Client {
             (Reply::Snapshot { state }, Body::Snapshot {}) => {
                 state.validate_control(self.instance, &r.control)
             }
+            (
+                Reply::QuestClaimed { quest, revision },
+                Body::ClaimQuest {
+                    life,
+                    epoch,
+                    quest: requested,
+                },
+            ) => {
+                if quest != requested
+                    || *quest == 0
+                    || *revision == 0
+                    || *revision > super::rewards::MAX_TRANSACTIONS as u64
+                    || r.control
+                        .as_ref()
+                        .is_none_or(|c| c.life != *life || c.epoch != *epoch)
+                {
+                    return Err("Quest claim acknowledgment is incompatible".into());
+                }
+                Ok(())
+            }
             (Reply::Inventory { inventory }, Body::Inventory {}) => {
                 inventory.validate(&r.control)?;
                 if inventory.revision < self.inventory_revision {
@@ -317,6 +346,19 @@ mod tests {
                 items: vec![Entry { id: 1, count: 1 }],
                 quests: vec![Entry { id: 1, count: 1 }],
             }])
+            .unwrap()
+            .with_progression(super::super::progression::Config {
+                version: 1,
+                levels: vec![0, 100, 300],
+                quests: vec![super::super::progression::Quest {
+                    id: 1,
+                    name: "Disrupt the summoning".into(),
+                    objective: 1,
+                    goal: 1,
+                    experience: 75,
+                    items: vec![Entry { id: 1, count: 2 }],
+                }],
+            })
             .unwrap();
         let source = g.game().ids[&2];
         let hp = g
@@ -378,6 +420,10 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(a.inventory().await.unwrap().experience, 0);
+        assert!(matches!(
+            a.claim_quest(1).await.unwrap().body,
+            Reply::Refused { .. }
+        ));
         assert!(spectator.inventory().await.is_err());
         assert!(spectator.connected());
         a.snapshot().await.unwrap();
@@ -410,11 +456,61 @@ mod tests {
         assert_eq!(left.quests, vec![Entry { id: 1, count: 1 }]);
         assert_eq!(left.revision, 2);
         assert_eq!(right.revision, 2);
+        assert_eq!(left.level.level, 1);
+        assert_eq!(left.quest_log[0].progress, 1);
+        assert!(!left.quest_log[0].claimed);
+        let ready = left.clone();
+        let own = a.control().unwrap().clone();
+        assert!(matches!(
+            b.request(Body::ClaimQuest {
+                life: own.life,
+                epoch: own.epoch,
+                quest: 1
+            })
+            .await
+            .unwrap()
+            .body,
+            Reply::Refused { .. }
+        ));
+        assert!(spectator.claim_quest(1).await.is_err());
+        let claimed = a.claim_quest(1).await.unwrap();
+        assert!(matches!(
+            claimed.body,
+            Reply::QuestClaimed {
+                quest: 1,
+                revision: 3
+            }
+        ));
+        assert!(matches!(
+            a.claim_quest(1).await.unwrap().body,
+            Reply::QuestClaimed {
+                quest: 1,
+                revision: 3
+            }
+        ));
+        assert!(matches!(
+            b.claim_quest(1).await.unwrap().body,
+            Reply::QuestClaimed {
+                quest: 1,
+                revision: 4
+            }
+        ));
+        let left = a.inventory().await.unwrap();
+        let right = b.inventory().await.unwrap();
+        assert_eq!(left.experience, 120);
+        assert_eq!(right.experience, 120);
+        assert_eq!(left.level.level, 2);
+        assert_eq!(left.items, vec![Entry { id: 1, count: 3 }]);
+        assert!(left.quest_log[0].claimed);
+        assert_eq!(left.revision, 4);
         server.abort();
         assert!(matches!(server.await,Err(error) if error.is_cancelled()));
         let mut store = Store::open(&root, [7; 32], 120).unwrap();
         let g = store.recover().unwrap();
-        assert_eq!(g.character_rewards(left.life.actor).unwrap().experience, 45);
+        assert_eq!(
+            g.character_rewards(left.life.actor).unwrap().experience,
+            120
+        );
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (stop, stopping) = oneshot::channel();
@@ -431,6 +527,13 @@ mod tests {
         )
         .await
         .unwrap();
+        assert!(matches!(
+            recovered.claim_quest(1).await.unwrap().body,
+            Reply::QuestClaimed {
+                quest: 1,
+                revision: 3
+            }
+        ));
         let after = recovered.inventory().await.unwrap();
         assert_eq!(after, left);
         tokio::time::sleep(Duration::from_millis(70)).await;
@@ -441,7 +544,7 @@ mod tests {
         println!(
             "VERSE_COMBAT_REWARDS {}",
             serde_json::json!({
-                "schema":"verse.combat.rewards.fixture.v1","wire_version":VERSION,"instance":120,
+                "schema":"verse.campaign.fixture.v1","ready":ready,"claim_revisions":[3,4],"wire_version":VERSION,"instance":120,
                 "ability":"magic_missile","target":target,"target_fixture_health":1,
                 "primary":left,"secondary":right,"recovered_primary":after,
                 "spectator_inventory_refused":true,"restart":"aborted_host_task",
@@ -450,6 +553,114 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn durable_claim_failure_withholds_receipt_and_recovers_ready_quest() {
+        use crate::service::{
+            net,
+            persistence::Store,
+            progression::{Config, Quest},
+            rewards::Transaction,
+        };
+        let keys = [key(67), key(68), key(69)];
+        let mut g = gateway(&keys)
+            .with_content([7; 32])
+            .unwrap()
+            .with_progression(Config {
+                version: 1,
+                levels: vec![0, 100, 300],
+                quests: vec![Quest {
+                    id: 1,
+                    name: "Disrupt the summoning".into(),
+                    objective: 1,
+                    goal: 1,
+                    experience: 75,
+                    items: vec![],
+                }],
+            })
+            .unwrap();
+        let actor = g.game().player_life().actor;
+        g.grant_reward(Transaction {
+            instance: 120,
+            actor,
+            source: [8; 32],
+            experience: 45,
+            items: vec![],
+            quests: vec![super::super::rewards::Entry { id: 1, count: 1 }],
+        })
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("state");
+        let store = Store::open(&root, [7; 32], 120).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let server = tokio::spawn(net::serve_durable(
+            listener,
+            server_tls.clone(),
+            g,
+            store,
+            std::future::pending::<()>(),
+        ));
+        let mut client = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([7; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let before = client.inventory().await.unwrap();
+        assert!(!before.quest_log[0].claimed);
+        std::fs::create_dir(root.join("next.json")).unwrap();
+        assert!(client.claim_quest(1).await.is_err());
+        let exit = tokio::time::timeout(std::time::Duration::from_secs(3), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(exit.failure.as_deref(), Some("Cannot stage chamber commit"));
+        drop(exit);
+        std::fs::remove_dir(root.join("next.json")).unwrap();
+        let mut store = Store::open(&root, [7; 32], 120).unwrap();
+        let g = store.recover().unwrap();
+        assert_eq!(g.character_rewards(actor).unwrap().experience, 45);
+        assert!(!g.quest_log(actor)[0].claimed);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stop, stopping) = oneshot::channel();
+        let server = tokio::spawn(net::serve_durable(listener, server_tls, g, store, async {
+            let _ = stopping.await;
+        }));
+        let mut client = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([7; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            client.claim_quest(1).await.unwrap().body,
+            Reply::QuestClaimed {
+                quest: 1,
+                revision: 2
+            }
+        ));
+        assert_eq!(client.inventory().await.unwrap().experience, 120);
+        assert!(matches!(
+            client.claim_quest(1).await.unwrap().body,
+            Reply::QuestClaimed {
+                quest: 1,
+                revision: 2
+            }
+        ));
+        client.close().await.unwrap();
+        stop.send(()).unwrap();
+        assert!(server.await.unwrap().failure.is_none());
+    }
     #[tokio::test]
     async fn reward_overflow_stops_durable_host_without_saving_partial_death() {
         use crate::service::{

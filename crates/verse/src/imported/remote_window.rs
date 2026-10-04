@@ -294,6 +294,12 @@ impl App {
                                 .or_default() += 1;
                         }
                     }
+                    if matches!(
+                        r.body,
+                        verse_world::service::wire::Reply::QuestClaimed { .. }
+                    ) {
+                        self.status = "Quest completed".into();
+                    }
                     if let verse_world::service::wire::Reply::Refused { message, .. } = r.body {
                         self.status = message;
                     }
@@ -758,6 +764,9 @@ impl ApplicationHandler for App {
                             width,
                             720.,
                         );
+                        if let Some(quest) = self.character_panel.take_claim() {
+                            self.send(Input::ClaimQuest(quest));
+                        }
                     }
                     return;
                 }

@@ -129,6 +129,11 @@ fn add(target: &mut BTreeMap<u64, u32>, additions: &[Entry]) -> Result<(), Strin
     Ok(())
 }
 impl Ledger {
+    pub(super) fn contains(&self, actor: u64, source: [u8; 32]) -> bool {
+        self.receipts
+            .iter()
+            .any(|r| r.transaction.actor == actor && r.transaction.source == source)
+    }
     pub(super) fn revision(&self) -> u64 {
         self.receipts.len() as u64
     }

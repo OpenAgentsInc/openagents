@@ -1,0 +1,250 @@
+{
+  "schema": "verse.campaign.acceptance.v1",
+  "issue": 10535,
+  "date": "2026-10-04",
+  "fixture": {
+    "ability": "magic_missile",
+    "claim_revisions": [
+      3,
+      4
+    ],
+    "instance": 120,
+    "primary": {
+      "experience": 120,
+      "items": [
+        {
+          "count": 3,
+          "id": 1
+        }
+      ],
+      "level": {
+        "level": 2,
+        "next": 300,
+        "start": 100
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "quest_log": [
+        {
+          "claimed": true,
+          "experience": 75,
+          "goal": 1,
+          "id": 1,
+          "items": [
+            {
+              "count": 2,
+              "id": 1
+            }
+          ],
+          "name": "Disrupt the summoning",
+          "progress": 1
+        }
+      ],
+      "quests": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "revision": 4
+    },
+    "ready": {
+      "experience": 45,
+      "items": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "level": {
+        "level": 1,
+        "next": 100,
+        "start": 0
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "quest_log": [
+        {
+          "claimed": false,
+          "experience": 75,
+          "goal": 1,
+          "id": 1,
+          "items": [
+            {
+              "count": 2,
+              "id": 1
+            }
+          ],
+          "name": "Disrupt the summoning",
+          "progress": 1
+        }
+      ],
+      "quests": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "revision": 2
+    },
+    "recovered_primary": {
+      "experience": 120,
+      "items": [
+        {
+          "count": 3,
+          "id": 1
+        }
+      ],
+      "level": {
+        "level": 2,
+        "next": 300,
+        "start": 100
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "quest_log": [
+        {
+          "claimed": true,
+          "experience": 75,
+          "goal": 1,
+          "id": 1,
+          "items": [
+            {
+              "count": 2,
+              "id": 1
+            }
+          ],
+          "name": "Disrupt the summoning",
+          "progress": 1
+        }
+      ],
+      "quests": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "revision": 4
+    },
+    "restart": "aborted_host_task",
+    "reward_repeat_after_restart": false,
+    "schema": "verse.campaign.fixture.v1",
+    "secondary": {
+      "experience": 120,
+      "items": [
+        {
+          "count": 3,
+          "id": 1
+        }
+      ],
+      "level": {
+        "level": 2,
+        "next": 300,
+        "start": 100
+      },
+      "life": {
+        "actor": 15,
+        "generation": 0,
+        "instance": 120
+      },
+      "quest_log": [
+        {
+          "claimed": true,
+          "experience": 75,
+          "goal": 1,
+          "id": 1,
+          "items": [
+            {
+              "count": 2,
+              "id": 1
+            }
+          ],
+          "name": "Disrupt the summoning",
+          "progress": 1
+        }
+      ],
+      "quests": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "revision": 4
+    },
+    "spectator_inventory_refused": true,
+    "target": {
+      "actor": 2,
+      "generation": 0,
+      "instance": 120
+    },
+    "target_fixture_health": 1,
+    "wire_version": 11
+  },
+  "source_sha256": {
+    "crates/verse-world/src/service.rs": "be5be06a63b23a310681e5683847a2008763c1b7b85da3733e2d5bccbb6ff218",
+    "crates/verse-world/src/service/auth.rs": "78b77549da29a40c19883804e51dbfb51b734d97d199a13575c8ca1e3964cea8",
+    "crates/verse-world/src/service/client.rs": "be15120afafa8ec35d943b5e433570e7e0b376bcbfb0b7ca2694181df55fb16f",
+    "crates/verse-world/src/service/host.rs": "e85569faa94c942e322fb5bd9a25d38d9b58e87d73df28543a2186510fbcb52d",
+    "crates/verse-world/src/service/net.rs": "dac7e842ce82b5ee96aa1fd1923e0c3af566334e32478edc148dca75eb890613",
+    "crates/verse-world/src/service/rewards.rs": "f99a1a38a7b87000a70f80d04189d908cd6f03a9eb31a28b7fa15750a4486409",
+    "crates/verse-world/src/service/save.rs": "1be4bd02ab00f39e684b40337f6e8d7b0cbfe8b046f6e1bd94292c1329a61611",
+    "crates/verse-world/src/service/view.rs": "75d0c62543314fd78627071e0312235414545166756f2d95dba3cf5f00cf1fcc",
+    "crates/verse-world/src/service/wire.rs": "10d21aaeba37dcc42b5d6fdfdcbc432d5188f2e817f803cb42016197ab33e66b",
+    "crates/verse-world/src/service/worker.rs": "4b47a9a94732c2fa21daf342cfb12e57c9f31b9a60801db49d7cc177e91e5ea9",
+    "crates/verse/src/imported/character_panel.rs": "1a1f00f9b327fb5880e00c166e54e4c5c9b1f1cd356fe7b139a04086ea5158ec",
+    "crates/verse/src/imported/remote_window.rs": "3039fff5978b70e67dd7598460ce12225f012b9092aba26599e85aa72551ee5a",
+    "crates/verse-world/src/service/progression.rs": "71cba41928b84a51b82b82932cddb70a1f22ef38bb02092fcc63308648bc9ecc"
+  },
+  "artifacts": [
+    {
+      "path": "ready.png",
+      "sha256": "e391718ce9bbaf2b328aad5abe18ca224dfb22dde75eb7fb7545dee89d0b9e52",
+      "dimensions": [
+        2700,
+        1860
+      ],
+      "visually_inspected": true
+    },
+    {
+      "path": "completed.png",
+      "sha256": "23e6532751024a87eb2a31d17d9cbf7ffee26e4e8b3728b808db0da7909bd9d3",
+      "dimensions": [
+        2700,
+        1860
+      ],
+      "visually_inspected": true
+    }
+  ],
+  "verification": [
+    {
+      "scope": "verse-world service with service-net",
+      "passed": 84,
+      "failed": 0
+    },
+    {
+      "scope": "native character panel including GPU capture",
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "scope": "native remote window",
+      "passed": 5,
+      "failed": 0
+    }
+  ],
+  "limits": [
+    "GPU images use synthetic inventory and quest counters, not live OS input.",
+    "TLS combat uses a synthetic one-health target and a temporary durable store.",
+    "Levels affect presentation; combat stat scaling, equipment/item use, quest enrollment and repeatability remain.",
+    "Full VE-5 and the broader Verse roadmap remain incomplete."
+  ]
+}

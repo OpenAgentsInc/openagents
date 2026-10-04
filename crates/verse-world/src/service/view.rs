@@ -158,7 +158,9 @@ impl View {
                 || (inventory.revision == previous.revision
                     && (inventory.experience != previous.experience
                         || inventory.items != previous.items
-                        || inventory.quests != previous.quests))
+                        || inventory.quests != previous.quests
+                        || inventory.level != previous.level
+                        || inventory.quest_log != previous.quest_log))
             {
                 return Err("Remote inventory revision or counters regressed".into());
             }
@@ -428,6 +430,12 @@ mod tests {
             experience: 45,
             items: vec![Entry { id: 1, count: 2 }],
             quests: vec![],
+            level: super::super::progression::Level {
+                level: 1,
+                start: 0,
+                next: None,
+            },
+            quest_log: vec![],
         };
         let mut reply = snapshot.clone();
         reply.request_id = 2;

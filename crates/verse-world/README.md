@@ -312,7 +312,7 @@ Trusted hosts use `Gateway::grant_reward` for bounded character experience,
 item stacks, and quest counters. A stable source ID binds one exact transaction
 per character; retries return its original receipt, and conflicting reuse or
 limit failures leave every field unchanged. Call `Store::commit` before
-acknowledging a host-created reward. Version-two chamber saves replay the retained
+acknowledging a host-created reward. Version-three chamber saves replay the retained
 transactions; version-one saves upgrade with an empty ledger. Instance reset
 retains rewards and retry identities. Receipts are never evicted: after 4,096
 transactions, new grants are refused. Host JSON accepts an optional sorted `rewards` array of NPC targets and grants,
@@ -325,14 +325,13 @@ policies are refused on recovery. With no configured rewards, combat grants none
 An authority or storage failure stops the host and retains its previous durable
 checkpoint, including when an entire cooperative reward batch cannot fit.
 
-Wire version ten adds an authenticated `inventory` read. The connection determines
+Wire version eleven provides an authenticated `inventory` read. The connection determines
 the character; request bodies contain no actor or grant amounts. Players can read
 their experience, bounded item stacks, and quest counters while dead. Spectators
 are refused. `service::client::Client::inventory` validates the owned life, counts,
 and nonregressing transaction revision. The [combat reward receipt](../../bench/verse/2026-10-04/combat-rewards/run.json)
 retains real loopback TLS spell/reward/restart assertions and their synthetic
-fixture limits. Native inventory presentation, item spending/equipment, quest
-completion, and progression rules remain.
+fixture limits. Item spending, equipment, and combat stat progression remain.
 
 The native worker refreshes owned inventory once per second and immediately after
 an owned-life change; spectators send no inventory requests. `service::view::View`
@@ -341,8 +340,22 @@ inventory until its exact life matches the owned snapshot. The native remote
 window opens inventory with **B** or **I** and the quest log with **L**. **Escape**
 closes an open window first. Use the arrow buttons, **Page Up**/**Page Down**, or
 the mouse wheel over the panel to page through entries. Panel clicks do not reach
-spell or camera input. These windows display existing counters; quest completion,
-item actions, and level rules remain separate authority work.
+spell or camera input. Configured quests show authored names, objective progress,
+rewards, and a **Claim** button when ready. Inventory shows the current level and
+XP progress. Successful claims refresh authoritative inventory.
 The [native panel receipt](../../bench/verse/2026-10-04/character-panels/run.json)
 retains a GPU layout capture, source/artifact hashes, and focused checks. Its
 synthetic counters establish layout, not live rewarded-combat acceptance.
+
+Host JSON accepts optional version-one `progression` configuration, for example
+`{"version":1,"levels":[0,100,300],"quests":[{"id":1,"name":"Disrupt the summoning","objective":1,"goal":12,"experience":75,"items":[{"id":1,"count":2}]}]}`.
+Campaign quests are active for every enrolled character. Kill reward counters
+supply objectives; claims select only the quest ID under the current owned life
+and control epoch. The host checks completion and applies configured rewards
+once per character and instance, including across respawn, reset, and recovery.
+Durable hosts commit before acknowledging claims. Saved progression configuration
+is immutable on recovery; earlier saves upgrade with no configured quests and
+level one. Level thresholds affect presentation only. Quest enrollment, abandonment,
+repeatable quests, quest givers, item actions, and combat stat scaling remain.
+The [campaign receipt](../../bench/verse/2026-10-04/campaign/run.json) retains
+focused TLS recovery checks and synthetic ready/completed GPU panel captures.

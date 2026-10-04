@@ -17,6 +17,7 @@ pub const NATIVE_CADENCE: Duration = Duration::from_millis(50);
 pub enum Input {
     Command(Intent<Ability>),
     Respawn,
+    ClaimQuest(u64),
 }
 /// Ordered updates; persist event progress only after consuming its delivery.
 pub enum Update {
@@ -80,6 +81,7 @@ pub async fn run(
                     let response = match input {
                         Input::Command(intent) => client.command(intent).await?,
                         Input::Respawn => client.respawn().await?,
+                        Input::ClaimQuest(quest) => {next_inventory=tokio::time::Instant::now();client.claim_quest(quest).await?}
                     };
                     Update::Outcome(response)
                 }

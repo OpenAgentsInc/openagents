@@ -160,6 +160,37 @@ impl Gateway {
         let b = self.binding(id)?;
         self.chamber.inventory(b.principal, b.session)
     }
+    pub fn with_progression(mut self, config: super::progression::Config) -> Result<Self, String> {
+        if self.next_connection != 1
+            || self.chamber.progression != super::progression::Config::default()
+        {
+            return Err("Campaign progression is already bound".into());
+        }
+        config.validate()?;
+        self.chamber.progression = config;
+        Ok(self)
+    }
+    pub fn progression(&self) -> &super::progression::Config {
+        &self.chamber.progression
+    }
+    pub fn quest_log(&self, actor: u64) -> Vec<super::progression::Progress> {
+        self.chamber.progression.progress(
+            actor,
+            self.game().player_life().instance,
+            &self.chamber.rewards,
+        )
+    }
+    pub fn claim_quest(
+        &mut self,
+        id: ConnectionId,
+        life: LifeId,
+        epoch: u64,
+        quest: u64,
+    ) -> Result<super::rewards::Receipt, String> {
+        let b = self.binding(id)?;
+        self.chamber
+            .claim_quest(b.principal, b.session, life, epoch, quest)
+    }
     fn clock(&mut self, now_ms: u64) -> Result<(), String> {
         if now_ms < self.last_now {
             return Err("Authentication clock moved backward".into());

@@ -25,6 +25,8 @@ struct Saved {
     reward_policy: Vec<super::rewards::Policy>,
     #[serde(default)]
     reward_cursor: u64,
+    #[serde(default)]
+    progression: Option<super::progression::Config>,
 }
 fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, String> {
     if saved.len() > 128 {
@@ -52,7 +54,7 @@ fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, S
 }
 pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
     let saved = Saved {
-        version: 2,
+        version: 3,
         content: gateway
             .content()
             .ok_or("Saved chamber requires bound content")?,
@@ -61,6 +63,7 @@ pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
         rewards: Some(gateway.chamber.rewards.transactions()),
         reward_policy: gateway.chamber.reward_policy.clone(),
         reward_cursor: gateway.chamber.reward_cursor,
+        progression: Some(gateway.chamber.progression.clone()),
         grants: gateway
             .chamber
             .grants
@@ -86,9 +89,11 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
         return Err("Saved chamber byte budget exceeded".into());
     }
     let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
-    if !matches!(saved.version, 1 | 2)
+    if !matches!(saved.version, 1 | 2 | 3)
         || (saved.version == 1 && saved.rewards.is_some())
-        || (saved.version == 2 && saved.rewards.is_none())
+        || (saved.version >= 2 && saved.rewards.is_none())
+        || (saved.version < 3 && saved.progression.is_some())
+        || (saved.version == 3 && saved.progression.is_none())
         || saved.content != content
         || instance == 0
     {
@@ -101,8 +106,10 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
     let grants = grants(&saved.grants, &game)?;
     let mut chamber = Chamber::new(game)?;
     chamber.grants = grants;
+    chamber.progression = saved.progression.unwrap_or_default();
+    chamber.progression.validate()?;
     for (index, transaction) in saved.rewards.unwrap_or_default().into_iter().enumerate() {
-        if chamber.grant_reward(transaction)?.revision != index as u64 + 1 {
+        if chamber.restore_reward(transaction)?.revision != index as u64 + 1 {
             return Err("Saved reward transaction is duplicated".into());
         }
     }
@@ -286,6 +293,130 @@ mod tests {
         );
     }
     #[test]
+    fn campaign_claims_are_owned_once_and_validated_on_recovery() {
+        use super::super::{
+            progression::{Config, Quest},
+            rewards::{Entry, Transaction},
+        };
+        let (g, keys) = fixture();
+        let config = Config {
+            version: 1,
+            levels: vec![0, 100, 300],
+            quests: vec![Quest {
+                id: 1,
+                name: "Disrupt the summoning".into(),
+                objective: 1,
+                goal: 2,
+                experience: 75,
+                items: vec![Entry { id: 1, count: 2 }],
+            }],
+        };
+        let mut g = g.with_progression(config.clone()).unwrap();
+        let a = join(&mut g, &keys[0]);
+        let b = join(&mut g, &keys[1]);
+        let spectator = join(&mut g, &keys[2]);
+        let own = g.admission(a).unwrap();
+        let other = g.admission(b).unwrap();
+        assert!(g.claim_quest(a, own.actor(), own.epoch(), 1).is_err());
+        for actor in [own.actor().actor, other.actor().actor] {
+            g.grant_reward(Transaction {
+                instance: 240,
+                actor,
+                source: [5; 32],
+                experience: 45,
+                items: vec![Entry { id: 1, count: 1 }],
+                quests: vec![Entry { id: 1, count: 2 }],
+            })
+            .unwrap();
+        }
+        assert!(g.claim_quest(b, own.actor(), own.epoch(), 1).is_err());
+        assert!(
+            g.claim_quest(spectator, own.actor(), own.epoch(), 1)
+                .is_err()
+        );
+        assert!(g.claim_quest(a, own.actor(), own.epoch() + 1, 1).is_err());
+        let receipt = g.claim_quest(a, own.actor(), own.epoch(), 1).unwrap();
+        assert_eq!(
+            g.claim_quest(a, own.actor(), own.epoch(), 1).unwrap(),
+            receipt
+        );
+        assert_eq!(
+            g.character_rewards(own.actor().actor).unwrap().experience,
+            120
+        );
+        assert_eq!(g.progression().level(120).unwrap().level, 2);
+        assert!(g.quest_log(own.actor().actor)[0].claimed);
+        assert!(
+            g.grant_reward(config.quests[0].transaction(240, own.actor().actor))
+                .is_err()
+        );
+        g.grant_reward(Transaction {
+            instance: 240,
+            actor: other.actor().actor,
+            source: [9; 32],
+            experience: u64::MAX - 45,
+            items: vec![],
+            quests: vec![],
+        })
+        .unwrap();
+        let before = g.checkpoint().unwrap();
+        assert!(g.claim_quest(b, other.actor(), other.epoch(), 1).is_err());
+        assert_eq!(g.checkpoint().unwrap(), before);
+        let saved = g.checkpoint().unwrap();
+        let mut recovered = Gateway::restore(&saved, [6; 32], 240).unwrap();
+        let connection = join(&mut recovered, &keys[0]);
+        let admission = recovered.admission(connection).unwrap();
+        assert_eq!(
+            recovered
+                .claim_quest(connection, admission.actor(), admission.epoch(), 1)
+                .unwrap(),
+            receipt
+        );
+        recovered.reset().unwrap();
+        let admission = recovered.admission(connection).unwrap();
+        assert_eq!(
+            recovered
+                .claim_quest(connection, admission.actor(), admission.epoch(), 1)
+                .unwrap(),
+            receipt
+        );
+        assert_eq!(
+            recovered
+                .character_rewards(admission.actor().actor)
+                .unwrap()
+                .items[&1],
+            3
+        );
+        for case in 0..4 {
+            let mut value: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+            match case {
+                0 => value["progression"]["quests"][0]["experience"] = 76.into(),
+                1 => value["rewards"][2]["experience"] = 1000.into(),
+                2 => {
+                    let claim = value["rewards"].as_array_mut().unwrap().remove(2);
+                    value["rewards"].as_array_mut().unwrap().insert(0, claim);
+                }
+                _ => {
+                    value.as_object_mut().unwrap().remove("progression");
+                }
+            }
+            assert!(Gateway::restore(&serde_json::to_vec(&value).unwrap(), [6; 32], 240).is_err());
+        }
+        let mut legacy: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        legacy["version"] = 2.into();
+        legacy.as_object_mut().unwrap().remove("progression");
+        legacy["rewards"].as_array_mut().unwrap().truncate(2);
+        let legacy = Gateway::restore(&serde_json::to_vec(&legacy).unwrap(), [6; 32], 240).unwrap();
+        assert_eq!(
+            legacy
+                .character_rewards(own.actor().actor)
+                .unwrap()
+                .experience,
+            45
+        );
+        assert!(legacy.quest_log(own.actor().actor).is_empty());
+    }
+    #[test]
     fn rewards_survive_recovery_and_legacy_saves_upgrade_without_grants() {
         use super::super::rewards::{Entry, Transaction};
         let (mut g, _) = fixture();
@@ -332,13 +463,14 @@ mod tests {
         let mut legacy: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         legacy["version"] = 1.into();
         legacy.as_object_mut().unwrap().remove("rewards");
+        legacy.as_object_mut().unwrap().remove("progression");
         let upgraded =
             Gateway::restore(&serde_json::to_vec(&legacy).unwrap(), [6; 32], 240).unwrap();
         assert!(upgraded.character_rewards(actor).is_none());
         assert_eq!(upgraded.game().player_life(), g.game().player_life());
         let saved: serde_json::Value =
             serde_json::from_slice(&upgraded.checkpoint().unwrap()).unwrap();
-        assert_eq!(saved["version"], 2);
+        assert_eq!(saved["version"], 3);
     }
     #[test]
     fn malformed_or_incompatible_saves_never_admit_ownership() {
@@ -351,7 +483,7 @@ mod tests {
         for case in 0..8 {
             let mut saved: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
             match case {
-                0 => saved["version"] = 3.into(),
+                0 => saved["version"] = 4.into(),
                 1 => saved["grants"][0]["key"] = serde_json::to_value([0u8; 32]).unwrap(),
                 2 => {
                     let grant = saved["grants"][0].clone();
