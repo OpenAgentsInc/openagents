@@ -1,0 +1,30 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "stability": "All twenty connections and native, load, and host processes complete. Every measured headless occupancy sample retains forty live hostile NPCs.",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "compiled_revisions": {
+      "host": "57d9e53369",
+      "clients": "57d9e53369"
+    },
+    "fixture_revision": "951e4b57767e955529ffc63cb5fc4d99fea49010",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "limits": [
+    "Native frame p95 is 107.393 ms; CPU command-buffer finalization p95 is 87.594 ms. This does not meet the frame budget.",
+    "Prediction correction p95 is 0.456 m, with a maximum of 1.961 m.",
+    "The proxy records two errors that require classification.",
+    "Server CPU and isolated GPU execution are not measured.",
+    "One native client and nineteen headless clients share one machine; headless clients do not prove rendering performance."
+  ]
+}
