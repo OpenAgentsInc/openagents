@@ -236,6 +236,7 @@ pub mod feather_fall;
 pub mod gust;
 pub mod levitate;
 pub mod play;
+pub mod reverse_gravity;
 pub mod room;
 pub mod rules;
 pub mod telekinesis;
