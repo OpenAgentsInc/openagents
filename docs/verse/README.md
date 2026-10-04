@@ -7,6 +7,10 @@ owned physics reuse, and authoritative multiplayer.
 Its specification defines the runtime, GPU pipeline, authoring tools, and
 near-term migration to original assets.
 
+[Agent Studio](agent-studio.md) is the proposed specification for a team of
+coding agents, on any engine the Coder host routes, doing real repository work
+inside Verse while people watch, answer, and approve merges.
+
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 
 Verse is the OpenAgents metaverse for people and agents, available on desktop,
