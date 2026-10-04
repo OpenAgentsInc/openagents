@@ -1,6 +1,6 @@
 //! Typed references to one admitted asset catalog. Rebuilding invalidates every handle.
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -27,6 +27,7 @@ pub struct Catalog {
     id: u64,
     models: BTreeMap<String, usize>,
     names: Vec<String>,
+    animation_states: BTreeMap<String, BTreeSet<crate::motion::State>>,
     textures: usize,
     persistent_models: BTreeMap<crate::inventory::AssetId, usize>,
     model_ids: BTreeMap<String, crate::inventory::AssetId>,
@@ -37,6 +38,11 @@ impl Catalog {
         pack.validate()?;
         let mut catalog =
             Self::allocate(pack.models.keys().cloned().collect(), pack.textures.len())?;
+        catalog.animation_states = pack
+            .models
+            .iter()
+            .map(|(name, model)| (name.clone(), model.states.keys().copied().collect()))
+            .collect();
         if let Some(inventory) = &pack.inventory {
             for asset in &inventory.assets {
                 match &asset.binding {
@@ -68,11 +74,30 @@ impl Catalog {
             id,
             models,
             names,
+            animation_states: BTreeMap::new(),
             textures,
             persistent_models: BTreeMap::new(),
             model_ids: BTreeMap::new(),
             persistent_textures: BTreeMap::new(),
         })
+    }
+    /// Named states must be declared by the admitted model. Numeric selections
+    /// retain the research adapter's idle/rest fallback.
+    pub fn check_animation(
+        &self,
+        model: ModelHandle,
+        selection: crate::motion::Selection,
+    ) -> Result<(), String> {
+        let name = self.model_name(model)?;
+        if let crate::motion::Selection::Named(state) = selection
+            && !self
+                .animation_states
+                .get(name)
+                .is_some_and(|states| states.contains(&state))
+        {
+            return Err(format!("Missing animation state for {name}: {state:?}"));
+        }
+        Ok(())
     }
     pub fn model_asset(&self, id: &crate::inventory::AssetId) -> Result<ModelHandle, String> {
         let slot = *self

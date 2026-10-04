@@ -72,7 +72,7 @@ mod tests {
     fn catalog() -> Catalog {
         let pack = serde_json::from_value(serde_json::json!({
             "version":1,"source_revision":"test","textures":[],"models":{
-                "room":{"source":"authored","source_sha256":"","surfaces":[],"bones":[],"clips":[],"height":1,"attachments":[]}
+                "room":{"source":"authored","source_sha256":"","surfaces":[],"bones":[],"clips":[{"id":0,"duration":1,"bones":[]}],"states":{"idle":{"clip":0,"mode":"loop","transition_seconds":0.1}},"height":1,"attachments":[]}
             }
         })).unwrap();
         Catalog::new(&pack).unwrap()

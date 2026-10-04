@@ -46,16 +46,22 @@ impl<'a> ResolvedInstances<'a> {
         if instances.len() > Self::MAX_INSTANCES {
             return Err("Presentation frame exceeds 256 instances".into());
         }
-        if instances
-            .iter()
-            .any(|i| !i.transform.is_finite() || !i.time.is_finite() || !i.emission.is_finite())
-        {
-            return Err("Presentation frame contains nonfinite values".into());
+        if instances.iter().any(|i| {
+            !i.transform.is_finite()
+                || !i.time.is_finite()
+                || i.time < 0.
+                || !i.emission.is_finite()
+        }) {
+            return Err("Presentation frame contains invalid instance values".into());
         }
         let models = instances
             .iter()
-            .map(|i| catalog.model(&i.model))
-            .collect::<Result<_, _>>()?;
+            .map(|i| {
+                let model = catalog.model(&i.model)?;
+                catalog.check_animation(model, i.animation)?;
+                Ok(model)
+            })
+            .collect::<Result<_, String>>()?;
         Ok(Self {
             catalog: catalog.id(),
             instances,
@@ -88,7 +94,7 @@ mod tests {
     fn catalog() -> Catalog {
         let pack = serde_json::from_value(serde_json::json!({
             "version":1,"source_revision":"test","textures":[],"models":{
-                "room":{"source":"authored","source_sha256":"","surfaces":[],"bones":[],"clips":[],"height":1,"attachments":[]}
+                "room":{"source":"authored","source_sha256":"","surfaces":[],"bones":[],"clips":[{"id":0,"duration":1,"bones":[]}],"states":{"idle":{"clip":0,"mode":"loop","transition_seconds":0.1}},"height":1,"attachments":[]}
             }
         })).unwrap();
         Catalog::new(&pack).unwrap()
@@ -133,6 +139,19 @@ mod tests {
         assert_eq!(frame.instances()[0].time, 1.25);
         assert_eq!(frame.catalog(), catalog.id());
         assert_eq!(catalog.model_name(frame.models()[0]).unwrap(), "room");
+    }
+    #[test]
+    fn animation_admission_matches_named_and_compatibility_playback() {
+        let catalog = catalog();
+        let mut value = instance();
+        value.animation = crate::motion::State::Cast.into();
+        assert!(ResolvedInstances::extract(&catalog, &[value.clone()]).is_err());
+        value.animation = crate::motion::State::Idle.into();
+        assert!(ResolvedInstances::extract(&catalog, &[value.clone()]).is_ok());
+        value.animation = 65535.into();
+        assert!(ResolvedInstances::extract(&catalog, &[value.clone()]).is_ok());
+        value.time = -0.01;
+        assert!(ResolvedInstances::extract(&catalog, &[value]).is_err());
     }
     #[test]
     fn invalid_inputs_never_produce_an_extracted_frame() {

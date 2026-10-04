@@ -206,6 +206,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10481](https://github.com/OpenAgentsInc/openagents/issues/10481) combines camera, lighting, resolved instances, and HUD geometry into a read-only headless `RenderWorld`. Extraction admits all inputs together; submission fences the complete frame against catalog replacement, including empty frames. Native live drawing and capture consume this contract, while existing application entry points remain adapters. GPU resources, world authority, and atlas rasterization stay outside the frame. Material schemas, explicit render graphs, semantic atlas identity, animation graphs, audio, and platform acceptance remain.
 
+[#10482](https://github.com/OpenAgentsInc/openagents/issues/10482) admits animation selections during render-world instance extraction. Catalogs retain each model's declared named states; missing states and negative sample times fail before native GPU writes. Explicit numeric research selections preserve idle/rest fallback. This closes a frame-admission gap, while generic animation graphs and marker/audio events remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against
