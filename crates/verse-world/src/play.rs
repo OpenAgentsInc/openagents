@@ -316,11 +316,14 @@ impl Game {
         delta: Vec3,
         radius: f64,
     ) -> Result<Option<f64>, String> {
+        // Standing Wall of Stone panels are cover too.
+        let mut cover = self.colliders.clone();
+        cover.extend(crate::spells::wall_of_stone::cover(&self.spells));
         Ok(physics::kinematic::sweep_box(
             start.as_dvec3(),
             glam::DVec3::splat(radius),
             delta.as_dvec3(),
-            &self.colliders,
+            &cover,
         )?
         .map(|h| h.fraction))
     }
@@ -1818,6 +1821,7 @@ impl Game {
             }
         }
         crate::spells::wind_wall::before_flights(self);
+        crate::spells::wall_of_stone::before_projectiles(self);
         self.simulation.tick_at(
             dt,
             (self.physics_steps as f64 * self.physics_clock.dt) as f32,
@@ -1829,6 +1833,7 @@ impl Game {
             self.impacts
                 .push((effect.pos.into(), self.time, effect.kind));
         }
+        crate::spells::wall_of_stone::after_projectiles(self)?;
         if let Some(mut encounter) = self.encounter.take() {
             encounter.step(self, dt)?;
             self.encounter = Some(encounter);

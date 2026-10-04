@@ -68,6 +68,9 @@ pub enum Form {
     /// A thick panel with its edge lengths halved (5 by 5 feet, 6 inches
     /// thick), which a span over 20 feet needs to create supports.
     Half,
+    /// A thin panel with its edge lengths halved (5 by 10 feet, 3 inches
+    /// thick).
+    HalfThin,
 }
 
 impl Form {
@@ -78,6 +81,7 @@ impl Form {
             Self::Thick => DVec3::new(10.0 * FEET, 10.0 * FEET, 6.0 * INCH),
             Self::Thin => DVec3::new(20.0 * FEET, 10.0 * FEET, 3.0 * INCH),
             Self::Half => DVec3::new(5.0 * FEET, 5.0 * FEET, 6.0 * INCH),
+            Self::HalfThin => DVec3::new(5.0 * FEET, 10.0 * FEET, 3.0 * INCH),
         }
     }
 
@@ -85,8 +89,14 @@ impl Form {
     pub fn thickness_inches(self) -> i32 {
         match self {
             Self::Thick | Self::Half => 6,
-            Self::Thin => 3,
+            Self::Thin | Self::HalfThin => 3,
         }
+    }
+
+    /// Whether the panel is a halved one, which may create supports.
+    #[must_use]
+    pub fn is_half(self) -> bool {
+        matches!(self, Self::Half | Self::HalfThin)
     }
 
     /// SRD hit points: 30 per inch of thickness.
@@ -107,7 +117,7 @@ impl Form {
     pub fn cost(self) -> u32 {
         match self {
             Self::Thick | Self::Thin => 4,
-            Self::Half => 1,
+            Self::Half | Self::HalfThin => 1,
         }
     }
 }
@@ -154,6 +164,7 @@ pub enum DamageType {
     Bludgeoning,
     Fire,
     Force,
+    Necrotic,
     Piercing,
     Poison,
     Psychic,

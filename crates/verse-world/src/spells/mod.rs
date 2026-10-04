@@ -17,6 +17,7 @@ pub mod gust_of_wind;
 pub mod levitate;
 pub mod props;
 pub mod thunderwave;
+pub mod wall_of_stone;
 pub mod wind_wall;
 
 use glam::{DQuat, DVec3};
@@ -77,6 +78,7 @@ pub const CATALOG: &[SpellDef] = &[
     crate::reverse_gravity::game::SPELL,
     crate::telekinesis::DEF,
     feather_fall::SPELL,
+    wall_of_stone::DEF,
 ];
 
 pub fn spell_in_slot(slot: u8) -> Option<&'static SpellDef> {
@@ -187,6 +189,9 @@ pub struct SpellWorld {
     /// Gust of Wind Lines, the scene flames they put out, and archers.
     #[serde(default)]
     pub gust: gust_of_wind::State,
+    /// Raised Wall of Stone panels, their joints, and debris.
+    #[serde(default)]
+    pub wall_of_stone: wall_of_stone::State,
 }
 
 impl Default for SpellWorld {
@@ -234,6 +239,7 @@ impl SpellWorld {
             telekinesis: BTreeMap::new(),
             feather_fall: feather_fall::State::default(),
             gust: gust_of_wind::State::default(),
+            wall_of_stone: Default::default(),
         }
     }
 
@@ -565,6 +571,7 @@ impl SpellWorld {
         for cast in expired {
             self.end_cast(cast)?;
         }
+        wall_of_stone::after_tick(self, time)?;
         if self.props.iter().all(|p| p.removed || p.spec.secured) && self.telekinesis.is_empty() {
             self.world.tick += u64::from(steps);
             return Ok(());
@@ -602,6 +609,7 @@ impl SpellWorld {
                 fields: &self.fields,
             };
             self.world.step(&fields);
+            wall_of_stone::after_world_step(self);
             for (term, impulse, at) in field_terms {
                 self.ledger.add_impulse(&term, impulse, at);
             }

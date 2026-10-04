@@ -110,6 +110,8 @@ fn panel_hit_points_follow_thickness() {
     );
     assert!((Form::Thin.mass() - Form::Thick.mass()).abs() < 1e-9);
     assert!((Form::Half.mass() * 4.0 - Form::Thick.mass()).abs() < 1e-9);
+    assert_eq!(Form::HalfThin.hit_points(), 90);
+    assert!((Form::HalfThin.mass() * 4.0 - Form::Thin.mass()).abs() < 1e-9);
     assert!(hits_panel(15) && !hits_panel(14));
 }
 

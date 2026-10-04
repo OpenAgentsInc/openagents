@@ -25,7 +25,7 @@ use std::collections::BinaryHeap;
 use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
 
-use super::{BUDGET, Form, Placement, RANGE, SPAN_LIMIT, box_distance};
+use super::{BUDGET, Placement, RANGE, SPAN_LIMIT, box_distance};
 
 /// How far apart two surfaces may be and still count as touching, m.
 pub const TOLERANCE: f64 = 0.03;
@@ -413,7 +413,7 @@ fn survey(panels: &[Placement], stone: &[Stone], caster: Option<DVec3>) -> Resul
         } else if from_stone <= SPAN_LIMIT + 1e-6 {
             span = span.max(from_stone);
         } else if with_supports <= SPAN_LIMIT + 1e-6 {
-            if first.form != Form::Half {
+            if !first.form.is_half() {
                 return Err(Refusal::NeedsHalfPanels { span: from_stone });
             }
             uses_supports = true;

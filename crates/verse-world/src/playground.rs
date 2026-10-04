@@ -188,6 +188,7 @@ pub fn scenarios() -> Vec<Scenario> {
         crate::spells::levitate::scenario(),
         crate::spells::feather_fall::scenario(),
         crate::spells::gust_of_wind::scenario(),
+        crate::spells::wall_of_stone::scenario(),
         bow_stance(),
         crate::reverse_gravity::game::scenario(),
     ]

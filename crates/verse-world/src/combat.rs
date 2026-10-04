@@ -302,7 +302,15 @@ impl Encounter {
                     resolved = true;
                     break;
                 }
-                if wall.is_some() {
+                if let Some(at) = wall {
+                    // A bolt that stops on a Wall of Stone panel damages it.
+                    crate::spells::wall_of_stone::struck(
+                        game,
+                        (position + delta * at as f32).as_dvec3(),
+                        cast.damage,
+                        crate::wall_of_stone::DamageType::Necrotic,
+                        "Cultist bolt",
+                    )?;
                     self.dodged += 1;
                     resolved = true;
                     break;

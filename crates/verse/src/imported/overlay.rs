@@ -1594,7 +1594,9 @@ pub fn spell_panel(
     for line in game.spells.world.debug_lines() {
         let color = match line.kind {
             physics::DebugKind::ContactImpulse => [1.0, 0.45, 0.1, 0.9],
-            physics::DebugKind::Joint | physics::DebugKind::Strained => [0.9, 0.3, 1.0, 0.9],
+            physics::DebugKind::Joint => [0.9, 0.3, 1.0, 0.9],
+            // A joint at its limit, about to break.
+            physics::DebugKind::Strained => [1.0, 0.15, 0.15, 1.0],
             _ => [0.3, 0.85, 1.0, 0.7],
         };
         if let (Some(a), Some(b)) = (

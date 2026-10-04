@@ -47,7 +47,7 @@ pub const GRANITE: Material = Material {
     restitution: 0.05,
 };
 /// Debris chunk counts and their grids along and across a panel.
-const DEBRIS_GRIDS: [(usize, usize); 3] = [(2, 2), (3, 2), (4, 2)];
+pub const DEBRIS_GRIDS: [(usize, usize); 3] = [(2, 2), (3, 2), (4, 2)];
 
 /// One panel of the wall.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -159,7 +159,7 @@ fn panel_body(world: &mut World, form: Form, center: DVec3, orientation: glam::D
 
 /// Wake every body whose colliders come near `body`'s, so whatever slept
 /// resting on a panel falls when the panel goes.
-fn wake_near(world: &mut World, body: BodyId) {
+pub(crate) fn wake_near(world: &mut World, body: BodyId) {
     let reach = world.solver.margin + 0.05;
     let near: Vec<BodyId> = {
         let colliders = world.colliders();
