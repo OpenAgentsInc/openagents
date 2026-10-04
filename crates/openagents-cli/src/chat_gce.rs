@@ -55,6 +55,7 @@ pub(super) struct Request {
     pub numbers: Vec<u64>,
     pub parallel: u64,
     pub land: Option<Land>,
+    pub engine_fallback: bool,
 }
 
 fn nonce() -> String {
@@ -670,11 +671,14 @@ fn assign(hosts: &[Host], parallel: u64, slots: u64) -> Vec<Host> {
 pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failure> {
     let output = *output;
     let pool = Pool::granted().map_err(failed)?;
+    let engine_fallback = request.engine_fallback;
     let credentials = Arc::new(
-        tokio::task::spawn_blocking(|| super::boat::credentials(EngineLogins::ApiKeys))
-            .await
-            .map_err(|_| failed("the run credentials could not be read"))?
-            .map_err(failed)?,
+        tokio::task::spawn_blocking(move || {
+            super::boat::credentials(EngineLogins::ApiKeys, engine_fallback)
+        })
+        .await
+        .map_err(|_| failed("the run credentials could not be read"))?
+        .map_err(failed)?,
     );
     let project = pool.project.clone();
     let listed = {
@@ -1020,6 +1024,7 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
                 numbers: vec![42],
                 parallel: 1,
                 land: Some(Land::Main),
+                engine_fallback: false,
             };
             let result = run_issue(
                 &fake,
@@ -1123,6 +1128,7 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
             numbers: vec![42],
             parallel: 1,
             land: None,
+            engine_fallback: false,
         };
         let result = run_issue(
             &fake,

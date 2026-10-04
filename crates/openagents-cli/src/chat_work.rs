@@ -68,6 +68,19 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
         .to_owned();
     let target = super::placement::Target::parse(args.option("on")).map_err(Failure::Usage)?;
     let on_boat = target == super::placement::Target::Boat;
+    let engine_fallback = args.switch("engine-fallback");
+    if target != super::placement::Target::Here
+        && !engine_fallback
+        && !(on_boat
+            && (args.option("engine-logins") == Some("boat")
+                || (args.option("engine-logins").is_none()
+                    && std::env::var("OA_BOAT_ENGINE_LOGINS").ok().as_deref() == Some("boat"))))
+    {
+        super::boat::codex_chatgpt_login().map_err(|why| Failure::Refused(format!(
+            "Cloud Codex cannot use your ChatGPT login: {why}. No engine was started. Use --engine-fallback to allow an API key or Grok Build."
+        )))?;
+    }
+
     let most = match target {
         super::placement::Target::Boat => super::boat::MAX_PARALLEL,
         super::placement::Target::Gce => super::gce::MAX_PARALLEL,
@@ -112,6 +125,7 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
             numbers,
             parallel,
             land,
+            engine_fallback,
         };
         return super::gce::work(output, request).await;
     }
@@ -129,6 +143,7 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
             numbers,
             parallel,
             land,
+            engine_fallback,
             logins,
             template: args.option("template").map(str::to_owned).or_else(|| {
                 std::env::var("OA_BOAT_TEMPLATE")
@@ -313,6 +328,44 @@ async fn bind(backend: &mut Client, thread: &str, task: &str, project: &str, iss
     }
 }
 
+/// Keep the cloud's announced Codex route as its only admitted provider.
+fn cloud_codex_only(mut settings: coder::task::settings::Coder) -> coder::task::settings::Coder {
+    use coder::task::{capacity::Provider, settings::Choice};
+    settings
+        .providers
+        .retain(|choice| choice.provider == Provider::Codex);
+    if settings.providers.is_empty() {
+        settings.providers.push(Choice::new(Provider::Codex));
+    }
+    for provider in [
+        Provider::Claude,
+        Provider::Grok,
+        Provider::Devin,
+        Provider::OpenCode,
+    ] {
+        if !settings.disabled.contains(&provider) {
+            settings.disabled.push(provider);
+        }
+    }
+    settings
+}
+
+#[cfg(test)]
+mod cloud_tests {
+    #[test]
+    fn strict_cloud_runs_admit_only_codex() {
+        use coder::task::{capacity::Provider, settings};
+        let pinned = super::cloud_codex_only(settings::Coder::default());
+        assert_eq!(pinned.provider_list(), vec![Provider::Codex]);
+        pinned.validate().unwrap();
+        let disabled = settings::Coder {
+            disabled: vec![Provider::Codex],
+            ..settings::Coder::default()
+        };
+        assert!(super::cloud_codex_only(disabled).validate().is_err());
+    }
+}
+
 /// One issue's flow, on a worker thread: begin, follow, finish.
 fn worker(
     store: &Path,
@@ -323,6 +376,25 @@ fn worker(
     sender: &mpsc::UnboundedSender<Told>,
 ) {
     let mut runner = Runner::new(store.to_path_buf());
+    if std::env::var("OA_CLOUD_CODEX_ONLY").ok().as_deref() == Some("1") {
+        let local = Local::here(store.to_path_buf());
+        let mut settings = match local.settings() {
+            Ok(settings) => settings.clone(),
+            Err(message) => {
+                let _ = sender.send(Told::Done {
+                    issue,
+                    outcome: "not_started".into(),
+                    message,
+                    thread: None,
+                    task: None,
+                    commits: Vec::new(),
+                });
+                return;
+            }
+        };
+        settings = cloud_codex_only(settings);
+        runner.local = std::sync::Arc::new(local.with_settings(settings));
+    }
     runner.land = land;
     runner.skip_claimed = true;
     let thread = new_id();

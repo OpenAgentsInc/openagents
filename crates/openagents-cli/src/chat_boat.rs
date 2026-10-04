@@ -122,6 +122,7 @@ pub(super) struct Request {
     pub parallel: u64,
     pub land: Option<Land>,
     pub logins: EngineLogins,
+    pub engine_fallback: bool,
     /// A named snapshot to start from instead of the newest template.
     pub template: Option<String>,
     /// Build `origin/main`'s `openagents` and `microcoder` in each sandbox
@@ -264,7 +265,7 @@ fn codex_auth_path() -> Option<std::path::PathBuf> {
 
 /// This computer's Codex ChatGPT login as a cloud run carries it, base64:
 /// see [`access_only_login`]. Reads the file and never writes it.
-fn codex_chatgpt_login() -> Result<(String, u64), String> {
+pub(super) fn codex_chatgpt_login() -> Result<(String, u64), String> {
     let path = codex_auth_path().ok_or("HOME is not set")?;
     let text = std::fs::read_to_string(&path)
         .map_err(|_| "Codex isn't signed in on this computer (`codex login`)".to_owned())?;
@@ -299,8 +300,7 @@ pub(super) fn access_only_login(text: &str, now: u64) -> Result<(String, u64), S
     let left = expires.saturating_sub(now);
     if left < CODEX_MIN_LEFT_SECS {
         return Err(format!(
-            "the Codex access token expires in {} min; run any Codex command on this computer \
-             to refresh it",
+            "the Codex access token has {} min left (cloud runs require at least 2 h); open Codex on the Mac once to refresh it, then rerun",
             left / 60
         ));
     }
@@ -359,42 +359,64 @@ fn git_config(key: &str) -> Option<String> {
     (output.status.success() && !value.is_empty()).then_some(value)
 }
 
+/// Select Codex authentication before a cloud run starts. The API-key lookup
+/// is lazy: a refused fallback never reads another credential.
+fn select_codex(
+    variables: &mut BTreeMap<String, String>,
+    login: Result<(String, u64), String>,
+    engine_fallback: bool,
+    api_key: impl FnOnce() -> Option<String>,
+) -> Result<bool, String> {
+    match login {
+        Ok((login, left)) => {
+            eprintln!(
+                "Codex runs on your ChatGPT login (its access token has {} min left; cloud runs require at least 2 h).",
+                left / 60
+            );
+            variables.insert("OA_CODEX_AUTH".into(), login);
+            Ok(true)
+        }
+        Err(why) => {
+            if !engine_fallback {
+                return Err(format!(
+                    "Cloud Codex cannot use your ChatGPT login: {why}. No engine was started. Use --engine-fallback to allow an API key or Grok Build."
+                ));
+            }
+            if let Some(key) = api_key() {
+                eprintln!(
+                    "Codex runs on an OpenAI API key because the ChatGPT login is unavailable: {why}. --engine-fallback allows this fallback."
+                );
+                variables.insert("OA_CODEX_API_KEY".into(), key);
+                Ok(true)
+            } else {
+                eprintln!(
+                    "Grok Build runs because Codex cannot use the ChatGPT login: {why}, and no OpenAI API key is available. --engine-fallback allows this engine switch."
+                );
+                Ok(false)
+            }
+        }
+    }
+}
+
 /// Every credential a run needs, read once for the whole queue.
-pub(super) fn credentials(logins: EngineLogins) -> Result<Credentials, String> {
+pub(super) fn credentials(
+    logins: EngineLogins,
+    engine_fallback: bool,
+) -> Result<Credentials, String> {
     let mut variables = BTreeMap::new();
-    let token = github_token().ok_or(
-        "no GitHub token for the sandboxes: set OA_BOAT_GH_TOKEN, give gcloud access to \
-         Secret Manager coder-pool-git-token, or sign `gh` in",
-    )?;
-    variables.insert("GH_TOKEN".to_owned(), token);
+    if !engine_fallback {
+        variables.insert("OA_CLOUD_CODEX_ONLY".into(), "1".into());
+    }
     if logins == EngineLogins::ApiKeys {
         // Codex through this computer's ChatGPT login first: the run gets a
         // copy that cannot refresh ([`codex_chatgpt_login`]), so this
         // computer's own login is never rotated out from under it.
-        let codex = match codex_chatgpt_login() {
-            Ok((login, left)) => {
-                eprintln!(
-                    "Codex runs on your ChatGPT login (its access token has {} h left).",
-                    left / 3600
-                );
-                variables.insert("OA_CODEX_AUTH".to_owned(), login);
-                true
-            }
-            Err(why) => {
-                // Codex takes an API key only through `codex login
-                // --with-api-key`, which the run does on the computer that
-                // runs it.
-                if let Some(openai) =
-                    variable("OA_CODER_OPENAI_API_KEY").or_else(|| secret(OPENAI_SECRET))
-                {
-                    variables.insert("OA_CODEX_API_KEY".to_owned(), openai);
-                    true
-                } else {
-                    eprintln!("Codex can't run in the cloud: {why}. Runs use Grok Build.");
-                    false
-                }
-            }
-        };
+        let codex = select_codex(
+            &mut variables,
+            codex_chatgpt_login(),
+            engine_fallback,
+            || variable("OA_CODER_OPENAI_API_KEY").or_else(|| secret(OPENAI_SECRET)),
+        )?;
         match variable("XAI_API_KEY").or_else(|| secret(XAI_SECRET)) {
             Some(xai) => {
                 variables.insert("XAI_API_KEY".to_owned(), xai);
@@ -410,6 +432,22 @@ pub(super) fn credentials(logins: EngineLogins) -> Result<Credentials, String> {
             }
         }
     }
+    if logins == EngineLogins::Boat {
+        if engine_fallback {
+            eprintln!(
+                "Cloud runs use Boat dashboard subscriptions (--engine-logins boat); --engine-fallback allows the remote host to select an available engine."
+            );
+        } else {
+            eprintln!(
+                "Codex runs on the Boat dashboard subscription (--engine-logins boat); other engines are disabled without --engine-fallback."
+            );
+        }
+    }
+    let token = github_token().ok_or(
+        "no GitHub token for the sandboxes: set OA_BOAT_GH_TOKEN, give gcloud access to \
+         Secret Manager coder-pool-git-token, or sign `gh` in",
+    )?;
+    variables.insert("GH_TOKEN".to_owned(), token);
     for (name, key) in [("OA_GIT_NAME", "user.name"), ("OA_GIT_EMAIL", "user.email")] {
         if let Some(value) = variable(name).or_else(|| git_config(key)) {
             variables.insert(name.to_owned(), value);
@@ -1504,8 +1542,9 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
             .map_err(|e| failed(format!("no Boat key: {e} (set BOAT_API_KEY)")))?,
     );
     let logins = request.logins;
+    let engine_fallback = request.engine_fallback;
     let credentials = Arc::new(
-        tokio::task::spawn_blocking(move || credentials(logins))
+        tokio::task::spawn_blocking(move || credentials(logins, engine_fallback))
             .await
             .map_err(|_| failed("the run credentials could not be read"))?
             .map_err(failed)?,
@@ -1869,6 +1908,58 @@ mod tests {
         assert_eq!(
             login["tokens"]["access_token"].as_str(),
             Some(fake_jwt(now + 50 * 3600).as_str())
+        );
+    }
+
+    #[test]
+    fn cloud_fallback_is_opt_in_and_api_keys_are_only_read_when_allowed() {
+        let mut variables = BTreeMap::new();
+        let why =
+            "access token has 60 min left; open Codex on the Mac once to refresh it, then rerun";
+        let refused = select_codex(&mut variables, Err(why.into()), false, || {
+            panic!("must not read API key")
+        })
+        .unwrap_err();
+        assert!(refused.contains(why));
+        assert!(refused.contains("--engine-fallback"));
+        assert!(variables.is_empty());
+        assert!(
+            select_codex(&mut variables, Err(why.into()), true, || Some(
+                "fixture-key".into()
+            ))
+            .unwrap()
+        );
+        assert!(variables.contains_key("OA_CODEX_API_KEY"));
+        variables.clear();
+        assert!(!select_codex(&mut variables, Err(why.into()), true, || None).unwrap());
+        assert!(variables.is_empty());
+        assert!(
+            select_codex(
+                &mut variables,
+                Ok(("fixture-login".into(), 7200)),
+                false,
+                || panic!("must prefer ChatGPT")
+            )
+            .unwrap()
+        );
+        assert!(variables.contains_key("OA_CODEX_AUTH"));
+    }
+
+    #[test]
+    fn cloud_login_requires_two_hours_including_the_boundary() {
+        let now = 1_000_000;
+        for left in [0, 3600, 7199] {
+            let why = access_only_login(&chatgpt_auth(now + left), now).unwrap_err();
+            assert!(why.contains("at least 2 h"), "{why}");
+            assert!(
+                why.contains("open Codex on the Mac once to refresh it, then rerun"),
+                "{why}"
+            );
+            assert!(!why.contains("rt-secret"));
+        }
+        assert_eq!(
+            access_only_login(&chatgpt_auth(now + 7200), now).unwrap().1,
+            7200
         );
     }
 

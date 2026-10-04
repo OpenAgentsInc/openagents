@@ -103,11 +103,16 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         a comment on the issue. The sandbox stops when its run ends and is
         deleted once the issue landed. --engine-logins api-keys (default:
         Codex on this computer's ChatGPT login, sent as a copy that
-        can't refresh, else an OpenAI key from OA_CODER_OPENAI_API_KEY or
+        can't refresh; with --engine-fallback, else an OpenAI key from OA_CODER_OPENAI_API_KEY or
         Secret Manager coder-openai-api-key; and Grok Build's XAI_API_KEY)
         or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager
         boat-api-key, and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager
         coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md.
+        With --engine-logins api-keys, cloud runs require a ChatGPT access token with at least 2 h left.
+        If it is short, open Codex on the Mac once to refresh it, then rerun.
+        --engine-fallback allows an OpenAI API key or Grok Build instead,
+        and allows switching engines during the run. Without it, runs use
+        only Codex on the ChatGPT login and refuse if it is unavailable.
         --on gce runs each issue on the GCE pool this computer granted with
         `openagents cloud up` (--parallel up to 32, two runs per host; the
         pool grows within the grant's --max-hosts): the same issue flow
@@ -117,8 +122,9 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         its pushed progress or stranded branch, or from scratch. When spot
         capacity is unavailable, new hosts fall back to on demand. Preemptions
         go in the run record. Without a live grant it refuses; it never
-        runs elsewhere. Engine logins are API keys (Codex's OpenAI key and
-        Grok Build's XAI_API_KEY), as for boat; docs/cloud/gce-pool.md.
+        runs elsewhere. Engine logins use the ChatGPT copy first, or with
+        --engine-fallback, Codex's OpenAI key or Grok Build's XAI_API_KEY,
+        as for boat; docs/cloud/gce-pool.md.
 Every command also takes --scratch, --local, and --socket PATH. When this
 computer's host runs (the OpenAgents app, or `openagents host serve
 --control`), threads live in the host and the desktop app shows them;
@@ -166,7 +172,14 @@ const OPTIONS: &[&str] = &[
     "engine-logins",
     "template",
 ];
-const SWITCHES: &[&str] = &["scratch", "local", "all", "run-coder", "no-run"];
+const SWITCHES: &[&str] = &[
+    "scratch",
+    "local",
+    "all",
+    "run-coder",
+    "no-run",
+    "engine-fallback",
+];
 
 pub(crate) enum Failure {
     Usage(String),
