@@ -39,6 +39,9 @@ pub struct Challenge {
     expires_ms: u64,
 }
 impl Challenge {
+    pub fn instance(&self) -> u64 {
+        self.instance
+    }
     /// SHA-256 over a versioned domain and fixed-width identity/context fields.
     pub fn signing_digest(&self, public_key: [u8; 32]) -> [u8; 32] {
         let mut h = Sha256::new();

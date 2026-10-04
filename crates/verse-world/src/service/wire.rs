@@ -152,6 +152,7 @@ impl Request {
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Control {
     pub life: Life,
     pub epoch: u64,
@@ -159,16 +160,19 @@ pub struct Control {
     pub accepted_sequence: u64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ActorBinding {
     pub source: u32,
     pub life: Life,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct State {
     pub snapshot: Snapshot,
     pub actors: Vec<ActorBinding>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EventPage {
     pub events: Vec<Event>,
     pub next: u64,
@@ -186,6 +190,7 @@ pub enum Reply {
     Refused { code: String, message: String },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Response {
     pub version: u16,
     pub request_id: u64,

@@ -238,7 +238,7 @@ async fn connection(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::{
         play::Game,
@@ -256,7 +256,7 @@ mod tests {
     use tokio_rustls::{TlsConnector, client::TlsStream};
     use verse_engine::director::Scene;
     type Stream = TlsStream<TcpStream>;
-    fn key(n: u8) -> Keypair {
+    pub(in crate::service) fn key(n: u8) -> Keypair {
         Keypair::from_secret_key(
             &Secp256k1::new(),
             &SecretKey::from_byte_array([n; 32]).unwrap(),
@@ -265,7 +265,7 @@ mod tests {
     fn public(k: &Keypair) -> [u8; 32] {
         k.x_only_public_key().0.serialize()
     }
-    fn gateway(keys: &[Keypair; 3]) -> Gateway {
+    pub(in crate::service) fn gateway(keys: &[Keypair; 3]) -> Gateway {
         let scene = Scene::from_json(include_bytes!(
             "../../../../assets/verse/original/ritual.json"
         ))
@@ -285,7 +285,7 @@ mod tests {
         g.enroll_spectator(public(&keys[2])).unwrap();
         g
     }
-    fn tls() -> (Arc<ServerConfig>, TlsConnector) {
+    pub(in crate::service) fn tls() -> (Arc<ServerConfig>, TlsConnector) {
         let certificate = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
         let der = certificate.cert.der().clone();
         let private = PrivatePkcs8KeyDer::from(certificate.signing_key.serialize_der());
@@ -305,7 +305,7 @@ mod tests {
             .with_no_client_auth();
         (Arc::new(server), TlsConnector::from(Arc::new(client)))
     }
-    async fn start(
+    pub(in crate::service) async fn start(
         keys: &[Keypair; 3],
     ) -> (
         std::net::SocketAddr,

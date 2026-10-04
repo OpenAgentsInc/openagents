@@ -96,7 +96,16 @@ bounded to 100 ms; transport statistics retain skipped elapsed time. Shutdown
 drains workers, parks controllers, and returns authority plus failure diagnostics.
 Temporary loopback TLS tests use generated certificates and synthetic identity
 keys. Client prediction, subscribed replication, durable deployment configuration,
-and native service integration remain. Revocation leaves an uncontrolled actor in the
+and native service integration remain.
+`service::client::Client` connects with caller-configured Rustls trust and server
+name, verifies the opening instance/version, and signs with a caller-provided
+keypair without retaining it. Sequential requests validate correlation, host
+ticks, player control fences, life bindings, event cursors, and response kinds.
+Commands derive their life, epoch, and next sequence from acknowledged state;
+valid gameplay refusals retain their consumed sequence. Ten-second IO deadlines,
+protocol failures, and cancellation of uncertain requests drop the socket without
+automatic replay. Poll snapshots at the replication cadence before issuing input;
+this client does not yet predict ticks or subscribe to streaming snapshots. Revocation leaves an uncontrolled actor in the
 world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the
