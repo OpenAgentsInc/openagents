@@ -1219,6 +1219,7 @@ impl Renderer {
                 .any(|i| i.actor == *id && i.model == *model && i.animation.grounded())
         });
         let mut adventurer_pose: Option<Pose> = None;
+        let mut bow_drawn = false;
         let mut actor_bounds = Vec::with_capacity(instances.len());
         for (i, instance) in instances.iter().enumerate() {
             let mut palette = make_pose(&self.pack, Some(instance))?;
@@ -1267,21 +1268,24 @@ impl Renderer {
             }
             if instance.model == "adventurer" {
                 adventurer_pose = Some(palette);
+                bow_drawn = chamber::bow_drawn(instance.animation);
             }
             if instance.model == "bow" {
-                if let (Some(parent), Some(hand)) = (
+                let drawn = bow_drawn;
+                if let (Some(parent), Some(anchor)) = (
                     adventurer_pose,
                     self.pack.models["adventurer"]
                         .attachments
                         .iter()
-                        .find(|a| a.id == 2),
+                        .find(|a| a.id == if drawn { 2 } else { 3 }),
                 ) {
-                    let transform = Mat4::from_cols_array_2d(&parent.model)
-                        * Mat4::from_cols_array_2d(&parent.bones[hand.bone])
-                        * Mat4::from_translation(hand.position.into())
-                        * Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2)
-                        * Mat4::from_rotation_y(-std::f32::consts::FRAC_PI_2);
-                    palette.model = transform.to_cols_array_2d();
+                    palette.model = chamber::bow_pose(
+                        Mat4::from_cols_array_2d(&parent.model),
+                        Mat4::from_cols_array_2d(&parent.bones[anchor.bone]),
+                        anchor.position.into(),
+                        drawn,
+                    )
+                    .to_cols_array_2d();
                 }
             }
             actor_bounds.push(

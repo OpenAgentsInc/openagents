@@ -36,25 +36,28 @@ pub fn instances(
     for a in frame
         .actors
         .iter()
-        .filter(|a| a.visible && a.actor.model == "adventurer" && !a.animation.casting())
+        .filter(|a| a.visible && a.actor.model == "adventurer")
     {
         let model = pack
             .models
             .get("adventurer")
             .ok_or("Missing adventurer model")?;
-        if let Some(hand) = model.attachments.iter().find(|a| a.id == 2) {
+        let drawn = bow_drawn(a.animation);
+        if let Some(anchor) = model
+            .attachments
+            .iter()
+            .find(|x| x.id == if drawn { 2 } else { 3 })
+        {
             let pose =
                 verse_engine::animation::pose_selected(model, a.animation, a.animation_time)?;
-            let transform = Mat4::from_translation(a.actor.position)
+            let body = Mat4::from_translation(a.actor.position)
                 * Mat4::from_rotation_y(a.actor.yaw)
                 * Mat4::from_scale(Vec3::splat(a.actor.scale))
-                * basis()
-                * pose[hand.bone]
-                * Mat4::from_translation(hand.position.into());
+                * basis();
             actors.push(Instance {
                 actor: None,
                 model: "bow".into(),
-                transform,
+                transform: bow_pose(body, pose[anchor.bone], anchor.position.into(), drawn),
                 animation: 0.into(),
                 time: frame.time,
                 emission: Vec3::ONE,
@@ -1080,3 +1083,39 @@ mod tests {
         );
     }
 }
+
+/// The bow is drawn while the archer holds a bow stance; otherwise it is stowed.
+pub fn bow_drawn(animation: verse_engine::motion::Selection) -> bool {
+    use verse_engine::motion::State;
+    matches!(
+        animation,
+        verse_engine::motion::Selection::Named(State::BowReady | State::BowRelease)
+    )
+}
+
+/// Places the bow from the adventurer's posed body. `body` is the actor's
+/// model matrix, `bone` the posed skinning matrix of the attachment bone, and
+/// `anchor` the attachment's bind-pose position. The bow follows the anchor's
+/// position but takes its orientation from the body, not the bone, so a drawn
+/// bow stays upright in the hand with its string toward the archer, and a
+/// stowed bow hangs diagonally across the upper back with its string outward.
+pub fn bow_pose(body: Mat4, bone: Mat4, anchor: Vec3, drawn: bool) -> Mat4 {
+    let at = (body * bone).transform_point3(anchor);
+    let (scale, rotation, _) = body.to_scale_rotation_translation();
+    let local = if drawn {
+        Mat4::from_rotation_z(BOW_FACING)
+    } else {
+        Mat4::from_translation(BOW_BACK_OFFSET)
+            * Mat4::from_rotation_z(BOW_FACING)
+            * Mat4::from_rotation_y(BOW_BACK_TILT)
+    };
+    Mat4::from_scale_rotation_translation(scale, rotation, at) * local
+}
+/// Turns the bow model, whose string lies on its -Y side, so the string faces
+/// the archer. In the actor's model space +Y is forward, so a stowed bow keeps
+/// the same turn and its string faces outward from the back.
+const BOW_FACING: f32 = 0.;
+/// From the upper spine to the bow's grip, in the actor's model space.
+const BOW_BACK_OFFSET: Vec3 = Vec3::new(0., -0.2, 0.);
+/// Diagonal of the stowed bow across the back, in radians.
+const BOW_BACK_TILT: f32 = 0.6;

@@ -811,14 +811,18 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
     model.clips.retain(|c| c.id != 250);
     let global = globals(model);
     let skin = model.skin.as_ref().unwrap();
-    if let Some(bone) = skin.names.iter().position(|n| n == "hand_l") {
-        model.attachments.push(Attachment {
-            id: 2,
-            bone,
-            position: Mat4::from_cols_array(&skin.basis)
-                .transform_point3(global[bone].transform_point3(Vec3::ZERO))
-                .to_array(),
-        });
+    // Attachment 2 is the bow hand; attachment 3 is the upper back, where the
+    // bow rests when it isn't drawn.
+    for (id, name) in [(2, "hand_l"), (3, "spine_03")] {
+        if let Some(bone) = skin.names.iter().position(|n| n == name) {
+            model.attachments.push(Attachment {
+                id,
+                bone,
+                position: Mat4::from_cols_array(&skin.basis)
+                    .transform_point3(global[bone].transform_point3(Vec3::ZERO))
+                    .to_array(),
+            });
+        }
     }
     super::original::bind_states(model);
     Ok(())

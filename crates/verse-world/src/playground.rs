@@ -159,7 +159,7 @@ pub struct Scenario {
 
 /// Every registered scenario, one line per spell.
 pub fn scenarios() -> Vec<Scenario> {
-    vec![crate::spells::thunderwave::scenario()]
+    vec![crate::spells::thunderwave::scenario(), bow_stance()]
 }
 
 pub fn scenario(key: &str) -> Option<Scenario> {
@@ -517,5 +517,60 @@ mod tests {
         .unwrap();
         let restored = Game::restore(&game.checkpoint().unwrap()).unwrap();
         assert_eq!(restored.player, game.player);
+    }
+}
+
+/// Not a spell: the archer stands with the bow stowed on his back, shoots a
+/// dummy, keeps the bow drawn for [`crate::play::BOW_STANCE`], then stows it.
+fn bow_stance() -> Scenario {
+    use std::f32::consts::FRAC_PI_2;
+    Scenario {
+        key: "bow",
+        title: "Bow stance",
+        srd: "Stowed on the back; drawn in the left hand while shooting",
+        seed: 1,
+        live: 9.,
+        replay: (2.3, 3.6),
+        setup: |scene, hall| {
+            scene.actors.push(creature(
+                101,
+                "Dummy",
+                "dummy",
+                hall.spawn("wall_station")?,
+                FRAC_PI_2,
+                100,
+            ));
+            Ok(())
+        },
+        populate: |_, _| Ok(()),
+        script: || {
+            vec![
+                Cue {
+                    at: 0.3,
+                    step: Step::Face(-FRAC_PI_2),
+                },
+                Cue {
+                    at: 2.5,
+                    step: Step::Cast(Ability::Bow),
+                },
+            ]
+        },
+        camera: || {
+            let back = (Vec3::new(3.9, 2.0, 1.5), Vec3::new(5.75, 1.2, 0.));
+            let front = (Vec3::new(7.4, 1.7, 1.7), Vec3::new(5.75, 1.2, 0.));
+            [
+                (0., back),
+                (2.2, back),
+                (2.4, front),
+                (6.4, front),
+                (6.9, back),
+                (9., back),
+            ]
+            .into_iter()
+            .map(|(at, (eye, target))| Shot { at, eye, target })
+            .collect()
+        },
+        replay_camera: (Vec3::new(7.4, 1.7, 1.7), Vec3::new(5.75, 1.2, 0.)),
+        check: |_| Ok(()),
     }
 }

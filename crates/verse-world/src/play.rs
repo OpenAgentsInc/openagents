@@ -12,6 +12,8 @@ pub const RULES_REVISION: &str = "verse-chamber-owned-v14";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
+/// Seconds the player keeps the bow drawn after a shot before stowing it.
+pub const BOW_STANCE: f32 = 4.0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Ability {
     Bow,
@@ -1237,8 +1239,12 @@ impl Game {
                     } else {
                         State::Run
                     }
-                } else {
+                } else if self.last_cast.is_some_and(|(ability, at)| {
+                    ability == Ability::Bow && self.time - at < BOW_STANCE
+                }) {
                     State::BowReady
+                } else {
+                    State::CombatReady
                 }
                 .into();
                 if !self.colliders.is_empty() && self.character.support.is_none() {
@@ -2968,6 +2974,30 @@ mod original_collision_tests {
             min: glam::DVec3::new(-3., 0., -15.1),
             max: glam::DVec3::new(3., 8., -14.9),
         }
+    }
+    #[test]
+    fn the_bow_is_drawn_after_a_shot_and_stowed_later() {
+        use verse_engine::motion::State;
+        let stance = |g: &Game| {
+            g.frame()
+                .actors
+                .into_iter()
+                .find(|a| a.actor.model == "adventurer")
+                .unwrap()
+                .animation
+        };
+        let mut g = game();
+        g.tick(0.05, [0.0, 0.0]).unwrap();
+        assert_eq!(stance(&g), State::CombatReady.into());
+        g.activate(Ability::Bow).unwrap();
+        while g.time < g.last_cast.unwrap().1 + 1.5 {
+            g.tick(0.05, [0.0, 0.0]).unwrap();
+        }
+        assert_eq!(stance(&g), State::BowReady.into());
+        while g.time < g.last_cast.unwrap().1 + BOW_STANCE + 0.1 {
+            g.tick(0.05, [0.0, 0.0]).unwrap();
+        }
+        assert_eq!(stance(&g), State::CombatReady.into());
     }
     #[test]
     fn delayed_bow_and_spell_recheck_obstruction() {
