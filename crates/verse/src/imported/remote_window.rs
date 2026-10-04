@@ -38,6 +38,20 @@ pub fn run(
     scene: Scene,
     dir: PathBuf,
 ) -> Result<(), String> {
+    run_recorded(client, runtime, pack, atlas, scene, dir, None)
+}
+pub fn run_recorded(
+    client: Client,
+    runtime: tokio::runtime::Runtime,
+    pack: Pack,
+    atlas: Atlas,
+    scene: Scene,
+    dir: PathBuf,
+    record: Option<super::remote_record::Options>,
+) -> Result<(), String> {
+    if let Some(options) = &record {
+        options.validate()?;
+    }
     scene.validate()?;
     let instance = client.instance();
     let view = View::new(instance, 10., 0)?;
@@ -57,6 +71,7 @@ pub fn run(
         ))
     });
     let mut app = App::new(pack, atlas, scene, dir, view, input, output);
+    app.record = record;
     let result = event_loop.run_app(&mut app).map_err(|e| e.to_string());
     let _ = stop.send(());
     let worker_result = thread
@@ -66,7 +81,8 @@ pub fn run(
     if let Some(error) = app.error {
         return Err(error);
     }
-    worker_result
+    worker_result?;
+    app.finish_recording()
 }
 struct App {
     pack: Pack,
@@ -90,6 +106,18 @@ struct App {
     owned_life: Option<verse_engine::core::LifeId>,
     status: String,
     error: Option<String>,
+    record: Option<super::remote_record::Options>,
+    recorder: Option<super::remote_record::Recorder>,
+    record_started: Option<Instant>,
+    next_capture: Instant,
+    next_demo: f32,
+    demo_slot: usize,
+    pending: std::collections::VecDeque<Option<Ability>>,
+    accepted_casts: std::collections::BTreeMap<String, u64>,
+    damage_events: u64,
+    dialogue_events: u64,
+    min_hp: i32,
+    recorded_world_start: Option<f32>,
 }
 impl App {
     fn new(
@@ -123,6 +151,18 @@ impl App {
             owned_life: None,
             status: String::new(),
             error: None,
+            record: None,
+            recorder: None,
+            record_started: None,
+            next_capture: Instant::now(),
+            next_demo: 0.,
+            demo_slot: 0,
+            pending: std::collections::VecDeque::new(),
+            accepted_casts: Default::default(),
+            damage_events: 0,
+            dialogue_events: 0,
+            min_hp: i32::MAX,
+            recorded_world_start: None,
         }
     }
 
@@ -148,8 +188,19 @@ impl App {
                 .is_some_and(|h| h.resources.hp > 0)
     }
     fn send(&mut self, input: Input) {
+        if self.pending.len() >= 64 {
+            self.status = "Input queue is busy".into();
+            return;
+        }
+        let ability = match &input {
+            Input::Command(Intent::Cast { ability, .. }) => Some(*ability),
+            _ => None,
+        };
         match self.input.try_send(input) {
-            Ok(()) => self.status.clear(),
+            Ok(()) => {
+                self.status.clear();
+                self.pending.push_back(ability);
+            }
             Err(mpsc::error::TrySendError::Full(_)) => self.status = "Input queue is busy".into(),
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 self.status = "Chamber connection stopped".into()
@@ -222,8 +273,26 @@ impl App {
                         self.release_pointer();
                     }
                 }
-                Ok(Update::Events { delivery, .. }) => self.view.push_events(&delivery)?,
+                Ok(Update::Events { delivery, .. }) => {
+                    self.view.push_events(&delivery)?;
+                    for event in &delivery.events {
+                        match event.kind {
+                            verse_world::events::Kind::Damage { .. } => self.damage_events += 1,
+                            verse_world::events::Kind::Dialogue { .. } => self.dialogue_events += 1,
+                            _ => {}
+                        }
+                    }
+                }
                 Ok(Update::Outcome(r)) => {
+                    let ability = self.pending.pop_front().flatten();
+                    if matches!(r.body, verse_world::service::wire::Reply::Accepted) {
+                        if let Some(ability) = ability {
+                            *self
+                                .accepted_casts
+                                .entry(ability.label().into())
+                                .or_default() += 1;
+                        }
+                    }
                     if let verse_world::service::wire::Reply::Refused { message, .. } = r.body {
                         self.status = message;
                     }
@@ -244,6 +313,10 @@ impl App {
             self.release_pointer();
         }
         let now = Instant::now();
+        if let Some(hud) = self.view.replica().latest().and_then(|s| s.hud.as_ref()) {
+            self.min_hp = self.min_hp.min(hud.resources.hp);
+        }
+        self.demo();
         let dt = now.duration_since(self.last).as_secs_f32().min(0.1);
         self.last = now;
         let held = controls::Held {
@@ -389,7 +462,97 @@ impl App {
             &ui,
             &lighting,
         )?;
-        renderer.present_window(self.presenter.as_mut().unwrap(), [size.width, size.height])
+        renderer.present_window(self.presenter.as_mut().unwrap(), [size.width, size.height])?;
+        if self.view.replica().latest().is_some() && self.record.is_some() {
+            if self.record_started.is_none() {
+                self.record_started = Some(now);
+                self.recorded_world_start = Some(time);
+            }
+            if now >= self.next_capture {
+                self.recorder.as_mut().unwrap().submit(
+                    renderer.capture_submitted(),
+                    (now.duration_since(self.record_started.unwrap())
+                        .as_secs_f64()
+                        * 30.)
+                        .floor() as u64,
+                )?;
+                self.next_capture = now + Duration::from_secs_f64(1. / 30.);
+            }
+        }
+        Ok(())
+    }
+    fn demo(&mut self) {
+        if !self.record.as_ref().is_some_and(|o| o.controller) || !self.controlled() {
+            return;
+        }
+        let Some(state) = self.view.replica().latest() else {
+            return;
+        };
+        let Some(hud) = state.hud.as_ref() else {
+            return;
+        };
+        if state.presentation.time < self.next_demo
+            || hud.casting.is_some()
+            || self.input.capacity() != worker::INPUT_CAPACITY
+        {
+            return;
+        }
+        let order = [
+            Ability::Shield,
+            Ability::Fireball,
+            Ability::Web,
+            Ability::Grease,
+            Ability::Light,
+            Ability::Thunderwave,
+            Ability::MistyStep,
+            Ability::Bow,
+            Ability::FireBolt,
+            Ability::MagicMissile,
+        ];
+        let ability = order[self.demo_slot % order.len()];
+        self.demo_slot += 1;
+        self.next_demo = state.presentation.time + 2.;
+        if !hud.slots.iter().any(|s| s.ability == ability && s.ready) {
+            return;
+        }
+        let player = state
+            .presentation
+            .actors
+            .iter()
+            .find(|p| verse_engine::core::LifeId::from(p.life) == hud.life)
+            .map_or(Vec3::ZERO, |p| p.actor.position);
+        let target = state
+            .presentation
+            .actors
+            .iter()
+            .filter(|p| {
+                p.health > 0 && p.visible && p.actor.nameplate && p.actor.model != "adventurer"
+            })
+            .min_by(|a, b| {
+                a.actor
+                    .position
+                    .distance_squared(player)
+                    .total_cmp(&b.actor.position.distance_squared(player))
+            })
+            .map(|p| verse_engine::core::LifeId::from(p.life));
+        if self.view.select_target(target).is_ok() {
+            self.cast(ability);
+        }
+    }
+    fn finish_recording(&mut self) -> Result<(), String> {
+        if let Some(recorder) = self.recorder.take() {
+            let dropped = recorder.dropped;
+            let stats = recorder.finish()?;
+            let options = self.record.as_ref().unwrap();
+            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":self.min_hp,"programmatic_controller":options.controller,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_state":self.view.replica().latest()});
+            std::fs::write(
+                options.output.with_extension("json"),
+                serde_json::to_vec_pretty(&proof)
+                    .map_err(|_| "Cannot encode remote capture proof")?,
+            )
+            .map_err(|_| "Cannot write remote capture proof")?;
+        }
+        Ok(())
     }
     fn release_pointer(&mut self) {
         self.keys.clear();
@@ -417,7 +580,8 @@ impl ApplicationHandler for App {
                     .create_window(
                         Window::default_attributes()
                             .with_title("Verse Engine — Remote chamber")
-                            .with_inner_size(winit::dpi::LogicalSize::new(1280., 720.)),
+                            .with_inner_size(winit::dpi::LogicalSize::new(1280., 720.))
+                            .with_resizable(self.record.is_none()),
                     )
                     .map_err(|e| e.to_string())?,
             );
@@ -434,6 +598,12 @@ impl ApplicationHandler for App {
                 ),
             )?;
             let presenter = renderer.attach_window(window.clone())?;
+            if let Some(options) = &self.record {
+                self.recorder = Some(super::remote_record::Recorder::open(
+                    options,
+                    renderer.dimensions(),
+                )?);
+            }
             self.window = Some(window);
             self.renderer = Some(renderer);
             self.presenter = Some(presenter);
@@ -546,6 +716,13 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if let Err(error) = self.redraw() {
                     self.fail(event_loop, error);
+                } else if self
+                    .record
+                    .as_ref()
+                    .zip(self.record_started)
+                    .is_some_and(|(o, start)| start.elapsed().as_secs() >= o.seconds as u64)
+                {
+                    event_loop.exit();
                 }
             }
             _ => {}

@@ -12,6 +12,8 @@ struct Config {
     pack: PathBuf,
     scene: PathBuf,
     dir: PathBuf,
+    #[serde(default)]
+    record: Option<verse::imported::remote_record::Options>,
 }
 fn bounded(path: &std::path::Path, limit: usize) -> Result<Vec<u8>, String> {
     use std::io::Read;
@@ -96,7 +98,15 @@ fn run() -> Result<(), String> {
             &key,
         ))?
     };
-    verse::imported::remote_window::run(client, runtime, pack, atlas, scene, config.dir)
+    verse::imported::remote_window::run_recorded(
+        client,
+        runtime,
+        pack,
+        atlas,
+        scene,
+        config.dir,
+        config.record,
+    )
 }
 fn main() {
     if let Err(error) = run() {
