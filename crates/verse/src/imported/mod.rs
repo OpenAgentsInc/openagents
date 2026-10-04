@@ -1462,20 +1462,17 @@ impl Renderer {
             });
             pass.set_pipeline(&self.shadow_pipeline);
             pass.set_bind_group(0, &self.shadow_groups[layer], &[]);
-            for (i, _) in instances.iter().enumerate() {
-                if self.actors[i + 1].shadow_count == 0 {
-                    continue;
-                }
-                if actor_bounds[i]
-                    .is_some_and(|b| !b.visible(Mat4::from_cols_array_2d(&frame.shadow[layer])))
+            let shadow_view = Mat4::from_cols_array_2d(&frame.shadow[layer]);
+            pass.execute_bundles(instances.iter().enumerate().filter_map(|(i, _)| {
+                let actor = &self.actors[i + 1];
+                if actor.shadow_count == 0
+                    || actor_bounds[i].is_some_and(|bounds| !bounds.visible(shadow_view))
                 {
-                    continue;
+                    return None;
                 }
-                pass.execute_bundles(std::iter::once(
-                    self.actors[i + 1].shadow_bundles[layer].as_ref().unwrap(),
-                ));
-                shadow_draws += self.actors[i + 1].shadow_count;
-            }
+                shadow_draws += actor.shadow_count;
+                Some(actor.shadow_bundles[layer].as_ref().unwrap())
+            }));
         }
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1501,15 +1498,17 @@ impl Renderer {
             });
             pass.set_bind_group(0, &self.frame_group, &[]);
             for blend in 0..4 {
-                for (index, batch) in self.static_batches.iter().enumerate() {
-                    if batch.blend == blend as u8
-                        && batch
-                            .bounds
-                            .is_none_or(|bounds| bounds.visible(view.view_proj))
-                    {
-                        pass.execute_bundles(std::iter::once(&self.static_world_bundles[index]));
-                    }
-                }
+                let static_bundles =
+                    self.static_batches
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, batch)| {
+                            (batch.blend == blend as u8
+                                && batch
+                                    .bounds
+                                    .is_none_or(|bounds| bounds.visible(view.view_proj)))
+                            .then_some(&self.static_world_bundles[index])
+                        });
                 let mut order: Vec<_> = instances.iter().enumerate().collect();
                 if blend == 2 {
                     order.sort_by(|(_, a), (_, b)| {
@@ -1520,17 +1519,16 @@ impl Renderer {
                             .total_cmp(&a.transform.w_axis.truncate().distance_squared(view.eye))
                     });
                 }
-                for (i, _) in order {
-                    if self.actors[i + 1].world_counts[blend] == 0 {
-                        continue;
+                let actor_bundles = order.into_iter().filter_map(|(i, _)| {
+                    let actor = &self.actors[i + 1];
+                    if actor.world_counts[blend] == 0
+                        || actor_bounds[i].is_some_and(|bounds| !bounds.visible(view.view_proj))
+                    {
+                        return None;
                     }
-                    if actor_bounds[i].is_some_and(|bounds| !bounds.visible(view.view_proj)) {
-                        continue;
-                    }
-                    pass.execute_bundles(std::iter::once(
-                        self.actors[i + 1].world_bundles[blend].as_ref().unwrap(),
-                    ));
-                }
+                    Some(actor.world_bundles[blend].as_ref().unwrap())
+                });
+                pass.execute_bundles(static_bundles.chain(actor_bundles));
             }
         }
         {
