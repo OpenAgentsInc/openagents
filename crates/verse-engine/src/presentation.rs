@@ -21,9 +21,18 @@ impl View {
     }
 }
 
+/// A leaf attachment names one exact parent life and render model in this frame.
+#[derive(Clone, Debug)]
+pub struct Mount {
+    pub parent: LifeId,
+    pub parent_model: String,
+    pub socket: u16,
+    pub local: Mat4,
+}
 /// Presentation values contain no GPU resources or mutable simulation authority.
 #[derive(Clone, Debug)]
 pub struct Instance {
+    pub mount: Option<Mount>,
     pub actor: Option<LifeId>,
     pub model: String,
     pub transform: Mat4,
@@ -38,6 +47,7 @@ pub struct ResolvedInstances<'a> {
     catalog: CatalogId,
     instances: &'a [Instance],
     models: Vec<ModelHandle>,
+    parents: Vec<Option<usize>>,
 }
 impl<'a> ResolvedInstances<'a> {
     pub const MAX_INSTANCES: usize = 256;
@@ -54,7 +64,7 @@ impl<'a> ResolvedInstances<'a> {
         }) {
             return Err("Presentation frame contains invalid instance values".into());
         }
-        let models = instances
+        let models: Vec<ModelHandle> = instances
             .iter()
             .map(|i| {
                 let model = catalog.model(&i.model)?;
@@ -62,10 +72,39 @@ impl<'a> ResolvedInstances<'a> {
                 Ok(model)
             })
             .collect::<Result<_, String>>()?;
+        let mut parents = Vec::with_capacity(instances.len());
+        for (index, instance) in instances.iter().enumerate() {
+            let Some(mount) = &instance.mount else {
+                parents.push(None);
+                continue;
+            };
+            if instance.actor.is_some() || !crate::sockets::affine(mount.local) {
+                return Err(
+                    "Mounted instances must be static leaves with affine local transforms".into(),
+                );
+            }
+            let mut matches = instances.iter().enumerate().filter(|(_, parent)| {
+                parent.actor == Some(mount.parent)
+                    && parent.model == mount.parent_model
+                    && parent.mount.is_none()
+            });
+            let (parent, _) = matches
+                .next()
+                .ok_or("Attachment parent life or model is missing")?;
+            if parent == index || matches.next().is_some() {
+                return Err("Attachment parent is ambiguous".into());
+            }
+            if !crate::sockets::affine(instances[parent].transform) {
+                return Err("Attachment parent transform must be affine".into());
+            }
+            catalog.check_socket(models[parent], mount.socket)?;
+            parents.push(Some(parent));
+        }
         Ok(Self {
             catalog: catalog.id(),
             instances,
             models,
+            parents,
         })
     }
 
@@ -82,6 +121,9 @@ impl<'a> ResolvedInstances<'a> {
     }
     pub fn instances(&self) -> &'a [Instance] {
         self.instances
+    }
+    pub fn parents(&self) -> &[Option<usize>] {
+        &self.parents
     }
     pub fn models(&self) -> &[ModelHandle] {
         &self.models
@@ -101,12 +143,60 @@ mod tests {
     }
     fn instance() -> Instance {
         Instance {
+            mount: None,
             actor: None,
             model: "room".into(),
             transform: Mat4::IDENTITY,
             animation: Selection::Legacy(0),
             time: 0.,
             emission: Vec3::ZERO,
+        }
+    }
+    #[test]
+    fn mounts_bind_exact_lives_models_and_unique_parents_independent_of_order() {
+        let pack=serde_json::from_value(serde_json::json!({"version":1,"source_revision":"test","textures":[],"models":{"room":{"source":"authored","source_sha256":"","surfaces":[],"bones":[{"parent":-1,"pivot":[0,0,0]}],"clips":[],"height":1,"attachments":[{"id":5,"bone":0,"position":[0,0,1]}]}}})).unwrap();
+        let catalog = Catalog::new(&pack).unwrap();
+        let life = LifeId {
+            instance: 1,
+            actor: 11,
+            generation: 4,
+        };
+        let mut parent = instance();
+        parent.actor = Some(life);
+        let mut other = parent.clone();
+        other.actor.as_mut().unwrap().actor = 12;
+        let mut child = instance();
+        child.mount = Some(Mount {
+            parent: life,
+            parent_model: "room".into(),
+            socket: 5,
+            local: Mat4::from_translation(Vec3::X),
+        });
+        let valid = vec![child.clone(), other, parent.clone()];
+        let resolved = ResolvedInstances::extract(&catalog, &valid).unwrap();
+        assert_eq!(resolved.parents(), &[Some(2), None, None]);
+        let replacement = Catalog::new(&pack).unwrap();
+        assert!(resolved.validate(&replacement).is_err());
+        for case in 0..10 {
+            let mut bad = valid.clone();
+            match case {
+                0 => bad[0].mount.as_mut().unwrap().parent.generation += 1,
+                1 => bad[0].mount.as_mut().unwrap().parent.instance += 1,
+                2 => bad[0].mount.as_mut().unwrap().parent_model = "missing-model".into(),
+                3 => bad[0].mount.as_mut().unwrap().socket = 6,
+                4 => bad[0].mount.as_mut().unwrap().local = Mat4::perspective_rh(1., 1., 0.1, 10.),
+                5 => bad[0].mount.as_mut().unwrap().local = Mat4::from_scale(Vec3::splat(f32::NAN)),
+                6 => bad.push(parent.clone()),
+                7 => bad[0].actor = Some(life),
+                8 => {
+                    bad[2].mount = Some(child.mount.clone().unwrap());
+                }
+                _ => bad[2].transform = Mat4::perspective_rh(1., 1., 0.1, 10.),
+            }
+            assert!(
+                ResolvedInstances::extract(&catalog, &bad).is_err(),
+                "case {case}"
+            );
         }
     }
     #[test]

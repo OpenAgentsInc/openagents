@@ -24,7 +24,7 @@ The portable `residency` catalog resolves logical model names and pack-local tex
 
 `inventory` declares persistent IDs, content digests and lengths, dependency edges, creator/license evidence, and compiler revisions. It validates complete model/texture coverage, material edges, graph bounds, and cycles. Original-local, capture, and redistribution admission inspect the resolved provenance closure; research origins are refused, and owner-supplied local assets cannot be redistributed. The `asset-io` loader verifies model fingerprints and actual encoded texture lengths before GPU allocation. Source declarations are attributable metadata, not legal attestation or signed distribution approval.
 
-`presentation` owns portable instance values and immutable catalog-bound frame extraction. It borrows source instances, preserves actor lives and animation selections, limits a frame to 256 instances, and rejects missing models or nonfinite transforms, animation times, and emissions. Native drawing consumes this extracted contract and validates its catalog before GPU writes, including empty frames. Camera, lighting, UI batches, and GPU submission remain renderer contracts.
+`presentation` owns portable instance values and immutable catalog-bound frame extraction. It borrows source instances, preserves actor lives and animation selections, limits a frame to 256 instances, and rejects missing models or nonfinite transforms, animation times, and emissions. Native drawing consumes this extracted contract and validates its catalog before GPU writes, including empty frames. Camera, lighting, UI geometry, and unified render-world extraction also live here; GPU submission remains in the renderer.
 
 `presentation::View` owns finite camera projection and eye values. `lighting` owns local point sources, atmosphere, the 32-light/four-shadow-source budget, authored flicker sampling, and cube-shadow camera construction. Admission rejects invalid inputs and nonfinite sampled intensities or shadow projections before native uniform writes. GPU uniform packing and shader layouts remain in the renderer.
 
@@ -37,6 +37,13 @@ then apply the socket's bind-space position and authored equipment transform.
 Missing sockets, foreign palettes, invalid inputs, and derived overflow are
 explicit errors. Resolution owns no playback clock, world state, or inventory.
 Native bow positioning consumes this contract. Universal compilation retains
-bow sockets 2–4 and adds head socket 5 and right-palm socket 6. Graph playback
-callers can supply their final palette; native socket drawing still samples its
-selected clip, so shared graph-transition palette scheduling remains.
+bow sockets 2–4 and adds head socket 5 and right-palm socket 6. Native mounts
+resolve after graph blending and grounding from the same final body palette.
+
+Presentation instances can declare a leaf `Mount` with an exact parent life,
+parent render model, socket ID, and affine local transform. Catalog extraction
+resolves one unique parent independent of instance order and rejects missing
+sockets, stale lives, ambiguous parents, nested mounts, and nonaffine transforms.
+Render adapters evaluate all body palettes and grounding before resolving mounts;
+attachments consume the same final skin matrices as their parents. The native
+adapter uses this path for gear and each character's bow, including outfit rigs.

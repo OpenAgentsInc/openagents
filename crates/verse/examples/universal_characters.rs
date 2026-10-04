@@ -33,6 +33,7 @@ fn main() -> Result<(), String> {
         .iter()
         .enumerate()
         .map(|(i, name)| Instance {
+            mount: None,
             actor: None,
             model: format!("universal-{name}"),
             transform: Mat4::from_translation(Vec3::new((2.5 - i as f32) * 1.9, 0., 0.))

@@ -28,6 +28,7 @@ pub struct Catalog {
     models: BTreeMap<String, usize>,
     names: Vec<String>,
     animation_states: BTreeMap<String, BTreeSet<crate::motion::State>>,
+    sockets: BTreeMap<String, BTreeSet<u16>>,
     textures: usize,
     persistent_models: BTreeMap<crate::inventory::AssetId, usize>,
     model_ids: BTreeMap<String, crate::inventory::AssetId>,
@@ -42,6 +43,16 @@ impl Catalog {
             .models
             .iter()
             .map(|(name, model)| (name.clone(), model.states.keys().copied().collect()))
+            .collect();
+        catalog.sockets = pack
+            .models
+            .iter()
+            .map(|(name, model)| {
+                (
+                    name.clone(),
+                    model.attachments.iter().map(|a| a.id).collect(),
+                )
+            })
             .collect();
         if let Some(inventory) = &pack.inventory {
             for asset in &inventory.assets {
@@ -75,6 +86,7 @@ impl Catalog {
             models,
             names,
             animation_states: BTreeMap::new(),
+            sockets: BTreeMap::new(),
             textures,
             persistent_models: BTreeMap::new(),
             model_ids: BTreeMap::new(),
@@ -96,6 +108,13 @@ impl Catalog {
                 .is_some_and(|states| states.contains(&state))
         {
             return Err(format!("Missing animation state for {name}: {state:?}"));
+        }
+        Ok(())
+    }
+    pub fn check_socket(&self, model: ModelHandle, socket: u16) -> Result<(), String> {
+        let name = self.model_name(model)?;
+        if !self.sockets.get(name).is_some_and(|s| s.contains(&socket)) {
+            return Err("Attachment socket is missing from the admitted model".into());
         }
         Ok(())
     }

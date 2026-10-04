@@ -405,6 +405,16 @@ fn actor(name: &str, robe: [f32; 3], monster: bool) -> Model {
     });
     m.attachments.extend([
         Attachment {
+            id: 3,
+            bone: 0,
+            position: [0., 0., 1.65],
+        },
+        Attachment {
+            id: 4,
+            bone: 1,
+            position: [0., -0.48, 1.4],
+        },
+        Attachment {
             id: 5,
             bone: 0,
             position: [0., 0., 2.12],

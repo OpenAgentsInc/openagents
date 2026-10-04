@@ -295,6 +295,8 @@ pub struct Renderer {
     marker_events: Vec<MarkerEvent>,
     playback: HashMap<(verse_engine::core::LifeId, String), animation::Playback>,
     graphs: HashMap<String, std::sync::Arc<verse_engine::animation_graph::Semantic>>,
+    #[cfg(test)]
+    evaluated_poses: Vec<Pose>,
     graph_playback:
         HashMap<(verse_engine::core::LifeId, String), verse_engine::animation_graph::Playback>,
     grounding: HashMap<(Option<verse_engine::core::LifeId>, String), Grounding>,
@@ -550,10 +552,9 @@ impl Renderer {
         if width == 0 || height == 0 || width > 4096 || height > 4096 {
             return Err("Invalid imported viewport".into());
         }
-        if static_instances
-            .iter()
-            .any(|i| !pack.models.contains_key(&i.model) || !i.transform.is_finite())
-        {
+        if static_instances.iter().any(|i| {
+            !pack.models.contains_key(&i.model) || !i.transform.is_finite() || i.mount.is_some()
+        }) {
             return Err("Invalid static placement".into());
         }
         let context = match context {
@@ -1051,6 +1052,8 @@ impl Renderer {
             marker_events: Vec::new(),
             playback: HashMap::new(),
             graphs,
+            #[cfg(test)]
+            evaluated_poses: Vec::new(),
             graph_playback: HashMap::new(),
             grounding: HashMap::new(),
             bounds,
@@ -1301,12 +1304,11 @@ impl Renderer {
                 .any(|i| i.actor == *id && i.model == *model && i.animation.grounded())
         });
         let mut graph_instances = 0;
-        let mut adventurer_pose: Option<Pose> = None;
-        let mut bow_drawn = false;
+
         let mut actor_bounds = Vec::with_capacity(instances.len());
         let mut palettes = Vec::with_capacity(instances.len());
         let mut frozen = Vec::with_capacity(instances.len());
-        for (i, instance) in instances.iter().enumerate() {
+        for instance in instances {
             let mut palette = make_pose(&self.pack, Some(instance))?;
             if let Some(id) = instance.actor {
                 let (bones, events) = if let Some(graph) = self.graphs.get(&instance.model) {
@@ -1379,29 +1381,47 @@ impl Renderer {
                 let lift = self.grounding[&key].lift;
                 palette.model[3][1] += lift;
             }
-            if instance.model == "adventurer" {
-                adventurer_pose = Some(palette);
-                bow_drawn = chamber::bow_drawn(instance.animation);
+            palettes.push(palette);
+        }
+        // Resolve leaf attachments after every body has its final animation and grounding.
+        let mut socket_palettes: Vec<Option<Vec<Mat4>>> = vec![None; instances.len()];
+        for (i, instance) in instances.iter().enumerate() {
+            let Some(parent_index) = resolved.parents()[i] else {
+                continue;
+            };
+            let mount = instance.mount.as_ref().unwrap();
+            let parent = palettes[parent_index];
+            let model = &self.pack.models[&instances[parent_index].model];
+            let matrices = socket_palettes[parent_index].get_or_insert_with(|| {
+                parent.bones[..model.bones.len().max(1)]
+                    .iter()
+                    .map(Mat4::from_cols_array_2d)
+                    .collect()
+            });
+            let bones = verse_engine::sockets::Palette::admit(model, matrices)?;
+            let sockets = verse_engine::sockets::Sockets::admit(model)?;
+            let body = Mat4::from_cols_array_2d(&parent.model);
+            let transform = if instance.model == "bow" && mount.socket == 2 {
+                chamber::mounted_bow(
+                    sockets,
+                    bones,
+                    body,
+                    chamber::bow_drawn(instances[parent_index].animation),
+                )? * mount.local
+            } else {
+                sockets.frame(bones, body, mount.socket, mount.local)?
+            };
+            if !transform.is_finite() {
+                return Err("Mounted render transform overflowed".into());
             }
-            if instance.model == "bow" {
-                if let Some(parent) = adventurer_pose {
-                    let body = Mat4::from_cols_array_2d(&parent.model);
-                    let point = |id| {
-                        self.pack.models["adventurer"]
-                            .attachments
-                            .iter()
-                            .find(|a| a.id == id)
-                            .map(|a| {
-                                (body * Mat4::from_cols_array_2d(&parent.bones[a.bone]))
-                                    .transform_point3(a.position.into())
-                            })
-                    };
-                    if let (Some(palm), Some(back), Some(elbow)) = (point(2), point(3), point(4)) {
-                        palette.model = chamber::bow_pose(body, palm, back, elbow, bow_drawn)
-                            .to_cols_array_2d();
-                    }
-                }
-            }
+            palettes[i].model = transform.to_cols_array_2d();
+        }
+        #[cfg(test)]
+        {
+            self.evaluated_poses = palettes.clone();
+        }
+        for (i, instance) in instances.iter().enumerate() {
+            let palette = palettes[i];
             actor_bounds.push(
                 self.bounds[&instance.model]
                     .as_ref()
@@ -1412,7 +1432,6 @@ impl Renderer {
                 bytemuck::bytes_of(&palette),
                 instance.animation.grounded(),
             )?);
-            palettes.push(palette);
         }
         for (i, model) in resolved.models().iter().enumerate() {
             let actor = &mut self.actors[i + 1];

@@ -19,6 +19,7 @@ fn main() -> Result<(), String> {
         .placements
         .iter()
         .map(|p| Instance {
+            mount: None,
             actor: None,
             model: p.model.clone(),
             transform: conversion

@@ -4,7 +4,7 @@ use glam::{Mat4, Vec3};
 use std::collections::BTreeSet;
 
 pub const MAX_SOCKETS: usize = 64;
-fn affine(matrix: Mat4) -> bool {
+pub(crate) fn affine(matrix: Mat4) -> bool {
     matrix.is_finite()
         && matrix.x_axis.w.abs() <= 0.00001
         && matrix.y_axis.w.abs() <= 0.00001

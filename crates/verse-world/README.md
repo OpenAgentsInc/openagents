@@ -419,4 +419,5 @@ visible static gear for both players and spectators. The native host admits gear
 models and required sockets before serving; the renderer hides the main-hand
 model while the bow occupies the hands. The [equipment receipt](../../bench/verse/2026-10-04/equipment/run.json)
 retains TLS storage-failure/restart evidence and native rendering/panel fixtures.
-Damage/armor modifiers and final animation-graph palette scheduling remain.
+Damage/armor modifiers remain. Native attachments now consume each parent's
+final blended and grounded palette through the portable leaf-mount contract.

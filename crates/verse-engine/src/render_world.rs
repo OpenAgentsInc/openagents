@@ -85,6 +85,7 @@ mod tests {
     }
     fn instance() -> Instance {
         Instance {
+            mount: None,
             actor: None,
             model: "room".into(),
             transform: Mat4::IDENTITY,

@@ -106,14 +106,7 @@ fn append_equipment(
             .models
             .get(name)
             .ok_or("Equipment parent rig is missing")?;
-        let matrices =
-            verse_engine::animation::pose_selected(model, actor.animation, actor.animation_time)?;
-        let palette = verse_engine::sockets::Palette::admit(model, &matrices)?;
-        let sockets = verse_engine::sockets::Sockets::admit(model)?;
-        let parent = Mat4::from_translation(actor.actor.position)
-            * Mat4::from_rotation_y(actor.actor.yaw)
-            * Mat4::from_scale(Vec3::splat(actor.actor.scale))
-            * basis();
+        verse_engine::sockets::Sockets::admit(model)?;
         for gear in &pose.equipment {
             super::remote_content::equipment_model(pack, gear)?;
             // A readied bow occupies the hands; holster the main-hand model for that pose.
@@ -122,11 +115,20 @@ fn append_equipment(
             {
                 continue;
             }
+            if !model.attachments.iter().any(|a| a.id == gear.slot.socket()) {
+                return Err("Equipment parent socket is missing".into());
+            }
             let local = Mat4::from_translation(Vec3::from(gear.offset.map(|v| v as f32 / 1000.)));
             drawn.push(Instance {
+                mount: Some(verse_engine::presentation::Mount {
+                    parent: pose.life.into(),
+                    parent_model: name.into(),
+                    socket: gear.slot.socket(),
+                    local,
+                }),
                 actor: None,
                 model: gear.model.clone(),
-                transform: sockets.frame(palette, parent, gear.slot.socket(), local)?,
+                transform: Mat4::IDENTITY,
                 animation: 0.into(),
                 time: frame.time,
                 emission: Vec3::ONE,
@@ -164,6 +166,7 @@ fn instances_with_outfits(
         .iter()
         .filter(|a| a.visible)
         .map(|a| Instance {
+            mount: None,
             actor: Some(a.life.unwrap_or(verse_engine::core::LifeId {
                 instance: 0,
                 actor: a.actor.id,
@@ -188,25 +191,24 @@ fn instances_with_outfits(
             .models
             .get(&render_model(&a.actor))
             .ok_or("Missing adventurer model")?;
-        let drawn = bow_drawn(a.animation);
-        let pose = verse_engine::animation::pose_selected(model, a.animation, a.animation_time)?;
-        let body = Mat4::from_translation(a.actor.position)
-            * Mat4::from_rotation_y(a.actor.yaw)
-            * Mat4::from_scale(Vec3::splat(a.actor.scale))
-            * basis();
-        let sockets = verse_engine::sockets::Sockets::admit(model)?;
-        let palette = verse_engine::sockets::Palette::admit(model, &pose)?;
         if model.attachments.iter().any(|a| a.id == 2)
             && model.attachments.iter().any(|a| a.id == 3)
             && model.attachments.iter().any(|a| a.id == 4)
         {
-            let palm = sockets.point(palette, body, 2)?;
-            let back = sockets.point(palette, body, 3)?;
-            let elbow = sockets.point(palette, body, 4)?;
             actors.push(Instance {
+                mount: Some(verse_engine::presentation::Mount {
+                    parent: a.life.unwrap_or(verse_engine::core::LifeId {
+                        instance: 0,
+                        actor: a.actor.id,
+                        generation: 0,
+                    }),
+                    parent_model: render_model(&a.actor),
+                    socket: 2,
+                    local: Mat4::IDENTITY,
+                }),
                 actor: None,
                 model: "bow".into(),
-                transform: bow_pose(body, palm, back, elbow, drawn),
+                transform: Mat4::IDENTITY,
                 animation: 0.into(),
                 time: frame.time,
                 emission: Vec3::ONE,
@@ -215,6 +217,7 @@ fn instances_with_outfits(
     }
     for arrow in &frame.projectiles {
         actors.push(Instance {
+            mount: None,
             actor: None,
             model: "arrow".into(),
             transform: Mat4::from_translation(arrow.position)
@@ -245,6 +248,7 @@ pub fn blocker_instances_from_bounds(
         .iter()
         .filter(|b| !(b.table_proxy && pack.models.contains_key("prop/Table_Large")))
         .map(|b| Instance {
+            mount: None,
             actor: None,
             model: "navigation-blocker".into(),
             transform: Mat4::from_translation(((b.min + b.max) * 0.5).as_vec3())
@@ -318,6 +322,7 @@ pub fn static_instances(pack: &Pack, origin: Vec3) -> Vec<Instance> {
     pack.placements
         .iter()
         .map(|p| Instance {
+            mount: None,
             actor: None,
             model: p.model.clone(),
             transform: conversion
@@ -440,6 +445,7 @@ pub fn playground_lighting() -> super::lighting::Lighting {
 /// The playground hall as a static instance, in place of the chamber.
 pub fn playground_static_instances() -> Vec<Instance> {
     vec![Instance {
+        mount: None,
         actor: None,
         model: "playground-hall".into(),
         transform: basis(),
@@ -467,6 +473,7 @@ pub fn prop_instances_from_poses(
         .filter_map(|p| {
             let model = p.kind.model(p.secured);
             pack.models.contains_key(model).then(|| Instance {
+                mount: None,
                 actor: None,
                 model: model.into(),
                 transform: Mat4::from_translation(p.center)
@@ -922,6 +929,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
             0.15
         };
         out.push(Instance {
+            mount: None,
             actor: None,
             model: if force { "effect-force" } else { "effect-fire" }.into(),
             transform: Mat4::from_translation(p.pos.into()) * Mat4::from_scale(Vec3::splat(scale)),
@@ -931,6 +939,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
         });
         for trail in 1..4 {
             out.push(Instance {
+                mount: None,
                 actor: None,
                 model: if force { "effect-force" } else { "effect-fire" }.into(),
                 transform: Mat4::from_translation(
@@ -962,6 +971,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
             Utility::Light | Utility::Shield => continue,
         };
         out.push(Instance {
+            mount: None,
             actor: None,
             model: model.into(),
             transform: Mat4::from_translation(area.position + Vec3::Y * 0.12)
@@ -983,6 +993,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
         let player_position = controls.position;
         if let Some(position) = controls.light {
             out.push(Instance {
+                mount: None,
                 actor: None,
                 model: "effect-light".into(),
                 transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(0.12)),
@@ -993,6 +1004,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
         }
         if controls.shield > 0 && visuals.time < controls.shield_until {
             out.push(Instance {
+                mount: None,
                 actor: None,
                 model: "effect-shield".into(),
                 transform: Mat4::from_translation(player_position + Vec3::Y * 1.05)
@@ -1019,6 +1031,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
     {
         for cast in &visuals.hostile {
             out.push(Instance {
+                mount: None,
                 actor: None,
                 model: "effect-rune".into(),
                 transform: Mat4::from_translation(cast.target + Vec3::Y * 0.08)
@@ -1035,6 +1048,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
             };
             let size = if cast.boss { 0.55 } else { 0.23 };
             out.push(Instance {
+                mount: None,
                 actor: None,
                 model: "effect-shadow".into(),
                 transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(size)),
@@ -1045,6 +1059,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
             if visuals.time >= cast.release {
                 let direction = (cast.target + Vec3::Y - cast.origin).normalize_or_zero();
                 out.push(Instance {
+                    mount: None,
                     actor: None,
                     model: "effect-ribbon".into(),
                     transform: Mat4::from_translation(position - direction * 0.65)
@@ -1068,6 +1083,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
             0.15 + elapsed * 1.8
         };
         out.push(Instance {
+            mount: None,
             actor: None,
             model: "effect-impact".into(),
             transform: Mat4::from_translation(*position) * Mat4::from_scale(Vec3::splat(scale)),
@@ -1134,6 +1150,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
 }
 fn particle(model: &str, position: Vec3, radius: f32, opacity: f32, time: f32) -> Instance {
     Instance {
+        mount: None,
         actor: None,
         model: model.into(),
         transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(radius)),
@@ -1178,6 +1195,7 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
         let mut pixels = renderer.draw(
             view,
             &[Instance {
+                mount: None,
                 actor: None,
                 model: name.into(),
                 transform: basis(),
@@ -1339,11 +1357,6 @@ mod tests {
                 );
             }
         }
-        let drawn = instances_with_outfits(&pack, &frame, &outfits).unwrap();
-        assert_eq!(drawn[0].model, "universal-male-peasant");
-        assert_eq!(drawn[1].model, "universal-female-ranger");
-        assert_eq!(drawn.iter().filter(|i| i.model == "bow").count(), 2);
-        let mut equipped = drawn.clone();
         for actor in &mut frame.actors {
             actor.life = Some(verse_engine::core::LifeId {
                 instance: 1,
@@ -1351,6 +1364,11 @@ mod tests {
                 generation: 0,
             });
         }
+        let drawn = instances_with_outfits(&pack, &frame, &outfits).unwrap();
+        assert_eq!(drawn[0].model, "universal-male-peasant");
+        assert_eq!(drawn[1].model, "universal-female-ranger");
+        assert_eq!(drawn.iter().filter(|i| i.model == "bow").count(), 2);
+        let mut equipped = drawn.clone();
         let poses = frame
             .actors
             .iter()
@@ -1425,6 +1443,207 @@ mod tests {
             .unwrap()
             .write_image_data(&pixels)
             .unwrap();
+        if let Some(path) = std::env::var_os("VERSE_MOUNT_CAPTURE") {
+            use std::io::Write;
+            let root = std::path::PathBuf::from(path);
+            std::fs::create_dir_all(&root).unwrap();
+            let mut encoder = std::process::Command::new("ffmpeg")
+                .args([
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-f",
+                    "rawvideo",
+                    "-pixel_format",
+                    "rgba",
+                    "-video_size",
+                    "1920x1080",
+                    "-framerate",
+                    "30",
+                    "-i",
+                    "pipe:0",
+                    "-an",
+                    "-filter_threads",
+                    "1",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "20",
+                    "-threads",
+                    "2",
+                    "-pix_fmt",
+                    "yuv420p",
+                ])
+                .arg(root.join("transitions.mp4"))
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut input = encoder.stdin.take().unwrap();
+            let mut maximum_attachment_error = 0f32;
+            let mut largest_blend_difference = 0f32;
+            let mut sampled_mounts = 0usize;
+            let mut reversed_frames = 0usize;
+            let mut respawn_rejection = false;
+            let mut states = std::collections::BTreeSet::new();
+            let mut lighting = lighting.clone();
+            for n in 0..120 {
+                use verse_engine::motion::State;
+                let state = match n {
+                    0..=14 => State::Walk,
+                    15..=17 => State::Cast,
+                    18..=21 => State::SpellRelease,
+                    22..=44 => State::BowReady,
+                    45..=59 => State::BowRelease,
+                    60..=89 => State::Death,
+                    _ => State::Idle,
+                };
+                states.insert(format!("{state:?}"));
+                let time = n as f32 / 30. + 0.02;
+                lighting.time = time;
+                for (index, actor) in frame.actors.iter_mut().enumerate() {
+                    actor.animation = state.into();
+                    actor.animation_time = if n >= 90 {
+                        (n - 90) as f32 / 30.
+                    } else {
+                        time + index as f32 * 0.13
+                    };
+                    if n == 90 {
+                        actor.life.as_mut().unwrap().generation += 1;
+                    }
+                }
+                let mut instances =
+                    instances_with_outfits(&renderer.pack, &frame, &outfits).unwrap();
+                let mut poses = poses.clone();
+                for (p, a) in poses.iter_mut().zip(&frame.actors) {
+                    p.life = a.life.unwrap().into();
+                }
+                append_equipment(&renderer.pack, &frame, &outfits, &poses, &mut instances).unwrap();
+                if n == 90 {
+                    let mut stale = instances.clone();
+                    let mount = stale.iter_mut().find_map(|i| i.mount.as_mut()).unwrap();
+                    mount.parent.generation -= 1;
+                    assert!(
+                        verse_engine::presentation::ResolvedInstances::extract(
+                            &renderer.catalog,
+                            &stale
+                        )
+                        .is_err()
+                    );
+                    respawn_rejection = true;
+                }
+                if n % 2 == 1 {
+                    instances.reverse();
+                    reversed_frames += 1;
+                }
+                let pixels = renderer
+                    .draw(
+                        camera,
+                        &instances,
+                        &crate::ui::UiBatch::default(),
+                        &lighting,
+                    )
+                    .unwrap();
+                input.write_all(&pixels).unwrap();
+                for (i, instance) in instances.iter().enumerate() {
+                    let Some(mount) = &instance.mount else {
+                        continue;
+                    };
+                    let parent = instances
+                        .iter()
+                        .position(|p| {
+                            p.actor == Some(mount.parent) && p.model == mount.parent_model
+                        })
+                        .unwrap();
+                    let parent_pose = renderer.evaluated_poses[parent];
+                    let model = &renderer.pack.models[&mount.parent_model];
+                    let matrices = parent_pose.bones[..model.bones.len().max(1)]
+                        .iter()
+                        .map(Mat4::from_cols_array_2d)
+                        .collect::<Vec<_>>();
+                    let palette = verse_engine::sockets::Palette::admit(model, &matrices).unwrap();
+                    let sockets = verse_engine::sockets::Sockets::admit(model).unwrap();
+                    let body = Mat4::from_cols_array_2d(&parent_pose.model);
+                    let expected = if instance.model == "bow" {
+                        mounted_bow(
+                            sockets,
+                            palette,
+                            body,
+                            bow_drawn(instances[parent].animation),
+                        )
+                        .unwrap()
+                            * mount.local
+                    } else {
+                        sockets
+                            .frame(palette, body, mount.socket, mount.local)
+                            .unwrap()
+                    };
+                    let actual = Mat4::from_cols_array_2d(&renderer.evaluated_poses[i].model);
+                    if instance.model == "bow" && !bow_drawn(instances[parent].animation) {
+                        let spine = sockets.frame(palette, body, 3, Mat4::IDENTITY).unwrap();
+                        assert!(
+                            actual
+                                .y_axis
+                                .truncate()
+                                .normalize()
+                                .distance(spine.x_axis.truncate().normalize())
+                                < 0.0001
+                        );
+                    }
+                    let error = expected
+                        .to_cols_array()
+                        .into_iter()
+                        .zip(actual.to_cols_array())
+                        .map(|(a, b)| (a - b).abs())
+                        .fold(0f32, f32::max);
+                    maximum_attachment_error = maximum_attachment_error.max(error);
+                    assert!(error < 0.0001);
+                    let selected = verse_engine::animation::pose_selected(
+                        model,
+                        instances[parent].animation,
+                        instances[parent].time,
+                    )
+                    .unwrap();
+                    let difference = selected
+                        .iter()
+                        .zip(&matrices)
+                        .flat_map(|(a, b)| {
+                            a.to_cols_array()
+                                .into_iter()
+                                .zip(b.to_cols_array())
+                                .map(|(a, b)| (a - b).abs())
+                        })
+                        .fold(0f32, f32::max);
+                    if (15..=25).contains(&n) {
+                        largest_blend_difference = largest_blend_difference.max(difference);
+                    }
+                    sampled_mounts += 1;
+                }
+                if [17, 23, 52, 87, 95].contains(&n) {
+                    let mut png = png::Encoder::new(
+                        std::fs::File::create(root.join(format!("frame-{n:03}.png"))).unwrap(),
+                        1920,
+                        1080,
+                    );
+                    png.set_color(png::ColorType::Rgba);
+                    png.set_depth(png::BitDepth::Eight);
+                    png.write_header()
+                        .unwrap()
+                        .write_image_data(&pixels)
+                        .unwrap();
+                }
+            }
+            drop(input);
+            assert!(encoder.wait().unwrap().success());
+            assert!(largest_blend_difference > 0.01);
+            assert!(respawn_rejection);
+            println!(
+                "VERSE_MOUNTS {}",
+                serde_json::json!({"schema":"verse.mounts.fixture.v1","frames":120,"dimensions":[1920,1080],"fps":30,"players":2,"models":outfits,"states":states,"reversed_instance_frames":reversed_frames,"sampled_mounts":sampled_mounts,"maximum_attachment_error":maximum_attachment_error,"largest_final_vs_unblended_difference":largest_blend_difference,"stale_generation_rejected":respawn_rejection,"parent_generation_after":1,"video":"transitions.mp4"})
+            );
+        }
         if let Some(path) = std::env::var_os("VERSE_SOCKET_CAPTURE") {
             let pixels = renderer
                 .draw(camera, &equipped, &crate::ui::UiBatch::default(), &lighting)
@@ -1669,6 +1888,31 @@ pub fn bow_drawn(animation: verse_engine::motion::Selection) -> bool {
 /// string on its -Y side. A drawn bow stands upright in the fist with its back
 /// (+Y) pointing along the bow arm, so the string faces the archer. A stowed
 /// bow hangs diagonally against the upper back with its string outward.
+pub(super) fn mounted_bow(
+    sockets: verse_engine::sockets::Sockets<'_>,
+    palette: verse_engine::sockets::Palette<'_>,
+    body: Mat4,
+    drawn: bool,
+) -> Result<Mat4, String> {
+    if drawn {
+        return Ok(bow_pose(
+            body,
+            sockets.point(palette, body, 2)?,
+            sockets.point(palette, body, 3)?,
+            sockets.point(palette, body, 4)?,
+            true,
+        ));
+    }
+    let spine = sockets.frame(palette, body, 3, Mat4::IDENTITY)?;
+    let scale = spine.transform_vector3(Vec3::X).length();
+    if !scale.is_finite() || scale < 0.000001 {
+        return Err("Stowed bow spine frame is degenerate".into());
+    }
+    Ok(spine
+        * Mat4::from_translation(-Vec3::X * (BOW_BACK_DEPTH / scale))
+        * Mat4::from_rotation_x(BOW_BACK_TILT)
+        * Mat4::from_rotation_z(-std::f32::consts::FRAC_PI_2))
+}
 pub fn bow_pose(body: Mat4, palm: Vec3, back: Vec3, elbow: Vec3, drawn: bool) -> Mat4 {
     let (scale, rotation, _) = body.to_scale_rotation_translation();
     // The body's forward is the pack's +X; see `basis`.

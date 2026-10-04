@@ -1,0 +1,129 @@
+{
+  "schema": "verse.mounts.receipt.v1",
+  "issue": 10540,
+  "base_commit": "fe374f239d",
+  "checks": {
+    "engine": 75,
+    "native_consumers": 46,
+    "gpu_transition_fixture": 1
+  },
+  "fixture": {
+    "schema": "verse.mounts.fixture.v1",
+    "frames": 120,
+    "dimensions": [
+      1920,
+      1080
+    ],
+    "fps": 30,
+    "players": 2,
+    "models": {
+      "14": "universal-male-peasant",
+      "15": "universal-female-ranger"
+    },
+    "states": [
+      "BowReady",
+      "BowRelease",
+      "Cast",
+      "Death",
+      "Idle",
+      "SpellRelease",
+      "Walk"
+    ],
+    "reversed_instance_frames": 60,
+    "sampled_mounts": 644,
+    "maximum_attachment_error": 0.0,
+    "largest_final_vs_unblended_difference": 3.306655168533325,
+    "stale_generation_rejected": true,
+    "parent_generation_after": 1,
+    "video": "transitions.mp4"
+  },
+  "video_probe": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "width": 1920,
+        "height": 1080,
+        "r_frame_rate": "30/1",
+        "nb_read_frames": "120"
+      }
+    ],
+    "format": {
+      "duration": "4.000000"
+    }
+  },
+  "assets": {
+    "body-bow.png": {
+      "sha256": "55b2e8bb2a3b49b5e70495590828bdd2949bc6dda3cb54f4833aa127c628f533",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "frame-017.png": {
+      "sha256": "c55e26ea0ad57ae1a30ce4abc06e9f6047282ed2dc278c2f620d1dc0e9e36913",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "frame-023.png": {
+      "sha256": "9308b24d5cb916e99e58e5f0b37bf7f3237a01712117b837e1bf28a49e67d872",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "frame-052.png": {
+      "sha256": "40069f04d50d94d9231295538aa5dcc4a21ae32ba74208ece808d492d794eafd",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "frame-087.png": {
+      "sha256": "cdc9e27314b7b7d31bd814e5a3ee44890715596cd29531a20a9462de9fe38dbc",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "frame-095.png": {
+      "sha256": "878fc7ec37b3b4292752fee681ebff68f3b825779904c24cafd472469d653ca5",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "gear.png": {
+      "sha256": "e6ab419f8b824a178cf0249f057f736462be10a749dadefeaf4ed5f6a419c587",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "transitions.mp4": {
+      "sha256": "34b2374be5f5eeeb08c28ee31bd51f819d33016314ee54ad52da53200bca7af5"
+    }
+  },
+  "source_sha256": {
+    "crates/verse-engine/src/presentation.rs": "85f60fc860105fe284834859f6362933e71ec00d5e0179d31033851d4aae8a75",
+    "crates/verse-engine/src/render_world.rs": "1aaf74525a94e219ce28daa7d002ab2e074ab6f313db7da5aeee722e9a393aec",
+    "crates/verse-engine/src/residency.rs": "73e933b71a6ac03c851cf7b061f71ce3ee0dbab0244f16c85589b8bdcdfe14bb",
+    "crates/verse-engine/src/sockets.rs": "e7854ea1b57d64e306596dc09099688a18f66c251716ea14126e06f7bb9ca7e4",
+    "crates/verse/examples/universal_characters.rs": "ba0014ce9a2881228bd038d53cfb424577946a89c89c28a19cbb6a03a4aec64c",
+    "crates/verse/examples/wow_capture.rs": "b5cdf8146401ae4618704e81dcb1e825b8626d4f2c736f8a38c6fc4a88cdf46c",
+    "crates/verse/src/imported/chamber.rs": "cbaa2ed24f0a636d1e3e3734aff14445bc737168df7d2ad07d0371a05c63e31c",
+    "crates/verse/src/imported/mod.rs": "7be327616af781a505053904ebfdcf4301c24741ebefb6a60684e9a2fd125df9",
+    "crates/verse/src/imported/original.rs": "585f0b98a21bcbe015cb9d45f9501a6b4e09198fa316f69a70f30a36619fb9de"
+  },
+  "provenance": "Bundled CC0 Universal outfit rigs and project-owned geometric gear and bow, using the existing licensed font atlas; no WoW assets.",
+  "limits": [
+    "Programmatic presentation fixture with two outfit rigs, not world-service combat or OS input.",
+    "Numerical checks inspect final CPU palettes submitted to GPU uniforms, supported by captured GPU frames; this is not GPU buffer readback or shader attestation.",
+    "Video samples 120 authored frames at 30 FPS; it is not a measured real-time or frame-budget result.",
+    "Leaf mounts are supported; arbitrary nested equipment graphs are refused.",
+    "Held-bow alignment remains a Verse presentation rule; portable mounts contain no game rules.",
+    "The full VE-3/VE-5/VE-6 roadmap remains incomplete."
+  ]
+}
