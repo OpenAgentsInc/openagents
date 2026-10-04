@@ -117,6 +117,8 @@ fn ground_lift(model: &verse_engine::assets::Model, palette: &Pose) -> f32 {
 pub struct FrameTimings {
     pub prepare_ms: f64,
     pub encode_ms: f64,
+    pub command_encode_ms: f64,
+    pub queue_submit_ms: f64,
     pub gpu_wait_ms: f64,
     pub readback_copy_ms: f64,
     pub total_ms: f64,
@@ -1568,12 +1570,16 @@ impl Renderer {
                 extent(self.width, self.height),
             );
         }
-        self.queue.submit([encoder.finish()]);
+        let commands = encoder.finish();
+        let encoded = Instant::now();
+        self.queue.submit([commands]);
         let submitted = Instant::now();
         if !capture {
             self.last_timings = FrameTimings {
                 prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
                 encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
+                command_encode_ms: encoded.duration_since(prepared).as_secs_f64() * 1000.,
+                queue_submit_ms: submitted.duration_since(encoded).as_secs_f64() * 1000.,
                 total_ms: started.elapsed().as_secs_f64() * 1000.,
                 instances: instances.len(),
                 grounded_vertices,
@@ -1604,6 +1610,8 @@ impl Renderer {
         self.last_timings = FrameTimings {
             prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
             encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
+            command_encode_ms: encoded.duration_since(prepared).as_secs_f64() * 1000.,
+            queue_submit_ms: submitted.duration_since(encoded).as_secs_f64() * 1000.,
             gpu_wait_ms: waited.duration_since(submitted).as_secs_f64() * 1000.,
             readback_copy_ms: waited.elapsed().as_secs_f64() * 1000.,
             total_ms: started.elapsed().as_secs_f64() * 1000.,
