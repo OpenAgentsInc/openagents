@@ -36,6 +36,16 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "47",
+        title: "Everglade on your phone",
+        what_to_test: "Open Account, then Changelog, and check build 47 is first. Walk through the EVERGLADE arch on the Grid and walk up to the workshop's stations: the caption names the station and never asks you to press a key.",
+        items: &[Item {
+            title: "No keyboard hints on your phone",
+            detail: "Everglade's captions no longer ask you to press F.",
+        }],
+    },
+    Release {
+        version: "1.0.0",
         build: "46",
         title: "Everglade",
         what_to_test: "Open Account, then Changelog, and check build 46 is first. Open Verse and walk through the arch lettered EVERGLADE: the first visit downloads the glade, with progress, Cancel, and Retry. In Everglade you play the hooded ranger, with no spade beside you; walk the path to the workshop, the yard, and the hall. Come back by walking through the arch lettered THE GRID or tapping The Grid, and check you return beside the Everglade arch with other players visible again. A second visit should open without downloading.",
