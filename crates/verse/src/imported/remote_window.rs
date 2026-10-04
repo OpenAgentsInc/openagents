@@ -292,6 +292,7 @@ impl App {
             match self.output.try_recv() {
                 Ok(Update::Snapshot(r)) => {
                     let previous_pose = self.prediction.pose();
+                    let previous_timing = self.record.as_ref().map(|_| self.prediction.timing());
                     self.view.push_snapshot(&r)?;
                     self.received_at = Instant::now();
                     let state = self.view.replica().latest().unwrap();
@@ -345,7 +346,8 @@ impl App {
                                     serde_json::json!({"tick":r.tick,"request_id":r.request_id,
                                         "life":after.life,"epoch":after.epoch,
                                         "before":before.position,"after":after.position,
-                                        "pending":self.prediction.pending(),"baseline":state.movement}),
+                                        "pending":self.prediction.pending(),"baseline":state.movement,
+                                        "timing_before":previous_timing,"timing_after":self.prediction.timing()}),
                                 );
                             }
                         }

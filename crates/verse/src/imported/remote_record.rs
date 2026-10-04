@@ -123,7 +123,7 @@ impl Profile {
         }
     }
     pub fn summary(&self) -> serde_json::Value {
-        serde_json::json!({"schema":"verse.remote.profile.v3",
+        serde_json::json!({"schema":"verse.remote.profile.v4",
             "client_preparation_ms":self.preparation_ms.summary(),
             "render_submission_cpu_ms":self.render_submission_ms.summary(),
             "frame_interval_ms":self.frame_interval_ms.summary(),

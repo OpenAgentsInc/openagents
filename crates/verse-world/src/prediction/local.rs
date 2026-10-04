@@ -20,6 +20,24 @@ pub struct Pose {
     pub moving: bool,
     pub motion_time: f32,
 }
+/// Read-only timing evidence in 120 Hz physics steps; input count is bounded by history.
+#[derive(serde::Serialize)]
+pub struct Timing {
+    steps_per_second: u16,
+    step: u64,
+    simulated: u64,
+    fraction: f64,
+    baseline_step: Option<u64>,
+    inputs: Vec<TimedInput>,
+}
+#[derive(serde::Serialize)]
+struct TimedInput {
+    token: u64,
+    sequence: Option<u64>,
+    superseded_by: Option<u64>,
+    step: u64,
+    intent: Intent<Ability>,
+}
 struct Input {
     token: u64,
     sequence: Option<u64>,
@@ -72,6 +90,27 @@ impl Local {
     }
     pub fn context(&self) -> Option<(LifeId, u64)> {
         self.baseline.map(|b| (b.life, b.epoch))
+    }
+    /// Captures timing without advancing, correcting, or rebinding predicted input.
+    pub fn timing(&self) -> Timing {
+        Timing {
+            steps_per_second: 120,
+            step: self.step,
+            simulated: self.simulated,
+            fraction: self.fraction,
+            baseline_step: self.baseline.map(|b| b.physics_step),
+            inputs: self
+                .inputs
+                .iter()
+                .map(|i| TimedInput {
+                    token: i.token,
+                    sequence: i.sequence,
+                    superseded_by: i.superseded_by,
+                    step: i.step,
+                    intent: i.intent.clone(),
+                })
+                .collect(),
+        }
     }
     pub fn pending(&self) -> usize {
         self.inputs.len()
@@ -435,6 +474,38 @@ mod tests {
             tick: 1,
             intent,
         }
+    }
+    #[test]
+    fn timing_distinguishes_local_steps_input_binding_and_authoritative_ack() {
+        let (mut local, mut baseline, geometry) = setup();
+        local.queue(1, movement()).unwrap();
+        local.advance(0.1).unwrap();
+        local.queue(2, Intent::Jump).unwrap();
+        local.bind(1, &command(baseline, 1, movement())).unwrap();
+        let before = local.pose().unwrap().position;
+        let timing = local.timing();
+        assert_eq!(timing.steps_per_second, 120);
+        assert_eq!(timing.step, 12);
+        assert_eq!(timing.simulated, 12);
+        assert_eq!(timing.baseline_step, Some(0));
+        assert_eq!(timing.inputs[0].step, 0);
+        assert_eq!(timing.inputs[0].sequence, Some(1));
+        assert_eq!(timing.inputs[1].step, 12);
+        assert_eq!(timing.inputs[1].sequence, None);
+        assert_eq!(local.pose().unwrap().position, before);
+        baseline.physics_step = 8;
+        baseline.applied_sequence = 1;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        let timing = local.timing();
+        assert_eq!(timing.baseline_step, Some(8));
+        assert_eq!(timing.step, 12);
+        assert_eq!(timing.inputs.len(), 1);
+        assert_eq!(timing.inputs[0].token, 2);
+        let serialized = serde_json::to_value(&timing).unwrap();
+        assert_eq!(serialized["steps_per_second"], 120);
+        local.clear();
+        assert!(local.timing().inputs.is_empty());
+        assert_eq!(local.timing().baseline_step, None);
     }
     #[test]
     fn chained_unsent_replacements_preserve_motion_and_retire_with_the_real_ack() {
