@@ -1,6 +1,8 @@
 # Everglade
 
-Status: proposed specification, October 4, 2026. Delivery step 3 is
+Status: proposed specification, October 4, 2026. Delivery step 1 is
+implemented: the admitted sources under `assets/verse/everglade/` and the pack
+compiler and loader in `verse::zones::everglade_pack`. Delivery step 3 is
 implemented: `ZoneId::Everglade` with generated ground, the plaza arch, and
 greybox station markers in
 [`zones/everglade/`](../../crates/verse/src/zones/everglade/mod.rs). The rest

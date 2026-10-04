@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod assets;
 pub mod everglade;
+pub mod everglade_pack;
 pub mod gate;
 pub mod hud;
 mod lab;
