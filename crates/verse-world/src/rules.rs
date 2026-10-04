@@ -264,6 +264,7 @@ impl Simulation {
                 || !(1..=1_000_000).contains(&actor.max_hp)
                 || !(0..=actor.max_hp).contains(&actor.hp)
                 || actor.alive != (actor.hp > 0)
+                || !matches!(actor.faction.as_str(), "player" | "undead" | "friendly")
                 || (actor.faction == "player") != self.players.contains_key(id)
             {
                 return Err("Invalid checkpoint actor".into());
@@ -277,7 +278,7 @@ impl Simulation {
                 || !self.players.contains_key(&flight.view.caster)
                 || flight
                     .target
-                    .is_some_and(|id| self.players.contains_key(&id))
+                    .is_some_and(|id| self.actors.get(&id).is_some_and(|a| a.faction != "undead"))
                 || !Vec3::from(flight.view.vel).is_finite()
                 || Vec3::from(flight.view.vel).length() > 30.
                 || !flight.until.is_finite()
@@ -297,7 +298,10 @@ impl Simulation {
                 || b.next < 0.
                 || !(1..=3).contains(&b.remaining)
                 || !self.players.contains_key(&b.caster)
-                || self.players.contains_key(&b.actor)
+                || self
+                    .actors
+                    .get(&b.actor)
+                    .is_none_or(|a| a.faction != "undead")
         }) {
             return Err("Invalid checkpoint lifetime".into());
         }
@@ -352,6 +356,19 @@ impl Simulation {
         self.next_id = id.checked_add(1).ok_or("World actor IDs exhausted")?;
         Ok(id)
     }
+    /// Assigns a friendly role during trusted scene construction, before stepping.
+    pub(crate) fn mark_friendly(&mut self, id: u32) -> Result<(), String> {
+        if self.elapsed != 0.0 || !self.flights.is_empty() || !self.burns.is_empty() {
+            return Err("Friendly roles must be assigned before simulation starts".into());
+        }
+        let actor = self.actors.get_mut(&id).ok_or("Unknown friendly actor")?;
+        if actor.faction != "undead" || !actor.alive {
+            return Err("Invalid friendly actor role".into());
+        }
+        actor.faction = "friendly".into();
+        Ok(())
+    }
+
     pub fn spawn_chamber_actor(&mut self, pos: [f32; 3], hp: i32) -> Result<u32, String> {
         valid_position(pos)?;
         if !(1..=1_000_000).contains(&hp) || self.actors.len() >= 1024 {
@@ -440,7 +457,9 @@ impl Simulation {
         Ok(())
     }
     pub fn bow_impact(&mut self, id: u32, damage: i32) -> Result<(), String> {
-        if !(1..=10_000).contains(&damage) || self.players.contains_key(&id) {
+        if !(1..=10_000).contains(&damage)
+            || self.actors.get(&id).is_some_and(|a| a.faction != "undead")
+        {
             return Err("Invalid directed damage".into());
         }
         let actor = self.actors.get_mut(&id).ok_or("Unknown impact target")?;
@@ -611,7 +630,7 @@ impl Simulation {
         let target = self
             .actors
             .values()
-            .filter(|a| !self.players.contains_key(&a.id) && a.alive)
+            .filter(|a| a.faction == "undead" && a.alive)
             .filter_map(|a| {
                 let offset = Vec3::from(a.pos) + Vec3::Y * 1.1 - start;
                 let score = offset.normalize_or_zero().dot(direction);
@@ -719,7 +738,7 @@ impl Simulation {
                 .actors
                 .values()
                 .filter(|a| {
-                    !self.players.contains_key(&a.id)
+                    a.faction == "undead"
                         && a.alive
                         && Vec3::from(a.pos).distance(point - Vec3::Y * 1.1) <= 6.096
                         && self.visible(point, Vec3::from(a.pos) + Vec3::Y * 1.1)
@@ -814,7 +833,7 @@ impl Simulation {
             for actor in self
                 .actors
                 .values()
-                .filter(|a| !self.players.contains_key(&a.id) && a.alive)
+                .filter(|a| a.faction == "undead" && a.alive)
             {
                 let feet_start = motion_position(actor.id, actor.pos, starts, paths, from);
                 let feet_end = motion_position(actor.id, actor.pos, starts, paths, to);
@@ -1364,5 +1383,53 @@ mod multiplayer_tests {
             let loaded: Simulation = serde_json::from_value(bad).unwrap();
             assert!(loaded.validate().is_err());
         }
+    }
+    #[test]
+    fn friendly_npcs_reject_damage_and_do_not_intercept_spell_flights() {
+        for spell in [Spell::Firebolt, Spell::Fireball, Spell::MagicMissile] {
+            let (mut s, ids) =
+                Simulation::chamber([0., 0., 0.], &[([0., 0., 2.], 100), ([0., 0., 4.], 100)])
+                    .unwrap();
+            s.mark_friendly(ids[0]).unwrap();
+            let before = saved(&s);
+            assert!(s.bow_impact(ids[0], 10).is_err());
+            assert_eq!(saved(&s), before);
+            s.cast_for(0, spell, [0., 0., 1.]).unwrap();
+            step(&mut s, 180);
+            assert_eq!(s.actors[&ids[0]].hp, 100);
+            assert!(s.actors[&ids[1]].hp < 100);
+            s.validate().unwrap();
+            let restored: Simulation = serde_json::from_slice(&saved(&s)).unwrap();
+            restored.validate().unwrap();
+            assert_eq!(restored.actors[&ids[0]].faction, "friendly");
+        }
+    }
+    #[test]
+    fn friendly_roles_refuse_players_late_changes_and_hostile_checkpoint_effects() {
+        let (mut s, ids) = Simulation::chamber([0., 0., 0.], &[([0., 0., 4.], 100)]).unwrap();
+        let before = saved(&s);
+        assert!(s.mark_friendly(0).is_err());
+        assert!(s.mark_friendly(u32::MAX).is_err());
+        assert_eq!(saved(&s), before);
+        s.cast_for(0, Spell::MagicMissile, [0., 0., 1.]).unwrap();
+        let pending = saved(&s);
+        assert!(s.mark_friendly(ids[0]).is_err());
+        assert_eq!(saved(&s), pending);
+        let mut corrupt: Simulation = serde_json::from_slice(&pending).unwrap();
+        corrupt.actors.get_mut(&ids[0]).unwrap().faction = "friendly".into();
+        assert!(corrupt.validate().is_err());
+        corrupt.flights.clear();
+        corrupt.burns.push(Burn {
+            caster: 0,
+            actor: ids[0],
+            next: 1.,
+            remaining: 1,
+        });
+        assert!(corrupt.validate().is_err());
+        corrupt.burns.clear();
+        corrupt.actors.get_mut(&ids[0]).unwrap().faction = "unknown".into();
+        assert!(corrupt.validate().is_err());
+        step(&mut s, 1);
+        assert!(s.mark_friendly(ids[0]).is_err());
     }
 }
