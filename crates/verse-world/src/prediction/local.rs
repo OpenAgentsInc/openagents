@@ -139,7 +139,7 @@ impl Local {
             }
         }
         let reset = self.context() != Some((baseline.life, baseline.epoch));
-        let shift = if reset {
+        let shift = if reset || baseline.physics_step <= self.step {
             0
         } else {
             self.inputs
@@ -168,8 +168,8 @@ impl Local {
         } else {
             self.inputs
                 .retain(|i| i.sequence.is_none_or(|s| s > baseline.applied_sequence));
-            // Preserve pending intervals when authority overtakes their local timestamps.
-            // Shift the whole retained timeline, including its already simulated watermark.
+            // Rebase pending intervals only when authority overtakes the local clock.
+            // Late snapshots must not add elapsed time or renew pending movement holds.
             for input in &mut self.inputs {
                 input.step += shift;
             }
@@ -502,6 +502,37 @@ mod tests {
         }
     }
     #[test]
+    fn delayed_baselines_do_not_extend_the_clock_or_renew_unacknowledged_holds() {
+        let (mut local, mut baseline, geometry) = setup();
+        local.queue(1, movement()).unwrap();
+        local.bind(1, &command(baseline, 1, movement())).unwrap();
+        local.advance(0.1).unwrap();
+        for observation in 2..=18 {
+            baseline.physics_step += 4;
+            let before = local.timing();
+            local
+                .observe(baseline, &geometry, observation, observation)
+                .unwrap();
+            let after = local.timing();
+            assert_eq!(after.step, before.step);
+            assert_eq!(after.simulated, before.simulated);
+            assert_eq!(after.inputs[0].step, 0);
+            local.advance(4. / 120.).unwrap();
+        }
+        assert_eq!(local.timing().step, 80);
+        assert_eq!(local.pending(), 1);
+        assert_eq!(local.pose().unwrap().axes, [0., 0.]);
+        // The late acknowledgment retires the original hold without granting its travel.
+        baseline.applied_sequence = 1;
+        baseline.physics_step = 72;
+        local.observe(baseline, &geometry, 19, 19).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.pending(), 0);
+        assert_eq!(local.timing().step, 80);
+        assert_eq!(local.pose().unwrap().position, Vec3::ZERO);
+    }
+
+    #[test]
     fn overtaken_pending_intervals_preserve_move_jump_stop_and_expire() {
         let (mut local, mut baseline, geometry) = setup();
         let stop = Intent::Move {
@@ -547,6 +578,13 @@ mod tests {
         local.advance(0.).unwrap();
         assert_eq!(local.pending(), 1);
         assert_eq!(local.timing().inputs[0].token, 4);
+        assert_eq!(local.timing().step, 48);
+        assert_eq!(
+            serde_json::to_vec(&local.character.unwrap()).unwrap(),
+            serde_json::to_vec(&baseline.character).unwrap()
+        );
+        // Gravity advances only when another frame elapses, not on acknowledgment.
+        local.advance(4. / 120.).unwrap();
         let mut expected = baseline.character;
         movement::advance(
             &mut expected,
