@@ -1,0 +1,8105 @@
+{
+  "schema": "verse.remote.capture.v1",
+  "profile": {
+    "schema": "verse.remote.profile.v3",
+    "client_preparation_ms": {
+      "samples": 2565,
+      "omitted": 0,
+      "median": 0.681458,
+      "p95": 4.123708000000001,
+      "max": 18.110999999999997
+    },
+    "render_submission_cpu_ms": {
+      "samples": 2565,
+      "omitted": 0,
+      "median": 19.877375,
+      "p95": 34.344917,
+      "max": 60.301375
+    },
+    "frame_interval_ms": {
+      "samples": 2565,
+      "omitted": 0,
+      "median": 21.414792,
+      "p95": 37.442459,
+      "max": 10408.354917
+    },
+    "prediction_correction_meters": {
+      "samples": 339,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.9806440472602844,
+      "max": 1.6228176355361938
+    },
+    "intentional_discontinuity_meters": {
+      "samples": 1,
+      "omitted": 0,
+      "median": 6.078422546386719,
+      "p95": 6.078422546386719,
+      "max": 6.078422546386719
+    },
+    "reset_observations": 2,
+    "input_retirement_correction_meters": {
+      "samples": 87,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "retirement_trace": [],
+    "omitted_retirements": 0,
+    "correction_trace": [
+      {
+        "distance_meters": 0.6400794982910156,
+        "discontinuity": false,
+        "context": {
+          "tick": 685,
+          "request_id": 11,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            5.595757102128118e-8,
+            0.0,
+            -21.359920501708984
+          ],
+          "after": [
+            0.0,
+            0.0,
+            -22.0
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 0,
+            "physics_step": 344,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 0
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                0.0,
+                0.0,
+                -22.0
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.9067802429199219,
+        "discontinuity": false,
+        "context": {
+          "tick": 982,
+          "request_id": 15,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            7.927322798195746e-8,
+            0.0,
+            -21.093219757080078
+          ],
+          "after": [
+            0.0,
+            0.0,
+            -22.0
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 0,
+            "physics_step": 1532,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 0
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                0.0,
+                0.0,
+                -22.0
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.7467613220214844,
+        "discontinuity": false,
+        "context": {
+          "tick": 989,
+          "request_id": 18,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            1.0258887783720638e-7,
+            0.0,
+            -20.826519012451172
+          ],
+          "after": [
+            3.7305046163282896e-8,
+            0.0,
+            -21.573280334472656
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 3,
+            "physics_step": 1560,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 1612
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.730504734752079e-8,
+                0.0,
+                -21.573279984792066
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.05333900451660156,
+        "discontinuity": false,
+        "context": {
+          "tick": 1001,
+          "request_id": 27,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            2.564721910403023e-7,
+            0.0,
+            -19.066299438476562
+          ],
+          "after": [
+            2.6113534090654866e-7,
+            0.0,
+            -19.01296043395996
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 9,
+            "physics_step": 1608,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 1660
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                2.611353314326454e-7,
+                0.0,
+                -19.012959893544462
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.8683119416236877,
+        "discontinuity": false,
+        "context": {
+          "tick": 1011,
+          "request_id": 38,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -0.5867395997047424,
+            0.0,
+            -17.519439697265625
+          ],
+          "after": [
+            4.4766056817024946e-7,
+            0.0,
+            -16.87936019897461
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 15,
+            "physics_step": 1648,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 1700
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                4.4766056817025004e-7,
+                0.0,
+                -16.879359817504792
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.23854359984397888,
+        "discontinuity": false,
+        "context": {
+          "tick": 1016,
+          "request_id": 43,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -0.9601196050643921,
+            0.0,
+            -16.87936019897461
+          ],
+          "after": [
+            -0.8534395694732666,
+            0.0,
+            -16.666000366210938
+          ],
+          "pending": 2,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 19,
+            "physics_step": 1668,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 1720
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -0.8534395641027607,
+                0.0,
+                -16.66599973529071
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.0779882669448853,
+        "discontinuity": false,
+        "context": {
+          "tick": 1043,
+          "request_id": 69,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -5.7073798179626465,
+            0.0,
+            -17.454669952392578
+          ],
+          "after": [
+            -6.61415958404541,
+            0.0,
+            -16.87173843383789
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 34,
+            "physics_step": 1776,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 1828
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -6.614159769409773,
+                0.0,
+                -16.665999231672444
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.6975212097167969,
+        "discontinuity": false,
+        "context": {
+          "tick": 1073,
+          "request_id": 97,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -5.280660152435303,
+            0.0,
+            -20.129289627075195
+          ],
+          "after": [
+            -5.867400169372559,
+            0.0,
+            -20.506479263305664
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 52,
+            "physics_step": 1896,
+            "held": {
+              "axes": [
+                -1.0,
+                0.0
+              ],
+              "until": 1948
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -6.187440089947315,
+                0.0,
+                -20.506479246903226
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.5867400169372559,
+        "discontinuity": false,
+        "context": {
+          "tick": 1100,
+          "request_id": 123,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -1.0134599208831787,
+            0.0,
+            -20.506479263305664
+          ],
+          "after": [
+            -0.42671987414360046,
+            0.0,
+            -20.506479263305664
+          ],
+          "pending": 2,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 67,
+            "physics_step": 2004,
+            "held": {
+              "axes": [
+                -1.0,
+                0.0
+              ],
+              "until": 2060
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -0.42671988464030286,
+                0.0,
+                -20.506479750521493
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.42671999335289,
+        "discontinuity": false,
+        "context": {
+          "tick": 1110,
+          "request_id": 132,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -0.42671987414360046,
+            0.0,
+            -20.506479263305664
+          ],
+          "after": [
+            1.3056762782071019e-7,
+            0.0,
+            -20.506479263305664
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 72,
+            "physics_step": 2045,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 2096
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                1.305676235879849e-7,
+                0.0,
+                -20.50647978782655
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.746760368347168,
+        "discontinuity": false,
+        "context": {
+          "tick": 1239,
+          "request_id": 259,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -0.18835093080997467,
+            0.0,
+            -15.605875968933105
+          ],
+          "after": [
+            -0.18835099041461945,
+            0.0,
+            -16.352636337280273
+          ],
+          "pending": 5,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 150,
+            "physics_step": 2560,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 2612
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -0.18835103260252598,
+                0.0,
+                -16.779355866864293
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.2069460153579712,
+        "discontinuity": false,
+        "context": {
+          "tick": 1251,
+          "request_id": 273,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -1.2551509141921997,
+            0.0,
+            -15.07247543334961
+          ],
+          "after": [
+            -0.4017108082771301,
+            0.0,
+            -14.219036102294922
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 160,
+            "physics_step": 2608,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 2664
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -0.18835080877224233,
+                0.0,
+                -14.21903577561675
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.1271892786026,
+        "discontinuity": false,
+        "context": {
+          "tick": 1284,
+          "request_id": 313,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -5.581484794616699,
+            0.0,
+            -15.571466445922852
+          ],
+          "after": [
+            -6.5377020835876465,
+            0.0,
+            -14.974637985229492
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 187,
+            "physics_step": 2740,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 2792
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -6.537701881313254,
+                0.0,
+                -14.803188378063338
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 6.078422546386719,
+        "discontinuity": true,
+        "context": {
+          "tick": 1300,
+          "request_id": 328,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -6.5377020835876465,
+            0.0,
+            -17.066328048706055
+          ],
+          "after": [
+            -1.4988163709640503,
+            0.0,
+            -13.666790962219238
+          ],
+          "pending": 0,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 197,
+            "physics_step": 2804,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 2856
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -1.498816394945866,
+                0.0,
+                -13.666791311899814
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.10286998748779297,
+        "discontinuity": false,
+        "context": {
+          "tick": 1305,
+          "request_id": 334,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -1.4988164901733398,
+            0.0,
+            -14.24972152709961
+          ],
+          "after": [
+            -1.4988164901733398,
+            0.0,
+            -14.352591514587402
+          ],
+          "pending": 2,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 200,
+            "physics_step": 2824,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 2876
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -1.498816454900405,
+                0.0,
+                -14.352591307957944
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.2048099040985107,
+        "discontinuity": false,
+        "context": {
+          "tick": 1314,
+          "request_id": 344,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            0.20806357264518738,
+            0.0,
+            -14.661201477050781
+          ],
+          "after": [
+            -0.8053964972496033,
+            0.0,
+            -15.312711715698242
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 206,
+            "physics_step": 2860,
+            "held": {
+              "axes": [
+                -1.0,
+                0.0
+              ],
+              "until": 2912
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -1.072096523628833,
+                0.0,
+                -15.312711339744368
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.5867400169372559,
+        "discontinuity": false,
+        "context": {
+          "tick": 1340,
+          "request_id": 372,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            3.888523578643799,
+            0.0,
+            -15.312711715698242
+          ],
+          "after": [
+            4.475263595581055,
+            0.0,
+            -15.312711715698242
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 223,
+            "physics_step": 2964,
+            "held": {
+              "axes": [
+                -1.0,
+                0.0
+              ],
+              "until": 3020
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                4.475263674074213,
+                0.0,
+                -15.312711824709922
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.42672014236450195,
+        "discontinuity": false,
+        "context": {
+          "tick": 1354,
+          "request_id": 388,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            4.475263595581055,
+            0.0,
+            -15.312711715698242
+          ],
+          "after": [
+            4.901983737945557,
+            0.0,
+            -15.312711715698242
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 233,
+            "physics_step": 3020,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 3076
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                4.90198368928214,
+                0.0,
+                -15.312711862014964
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.9601202011108398,
+        "discontinuity": false,
+        "context": {
+          "tick": 1463,
+          "request_id": 499,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            4.901983737945557,
+            0.0,
+            -14.192571640014648
+          ],
+          "after": [
+            4.901983737945557,
+            0.0,
+            -15.152691841125488
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 302,
+            "physics_step": 3456,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 3508
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                4.90198368928214,
+                0.0,
+                -15.312711862014964
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.1225930452346802,
+        "discontinuity": false,
+        "context": {
+          "tick": 1493,
+          "request_id": 526,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            3.625911235809326,
+            0.0,
+            -12.133940696716309
+          ],
+          "after": [
+            4.748504161834717,
+            0.0,
+            -12.134418487548828
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 319,
+            "physics_step": 3576,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 3628
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                5.244843712742032,
+                0.0,
+                -12.041873198546199
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.4559203088283539,
+        "discontinuity": false,
+        "context": {
+          "tick": 1505,
+          "request_id": 536,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            2.5020086765289307,
+            0.0,
+            -11.959922790527344
+          ],
+          "after": [
+            2.9579286575317383,
+            0.0,
+            -11.959393501281738
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 325,
+            "physics_step": 3628,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 3684
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.06460859868197,
+                0.0,
+                -11.959393715012128
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.02787446975708,
+        "discontinuity": false,
+        "context": {
+          "tick": 1523,
+          "request_id": 553,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            0.6888234615325928,
+            0.0,
+            -12.75949478149414
+          ],
+          "after": [
+            0.6198906898498535,
+            0.0,
+            -11.73393440246582
+          ],
+          "pending": 5,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 334,
+            "physics_step": 3700,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 3748
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                0.47799299266087414,
+                0.0,
+                -11.535979785123436
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.6228176355361938,
+        "discontinuity": false,
+        "context": {
+          "tick": 1531,
+          "request_id": 560,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            0.6887895464897156,
+            0.0,
+            -12.67106819152832
+          ],
+          "after": [
+            -0.6556368470191956,
+            0.0,
+            -11.762192726135254
+          ],
+          "pending": 5,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 340,
+            "physics_step": 3732,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 3784
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -0.5836775130553367,
+                0.0,
+                -11.633634143727605
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.5282608270645142,
+        "discontinuity": false,
+        "context": {
+          "tick": 1598,
+          "request_id": 638,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            4.463718891143799,
+            0.0,
+            -13.36074447631836
+          ],
+          "after": [
+            5.2238922119140625,
+            0.0,
+            -14.68653392791748
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 391,
+            "physics_step": 4000,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 4052
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                5.223892366704615,
+                0.0,
+                -14.68653418050722
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.9808986783027649,
+        "discontinuity": false,
+        "context": {
+          "tick": 1720,
+          "request_id": 767,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            5.223892688751221,
+            9.999999747378752e-6,
+            -9.512554168701172
+          ],
+          "after": [
+            5.223892688751221,
+            0.20083703100681305,
+            -10.472674369812012
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 474,
+            "physics_step": 4488,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 4544
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                5.223892721102588,
+                0.24000891121493867,
+                -10.632694036031982
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 11,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.829775333404541,
+        "discontinuity": false,
+        "context": {
+          "tick": 1730,
+          "request_id": 777,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            4.530472755432129,
+            9.999999747378752e-6,
+            -9.085833549499512
+          ],
+          "after": [
+            5.117212772369385,
+            9.999999747378752e-6,
+            -8.499094009399414
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 480,
+            "physics_step": 4528,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 4580
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                5.223892907627836,
+                9.999999999973463e-6,
+                -8.499093959992383
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.3017372190952301,
+        "discontinuity": false,
+        "context": {
+          "tick": 1747,
+          "request_id": 794,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            1.2233927249908447,
+            9.999999747378752e-6,
+            -8.499094009399414
+          ],
+          "after": [
+            1.4367527961730957,
+            9.999999747378752e-6,
+            -8.285733222961426
+          ],
+          "pending": 5,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 491,
+            "physics_step": 4596,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 4648
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                1.810132784748732,
+                9.999999999973463e-6,
+                -8.285733653948082
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.7609325051307678,
+        "discontinuity": false,
+        "context": {
+          "tick": 1760,
+          "request_id": 807,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -0.3768073618412018,
+            9.999999747378752e-6,
+            -8.902953147888184
+          ],
+          "after": [
+            -1.0168874263763428,
+            9.999999747378752e-6,
+            -8.491473197937012
+          ],
+          "pending": 5,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 499,
+            "physics_step": 4649,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 4696
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -1.0168873557402107,
+                9.999999999973463e-6,
+                -8.285733406802175
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.8877543210983276,
+        "discontinuity": false,
+        "context": {
+          "tick": 1766,
+          "request_id": 813,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -1.4969474077224731,
+            9.999999747378752e-6,
+            -9.10869312286377
+          ],
+          "after": [
+            -2.2437074184417725,
+            9.999999747378752e-6,
+            -8.628633499145508
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 499,
+            "physics_step": 4672,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 4696
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -2.2437073994630006,
+                9.999999999973463e-6,
+                -8.285733299550177
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.3316317796707153,
+        "discontinuity": false,
+        "context": {
+          "tick": 1794,
+          "request_id": 842,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -0.8568676114082336,
+            9.999999747378752e-6,
+            -11.406123161315918
+          ],
+          "after": [
+            -1.9770077466964722,
+            9.999999747378752e-6,
+            -12.126213073730469
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 520,
+            "physics_step": 4784,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 4816
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -2.243707735208424,
+                9.999999999973463e-6,
+                -12.126213277475703
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.29787248373031616,
+        "discontinuity": false,
+        "context": {
+          "tick": 1806,
+          "request_id": 855,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            0.6366523504257202,
+            0.0734160840511322,
+            -12.126213073730469
+          ],
+          "after": [
+            0.423292338848114,
+            0.2295973002910614,
+            -12.263373374938965
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 532,
+            "physics_step": 4832,
+            "held": {
+              "axes": [
+                -1.0,
+                0.0
+              ],
+              "until": 4884
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                0.10325233644426443,
+                0.24000999999999995,
+                -12.263373481865063
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 2,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.22113245725631714,
+        "discontinuity": false,
+        "context": {
+          "tick": 1817,
+          "request_id": 863,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            2.2368524074554443,
+            9.999999747378752e-6,
+            -12.263373374938965
+          ],
+          "after": [
+            2.4502124786376953,
+            0.05812233313918114,
+            -12.263373374938965
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 537,
+            "physics_step": 4876,
+            "held": {
+              "axes": [
+                -1.0,
+                0.0
+              ],
+              "until": 4932
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                2.450212420087861,
+                0.058122333840323774,
+                -12.263373687042797
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 13,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.6654212474822998,
+        "discontinuity": false,
+        "context": {
+          "tick": 1823,
+          "request_id": 869,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            2.4502124786376953,
+            0.05812233313918114,
+            -12.263373374938965
+          ],
+          "after": [
+            3.090292453765869,
+            0.24000999331474304,
+            -12.263373374938965
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 541,
+            "physics_step": 4900,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 4956
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.0902924428997514,
+                0.24000999999999995,
+                -12.263373743000361
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 13,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.0181466341018677,
+        "discontinuity": false,
+        "context": {
+          "tick": 1948,
+          "request_id": 1012,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            3.0902926921844482,
+            0.14243464171886444,
+            -9.329924583435059
+          ],
+          "after": [
+            3.0902926921844482,
+            0.24000999331474304,
+            -10.343384742736816
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 636,
+            "physics_step": 5404,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 5460
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.090292592119936,
+                0.24000999999999997,
+                -10.556745002979259
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 10,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.5280389785766602,
+        "discontinuity": false,
+        "context": {
+          "tick": 1967,
+          "request_id": 1032,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            2.6102328300476074,
+            9.999999747378752e-6,
+            -6.876284599304199
+          ],
+          "after": [
+            2.9836130142211914,
+            9.999999747378752e-6,
+            -6.502904891967773
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 649,
+            "physics_step": 5480,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 5532
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.0902929465178746,
+                9.999999999968368e-6,
+                -6.502904858503995
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.863952100276947,
+        "discontinuity": false,
+        "context": {
+          "tick": 1991,
+          "request_id": 1060,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -2.2842085361480713,
+            9.999999747378752e-6,
+            -6.456946849822998
+          ],
+          "after": [
+            -1.6569671630859375,
+            9.999999747378752e-6,
+            -5.862824440002441
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 666,
+            "physics_step": 5576,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 5628
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -1.3902671572077856,
+                9.999999999968368e-6,
+                -5.862824443989083
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.0145763158798218,
+        "discontinuity": false,
+        "context": {
+          "tick": 2012,
+          "request_id": 1085,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -2.4570674896240234,
+            9.999999747378752e-6,
+            -8.22883415222168
+          ],
+          "after": [
+            -3.310507297515869,
+            9.999999747378752e-6,
+            -7.68019437789917
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 683,
+            "physics_step": 5660,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 5716
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -3.3105073695343505,
+                9.999999999968368e-6,
+                -7.5087442666559125
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.1902330070734024,
+        "discontinuity": false,
+        "context": {
+          "tick": 2026,
+          "request_id": 1102,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -2.9904675483703613,
+            0.24000999331474304,
+            -9.325896263122559
+          ],
+          "after": [
+            -3.1504874229431152,
+            0.24000999331474304,
+            -9.428766250610352
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 693,
+            "physics_step": 5716,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 5772
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -3.31050753740706,
+                0.24000999999999995,
+                -9.428766360108776
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 7,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.7609325051307678,
+        "discontinuity": false,
+        "context": {
+          "tick": 2033,
+          "request_id": 1108,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -1.763647437095642,
+            9.999999747378752e-6,
+            -9.428766250610352
+          ],
+          "after": [
+            -2.4037275314331055,
+            9.999999747378752e-6,
+            -9.840246200561523
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 697,
+            "physics_step": 5744,
+            "held": {
+              "axes": [
+                -1.0,
+                0.0
+              ],
+              "until": 5796
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -2.4570675429639297,
+                9.99999999997612e-6,
+                -9.840246432353739
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.0139471292495728,
+        "discontinuity": false,
+        "context": {
+          "tick": 2084,
+          "request_id": 1164,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            2.5035526752471924,
+            0.18528982996940613,
+            -9.84024715423584
+          ],
+          "after": [
+            3.517012596130371,
+            0.2167162150144577,
+            -9.84024715423584
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 733,
+            "physics_step": 5948,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 6000
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.517012669947044,
+                0.21671622201817325,
+                -9.840246954624336
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 10,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.9067802429199219,
+        "discontinuity": false,
+        "context": {
+          "tick": 2184,
+          "request_id": 1279,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            3.51701283454895,
+            9.999999747378752e-6,
+            -7.866666793823242
+          ],
+          "after": [
+            3.51701283454895,
+            9.999999747378752e-6,
+            -8.773447036743164
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 808,
+            "physics_step": 6348,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 6404
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.517012744557136,
+                9.99999999997612e-6,
+                -8.986806924208496
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.9806440472602844,
+        "discontinuity": false,
+        "context": {
+          "tick": 2211,
+          "request_id": 1308,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            2.2901930809020996,
+            9.999999747378752e-6,
+            -4.346226692199707
+          ],
+          "after": [
+            2.9836132526397705,
+            9.999999747378752e-6,
+            -3.6528067588806152
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 826,
+            "physics_step": 6456,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 6508
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.0902931956622863,
+                9.99999999997612e-6,
+                -3.6528066968043795
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.6975215077400208,
+        "discontinuity": false,
+        "context": {
+          "tick": 2242,
+          "request_id": 1344,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -2.2970471382141113,
+            9.999999747378752e-6,
+            -4.647216320037842
+          ],
+          "after": [
+            -2.883787155151367,
+            9.999999747378752e-6,
+            -4.270026206970215
+          ],
+          "pending": 5,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 850,
+            "physics_step": 6580,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 6636
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -2.8837870532214107,
+                9.99999999997612e-6,
+                -4.064286172168622
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.1413987874984741,
+        "discontinuity": false,
+        "context": {
+          "tick": 2275,
+          "request_id": 1388,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -0.6968472599983215,
+            9.999999747378752e-6,
+            -7.287546157836914
+          ],
+          "after": [
+            -1.6569674015045166,
+            9.999999747378752e-6,
+            -7.904766082763672
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 879,
+            "physics_step": 6712,
+            "held": {
+              "axes": [
+                -1.0,
+                0.0
+              ],
+              "until": 6764
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -1.8169873509470125,
+                9.999999999977854e-6,
+                -7.904766243356871
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.9148871302604675,
+        "discontinuity": false,
+        "context": {
+          "tick": 2305,
+          "request_id": 1420,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            2.6102328300476074,
+            0.13856887817382812,
+            -7.90476655960083
+          ],
+          "after": [
+            3.5138185024261475,
+            9.999999747378752e-6,
+            -7.867985725402832
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 898,
+            "physics_step": 6832,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 6884
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.5138185865021283,
+                9.999999999968368e-6,
+                -7.867985582638102
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.7467598915100098,
+        "discontinuity": false,
+        "context": {
+          "tick": 2421,
+          "request_id": 1559,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            3.5138187408447266,
+            9.999999747378752e-6,
+            -6.587825775146484
+          ],
+          "after": [
+            3.5138187408447266,
+            9.999999747378752e-6,
+            -7.334585666656494
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 989,
+            "physics_step": 7296,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 7352
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.5138186051546514,
+                9.999999999968368e-6,
+                -7.654625575034139
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.3578147888183594,
+        "discontinuity": false,
+        "context": {
+          "tick": 2470,
+          "request_id": 1615,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -1.820181131362915,
+            9.999999747378752e-6,
+            -2.427304983139038
+          ],
+          "after": [
+            -0.86006098985672,
+            9.999999747378752e-6,
+            -1.4671850204467773
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 1025,
+            "physics_step": 7492,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 7548
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -0.7533810060014456,
+                9.999999999968368e-6,
+                -1.4671849814687192
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.9511656761169434,
+        "discontinuity": false,
+        "context": {
+          "tick": 2481,
+          "request_id": 1628,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -1.873521089553833,
+            9.999999747378752e-6,
+            -2.255854845046997
+          ],
+          "after": [
+            -2.67362117767334,
+            9.999999747378752e-6,
+            -1.7415047883987427
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 1033,
+            "physics_step": 7536,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 7588
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -2.673621098418932,
+                9.999999999968368e-6,
+                -1.7415048120192624
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.0634109154343605,
+        "discontinuity": false,
+        "context": {
+          "tick": 2506,
+          "request_id": 1658,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -2.566941499710083,
+            9.999999747378752e-6,
+            -5.136214733123779
+          ],
+          "after": [
+            -2.620281457901001,
+            9.999999747378752e-6,
+            -5.170504570007324
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 1053,
+            "physics_step": 7636,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 7688
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -2.6736213981916275,
+                9.999999999968368e-6,
+                -5.170504792309999
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.7609323859214783,
+        "discontinuity": false,
+        "context": {
+          "tick": 2511,
+          "request_id": 1664,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            -1.5534813404083252,
+            9.999999747378752e-6,
+            -5.170505046844482
+          ],
+          "after": [
+            -2.193561315536499,
+            9.999999747378752e-6,
+            -5.581984996795654
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 1057,
+            "physics_step": 7656,
+            "held": {
+              "axes": [
+                -1.0,
+                0.0
+              ],
+              "until": 7708
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -2.246901418956424,
+                9.999999999968368e-6,
+                -5.581984827249937
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.9067800045013428,
+        "discontinuity": false,
+        "context": {
+          "tick": 2546,
+          "request_id": 1709,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            3.0337588787078857,
+            9.999999747378752e-6,
+            -5.5819854736328125
+          ],
+          "after": [
+            3.9405388832092285,
+            9.999999747378752e-6,
+            -5.5819854736328125
+          ],
+          "pending": 4,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 1087,
+            "physics_step": 7796,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 7852
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.940538801558513,
+                9.999999999968368e-6,
+                -5.581985368173158
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.9601199626922607,
+        "discontinuity": false,
+        "context": {
+          "tick": 2676,
+          "request_id": 1858,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "epoch": 3,
+          "before": [
+            3.9405391216278076,
+            9.999999747378752e-6,
+            -0.8880652189254761
+          ],
+          "after": [
+            3.9405391216278076,
+            9.999999747378752e-6,
+            -1.8481851816177368
+          ],
+          "pending": 5,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 0
+            },
+            "epoch": 3,
+            "applied_sequence": 1185,
+            "physics_step": 8316,
+            "held": {
+              "axes": [
+                0.0,
+                1.0
+              ],
+              "until": 8368
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                3.9405390999988823,
+                9.999999999968368e-6,
+                -2.168225246509743
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 0.5143489837646484,
+        "discontinuity": false,
+        "context": {
+          "tick": 2739,
+          "request_id": 1929,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 1
+          },
+          "epoch": 6,
+          "before": [
+            -6.894772042187469e-8,
+            0.0,
+            -22.78866958618164
+          ],
+          "after": [
+            -2.3981815644447124e-8,
+            0.0,
+            -22.274320602416992
+          ],
+          "pending": 5,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 1
+            },
+            "epoch": 6,
+            "applied_sequence": 1,
+            "physics_step": 8568,
+            "held": {
+              "axes": [
+                0.0,
+                -1.0
+              ],
+              "until": 8620
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -2.3981815881294695e-8,
+                0.0,
+                -22.274319998423266
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      },
+      {
+        "distance_meters": 1.2870872020721436,
+        "discontinuity": false,
+        "context": {
+          "tick": 2756,
+          "request_id": 1951,
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 1
+          },
+          "epoch": 6,
+          "before": [
+            2.1335999965667725,
+            0.0,
+            -23.200149536132812
+          ],
+          "after": [
+            1.0667998790740967,
+            0.0,
+            -23.92024040222168
+          ],
+          "pending": 3,
+          "baseline": {
+            "life": {
+              "instance": 220,
+              "actor": 14,
+              "generation": 1
+            },
+            "epoch": 6,
+            "applied_sequence": 16,
+            "physics_step": 8636,
+            "held": {
+              "axes": [
+                -1.0,
+                0.0
+              ],
+              "until": 8692
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                1.0667998701471046,
+                0.0,
+                -23.920240082225504
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 220,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          }
+        }
+      }
+    ],
+    "omitted_corrections": 0,
+    "binding_to_outcome_ms": {
+      "samples": 1230,
+      "omitted": 0,
+      "median": 140.45254200000002,
+      "p95": 184.405334,
+      "max": 239.24475
+    },
+    "limits": [
+      "Render submission includes presentation waits; GPU execution is not measured.",
+      "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
+      "Samples retain the first 8192 observations per series; omitted observations are counted."
+    ]
+  },
+  "frames": 1420,
+  "sampled_frames": 31,
+  "duplicated_frames": 1389,
+  "dropped_capture_frames": 1284,
+  "encoded_size": [
+    1280,
+    720
+  ],
+  "world_start": 22.533414840698242,
+  "world_end": 92.56666564941406,
+  "accepted_cast_commands": {
+    "Fire Bolt": 3,
+    "Fireball": 3,
+    "Grease": 3,
+    "Light": 3,
+    "Magic Missile": 3,
+    "Misty Step": 1,
+    "Shield": 3,
+    "Shoot Bow": 3,
+    "Thunderwave": 3,
+    "Web": 3
+  },
+  "demo_trace": [
+    {
+      "time": 22.700000762939453,
+      "ability": "Shield",
+      "ready": true,
+      "hp": 200
+    },
+    {
+      "time": 32.766666412353516,
+      "ability": "Fireball",
+      "ready": true,
+      "hp": 84
+    },
+    {
+      "time": 34.79999923706055,
+      "ability": "Web",
+      "ready": true,
+      "hp": 68
+    },
+    {
+      "time": 36.86666488647461,
+      "ability": "Grease",
+      "ready": true,
+      "hp": 68
+    },
+    {
+      "time": 38.93333435058594,
+      "ability": "Light",
+      "ready": true,
+      "hp": 68
+    },
+    {
+      "time": 41.0,
+      "ability": "Thunderwave",
+      "ready": true,
+      "hp": 44
+    },
+    {
+      "time": 43.03333282470703,
+      "ability": "Misty Step",
+      "ready": true,
+      "hp": 44
+    },
+    {
+      "time": 45.16666793823242,
+      "ability": "Shoot Bow",
+      "ready": true,
+      "hp": 44
+    },
+    {
+      "time": 47.33333206176758,
+      "ability": "Fire Bolt",
+      "ready": true,
+      "hp": 18
+    },
+    {
+      "time": 49.400001525878906,
+      "ability": "Magic Missile",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 51.53333282470703,
+      "ability": "Shield",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 53.733333587646484,
+      "ability": "Fireball",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 55.79999923706055,
+      "ability": "Web",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 57.93333435058594,
+      "ability": "Grease",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 60.06666564941406,
+      "ability": "Light",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 62.06666564941406,
+      "ability": "Thunderwave",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 64.13333129882812,
+      "ability": "Misty Step",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 66.13333129882812,
+      "ability": "Shoot Bow",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 68.19999694824219,
+      "ability": "Fire Bolt",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 70.26667022705078,
+      "ability": "Magic Missile",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 72.26667022705078,
+      "ability": "Shield",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 74.30000305175781,
+      "ability": "Fireball",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 76.43333435058594,
+      "ability": "Web",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 78.56666564941406,
+      "ability": "Grease",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 80.66666412353516,
+      "ability": "Light",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 82.80000305175781,
+      "ability": "Thunderwave",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 84.80000305175781,
+      "ability": "Misty Step",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 86.93333435058594,
+      "ability": "Shoot Bow",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 88.96666717529297,
+      "ability": "Fire Bolt",
+      "ready": true,
+      "hp": 10
+    },
+    {
+      "time": 91.19999694824219,
+      "ability": "Magic Missile",
+      "ready": true,
+      "hp": 200
+    }
+  ],
+  "demo_slot": 30,
+  "pending_commands": 4,
+  "final_status": "",
+  "window_failure": null,
+  "damage_events": 64,
+  "dialogue_events": 4,
+  "minimum_owned_hp": 0,
+  "programmatic_controller": true,
+  "programmatic_respawn": true,
+  "programmatic_movement": true,
+  "respawn_attempts": [
+    {
+      "instance": 220,
+      "actor": 14,
+      "generation": 0
+    }
+  ],
+  "owned_life_changes": 1,
+  "native_dimensions": [
+    2560,
+    1440
+  ],
+  "capture_wall_seconds": 65.30106549999999,
+  "wire_version": 21,
+  "final_inventory": {
+    "life": {
+      "instance": 220,
+      "actor": 14,
+      "generation": 1
+    },
+    "revision": 0,
+    "experience": 0,
+    "items": [],
+    "quests": [],
+    "level": {
+      "level": 1,
+      "start": 0,
+      "next": null
+    },
+    "quest_log": [],
+    "catalog": {
+      "version": 1,
+      "items": []
+    },
+    "outfits": {
+      "version": 1,
+      "outfits": []
+    },
+    "outfit": 0,
+    "equipment": {
+      "version": 1,
+      "gear": []
+    },
+    "equipped": {}
+  },
+  "final_state": {
+    "collision": {
+      "instance": 220,
+      "colliders": [
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -22.0,
+              -0.6000000238418579,
+              -37.0
+            ],
+            "max": [
+              22.0,
+              0.0,
+              23.0
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 1
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -22.5,
+              0.0,
+              -37.0
+            ],
+            "max": [
+              -21.5,
+              12.0,
+              23.0
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 2
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              21.5,
+              0.0,
+              -37.0
+            ],
+            "max": [
+              22.5,
+              12.0,
+              23.0
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 3
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -22.0,
+              0.0,
+              -37.5
+            ],
+            "max": [
+              22.0,
+              12.0,
+              -36.5
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 4
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -22.0,
+              0.0,
+              16.5
+            ],
+            "max": [
+              22.0,
+              12.0,
+              17.5
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 5
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.699999809265137,
+              0.0,
+              -25.700000762939453
+            ],
+            "max": [
+              -14.300000190734863,
+              10.0,
+              -24.299999237060547
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 6
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.899999618530273,
+              2.5999999046325684,
+              -25.899999618530273
+            ],
+            "max": [
+              -14.100000381469727,
+              3.0,
+              -24.100000381469727
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 7
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.699999809265137,
+              0.0,
+              -13.699999809265137
+            ],
+            "max": [
+              -14.300000190734863,
+              10.0,
+              -12.300000190734863
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 8
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.899999618530273,
+              2.5999999046325684,
+              -13.899999618530273
+            ],
+            "max": [
+              -14.100000381469727,
+              3.0,
+              -12.100000381469727
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 9
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.699999809265137,
+              0.0,
+              -0.699999988079071
+            ],
+            "max": [
+              -14.300000190734863,
+              10.0,
+              0.699999988079071
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 10
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.899999618530273,
+              2.5999999046325684,
+              -0.8999999761581421
+            ],
+            "max": [
+              -14.100000381469727,
+              3.0,
+              0.8999999761581421
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 11
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.699999809265137,
+              0.0,
+              11.300000190734863
+            ],
+            "max": [
+              -14.300000190734863,
+              10.0,
+              12.699999809265137
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 12
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.899999618530273,
+              2.5999999046325684,
+              11.100000381469727
+            ],
+            "max": [
+              -14.100000381469727,
+              3.0,
+              12.899999618530273
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 13
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.300000190734863,
+              0.0,
+              -25.700000762939453
+            ],
+            "max": [
+              15.699999809265137,
+              10.0,
+              -24.299999237060547
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 14
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.100000381469727,
+              2.5999999046325684,
+              -25.899999618530273
+            ],
+            "max": [
+              15.899999618530273,
+              3.0,
+              -24.100000381469727
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 15
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.300000190734863,
+              0.0,
+              -13.699999809265137
+            ],
+            "max": [
+              15.699999809265137,
+              10.0,
+              -12.300000190734863
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 16
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.100000381469727,
+              2.5999999046325684,
+              -13.899999618530273
+            ],
+            "max": [
+              15.899999618530273,
+              3.0,
+              -12.100000381469727
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 17
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.300000190734863,
+              0.0,
+              -0.699999988079071
+            ],
+            "max": [
+              15.699999809265137,
+              10.0,
+              0.699999988079071
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 18
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.100000381469727,
+              2.5999999046325684,
+              -0.8999999761581421
+            ],
+            "max": [
+              15.899999618530273,
+              3.0,
+              0.8999999761581421
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 19
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.300000190734863,
+              0.0,
+              11.300000190734863
+            ],
+            "max": [
+              15.699999809265137,
+              10.0,
+              12.699999809265137
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 20
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.100000381469727,
+              2.5999999046325684,
+              11.100000381469727
+            ],
+            "max": [
+              15.899999618530273,
+              3.0,
+              12.899999618530273
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 21
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -29.950000762939453
+            ],
+            "max": [
+              19.5,
+              0.25,
+              -29.049999237060547
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 22
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -29.05000114440918
+            ],
+            "max": [
+              19.5,
+              0.5,
+              -28.149999618530273
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 23
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -28.150001525878906
+            ],
+            "max": [
+              19.5,
+              0.75,
+              -27.25
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 24
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -27.25
+            ],
+            "max": [
+              19.5,
+              1.0,
+              -26.349998474121094
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 25
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -26.350000381469727
+            ],
+            "max": [
+              19.5,
+              1.25,
+              -25.44999885559082
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 26
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -25.450000762939453
+            ],
+            "max": [
+              19.5,
+              1.5,
+              -24.549999237060547
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 1,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.9,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 2,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -0.36144528575241563,
+              0.0,
+              -12.837696838378907
+            ],
+            "max": [
+              0.3385547142475843,
+              0.24,
+              -11.237696838378906
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 3,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -3.7148338317871095,
+              0.0,
+              -16.737997817993165
+            ],
+            "max": [
+              -3.0148338317871093,
+              0.24,
+              -15.137997817993163
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 4,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -6.157071685791015,
+              0.2312651127576828,
+              -14.459767150878907
+            ],
+            "max": [
+              -5.457071685791016,
+              0.4712651127576828,
+              -12.859767150878906
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 5,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -5.960829353332519,
+              0.0,
+              -11.600867080688477
+            ],
+            "max": [
+              -5.26082935333252,
+              0.24,
+              -10.000867080688476
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 6,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -6.58482084274292,
+              0.0,
+              -15.246011543273926
+            ],
+            "max": [
+              -5.88482084274292,
+              0.24,
+              -13.646011543273925
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 7,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -3.6647046566009522,
+              0.0,
+              -9.822615432739259
+            ],
+            "max": [
+              -2.964704656600952,
+              0.24,
+              -8.222615432739257
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 8,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              1.6638216018676757,
+              0.0,
+              -8.955155181884766
+            ],
+            "max": [
+              2.363821601867676,
+              0.24,
+              -7.355155181884766
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 9,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -3.1526416301727296,
+              0.0,
+              -15.09133701324463
+            ],
+            "max": [
+              -2.4526416301727294,
+              0.24,
+              -13.491337013244628
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              2.691461706161499,
+              0.0,
+              -11.172374534606934
+            ],
+            "max": [
+              3.391461706161499,
+              0.24,
+              -9.572374534606933
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 11,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              4.547595882415772,
+              0.0,
+              -12.233567047119141
+            ],
+            "max": [
+              5.247595882415771,
+              0.24,
+              -10.63356704711914
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 12,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              2.26517596244812,
+              0.0,
+              -14.7857177734375
+            ],
+            "max": [
+              2.96517596244812,
+              0.24,
+              -13.1857177734375
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 13,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              2.7571949005126952,
+              0.0,
+              -13.460244941711426
+            ],
+            "max": [
+              3.4571949005126954,
+              0.24,
+              -11.860244941711425
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 14,
+              "generation": 1
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              4.907279968261719,
+              0.9,
+              -23.92024040222168
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 15,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              -2.5063343048095703,
+              0.9000099999997474,
+              1.426550030708313
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10018,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -11.563644409179688,
+              0.0,
+              -7.986996650695801
+            ],
+            "max": [
+              -6.436357021331787,
+              1.4642040729522705,
+              -6.013003349304199
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10025,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -10.236377716064453,
+              0.0,
+              3.8200533390045166
+            ],
+            "max": [
+              -7.76362419128418,
+              2.038832426071167,
+              6.179947853088379
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10027,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -17.39682388305664,
+              0.0,
+              5.7620134353637695
+            ],
+            "max": [
+              -15.003174781799316,
+              2.2545032501220703,
+              8.23798656463623
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10028,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -18.376047134399414,
+              0.0,
+              -10.755412101745605
+            ],
+            "max": [
+              -15.823953628540039,
+              1.4304547309875488,
+              -9.244589805603027
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10029,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -17.798030853271484,
+              0.0,
+              -13.69803237915039
+            ],
+            "max": [
+              -16.40196990966797,
+              1.7959169149398804,
+              -12.301969528198242
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10031,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -6.922426700592041,
+              0.0,
+              1.8784072399139404
+            ],
+            "max": [
+              -5.677572727203369,
+              2.231259822845459,
+              3.1215932369232178
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10033,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              6.436357021331787,
+              0.0,
+              -7.986996650695801
+            ],
+            "max": [
+              11.563644409179688,
+              1.4642040729522705,
+              -6.013003349304199
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10040,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              7.76362419128418,
+              0.0,
+              3.8200533390045166
+            ],
+            "max": [
+              10.236377716064453,
+              2.038832426071167,
+              6.179947853088379
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10042,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              15.003174781799316,
+              0.0,
+              5.7620134353637695
+            ],
+            "max": [
+              17.39682388305664,
+              2.2545032501220703,
+              8.23798656463623
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10043,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              15.823953628540039,
+              0.0,
+              -10.755412101745605
+            ],
+            "max": [
+              18.376047134399414,
+              1.4304547309875488,
+              -9.244589805603027
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10044,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.40196990966797,
+              0.0,
+              -13.69803237915039
+            ],
+            "max": [
+              17.798030853271484,
+              1.7959169149398804,
+              -12.301969528198242
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10046,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              5.677572727203369,
+              0.0,
+              1.8784072399139404
+            ],
+            "max": [
+              6.922426700592041,
+              2.231259822845459,
+              3.1215932369232178
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 4294967296,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              -6.000000000003401,
+              0.2999999999981224,
+              -3.999999999945464
+            ],
+            "rotation": [
+              1.8578635638171648e-18,
+              -3.946894687990464e-11,
+              -3.1293467598195373e-12,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -0.3,
+              -0.3,
+              -0.3
+            ],
+            "max": [
+              0.3,
+              0.3,
+              0.3
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 4294967297,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              5.999999999010974,
+              0.44999998821075216,
+              -4.000000001714897
+            ],
+            "rotation": [
+              -8.802395654641995e-10,
+              1.3260993066445334e-9,
+              1.0997080935072105e-9,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -0.3,
+              -0.45,
+              -0.3
+            ],
+            "max": [
+              0.3,
+              0.45,
+              0.3
+            ]
+          }
+        }
+      ]
+    },
+    "hud": {
+      "life": {
+        "instance": 220,
+        "actor": 14,
+        "generation": 1
+      },
+      "time": 92.56666564941406,
+      "resources": {
+        "hp": 200,
+        "max_hp": 200,
+        "mana": 20,
+        "max_mana": 20
+      },
+      "slots": [
+        {
+          "ability": "Bow",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 1.0
+        },
+        {
+          "ability": "FireBolt",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 0.30000001192092896
+        },
+        {
+          "ability": "MagicMissile",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 1.5
+        },
+        {
+          "ability": "Fireball",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 2.0
+        },
+        {
+          "ability": "MistyStep",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 6.0
+        },
+        {
+          "ability": "Thunderwave",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 4.0
+        },
+        {
+          "ability": "Web",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 8.0
+        },
+        {
+          "ability": "Grease",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 5.0
+        },
+        {
+          "ability": "Light",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 1.0
+        },
+        {
+          "ability": "Shield",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 8.0
+        }
+      ],
+      "casting": null
+    },
+    "snapshot": {
+      "elapsed": 72.56666564941406,
+      "player": {
+        "hp": 200,
+        "max_hp": 200,
+        "mana": 20,
+        "max_mana": 20
+      },
+      "abilities": [
+        {
+          "id": "firebolt",
+          "label": "Firebolt",
+          "cost": 0,
+          "ready": true,
+          "cooldown_remaining": 0.0
+        },
+        {
+          "id": "magic_missile",
+          "label": "Magic missile",
+          "cost": 2,
+          "ready": true,
+          "cooldown_remaining": 0.0
+        },
+        {
+          "id": "fireball",
+          "label": "Fireball",
+          "cost": 5,
+          "ready": true,
+          "cooldown_remaining": 0.0
+        }
+      ],
+      "actors": [
+        {
+          "id": 0,
+          "kind": "wizard",
+          "faction": "player",
+          "pos": [
+            4.907279968261719,
+            0.0,
+            -23.92024040222168
+          ],
+          "yaw": 3.1415927410125732,
+          "hp": 200,
+          "max_hp": 200,
+          "alive": true
+        },
+        {
+          "id": 1,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0,
+          "hp": 299931,
+          "max_hp": 300000,
+          "alive": true
+        },
+        {
+          "id": 14,
+          "kind": "wizard",
+          "faction": "player",
+          "pos": [
+            -2.5063343048095703,
+            9.999999747378752e-6,
+            1.426550030708313
+          ],
+          "yaw": 3.1415927410125732,
+          "hp": 76,
+          "max_hp": 200,
+          "alive": true
+        }
+      ],
+      "projectiles": [],
+      "effects": [],
+      "counters": {
+        "casts": 42,
+        "projectiles": 20,
+        "hits": 20,
+        "deflections": 0
+      }
+    },
+    "presentation": {
+      "time": 92.56666564941406,
+      "flames": [
+        {
+          "id": 3,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            -24.000001907348633
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 5,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            -12.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 7,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            0.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 9,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            11.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 11,
+          "position": [
+            14.0,
+            4.000000476837158,
+            -24.000001907348633
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 13,
+          "position": [
+            14.0,
+            4.000000476837158,
+            -12.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 15,
+          "position": [
+            14.0,
+            4.000000476837158,
+            0.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 17,
+          "position": [
+            14.0,
+            4.000000476837158,
+            11.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 23,
+          "position": [
+            -9.000000953674316,
+            2.500000238418579,
+            -6.700000286102295
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 32,
+          "position": [
+            -6.299999713897705,
+            2.200000286102295,
+            2.500000238418579
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 38,
+          "position": [
+            9.000000953674316,
+            2.500000238418579,
+            -6.700000286102295
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 47,
+          "position": [
+            6.299999713897705,
+            2.200000286102295,
+            2.500000238418579
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 49,
+          "position": [
+            1.6000001430511475,
+            7.65000057220459,
+            -10.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 50,
+          "position": [
+            0.800000011920929,
+            7.65000057220459,
+            -8.614359855651855
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 51,
+          "position": [
+            -0.8000001907348633,
+            7.65000057220459,
+            -8.614359855651855
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 52,
+          "position": [
+            -1.6000001430511475,
+            7.65000057220459,
+            -10.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 53,
+          "position": [
+            -0.7999998927116394,
+            7.65000057220459,
+            -11.385642051696777
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 54,
+          "position": [
+            0.8000006675720215,
+            7.65000057220459,
+            -11.385641098022461
+          ],
+          "protected": false,
+          "lit": true
+        }
+      ],
+      "actors": [
+        {
+          "actor": {
+            "id": 1,
+            "name": "Claude",
+            "model": "claude",
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "yaw": 2.0882441997528076,
+            "scale": 2.4000000953674316,
+            "health": 300000,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 1,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "idle",
+          "animation_time": 92.75666809082031,
+          "visible": true,
+          "health": 299931
+        },
+        {
+          "actor": {
+            "id": 14,
+            "name": "Adventurer",
+            "model": "adventurer",
+            "position": [
+              4.907279968261719,
+              0.0,
+              -23.92024040222168
+            ],
+            "yaw": 3.1415927410125732,
+            "scale": 1.0,
+            "health": 200,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 1
+          },
+          "teleport_stamp": null,
+          "animation": "strafe_left",
+          "animation_time": 1.2333335876464844,
+          "visible": true,
+          "health": 200
+        },
+        {
+          "actor": {
+            "id": 15,
+            "name": "Adventurer 15",
+            "model": "adventurer",
+            "position": [
+              -2.5063343048095703,
+              9.999999747378752e-6,
+              1.426550030708313
+            ],
+            "yaw": 3.1415927410125732,
+            "scale": 1.0,
+            "health": 200,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 15,
+            "generation": 0
+          },
+          "teleport_stamp": 49.266666412353516,
+          "animation": "strafe_left",
+          "animation_time": 29.820613861083984,
+          "visible": true,
+          "health": 76
+        }
+      ],
+      "corpses": [
+        {
+          "actor": {
+            "id": 2,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -0.011445285752415657,
+              0.0,
+              -12.037696838378906
+            ],
+            "yaw": -4.896446228027344,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 2,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 37.79999923706055,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 3,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -3.3648338317871094,
+              0.0,
+              -15.937997817993164
+            ],
+            "yaw": 2.6499881744384766,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 3,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 37.79999923706055,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 4,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -5.807071685791016,
+              0.2312651127576828,
+              -13.659767150878906
+            ],
+            "yaw": 10.304388046264648,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 4,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 37.79999923706055,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 5,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -5.6108293533325195,
+              0.0,
+              -10.800867080688477
+            ],
+            "yaw": 5.990269660949707,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 5,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 37.79999923706055,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 6,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -6.23482084274292,
+              0.0,
+              -14.446011543273926
+            ],
+            "yaw": 5.687342166900635,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 6,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 45.0,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 7,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -3.314704656600952,
+              0.0,
+              -9.022615432739258
+            ],
+            "yaw": 6.679088115692139,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 7,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 37.79999923706055,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 8,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              2.013821601867676,
+              0.0,
+              -8.155155181884766
+            ],
+            "yaw": 6.403479099273682,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 8,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 24.0,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 9,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -2.8026416301727295,
+              0.0,
+              -14.291337013244629
+            ],
+            "yaw": 8.40725326538086,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 9,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 37.79999923706055,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 10,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              3.041461706161499,
+              0.0,
+              -10.372374534606934
+            ],
+            "yaw": 5.814847946166992,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 10,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 37.39999771118164,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 11,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              4.8975958824157715,
+              0.0,
+              -11.43356704711914
+            ],
+            "yaw": 6.183212757110596,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 11,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 37.39999771118164,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 12,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              2.61517596244812,
+              0.0,
+              -13.9857177734375
+            ],
+            "yaw": -1.3083487749099731,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 12,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 37.39999771118164,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 13,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              3.1071949005126953,
+              0.0,
+              -12.660244941711426
+            ],
+            "yaw": -0.8072166442871094,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 13,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 37.39999771118164,
+          "visible": true,
+          "health": 0
+        }
+      ],
+      "effects": [
+        {
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 1
+          },
+          "position": [
+            4.907279968261719,
+            0.0,
+            -23.92024040222168
+          ],
+          "shield": 0,
+          "shield_until": 0.0,
+          "light": null,
+          "areas": []
+        },
+        {
+          "life": {
+            "instance": 220,
+            "actor": 15,
+            "generation": 0
+          },
+          "position": [
+            -2.5063343048095703,
+            9.999999747378752e-6,
+            1.426550030708313
+          ],
+          "shield": 0,
+          "shield_until": 76.69999694824219,
+          "light": [
+            -3.839895725250244,
+            0.3000100255012512,
+            -0.2096564769744873
+          ],
+          "areas": []
+        }
+      ],
+      "hostile_casts": [],
+      "impacts": [],
+      "props": [
+        {
+          "life": {
+            "instance": 220,
+            "entity": 4294967296,
+            "generation": 0
+          },
+          "kind": "Crate",
+          "secured": false,
+          "center": [
+            -6.0,
+            0.30000001192092896,
+            -4.0
+          ],
+          "rotation": [
+            1.8578635790208918e-18,
+            -3.9468945473020156e-11,
+            -3.1293468250731538e-12,
+            1.0
+          ],
+          "dimensions": [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.6000000238418579
+          ]
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 4294967297,
+            "generation": 0
+          },
+          "kind": "Barrel",
+          "secured": false,
+          "center": [
+            6.0,
+            0.44999998807907104,
+            -4.0
+          ],
+          "rotation": [
+            -8.802395479179381e-10,
+            1.326099341447673e-9,
+            1.0997081023589317e-9,
+            1.0
+          ],
+          "dimensions": [
+            0.6000000238418579,
+            0.8999999761581421,
+            0.6000000238418579
+          ]
+        }
+      ],
+      "blockers": [
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10018,
+            "generation": 0
+          },
+          "min": [
+            -11.563644409179688,
+            0.0,
+            -7.986996650695801
+          ],
+          "max": [
+            -6.436357021331787,
+            1.4642040729522705,
+            -6.013003349304199
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10025,
+            "generation": 0
+          },
+          "min": [
+            -10.236377716064453,
+            0.0,
+            3.8200533390045166
+          ],
+          "max": [
+            -7.76362419128418,
+            2.038832426071167,
+            6.179947853088379
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10027,
+            "generation": 0
+          },
+          "min": [
+            -17.39682388305664,
+            0.0,
+            5.7620134353637695
+          ],
+          "max": [
+            -15.003174781799316,
+            2.2545032501220703,
+            8.23798656463623
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10028,
+            "generation": 0
+          },
+          "min": [
+            -18.376047134399414,
+            0.0,
+            -10.755412101745605
+          ],
+          "max": [
+            -15.823953628540039,
+            1.4304547309875488,
+            -9.244589805603027
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10029,
+            "generation": 0
+          },
+          "min": [
+            -17.798030853271484,
+            0.0,
+            -13.69803237915039
+          ],
+          "max": [
+            -16.40196990966797,
+            1.7959169149398804,
+            -12.301969528198242
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10031,
+            "generation": 0
+          },
+          "min": [
+            -6.922426700592041,
+            0.0,
+            1.8784072399139404
+          ],
+          "max": [
+            -5.677572727203369,
+            2.231259822845459,
+            3.1215932369232178
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10033,
+            "generation": 0
+          },
+          "min": [
+            6.436357021331787,
+            0.0,
+            -7.986996650695801
+          ],
+          "max": [
+            11.563644409179688,
+            1.4642040729522705,
+            -6.013003349304199
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10040,
+            "generation": 0
+          },
+          "min": [
+            7.76362419128418,
+            0.0,
+            3.8200533390045166
+          ],
+          "max": [
+            10.236377716064453,
+            2.038832426071167,
+            6.179947853088379
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10042,
+            "generation": 0
+          },
+          "min": [
+            15.003174781799316,
+            0.0,
+            5.7620134353637695
+          ],
+          "max": [
+            17.39682388305664,
+            2.2545032501220703,
+            8.23798656463623
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10043,
+            "generation": 0
+          },
+          "min": [
+            15.823953628540039,
+            0.0,
+            -10.755412101745605
+          ],
+          "max": [
+            18.376047134399414,
+            1.4304547309875488,
+            -9.244589805603027
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10044,
+            "generation": 0
+          },
+          "min": [
+            16.40196990966797,
+            0.0,
+            -13.69803237915039
+          ],
+          "max": [
+            17.798030853271484,
+            1.7959169149398804,
+            -12.301969528198242
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10046,
+            "generation": 0
+          },
+          "min": [
+            5.677572727203369,
+            0.0,
+            1.8784072399139404
+          ],
+          "max": [
+            6.922426700592041,
+            2.231259822845459,
+            3.1215932369232178
+          ],
+          "table_proxy": true
+        }
+      ]
+    },
+    "actors": [
+      {
+        "source": 0,
+        "life": {
+          "instance": 220,
+          "actor": 14,
+          "generation": 1
+        }
+      },
+      {
+        "source": 1,
+        "life": {
+          "instance": 220,
+          "actor": 1,
+          "generation": 0
+        }
+      },
+      {
+        "source": 14,
+        "life": {
+          "instance": 220,
+          "actor": 15,
+          "generation": 0
+        }
+      }
+    ]
+  }
+}
