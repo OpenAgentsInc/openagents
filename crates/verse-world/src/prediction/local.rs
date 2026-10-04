@@ -118,6 +118,28 @@ impl Local {
         self.dirty = true;
         Ok(())
     }
+    pub fn observation(&self) -> u64 {
+        self.observation
+    }
+    pub fn contains(&self, token: u64) -> bool {
+        self.inputs.iter().any(|i| i.token == token)
+    }
+    /// Refreshes collision while the server withholds a pending movement baseline.
+    pub fn update_geometry(
+        &mut self,
+        geometry: &SceneSnapshot,
+        tick: u64,
+        observation: u64,
+    ) -> Result<(), String> {
+        if self.baseline.is_none() || tick < self.tick || observation <= self.observation {
+            return Err("Prediction collision observation is inactive or regressed".into());
+        }
+        self.collision.update(geometry)?;
+        self.tick = tick;
+        self.observation = observation;
+        self.dirty = true;
+        Ok(())
+    }
     pub fn queue(&mut self, token: u64, intent: Intent<Ability>) -> Result<(), String> {
         if self.baseline.is_none()
             || token == 0
@@ -413,6 +435,50 @@ mod tests {
         local.advance(0.).unwrap();
         assert_eq!(local.pose().unwrap().position.x, 0.);
         assert!(local.bind(99, &command(baseline, 2, movement())).is_err());
+    }
+    #[test]
+    fn pending_geometry_corrects_unacknowledged_travel_and_retires_removed_walls() {
+        use physics::queries::{GeometrySnapshot, Pose, ShapeSnapshot};
+        let (mut local, baseline, mut geometry) = setup();
+        local.queue(1, movement()).unwrap();
+        for _ in 0..5 {
+            local.advance(0.1).unwrap();
+        }
+        assert!(local.pose().unwrap().position.x > 3.);
+        geometry.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 99,
+                    generation: 1,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Box {
+                min: glam::DVec3::new(1., 0., -5.),
+                max: glam::DVec3::new(1.01, 3., 5.),
+            },
+        });
+        local.update_geometry(&geometry, 2, 2).unwrap();
+        local.advance(0.).unwrap();
+        assert!(local.pose().unwrap().position.x < 0.71);
+        assert_eq!(local.pending(), 1);
+        let stopped = local.pose().unwrap().position;
+        assert!(local.update_geometry(&geometry, 1, 3).is_err());
+        assert!(local.update_geometry(&geometry, 2, 2).is_err());
+        let mut foreign = geometry.clone();
+        foreign.instance = 8;
+        assert!(local.update_geometry(&foreign, 3, 3).is_err());
+        assert_eq!(local.pose().unwrap().position, stopped);
+        assert!(local.observe(baseline, &geometry, 2, 2).is_err());
+        geometry.colliders.pop();
+        local.update_geometry(&geometry, 3, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert!(local.pose().unwrap().position.x > 3.);
+        assert_eq!(local.observation(), 3);
     }
     #[test]
     fn movement_policy_preserves_slowing_and_control_routing() {

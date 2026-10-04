@@ -107,6 +107,7 @@ struct App {
     next_move: Instant,
     received_at: Instant,
     owned_life: Option<verse_engine::core::LifeId>,
+    owned_teleport: Option<f32>,
     status: String,
     error: Option<String>,
     record: Option<super::remote_record::Options>,
@@ -160,6 +161,7 @@ impl App {
             next_move: Instant::now(),
             received_at: Instant::now(),
             owned_life: None,
+            owned_teleport: None,
             status: String::new(),
             error: None,
             record: None,
@@ -295,6 +297,18 @@ impl App {
                         .replica()
                         .control()
                         .map(|c| (c.life.into(), c.epoch));
+                    let teleport = context.and_then(|(life, _)| {
+                        state
+                            .presentation
+                            .actors
+                            .iter()
+                            .find(|p| verse_engine::core::LifeId::from(p.life) == life)
+                            .and_then(|p| p.teleport_stamp)
+                    });
+                    if teleport != self.owned_teleport {
+                        self.prediction.clear();
+                    }
+                    self.owned_teleport = teleport;
                     if context != self.prediction.context() || !self.controlled() {
                         self.prediction.clear();
                     }
@@ -304,6 +318,11 @@ impl App {
                         {
                             self.prediction
                                 .observe(baseline, geometry, r.tick, r.request_id)?;
+                        } else if self.prediction.context().is_some() {
+                            if let Some(geometry) = state.collision.as_ref() {
+                                self.prediction
+                                    .update_geometry(geometry, r.tick, r.request_id)?;
+                            }
                         }
                     }
                     let life = self
@@ -342,7 +361,9 @@ impl App {
                 Ok(Update::Inventory(r)) => self.view.push_inventory(&r)?,
                 Ok(Update::CommandBound { token, binding }) => match binding {
                     Ok(command) => {
-                        if self.prediction.context().is_some() {
+                        if self.prediction.context() == Some((command.actor, command.epoch))
+                            && self.prediction.contains(token)
+                        {
                             if let Err(message) = self.prediction.bind(token, &command) {
                                 self.prediction.clear();
                                 self.status = message;
@@ -1247,12 +1268,23 @@ mod tests {
                 },
             )))
             .unwrap();
+        let pending = request(&mut gateway, connection, 5, Body::Snapshot {});
+        let verse_world::service::wire::Reply::Snapshot { state } = &pending.body else {
+            panic!("Missing pending snapshot");
+        };
+        assert!(state.movement.is_none());
+        assert!(state.collision.is_some());
+        updates.try_send(Update::Snapshot(pending)).unwrap();
+        app.consume().unwrap();
+        app.prediction.advance(0.).unwrap();
+        assert_eq!(app.prediction.observation(), 5);
+        assert_eq!(app.prediction.pending(), 1);
         gateway.tick(1. / 30.).unwrap();
         updates
             .try_send(Update::Snapshot(request(
                 &mut gateway,
                 connection,
-                5,
+                6,
                 Body::Snapshot {},
             )))
             .unwrap();
@@ -1260,6 +1292,102 @@ mod tests {
         app.prediction.advance(0.).unwrap();
         assert_eq!(app.prediction.pending(), 0);
         assert!(app.pending.is_empty());
+        assert!(
+            app.prediction
+                .pose()
+                .unwrap()
+                .position
+                .distance(gateway.game().actor_position(life.actor).unwrap())
+                < 0.0001
+        );
+        // Teleport while another movement input is admitted but not yet applied.
+        app.send(Input::Command(Intent::Move {
+            axes: [0., 1.],
+            yaw: 0.,
+        }));
+        let Input::TrackedCommand { token, intent, .. } = inputs.try_recv().unwrap() else {
+            panic!("Missing pending move");
+        };
+        let command = gateway
+            .admission(connection)
+            .unwrap()
+            .command(gateway.game().authority_tick, intent)
+            .unwrap();
+        updates
+            .try_send(Update::CommandBound {
+                token,
+                binding: Ok(command.clone()),
+            })
+            .unwrap();
+        updates
+            .try_send(Update::Outcome(request(
+                &mut gateway,
+                connection,
+                7,
+                Body::Command {
+                    command: command.into(),
+                },
+            )))
+            .unwrap();
+        app.consume().unwrap();
+        app.prediction.advance(1. / 30.).unwrap();
+        assert_eq!(app.prediction.pending(), 1);
+        app.send(Input::Command(Intent::Cast {
+            ability: Ability::MistyStep,
+            target: None,
+            aim: [1., 0., 0.],
+        }));
+        let Input::Command(intent) = inputs.try_recv().unwrap() else {
+            panic!("Missing teleport cast");
+        };
+        let command = gateway
+            .admission(connection)
+            .unwrap()
+            .command(gateway.game().authority_tick, intent)
+            .unwrap();
+        let outcome = request(
+            &mut gateway,
+            connection,
+            8,
+            Body::Command {
+                command: command.into(),
+            },
+        );
+        assert!(matches!(
+            outcome.body,
+            verse_world::service::wire::Reply::Accepted
+        ));
+        updates.try_send(Update::Outcome(outcome)).unwrap();
+        let snapshot = request(&mut gateway, connection, 9, Body::Snapshot {});
+        let verse_world::service::wire::Reply::Snapshot { state } = &snapshot.body else {
+            panic!("Missing teleport snapshot");
+        };
+        assert!(state.movement.is_none());
+        assert!(
+            state
+                .presentation
+                .actors
+                .iter()
+                .find(|a| a.life.actor == life.actor)
+                .unwrap()
+                .teleport_stamp
+                .is_some()
+        );
+        updates.try_send(Update::Snapshot(snapshot)).unwrap();
+        app.consume().unwrap();
+        assert!(app.prediction.pose().is_none());
+        assert_eq!(app.prediction.pending(), 0);
+        gateway.tick(1. / 30.).unwrap();
+        updates
+            .try_send(Update::Snapshot(request(
+                &mut gateway,
+                connection,
+                10,
+                Body::Snapshot {},
+            )))
+            .unwrap();
+        app.consume().unwrap();
+        app.prediction.advance(0.).unwrap();
         assert!(
             app.prediction
                 .pose()
