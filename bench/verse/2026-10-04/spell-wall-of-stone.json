@@ -1,0 +1,1972 @@
+{
+  "schema": "openagents.verse.spell-playground.v1",
+  "spell": "wall-of-stone",
+  "title": "Wall of Stone",
+  "srd": "Level 5 Evocation | Range 120 ft | ten 10x10 ft panels, 6 in, AC 15, 180 HP | DEX save if enclosed | Concentration, 10 min",
+  "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
+  "rules_revision": "verse-chamber-owned-v17",
+  "seed": 453,
+  "dice_rolled": 3,
+  "saves": [
+    {
+      "at": 12.600000381469727,
+      "save": {
+        "target": 106,
+        "ability": "Dexterity",
+        "roll": 15,
+        "modifier": 0,
+        "total": 15,
+        "dc": 15,
+        "success": true,
+        "forced": true
+      }
+    }
+  ],
+  "log": [
+    "[0.30] bridge raised: 2 panels, 1 welds, span 11 ft",
+    "[1.60] ramp raised: 28 panels, 46 welds, span 9 ft, half-size supports",
+    "[1.63] Concentration ends: the wall vanishes",
+    "[5.50] bridge raised: 5 panels, 4 welds, span 20 ft",
+    "[5.53] Concentration ends: the wall vanishes",
+    "[6.53] Fire Bolt hits panel 3: 8 fire, 82/90 HP",
+    "[6.87] Fire Bolt hits panel 3: 8 fire, 74/90 HP",
+    "[7.20] Fire Bolt hits panel 3: 8 fire, 66/90 HP",
+    "[7.53] Fire Bolt hits panel 3: 8 fire, 58/90 HP",
+    "[7.87] Fire Bolt hits panel 3: 8 fire, 50/90 HP",
+    "[8.20] Fire Bolt hits panel 3: 8 fire, 42/90 HP",
+    "[8.53] Fire Bolt hits panel 3: 8 fire, 34/90 HP",
+    "[8.87] Fire Bolt hits panel 3: 8 fire, 26/90 HP",
+    "[9.20] Fire Bolt hits panel 3: 8 fire, 18/90 HP",
+    "[9.53] Fire Bolt hits panel 3: 8 fire, 10/90 HP",
+    "[9.87] Fire Bolt hits panel 3: 8 fire, 2/90 HP",
+    "[10.20] Fire Bolt hits panel 3: 8 fire, 0/90 HP",
+    "[10.20] Panel 3 destroyed: 6 chunks of debris",
+    "[10.43] footing of panel 1 broke under load",
+    "[10.43] footing of panel 5 broke under load",
+    "[11.60] Dummy (wall) is in the wall's space: pushed 2.4 ft aside",
+    "[11.60] wall raised: 2 panels, 1 welds, span 0 ft",
+    "[11.63] Concentration ends: the wall vanishes",
+    "[12.60] Dummy (enclosed) enclosed: DEX save 15 +0 = 15 vs DC 15 succeeds; escapes 6.5 ft",
+    "[12.60] enclosure raised: 5 panels, 8 welds, span 9 ft",
+    "[12.63] Concentration ends: the wall vanishes",
+    "[13.60] tower raised: 9 panels, 16 welds, span 9 ft",
+    "[13.63] Concentration ends: the wall vanishes",
+    "[14.90] wall raised: 1 panels, 0 welds, span 0 ft",
+    "[14.93] Concentration ends: the wall vanishes",
+    "[15.70] Adventurer fell 20 ft: 2d6 = 10 bludgeoning"
+  ],
+  "tracks": [
+    {
+      "label": "Dummy (wall)",
+      "spell": "Wall of Stone",
+      "at": 11.600000381469727,
+      "start": [
+        1.0,
+        0.0,
+        6.75
+      ],
+      "final": [
+        1.0,
+        0.0,
+        7.496200084686279
+      ],
+      "requested_ft": 2.4481627296587924,
+      "measured_ft": 2.4481630075009164
+    },
+    {
+      "label": "Dummy (enclosed)",
+      "spell": "Wall of Stone",
+      "at": 12.600000381469727,
+      "start": [
+        4.0,
+        0.0,
+        11.0
+      ],
+      "final": [
+        5.970200061798096,
+        0.0,
+        11.0
+      ],
+      "requested_ft": 6.463910761154854,
+      "measured_ft": 6.463910963904513
+    }
+  ],
+  "props": [
+    {
+      "name": "West abutment",
+      "kind": "StoneBlock",
+      "mass_kg": 40171.67495727539,
+      "secured": true,
+      "removed": false,
+      "center": [
+        -12.906000137329102,
+        1.0,
+        -2.5999999046325684
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "East abutment",
+      "kind": "StoneBlock",
+      "mass_kg": 40685.76147079468,
+      "secured": true,
+      "removed": false,
+      "center": [
+        -4.607999801635742,
+        1.0,
+        -2.5999999046325684
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stone panel 1",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -4.499999999973565,
+        0.07619999963111672,
+        17.02400000003129
+      ],
+      "rotation": [
+        0.5000000000559308,
+        -0.49999999994539945,
+        -0.5000000000651144,
+        -0.49999999993355543
+      ]
+    },
+    {
+      "name": "Stone panel 2",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -4.499999999936948,
+        0.07619999958975,
+        13.97600000001733
+      ],
+      "rotation": [
+        0.5000000000680077,
+        -0.49999999993260236,
+        -0.5000000000671964,
+        -0.49999999993219385
+      ]
+    },
+    {
+      "name": "Stone panel 1",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -6.222101000935398,
+        0.4468083542407884,
+        1.7381697366149529
+      ],
+      "rotation": [
+        0.1829288995271884,
+        0.6830346435425836,
+        0.6830409720754207,
+        0.18290905911051053
+      ]
+    },
+    {
+      "name": "Stone panel 2",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -7.542112470605751,
+        1.2084564233889057,
+        1.738211236730851
+      ],
+      "rotation": [
+        0.18287997909202328,
+        0.683001341717865,
+        0.683092596308258,
+        0.1828895440634611
+      ]
+    },
+    {
+      "name": "Stone panel 3",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.862195569619354,
+        1.9699818531164717,
+        1.7382587634669378
+      ],
+      "rotation": [
+        0.18288141280665735,
+        0.6829926399383018,
+        0.6830979397116658,
+        0.18290064899181732
+      ]
+    },
+    {
+      "name": "Stone panel 4",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -10.182260766662804,
+        2.7315037280676435,
+        1.7382817264919685
+      ],
+      "rotation": [
+        0.18284182122753115,
+        0.6829803502168716,
+        0.6831161264504773,
+        0.18291819868764994
+      ]
+    },
+    {
+      "name": "Stone panel 5",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -11.5023672917889,
+        3.4929618211937785,
+        1.738194781564159
+      ],
+      "rotation": [
+        0.18283028028269405,
+        0.6829753597350844,
+        0.6831215093222874,
+        0.1829282649229573
+      ]
+    },
+    {
+      "name": "Stone panel 6",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -12.82240560403073,
+        4.254412474159324,
+        1.7380157538801286
+      ],
+      "rotation": [
+        0.18284303405782987,
+        0.6829613869155573,
+        0.6831118940061894,
+        0.18300357686718208
+      ]
+    },
+    {
+      "name": "Stone panel 7",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -14.142398541890497,
+        5.016037950838745,
+        1.7377293620225636
+      ],
+      "rotation": [
+        0.18284240556873868,
+        0.6829673836256276,
+        0.6831033722915182,
+        0.18301363444660979
+      ]
+    },
+    {
+      "name": "Stone panel 8",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -15.462302583761856,
+        5.77772054237182,
+        1.737375770900715
+      ],
+      "rotation": [
+        0.18288734868789877,
+        0.6829966047120464,
+        0.6830517485798024,
+        0.1830523542700346
+      ]
+    },
+    {
+      "name": "Stone panel 9",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -6.222087168172166,
+        0.44676358583065423,
+        3.2621698425956804
+      ],
+      "rotation": [
+        0.18290443069142637,
+        0.6830457240580419,
+        0.6830447536831882,
+        0.1828780264147208
+      ]
+    },
+    {
+      "name": "Stone panel 10",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -7.5421873146792855,
+        1.208317378217331,
+        3.2622075191921542
+      ],
+      "rotation": [
+        0.18287174282769497,
+        0.6829971599843694,
+        0.6830979769436885,
+        0.18289329955984543
+      ]
+    },
+    {
+      "name": "Stone panel 11",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.862333355871614,
+        1.9698015644405202,
+        3.2622560540575223
+      ],
+      "rotation": [
+        0.18286615470020848,
+        0.6829923398605847,
+        0.6831072376603419,
+        0.1828822982493946
+      ]
+    },
+    {
+      "name": "Stone panel 12",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -10.182498449424301,
+        2.7312820353092473,
+        3.262271489798792
+      ],
+      "rotation": [
+        0.18284569416240049,
+        0.6829805597245909,
+        0.6831161575559554,
+        0.1829134288414644
+      ]
+    },
+    {
+      "name": "Stone panel 13",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -11.502673747207387,
+        3.4927231382798296,
+        3.2621886101707775
+      ],
+      "rotation": [
+        0.18281634395857219,
+        0.682980469335192,
+        0.6831240727694055,
+        0.18291354266768226
+      ]
+    },
+    {
+      "name": "Stone panel 14",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -12.82281022228409,
+        4.254196975325545,
+        3.2620079714935972
+      ],
+      "rotation": [
+        0.1828460372021266,
+        0.6829681434891962,
+        0.6831033573912751,
+        0.1830072260299229
+      ]
+    },
+    {
+      "name": "Stone panel 15",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -14.142793246561167,
+        5.01586599679906,
+        3.2617199981025005
+      ],
+      "rotation": [
+        0.18284851793058862,
+        0.6829707535317762,
+        0.683095588855444,
+        0.18302400333579058
+      ]
+    },
+    {
+      "name": "Stone panel 16",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -15.462643099105135,
+        5.777647166474291,
+        3.261349266746034
+      ],
+      "rotation": [
+        0.18280853330366376,
+        0.6830013794817067,
+        0.6830406995070354,
+        0.1831544664876861
+      ]
+    },
+    {
+      "name": "Stone panel 17",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.317857897206341,
+        0.7620521438107115,
+        1.738117617539861
+      ],
+      "rotation": [
+        -0.00007663726519146526,
+        0.7071195710403392,
+        0.00001924888179347067,
+        -0.7070939866863081
+      ]
+    },
+    {
+      "name": "Stone panel 18",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.317935757784362,
+        0.7619127861361699,
+        3.262086205929516
+      ],
+      "rotation": [
+        -0.00007468128713917807,
+        0.7071319966099697,
+        0.00001246120848674219,
+        -0.7070815608102233
+      ]
+    },
+    {
+      "name": "Stone panel 19",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -10.959456184047747,
+        0.7619905221201558,
+        1.7378483587620248
+      ],
+      "rotation": [
+        -3.3853301028367484e-6,
+        0.7071278543064504,
+        5.225716889581941e-6,
+        -0.7070857074111927
+      ]
+    },
+    {
+      "name": "Stone panel 20",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -10.959468139848418,
+        2.285937350661649,
+        1.7380856539680998
+      ],
+      "rotation": [
+        -0.00007896783561413945,
+        0.7071639116863194,
+        0.000035166473230118925,
+        -0.7070496407862064
+      ]
+    },
+    {
+      "name": "Stone panel 21",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -10.959600480361871,
+        0.7617877972225587,
+        3.2617770104349306
+      ],
+      "rotation": [
+        -0.00012542067077461928,
+        0.707130305035845,
+        0.00007636786181353577,
+        -0.7070832413072154
+      ]
+    },
+    {
+      "name": "Stone panel 22",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -10.959709751266091,
+        2.2857226747434276,
+        3.262080442497427
+      ],
+      "rotation": [
+        -0.0000825222325912542,
+        0.7071527581133809,
+        0.00003350520691134434,
+        -0.7070607956605435
+      ]
+    },
+    {
+      "name": "Stone panel 23",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -13.601177642241993,
+        0.7619399132672771,
+        1.7373447925915875
+      ],
+      "rotation": [
+        -0.00003802656224687353,
+        0.707183261870744,
+        0.000019571839306716188,
+        -0.7070302909358117
+      ]
+    },
+    {
+      "name": "Stone panel 24",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -13.601191806104474,
+        2.285800344068042,
+        1.7375331955985478
+      ],
+      "rotation": [
+        -0.00003949986182380167,
+        0.7072021256992939,
+        0.00006147600854431267,
+        -0.7070114200399182
+      ]
+    },
+    {
+      "name": "Stone panel 25",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -13.601132491111807,
+        3.809792076100744,
+        1.7377376741371116
+      ],
+      "rotation": [
+        -0.000026902235754858958,
+        0.707204433726085,
+        0.00007476163885317986,
+        -0.7070091106945756
+      ]
+    },
+    {
+      "name": "Stone panel 26",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -13.601549949960637,
+        0.7617024888021366,
+        3.2612882531075473
+      ],
+      "rotation": [
+        -0.00016776516085624386,
+        0.707205770667547,
+        0.00011365522062761874,
+        -0.7070077488060953
+      ]
+    },
+    {
+      "name": "Stone panel 27",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -13.6015964511362,
+        2.2855939993465806,
+        3.26153507070455
+      ],
+      "rotation": [
+        -0.000038336093577431835,
+        0.70720134524806,
+        0.00005769831441561296,
+        -0.7070122010832507
+      ]
+    },
+    {
+      "name": "Stone panel 28",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -13.60155474816994,
+        3.80959398474027,
+        3.2617420554874936
+      ],
+      "rotation": [
+        -0.000038336093577431747,
+        0.70720134524806,
+        0.00005769831441561308,
+        -0.7070122010832507
+      ]
+    },
+    {
+      "name": "Stone panel 1",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -11.631804809772184,
+        1.828898623387744,
+        -2.601314732678589
+      ],
+      "rotation": [
+        0.6346363507105719,
+        -0.3118332773169963,
+        0.31182567005564993,
+        -0.6346349037114603
+      ]
+    },
+    {
+      "name": "Stone panel 2",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -10.700565334372188,
+        0.622511834101113,
+        -2.6013282448591823
+      ],
+      "rotation": [
+        0.6346363336729757,
+        -0.31183332618729687,
+        0.3118256192842719,
+        -0.6346349216825928
+      ]
+    },
+    {
+      "name": "Stone panel 3",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.763997971719556,
+        2.0301090872332925,
+        -2.5999981499808906
+      ],
+      "rotation": [
+        0.7071066621616471,
+        0.00038196816598477356,
+        -0.00036462522059852836,
+        -0.7071067030338372
+      ]
+    },
+    {
+      "name": "Stone panel 4",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -6.828278741223079,
+        0.6258029435876146,
+        -2.6011419197743924
+      ],
+      "rotation": [
+        0.6348688341098648,
+        0.31135177098857275,
+        -0.3113477740870794,
+        -0.634873374578964
+      ]
+    },
+    {
+      "name": "Stone panel 5",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -5.895217109067572,
+        1.8307805135690522,
+        -2.6011308600321597
+      ],
+      "rotation": [
+        0.6348705615737633,
+        0.3113521937765472,
+        -0.3113473084051659,
+        -0.6348716681553874
+      ]
+    },
+    {
+      "name": "Panel 3 debris",
+      "kind": "SpellBody",
+      "mass_kg": 159.28226208000004,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -9.27197584763299,
+        0.038099999999999835,
+        -1.838010582110745
+      ],
+      "rotation": [
+        0.7071067811326177,
+        8.733173872738243e-6,
+        8.733173872738321e-6,
+        -0.7071067811326176
+      ]
+    },
+    {
+      "name": "Panel 3 debris",
+      "kind": "SpellBody",
+      "mass_kg": 159.28226208000004,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.763975847801493,
+        0.038099999999999946,
+        -1.837998122613697
+      ],
+      "rotation": [
+        0.7071067811326178,
+        8.733158676188296e-6,
+        8.733158676188379e-6,
+        -0.707106781132618
+      ]
+    },
+    {
+      "name": "Panel 3 debris",
+      "kind": "SpellBody",
+      "mass_kg": 159.28226208000004,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.25597609745158,
+        0.038100000000000016,
+        -1.8379856874723672
+      ],
+      "rotation": [
+        0.7071067811332492,
+        8.681891044482844e-6,
+        8.681891044482899e-6,
+        -0.7071067811332493
+      ]
+    },
+    {
+      "name": "Panel 3 debris",
+      "kind": "SpellBody",
+      "mass_kg": 159.28226208000004,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -9.271938469045837,
+        0.038099999999999835,
+        -3.3620105816523664
+      ],
+      "rotation": [
+        0.7071067811326177,
+        8.733173869680556e-6,
+        8.733173869680492e-6,
+        -0.7071067811326176
+      ]
+    },
+    {
+      "name": "Panel 3 debris",
+      "kind": "SpellBody",
+      "mass_kg": 159.28226208000004,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.763938469214342,
+        0.038099999999999946,
+        -3.361998122155319
+      ],
+      "rotation": [
+        0.7071067811326178,
+        8.733158673121457e-6,
+        8.733158673121448e-6,
+        -0.707106781132618
+      ]
+    },
+    {
+      "name": "Panel 3 debris",
+      "kind": "SpellBody",
+      "mass_kg": 159.28226208000004,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.255938719151596,
+        0.03809999999999994,
+        -3.3619856870068667
+      ],
+      "rotation": [
+        0.707106781133249,
+        8.68190599486081e-6,
+        8.681905994860779e-6,
+        -0.7071067811332491
+      ]
+    },
+    {
+      "name": "Stone panel 1",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.4759687854795189,
+        1.5239930251178786,
+        7.049678113014434
+      ],
+      "rotation": [
+        -0.00010451849453693113,
+        7.454683682493987e-8,
+        2.948514912983047e-6,
+        0.9999999945335926
+      ]
+    },
+    {
+      "name": "Stone panel 2",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        3.523978272378139,
+        1.5240004887367522,
+        7.049680693940534
+      ],
+      "rotation": [
+        -0.0001057525845640076,
+        -9.550118948618746e-8,
+        5.459176401419831e-6,
+        0.9999999943932896
+      ]
+    },
+    {
+      "name": "Stone panel 1",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        3.9237713064982893,
+        1.52400155145233,
+        9.47600775147105
+      ],
+      "rotation": [
+        6.322143769220862e-6,
+        3.2717210553093274e-7,
+        1.9293737880316627e-7,
+        0.9999999999799432
+      ]
+    },
+    {
+      "name": "Stone panel 2",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        5.523975664662299,
+        1.5240090145536849,
+        10.923808144014798
+      ],
+      "rotation": [
+        5.17929558585912e-6,
+        -0.7071042851301801,
+        1.3083345321222063e-6,
+        0.7071092772139255
+      ]
+    },
+    {
+      "name": "Stone panel 3",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        4.076174253095773,
+        1.5240008762174557,
+        12.524010817571163
+      ],
+      "rotation": [
+        2.0378866128181248e-7,
+        -0.9999999999974025,
+        -2.2652760868273136e-6,
+        1.4899825883948515e-7
+      ]
+    },
+    {
+      "name": "Stone panel 4",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.4759738478988247,
+        1.524000625515799,
+        11.07621538250932
+      ],
+      "rotation": [
+        1.3242749491264754e-6,
+        -0.7071076865849669,
+        -1.4745692044117943e-6,
+        -0.7071058757841913
+      ]
+    },
+    {
+      "name": "Stone panel 5",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        3.9999683495360263,
+        3.1242039110763384,
+        11.000016485956202
+      ],
+      "rotation": [
+        0.7071057790756071,
+        5.300681278987957e-7,
+        -1.6023447567909416e-6,
+        -0.7071077832940537
+      ]
+    },
+    {
+      "name": "Stone panel 1",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -14.476172595271336,
+        1.5239994451822012,
+        0.9760010500064609
+      ],
+      "rotation": [
+        -5.977151497345823e-7,
+        -1.166202663488741e-6,
+        1.160572681434374e-7,
+        0.9999999999991346
+      ]
+    },
+    {
+      "name": "Stone panel 2",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -12.87598163635865,
+        1.523994549399308,
+        2.42380128837112
+      ],
+      "rotation": [
+        -5.689470624902148e-6,
+        -0.7071083146914477,
+        -7.762246410708167e-6,
+        0.7071052476128276
+      ]
+    },
+    {
+      "name": "Stone panel 3",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -14.323765659839435,
+        1.5239950784813336,
+        4.024004750828402
+      ],
+      "rotation": [
+        1.6009107482007695e-6,
+        -0.9999999999986806,
+        -2.7516182341454865e-7,
+        1.854662860917999e-8
+      ]
+    },
+    {
+      "name": "Stone panel 4",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -15.923972310454879,
+        1.5239988435748635,
+        2.576203164842807
+      ],
+      "rotation": [
+        -1.3746665348517656e-6,
+        -0.7071130344200562,
+        9.201152924082485e-7,
+        -0.7071005278958036
+      ]
+    },
+    {
+      "name": "Stone panel 5",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -14.476162999332479,
+        4.571999686109246,
+        0.976009965429459
+      ],
+      "rotation": [
+        1.198896474326247e-6,
+        -2.0664022823304662e-8,
+        -1.7204706320455366e-6,
+        0.9999999999978011
+      ]
+    },
+    {
+      "name": "Stone panel 6",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -12.875963731845346,
+        4.571992309519769,
+        2.423808276526681
+      ],
+      "rotation": [
+        -1.707830335677066e-8,
+        -0.7071063265832429,
+        -1.567134210788777e-6,
+        0.7071072357878232
+      ]
+    },
+    {
+      "name": "Stone panel 7",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -14.323761806116197,
+        4.57199213846796,
+        4.024009926699711
+      ],
+      "rotation": [
+        -1.0379986411400708e-6,
+        -0.9999999999986745,
+        -1.1116386353901276e-6,
+        5.814632278496534e-7
+      ]
+    },
+    {
+      "name": "Stone panel 8",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -15.923964848105777,
+        4.571992356399535,
+        2.5762123842169475
+      ],
+      "rotation": [
+        -4.100043058639709e-6,
+        -0.7071043994863574,
+        -1.40850937127778e-6,
+        -0.7071091628654261
+      ]
+    },
+    {
+      "name": "Stone panel 9",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -14.39996051186307,
+        6.172195507532911,
+        2.50001355738633
+      ],
+      "rotation": [
+        0.7071060057062324,
+        -1.1359053479056072e-6,
+        2.923295815439043e-7,
+        -0.7071075566650395
+      ]
+    },
+    {
+      "name": "Stone panel 1",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": false,
+      "center": [
+        6.761999858583663,
+        0.7619997810384823,
+        -6.0000007840674625
+      ],
+      "rotation": [
+        -5.401617635907557e-7,
+        -1.2274429004426279e-8,
+        -8.965906686410692e-8,
+        0.99999999999985
+      ]
+    }
+  ],
+  "actors": [
+    {
+      "id": 14,
+      "name": "Wizard",
+      "position": [
+        -14.52791976928711,
+        9.999999747378752e-6,
+        2.5044798851013184
+      ],
+      "health": 190
+    },
+    {
+      "id": 104,
+      "name": "Dummy (target)",
+      "position": [
+        -7.159999847412109,
+        0.0,
+        -5.0
+      ],
+      "health": 84
+    },
+    {
+      "id": 105,
+      "name": "Dummy (wall)",
+      "position": [
+        1.0,
+        0.0,
+        7.496200084686279
+      ],
+      "health": 100
+    },
+    {
+      "id": 106,
+      "name": "Dummy (enclosed)",
+      "position": [
+        5.970200061798096,
+        0.0,
+        11.0
+      ],
+      "health": 100
+    }
+  ],
+  "ledger": {
+    "terms": {
+      "gravity": {
+        "linear": [
+          0.0,
+          -577860.3575234511,
+          0.0
+        ],
+        "angular": [
+          2349681.0791605953,
+          0.0,
+          4521953.59822779
+        ]
+      },
+      "removed": {
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "sleep": {
+        "linear": [
+          -4.402636294124145,
+          4.466260636809909,
+          0.02916725716405188
+        ],
+        "angular": [
+          22.9651439566891,
+          138.32385041744737,
+          -27.696760185823972
+        ]
+      },
+      "spell:wall of stone": {
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "static contact": {
+        "linear": [
+          -89.28386955673159,
+          581467.3136730007,
+          -343.4369985045379
+        ],
+        "angular": [
+          -2339273.046086217,
+          -7101.2766923761155,
+          -4551304.837829344
+        ]
+      },
+      "static joint": {
+        "linear": [
+          93.68650585085204,
+          -3611.4224102092585,
+          343.4078312473741
+        ],
+        "angular": [
+          -10430.998218316288,
+          6962.952841958644,
+          29378.936361682063
+        ]
+      }
+    },
+    "residual_relative": {
+      "linear": 1.837478016033242e-14,
+      "angular": 4.218896804506731e-15
+    },
+    "tolerance": 1e-9
+  },
+  "replay": {
+    "window_s": [
+      10.0,
+      11.300000190734863
+    ],
+    "speed": 0.25,
+    "source": "checkpoint at the window start, stepped again with the same admitted commands",
+    "identical_to_live": true
+  },
+  "live_seconds": 16.5,
+  "video_seconds": 21.700000762939453,
+  "authority_tick": 495,
+  "physics_steps": 1980,
+  "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
+  "prepared_pack": {
+    "inventory": {
+      "schema": "openagents.verse.asset-admission.v1",
+      "purpose": "original_local",
+      "compiler": "verse:compiler:original-chamber",
+      "compiler_revision": "b089a8e0ac35bb522cd6771f8f35bdec534d3ce755f87377ddbd6ba5929b7593",
+      "assets": [
+        "verse:model:adventurer",
+        "verse:model:arrow",
+        "verse:model:bow",
+        "verse:model:chamber",
+        "verse:model:claude",
+        "verse:model:cultist",
+        "verse:model:cultist-female",
+        "verse:model:cultist-peasant",
+        "verse:model:cultist-peasant-female",
+        "verse:model:dummy",
+        "verse:model:effect-fire",
+        "verse:model:effect-force",
+        "verse:model:effect-grease",
+        "verse:model:effect-impact",
+        "verse:model:effect-light",
+        "verse:model:effect-mist",
+        "verse:model:effect-ribbon",
+        "verse:model:effect-rune",
+        "verse:model:effect-shadow",
+        "verse:model:effect-shield",
+        "verse:model:effect-wave",
+        "verse:model:effect-web",
+        "verse:model:gear-hat",
+        "verse:model:gear-wand",
+        "verse:model:navigation-blocker",
+        "verse:model:particle-smoke",
+        "verse:model:particle-spark",
+        "verse:model:playground-hall",
+        "verse:model:prop-anvil",
+        "verse:model:prop-barrel",
+        "verse:model:prop-basket",
+        "verse:model:prop-boulder",
+        "verse:model:prop-crate",
+        "verse:model:prop-crate-secured",
+        "verse:model:prop-dummy",
+        "verse:model:prop-paper",
+        "verse:model:prop-sheet",
+        "verse:model:prop-stone",
+        "verse:model:prop/Banner_2",
+        "verse:model:prop/Barrel",
+        "verse:model:prop/Book_Stack_1",
+        "verse:model:prop/Cage_Small",
+        "verse:model:prop/CandleStick_Stand",
+        "verse:model:prop/CandleStick_Triple",
+        "verse:model:prop/Cauldron",
+        "verse:model:prop/Chandelier",
+        "verse:model:prop/Chest_Wood",
+        "verse:model:prop/Lantern_Wall",
+        "verse:model:prop/Potion_1",
+        "verse:model:prop/Scroll_1",
+        "verse:model:prop/Table_Large",
+        "verse:model:prop/Torch_Metal",
+        "verse:model:prop/flame",
+        "verse:model:prop/ritual-liquid",
+        "verse:model:prop/summoning-seal",
+        "verse:model:universal-female-peasant",
+        "verse:model:universal-female-ranger",
+        "verse:model:universal-male-peasant",
+        "verse:model:universal-male-ranger",
+        "verse:model:universal-superhero-female",
+        "verse:model:universal-superhero-male",
+        "verse:source:bestiary-puglin",
+        "verse:source:fantasy-props",
+        "verse:source:fira-mono",
+        "verse:source:game-icons",
+        "verse:source:project",
+        "verse:source:quaternius",
+        "verse:texture:material/adventurer/0",
+        "verse:texture:material/adventurer/0/metallic-roughness",
+        "verse:texture:material/adventurer/0/normal",
+        "verse:texture:material/adventurer/10",
+        "verse:texture:material/adventurer/10/normal",
+        "verse:texture:material/adventurer/11",
+        "verse:texture:material/adventurer/11/normal",
+        "verse:texture:material/adventurer/12",
+        "verse:texture:material/adventurer/12/metallic-roughness",
+        "verse:texture:material/adventurer/12/normal",
+        "verse:texture:material/adventurer/2",
+        "verse:texture:material/adventurer/2/metallic-roughness",
+        "verse:texture:material/adventurer/2/normal",
+        "verse:texture:material/claude/0",
+        "verse:texture:material/claude/0/emissive",
+        "verse:texture:material/claude/0/metallic-roughness",
+        "verse:texture:material/claude/0/normal",
+        "verse:texture:material/cultist-female/10",
+        "verse:texture:material/cultist-female/10/normal",
+        "verse:texture:material/cultist-female/12",
+        "verse:texture:material/cultist-female/12/metallic-roughness",
+        "verse:texture:material/cultist-female/12/normal",
+        "verse:texture:material/cultist-female/2",
+        "verse:texture:material/cultist-female/2/metallic-roughness",
+        "verse:texture:material/cultist-female/2/normal",
+        "verse:texture:material/cultist-peasant/0",
+        "verse:texture:material/cultist-peasant/0/metallic-roughness",
+        "verse:texture:material/cultist-peasant/0/normal",
+        "verse:texture:material/prop/Banner_2/0",
+        "verse:texture:material/prop/Banner_2/0/metallic-roughness",
+        "verse:texture:material/prop/Banner_2/0/normal",
+        "verse:texture:material/prop/Banner_2/1",
+        "verse:texture:material/prop/Banner_2/1/metallic-roughness",
+        "verse:texture:material/prop/Banner_2/1/normal",
+        "verse:texture:material/prop/Banner_2/2",
+        "verse:texture:material/prop/Banner_2/2/metallic-roughness",
+        "verse:texture:material/prop/Banner_2/2/normal",
+        "verse:texture:material/prop/Book_Stack_1/0",
+        "verse:texture:material/prop/Book_Stack_1/0/metallic-roughness",
+        "verse:texture:material/prop/Book_Stack_1/0/normal",
+        "verse:texture:material/prop/Scroll_1/0",
+        "verse:texture:original/effect-white",
+        "verse:texture:original/particle-arcane",
+        "verse:texture:original/particle-fire",
+        "verse:texture:original/particle-ribbon",
+        "verse:texture:original/particle-rune",
+        "verse:texture:original/particle-shadow",
+        "verse:texture:original/particle-smoke",
+        "verse:texture:original/particle-spark",
+        "verse:texture:original/particle-web",
+        "verse:texture:original/white"
+      ],
+      "origins": [
+        [
+          "verse:source:bestiary-puglin",
+          {
+            "creator": "Owner-supplied Bestiary Standard package",
+            "license": "owner_supplied_local",
+            "revision": "8d0a87d7165e5da0761418491511d2187e46de359e2f65110538f8b91a48e6af",
+            "format": "glb"
+          }
+        ],
+        [
+          "verse:source:fantasy-props",
+          {
+            "creator": "Quaternius",
+            "license": "cc0",
+            "revision": "9b1c13c4f32c7de235a2bfbe6260cf641a90869ebdb74eb3a9237692d0f28274",
+            "format": "gltf/bin/png/source-manifest"
+          }
+        ],
+        [
+          "verse:source:fira-mono",
+          {
+            "creator": "Mozilla Foundation and Telefonica S.A.",
+            "license": "ofl11",
+            "revision": "7011027e74361d5b83c013830a3040a274904dc5d70b226e23d3801520628020",
+            "format": "ttf"
+          }
+        ],
+        [
+          "verse:source:game-icons",
+          {
+            "creator": "Lorc and Delapouite, game-icons.net",
+            "license": "cc_by30",
+            "revision": "661c0cad7c127d99290562d9c2c2079356781712547746cc9cdfdd293341c839",
+            "format": "svg/credits"
+          }
+        ],
+        [
+          "verse:source:project",
+          {
+            "creator": "OpenAgents contributors",
+            "license": "apache2",
+            "revision": "b089a8e0ac35bb522cd6771f8f35bdec534d3ce755f87377ddbd6ba5929b7593",
+            "format": "rust/wgsl/json"
+          }
+        ],
+        [
+          "verse:source:quaternius",
+          {
+            "creator": "Quaternius",
+            "license": "cc0",
+            "revision": "a35e061511a8f214a34acd8a57e3659943d779bcf3a1a6c786cde280f42c4e5a",
+            "format": "gltf/glb/png/source-manifest"
+          }
+        ]
+      ]
+    },
+    "schema": "openagents.verse.prepared-pack.v1",
+    "manifest_sha256": "b4c6fe54c439921f953484dd938954801b5908b9ac3c3c46179924edb1ced073",
+    "manifest_bytes": 83371404,
+    "vertices": 272006,
+    "indices": 998031,
+    "encoded_bytes": 34477502,
+    "rgba_bytes": 164233224,
+    "budget": {
+      "manifest_bytes": 134217728,
+      "encoded_file_bytes": 67108864,
+      "encoded_total_bytes": 134217728,
+      "rgba_total_bytes": 268435456,
+      "decoder_workspace_bytes": 67108864
+    },
+    "textures": [
+      {
+        "asset": "verse:texture:original/white",
+        "file": "original-white.png",
+        "sha256": "78247bf90b4bfaa26d764f475805a099929ca39cd1ff8266fbf336391273ce0d",
+        "encoded_bytes": 68,
+        "rgba_bytes": 4,
+        "width": 1,
+        "height": 1
+      },
+      {
+        "asset": "verse:texture:original/effect-white",
+        "file": "verse-effect-white.png",
+        "sha256": "78247bf90b4bfaa26d764f475805a099929ca39cd1ff8266fbf336391273ce0d",
+        "encoded_bytes": 68,
+        "rgba_bytes": 4,
+        "width": 1,
+        "height": 1
+      },
+      {
+        "asset": "verse:texture:original/particle-fire",
+        "file": "particle-fire.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-arcane",
+        "file": "particle-arcane.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-smoke",
+        "file": "particle-smoke.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-web",
+        "file": "particle-web.png",
+        "sha256": "2f1d47e7b2c687e8ca1b9349ca370d625bec72095c58ea991687689e0235d65f",
+        "encoded_bytes": 822,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-shadow",
+        "file": "particle-shadow.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-spark",
+        "file": "particle-spark.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-ribbon",
+        "file": "particle-ribbon.png",
+        "sha256": "20fcc1be8fc0c1b9a3c41f9b0597bfb3eb332981c8fd4900f2e460bb86481bc8",
+        "encoded_bytes": 1566,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:original/particle-rune",
+        "file": "particle-rune.png",
+        "sha256": "9d99395c2c1337f73120a58373e60e7d0c6bebf6e708ffd5b318878c624e4e68",
+        "encoded_bytes": 1207,
+        "rgba_bytes": 16384,
+        "width": 64,
+        "height": 64
+      },
+      {
+        "asset": "verse:texture:material/adventurer/10",
+        "file": "universal-source-bc7aa863bd22ab0a995cd838cceb4d3a5186ee54ee2fb0108fad85d20c057e6e.png",
+        "sha256": "504e0b89e6cdcb6f38eb4011a510d098e10c58154590f7ece5d0e75615dee30c",
+        "encoded_bytes": 671786,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/10/normal",
+        "file": "universal-source-57fd0ad8c96a4d01b38769637e066cecaa285b456f6e48ce00863754a457affb.png",
+        "sha256": "ded36dbb6e678079e2b429c05d7843fcc9f3460fb73872aebb129004c7a5d24c",
+        "encoded_bytes": 1293367,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/11",
+        "file": "universal-source-d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025.png",
+        "sha256": "da2aed8a38fe919fde26929d4eff62dbd217bc97e40014f997eb7acfa5a5d06f",
+        "encoded_bytes": 36291,
+        "rgba_bytes": 262144,
+        "width": 256,
+        "height": 256
+      },
+      {
+        "asset": "verse:texture:material/adventurer/11/normal",
+        "file": "universal-source-9ed61f7726a54fe346a78b9e5a18905d8e2b88f86235d97f53cd207a26f3f8c7.png",
+        "sha256": "81c5ef055b19c311e48825951055257befa6e64f959cd63d9aa67a4f4912fc50",
+        "encoded_bytes": 15138,
+        "rgba_bytes": 262144,
+        "width": 256,
+        "height": 256
+      },
+      {
+        "asset": "verse:texture:material/adventurer/12",
+        "file": "universal-source-df680cbc1967a61e85998bfafb8f7bc0a36dd604bb3266486c4b06b1a184bb45.png",
+        "sha256": "f2c0d01daa3ebe00b02496f6da3394c09ca15b07d0e6e66e99659179abbf6f81",
+        "encoded_bytes": 565525,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/12/normal",
+        "file": "universal-source-9b25cf9200216eb754b79cf4c63b5380c419780788322f3c57cdd2b3e02679a6.png",
+        "sha256": "47001a2bd1962d62a21a63c460251d618417e8a51f3512b3464d88188dbed15a",
+        "encoded_bytes": 1276375,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/12/metallic-roughness",
+        "file": "universal-source-c70dabf48574cda55644d556beae1ee7cf1bdcf68a50d259d20f2f2358f27991.png",
+        "sha256": "6687925a31558892794a9eff06085024566b7a74c82d365a59428d072afa7b41",
+        "encoded_bytes": 788695,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/0",
+        "file": "universal-source-846ef2170b04ee584ad83bb8a1e86dab57a9a43b1193204505912c274d949925.png",
+        "sha256": "111d8914325aa89213e1967f4bf6e9f3740f1545e47817ad15fb2575c6e0cded",
+        "encoded_bytes": 918883,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/0/normal",
+        "file": "universal-source-dd64da2af3180f0c8f0b721cfc5f0d2720c351b97da8285c6cf49e7717c84147.png",
+        "sha256": "912e5aba2c616f6156604b0638926c3ade0179d1a102fe955cdd8b59d2ab1945",
+        "encoded_bytes": 1202273,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/0/metallic-roughness",
+        "file": "universal-source-aca03d2fba12508ef07d5968ca22267fb207ea26ae898b6b2def8a296bd44f1c.png",
+        "sha256": "367c961d718e943d2ed7ac3355b72c42a92b94817b689b6735c8d5a80a040b18",
+        "encoded_bytes": 1046674,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/2",
+        "file": "universal-source-b4dcc0f4139aab548d7c070c4655bd2080ef16caeaaabee6c4aeb693c524e802.png",
+        "sha256": "6bc16963bb37207c73e4c15324518938824ff0efa63ed9fd8853c62513c1e028",
+        "encoded_bytes": 535675,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/2/normal",
+        "file": "universal-source-10cd71e2453e577fdd43e912b6016a99baf64964f0593e524bdd304855e15e2a.png",
+        "sha256": "d8d0f05ca3132c34abc54323f2033a7dca70c998ab6fc43ac66f1c9614241cc7",
+        "encoded_bytes": 1197331,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/adventurer/2/metallic-roughness",
+        "file": "universal-source-086c2eb25bddfdb77d8e639ccbffb8df723ef4a1910d8e1b217e852f8668bfe5.png",
+        "sha256": "cab45e512dcd6a05a7f98b1a3992fccf2a3e5ae502bfd65d7aa9af146cd7f98b",
+        "encoded_bytes": 788888,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/10",
+        "file": "universal-source-f9f4f2fb3eeeefb0b6f0fdef38b0770fd6607640c1c680b8139dd76697e9f9b3.png",
+        "sha256": "731cad758ede589ebc65be0114d9820b6d08fe3bd5f19a3bff4669c1a79fac70",
+        "encoded_bytes": 751347,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/10/normal",
+        "file": "universal-source-172f230aae0d4366c3cfc0402b2e6d1811b11f8487344bff28605eeacac1558d.png",
+        "sha256": "508c65f33f7d460c27bad47b6c5fe5df9804949af39f1c0d58e811f75ee3a7d3",
+        "encoded_bytes": 1471242,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/12",
+        "file": "universal-source-d366843ee7d9e9f37ec87a0e1c98c7f2e45573c08eeb80a51a6d9344e68cf288.png",
+        "sha256": "7345e17cfe1ca4b2900f50ffce493b7334b70e4f73096024a2e95b13f84a6890",
+        "encoded_bytes": 536788,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/12/normal",
+        "file": "universal-source-cf922460b43ccd31e983e34db05514c9d451dd2f9cdd01a843978e797719f859.png",
+        "sha256": "fa13dc08e62a22aa38be6c2aaf5f359354d100fa15fac2f5d75ded3a5b7218ce",
+        "encoded_bytes": 1142359,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/12/metallic-roughness",
+        "file": "universal-source-d2beabf2bd0313e32c68dcdbb80dca371a6e994fabf96efa97128bf9f14fa57b.png",
+        "sha256": "bded5398e187c1780cd1215b74d797df0cd301a4fbd5b45653be0698adb3fec1",
+        "encoded_bytes": 814644,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/2",
+        "file": "universal-source-3b6ab973f9f3d6f8961226a0dbd99cf6d1b72df3795a8a5c1620a55754c161c2.png",
+        "sha256": "ed9e0a53ec0a32e881acc9c866cac8ed3a2a957221cd29a7de34189faf863274",
+        "encoded_bytes": 552497,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/2/normal",
+        "file": "universal-source-e1051d3d56df9cf061bc14c769c37253aecd595f8275f9d4c0d6e0e953c00e18.png",
+        "sha256": "15c6d2ff17ee234ec7485ba12435e971c5442fcd8a4a3b8e06ef915575f2e610",
+        "encoded_bytes": 1141579,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-female/2/metallic-roughness",
+        "file": "universal-source-da541fbd4b3bffe754fada5c29f8a0d8f836bf20ce7df8273607af4729a3a5ae.png",
+        "sha256": "c91c8b87260939fc46a63ac7787c12729ffc1405a211d44e402913394bb1d05d",
+        "encoded_bytes": 818014,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-peasant/0",
+        "file": "universal-source-a43635628d95571cd62fd4db0cc3a6ea32778b2bc02f242dda224c89d07f1ade.png",
+        "sha256": "af7f025d4dd7fb9780beea93687fa749e77ebb4c55ff2c173379dd4a32cc315e",
+        "encoded_bytes": 728456,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-peasant/0/normal",
+        "file": "universal-source-7598fa7b63e46fd4dac29708bf5a81e05eb9a67280f7b13c61e28a9110eeb679.png",
+        "sha256": "90afb89ab4f7999925cdc0af54585a69346d6d46ce20bbc9f7757bd4011adf35",
+        "encoded_bytes": 1265593,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/cultist-peasant/0/metallic-roughness",
+        "file": "universal-source-e1932f5f91104afca89c501416a5fec09069b8552734237fc09045fabc4ca9b4.png",
+        "sha256": "3879d1b4224d278d14cfb588477fefa21e454d66db18632ef7cfb4c123d08558",
+        "encoded_bytes": 910365,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/claude/0",
+        "file": "universal-source-609a1dc35ef8e3b1c632843835b8b48afb37a2e0925bb3631ba67292b970181d.png",
+        "sha256": "bda58b31932621c718dbb6ec6e991d7691b8738bfa2a439321c39c641683c48c",
+        "encoded_bytes": 448182,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/claude/0/normal",
+        "file": "universal-source-cfcd39f47d1e86830e2969b7fa5535876ad59a88c1b720c07aade81d6634ac11.png",
+        "sha256": "f38d78464340c3e5a11b6e28be1cf20d4e8558a61d75e31534a3c5cda542a522",
+        "encoded_bytes": 1295515,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/claude/0/metallic-roughness",
+        "file": "universal-source-34a4de1134f8833b5fd4a96044876e7fa78b63c02e35d90fd00f37b90a8d108f.png",
+        "sha256": "6fef0b734168af840b7a85744dabc005bde757dc7f561c04d38ae5ccc564b546",
+        "encoded_bytes": 885705,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/claude/0/emissive",
+        "file": "universal-source-38fa700321bb27f7578197f37f1bb5d7ab2029b47722670b042b6549f7fd51ba.png",
+        "sha256": "3082df73e77155fe90319d7b161c50d8597628231e2854936ff679da87372f8c",
+        "encoded_bytes": 8752,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/1",
+        "file": "universal-source-50422bbda9661effc259caf8b386224cac4b5ca811d2c5b3b8b25ae8efc714db.png",
+        "sha256": "c46fac44bebe74a61f032e7254efdbdbb64f1becef6103edde19fb5cf607fdfc",
+        "encoded_bytes": 530107,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/1/normal",
+        "file": "universal-source-ab7315c864c9a9e6d716c940a599928506e1569d3b0c9085f8f1a64ec520d790.png",
+        "sha256": "a00e15035a6c93be00f77e81e641991569ccb96b6ad885678d08a5274cfb8b35",
+        "encoded_bytes": 1237428,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/1/metallic-roughness",
+        "file": "universal-source-7407bccfc39ca74ecd68a61217395959bf56ac2063e6c93b384b11f07f5687c5.png",
+        "sha256": "fef525eae578dd550c41370a1840d2d82cc292959c06723283d7c559eeae5044",
+        "encoded_bytes": 652877,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/0",
+        "file": "universal-source-075fbc9ec2fabc15732bd4025b6f63a0b25762df38440d06bf30437565d39bab.png",
+        "sha256": "d1ff1415db250659520b20b41346cdbbf549206485c75c3756cc068decdba0d3",
+        "encoded_bytes": 854009,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/0/normal",
+        "file": "universal-source-3340c4cc47ff06d5e94a2dbe2a2a12d914d0ef055fcf66f63d876666bd160e42.png",
+        "sha256": "133fd2a1ad61afe2d0978414f5df1d4dd3f2d9f8dbc5c5c0ff4170ab439f8e93",
+        "encoded_bytes": 1138629,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/0/metallic-roughness",
+        "file": "universal-source-7bf417e82baf313793c5791bf48cdc8e573f1f7136197785bf0eb235cb0f8153.png",
+        "sha256": "df4b834528f96616aafd4992b38b135110376bf24427ed4969a010576a52db2d",
+        "encoded_bytes": 695298,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Book_Stack_1/0",
+        "file": "universal-source-75225a4ccfd8cc358c871de7a7a3cab7118ef197419a88464e807b81716215c8.png",
+        "sha256": "20438b32577b787eac374fab72dcff24fb29252dbe7565cdae5857d522315aaa",
+        "encoded_bytes": 836205,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Book_Stack_1/0/normal",
+        "file": "universal-source-c4b28a8ba8efe3108cd11356ecab67e8bf75a10cebf29c78ee7724552c305a3e.png",
+        "sha256": "035ec4aa09ec866974c6b5599e5577e21de6cda6435e9fda1779a7ac18a02a10",
+        "encoded_bytes": 1581670,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Book_Stack_1/0/metallic-roughness",
+        "file": "universal-source-2d83d8df79aca2c8f630d389b43f09113afee98e746dfd42ddc3ce3302a136a2.png",
+        "sha256": "91c3104f914d34fb8881c69a7b51866e69c8d334a3b40c663597ac634385c2a2",
+        "encoded_bytes": 1010583,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Scroll_1/0",
+        "file": "universal-source-4d4069a8d588dab3dcd36f9ea309fc617815b766ce225b78bcd487751585e312.png",
+        "sha256": "4ba6610a4dc0c818110e085d70c6a633b9420e69f058aaf4902f6f9075d14b50",
+        "encoded_bytes": 645824,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/2",
+        "file": "universal-source-c4d0e14506e05cc56e7ca62ebeeb2d45de055296a55e5a8e9c1330ff8ff1833a.png",
+        "sha256": "beddb28c79bd49814ce45604ac4a2daa60d08eaf9fe0783281c0394a73552c59",
+        "encoded_bytes": 596187,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/2/normal",
+        "file": "universal-source-e91a490f94bc00707fb5be08045e316b4a18962f07a3b6e3d9d7c2058cfc51c0.png",
+        "sha256": "b5c083b055ed730288b21319dfeb4d5f0ea7b4c72909f3d796cc9696385591e9",
+        "encoded_bytes": 1366541,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      },
+      {
+        "asset": "verse:texture:material/prop/Banner_2/2/metallic-roughness",
+        "file": "universal-source-9bdaa0d1be8c393b07d6185165d73c7cddc058d5c123ad49449945f45a7e0c0d.png",
+        "sha256": "3f0b6c61a64b6521fc8a98add20821e8e2b0ac2464fa1ca9273e8973da422164",
+        "encoded_bytes": 212644,
+        "rgba_bytes": 4194304,
+        "width": 1024,
+        "height": 1024
+      }
+    ]
+  }
+}

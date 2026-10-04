@@ -607,7 +607,6 @@ impl SpellWorld {
             self.end_cast(cast)?;
         }
         wall_of_stone::after_tick(self, time)?;
-        if self.props.iter().all(|p| p.removed || p.spec.secured) && self.telekinesis.is_empty() {
         if self.props.iter().all(|p| p.removed || p.spec.secured)
             && self.telekinesis.is_empty()
             && self.tentacles.is_empty()
