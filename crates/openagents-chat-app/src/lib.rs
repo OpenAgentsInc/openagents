@@ -43,4 +43,6 @@ pub mod coder_run;
 
 pub mod retained;
 
+pub mod review_comments;
+
 pub mod visual;

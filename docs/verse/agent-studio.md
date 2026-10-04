@@ -328,7 +328,7 @@ These Zeron pieces are not ported yet. Paths are in the Zeron checkout.
 | `crates/ui/src/shell/spaces.rs`, `crates/proto/src/entities.rs` (`ChatIndicator`) | Seat roster ordered by attention: awaiting input, errored, working, completed and unseen, idle | Drives the roster and the world's lamps from one value. |
 | `crates/proto/src/view.rs` (`effective_indicator`, `SESSION_STALE_MS` of 45 seconds) | A seat with no event for a bounded time shows as stale, never working | Prevents a crashed engine from looking busy forever. The bound is ours to measure. |
 | `crates/ui/src/composer.rs` (`QuestionFlow`, `Wizard`) | Decision panel: paged questions, number keys select, single-select advances | Over the host's `interaction.rs` questions. |
-| `crates/ui/src/comments.rs`, `comment_ui.rs` | Line comments on a review, sent with **Request changes** | The ported diff pane is read-only. |
+| `crates/ui/src/comments.rs`, `comment_ui.rs` | Line comments on a review, sent with **Request changes** | The model is in [`review_comments.rs`](../../crates/openagents-chat-app/src/review_comments.rs) (#10470); no platform draws it yet. |
 | `crates/ui/src/todo_panel.rs` | A seat's plan, and a Task Wall card's detail | |
 | `crates/ui/src/shell.rs` (`RightSurface::Subagent`, `SideChat`) | Seat panel tabs, including an engine's own subagents | |
 | `crates/ui/src/change_requests.rs` | Landing and pull request state after **Merge** | Display only. |
