@@ -1,4 +1,5 @@
 // Native interactive chamber; the action bar unlocks at the cinematic handoff.
+mod audio;
 mod profile;
 mod reload;
 use glam::Vec3;
@@ -22,6 +23,8 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 struct App {
+    audio: Option<audio::Audio>,
+    audio_error: String,
     window: Option<Arc<Window>>,
     presenter: Option<WindowPresenter>,
     renderer: Option<Renderer>,
@@ -363,6 +366,12 @@ impl App {
             vec![]
         };
         let animation_markers = renderer.take_marker_events();
+        if let Some(audio) = &mut self.audio {
+            if let Err(error) = audio.update(&self.game, view, &animation_markers) {
+                self.audio_error = error;
+            }
+        }
+
         if let Some(profile) = &mut self.profile {
             let renderer = self.renderer.as_ref().unwrap();
             let timing = renderer.last_timings;
@@ -383,6 +392,8 @@ impl App {
                 "projection_ms":projection_ms,
                 "render":timing,
                 "animation_markers":animation_markers,
+                "audio":self.audio.as_ref().map(|audio| audio.stats()),
+                "audio_error":self.audio_error,
                 "frame_work_ms":self.world_ms + projection_ms + timing.total_ms,
                 "navigation_plans":self.game.navigation_plans,
                 "physics_steps":self.game.physics_steps,
@@ -427,7 +438,16 @@ impl App {
     }
 }
 impl ApplicationHandler for App {
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        self.audio = None;
+    }
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.game.scene.collision_profile.is_some() && self.audio.is_none() {
+            match audio::Audio::open(&self.game) {
+                Ok(audio) => self.audio = Some(audio),
+                Err(error) => self.audio_error = error,
+            }
+        }
         if self.window.is_some() {
             return;
         }
@@ -962,6 +982,8 @@ pub fn run(original_default: bool) -> Result<(), String> {
         &chamber::static_instances(&pack, position_from_wow(game.scene.origin_wow)),
     )?);
     let mut app = App {
+        audio: None,
+        audio_error: String::new(),
         window: None,
         presenter: None,
         renderer: None,
