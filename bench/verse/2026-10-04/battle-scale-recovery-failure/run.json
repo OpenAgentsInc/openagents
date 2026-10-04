@@ -1,0 +1,33 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "reason": "Host stopped on character spawn recovery after 2743 ticks and 55371 requests. Moving initial NPC positions did not fix the runtime failure.",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "compiled_revision": "e87066b8c5",
+    "fixture_revision": "9ec780070811da29bc2d878453a8baaf12249a38",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "process_exits": {
+    "clients": {
+      "primary": 1,
+      "load": 1
+    },
+    "host": 1,
+    "proxy": 0
+  },
+  "limits": [
+    "The native presentation capacity failure is resolved for this run.",
+    "No completed native or load profile is available because the host failed.",
+    "Zero dropped server seconds does not establish frame time or CPU acceptance."
+  ]
+}
