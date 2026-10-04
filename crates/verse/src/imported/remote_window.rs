@@ -114,6 +114,8 @@ struct App {
     demo_slot: usize,
     pending: std::collections::VecDeque<Option<Ability>>,
     accepted_casts: std::collections::BTreeMap<String, u64>,
+    respawn_attempts: Vec<verse_engine::core::LifeId>,
+    owned_life_changes: u64,
     damage_events: u64,
     demo_trace: Vec<serde_json::Value>,
     dialogue_events: u64,
@@ -160,6 +162,8 @@ impl App {
             demo_slot: 0,
             pending: std::collections::VecDeque::new(),
             accepted_casts: Default::default(),
+            respawn_attempts: vec![],
+            owned_life_changes: 0,
             damage_events: 0,
             demo_trace: vec![],
             dialogue_events: 0,
@@ -250,6 +254,9 @@ impl App {
                         .and_then(|s| s.hud.as_ref())
                         .map(|h| h.life);
                     if life != self.owned_life {
+                        if self.owned_life.is_some() && life.is_some() {
+                            self.owned_life_changes += 1;
+                        }
                         self.owned_life = life;
                         if let Some(pose) = self.view.replica().latest().and_then(|s| {
                             s.presentation
@@ -472,7 +479,7 @@ impl App {
         Ok(())
     }
     fn demo(&mut self) {
-        if !self.record.as_ref().is_some_and(|o| o.controller) || !self.controlled() {
+        if !self.record.as_ref().is_some_and(|o| o.controller) {
             return;
         }
         let Some(state) = self.view.replica().latest() else {
@@ -481,6 +488,26 @@ impl App {
         let Some(hud) = state.hud.as_ref() else {
             return;
         };
+        if respawn_ready(
+            self.record.as_ref().is_some_and(|o| o.respawn),
+            hud.resources.hp,
+            hud.life,
+            &self.respawn_attempts,
+            self.pending.is_empty() && self.input.capacity() == worker::INPUT_CAPACITY,
+        ) {
+            let life = hud.life;
+            let before = self.pending.len();
+            self.send(Input::Respawn);
+            if self.pending.len() > before {
+                self.respawn_attempts.push(life);
+            }
+            return;
+        }
+        if !self.controlled() {
+            return;
+        }
+        let state = self.view.replica().latest().unwrap();
+        let hud = state.hud.as_ref().unwrap();
         if state.presentation.time < self.next_demo
             || hud.casting.is_some()
             || self.input.capacity() != worker::INPUT_CAPACITY
@@ -543,7 +570,7 @@ impl App {
             let dropped = recorder.dropped;
             let stats = recorder.finish()?;
             let options = self.record.as_ref().unwrap();
-            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":self.min_hp,"programmatic_controller":options.controller,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_state":self.view.replica().latest()});
+            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":self.min_hp,"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"respawn_attempts":self.respawn_attempts,"owned_life_changes":self.owned_life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_state":self.view.replica().latest()});
             std::fs::write(
                 options.output.with_extension("json"),
                 serde_json::to_vec_pretty(&proof)
@@ -754,9 +781,37 @@ fn key_ability(key: KeyCode) -> Option<Ability> {
     };
     Some(Ability::ALL[index])
 }
+fn respawn_ready(
+    enabled: bool,
+    hp: i32,
+    life: verse_engine::core::LifeId,
+    attempted: &[verse_engine::core::LifeId],
+    idle: bool,
+) -> bool {
+    enabled && hp == 0 && idle && attempted.len() < 128 && !attempted.contains(&life)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn automated_respawn_requires_dead_owned_life_and_never_retries_it() {
+        let life = verse_engine::core::LifeId {
+            instance: 160,
+            actor: 1,
+            generation: 1,
+        };
+        assert!(respawn_ready(true, 0, life, &[], true));
+        assert!(!respawn_ready(false, 0, life, &[], true));
+        assert!(!respawn_ready(true, 1, life, &[], true));
+        assert!(!respawn_ready(true, 0, life, &[], false));
+        assert!(!respawn_ready(true, 0, life, &[life], true));
+        let next = verse_engine::core::LifeId {
+            generation: 2,
+            ..life
+        };
+        assert!(respawn_ready(true, 0, next, &[life], true));
+        assert!(!respawn_ready(true, 0, next, &vec![life; 128], true));
+    }
     #[test]
     fn remote_casts_use_horizontal_directions_instead_of_world_aim_points() {
         let aim = horizontal_aim(
@@ -789,6 +844,14 @@ mod tests {
         let (input, mut inputs, updates, output) = worker::channels();
         let mut app = App::new(pack, atlas, scene, dir.path().into(), view, input, output);
         assert!(!app.controlled());
+        app.record = Some(super::super::remote_record::Options {
+            output: dir.path().join("capture.mp4"),
+            seconds: 30,
+            controller: true,
+            respawn: true,
+        });
+        app.demo();
+        assert!(app.respawn_attempts.is_empty());
         app.cast(Ability::Fireball);
         assert!(inputs.try_recv().is_err());
         for _ in 0..worker::INPUT_CAPACITY {

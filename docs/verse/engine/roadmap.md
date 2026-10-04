@@ -272,6 +272,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10522](https://github.com/OpenAgentsInc/openagents/issues/10522) retains bounded authoritative NPC corpse poses after combat records retire, with death animation, zero health, and hidden nameplates. Wire version nine and replica admission fence stale generations, retired corpse reappearance, and ended-life resurrection. Service tests cover combat retirement, malformed corpses, expiry/respawn, and remote frame retention; native consumer checks compile the shared frame path. A new live corpse video and full multiplayer acceptance remain.
 
+[#10526](https://github.com/OpenAgentsInc/openagents/issues/10526) adds opt-in programmatic remote respawn through the authenticated worker. Each dead owned life receives at most one attempt, with queue fencing and bounded history; capture proof separates attempted lives from admitted life changes. Native tests cover disabled/live/busy/retired-life gates and spectator omission. Live death/respawn and two-player-plus-spectator acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

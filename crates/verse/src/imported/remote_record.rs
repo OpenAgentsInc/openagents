@@ -15,6 +15,8 @@ pub struct Options {
     pub seconds: u32,
     #[serde(default)]
     pub controller: bool,
+    #[serde(default)]
+    pub respawn: bool,
 }
 impl Options {
     pub fn validate(&self) -> Result<(), String> {
@@ -165,6 +167,7 @@ mod tests {
             output: "capture.mp4".into(),
             seconds: 30,
             controller: true,
+            respawn: false,
         };
         options.validate().unwrap();
         options.seconds = 0;

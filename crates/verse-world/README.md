@@ -229,6 +229,10 @@ records sampled/duplicate/dropped counts, native dimensions, acknowledged cast
 commands, committed damage/dialogue counts, and final admitted state. It does not
 prove every acknowledged spell caused damage or establish gameplay frame budgets.
 Without `record`, the window remains in human-control mode.
+Set `record.respawn` to `true` with `record.controller` to attempt authenticated
+respawn once per dead owned life. Spectators issue no commands. The capture proof
+records attempted lives and admitted owned-life changes; neither counter alone
+proves a successful respawn. Uncertain attempts are not replayed.
 
 Host JSON requires `listen` (socket address), nonzero `instance`, `scene`, `pack`,
 `certificate_der`, `private_key_der`, and `enrollments`. Paths resolve from the
