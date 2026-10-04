@@ -226,3 +226,11 @@ mod tests {
         a.admit(Controller(7), &movement(&a), 10).unwrap();
     }
 }
+
+pub mod combat;
+pub mod controls;
+pub mod events;
+pub mod play;
+pub mod room;
+pub mod rules;
+pub mod utilities;

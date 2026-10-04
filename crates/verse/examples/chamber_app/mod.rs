@@ -247,11 +247,9 @@ impl ApplicationHandler for App {
                             match key {
                                 KeyCode::Escape => event_loop.exit(),
                                 KeyCode::F1 | KeyCode::F2 => {
-                                    self.game =
-                                        Game::combat(self.game.scene.clone(), key == KeyCode::F2)
-                                            .expect("The loaded chamber admits combat");
-                                    self.game.time = self.game.scene.cut_at
-                                        - if key == KeyCode::F2 { 3.0 } else { 0.0 };
+                                    self.game
+                                        .restart_combat(key == KeyCode::F2)
+                                        .expect("The loaded chamber admits combat");
                                     self.schedule = verse_engine::core::FixedSchedule::new(30, 3)
                                         .expect("The chamber uses a valid fixed schedule");
                                     self.controls.clear();
@@ -754,7 +752,7 @@ fn demo(
             }
             if encounter.ended.is_some_and(|at| app.game.time - at >= 5.0) {
                 save_png(&output.with_extension("png"), &pixels)?;
-                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
+                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":"verse-chamber-owned-v1","authority_tick":app.game.authority_tick,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
                 std::fs::write(
                     output.with_extension("json"),
                     serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,
@@ -778,7 +776,7 @@ fn demo(
     }
     let snapshot = app.game.snapshot();
     eprintln!(
-        "Retained combat: {} spell casts, {} projectiles, {} impacts, {} mana",
+        "Owned combat: {} spell casts, {} projectiles, {} impacts, {} mana",
         snapshot.counters.casts,
         snapshot.counters.projectiles,
         snapshot.counters.hits,

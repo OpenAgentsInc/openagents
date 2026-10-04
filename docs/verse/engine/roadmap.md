@@ -29,16 +29,30 @@ for Claude. Restricted Bestiary source files remain outside the public repo.
 generation-safe entity storage, respawn life IDs, and a bounded fixed schedule.
 Native player and controller modes now share 30 Hz stepping with a three-step
 catch-up limit and recorded dropped time. Chamber arrows carry target life IDs
-and cannot damage a later respawn. This starts VE-0; authority extraction,
-generation fencing for other effects, and physics substep integration remain.
+and cannot damage a later respawn. This starts VE-0; #10437 extends authority
+and lifetime fencing, while physics substep integration remains.
 
 [#10436](https://github.com/OpenAgentsInc/openagents/issues/10436) introduces
 the headless `verse-world` command boundary. Local human and controller ability
 requests share ownership, life, epoch, sequence, tick-window, and finite-input
-admission. Explicit control handoffs fence queued commands. Movement still uses
-the local solver directly, and combat resolution still uses retained Ruins rules;
-owned rules extraction, service authentication, persistence, and replication
-remain required before VE-4/VE-5 acceptance.
+admission. Explicit control handoffs fence queued commands. #10437 extends this
+boundary to movement and owned rules. Service authentication, durable rewards,
+and replication remain required before VE-5 acceptance.
+
+[#10437](https://github.com/OpenAgentsInc/openagents/issues/10437) moves the
+project-owned chamber encounter, controller, collision/navigation admission,
+and utility spells into `verse-world`. Its independently implemented combat
+store replaces retained Ruins health, mana, cooldown, projectile, and burn
+resolution. The headless dependency tree has no retained vendor, GPU, platform,
+or transport code; renderer compatibility modules now re-export owned authority.
+Pending arrows, player casts, hostile casts, and statuses are fenced by life or
+nonreused combat IDs. Versioned checkpoints retain pending combat and controller
+state, and replay tests cover defeat and subsequent respawns. Dialogue, camera
+handoff, actual damage, deaths, and respawns have bounded, serialized event IDs.
+The owned chamber profile keeps ten abilities, 300,000 boss HP, and 60-second
+cultist respawns. This is local authority and checkpoint serialization; it does
+not implement transactional saves, multiplayer, rewards, or the VE-2 capsule/
+mesh controller. The broader `verse` app still includes the separate Ruins zone.
 
 [#10426](https://github.com/OpenAgentsInc/openagents/issues/10426) implements the
 first asset-free procedural scene. The `verse_play` native example generates an
@@ -74,9 +88,9 @@ position. Full projectile CCD and explosion-radius occlusion remain separate
 work; this slice does not replace the retained projectile solver.
 
 This delivers the visual procedural milestone of VE-1/VE-3, not the complete
-VE-0–VE-6 roadmap. Portable authority extraction, original
-rules replacement, service persistence, and multiplayer remain implementation
-work. #10406 and #10407 stay open for their full acceptance.
+VE-0–VE-6 roadmap. #10437 supplies owned headless chamber rules; service
+persistence, multiplayer, full physics, tools, and platform acceptance remain
+implementation work. #10406 and #10407 stay open for their full acceptance.
 
 ## Reuse inventory
 

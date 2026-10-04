@@ -14738,7 +14738,10 @@ dependencies = [
 name = "verse-world"
 version = "0.1.0"
 dependencies = [
+ "glam",
+ "physics",
  "serde",
+ "serde_json",
  "verse-engine",
 ]
 

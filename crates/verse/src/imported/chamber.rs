@@ -200,7 +200,7 @@ pub fn lighting(origin: Vec3) -> super::lighting::Lighting {
 /// Bind transient illumination to the same combat events that draw the effects.
 pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
     use super::lighting::{Light, MAX_LIGHTS};
-    use verse_ruins::chamber_spells::Utility;
+    use verse_world::utilities::Utility;
     let mut lighting = lighting(position_from_wow(game.scene.origin_wow));
     lighting.time = game.time;
     let mut effects = Vec::new();
@@ -214,8 +214,8 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
     }
     for p in game.snapshot().projectiles {
         let (color, intensity, range) = match p.kind {
-            verse_ruins::Spell::Fireball => (Vec3::new(1.0, 0.23, 0.025), 260.0, 13.0),
-            verse_ruins::Spell::MagicMissile => (Vec3::new(0.2, 0.3, 1.0), 42.0, 6.0),
+            verse_world::rules::Spell::Fireball => (Vec3::new(1.0, 0.23, 0.025), 260.0, 13.0),
+            verse_world::rules::Spell::MagicMissile => (Vec3::new(0.2, 0.3, 1.0), 42.0, 6.0),
             _ => (Vec3::new(1.0, 0.3, 0.04), 95.0, 8.0),
         };
         effects.push(Light {
@@ -579,8 +579,8 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
 pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
     let mut out = Vec::new();
     for p in game.snapshot().projectiles {
-        let force = p.kind == verse_ruins::Spell::MagicMissile;
-        let scale = if p.kind == verse_ruins::Spell::Fireball {
+        let force = p.kind == verse_world::rules::Spell::MagicMissile;
+        let scale = if p.kind == verse_world::rules::Spell::Fireball {
             0.32
         } else {
             0.15
@@ -606,7 +606,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             });
         }
     }
-    use verse_ruins::chamber_spells::Utility;
+    use verse_world::utilities::Utility;
     for area in game.controls.areas.iter().filter(|a| a.until > game.time) {
         let left = area.until - game.time;
         let (model, scale, alpha) = match area.kind {
@@ -733,7 +733,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
         });
     }
     for p in &game.snapshot().projectiles {
-        if p.kind == verse_ruins::Spell::MagicMissile {
+        if p.kind == verse_world::rules::Spell::MagicMissile {
             continue;
         }
         let direction = Vec3::from(p.vel).normalize_or_zero();

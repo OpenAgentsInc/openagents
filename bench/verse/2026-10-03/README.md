@@ -102,3 +102,22 @@ restart the controller-driven battle. Tab selects an enemy; the action bar and
 number keys activate the ten abilities. Claude has 300,000 hit points, and
 cultists respawn 60 seconds after death. Issue #10434 restores combat on normal
 launch; explicit recording modes retain their existing fixtures.
+
+## Owned world combat
+
+Issue #10437 replaces the chamber's retained combat dependency with headless
+`verse-world` authority. `owned-world-combat.mp4` records 51.933 seconds of
+native 1280 × 720 frames at 30 FPS. The controller uses all ten abilities,
+defeats nine cultists, absorbs 54 damage, and loses at 46.900 seconds. Claude
+starts at 300,000 HP and survives at 299,871 HP. The JSON receipt records 1,558
+authority ticks and 54 committed events. `owned-world-battle.png` is the
+33-second frame; `owned-world-combat.png` is the final native frame.
+
+The owned profile restores one mana per second, uses a visible 20-foot fireball
+area, and sweeps projectiles against static cover. Checkpoint replay preserves
+pending combat, control fences, defeat, events, and later respawns. Checks:
+44 `verse-world` tests, 12 focused imported-desktop renderer tests, formatting,
+both native example builds, dependency-tree inspection, and this native capture.
+The local Bestiary license boundary remains unchanged. This proves owned local
+combat; transactional saves, multiplayer, capsule/mesh movement, and tools remain
+on the roadmap.
