@@ -20,10 +20,23 @@ pub fn remote_scene(
     playground: bool,
     focus: Vec3,
 ) -> Result<Option<RemoteScene>, String> {
+    remote_scene_predicted(pack, view, alpha, camera, origin, playground, focus, None)
+}
+#[cfg(feature = "remote-chamber")]
+pub fn remote_scene_predicted(
+    pack: &Pack,
+    view: &verse_world::service::view::View,
+    alpha: f32,
+    camera: verse_world::service::view::Camera,
+    origin: Vec3,
+    playground: bool,
+    focus: Vec3,
+    predicted: Option<verse_world::prediction::Pose>,
+) -> Result<Option<RemoteScene>, String> {
     if !origin.is_finite() || !focus.is_finite() {
         return Err("Invalid remote scene lighting position".into());
     }
-    let Some(sample) = view.scene_sample(alpha, camera)? else {
+    let Some(sample) = view.scene_sample_predicted(alpha, camera, predicted)? else {
         return Ok(None);
     };
     render_remote_sample(pack, sample, origin, playground, focus).map(Some)

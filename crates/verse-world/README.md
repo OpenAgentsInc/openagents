@@ -274,7 +274,7 @@ Quest catalogs can include bounded authored offer, objective-reminder, and turn-
 dialogue. Owned quest progress carries that text; the native giver panel selects
 the offer, reminder, or turn-in text from enrollment and objective state.
 
-Wire version 20 retains an owned movement baseline with the exact capsule state,
+Wire version 21 retains an owned movement baseline with the exact capsule state,
 yaw, life, control epoch, and applied sequence. Snapshots withhold it while
 movement or jump input is pending, during cinematic/controller control, and
 after death; spectators receive none. Client prediction and reconciliation
@@ -285,8 +285,15 @@ allows multiple corrections within one server tick. Tracked worker inputs bind
 their local token to the exact transmitted command and reject stale control.
 Owned snapshots also carry bounded collision source geometry with exact collider
 lives, layers, usage, and poses. Rebuilding preserves solid boxes, triangle
-meshes, and capsules; spectators omit this prediction data. Native prediction
-and render integration remain required. Movement inputs remain held for up to
+meshes, and capsules; spectators omit this prediction data. The native remote
+client predicts owned movement and jump inputs before command
+binding, advances the shared capsule at 120 Hz, and follows that pose with its
+camera and locomotion. Accepted snapshots retire acknowledged inputs and replay
+outstanding input; rejection and lifecycle changes retire estimates. Compiled
+collision meshes survive pose-only updates. Current walking scale and jump
+routing include primary difficult terrain, Telekinesis steering, and Levitate.
+Delayed-network visual, correction, and performance acceptance remains required.
+Movement inputs remain held for up to
 60 physics substeps without refresh, rounded to an authority interval. Zero
 input, control handoff, death, and respawn stop held movement. Baselines include
 the physics-step watermark and held-input expiry. Version 17 checkpoints migrate

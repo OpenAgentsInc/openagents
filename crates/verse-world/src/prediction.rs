@@ -1,4 +1,7 @@
 //! Bounded capsule replay over authoritative applied movement baselines.
+mod local;
+pub use local::{Local, Pose};
+
 use crate::movement::{self, Baseline};
 use glam::DVec3;
 use physics::{
@@ -221,6 +224,7 @@ mod tests {
             applied_sequence: 0,
             physics_step: 0,
             held: Default::default(),
+            policy: Default::default(),
             character: Character::new(DVec3::ZERO),
             yaw: 0.,
         }

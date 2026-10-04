@@ -43,6 +43,35 @@ impl Held {
     }
 }
 
+/// Current authoritative walking scale and jump routing for local estimates.
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Policy {
+    pub walking_scale: f32,
+    pub jump_allowed: bool,
+}
+impl Default for Policy {
+    fn default() -> Self {
+        Self {
+            walking_scale: 1.,
+            jump_allowed: true,
+        }
+    }
+}
+impl Policy {
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.walking_scale.is_finite() || !(0. ..=1.).contains(&self.walking_scale) {
+            return Err("Invalid prediction movement policy".into());
+        }
+        Ok(())
+    }
+    pub fn velocity(&self, axes: [f32; 2], yaw: f32) -> Result<DVec3, String> {
+        self.validate()?;
+        let walk = walk(axes, yaw)?;
+        Ok((walk.direction * walk.speed * self.walking_scale).as_dvec3())
+    }
+}
+
 /// Authoritative movement state after all admitted movement and jump input is consumed.
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -52,6 +81,7 @@ pub struct Baseline {
     pub applied_sequence: u64,
     pub physics_step: u64,
     pub held: Held,
+    pub policy: Policy,
     pub character: Character,
     pub yaw: f32,
 }
@@ -59,6 +89,7 @@ impl Baseline {
     pub fn validate(&self) -> Result<(), String> {
         self.character.validate()?;
         self.held.validate(self.physics_step)?;
+        self.policy.validate()?;
         if self.life.actor == 0 || !self.yaw.is_finite() {
             return Err("Invalid authoritative movement baseline".into());
         }

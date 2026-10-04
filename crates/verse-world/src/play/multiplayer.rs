@@ -149,12 +149,35 @@ impl Game {
         } else {
             self.additional_players[&life.actor].held_move
         };
+        let primary = life.actor == self.player_actor();
+        let steering = primary
+            && self
+                .spells
+                .telekinesis
+                .get(&life.actor)
+                .is_some_and(|hand| hand.steering());
+        let levitated = primary && self.spells.levitations.holds(life.actor);
+        let policy = crate::movement::Policy {
+            walking_scale: if steering || levitated {
+                0.
+            } else if primary {
+                crate::spells::black_tentacles::speed_scale(
+                    &self.spells,
+                    life.actor,
+                    character.feet,
+                ) as f32
+            } else {
+                1.
+            },
+            jump_allowed: !(steering || levitated),
+        };
         let baseline = crate::movement::Baseline {
             life,
             epoch: admission.epoch(),
             applied_sequence: admission.accepted_sequence(),
             physics_step: self.physics_steps,
             held,
+            policy,
             character,
             yaw,
         };

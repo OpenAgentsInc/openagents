@@ -82,6 +82,9 @@ pub struct View {
     giver_generations: std::collections::BTreeMap<u64, u64>,
 }
 impl View {
+    pub fn instance(&self) -> u64 {
+        self.instance
+    }
     pub fn new(instance: u64, displacement: f32, after: u64) -> Result<Self, String> {
         Ok(Self {
             instance,
@@ -510,10 +513,87 @@ impl View {
         Ok(self.scene_sample(alpha, camera)?.map(|sample| sample.frame))
     }
     pub fn scene_sample(&self, alpha: f32, camera: Camera) -> Result<Option<SceneSample>, String> {
+        self.scene_sample_predicted(alpha, camera, None)
+    }
+    /// Overrides only the current owned pose; resources and remote actors stay authoritative.
+    pub fn scene_sample_predicted(
+        &self,
+        alpha: f32,
+        camera: Camera,
+        predicted: Option<crate::prediction::Pose>,
+    ) -> Result<Option<SceneSample>, String> {
         camera.validate()?;
-        let Some(presentation) = self.replica.sample(alpha)? else {
+        let Some(mut presentation) = self.replica.sample(alpha)? else {
             return Ok(None);
         };
+        if let Some(predicted) = predicted {
+            let control = self
+                .replica
+                .control()
+                .ok_or("Predicted pose has no owned control")?;
+            if predicted.life != control.life.into()
+                || predicted.epoch != control.epoch
+                || !predicted.position.is_finite()
+                || predicted.position.abs().max_element() > 1_000_000.
+                || !predicted.yaw.is_finite()
+                || predicted
+                    .axes
+                    .iter()
+                    .any(|a| !a.is_finite() || a.abs() > 1.)
+                || !predicted.motion_time.is_finite()
+                || predicted.motion_time < 0.
+                || self
+                    .replica
+                    .latest()
+                    .and_then(|s| s.hud.as_ref())
+                    .is_none_or(|h| h.resources.hp <= 0)
+            {
+                return Err("Predicted pose does not match live owned control".into());
+            }
+            let actor = presentation
+                .actors
+                .iter_mut()
+                .find(|a| a.life == control.life)
+                .ok_or("Predicted presentation actor is missing")?;
+            let delta = predicted.position - actor.actor.position;
+            actor.actor.position = predicted.position;
+            actor.actor.yaw = predicted.yaw;
+            use verse_engine::motion::{Selection, State};
+            if predicted.airborne && !actor.animation.casting() {
+                actor.animation = State::Airborne.into();
+                actor.animation_time = 0.2;
+            } else if predicted.moving && predicted.axes.iter().any(|a| a.abs() > 0.00001) {
+                actor.animation = if predicted.axes[0].abs() > predicted.axes[1].abs() {
+                    if predicted.axes[0] < 0. {
+                        State::StrafeLeft
+                    } else {
+                        State::StrafeRight
+                    }
+                } else if predicted.axes[1] < 0. {
+                    State::Backpedal
+                } else {
+                    State::Run
+                }
+                .into();
+                actor.animation_time = predicted.motion_time;
+            } else if predicted.axes == [0.; 2]
+                && matches!(
+                    actor.animation,
+                    Selection::Named(
+                        State::Run | State::Backpedal | State::StrafeLeft | State::StrafeRight
+                    )
+                )
+            {
+                actor.animation = State::CombatReady.into();
+                actor.animation_time = presentation.time;
+            }
+            for effect in &mut presentation.effects {
+                if effect.life == control.life {
+                    effect.position = predicted.position.to_array();
+                    effect.light = effect.light.map(|p| (Vec3::from(p) + delta).to_array());
+                }
+            }
+        }
         let mut combat = self
             .replica
             .latest()
@@ -522,6 +602,7 @@ impl View {
         combat.time = presentation.time;
         for (player, effect) in combat.players.iter_mut().zip(&presentation.effects) {
             player.position = effect.position.into();
+            player.light = effect.light.map(Into::into);
         }
         let actors: Vec<_> = presentation
             .actors
@@ -1284,6 +1365,86 @@ mod tests {
             panic!("Expected snapshot")
         };
         state
+    }
+    #[test]
+    fn predicted_owned_pose_moves_attachments_without_mutating_remote_state() {
+        use crate::service::wire::{Control, Life};
+        let life = Life {
+            instance: 130,
+            actor: 14,
+            generation: 0,
+        };
+        let mut snapshot = response(1);
+        snapshot.control = Some(Control {
+            life,
+            epoch: 1,
+            accepted_sequence: 0,
+        });
+        super::super::replica::tests::attach_hud(&mut snapshot);
+        let mut view = View::new(130, 10., 0).unwrap();
+        view.push_snapshot(&snapshot).unwrap();
+        let original = view.scene_sample(1., camera()).unwrap().unwrap();
+        let encoded = serde_json::to_vec(view.replica.latest().unwrap()).unwrap();
+        let pose = crate::prediction::Pose {
+            life: life.into(),
+            epoch: 1,
+            position: Vec3::new(2., 0., -22.),
+            yaw: 1.,
+            axes: [1., 0.],
+            airborne: false,
+            moving: true,
+            motion_time: 0.1,
+        };
+        let predicted = view
+            .scene_sample_predicted(1., camera(), Some(pose))
+            .unwrap()
+            .unwrap();
+        for actor in &original.presentation.actors {
+            let after = predicted
+                .presentation
+                .actors
+                .iter()
+                .find(|a| a.life == actor.life)
+                .unwrap();
+            if actor.life == life {
+                assert_eq!(after.actor.position, pose.position);
+                assert_eq!(after.actor.yaw, 1.);
+                assert_eq!(
+                    after.animation,
+                    verse_engine::motion::State::StrafeRight.into()
+                );
+            } else {
+                assert_eq!(
+                    serde_json::to_vec(actor).unwrap(),
+                    serde_json::to_vec(after).unwrap()
+                );
+            }
+            assert_eq!(actor.health, after.health);
+        }
+        assert_eq!(
+            serde_json::to_vec(view.replica.latest().unwrap()).unwrap(),
+            encoded
+        );
+        assert_eq!(predicted.combat.players[0].position, pose.position);
+        let mut foreign = pose;
+        foreign.epoch += 1;
+        assert!(
+            view.scene_sample_predicted(1., camera(), Some(foreign))
+                .is_err()
+        );
+        let mut invalid = pose;
+        invalid.position.x = f32::NAN;
+        assert!(
+            view.scene_sample_predicted(1., camera(), Some(invalid))
+                .is_err()
+        );
+        let mut spectator = View::new(130, 10., 0).unwrap();
+        spectator.push_snapshot(&response(1)).unwrap();
+        assert!(
+            spectator
+                .scene_sample_predicted(1., camera(), Some(pose))
+                .is_err()
+        );
     }
     fn camera() -> Camera {
         Camera {

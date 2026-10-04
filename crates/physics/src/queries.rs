@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 mod snapshot;
-pub use snapshot::{GeometrySnapshot, SceneSnapshot, ShapeSnapshot};
+pub use snapshot::{GeometrySnapshot, SceneCache, SceneSnapshot, ShapeSnapshot};
 
 const EPS: f64 = 1e-7;
 const MAX_TRIANGLES: usize = 1_000_000;
@@ -73,7 +73,7 @@ impl Filter {
             && self.exclude != Some(key)
     }
 }
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Triangle(pub [DVec3; 3]);
 impl Triangle {
     fn normal(self) -> DVec3 {
@@ -357,7 +357,7 @@ pub struct CapsuleCollider {
     pub usage: Usage,
 }
 /// A rigid pose preserves a compiled mesh hierarchy without rescaling it.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Pose {
     pub position: DVec3,
     pub rotation: DQuat,

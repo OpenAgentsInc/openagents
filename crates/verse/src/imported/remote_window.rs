@@ -115,7 +115,9 @@ struct App {
     next_capture: Instant,
     next_demo: f32,
     demo_slot: usize,
-    pending: std::collections::VecDeque<Option<Ability>>,
+    pending: std::collections::VecDeque<(Option<Ability>, Option<u64>)>,
+    prediction: verse_world::prediction::Local,
+    input_token: u64,
     accepted_casts: std::collections::BTreeMap<String, u64>,
     respawn_attempts: Vec<verse_engine::core::LifeId>,
     owned_life_changes: u64,
@@ -135,6 +137,7 @@ impl App {
         input: mpsc::Sender<Input>,
         output: mpsc::Receiver<Update>,
     ) -> Self {
+        let instance = view.instance();
         Self {
             pack,
             atlas,
@@ -166,6 +169,8 @@ impl App {
             next_demo: 0.,
             demo_slot: 0,
             pending: std::collections::VecDeque::new(),
+            prediction: verse_world::prediction::Local::new(instance),
+            input_token: 0,
             accepted_casts: Default::default(),
             respawn_attempts: vec![],
             owned_life_changes: 0,
@@ -203,6 +208,31 @@ impl App {
             self.status = "Input queue is busy".into();
             return;
         }
+        let (input, predicted) = match input {
+            Input::Command(intent @ (Intent::Move { .. } | Intent::Jump))
+                if self.prediction.context().is_some()
+                    && self.view.replica().control().is_some() =>
+            {
+                let control = self.view.replica().control().unwrap();
+                self.input_token = match self.input_token.checked_add(1) {
+                    Some(token) => token,
+                    None => {
+                        self.status = "Input token exhausted".into();
+                        return;
+                    }
+                };
+                (
+                    Input::TrackedCommand {
+                        token: self.input_token,
+                        life: control.life.into(),
+                        epoch: control.epoch,
+                        intent: intent.clone(),
+                    },
+                    Some((self.input_token, intent)),
+                )
+            }
+            input => (input, None),
+        };
         let ability = match &input {
             Input::Command(Intent::Cast { ability, .. }) => Some(*ability),
             _ => None,
@@ -210,7 +240,14 @@ impl App {
         match self.input.try_send(input) {
             Ok(()) => {
                 self.status.clear();
-                self.pending.push_back(ability);
+                let token = predicted.as_ref().map(|p| p.0);
+                if let Some((token, intent)) = predicted {
+                    if let Err(message) = self.prediction.queue(token, intent) {
+                        self.prediction.clear();
+                        self.status = message;
+                    }
+                }
+                self.pending.push_back((ability, token));
             }
             Err(mpsc::error::TrySendError::Full(_)) => self.status = "Input queue is busy".into(),
             Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -252,6 +289,23 @@ impl App {
                 Ok(Update::Snapshot(r)) => {
                     self.view.push_snapshot(&r)?;
                     self.received_at = Instant::now();
+                    let state = self.view.replica().latest().unwrap();
+                    let context = self
+                        .view
+                        .replica()
+                        .control()
+                        .map(|c| (c.life.into(), c.epoch));
+                    if context != self.prediction.context() || !self.controlled() {
+                        self.prediction.clear();
+                    }
+                    if self.controlled() {
+                        if let (Some(baseline), Some(geometry)) =
+                            (state.movement, state.collision.as_ref())
+                        {
+                            self.prediction
+                                .observe(baseline, geometry, r.tick, r.request_id)?;
+                        }
+                    }
                     let life = self
                         .view
                         .replica()
@@ -286,14 +340,28 @@ impl App {
                     }
                 }
                 Ok(Update::Inventory(r)) => self.view.push_inventory(&r)?,
-                Ok(Update::CommandBound { binding, .. }) => {
-                    if let Err(message) = binding {
+                Ok(Update::CommandBound { token, binding }) => match binding {
+                    Ok(command) => {
+                        if self.prediction.context().is_some() {
+                            if let Err(message) = self.prediction.bind(token, &command) {
+                                self.prediction.clear();
+                                self.status = message;
+                            }
+                        }
+                    }
+                    Err(message) => {
                         self.pending.pop_front();
+                        self.prediction.reject(token);
                         self.status = message;
                     }
-                }
+                },
                 Ok(Update::Outcome(r)) => {
-                    let ability = self.pending.pop_front().flatten();
+                    let (ability, token) = self.pending.pop_front().unwrap_or_default();
+                    if matches!(r.body, verse_world::service::wire::Reply::Refused { .. }) {
+                        if let Some(token) = token {
+                            self.prediction.reject(token);
+                        }
+                    }
                     if matches!(r.body, verse_world::service::wire::Reply::Accepted) {
                         if let Some(ability) = ability {
                             *self
@@ -329,6 +397,7 @@ impl App {
                 }
                 Err(mpsc::error::TryRecvError::Empty) => break,
                 Err(mpsc::error::TryRecvError::Disconnected) => {
+                    self.prediction.clear();
                     return Err("Chamber update stream stopped".into());
                 }
             }
@@ -370,6 +439,14 @@ impl App {
             }));
             self.next_move = now + Duration::from_millis(33);
         }
+        if let Err(message) = self.prediction.advance(f64::from(dt).min(0.1)) {
+            self.prediction.clear();
+            self.status = message;
+        }
+        let mut predicted = self.prediction.pose();
+        if let Some(pose) = &mut predicted {
+            pose.yaw = self.yaw;
+        }
         let size = self.window.as_ref().unwrap().inner_size();
         if size.width == 0 || size.height == 0 {
             return Ok(());
@@ -388,7 +465,7 @@ impl App {
         let time = sampled.as_ref().map_or(time, |s| s.time);
         let cinematic = self.scene.frame(time);
         let mut camera = authored_camera(&cinematic);
-        let focus = self
+        let mut focus = self
             .view
             .replica()
             .latest()
@@ -401,6 +478,9 @@ impl App {
                     .find(|p| verse_engine::core::LifeId::from(p.life) == h.life)
             })
             .map_or(cinematic.target, |p| p.actor.position);
+        if let Some(pose) = predicted {
+            focus = pose.position;
+        }
         if self.unlocked()
             && self
                 .view
@@ -412,7 +492,7 @@ impl App {
             camera.eye = camera.target - self.camera.direction() * self.camera.distance.max(0.01);
             camera.fov = 60.;
         }
-        let rendered = chamber::remote_scene(
+        let rendered = chamber::remote_scene_predicted(
             &self.pack,
             &self.view,
             alpha,
@@ -420,6 +500,7 @@ impl App {
             origin,
             self.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE),
             focus,
+            predicted,
         )?;
         let mut ui = crate::ui::UiBatch::default();
         let mut instances = vec![];
@@ -1001,6 +1082,197 @@ mod tests {
             Vec3::NEG_Z
         );
     }
+    #[test]
+    fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() {
+        use secp256k1::{Keypair, Secp256k1, SecretKey};
+        use verse_world::service::{
+            Chamber,
+            auth::{ConnectionId, Gateway},
+            wire::{Body, Request, Response, VERSION},
+        };
+        fn request(g: &mut Gateway, id: ConnectionId, serial: u64, body: Body) -> Response {
+            let bytes = serde_json::to_vec(&Request {
+                version: VERSION,
+                request_id: serial,
+                body,
+            })
+            .unwrap();
+            serde_json::from_slice(&g.dispatch_json(id, 0, &bytes).unwrap()).unwrap()
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let pack = super::super::original::generate(dir.path()).unwrap();
+        let atlas = super::super::original::atlas().unwrap();
+        let scene = Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = verse_world::play::Game::combat_in(scene.clone(), false, 160).unwrap();
+        game.time = scene.cut_at;
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        let mut gateway = Gateway::new(Chamber::new(game).unwrap()).unwrap();
+        let key = Keypair::from_secret_key(
+            &Secp256k1::new(),
+            &SecretKey::from_byte_array([101; 32]).unwrap(),
+        );
+        let public = key.x_only_public_key().0.serialize();
+        gateway.enroll_primary(public).unwrap();
+        let (connection, challenge) = gateway.open(0).unwrap();
+        let signature = Secp256k1::new()
+            .sign_schnorr_no_aux_rand(&challenge.signing_digest(public), &key)
+            .to_byte_array();
+        gateway
+            .authenticate(connection, 0, public, signature)
+            .unwrap();
+        let (input, mut inputs, updates, output) = worker::channels();
+        let mut app = App::new(
+            pack,
+            atlas,
+            scene,
+            dir.path().into(),
+            View::new(160, 10., 0).unwrap(),
+            input,
+            output,
+        );
+        updates
+            .try_send(Update::Snapshot(request(
+                &mut gateway,
+                connection,
+                1,
+                Body::Snapshot {},
+            )))
+            .unwrap();
+        app.consume().unwrap();
+        // The first owned-life observation releases pointer input with a tracked stop.
+        let Input::TrackedCommand { token, intent, .. } = inputs.try_recv().unwrap() else {
+            panic!("Missing tracked stop");
+        };
+        let command = gateway
+            .admission(connection)
+            .unwrap()
+            .command(gateway.game().authority_tick, intent)
+            .unwrap();
+        updates
+            .try_send(Update::CommandBound {
+                token,
+                binding: Ok(command.clone()),
+            })
+            .unwrap();
+        updates
+            .try_send(Update::Outcome(request(
+                &mut gateway,
+                connection,
+                2,
+                Body::Command {
+                    command: command.into(),
+                },
+            )))
+            .unwrap();
+        gateway.tick(1. / 30.).unwrap();
+        updates
+            .try_send(Update::Snapshot(request(
+                &mut gateway,
+                connection,
+                3,
+                Body::Snapshot {},
+            )))
+            .unwrap();
+        app.consume().unwrap();
+        let life = gateway.admission(connection).unwrap().actor();
+        let start = gateway.game().actor_position(life.actor).unwrap();
+        app.send(Input::Command(Intent::Move {
+            axes: [1., 0.],
+            yaw: 0.,
+        }));
+        let Input::TrackedCommand {
+            token,
+            life: submitted,
+            epoch,
+            intent,
+        } = inputs.try_recv().unwrap()
+        else {
+            panic!("Missing tracked movement");
+        };
+        assert_eq!(submitted, life);
+        assert_eq!(epoch, gateway.admission(connection).unwrap().epoch());
+        app.prediction.advance(1. / 30.).unwrap();
+        let pose = app.prediction.pose().unwrap();
+        assert!(pose.position.x > start.x);
+        assert_eq!(gateway.game().actor_position(life.actor).unwrap(), start);
+        let camera = Camera {
+            eye: pose.position + Vec3::new(0., 3., 8.),
+            target: pose.position + Vec3::Y * 1.5,
+            fov: 60.,
+        };
+        let rendered = chamber::remote_scene_predicted(
+            &app.pack,
+            &app.view,
+            1.,
+            camera,
+            Vec3::ZERO,
+            false,
+            pose.position,
+            Some(pose),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            rendered
+                .frame
+                .actors
+                .iter()
+                .find(|a| a.life == Some(life))
+                .unwrap()
+                .actor
+                .position,
+            pose.position
+        );
+        let command = gateway
+            .admission(connection)
+            .unwrap()
+            .command(gateway.game().authority_tick, intent)
+            .unwrap();
+        updates
+            .try_send(Update::CommandBound {
+                token,
+                binding: Ok(command.clone()),
+            })
+            .unwrap();
+        updates
+            .try_send(Update::Outcome(request(
+                &mut gateway,
+                connection,
+                4,
+                Body::Command {
+                    command: command.into(),
+                },
+            )))
+            .unwrap();
+        gateway.tick(1. / 30.).unwrap();
+        updates
+            .try_send(Update::Snapshot(request(
+                &mut gateway,
+                connection,
+                5,
+                Body::Snapshot {},
+            )))
+            .unwrap();
+        app.consume().unwrap();
+        app.prediction.advance(0.).unwrap();
+        assert_eq!(app.prediction.pending(), 0);
+        assert!(app.pending.is_empty());
+        assert!(
+            app.prediction
+                .pose()
+                .unwrap()
+                .position
+                .distance(gateway.game().actor_position(life.actor).unwrap())
+                < 0.0001
+        );
+        drop(updates);
+        assert!(app.consume().is_err());
+        assert!(app.prediction.pose().is_none());
+    }
+
     #[test]
     fn bounded_native_input_reports_pressure_and_closed_update_streams() {
         let dir = tempfile::tempdir().unwrap();

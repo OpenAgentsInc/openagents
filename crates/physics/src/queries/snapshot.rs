@@ -4,13 +4,13 @@ use super::*;
 pub const SNAPSHOT_COLLIDERS: usize = 4096;
 pub const SNAPSHOT_TRIANGLES: usize = 16384;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SceneSnapshot {
     pub instance: u64,
     pub colliders: Vec<ShapeSnapshot>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ShapeSnapshot {
     pub key: ColliderKey,
@@ -19,7 +19,7 @@ pub struct ShapeSnapshot {
     pub pose: Pose,
     pub geometry: GeometrySnapshot,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum GeometrySnapshot {
     Box { min: DVec3, max: DVec3 },
@@ -280,6 +280,38 @@ mod tests {
         assert_eq!(replaced.capsule_keys().count(), 0);
     }
     #[test]
+    fn cached_pose_updates_reuse_meshes_and_replacement_is_atomic() {
+        let original = scene();
+        let mut source = original.snapshot(7).unwrap();
+        let mut cache = SceneCache::new(7);
+        assert_eq!(cache.update(&source).unwrap(), source.colliders.len());
+        let mesh = cache.scene.colliders[&key(0)].mesh.nodes.as_ptr();
+        source
+            .colliders
+            .iter_mut()
+            .find(|s| s.key == key(10))
+            .unwrap()
+            .pose
+            .position
+            .x += 1.;
+        assert_eq!(cache.update(&source).unwrap(), 0);
+        assert_eq!(cache.scene.colliders[&key(0)].mesh.nodes.as_ptr(), mesh);
+        assert_eq!(cache.scene.snapshot(7).unwrap(), source);
+        let mut bad = source.clone();
+        bad.colliders.push(source.colliders[0].clone());
+        assert!(cache.update(&bad).is_err());
+        assert_eq!(cache.scene.snapshot(7).unwrap(), source);
+        source.colliders.retain(|s| s.key != key(11));
+        assert_eq!(cache.update(&source).unwrap(), 0);
+        assert_eq!(cache.scene.capsule_keys().count(), 0);
+        source.colliders[0].geometry = GeometrySnapshot::Box {
+            min: DVec3::new(-10., -1., -10.),
+            max: DVec3::new(10., 0., 10.),
+        };
+        assert_eq!(cache.update(&source).unwrap(), 1);
+        assert_eq!(cache.scene.snapshot(7).unwrap(), source);
+    }
+    #[test]
     fn rejects_foreign_duplicate_invalid_and_over_budget_geometry() {
         let base = scene().snapshot(7).unwrap();
         assert!(base.compile(8).is_err());
@@ -315,5 +347,95 @@ mod tests {
             triangles: vec![Triangle([DVec3::ZERO, DVec3::Y, DVec3::Z]); SNAPSHOT_TRIANGLES + 1],
         };
         assert!(invalid.compile(7).is_err());
+    }
+}
+
+/// Reuses compiled geometry while admitting complete scoped pose replacements.
+pub struct SceneCache {
+    instance: u64,
+    source: std::collections::BTreeMap<ColliderKey, ShapeSnapshot>,
+    scene: Scene,
+}
+impl SceneCache {
+    pub fn new(instance: u64) -> Self {
+        Self {
+            instance,
+            source: Default::default(),
+            scene: Default::default(),
+        }
+    }
+    pub fn scene(&self) -> &Scene {
+        &self.scene
+    }
+    /// Returns the number of recompiled shapes. Validation and compilation precede mutation.
+    pub fn update(&mut self, snapshot: &SceneSnapshot) -> Result<usize, String> {
+        snapshot.validate(self.instance)?;
+        let mut meshes = std::collections::BTreeMap::new();
+        let mut capsules = std::collections::BTreeMap::new();
+        let mut changed = std::collections::BTreeMap::new();
+        for shape in &snapshot.colliders {
+            if self.source.get(&shape.key).is_some_and(|old| {
+                old.geometry == shape.geometry
+                    && old.layers == shape.layers
+                    && old.usage == shape.usage
+            }) {
+                continue;
+            }
+            match &shape.geometry {
+                GeometrySnapshot::Capsule { a, b, radius } => {
+                    capsules.insert(
+                        shape.key,
+                        CapsuleCollider {
+                            key: shape.key,
+                            layers: shape.layers,
+                            usage: shape.usage,
+                            capsule: Capsule {
+                                a: *a,
+                                b: *b,
+                                radius: *radius,
+                            },
+                        },
+                    );
+                }
+                geometry => {
+                    let mesh = match geometry {
+                        GeometrySnapshot::Box { min, max } => Mesh::from_box(*min, *max)?,
+                        GeometrySnapshot::Triangles { triangles } => {
+                            Mesh::compile(triangles.clone())?
+                        }
+                        GeometrySnapshot::Capsule { .. } => unreachable!(),
+                    };
+                    meshes.insert(
+                        shape.key,
+                        MeshCollider {
+                            key: shape.key,
+                            layers: shape.layers,
+                            usage: shape.usage,
+                            mesh,
+                        },
+                    );
+                }
+            }
+            changed.insert(shape.key, shape.clone());
+        }
+        let count = changed.len();
+        let keys: std::collections::BTreeSet<_> =
+            snapshot.colliders.iter().map(|s| s.key).collect();
+        self.source.retain(|key, _| keys.contains(key));
+        self.scene
+            .colliders
+            .retain(|key, _| keys.contains(key) && !changed.contains_key(key));
+        self.scene
+            .capsules
+            .retain(|key, _| keys.contains(key) && !changed.contains_key(key));
+        self.scene.colliders.extend(meshes);
+        self.scene.capsules.extend(capsules);
+        self.source.extend(changed);
+        self.scene.poses.retain(|key, _| keys.contains(key));
+        for shape in &snapshot.colliders {
+            self.scene.poses.insert(shape.key, shape.pose);
+            self.source.get_mut(&shape.key).unwrap().pose = shape.pose;
+        }
+        Ok(count)
     }
 }
