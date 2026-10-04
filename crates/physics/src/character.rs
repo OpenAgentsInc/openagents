@@ -455,6 +455,44 @@ fn recover(
             })
             .collect::<Vec<_>>()
     });
+    if let Some(shapes) = &capsules {
+        let initial = scene.overlap(settings.capsule(start), filter)?;
+        let embedded: std::collections::BTreeSet<_> = initial
+            .hits
+            .iter()
+            .filter(|hit| {
+                hit.penetration > SKIN && shapes.iter().any(|shape| shape.key == hit.collider)
+            })
+            .map(|hit| hit.collider)
+            .collect();
+        if !initial.truncated && shapes.len() >= 3 && !embedded.is_empty() {
+            // Enclosing capsule crowds can have no feasible local contact plane.
+            // Search a bounded horizontal exit, crossing only the capsules that
+            // already embed this character. Walls and new obstacles still block it.
+            for ring in 1..=8 {
+                let distance = settings.radius * ring as f64 * 0.5;
+                for direction in 0..32 {
+                    let angle = std::f64::consts::TAU * direction as f64 / 32.;
+                    let delta = DVec3::new(angle.cos(), 0., angle.sin()) * distance;
+                    let candidate = start + delta;
+                    let endpoint = scene.overlap(settings.capsule(candidate), filter)?;
+                    if endpoint.truncated || endpoint.hits.iter().any(|hit| hit.penetration > SKIN)
+                    {
+                        continue;
+                    }
+                    let path = scene.sweep(settings.capsule(start), delta, filter)?;
+                    if !path.truncated
+                        && path.hits.iter().all(|hit| {
+                            embedded.contains(&hit.collider)
+                                || (hit.penetration <= SKIN && delta.dot(hit.normal) >= -SKIN)
+                        })
+                    {
+                        return Ok(candidate);
+                    }
+                }
+            }
+        }
+    }
     Err(format!(
         "Character spawn recovery did not converge: actor {:?}, start {start:?}, end {feet:?}, last contact {last:?}, contacted capsules {capsules:?}",
         filter.ignore
@@ -819,6 +857,87 @@ mod tests {
             assert!(contacts.hits.iter().all(|hit| hit.penetration <= SKIN));
             assert!(feet.distance(start) < 0.3);
         }
+    }
+    #[test]
+    fn enclosed_four_capsules_recover_without_crossing_walls() {
+        use crate::queries::{CapsuleCollider, Pose};
+        let start = DVec3::new(2.8624002933502197, 0., -8.559691429138184);
+        let mut scene = floor();
+        for (index, position) in [
+            [2.2770602703094482, 0.9, -8.075368881225586],
+            [2.9786927700042725, 0.9, -7.869404315948486],
+            [2.171818733215332, 0.9, -8.767414093017578],
+            [3.3549814224243164, 0.9, -8.545398712158203],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let key = ColliderKey {
+                life: Life {
+                    instance: 1,
+                    entity: 100 + index as u64,
+                    generation: 0,
+                },
+                shape: 0,
+            };
+            scene
+                .insert_capsule(CapsuleCollider {
+                    key,
+                    layers: 2,
+                    usage: Usage::Blocking,
+                    capsule: Capsule {
+                        a: -DVec3::Y * 0.55,
+                        b: DVec3::Y * 0.55,
+                        radius: 0.35,
+                    },
+                })
+                .unwrap();
+            scene
+                .set_pose(
+                    key,
+                    Pose {
+                        position: DVec3::from_array(position),
+                        rotation: glam::DQuat::IDENTITY,
+                    },
+                )
+                .unwrap();
+        }
+        let settings = Settings::default();
+        let filter = Filter::blocking(1);
+        let feet = recover(&scene, filter, settings, start).unwrap();
+        assert!(feet.distance(start) <= settings.radius * 4.);
+        assert_eq!(feet.y, start.y);
+        assert!(
+            scene
+                .overlap(settings.capsule(feet), filter)
+                .unwrap()
+                .hits
+                .iter()
+                .all(|hit| hit.penetration <= SKIN)
+        );
+        // A surrounding wall enclosure must not turn crowd recovery into a teleport.
+        for (id, min, max) in [
+            (10, [2.3, 0., -9.1], [2.4, 4., -8.0]),
+            (11, [3.3, 0., -9.1], [3.4, 4., -8.0]),
+            (12, [2.3, 0., -9.1], [3.4, 4., -9.0]),
+            (13, [2.3, 0., -8.1], [3.4, 4., -8.0]),
+        ] {
+            box_in(
+                &mut scene,
+                id,
+                DVec3::from_array(min),
+                DVec3::from_array(max),
+            );
+        }
+        assert!(recover(&scene, filter, settings, start).is_err());
+        let mut character = Character::new(start);
+        let before = serde_json::to_value(character).unwrap();
+        assert!(
+            character
+                .step(&scene, filter, settings, DVec3::ZERO, false, 1. / 120.)
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(character).unwrap(), before);
     }
     #[test]
     fn endpoint_and_surface_recovery() {
