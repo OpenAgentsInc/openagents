@@ -476,8 +476,15 @@ station. The panel is a Rust Native view that `coder-mobile` builds
 and question models; the hosts mount it with their native renderers, ask for
 it again by `studio_revision` when the studio changes, and return only the
 activated node. Movement pauses while it is open, and the panel closes when
-the surface pauses or the player leaves Everglade. It observes; sending
-studio intents needs a host connection with the `operate` right.
+the surface pauses or the player leaves Everglade. Connected to a paired
+computer (`VerseHandle::connect_studio`, or
+`openagents_verse_studio_connect` in the OpenAgents app), the panel acts
+under the phone's grant for that computer: with `operate`, option buttons
+answer questions and approvals, a desk offers **Pause** or **Resume** and
+**Stop**, and typed text (`studio_text`) answers the podium's first
+decision or messages seats; with `review`, the merge station offers
+**Merge** and **Reject**, and typed text requests changes. The computer's
+answer shows as the panel's first row.
 See [Everglade](everglade.md).
 
 The OpenAgents app's bare world reaches no zone for now; its

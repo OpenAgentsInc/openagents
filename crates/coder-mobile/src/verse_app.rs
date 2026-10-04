@@ -222,6 +222,11 @@ pub(crate) enum Request {
     },
     /// Close the Agent Studio panel, as the host's back gesture does.
     CloseStudio,
+    /// Text the person typed into the open studio panel's field: an
+    /// answer, a message, or a change request (`studio_panel::typed`).
+    StudioText {
+        text: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -2295,6 +2300,10 @@ impl Scene {
                 self.close_studio();
                 Ok(())
             }
+            Request::StudioText { text } => {
+                let open = self.studio.as_ref().ok_or("Open a studio station first")?;
+                crate::studio_panel::typed(&mut self.world, open, &text)
+            }
             Request::Snapshot | Request::ZoneCredits => Ok(()),
             Request::Frame { .. } | Request::Resize { .. } => {
                 Err("Request requires a native renderer".into())
@@ -2477,19 +2486,16 @@ impl Scene {
         &mut self,
         kind: verse::zones::everglade::studio::PanelKind,
     ) -> Result<crate::studio_panel::Open, String> {
-        let review = crate::studio_panel::review(&mut self.world, &kind);
-        let shown = self.world.studio().revision();
         let revision = self.studio_revisions + 1;
-        let view = crate::studio_panel::project(
-            &kind,
-            self.world.studio().view(),
-            review.as_ref(),
+        let open = crate::studio_panel::open(
+            &mut self.world,
+            kind,
             &format!("{}.studio", self.lifecycle.id()),
             revision,
         )
         .map_err(|error| error.to_string())?;
         self.studio_revisions = revision;
-        Ok(crate::studio_panel::Open { kind, shown, view })
+        Ok(open)
     }
 
     /// Closes the studio panel outside Everglade, and rebuilds it when the
@@ -2502,7 +2508,7 @@ impl Scene {
             self.close_studio();
             return Ok(());
         }
-        if open.shown == self.world.studio().revision() {
+        if crate::studio_panel::current(open, &mut self.world) {
             return Ok(());
         }
         let kind = open.kind.clone();
@@ -2517,6 +2523,7 @@ impl Scene {
                 self.close_studio();
                 Ok(())
             }
+            intent => crate::studio_panel::act(&mut self.world, &intent),
         }
     }
 

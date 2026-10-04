@@ -3027,6 +3027,7 @@ name = "coder-mobile"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "coder",
  "coder-access",
  "coder-computers",
  "coder-connect",

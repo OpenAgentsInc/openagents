@@ -15,21 +15,39 @@
 //! (`openagents_chat_app::attention`) and each question or approval read
 //! with the app's question flow (`openagents_chat_app::decision`).
 //!
-//! The panel observes. Its one control closes it: answering, steering, and
-//! merging go through a host connection with the `operate` and `review`
-//! rights, which Everglade does not open yet.
+//! The panel acts through the studio's source. On a phone that source is a
+//! paired computer ([`host_source`]): the Computers service's supervised
+//! NIP-HOST link, under the grant the phone holds for that computer, read
+//! through Verse's live studio worker. The panel offers only what the
+//! grant's rights allow, and the host checks the grant again on every
+//! message:
+//!
+//! - With `operate`: an option button for each one-page question or
+//!   approval at the podium, **Pause** or **Resume** and **Stop** at a
+//!   seat's desk, and typed text ([`typed`]) that answers the podium's
+//!   first decision, messages the desk's seat, or, at the console,
+//!   messages every seat.
+//! - With `review`: **Merge** and **Reject** at the merge station, at the
+//!   exact revisions its review shows, and typed text that requests
+//!   changes with that note.
+//!
+//! The host's answer to the last intent shows as the panel's first row.
 
 use coder_access::review::TaskReview;
 use coder_access::studio::{
-    Activity, DecisionKind, GoalStatus, Role, Seat, Task, TaskStatus, View as Studio,
+    Activity, DecisionKind, GoalStatus, MergeDecision, Role, Seat, Task, TaskStatus, Verdict,
+    View as Studio,
 };
+use coder_access::{Code, Error as AccessError, Operation, Outcome, Right};
 use coder_ui::theme::{Intensity, NEAR_BLACK};
 use openagents_chat_app::{attention, decision};
 use rust_native::style::{Color, Space, Style};
 use rust_native::{Activation, Axis, Element, Node, TextRole, ValidatedView, View, ViewError};
 use serde::{Deserialize, Serialize};
+use tokio::runtime::Handle;
 use verse::runtime::WorldRuntime;
-use verse::zones::everglade::studio::{PanelKind, word};
+use verse::zones::everglade::studio::live::{Live, Transport};
+use verse::zones::everglade::studio::{Answer, PanelKind, intents, word};
 
 /// The most rows a panel shows. Seats, goals, decisions, and log lines are
 /// each bounded by the host; this keeps the whole view inside Rust Native's
@@ -40,24 +58,258 @@ pub const MAX_ROWS: usize = 240;
 pub const MAX_DIFF_BYTES: usize = 48 * 1024;
 /// The most bytes of any other row's text.
 const MAX_ROW_BYTES: usize = 8 * 1024;
+/// The most bytes of a control's label.
+const MAX_LABEL_BYTES: usize = 160;
 /// The most bytes of text all of a panel's rows hold together, well inside
 /// Rust Native's encoded view bound.
 const MAX_ROWS_BYTES: usize = 320 * 1024;
 
-/// What a studio panel's controls do.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// What a studio panel's controls do. Each one but [`Intent::Close`] is
+/// one NIP-HOST studio intent, bound to what the view showed when it was
+/// built: the decision's point, or the review's exact revisions.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Intent {
     /// Close the panel and return to the world.
     Close,
+    /// Answer the open decision `decision` at `based_on` with `text`: an
+    /// option of a one-page question, or an approval's **Allow once** or
+    /// **Deny**.
+    Answer {
+        decision: String,
+        based_on: u64,
+        text: String,
+    },
+    /// **Merge** or **Reject** task `task`'s change at the revisions its
+    /// review showed.
+    Decide {
+        task: String,
+        base: String,
+        head_commit: String,
+        head: String,
+        verdict: Verdict,
+    },
+    /// Pause a seat: it keeps its task and takes no new one.
+    Pause { seat: String },
+    /// Resume a paused seat.
+    Resume { seat: String },
+    /// Stop a seat: cancel its task and pause it.
+    Stop { seat: String },
+}
+
+impl Intent {
+    /// The operation this intent sends, issued at `now` (Unix seconds),
+    /// or `None` for [`Intent::Close`]. An answer and a merge decision get
+    /// a fresh command identity, which a retry of the same request keeps.
+    #[must_use]
+    pub fn operation(&self, now: u64) -> Option<Operation> {
+        Some(match self.clone() {
+            Self::Close => return None,
+            Self::Answer {
+                decision,
+                based_on,
+                text,
+            } => Operation::AnswerDecision {
+                decision,
+                based_on,
+                text,
+                command: intents::mint(),
+                issued_at: now,
+            },
+            Self::Decide {
+                task,
+                base,
+                head_commit,
+                head,
+                verdict,
+            } => decide(
+                Reviewed {
+                    task,
+                    base,
+                    head_commit,
+                    head,
+                },
+                verdict,
+                String::new(),
+                now,
+            ),
+            Self::Pause { seat } => Operation::PauseSeat { seat },
+            Self::Resume { seat } => Operation::ResumeSeat { seat },
+            Self::Stop { seat } => Operation::StopSeat { seat },
+        })
+    }
+}
+
+/// The task and revisions a merge decision names.
+struct Reviewed {
+    task: String,
+    base: String,
+    head_commit: String,
+    head: String,
+}
+
+impl Reviewed {
+    fn of(review: &TaskReview) -> Self {
+        Self {
+            task: review.task.clone(),
+            base: review.base.clone(),
+            head_commit: review.head_commit.clone(),
+            head: review.head.clone(),
+        }
+    }
+}
+
+/// A merge decision at the reviewed revisions, under a fresh command.
+fn decide(reviewed: Reviewed, verdict: Verdict, text: String, now: u64) -> Operation {
+    Operation::DecideMerge {
+        decision: Box::new(MergeDecision {
+            task: reviewed.task,
+            base: reviewed.base,
+            head_commit: reviewed.head_commit,
+            head: reviewed.head,
+            verdict,
+            text,
+            command: intents::mint(),
+            issued_at: now,
+        }),
+    }
+}
+
+/// What a panel's controls may do: the rights the studio's host
+/// connection holds, and the host's newest answer to show.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Controls<'a> {
+    pub rights: &'a [Right],
+    pub status: Option<&'a Answer>,
+}
+
+impl Controls<'_> {
+    fn allows(&self, right: Right) -> bool {
+        self.rights.contains(&right)
+    }
 }
 
 /// An open studio panel: what it shows, the studio revision it was built
-/// from, and the validated view the host mounts.
+/// from, the review it shows (task and tree), and the validated view the
+/// host mounts.
 pub(crate) struct Open {
     pub kind: PanelKind,
     pub shown: u64,
+    pub reviewed: Option<(String, String)>,
     pub view: ValidatedView<Intent>,
+}
+
+/// The current link to a paired computer, as the Computers service's
+/// supervisor holds it (`coder_computers::live::Terminals::links`). It
+/// answers a transport error while the computer is not connected.
+pub type Links = coder_computers::terminal::session::Links;
+
+/// The studio's [`Transport`] over a paired computer: each operation is
+/// one NIP-HOST message on the supervisor's current link, signed by this
+/// device and checked by the host against the device's grant.
+///
+/// The link mints each message's own request identity, so the `request`
+/// a retry keeps does not reach the host. An answer and a merge decision
+/// carry their own command identity, which the host answers again without
+/// repeating the effect; a pause, resume, or stop sent twice has the same
+/// effect as once, and a message sent again after a lost answer can arrive
+/// twice.
+pub struct HostLink {
+    links: Links,
+    runtime: Handle,
+}
+
+impl Transport for HostLink {
+    fn call(&mut self, _request: &str, operation: &Operation) -> coder_access::Result<Outcome> {
+        operation.validate()?;
+        let link = (self.links)()?;
+        let outcome = self
+            .runtime
+            .block_on(link.call(operation.clone()))
+            .map_err(refusal)?;
+        if !outcome.answers(operation) {
+            return Err(AccessError::new(
+                Code::Malformed,
+                "the computer answered another operation",
+            ));
+        }
+        outcome.validate()?;
+        Ok(outcome)
+    }
+}
+
+/// A host client's failure as the studio reports it: the host's own
+/// refusal with its code, or `transport` while the computer is not
+/// reachable, which the studio's worker retries once.
+fn refusal(error: coder_host::Error) -> AccessError {
+    match error {
+        coder_host::Error::Access(error) => error,
+        coder_host::Error::Closed(Some(code)) if code == "revoked" || code == "stale" => {
+            AccessError::new(Code::Revoked, "the computer closed the channel as revoked")
+        }
+        coder_host::Error::Closed(_)
+        | coder_host::Error::Transport(_)
+        | coder_host::Error::Reach(_) => {
+            AccessError::new(Code::Transport, "the computer did not answer")
+        }
+        _ => AccessError::new(Code::Unavailable, "this phone cannot reach the computer"),
+    }
+}
+
+/// Everglade's studio from the paired computer `links` reaches, with the
+/// rights this device's grant for it holds. Its worker runs each operation
+/// on `runtime` from a thread of its own, so the caller may hold any
+/// runtime's handle. It starts observing when the player enters Everglade.
+///
+/// # Errors
+/// The computer is not connected now; a later call can try again.
+pub fn host_source(links: Links, runtime: Handle) -> Result<(Live, Vec<Right>), AccessError> {
+    let rights: Vec<Right> = links()?.device().access().grant.rights.iter().collect();
+    let source = Live::new(
+        Box::new(move || {
+            Box::new(HostLink {
+                links: links.clone(),
+                runtime: runtime.clone(),
+            }) as Box<dyn Transport>
+        }),
+        rights.clone(),
+    );
+    Ok((source, rights))
+}
+
+impl crate::verse_app::Scene {
+    /// Makes the paired computer `links` reaches Everglade's studio
+    /// source ([`host_source`]), replacing any other. Returns the rights
+    /// the panels may use.
+    ///
+    /// # Errors
+    /// The computer is not connected now.
+    pub(crate) fn connect_studio(
+        &mut self,
+        links: Links,
+        runtime: Handle,
+    ) -> Result<Vec<Right>, AccessError> {
+        let (source, rights) = host_source(links, runtime)?;
+        self.world.set_studio_source(Box::new(source));
+        Ok(rights)
+    }
+}
+
+impl crate::verse_ffi::VerseHandle {
+    /// Connects Everglade's Agent Studio to the paired computer `links`
+    /// reaches, under this device's grant for it, so the studio panels can
+    /// act as that grant allows. `runtime` runs the host calls, from the
+    /// studio's own thread. Returns the grant's rights.
+    ///
+    /// # Errors
+    /// The computer is not connected now.
+    pub fn connect_studio(
+        &mut self,
+        links: Links,
+        runtime: Handle,
+    ) -> Result<Vec<Right>, AccessError> {
+        self.scene.connect_studio(links, runtime)
+    }
 }
 
 /// The attention a seat doing `activity` shows in the roster: the app's
@@ -196,6 +448,193 @@ pub(crate) fn review(world: &mut WorldRuntime, kind: &PanelKind) -> Option<TaskR
     tasks.iter().find_map(|task| world.studio_review(task))
 }
 
+/// The panel of `kind` built from the studio as `world` holds it now: its
+/// rows, the controls the source's rights allow, and the host's newest
+/// answer, as the view `instance` at `revision`.
+///
+/// # Errors
+/// Returns the view's validation error ([`project`]).
+pub(crate) fn open(
+    world: &mut WorldRuntime,
+    kind: PanelKind,
+    instance: &str,
+    revision: u64,
+) -> Result<Open, ViewError> {
+    let review = review(world, &kind);
+    let studio = world.studio();
+    let rights = studio.rights();
+    let controls = Controls {
+        rights: &rights,
+        status: studio.status(),
+    };
+    let view = project(
+        &kind,
+        studio.view(),
+        review.as_ref(),
+        &controls,
+        instance,
+        revision,
+    )?;
+    Ok(Open {
+        shown: studio.revision(),
+        reviewed: review.map(|review| (review.task, review.head)),
+        kind,
+        view,
+    })
+}
+
+/// Whether `open` still shows the studio as `world` holds it: the same
+/// studio revision and, at the merge station, the same review, which
+/// arrives from the host after the panel opens.
+pub(crate) fn current(open: &Open, world: &mut WorldRuntime) -> bool {
+    if open.shown != world.studio().revision() {
+        return false;
+    }
+    if open.kind != PanelKind::Review {
+        return true;
+    }
+    review(world, &open.kind).map(|review| (review.task, review.head)) == open.reviewed
+}
+
+/// Sends the studio intent a control of the open panel runs.
+///
+/// # Errors
+/// The intent sends nothing, or the studio refused it before sending: it
+/// is not loaded, or its connection lacks the intent's right.
+pub(crate) fn act(world: &mut WorldRuntime, intent: &Intent) -> Result<(), String> {
+    let operation = intent
+        .operation(intents::now())
+        .ok_or("That control sends nothing to the computer")?;
+    send(world, operation)
+}
+
+/// Sends `text`, which the person typed into the open panel: at the
+/// podium, the answer to its first decision (a plan answers a goal's plan
+/// decision); at a desk, a message to its seat; at the console, a message
+/// to every seat; and at the merge station, **Request changes** with
+/// `text` as the note, at the revisions the review shows.
+///
+/// # Errors
+/// The panel takes no text, it names nothing to send to, or the studio
+/// refused the intent before sending.
+pub(crate) fn typed(world: &mut WorldRuntime, open: &Open, text: &str) -> Result<(), String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("Type something to send".into());
+    }
+    if open.kind == PanelKind::Review {
+        let shown = review(world, &open.kind).ok_or("No review is open to decide")?;
+        let operation = decide(
+            Reviewed::of(&shown),
+            Verdict::RequestChanges,
+            text.to_owned(),
+            intents::now(),
+        );
+        return send(world, operation);
+    }
+    let operation = {
+        let view = world
+            .studio()
+            .view()
+            .ok_or("The studio has not loaded yet")?;
+        match &open.kind {
+            PanelKind::Console => Operation::MessageSeat {
+                seat: None,
+                text: text.to_owned(),
+            },
+            PanelKind::Seat(_) | PanelKind::Desk(_) => {
+                let at = seat(&open.kind, view).ok_or("No seat sits at this desk")?;
+                Operation::MessageSeat {
+                    seat: Some(at.seat.clone()),
+                    text: text.to_owned(),
+                }
+            }
+            PanelKind::Decisions => {
+                let first = intents::decisions(view)
+                    .into_iter()
+                    .next()
+                    .ok_or("No decision waits on you")?;
+                Operation::AnswerDecision {
+                    decision: first.decision.clone(),
+                    based_on: first.based_on,
+                    text: text.to_owned(),
+                    command: intents::mint(),
+                    issued_at: intents::now(),
+                }
+            }
+            PanelKind::Review | PanelKind::Task(_) | PanelKind::Library => {
+                return Err("This panel takes no text".into());
+            }
+        }
+    };
+    send(world, operation)
+}
+
+/// Sends `operation` through the studio's source. Its answer arrives at a
+/// later frame as the studio's status.
+fn send(world: &mut WorldRuntime, operation: Operation) -> Result<(), String> {
+    world
+        .studio_send(operation)
+        .map(|_| ())
+        .map_err(|error| error.message)
+}
+
+/// The word a refusal code is spelled with on the wire, such as `stale`.
+fn code_word(code: Code) -> String {
+    serde_json::to_value(code)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| format!("{code:?}"))
+}
+
+/// The host's answer to the last intent or read, as a status row.
+fn status_row(answer: &Answer) -> Node<Intent> {
+    let operation = answer.operation;
+    let line = match &answer.result {
+        Ok(Outcome::Dispatched { receipt }) => {
+            format!("**Sent** · `{operation}` · {}", receipt.reference)
+        }
+        Ok(Outcome::Merged { merged }) => match (merged.verdict, &merged.publication) {
+            (_, Some(publication)) => format!("**Merge** · {}", publication.note),
+            (Verdict::RequestChanges, None) => {
+                "**Changes requested** · the seat takes them as its next turn".to_owned()
+            }
+            (_, None) => "**Rejected** · the task's worktree stays until it is archived".to_owned(),
+        },
+        Ok(_) => format!("**Done** · `{operation}`"),
+        Err(error) => {
+            let mut line = format!(
+                "**Refused** · `{operation}` · `{}`: {}",
+                code_word(error.code),
+                error.message
+            );
+            if error.code == Code::Stale && operation == "studio.merge.decide" {
+                line.push_str(
+                    " The change moved after you read it, so nothing landed. Read the \
+                     reloaded review before you decide.",
+                );
+            }
+            line
+        }
+    };
+    markdown("studio-status".into(), &line)
+}
+
+/// A control that runs `intent`.
+fn button(key: String, label: &str, intent: Intent) -> Node<Intent> {
+    Node {
+        key,
+        style: Style::default(),
+        element: Element::Button {
+            label: bounded(label, MAX_LABEL_BYTES),
+            enabled: true,
+            icon: None,
+            shortcut: None,
+            intent,
+        },
+    }
+}
+
 fn color(rgb: u32) -> Color {
     Color::rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
 }
@@ -235,7 +674,7 @@ fn note(key: &str, value: &str) -> Node<Intent> {
     node
 }
 
-fn console(view: &Studio) -> Vec<Node<Intent>> {
+fn console(view: &Studio, controls: &Controls) -> Vec<Node<Intent>> {
     let mut rows = Vec::new();
     let mut goals: Vec<_> = view.goals.iter().collect();
     goals.sort_by(|a, b| b.submitted_at.cmp(&a.submitted_at));
@@ -280,15 +719,23 @@ fn console(view: &Studio) -> Vec<Node<Intent>> {
             &format!("{n} decisions wait at the podium."),
         )),
     }
-    rows.push(note(
-        "console-help",
-        "This view observes. Starting a goal, messaging a seat, and the studio's \
-         other intents need a host connection with the operate right.",
-    ));
+    rows.push(if controls.allows(Right::Operate) {
+        note(
+            "console-help",
+            "Text you send from this panel messages every seat. Start a goal from the \
+             desktop's console or with `openagents studio goal submit`.",
+        )
+    } else {
+        note(
+            "console-help",
+            "This view observes. Messaging seats and the studio's other intents need a \
+             computer connection with the operate right.",
+        )
+    });
     rows
 }
 
-fn seat_rows(kind: &PanelKind, view: &Studio) -> Vec<Node<Intent>> {
+fn seat_rows(kind: &PanelKind, view: &Studio, controls: &Controls) -> Vec<Node<Intent>> {
     let Some(seat) = seat(kind, view) else {
         return vec![note("no-seat", "No seat sits at this desk.")];
     };
@@ -311,6 +758,31 @@ fn seat_rows(kind: &PanelKind, view: &Studio) -> Vec<Node<Intent>> {
         body.push_str(&format!("\n\nTask: {}", task.title));
     }
     let mut rows = vec![markdown("studio-seat".into(), &body)];
+    if controls.allows(Right::Operate) {
+        let name = seat.seat.clone();
+        rows.push(if seat.paused {
+            button(
+                "studio-seat-resume".into(),
+                "Resume",
+                Intent::Resume { seat: name.clone() },
+            )
+        } else {
+            button(
+                "studio-seat-pause".into(),
+                "Pause",
+                Intent::Pause { seat: name.clone() },
+            )
+        });
+        rows.push(button(
+            "studio-seat-stop".into(),
+            "Stop",
+            Intent::Stop { seat: name },
+        ));
+        rows.push(note(
+            "seat-help",
+            "Text you send from this panel messages this seat.",
+        ));
+    }
     let lines = view
         .logs
         .iter()
@@ -342,19 +814,15 @@ fn seat_rows(kind: &PanelKind, view: &Studio) -> Vec<Node<Intent>> {
     rows
 }
 
-fn decision_rows(view: &Studio) -> Vec<Node<Intent>> {
-    let position = |task: Option<&str>| {
-        task.and_then(|id| view.tasks.iter().find(|t| t.task == id))
-            .map_or(0, |t| t.position)
-    };
-    let mut decisions: Vec<_> = view.decisions.iter().collect();
-    decisions.sort_by(|a, b| {
-        submitted(view, &a.goal)
-            .cmp(&submitted(view, &b.goal))
-            .then(position(a.task.as_deref()).cmp(&position(b.task.as_deref())))
-    });
+/// The open decisions in the podium's order (`intents::decisions`):
+/// approvals, then questions, then goal decisions, oldest first. Typed
+/// text answers the first. With the operate right, a one-page question or
+/// an approval offers a button for each option.
+fn decision_rows(view: &Studio, controls: &Controls) -> Vec<Node<Intent>> {
+    let operate = controls.allows(Right::Operate);
+    let decisions = intents::decisions(view);
     let mut rows = Vec::new();
-    for (i, open) in decisions.into_iter().enumerate() {
+    for (i, open) in decisions.iter().enumerate() {
         let who = open.seat.as_deref().unwrap_or("The studio");
         let (flow, heading) = match open.kind {
             DecisionKind::Approval => (
@@ -397,14 +865,49 @@ fn decision_rows(view: &Studio) -> Vec<Node<Intent>> {
             }
         }
         rows.push(markdown(format!("studio-decision-{i}"), &body));
+        if !operate {
+            continue;
+        }
+        if let [page] = pages {
+            for (k, option) in page.options.iter().enumerate() {
+                let mut answering = flow.clone();
+                if let decision::Step::Done(text) = answering.select(k) {
+                    rows.push(button(
+                        format!("studio-decision-{i}-option-{}", k + 1),
+                        option,
+                        Intent::Answer {
+                            decision: open.decision.clone(),
+                            based_on: open.based_on,
+                            text,
+                        },
+                    ));
+                }
+            }
+        }
+        if i == 0 {
+            rows.push(note(
+                "decision-reply",
+                "Text you send from this panel answers this decision. A plan decision \
+                 takes the plan as its answer.",
+            ));
+        }
     }
-    if rows.is_empty() {
+    if decisions.is_empty() {
         rows.push(note("no-decisions", "No decision waits on you."));
+    } else if !operate {
+        rows.push(note(
+            "decisions-help",
+            "Answering needs a computer connection with the operate right.",
+        ));
     }
     rows
 }
 
-fn review_rows(view: &Studio, review: Option<&TaskReview>) -> Vec<Node<Intent>> {
+fn review_rows(
+    view: &Studio,
+    review: Option<&TaskReview>,
+    controls: &Controls,
+) -> Vec<Node<Intent>> {
     let Some(review) = review else {
         return vec![note(
             "no-review",
@@ -454,10 +957,35 @@ fn review_rows(view: &Studio, review: Option<&TaskReview>) -> Vec<Node<Intent>> 
             ));
         }
     }
-    rows.push(note(
-        "review-help",
-        "Merge, Request changes, and Reject need a host connection with the review right.",
-    ));
+    if controls.allows(Right::Review) {
+        for (key, label, verdict) in [
+            ("studio-merge", "Merge", Verdict::Merge),
+            ("studio-reject", "Reject", Verdict::Reject),
+        ] {
+            rows.push(button(
+                key.into(),
+                label,
+                Intent::Decide {
+                    task: review.task.clone(),
+                    base: review.base.clone(),
+                    head_commit: review.head_commit.clone(),
+                    head: review.head.clone(),
+                    verdict,
+                },
+            ));
+        }
+        rows.push(note(
+            "review-help",
+            "Merge lands the change on the checkout's branch on the computer and pushes \
+             nothing. Text you send from this panel requests changes with that note.",
+        ));
+    } else {
+        rows.push(note(
+            "review-help",
+            "Merge, Request changes, and Reject need a computer connection with the review \
+             right.",
+        ));
+    }
     rows
 }
 
@@ -476,28 +1004,32 @@ fn diff_text(diff: &str) -> (String, bool) {
 }
 
 /// The rows a panel of `kind` shows for `view`, and for the review panel,
-/// `review`, at most [`MAX_ROWS`].
+/// `review`, at most [`MAX_ROWS`]: the host's newest answer first, then
+/// the panel's content with the controls `controls` allows.
 #[must_use]
 pub fn rows(
     kind: &PanelKind,
     view: Option<&Studio>,
     review: Option<&TaskReview>,
+    controls: &Controls,
 ) -> Vec<Node<Intent>> {
+    let mut rows: Vec<Node<Intent>> = controls.status.map(status_row).into_iter().collect();
     let Some(view) = view else {
-        return vec![note(
+        rows.push(note(
             "not-loaded",
             "The studio has not loaded. It loads while you are in Everglade with a studio \
              source.",
-        )];
+        ));
+        return rows;
     };
-    let mut rows = match kind {
-        PanelKind::Console => console(view),
-        PanelKind::Seat(_) | PanelKind::Desk(_) => seat_rows(kind, view),
-        PanelKind::Decisions => decision_rows(view),
-        PanelKind::Review => review_rows(view, review),
+    rows.extend(match kind {
+        PanelKind::Console => console(view, controls),
+        PanelKind::Seat(_) | PanelKind::Desk(_) => seat_rows(kind, view, controls),
+        PanelKind::Decisions => decision_rows(view, controls),
+        PanelKind::Review => review_rows(view, review, controls),
         PanelKind::Task(id) => task_rows(view, id),
         PanelKind::Library => library_rows(view),
-    };
+    });
     // Keep the whole view inside Rust Native's encoded bound: stop at the
     // row count or the byte budget, whichever comes first.
     let mut bytes = 0;
@@ -506,6 +1038,13 @@ pub fn rows(
         .position(|row| {
             bytes += match &row.element {
                 Element::Text { value, .. } => value.len(),
+                Element::Button { label, intent, .. } => {
+                    label.len()
+                        + match intent {
+                            Intent::Answer { text, .. } => text.len(),
+                            _ => 0,
+                        }
+                }
                 _ => 0,
             };
             bytes > MAX_ROWS_BYTES
@@ -523,9 +1062,10 @@ pub fn rows(
 }
 
 /// The panel of `kind` as a validated Rust Native view: its title and a
-/// close control over a list of its rows. `instance` and `revision` follow
-/// Rust Native's identity rules: one instance per surface lifetime, and a
-/// revision that is never reused for different content.
+/// close control over a list of its rows, with the controls `controls`
+/// allows. `instance` and `revision` follow Rust Native's identity rules:
+/// one instance per surface lifetime, and a revision that is never reused
+/// for different content.
 ///
 /// # Errors
 ///
@@ -535,6 +1075,7 @@ pub fn project(
     kind: &PanelKind,
     view: Option<&Studio>,
     review: Option<&TaskReview>,
+    controls: &Controls,
     instance: &str,
     revision: u64,
 ) -> Result<ValidatedView<Intent>, ViewError> {
@@ -573,7 +1114,7 @@ pub fn project(
         },
         element: Element::List {
             label: name,
-            children: rows(kind, view, review),
+            children: rows(kind, view, review, controls),
         },
     };
     View::new(
@@ -609,7 +1150,7 @@ pub fn project(
 pub(crate) fn activate(open: &Open, event: &Activation) -> Result<Intent, String> {
     open.view
         .activate(event)
-        .copied()
+        .cloned()
         .map_err(|_| "That studio control is no longer on screen".to_owned())
 }
 
@@ -618,6 +1159,12 @@ mod tests {
     use super::*;
     use coder_access::review::{Completeness, FileCount, FileStatus};
     use coder_access::studio::{Decision, Goal, Log, LogLine, Station};
+
+    /// A connection with no rights and no answer yet.
+    const NONE: Controls<'static> = Controls {
+        rights: &[],
+        status: None,
+    };
 
     fn seat(name: &str, desk: u32, activity: Activity) -> Seat {
         Seat {
@@ -733,8 +1280,15 @@ mod tests {
             PanelKind::Review,
         ] {
             for loaded in [None, Some(&view)] {
-                let projected = project(&kind, loaded, None, "verse.mount.1.studio", 1)
-                    .unwrap_or_else(|e| panic!("{kind:?}: {e:?}"));
+                let projected = project(
+                    &kind,
+                    loaded,
+                    None,
+                    &Controls::default(),
+                    "verse.mount.1.studio",
+                    1,
+                )
+                .unwrap_or_else(|e| panic!("{kind:?}: {e:?}"));
                 // Android's renderer draws stacks, lists, text, and buttons
                 // only, so the studio must not use any other primitive.
                 let mut pending = vec![&projected.view().root];
@@ -753,7 +1307,7 @@ mod tests {
 
     #[test]
     fn the_console_orders_the_roster_by_attention_and_counts_decisions() {
-        let rows = rows(&PanelKind::Console, Some(&studio()), None);
+        let rows = rows(&PanelKind::Console, Some(&studio()), None, &NONE);
         let text = values(&rows);
         let waiting = text.find("bo b · Needs you").unwrap();
         let working = text.find("ada · Working").unwrap();
@@ -770,21 +1324,22 @@ mod tests {
         let view = studio();
         assert_eq!(title(&PanelKind::Desk(0), Some(&view)), "ada · codex:gpt-6");
         assert_eq!(title(&PanelKind::Desk(3), Some(&view)), "Desk 4");
-        let rows = rows(&PanelKind::Desk(0), Some(&view), None);
+        let rows = rows(&PanelKind::Desk(0), Some(&view), None, &NONE);
         assert_eq!(keys(&rows), ["studio-seat", "studio-log-0", "studio-log-1"]);
         assert!(values(&rows).contains("failed · cargo test failed"));
-        let empty = super::rows(&PanelKind::Desk(3), Some(&view), None);
+        let empty = super::rows(&PanelKind::Desk(3), Some(&view), None, &NONE);
         assert_eq!(keys(&empty), ["studio-no-seat"]);
     }
 
     #[test]
     fn decisions_read_with_the_app_question_flow() {
-        let rows = rows(&PanelKind::Decisions, Some(&studio()), None);
-        assert_eq!(keys(&rows), ["studio-decision-0"]);
+        let rows = rows(&PanelKind::Decisions, Some(&studio()), None, &NONE);
+        // Without the operate right the podium only reads, and says why.
+        assert_eq!(keys(&rows), ["studio-decision-0", "studio-decisions-help"]);
         let text = values(&rows);
         assert!(text.starts_with("**bo b** asks to go ahead"), "{text}");
         assert!(text.contains("Run the migration?"));
-        let none = super::rows(&PanelKind::Decisions, Some(&Studio::default()), None);
+        let none = super::rows(&PanelKind::Decisions, Some(&Studio::default()), None, &NONE);
         assert_eq!(keys(&none), ["studio-no-decisions"]);
     }
 
@@ -813,20 +1368,30 @@ mod tests {
             completeness: Completeness::Complete,
             publication: None,
         };
-        let rows = rows(&PanelKind::Review, Some(&view), Some(&review));
+        let rows = rows(&PanelKind::Review, Some(&view), Some(&review), &NONE);
         assert_eq!(
             keys(&rows),
             ["studio-review", "studio-diff", "studio-review-help"]
         );
         assert!(values(&rows).contains("Mount the panel"));
         review.diff = "+line\n".repeat(MAX_DIFF_BYTES);
-        let rows = super::rows(&PanelKind::Review, Some(&view), Some(&review));
+        let rows = super::rows(&PanelKind::Review, Some(&view), Some(&review), &NONE);
         assert!(keys(&rows).contains(&"studio-diff-cut"));
         let Element::Text { value, .. } = &rows[1].element else {
             panic!("the diff is text");
         };
         assert!(value.len() <= MAX_DIFF_BYTES && value.ends_with('\n'));
-        assert!(project(&PanelKind::Review, Some(&view), Some(&review), "s", 2).is_ok());
+        assert!(
+            project(
+                &PanelKind::Review,
+                Some(&view),
+                Some(&review),
+                &NONE,
+                "s",
+                2
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -839,10 +1404,10 @@ mod tests {
                 text: "x".repeat(400),
             })
             .collect();
-        let rows = rows(&PanelKind::Desk(0), Some(&view), None);
+        let rows = rows(&PanelKind::Desk(0), Some(&view), None, &NONE);
         assert_eq!(rows.len(), MAX_ROWS);
         assert_eq!(rows.last().unwrap().key, "studio-more");
-        assert!(project(&PanelKind::Desk(0), Some(&view), None, "s", 1).is_ok());
+        assert!(project(&PanelKind::Desk(0), Some(&view), None, &NONE, "s", 1).is_ok());
     }
 
     #[test]
@@ -850,7 +1415,8 @@ mod tests {
         let open = Open {
             kind: PanelKind::Console,
             shown: 0,
-            view: project(&PanelKind::Console, None, None, "studio-a", 4).unwrap(),
+            reviewed: None,
+            view: project(&PanelKind::Console, None, None, &NONE, "studio-a", 4).unwrap(),
         };
         let event = |instance: &str, revision, node: &str| Activation {
             instance: instance.into(),
@@ -864,5 +1430,198 @@ mod tests {
         assert!(activate(&open, &event("studio-a", 3, "studio-close")).is_err());
         assert!(activate(&open, &event("studio-b", 4, "studio-close")).is_err());
         assert!(activate(&open, &event("studio-a", 4, "studio-title")).is_err());
+    }
+
+    fn review() -> TaskReview {
+        TaskReview {
+            task: "task-cy".into(),
+            base: "a".repeat(40),
+            head_commit: "b".repeat(40),
+            head: "c".repeat(40),
+            files: Vec::new(),
+            files_total: 1,
+            added: 1,
+            removed: 0,
+            uncounted: 0,
+            diff: "+one\n".into(),
+            completeness: Completeness::Complete,
+            publication: None,
+        }
+    }
+
+    /// The control keyed `key` in `rows`, and its intent.
+    fn control<'a>(rows: &'a [Node<Intent>], key: &str) -> Option<&'a Intent> {
+        rows.iter()
+            .find(|row| row.key == key)
+            .and_then(|row| match &row.element {
+                Element::Button {
+                    enabled: true,
+                    intent,
+                    ..
+                } => Some(intent),
+                _ => None,
+            })
+    }
+
+    #[test]
+    fn each_control_appears_only_under_the_right_it_needs() {
+        let mut view = studio();
+        let review = review();
+        let operate = Controls {
+            rights: &[Right::Observe, Right::Operate],
+            status: None,
+        };
+        let reviewing = Controls {
+            rights: &[Right::Observe, Right::Review],
+            status: None,
+        };
+        // An approval offers Allow once and Deny, which answer it at its
+        // point with the app's flow's words.
+        let podium = rows(&PanelKind::Decisions, Some(&view), None, &operate);
+        assert_eq!(
+            control(&podium, "studio-decision-0-option-1"),
+            Some(&Intent::Answer {
+                decision: "task-bo b".into(),
+                based_on: 3,
+                text: decision::ALLOWED.into(),
+            })
+        );
+        assert_eq!(
+            control(&podium, "studio-decision-0-option-2"),
+            Some(&Intent::Answer {
+                decision: "task-bo b".into(),
+                based_on: 3,
+                text: decision::DENIED.into(),
+            })
+        );
+        assert!(keys(&podium).contains(&"studio-decision-reply"));
+        let reading = rows(&PanelKind::Decisions, Some(&view), None, &reviewing);
+        assert!(control(&reading, "studio-decision-0-option-1").is_none());
+        // A goal's plan decision has no options: typed text answers it.
+        view.decisions[0].kind = DecisionKind::NoPlan;
+        let plan = rows(&PanelKind::Decisions, Some(&view), None, &operate);
+        assert!(control(&plan, "studio-decision-0-option-1").is_none());
+        assert!(keys(&plan).contains(&"studio-decision-reply"));
+
+        // A desk steers its seat with the operate right only.
+        let desk = rows(&PanelKind::Desk(0), Some(&view), None, &operate);
+        assert_eq!(
+            control(&desk, "studio-seat-pause"),
+            Some(&Intent::Pause { seat: "ada".into() })
+        );
+        assert_eq!(
+            control(&desk, "studio-seat-stop"),
+            Some(&Intent::Stop { seat: "ada".into() })
+        );
+        view.seats[0].paused = true;
+        let desk = rows(&PanelKind::Desk(0), Some(&view), None, &operate);
+        assert!(control(&desk, "studio-seat-pause").is_none());
+        assert_eq!(
+            control(&desk, "studio-seat-resume"),
+            Some(&Intent::Resume { seat: "ada".into() })
+        );
+        let desk = rows(&PanelKind::Desk(0), Some(&view), None, &reviewing);
+        assert!(control(&desk, "studio-seat-stop").is_none());
+
+        // The merge station decides at the review's exact revisions, with
+        // the review right only.
+        let station = rows(&PanelKind::Review, Some(&view), Some(&review), &reviewing);
+        let merge = control(&station, "studio-merge").expect("Merge");
+        assert_eq!(
+            *merge,
+            Intent::Decide {
+                task: "task-cy".into(),
+                base: review.base.clone(),
+                head_commit: review.head_commit.clone(),
+                head: review.head.clone(),
+                verdict: Verdict::Merge,
+            }
+        );
+        assert!(control(&station, "studio-reject").is_some());
+        let station = rows(&PanelKind::Review, Some(&view), Some(&review), &operate);
+        assert!(control(&station, "studio-merge").is_none());
+        for kind in [PanelKind::Decisions, PanelKind::Desk(0), PanelKind::Review] {
+            for controls in [&operate, &reviewing] {
+                assert!(project(&kind, Some(&view), Some(&review), controls, "s", 1).is_ok());
+            }
+        }
+    }
+
+    #[test]
+    fn each_intent_is_one_valid_studio_operation() {
+        let review = review();
+        let now = 1_790_000_000;
+        assert!(Intent::Close.operation(now).is_none());
+        let answer = Intent::Answer {
+            decision: "g1".into(),
+            based_on: 4,
+            text: "Use the first host.".into(),
+        }
+        .operation(now)
+        .unwrap();
+        let Operation::AnswerDecision {
+            decision,
+            based_on,
+            text,
+            command,
+            issued_at,
+        } = &answer
+        else {
+            panic!("an answer is studio.decision.answer: {answer:?}");
+        };
+        assert_eq!(
+            (decision.as_str(), *based_on, text.as_str(), *issued_at),
+            ("g1", 4, "Use the first host.", now)
+        );
+        assert_eq!(command.len(), 64);
+        assert!(answer.validate().is_ok());
+        assert_eq!(answer.required(), Some(Right::Operate));
+        let merge = Intent::Decide {
+            task: review.task.clone(),
+            base: review.base.clone(),
+            head_commit: review.head_commit.clone(),
+            head: review.head.clone(),
+            verdict: Verdict::Merge,
+        }
+        .operation(now)
+        .unwrap();
+        let Operation::DecideMerge { decision } = &merge else {
+            panic!("a merge is studio.merge.decide: {merge:?}");
+        };
+        assert_eq!(decision.verdict, Verdict::Merge);
+        assert_eq!(decision.head, review.head);
+        assert!(decision.text.is_empty());
+        assert!(merge.validate().is_ok());
+        assert_eq!(merge.required(), Some(Right::Review));
+        for (intent, name) in [
+            (Intent::Pause { seat: "ada".into() }, "studio.seat.pause"),
+            (Intent::Resume { seat: "ada".into() }, "studio.seat.resume"),
+            (Intent::Stop { seat: "ada".into() }, "studio.seat.stop"),
+        ] {
+            let operation = intent.operation(now).unwrap();
+            assert_eq!(operation.name(), name);
+            assert_eq!(operation.required(), Some(Right::Operate));
+        }
+    }
+
+    #[test]
+    fn the_host_answer_leads_the_panel() {
+        let refused = Answer {
+            ticket: 2,
+            operation: "studio.merge.decide",
+            result: Err(AccessError::new(Code::Stale, "the review moved")),
+        };
+        let controls = Controls {
+            rights: &[Right::Review],
+            status: Some(&refused),
+        };
+        let view = studio();
+        for loaded in [None, Some(&view)] {
+            let rows = rows(&PanelKind::Review, loaded, None, &controls);
+            assert_eq!(rows[0].key, "studio-status");
+            let shown = values(&rows[..1]);
+            assert!(shown.contains("`stale`"), "{shown}");
+            assert!(shown.contains("nothing landed"), "{shown}");
+        }
     }
 }

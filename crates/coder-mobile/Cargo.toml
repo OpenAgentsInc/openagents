@@ -19,7 +19,11 @@ coder-vt = { path = "../coder-vt" }
 # `ffi` exports Rust Native transcript layout to the iOS host.
 rust-native = { path = "../rust-native", features = ["ffi", "shaping"] }
 # `xp-host` is Verse's read-only NIP-XP reader: levels over players' heads.
-verse = { path = "../verse", default-features = false, features = ["xp-host"] }
+# `studio-host` is Everglade's live studio worker, which the phone's studio
+# panels drive over a paired computer's link (`src/studio_panel.rs`).
+verse = { path = "../verse", default-features = false, features = ["xp-host", "studio-host"] }
+# The paired computer's NIP-HOST link and its errors, for the studio panels.
+coder-host = { path = "../coder-host", default-features = false }
 nostr = { path = "../nostr" }
 # The Agent Studio panels read seats and decisions with the app's shared
 # attention and question models.
@@ -42,6 +46,9 @@ tempfile = "3"
 coder-connect = { path = "../coder-connect", features = ["host"] }
 # The Computers acceptance run serves a real host on a local relay.
 coder-host = { path = "../coder-host" }
+# The studio acceptance run's scratch host: the task inbox and its studio
+# coordinator.
+coder = { path = "../coder" }
 coder-history = { path = "../coder-history", features = ["host"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["macros", "sync"] }

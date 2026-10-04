@@ -408,6 +408,8 @@ impl VerseHandle {
             // limit; the HUD validates it again.
             Request::ComputerFeed { .. } => MAX_REQUEST_BYTES,
             Request::GymConfigure { .. } => 96 * 1024,
+            // A plan typed at the podium answers a goal's plan decision.
+            Request::StudioText { .. } => 64 * 1024,
             _ => 4096,
         };
         if bytes.len() > limit {
@@ -437,6 +439,7 @@ impl VerseHandle {
             &request,
             Request::StudioView
                 | Request::StudioActivate { .. }
+                | Request::StudioText { .. }
                 | Request::Zone {
                     intent: verse::zones::Intent::Interact
                 }

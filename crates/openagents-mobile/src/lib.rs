@@ -49,6 +49,7 @@ mod provider_keys;
 mod router;
 mod spark;
 mod spend;
+mod studio;
 mod tailnet;
 mod tailnet_view;
 mod trainer;

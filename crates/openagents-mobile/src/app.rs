@@ -1143,6 +1143,20 @@ impl App {
             .unwrap_or_default()
     }
 
+    /// The supervised link to the paired computer `host` and the runtime
+    /// that runs its calls, for Everglade's studio (`crate::studio`).
+    /// `None` without the live Computers client.
+    pub(crate) fn studio_links(
+        &self,
+        host: &str,
+    ) -> Option<(
+        coder_computers::terminal::session::Links,
+        tokio::runtime::Handle,
+    )> {
+        let links = self.terminals.as_ref()?.links(host);
+        Some((links, self.runtime.handle().clone()))
+    }
+
     /// Answer one request as JSON: a terminal request with the terminal
     /// packet, anything else with the app packet.
     pub fn respond(&mut self, request: Request) -> Vec<u8> {
