@@ -252,3 +252,20 @@ other page's policy changed. Build files (`everglade_web.js`,
 carry no digest; the pack (`/everglade/pack/<PACK_SHA256>.vtp`) is cached
 for a year as immutable. After a deploy, check `/everglade` and the pack on
 the `new` tag before moving traffic.
+
+## 2026-10-04: coder-web-98ddaac99d, Everglade live
+
+`openagents.com/everglade` serves the Everglade web build (#10523–#10525):
+image `openagents/openagents-web:98ddaac99d`, built from GitHub by the
+automation account, applied from the live spec with only the image and the
+`web` container's `--everglade /srv/everglade` arguments changed (pay-host
+VPC annotations and variables kept, `CODER_CHAT_SYNC` quoted). On the `new`
+tag, `/`, `/download`, `/docs`, `/live`, `/stats`, `/efficiency`,
+`/api/stats`, `/terms`, the agent card, `/everglade`, its build files, and
+the 13,373,560-byte pack answered 200, and Chrome rendered the glade over
+WebGPU before traffic moved. Rollback:
+`gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-6522f448de=100`.
+
+The first build of this change (`9088c30a1d`) failed: `breez/boltz-client`,
+a git dependency of `breez-sdk-spark`, returned 404, so no clean build of
+the workspace could fetch it. It is now vendored under `vendor/boltz-client`.
