@@ -5,8 +5,9 @@
 //! The coordinator owns only what the task store does not:
 //!
 //! - **Seats.** Named roles (one or more leads, any number of workers),
-//!   each bound to an auto-start route (`PROVIDER:MODEL`), a look, and a
-//!   desk. A seat is configuration, not an engine.
+//!   each bound to an auto-start route (`PROVIDER[/ENGINE]:MODEL`), a
+//!   look, and a desk. A seat is configuration, not an engine, but its
+//!   route may name the engine its tasks run on ([`with_seat_engine`]).
 //! - **Goals.** The text a person submitted, the admitted repository
 //!   (a workspace label and its root), the lead seat, the lead's task,
 //!   and the plan entries.
@@ -173,7 +174,9 @@ pub struct Seat {
     pub name: String,
     pub role: Role,
     /// The auto-start route this seat's tasks ask for. A task starts only
-    /// when the owner's policy admits it.
+    /// when the owner's policy admits it. A route that names its engine
+    /// (`claude/session:MODEL`, `claude/loop:MODEL`) runs the seat's tasks
+    /// on it whatever the owner's host-wide setting ([`with_seat_engine`]).
     pub route: Route,
     /// The character look a view draws the seat with.
     pub look: String,
@@ -735,11 +738,16 @@ pub fn valid_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
-/// Parse `PROVIDER:MODEL` as `coder host autostart on --route` takes it.
+/// Parse `PROVIDER[/ENGINE]:MODEL` as `coder host autostart on --route`
+/// takes it. A `claude` or `codex` route may name its engine (#10568):
+/// `session` (Claude Code or Codex CLI in one lean session) or `loop`
+/// (Microcoder's loop on the provider), which overrides the owner's
+/// `coder.claude` or `coder.codex` setting for the seat's tasks.
 ///
 /// # Errors
-/// The provider is not one a repository run uses, or the model is
-/// missing or malformed.
+/// The provider is not one a repository run uses, the engine is unknown
+/// or named for a provider without one, or the model is missing or
+/// malformed.
 pub fn parse_route(text: &str) -> Result<Route, Error> {
     autostart::parse_route(text).map_err(|message| {
         Error::Invalid(
@@ -748,6 +756,46 @@ pub fn parse_route(text: &str) -> Result<Route, Error> {
                 .replace("--route", "a route"),
         )
     })
+}
+
+/// `order`, the routes a start of task `task` chose, with the engine its
+/// studio seat's route names (#10568) on every route of the seat's
+/// provider. So a `claude/session` seat's grant names the Claude Code
+/// session and a `claude/loop` seat's names the provider, whatever the
+/// owner's `coder.claude` setting; routes of other providers, and every
+/// route of a task no seat holds or whose seat names no engine, are
+/// unchanged. The seat's route is read as the turn starts, without the
+/// coordinator's lock, as [`git::seat_of`] reads it. A session under any
+/// access but full is then refused at launch with the reason
+/// ([`autostart::Route::refusal`]).
+#[must_use]
+pub fn with_seat_engine(store: &Path, task: &str, mut order: Vec<Route>) -> Vec<Route> {
+    let Some(route) = seat_route(store, task) else {
+        return order;
+    };
+    let Some(engine) = route.engine else {
+        return order;
+    };
+    for item in order
+        .iter_mut()
+        .filter(|item| item.provider == route.provider)
+    {
+        item.engine = Some(engine);
+    }
+    order
+}
+
+/// The route of the seat whose task `task` is, from the saved document.
+fn seat_route(store: &Path, task: &str) -> Option<Route> {
+    let bytes = std::fs::read(store.join(DIR).join(STATE_FILE)).ok()?;
+    let state: State = serde_json::from_slice(&bytes).ok()?;
+    let seat = state.goals.iter().find_map(|goal| {
+        std::iter::once(&goal.lead)
+            .chain(goal.plan.iter().map(|entry| &entry.slot))
+            .find(|slot| slot.task_id == task)
+            .map(|slot| slot.seat.clone())
+    })?;
+    state.seat(&seat).map(|seat| seat.route.clone())
 }
 
 /// Check `bytes` as a plan for a team of `seats`. Every problem is
@@ -1053,6 +1101,24 @@ impl Studio {
                 "seat `{}`'s model is not a task model identity",
                 seat.name
             )));
+        }
+        if seat
+            .route
+            .engine
+            .is_some_and(|engine| !engine.runs_on(seat.route.provider))
+        {
+            return Err(Error::Invalid(format!(
+                "seat `{}`'s route names an engine, which only claude and codex routes do",
+                seat.name
+            )));
+        }
+        // A seat that names a session the owner's policy cannot start says
+        // so now, not only when its first task would start (#10568).
+        if let Some(root) = &self.host_root
+            && let Ok(Some(policy)) = autostart::Policy::load(root)
+            && let Some(why) = seat.route.refusal(policy.engine.access)
+        {
+            return Err(Error::Invalid(format!("seat `{}`'s {why}", seat.name)));
         }
         if seat.look.is_empty() || seat.look.len() > 64 || !super::identifier(&seat.look, false) {
             return Err(Error::Invalid(

@@ -1098,3 +1098,245 @@ fn a_rule_text_fences_backticks_in_its_command() {
         "ada may run shell `` echo `date` `` in /work/repo without asking again"
     );
 }
+
+/// Records each launch's grant instead of starting a process.
+struct Grants(std::sync::Arc<std::sync::Mutex<Vec<PathBuf>>>);
+
+impl autostart::Launch for Grants {
+    fn launch(
+        &self,
+        _: &autostart::Engine,
+        grant: &Path,
+        _: &Path,
+    ) -> std::result::Result<autostart::Launched, String> {
+        self.0.lock().unwrap().push(grant.to_path_buf());
+        Ok(autostart::Launched {
+            owner_process: std::process::id(),
+            grant_digest: "sha256:fake".into(),
+        })
+    }
+}
+
+fn at_200() -> u64 {
+    200
+}
+
+/// The owner's policy admitting one Claude route, which names no engine,
+/// in the scratch workspace, with the host-wide `coder.claude` setting.
+fn claude_policy(
+    access: super::super::adapter::Access,
+    claude: autostart::ClaudeRuns,
+) -> autostart::Policy {
+    autostart::Policy {
+        schema: autostart::POLICY_SCHEMA.into(),
+        enabled: true,
+        workspaces: vec!["demo".into()],
+        max_running: 2,
+        engine: autostart::Engine {
+            adapter: super::super::adapter::NAME.into(),
+            controller: PathBuf::from("/opt/coder/microcoder"),
+            model: "claude-opus-5-5".into(),
+            effort: None,
+            max_steps: None,
+            wall_seconds: None,
+            memory_bytes: 1 << 30,
+            write_workspace: false,
+            decision_endpoint: "https://api.typesafe.ai".into(),
+            decision_model: "jev-latest".into(),
+            routes: vec![parse_route("claude:claude-opus-5-5").unwrap()],
+            usage_probe: None,
+            access,
+            claude,
+            codex: autostart::CodexRuns::default(),
+        },
+        changed_at: 1,
+    }
+}
+
+/// Two lead seats on one Claude model, one naming the Claude Code
+/// session and one Microcoder's loop, each with a goal whose lead task
+/// the coordinator released. Returns the two lead task IDs.
+fn session_and_loop_seats(scratch: &Scratch) -> (String, String) {
+    let mut tasks = Tasks::open(scratch);
+    let mut studio = Studio::open(&scratch.store)
+        .unwrap()
+        .with_host_root(&scratch.root);
+    studio
+        .set_seat(seat("ada", Role::Lead, "claude/session:claude-opus-5-5", 0))
+        .unwrap();
+    studio
+        .set_seat(seat("bob", Role::Lead, "claude/loop:claude-opus-5-5", 1))
+        .unwrap();
+    let mut released = Vec::new();
+    for lead in ["ada", "bob"] {
+        let mut new = goal(scratch);
+        new.lead = Some(lead.into());
+        let (_, task) = studio.submit_goal(&mut tasks, new, 100).unwrap();
+        assert_eq!(task.provider, Provider::Claude);
+        released.push(task.task_id);
+    }
+    // The snapshot's route names each seat's engine, so a nameplate tells
+    // the Claude Code seat from Microcoder on Claude.
+    let view = studio.wire(&tasks, &scratch.store);
+    let routes: Vec<(String, String)> = view
+        .seats
+        .iter()
+        .map(|seat| (seat.seat.clone(), seat.route.clone()))
+        .collect();
+    assert_eq!(
+        routes,
+        [
+            (
+                "ada".to_owned(),
+                "claude/session:claude-opus-5-5".to_owned()
+            ),
+            ("bob".to_owned(), "claude/loop:claude-opus-5-5".to_owned()),
+        ]
+    );
+    let bob = released.pop().unwrap();
+    let ada = released.pop().unwrap();
+    (ada, bob)
+}
+
+/// Sweep the owner's policy once over the scratch store, as the host
+/// does, and return what it wrote and the grants it launched.
+fn sweep_once(scratch: &Scratch) -> (Vec<autostart::Entry>, Vec<super::super::owner::Grant>) {
+    let launched = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let workspaces = BTreeMap::from([("demo".to_owned(), PathBuf::from(&scratch.repository.path))]);
+    let autostart = autostart::Autostart::new(
+        scratch.root.clone(),
+        scratch.store.clone(),
+        workspaces,
+        Box::new(Grants(launched.clone())),
+        at_200,
+    )
+    .with_probe(|_| super::super::capacity::Connection::Connected)
+    .with_identify(|_| None)
+    .foreground();
+    let written = autostart.sweep();
+    let grants = launched
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|path| super::super::owner::Grant::parse(&std::fs::read(path).unwrap()).unwrap())
+        .collect();
+    (written, grants)
+}
+
+fn endpoint_of(grants: &[super::super::owner::Grant], task: &str) -> String {
+    grants
+        .iter()
+        .find(|grant| grant.task_id == task)
+        .and_then(|grant| grant.adapter_configuration.as_ref())
+        .map(|configuration| configuration.generation_endpoint.clone())
+        .unwrap_or_else(|| panic!("no grant for {task}"))
+}
+
+/// Acceptance for #10568: a `claude/session` seat's task starts in the
+/// Claude Code session and a `claude/loop` seat's on the provider, through
+/// Microcoder's loop, whichever the owner's host-wide `coder.claude` is.
+#[test]
+fn a_seat_route_names_the_engine_its_grants_run() {
+    for host in [autostart::ClaudeRuns::Session, autostart::ClaudeRuns::Loop] {
+        let scratch = scratch();
+        let (ada, bob) = session_and_loop_seats(&scratch);
+        claude_policy(super::super::adapter::Access::Full, host)
+            .save(&scratch.root)
+            .unwrap();
+        let (written, grants) = sweep_once(&scratch);
+        assert_eq!(grants.len(), 2, "{host:?}: {written:?}");
+        assert_eq!(
+            endpoint_of(&grants, &ada),
+            super::super::capacity::CLAUDE_SESSION_ENDPOINT,
+            "{host:?}"
+        );
+        assert_eq!(
+            endpoint_of(&grants, &bob),
+            Provider::Claude.endpoint(),
+            "{host:?}"
+        );
+        for grant in &grants {
+            let configuration = grant.adapter_configuration.as_ref().unwrap();
+            assert_eq!(configuration.provider, "claude");
+            assert_eq!(configuration.model, "claude-opus-5-5");
+        }
+        // The journal says which engine each start ran on.
+        let started: Vec<String> = written
+            .iter()
+            .filter(|entry| entry.event == "started")
+            .filter_map(|entry| entry.detail.clone())
+            .collect();
+        assert!(
+            started
+                .iter()
+                .any(|detail| detail.contains("claude/session:claude-opus-5-5")),
+            "{started:?}"
+        );
+        assert!(
+            started
+                .iter()
+                .any(|detail| detail.contains("claude/loop:claude-opus-5-5")),
+            "{started:?}"
+        );
+    }
+}
+
+/// A seat that names a session under the boundary is refused with the
+/// reason, at launch and, once the policy exists, when it is seated; the
+/// loop seat beside it starts (#10568).
+#[test]
+fn a_session_seat_under_the_boundary_is_refused_with_the_reason() {
+    let scratch = scratch();
+    let (ada, bob) = session_and_loop_seats(&scratch);
+    claude_policy(
+        super::super::adapter::Access::Boundary,
+        autostart::ClaudeRuns::Session,
+    )
+    .save(&scratch.root)
+    .unwrap();
+    let (written, grants) = sweep_once(&scratch);
+    assert_eq!(grants.len(), 1, "{written:?}");
+    assert_eq!(endpoint_of(&grants, &bob), Provider::Claude.endpoint());
+    let refused = written
+        .iter()
+        .find(|entry| entry.event == "refused" && entry.task.as_deref() == Some(ada.as_str()))
+        .and_then(|entry| entry.detail.clone())
+        .unwrap_or_else(|| panic!("ada's start was not refused: {written:?}"));
+    assert!(refused.starts_with("seat ada's route"), "{refused}");
+    assert!(refused.contains("Claude Code session"), "{refused}");
+    assert!(refused.contains("full access"), "{refused}");
+    assert!(refused.contains("boundary"), "{refused}");
+    assert!(
+        refused.contains("claude/loop:claude-opus-5-5"),
+        "the reason names the route that would start: {refused}"
+    );
+    // With the policy in place, seating a session says so at once.
+    let mut studio = Studio::open(&scratch.store)
+        .unwrap()
+        .with_host_root(&scratch.root);
+    let Err(Error::Invalid(why)) = studio.set_seat(seat(
+        "cy",
+        Role::Worker,
+        "claude/session:claude-opus-5-5",
+        2,
+    )) else {
+        panic!("a session seat under the boundary was seated");
+    };
+    assert!(why.contains("full access"), "{why}");
+    studio
+        .set_seat(seat("cy", Role::Worker, "claude/loop:claude-opus-5-5", 2))
+        .unwrap();
+}
+
+/// A seat names an engine only on a Claude or Codex route.
+#[test]
+fn only_claude_and_codex_seats_name_an_engine() {
+    assert!(parse_route("grok/session:default").is_err());
+    let unknown = parse_route("claude/sdk:claude-opus-5-5").unwrap_err();
+    assert!(unknown.to_string().contains("session or loop"), "{unknown}");
+    let scratch = scratch();
+    let mut studio = Studio::open(&scratch.store).unwrap();
+    let mut devin = seat("dee", Role::Worker, "devin:default", 0);
+    devin.route.engine = Some(autostart::RouteEngine::Session);
+    assert!(matches!(studio.set_seat(devin), Err(Error::Invalid(_))));
+}

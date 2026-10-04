@@ -195,6 +195,7 @@ impl Choice {
             provider: self.provider,
             model,
             effort: None,
+            engine: None,
         })
     }
 }
@@ -208,6 +209,7 @@ impl Choice {
                 provider: Provider::OpenCode,
                 model: String::new(),
                 effort: None,
+                engine: None,
             });
         }
         self.route()
@@ -1235,17 +1237,20 @@ mod tests {
                 Route {
                     provider: Provider::Codex,
                     model: "gpt-6.1-sol".into(),
-                    effort: None
+                    effort: None,
+                    engine: None,
                 },
                 Route {
                     provider: Provider::Claude,
                     model: "claude-opus-5-5".into(),
-                    effort: None
+                    effort: None,
+                    engine: None,
                 },
                 Route {
                     provider: Provider::Grok,
                     model: acp_client::grok::DEFAULT_MODEL.into(),
-                    effort: None
+                    effort: None,
+                    engine: None,
                 },
             ]
         );

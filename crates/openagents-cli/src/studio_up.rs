@@ -608,6 +608,7 @@ pub(crate) fn default_team(connected: &dyn Fn(Provider) -> bool) -> Vec<Member> 
             .unwrap_or_default()
             .into(),
         effort: None,
+        engine: None,
     };
     let last = providers[providers.len() - 1];
     vec![

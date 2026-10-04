@@ -76,11 +76,13 @@ fn policy() -> Policy {
                     provider: Provider::Codex,
                     model: "gpt-6-luna".into(),
                     effort: None,
+                    engine: None,
                 },
                 Route {
                     provider: Provider::Claude,
                     model: "claude-opus-5-5".into(),
                     effort: Some("high".into()),
+                    engine: None,
                 },
             ],
             usage_probe: None,

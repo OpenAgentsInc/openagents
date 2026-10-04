@@ -266,11 +266,114 @@ pub struct Route {
     /// The route's effort; the engine's when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
+    /// The engine this route names (#10568), written
+    /// `PROVIDER/ENGINE:MODEL`. Absent means the owner's host-wide
+    /// setting for the provider ([`Engine::claude`], [`Engine::codex`]).
+    /// Only Claude and Codex routes name one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<RouteEngine>,
+}
+
+impl Route {
+    /// Whether this route asks for its provider's local session rather
+    /// than Microcoder's loop: its own engine when it names one, else the
+    /// owner's setting in `engine`. Only Claude and Codex have a session.
+    #[must_use]
+    pub fn wants_session(&self, engine: &Engine) -> bool {
+        match (self.provider, self.engine) {
+            (Provider::Claude | Provider::Codex, Some(RouteEngine::Session)) => true,
+            (Provider::Claude | Provider::Codex, Some(RouteEngine::Loop)) => false,
+            (Provider::Claude, None) => engine.claude == ClaudeRuns::Session,
+            (Provider::Codex, None) => engine.codex == CodexRuns::Session,
+            _ => false,
+        }
+    }
+
+    /// Why this route cannot start under `access`, if it cannot: it names
+    /// a session, which runs the provider's own agent with nothing
+    /// bounding its commands, so only full access admits it. A session
+    /// the owner's host-wide setting chose instead falls back to the loop,
+    /// as it always has; only a route that names one is refused.
+    #[must_use]
+    pub fn refusal(&self, access: adapter::Access) -> Option<String> {
+        if self.engine != Some(RouteEngine::Session) || access == adapter::Access::Full {
+            return None;
+        }
+        let agent = match self.provider {
+            Provider::Claude => "a Claude Code session",
+            _ => "a Codex CLI session",
+        };
+        let looped = Route {
+            engine: Some(RouteEngine::Loop),
+            ..self.clone()
+        };
+        Some(format!(
+            "route {self} runs {agent}, which only full access admits, and the auto-start policy's access is {}; use {looped}, or turn auto-start on with --full-access",
+            access.as_str()
+        ))
+    }
 }
 
 impl std::fmt::Display for Route {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.provider, self.model)
+        match self.engine {
+            Some(engine) => write!(f, "{}/{}:{}", self.provider, engine, self.model),
+            None => write!(f, "{}:{}", self.provider, self.model),
+        }
+    }
+}
+
+/// The engine a Claude or Codex route names (#10568): the provider's own
+/// agent in one lean session, or Microcoder's step loop on the provider.
+/// It overrides the owner's host-wide [`ClaudeRuns`] or [`CodexRuns`] for
+/// the route's tasks. A later engine, such as an Agent SDK session
+/// (#10571), is one more variant and word here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RouteEngine {
+    /// One lean Claude Code or `codex exec` session, briefed by Jev, as
+    /// [`ClaudeRuns::Session`] and [`CodexRuns::Session`] run it. Full
+    /// access only.
+    Session,
+    /// Microcoder's step loop on the provider, as [`ClaudeRuns::Loop`]
+    /// and [`CodexRuns::Loop`] run it.
+    Loop,
+}
+
+impl RouteEngine {
+    /// Every engine, in the order a message lists them.
+    pub const ALL: [RouteEngine; 2] = [RouteEngine::Session, RouteEngine::Loop];
+
+    /// The engine's word in a route.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            RouteEngine::Session => "session",
+            RouteEngine::Loop => "loop",
+        }
+    }
+
+    /// The engine its word in a route names, if any.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|engine| engine.as_str() == word)
+    }
+
+    /// Whether `provider` runs this engine: only Claude and Codex have a
+    /// session and a loop to choose between.
+    #[must_use]
+    pub const fn runs_on(self, provider: Provider) -> bool {
+        match self {
+            RouteEngine::Session | RouteEngine::Loop => {
+                matches!(provider, Provider::Claude | Provider::Codex)
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for RouteEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -296,6 +399,7 @@ impl Policy {
                 provider: Provider::Codex,
                 model: self.engine.model.clone(),
                 effort: None,
+                engine: None,
             }]
         } else {
             self.engine.routes.clone()
@@ -351,6 +455,13 @@ impl Policy {
         policy.engine.write_workspace = false;
         if policy.engine.access == adapter::Access::Full {
             policy.engine.access = adapter::Access::Toolchains;
+            // A route that names a session runs the loop here: only the
+            // loop's commands can be held to a read-only boundary.
+            for route in &mut policy.engine.routes {
+                if route.engine == Some(RouteEngine::Session) {
+                    route.engine = Some(RouteEngine::Loop);
+                }
+            }
         }
         policy
     }
@@ -469,6 +580,22 @@ impl Policy {
         if engine.adapter != adapter::NAME {
             return Err(format!("the only engine adapter is {}", adapter::NAME));
         }
+        if let Some(route) = engine.routes.iter().find(|route| {
+            route
+                .engine
+                .is_some_and(|named| !named.runs_on(route.provider))
+        }) {
+            return Err(format!(
+                "route {route} names an engine, which only claude and codex routes do"
+            ));
+        }
+        if let Some(why) = self
+            .routes()
+            .iter()
+            .find_map(|route| route.refusal(engine.access))
+        {
+            return Err(why);
+        }
         if !engine.controller.is_absolute() {
             return Err("the controller path must be absolute".into());
         }
@@ -542,6 +669,17 @@ impl Policy {
         if order.is_empty() {
             return Err("no route to start on".into());
         }
+        // A route that names a session starts only under full access
+        // (#10568); a seat's refusal names the seat.
+        if let Some(why) = order
+            .iter()
+            .find_map(|route| route.refusal(self.engine.access))
+        {
+            return Err(match seat {
+                Some(seat) => format!("seat {seat}'s {why}"),
+                None => why,
+            });
+        }
         let mut configuration = self.configuration(order);
         configuration.studio_seat = seat.map(str::to_owned);
         let program = shell()?;
@@ -591,17 +729,16 @@ impl Policy {
             .then(|| route.effort.clone().or_else(|| engine.effort.clone()))
             .flatten(),
             // A Claude or Codex route runs as one lean session when the
-            // owner chose it and the run has full access (#10246, #10250).
-            generation_endpoint: if route.provider == Provider::Claude
-                && engine.claude == ClaudeRuns::Session
+            // route names it, or the owner chose it for the provider, and
+            // the run has full access (#10246, #10250, #10568).
+            generation_endpoint: if route.wants_session(engine)
                 && engine.access == adapter::Access::Full
             {
-                super::capacity::CLAUDE_SESSION_ENDPOINT.into()
-            } else if route.provider == Provider::Codex
-                && engine.codex == CodexRuns::Session
-                && engine.access == adapter::Access::Full
-            {
-                super::capacity::CODEX_SESSION_ENDPOINT.into()
+                if route.provider == Provider::Claude {
+                    super::capacity::CLAUDE_SESSION_ENDPOINT.into()
+                } else {
+                    super::capacity::CODEX_SESSION_ENDPOINT.into()
+                }
             } else {
                 route.provider.endpoint().into()
             },
@@ -1478,6 +1615,9 @@ impl Autostart {
                         continue;
                     }
                 };
+                // A studio seat's route names the engine for its
+                // provider's routes (#10568).
+                let order = super::studio::with_seat_engine(&self.store, &id, order);
                 active += 1;
                 // Why the requested provider does not start this turn, when
                 // it does not (#10081): from the policy and the same books
@@ -2443,11 +2583,27 @@ const ENGINE_FLAGS: [&str; 10] = [
     "--usage-threshold",
 ];
 
-/// `PROVIDER:MODEL`, where the provider is one of the closed set.
+/// `PROVIDER[/ENGINE]:MODEL`, where the provider is one of the closed set
+/// and the engine (#10568), which only `claude` and `codex` name, is one of
+/// [`RouteEngine::ALL`].
 pub(crate) fn parse_route(text: &str) -> std::result::Result<Route, String> {
     let (provider, model) = text
         .split_once(':')
-        .ok_or_else(|| format!("usage: --route takes PROVIDER:MODEL, not `{text}`"))?;
+        .ok_or_else(|| format!("usage: --route takes PROVIDER[/ENGINE]:MODEL, not `{text}`"))?;
+    let (provider, engine) = match provider.split_once('/') {
+        Some((provider, word)) => {
+            let engine = RouteEngine::parse(word).ok_or_else(|| {
+                let words = RouteEngine::ALL
+                    .iter()
+                    .map(|engine| engine.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" or ");
+                format!("usage: the engine in `{text}` is not {words}")
+            })?;
+            (provider, Some(engine))
+        }
+        None => (provider, None),
+    };
     let provider = match Provider::from_config(provider) {
         Some(
             provider @ (Provider::Codex
@@ -2482,10 +2638,16 @@ pub(crate) fn parse_route(text: &str) -> std::result::Result<Route, String> {
     {
         return Err(format!("usage: `{text}`: {why}"));
     }
+    if engine.is_some_and(|engine| !engine.runs_on(provider)) {
+        return Err(format!(
+            "usage: `{text}`: only claude and codex routes name an engine; {provider} runs its own agent"
+        ));
+    }
     Ok(Route {
         provider,
         model: model.into(),
         effort: None,
+        engine,
     })
 }
 
@@ -2837,6 +2999,133 @@ mod tests {
         assert_eq!(plain.preferring(Provider::Claude), None);
     }
 
+    /// A route may name its engine (#10568): `session` or `loop`, for
+    /// Claude and Codex only, and its text shows it back.
+    #[test]
+    fn a_route_names_its_engine_for_claude_and_codex_only() {
+        for text in [
+            "claude/session:claude-opus-5-5",
+            "claude/loop:claude-opus-5-5",
+            "codex/session:gpt-6-luna",
+            "codex/loop:gpt-6-luna",
+            "claude:claude-opus-5-5",
+            "codex:gpt-6-luna",
+        ] {
+            assert_eq!(parse_route(text).unwrap().to_string(), text);
+        }
+        let named = parse_route("claude/loop:claude-opus-5-5").unwrap();
+        assert_eq!(named.provider, Provider::Claude);
+        assert_eq!(named.model, "claude-opus-5-5");
+        assert_eq!(named.engine, Some(RouteEngine::Loop));
+        assert_eq!(parse_route("claude:claude-opus-5-5").unwrap().engine, None);
+        let unknown = parse_route("claude/sdk:claude-opus-5-5").unwrap_err();
+        assert!(unknown.contains("session or loop"), "{unknown}");
+        let agent = parse_route("grok/session:default").unwrap_err();
+        assert!(agent.contains("only claude and codex"), "{agent}");
+        assert!(parse_route("devin/loop:default").is_err());
+        // OpenCode's own PROVIDER/MODEL follows the colon, not an engine.
+        assert_eq!(
+            parse_route("opencode:anthropic/claude-sonnet-5")
+                .unwrap()
+                .engine,
+            None
+        );
+        // A route written before engines existed reads as naming none,
+        // and one naming none writes no engine field.
+        let old: Route =
+            serde_json::from_str(r#"{"provider":"claude","model":"claude-opus-5-5"}"#).unwrap();
+        assert_eq!(old.engine, None);
+        assert!(!serde_json::to_string(&old).unwrap().contains("engine"));
+        let saved = serde_json::to_string(&named).unwrap();
+        assert!(saved.contains(r#""engine":"loop""#), "{saved}");
+    }
+
+    /// A route's engine overrides the owner's `coder.claude` and
+    /// `coder.codex` for its tasks; a named session under anything but
+    /// full access is refused with the reason, while a host-wide session
+    /// setting still falls back to the loop (#10568).
+    #[test]
+    fn a_route_engine_overrides_the_host_setting_and_needs_full_access_for_a_session() {
+        let route = |text: &str| parse_route(text).unwrap();
+        let endpoint =
+            |policy: &Policy, text: &str| policy.configuration(&[route(text)]).generation_endpoint;
+        let mut policy = policy(1);
+        policy.engine.access = adapter::Access::Full;
+        // The host-wide defaults: Claude in a session, Codex on the loop.
+        assert_eq!(
+            endpoint(&policy, "claude:claude-opus-5-5"),
+            capacity::CLAUDE_SESSION_ENDPOINT
+        );
+        assert_eq!(
+            endpoint(&policy, "claude/loop:claude-opus-5-5"),
+            Provider::Claude.endpoint()
+        );
+        assert_eq!(
+            endpoint(&policy, "codex:gpt-6-luna"),
+            Provider::Codex.endpoint()
+        );
+        assert_eq!(
+            endpoint(&policy, "codex/session:gpt-6-luna"),
+            capacity::CODEX_SESSION_ENDPOINT
+        );
+        // The other way round.
+        policy.engine.claude = ClaudeRuns::Loop;
+        policy.engine.codex = CodexRuns::Session;
+        assert_eq!(
+            endpoint(&policy, "claude/session:claude-opus-5-5"),
+            capacity::CLAUDE_SESSION_ENDPOINT
+        );
+        assert_eq!(
+            endpoint(&policy, "codex/loop:gpt-6-luna"),
+            Provider::Codex.endpoint()
+        );
+        // Under the boundary the host-wide session falls back to the loop,
+        // as before, and a named session is refused with the reason.
+        policy.engine.access = adapter::Access::Boundary;
+        policy.engine.claude = ClaudeRuns::Session;
+        assert_eq!(
+            endpoint(&policy, "claude:claude-opus-5-5"),
+            Provider::Claude.endpoint()
+        );
+        let why = route("claude/session:claude-opus-5-5")
+            .refusal(adapter::Access::Boundary)
+            .unwrap();
+        assert!(why.contains("Claude Code session"), "{why}");
+        assert!(why.contains("full access"), "{why}");
+        assert!(why.contains("boundary"), "{why}");
+        assert!(why.contains("claude/loop:claude-opus-5-5"), "{why}");
+        assert!(
+            route("claude/loop:claude-opus-5-5")
+                .refusal(adapter::Access::Boundary)
+                .is_none()
+        );
+        assert!(
+            route("claude/session:claude-opus-5-5")
+                .refusal(adapter::Access::Full)
+                .is_none()
+        );
+        // A policy that admits a named session needs full access.
+        policy.engine.model = "claude-opus-5-5".into();
+        policy.engine.routes = vec![route("claude/session:claude-opus-5-5")];
+        let refused = policy.validate().unwrap_err();
+        assert!(refused.contains("full access"), "{refused}");
+        policy.engine.access = adapter::Access::Full;
+        policy.validate().unwrap();
+        // A read-only run of it is bounded, so it runs the loop.
+        let read_only = policy.read_only();
+        assert_eq!(
+            read_only.routes()[0].engine,
+            Some(RouteEngine::Loop),
+            "{read_only:?}"
+        );
+        assert_eq!(
+            read_only
+                .configuration(&read_only.routes())
+                .generation_endpoint,
+            Provider::Claude.endpoint()
+        );
+    }
+
     fn routed(max_running: u32) -> Policy {
         let mut policy = policy(max_running);
         policy.engine.routes = vec![
@@ -2844,11 +3133,13 @@ mod tests {
                 provider: Provider::Codex,
                 model: "gpt-6-luna".into(),
                 effort: None,
+                engine: None,
             },
             Route {
                 provider: Provider::Claude,
                 model: "claude-opus-5-5".into(),
                 effort: Some("high".into()),
+                engine: None,
             },
         ];
         policy
@@ -3466,6 +3757,7 @@ mod tests {
                 provider: Provider::Codex,
                 model: "gpt-6-luna".into(),
                 effort: None,
+                engine: None,
             }]
         );
         // It saves without a routes field, keeping its old step and time
@@ -4537,6 +4829,7 @@ mod tests {
             provider: Provider::Grok,
             model: "default".into(),
             effort: None,
+            engine: None,
         });
         policy.engine.usage_probe = Some(UsageProbe {
             threshold_percent: 90,
@@ -4556,6 +4849,7 @@ mod tests {
             provider: Provider::Devin,
             model: "default".into(),
             effort: None,
+            engine: None,
         }];
         policy.engine.usage_probe = Some(UsageProbe {
             threshold_percent: 90,
