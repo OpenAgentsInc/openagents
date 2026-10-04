@@ -223,30 +223,7 @@ impl Client {
                 }
                 Ok(())
             }
-            (Reply::Snapshot { state }, Body::Snapshot {}) => {
-                let mut sources = std::collections::BTreeSet::new();
-                let mut lives = std::collections::BTreeSet::new();
-                let snapshot_sources: std::collections::BTreeSet<_> =
-                    state.snapshot.actors.iter().map(|a| a.id).collect();
-                if state.actors.len() != state.snapshot.actors.len()
-                    || state.actors.iter().any(|a| {
-                        a.life.instance != self.instance
-                            || !sources.insert(a.source)
-                            || !lives.insert(verse_engine::core::LifeId::from(a.life))
-                    })
-                    || state.snapshot.actors.iter().any(|a| {
-                        !sources.contains(&a.id)
-                            || !a.pos.iter().all(|v| v.is_finite())
-                            || !a.yaw.is_finite()
-                    })
-                    || sources != snapshot_sources
-                    || snapshot_sources.len() != state.snapshot.actors.len()
-                {
-                    return Err("Invalid chamber snapshot life bindings".into());
-                }
-                state.presentation.validate(self.instance, &state.actors)?;
-                Ok(())
-            }
+            (Reply::Snapshot { state }, Body::Snapshot {}) => state.validate(self.instance),
             (Reply::Events { page }, Body::Events { after, limit }) => {
                 let mut serial = *after;
                 if page.events.len() > usize::from(*limit)

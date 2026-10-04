@@ -55,6 +55,10 @@ pub struct Controls {
     roots: BTreeMap<u32, Vec3>,
 }
 impl Controls {
+    /// Opaque retained stamp of the latest admitted Misty Step in this life.
+    pub fn teleport_stamp(&self) -> Option<f32> {
+        self.ready.get(&Utility::MistyStep).copied()
+    }
     pub fn validate(&self) -> Result<(), String> {
         if !(0..=18).contains(&self.shield)
             || !self.shield_until.is_finite()

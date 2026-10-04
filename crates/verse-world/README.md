@@ -76,7 +76,7 @@ or controller. Pending and authenticated connections share a 128-entry budget.
 The host supplies monotonic time; expired, replayed, malformed, foreign, and
 unenrolled proofs are refused. Executable/deployment integration, durable grants,
 and replication remain; this is not a Nostr authentication protocol.
-`service::wire` provides version-two JSON opening challenges and bounded request/
+`service::wire` provides version-three JSON opening challenges and bounded request/
 response messages. Requests carry correlation IDs and command life/epoch/sequence
 fences, with no caller-selected principal, controller, or connection. Replies
 include the host tick and the player’s current control state, including consumed
@@ -113,6 +113,15 @@ tick. Client admission checks finite poses/times, actor/effect uniqueness, life
 bindings, and budgets. The primary player’s presented health now follows actual
 resources, including zero-health death poses. Version-one peers are refused;
 streaming cadence and native service rendering remain separate integration work.
+Wire version three adds a retained per-life Misty Step stamp, so short teleports
+remain discontinuities even when another ability is cast before the next snapshot.
+`service::replica::Buffer` admits snapshots atomically and retains two frames plus
+a bounded generation history. Read-only samples interpolate compatible positions,
+wrapped yaw, and animation phase, and keep shield anchors on sampled bodies.
+Life/control changes, teleports, death/visibility, model/animation changes, and
+large displacements snap. Resources and effect status remain authoritative latest
+values. World resets require advanced lives; stale ticks, control fences, and
+generations are refused. Streaming and input prediction still remain.
 
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer

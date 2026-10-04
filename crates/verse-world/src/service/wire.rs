@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 2;
+pub const VERSION: u16 = 3;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -139,6 +139,36 @@ pub struct Request {
     pub request_id: u64,
     pub body: Body,
 }
+impl State {
+    /// Admits the shared snapshot and its complete presentation life bindings.
+    pub fn validate(&self, instance: u64) -> Result<(), String> {
+        let mut sources = std::collections::BTreeSet::new();
+        let mut lives = std::collections::BTreeSet::new();
+        let snapshot_sources: std::collections::BTreeSet<_> =
+            self.snapshot.actors.iter().map(|a| a.id).collect();
+        if self.actors.len() != self.snapshot.actors.len()
+            || self.actors.len() > 256
+            || !self.snapshot.elapsed.is_finite()
+            || self.snapshot.elapsed < 0.
+            || self.actors.iter().any(|a| {
+                a.life.instance != instance
+                    || !sources.insert(a.source)
+                    || !lives.insert(verse_engine::core::LifeId::from(a.life))
+            })
+            || self.snapshot.actors.iter().any(|a| {
+                !sources.contains(&a.id)
+                    || !a.pos.iter().all(|v| v.is_finite())
+                    || !a.yaw.is_finite()
+            })
+            || sources != snapshot_sources
+            || snapshot_sources.len() != self.snapshot.actors.len()
+        {
+            return Err("Invalid chamber snapshot life bindings".into());
+        }
+        self.presentation.validate(instance, &self.actors)
+    }
+}
+
 impl Request {
     pub fn decode(bytes: &[u8]) -> Result<Self, String> {
         if bytes.len() > MAX_REQUEST_BYTES {
@@ -704,9 +734,9 @@ mod tests {
         let reply = send(&mut g, id, 1, Body::Snapshot {});
         assert!(matches!(reply.body, Reply::Refused { .. }));
         for bytes in [
-            br#"{"version":3,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":2,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":2,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
+            br#"{"version":4,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":3,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":3,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
                 .to_vec(),
             vec![b' '; MAX_REQUEST_BYTES + 1],
         ] {

@@ -10,6 +10,7 @@ use verse_engine::{director::Actor, motion::Selection};
 pub struct Pose {
     pub actor: Actor,
     pub life: Life,
+    pub teleport_stamp: Option<f32>,
     pub animation: Selection,
     pub animation_time: f32,
     pub visible: bool,
@@ -38,6 +39,10 @@ impl Presentation {
             .iter()
             .map(|b| verse_engine::core::LifeId::from(b.life))
             .collect();
+        let teleports: std::collections::BTreeMap<_, _> = game
+            .controlled_effects()
+            .map(|(life, _, c)| (life, c.teleport_stamp()))
+            .collect();
         let frame = game.frame();
         let actors = frame
             .actors
@@ -47,6 +52,7 @@ impl Presentation {
                 Some(Pose {
                     actor: a.actor,
                     life: life.into(),
+                    teleport_stamp: teleports.get(&life).copied().flatten(),
                     animation: a.animation,
                     animation_time: a.animation_time,
                     visible: a.visible,
@@ -99,6 +105,8 @@ impl Presentation {
                 || !(0.001..=100.).contains(&p.actor.scale)
                 || !p.animation_time.is_finite()
                 || p.animation_time < 0.
+                || p.teleport_stamp
+                    .is_some_and(|stamp| !stamp.is_finite() || stamp < 0.)
                 || p.actor.name.len() > 256
                 || p.actor.model.is_empty()
                 || p.actor.model.len() > 128
