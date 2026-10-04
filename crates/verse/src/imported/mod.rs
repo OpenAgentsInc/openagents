@@ -131,6 +131,96 @@ pub struct FrameTimings {
     pub readback: bool,
     pub shadow_draws: usize,
 }
+#[derive(Clone)]
+struct GpuContext {
+    #[cfg(feature = "imported-desktop")]
+    instance: wgpu::Instance,
+    #[cfg(feature = "imported-desktop")]
+    adapter: wgpu::Adapter,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    name: String,
+    id: verse_engine::residency::CatalogId,
+}
+/// A worker-safe snapshot of the GPU and the catalog a replacement must supersede.
+pub struct ReloadSource {
+    context: GpuContext,
+    base: verse_engine::residency::CatalogId,
+    width: u32,
+    height: u32,
+    pack: std::sync::Arc<Pack>,
+}
+/// Completely uploaded replacement; active state stays unchanged until commit.
+pub struct ReloadCandidate {
+    base: verse_engine::residency::CatalogId,
+    renderer: Renderer,
+    keep_playback: std::collections::BTreeSet<String>,
+}
+impl ReloadCandidate {
+    pub fn pack(&self) -> std::sync::Arc<Pack> {
+        self.renderer.pack.clone()
+    }
+}
+fn motion_digest(model: &verse_engine::assets::Model) -> Result<[u8; 32], String> {
+    use sha2::{Digest, Sha256};
+    struct HashWriter(Sha256);
+    impl std::io::Write for HashWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.update(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut writer = HashWriter(Sha256::new());
+    serde_json::to_writer(
+        &mut writer,
+        &(&model.bones, &model.skin, &model.clips, &model.states),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(writer.0.finalize().into())
+}
+impl ReloadSource {
+    pub fn prepare(
+        self,
+        prepared: verse_engine::loading::Prepared,
+        atlas: &Atlas,
+        static_instances: &[Instance],
+    ) -> Result<ReloadCandidate, String> {
+        let mut keep_playback = std::collections::BTreeSet::new();
+        for (name, model) in &self.pack.models {
+            if let Some(next) = prepared.pack().models.get(name) {
+                if motion_digest(model)? == motion_digest(next)? {
+                    keep_playback.insert(name.clone());
+                }
+            }
+        }
+        let device = self.context.device.clone();
+        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+        let memory = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let result = Renderer::build(
+            prepared,
+            self.width,
+            self.height,
+            atlas,
+            static_instances,
+            Some(self.context),
+        );
+        let errors = [validation.pop(), memory.pop(), internal.pop()];
+        for error in errors {
+            if let Some(error) = pollster::block_on(error) {
+                return Err(format!("Renderer reload upload failed: {error}"));
+            }
+        }
+        Ok(ReloadCandidate {
+            base: self.base,
+            renderer: result?,
+            keep_playback,
+        })
+    }
+}
 /// Persistent offscreen renderer; frames come directly from owned GPU passes.
 pub struct Renderer {
     #[cfg(feature = "imported-desktop")]
@@ -139,7 +229,8 @@ pub struct Renderer {
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pack: Pack,
+    pack: std::sync::Arc<Pack>,
+    gpu_id: verse_engine::residency::CatalogId,
     pub pack_receipt: verse_engine::loading::Receipt,
     width: u32,
     height: u32,
@@ -304,6 +395,16 @@ impl Renderer {
         atlas: &Atlas,
         static_instances: &[Instance],
     ) -> Result<Self, String> {
+        Self::build(prepared, width, height, atlas, static_instances, None)
+    }
+    fn build(
+        prepared: verse_engine::loading::Prepared,
+        width: u32,
+        height: u32,
+        atlas: &Atlas,
+        static_instances: &[Instance],
+        context: Option<GpuContext>,
+    ) -> Result<Self, String> {
         let (pack, decoded, pack_receipt) = prepared.into_parts();
         let catalog = verse_engine::residency::Catalog::new(&pack)?;
         if width == 0 || height == 0 || width > 4096 || height > 4096 {
@@ -315,18 +416,46 @@ impl Renderer {
         {
             return Err("Invalid static placement".into());
         }
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+        let context = match context {
+            Some(context) => context,
+            None => {
+                let instance = wgpu::Instance::new(
+                    wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
+                );
+                let adapter = pollster::block_on(
+                    instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
+                )
                 .map_err(|e| e.to_string())?;
-        let adapter_name = adapter.get_info().name;
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("Verse imported world"),
-            required_limits: adapter.limits(),
-            ..Default::default()
-        }))
-        .map_err(|e| e.to_string())?;
+                let adapter_name = adapter.get_info().name;
+                let (device, queue) =
+                    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+                        label: Some("Verse imported world"),
+                        required_limits: adapter.limits(),
+                        ..Default::default()
+                    }))
+                    .map_err(|e| e.to_string())?;
+                GpuContext {
+                    #[cfg(feature = "imported-desktop")]
+                    instance,
+                    #[cfg(feature = "imported-desktop")]
+                    adapter,
+                    device,
+                    queue,
+                    name: adapter_name,
+                    id: catalog.id(),
+                }
+            }
+        };
+        let GpuContext {
+            #[cfg(feature = "imported-desktop")]
+            instance,
+            #[cfg(feature = "imported-desktop")]
+            adapter,
+            device,
+            queue,
+            name: adapter_name,
+            id: gpu_id,
+        } = context;
         let uniform = |binding| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
@@ -627,7 +756,8 @@ impl Renderer {
             adapter,
             device,
             queue,
-            pack,
+            pack: std::sync::Arc::new(pack),
+            gpu_id,
             pack_receipt,
             width,
             height,
@@ -659,6 +789,32 @@ impl Renderer {
             adapter_name,
             last_timings: FrameTimings::default(),
         })
+    }
+    pub fn reload_source(&self) -> ReloadSource {
+        ReloadSource {
+            context: GpuContext {
+                #[cfg(feature = "imported-desktop")]
+                instance: self.instance.clone(),
+                #[cfg(feature = "imported-desktop")]
+                adapter: self.adapter.clone(),
+                device: self.device.clone(),
+                queue: self.queue.clone(),
+                name: self.adapter_name.clone(),
+                id: self.gpu_id,
+            },
+            base: self.catalog.id(),
+            width: self.width,
+            height: self.height,
+            pack: self.pack.clone(),
+        }
+    }
+    /// Call between frames. The caller can dispose of retired resources on a worker.
+    pub fn commit_reload(&mut self, mut candidate: ReloadCandidate) -> Result<Self, String> {
+        self.catalog.check(candidate.base)?;
+        let mut playback = std::mem::take(&mut self.playback);
+        playback.retain(|(_, model), _| candidate.keep_playback.contains(model));
+        candidate.renderer.playback = playback;
+        Ok(std::mem::replace(self, candidate.renderer))
     }
     pub fn draw(
         &mut self,
@@ -1065,6 +1221,30 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn reload_motion_identity_ignores_source_paths_and_tracks_animation_changes() {
+        use verse_engine::assets::{Clip, Model};
+        let mut model = Model {
+            states: Default::default(),
+            skin: None,
+            source: "old.glb".into(),
+            source_sha256: String::new(),
+            surfaces: vec![],
+            bones: vec![],
+            clips: vec![],
+            height: 2.,
+            attachments: vec![],
+        };
+        let original = super::motion_digest(&model).unwrap();
+        model.source = "moved.glb".into();
+        assert_eq!(super::motion_digest(&model).unwrap(), original);
+        model.clips.push(Clip {
+            id: 0,
+            duration: 1.,
+            bones: vec![],
+        });
+        assert_ne!(super::motion_digest(&model).unwrap(), original);
+    }
+    #[test]
     fn corpse_grounding_ignores_world_translation_but_tracks_skin_and_basis_changes() {
         use super::*;
         use verse_engine::assets::{Model, Surface, Vertex};
@@ -1135,6 +1315,21 @@ pub struct WindowPresenter {
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
     group: wgpu::BindGroup,
+    layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    gpu_id: verse_engine::residency::CatalogId,
+    catalog: verse_engine::residency::CatalogId,
+    presented_catalog: Option<verse_engine::residency::CatalogId>,
+    presented_frames: u64,
+}
+#[cfg(feature = "imported-desktop")]
+impl WindowPresenter {
+    pub fn current_frame_presented(&self, renderer: &Renderer) -> bool {
+        self.gpu_id == renderer.gpu_id && self.presented_catalog == Some(renderer.catalog.id())
+    }
+    pub fn presented_frames(&self) -> u64 {
+        self.presented_frames
+    }
 }
 #[cfg(feature = "imported-desktop")]
 impl Renderer {
@@ -1234,9 +1429,35 @@ impl Renderer {
             config,
             pipeline,
             group,
+            layout,
+            sampler,
+            gpu_id: self.gpu_id,
+            catalog: self.catalog.id(),
+            presented_catalog: None,
+            presented_frames: 0,
         })
     }
     pub fn present_window(&self, p: &mut WindowPresenter, size: [u32; 2]) -> Result<(), String> {
+        if p.gpu_id != self.gpu_id {
+            return Err("Presenter belongs to another GPU device".into());
+        }
+        if p.catalog != self.catalog.id() {
+            p.group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Reloaded scene presentation"),
+                layout: &p.layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&self.target_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&p.sampler),
+                    },
+                ],
+            });
+            p.catalog = self.catalog.id();
+        }
         if size[0] == 0 || size[1] == 0 {
             return Ok(());
         }
@@ -1275,6 +1496,8 @@ impl Renderer {
         }
         self.queue.submit([encoder.finish()]);
         texture.present();
+        p.presented_catalog = Some(self.catalog.id());
+        p.presented_frames = p.presented_frames.saturating_add(1);
         Ok(())
     }
 }

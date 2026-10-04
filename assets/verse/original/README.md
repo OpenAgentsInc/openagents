@@ -70,3 +70,7 @@ Capsules, stairs, slopes, gravity, full projectile continuous collision, and
 explosion-radius occlusion remain
 future work. Further engine extraction, durable saves, and multiplayer remain on
 the engine roadmap and #10406/#10407.
+
+Press F5 to reload renderer assets from the `runtime-pack.json` path printed at startup. The manifest includes the installed character variants and Bestiary model. Edit that generated manifest or its referenced textures, update texture SHA-256 declarations, then reload. Parsing, verification, and GPU upload run on a worker; failed replacements leave the active scene usable. Reload preserves combat state and rejects changes to static collision geometry, required animation states, or attachment IDs. It does not reload game rules, colliders, dialogue, or the HUD atlas.
+
+Use `verse_play --reload-proof OUTPUT_DIR` for offscreen failure and world-state checks. Use `verse_play --reload-window-proof OUTPUT_DIR 100` for a real-window reload while scripted human controls move and cast fireballs, then check `OUTPUT_DIR/frames.ndjson` with `verse_play --check-profile`. The window fixture defers initial hostile casts, retains per-frame measurements, and exits after the requested duration.

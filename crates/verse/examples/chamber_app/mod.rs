@@ -1,5 +1,6 @@
 // Native interactive chamber; the action bar unlocks at the cinematic handoff.
 mod profile;
+mod reload;
 use glam::Vec3;
 use std::{collections::HashSet, io::Write, path::PathBuf, sync::Arc, time::Instant};
 use verse::{
@@ -24,10 +25,16 @@ struct App {
     window: Option<Arc<Window>>,
     presenter: Option<WindowPresenter>,
     renderer: Option<Renderer>,
-    pack: Pack,
-    atlas: Atlas,
+    pack: Arc<Pack>,
+    atlas: Arc<Atlas>,
+    reload_path: Option<PathBuf>,
+    reload_contract: Arc<reload::Contract>,
+    reload_pending: Option<reload::Pending>,
+    reload_status: String,
+    reload_window_proof: Option<reload::WindowProof>,
     game: Game,
     last: Instant,
+    first_redraw: bool,
     schedule: verse_engine::core::FixedSchedule,
     interpolation: f32,
     capture_view: Option<(Vec3, Vec3, f32)>,
@@ -54,6 +61,79 @@ struct Stress {
     casts: u64,
 }
 impl App {
+    fn start_reload(&mut self) -> Result<(), String> {
+        if self.reload_pending.is_some() {
+            return Err("Asset reload is already running".into());
+        }
+        let path = self
+            .reload_path
+            .clone()
+            .ok_or("Asset reload requires an original scene")?;
+        let source = self
+            .renderer
+            .as_ref()
+            .ok_or("Renderer is not ready")?
+            .reload_source();
+        self.reload_pending = Some(reload::start(
+            path,
+            source,
+            self.atlas.clone(),
+            self.reload_contract.clone(),
+            chamber::static_instances(&self.pack, position_from_wow(self.game.scene.origin_wow)),
+        )?);
+        self.reload_status = "Preparing renderer assets".into();
+        Ok(())
+    }
+    fn poll_reload(&mut self) {
+        let Some(pending) = &self.reload_pending else {
+            return;
+        };
+        let result = match pending.try_recv() {
+            Ok(result) => result,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                Err("Asset reload worker stopped".into())
+            }
+        };
+        self.reload_pending = None;
+        match result {
+            Ok(ready) => {
+                let before = self
+                    .reload_window_proof
+                    .as_ref()
+                    .map(|_| self.game.checkpoint());
+                let started = Instant::now();
+                match self
+                    .renderer
+                    .as_mut()
+                    .unwrap()
+                    .commit_reload(ready.candidate)
+                {
+                    Ok(retired) => {
+                        let commit_ms = started.elapsed().as_secs_f64() * 1000.;
+                        self.pack = ready.pack;
+                        self.heights = ready.heights;
+                        if let Some(proof) = &mut self.reload_window_proof {
+                            let unchanged = before
+                                .and_then(Result::ok)
+                                .is_some_and(|b| self.game.checkpoint().is_ok_and(|a| a == b));
+                            proof.commit = Some(
+                                serde_json::json!({"prepare_ms":ready.prepare_ms, "commit_ms":commit_ms, "world_checkpoint_unchanged":unchanged}),
+                            );
+                        }
+                        // Resource disposal can be large; keep it outside the event thread too.
+                        std::thread::spawn(move || drop(retired));
+                        self.reload_status = format!(
+                            "Renderer assets reloaded ({:.0} ms preparation)",
+                            ready.prepare_ms
+                        );
+                    }
+                    Err(error) => self.reload_status = error,
+                }
+            }
+            Err(error) => self.reload_status = error,
+        }
+    }
     fn activate(&mut self, ability: Ability) {
         if self.game.agent_controlled {
             return;
@@ -168,6 +248,13 @@ impl App {
         self.controls
             .motion(delta, &mut self.game.yaw, &mut self.game.camera);
     }
+    fn capture_frame(&mut self) -> Result<Vec<u8>, String> {
+        let proof = self.proof.take();
+        self.proof = Some(PathBuf::new());
+        let result = self.draw_frame();
+        self.proof = proof;
+        result
+    }
     fn draw_frame(&mut self) -> Result<Vec<u8>, String> {
         let started = Instant::now();
         let mut frame = self.game.interpolated_frame(self.interpolation)?;
@@ -208,6 +295,15 @@ impl App {
         );
         let hover = overlay::action_at(self.cursor[0], self.cursor[1], 1280.0, 720.0);
         overlay::action_bar(&mut ui, &self.atlas, &self.game, 1280.0, 720.0, hover);
+        if !self.reload_status.is_empty() {
+            ui.text(
+                &self.atlas,
+                16.,
+                126.,
+                &self.reload_status,
+                [1., 0.8, 0.45, 1.],
+            );
+        }
         let mut actors = chamber::instances(&self.pack, &frame)?;
         actors.extend(chamber::spell_instances(&self.game));
         actors.extend(chamber::blocker_instances(&self.pack, &self.game));
@@ -242,6 +338,9 @@ impl App {
                 "frame_interval_ms":self.frame_interval_ms,
                 "schedule_dropped_seconds":self.schedule.dropped_seconds,
                 "stress_casts":self.stress.as_ref().map(|s| s.casts),
+                "asset_reload_pending":self.reload_pending.is_some(),
+                "asset_reload_committed":self.reload_window_proof.as_ref().is_some_and(|p| p.commit.is_some()),
+                "proof_capture":self.proof.is_some(),
             });
             serde_json::to_writer(&mut *profile, &row).map_err(|e| e.to_string())?;
             profile.write_all(b"\n").map_err(|e| e.to_string())?;
@@ -294,7 +393,7 @@ impl ApplicationHandler for App {
                     .map_err(|e| e.to_string())?,
             );
             let renderer = Renderer::new(
-                self.pack.clone(),
+                (*self.pack).clone(),
                 &self.dir,
                 1280,
                 720,
@@ -309,6 +408,7 @@ impl ApplicationHandler for App {
             self.renderer = Some(renderer);
             self.presenter = Some(presenter);
             self.last = Instant::now();
+            self.first_redraw = true;
             if let Some(stress) = &mut self.stress {
                 stress.started = Some(Instant::now());
             }
@@ -361,6 +461,11 @@ impl ApplicationHandler for App {
                                 KeyCode::Space if !self.game.agent_controlled => {
                                     if let Err(error) = self.game.jump() {
                                         self.game.message = error;
+                                    }
+                                }
+                                KeyCode::F5 => {
+                                    if let Err(error) = self.start_reload() {
+                                        self.reload_status = error;
                                     }
                                 }
                                 KeyCode::NumLock => {
@@ -479,6 +584,32 @@ impl ApplicationHandler for App {
                 self.capture_pointer();
             }
             WindowEvent::RedrawRequested => {
+                if self.first_redraw {
+                    self.last = Instant::now();
+                    if let Some(stress) = &mut self.stress {
+                        stress.started = Some(Instant::now());
+                    }
+                    self.first_redraw = false;
+                }
+                if let Some(proof) = &mut self.reload_window_proof {
+                    proof.frames += 1;
+                    if proof.frames == 90 {
+                        let output = proof.output.clone();
+                        let result = self.capture_frame().and_then(|pixels| {
+                            let writer = std::thread::spawn(move || {
+                                save_png(&output.join("before.png"), &pixels)
+                            });
+                            self.reload_window_proof.as_mut().unwrap().before = Some(writer);
+                            self.start_reload()
+                        });
+                        if let Err(error) = result {
+                            eprintln!("{error}");
+                            event_loop.exit();
+                            return;
+                        }
+                    }
+                }
+                self.poll_reload();
                 match self.render() {
                     Ok(pixels) => {
                         let size = self.window.as_ref().unwrap().inner_size();
@@ -502,6 +633,20 @@ impl ApplicationHandler for App {
                             if let Some(profile) = &mut self.profile {
                                 if let Err(e) = profile.flush() {
                                     eprintln!("{e}");
+                                }
+                            }
+                            if let Some(proof) = self.reload_window_proof.take() {
+                                let output = proof.output.clone();
+                                let result = proof
+                                    .finish(self)
+                                    .and_then(|_| self.capture_frame())
+                                    .and_then(|pixels| {
+                                        save_png(&output.join("after.png"), &pixels)
+                                    });
+                                if let Err(error) = result {
+                                    eprintln!("{error}");
+                                    event_loop.exit();
+                                    return;
                                 }
                             }
                             eprintln!(
@@ -654,14 +799,29 @@ pub fn run(original_default: bool) -> Result<(), String> {
     } else {
         chamber::portrait_atlas(&dir, &pack)?
     };
+    let reload_path = original.then(|| dir.join("runtime-pack.json"));
+    if let Some(path) = &reload_path {
+        reload::write_manifest(path, &pack)?;
+        eprintln!("F5 reloads renderer assets from {}", path.display());
+    }
+    let reload_contract = Arc::new(reload::Contract::new(
+        &pack,
+        &chamber::static_instances(&pack, position_from_wow(game.scene.origin_wow)),
+    )?);
     let mut app = App {
         window: None,
         presenter: None,
         renderer: None,
-        pack,
-        atlas,
+        pack: Arc::new(pack),
+        atlas: Arc::new(atlas),
+        reload_path,
+        reload_contract,
+        reload_pending: None,
+        reload_status: String::new(),
+        reload_window_proof: None,
         game,
         last: Instant::now(),
+        first_redraw: true,
         schedule: verse_engine::core::FixedSchedule::new(30, 3)?,
         interpolation: 1.,
         capture_view: None,
@@ -687,6 +847,57 @@ pub fn run(original_default: bool) -> Result<(), String> {
         proof: None,
     };
     let mode = args.next();
+    if mode.as_deref() == Some("--reload-window-proof") {
+        let output = PathBuf::from(
+            args.next()
+                .ok_or("Expected window reload proof directory")?,
+        );
+        std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
+        let mut changed = (*app.pack).clone();
+        changed
+            .models
+            .get_mut("claude")
+            .ok_or("Missing Claude reload model")?
+            .surfaces[0]
+            .tint = [0.7, 0.12, 0.08];
+        reload::write_manifest(
+            app.reload_path
+                .as_ref()
+                .ok_or("Window reload proof requires an original scene")?,
+            &changed,
+        )?;
+        let duration: f64 = args
+            .next()
+            .map(|v| v.parse().map_err(|_| "Invalid reload proof duration"))
+            .transpose()?
+            .unwrap_or(15.);
+        if !duration.is_finite() || !(15. ..=600.).contains(&duration) {
+            return Err("Reload proof duration must be between 15 and 600 seconds".into());
+        }
+        app.reload_window_proof = Some(reload::WindowProof {
+            output: output.clone(),
+            frames: 0,
+            commit: None,
+            before: None,
+            duration,
+        });
+        app.profile = Some(std::io::BufWriter::new(
+            std::fs::File::create(output.join("frames.ndjson")).map_err(|e| e.to_string())?,
+        ));
+        app.game = Game::combat(app.game.scene.clone(), false)?;
+        app.game.time = app.game.scene.cut_at;
+        app.game
+            .encounter
+            .as_mut()
+            .unwrap()
+            .postpone_casts_until(600.)?;
+        app.stress = Some(Stress {
+            duration,
+            started: None,
+            next_cast: app.game.time + 1.,
+            casts: 0,
+        });
+    }
     if mode.as_deref() == Some("--stress-demo") {
         let profile = args.next().ok_or("Expected frame profile path")?;
         let duration: f64 = args
@@ -719,7 +930,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
     }
     if matches!(
         mode.as_deref(),
-        Some("--respawn-proof" | "--residency-proof")
+        Some("--respawn-proof" | "--residency-proof" | "--reload-proof")
     ) {
         let output = PathBuf::from(args.next().ok_or("Expected proof directory")?);
         std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
@@ -731,7 +942,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
             return Err("Proof player did not die".into());
         }
         app.renderer = Some(Renderer::new(
-            app.pack.clone(),
+            (*app.pack).clone(),
             &app.dir,
             1280,
             720,
@@ -747,7 +958,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
             let empty = app.renderer.as_ref().unwrap().resolve_instances(&[])?;
             // This proof rebuilds offscreen residency; it does not exercise a live surface reload.
             app.renderer = Some(Renderer::new(
-                app.pack.clone(),
+                (*app.pack).clone(),
                 &app.dir,
                 1280,
                 720,
@@ -789,6 +1000,9 @@ pub fn run(original_default: bool) -> Result<(), String> {
                 .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
+        }
+        if mode.as_deref() == Some("--reload-proof") {
+            reload::prove(&mut app, &output)?;
         }
         let old = app.game.player_life();
         if !overlay::respawn_at(640., 328., 1280., 720.) {
@@ -997,7 +1211,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
         app.game.tick(0.1, [0.0, 0.0])?;
     }
     app.renderer = Some(Renderer::new(
-        app.pack.clone(),
+        (*app.pack).clone(),
         &app.dir,
         1280,
         720,
