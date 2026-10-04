@@ -1870,12 +1870,32 @@ impl App {
         }
     }
 
-    /// Everglade draws no map and no zone banner (owner, 2026-10-04): the
-    /// glade is the screen, and the player leaves through the arch. The
-    /// banner still shows a load in progress or a failed one.
+    /// Everglade draws no map, and its zone panel is only the movement
+    /// hotbar (owner, 2026-10-04): the glade is the screen, and the player
+    /// leaves through the arch. A load in progress or a failed one still
+    /// shows the full panel.
     fn in_bare_everglade(&self) -> bool {
         self.runtime.zone == zones::ZoneId::Everglade
             && self.runtime.zone_load_state() == zones::LoadState::Idle
+    }
+
+    /// The zone panel's snapshot: in Everglade, only the movement hotbar,
+    /// which the panel draws without its caption.
+    fn zone_hud_snapshot(&self, aspect: f32) -> zones::Snapshot {
+        let mut snapshot = self.runtime.zone_snapshot(aspect);
+        if self.in_bare_everglade() {
+            snapshot.controls.retain(|control| {
+                matches!(
+                    control.action,
+                    ZoneIntent::Jump
+                        | ZoneIntent::Sprint
+                        | ZoneIntent::Levitate
+                        | ZoneIntent::Rise
+                        | ZoneIntent::Lower
+                )
+            });
+        }
+        snapshot
     }
 
     fn map_visible(&self) -> bool {
@@ -1987,6 +2007,20 @@ impl App {
                     ZoneIntent::Return
                 });
                 return;
+            }
+            // Everglade's movement: L levitates or lands, and while
+            // levitating Space rises and X descends.
+            if self.in_bare_everglade() {
+                let intent = match code {
+                    KeyCode::KeyL => Some(ZoneIntent::Levitate),
+                    KeyCode::Space if self.runtime.everglade_levitating() => Some(ZoneIntent::Rise),
+                    KeyCode::KeyX if self.runtime.everglade_levitating() => Some(ZoneIntent::Lower),
+                    _ => None,
+                };
+                if let Some(intent) = intent {
+                    self.zone_action(intent);
+                    return;
+                }
             }
             // In Everglade the interact key opens the station in reach.
             if code == KeyCode::KeyF
@@ -2847,13 +2881,12 @@ impl App {
                     });
                 self.zone_frame = Some(self.zone_hud.snapshot(
                     size.map(|v| v / self.scale),
-                    &self.runtime.zone_snapshot(size[0] / size[1].max(1.0)),
+                    &self.zone_hud_snapshot(size[0] / size[1].max(1.0)),
                     !self.map.expanded
                         && !self.chat.open
                         && !self.board_open
                         && !self.gym_open
-                        && self.picker.is_none()
-                        && !self.in_bare_everglade(),
+                        && self.picker.is_none(),
                 ));
                 if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.zone_frame) {
                     ui.vertices

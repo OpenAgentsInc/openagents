@@ -569,6 +569,15 @@ impl WorldRuntime {
                 .map(|_| ()),
         )
     }
+    /// Whether the player is levitating in Everglade.
+    #[must_use]
+    pub fn everglade_levitating(&self) -> bool {
+        self.zone_state
+            .everglade
+            .as_ref()
+            .is_some_and(|glade| glade.levitating)
+    }
+
     pub fn zone_snapshot(&self, aspect: f32) -> Snapshot {
         let portal = self.zone_portal(aspect);
         let mut controls = Vec::new();
