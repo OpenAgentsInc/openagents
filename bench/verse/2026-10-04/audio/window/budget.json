@@ -1,0 +1,1 @@
+{"schema":"openagents.verse.frame-budget.v1","adapter":"Apple M5 Max","frames":6077,"duration_seconds":99.96666717529297,"work_p95_ms":21.068584,"work_max_ms":29.355,"delivered_p95_ms":21.556583,"delivered_max_ms":29.840709,"stress_casts":23,"dropped_seconds":0.0,"passed":false}
