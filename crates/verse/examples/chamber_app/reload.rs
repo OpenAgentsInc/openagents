@@ -420,6 +420,11 @@ mod tests {
             .states
             .remove(&State::BowRelease)
             .unwrap();
+        let model = pack.models.get_mut("adventurer").unwrap();
+        model.graph = Some(verse_engine::animation_graph::Authored::from_bindings(
+            model,
+        ));
+        pack.validate().unwrap();
         assert!(
             contract
                 .validate(&pack)
@@ -431,6 +436,10 @@ mod tests {
             .unwrap()
             .states
             .insert(State::BowRelease, state);
+        let model = pack.models.get_mut("adventurer").unwrap();
+        model.graph = Some(verse_engine::animation_graph::Authored::from_bindings(
+            model,
+        ));
         let static_name = instances[0].model.clone();
         pack.models.get_mut(&static_name).unwrap().surfaces[0].vertices[0].position[0] += 1.;
         assert!(

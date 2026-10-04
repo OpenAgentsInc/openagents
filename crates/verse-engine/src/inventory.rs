@@ -313,6 +313,7 @@ mod tests {
     }
     fn fixture() -> (Pack, Inventory) {
         let model = Model {
+            graph: None,
             markers: Vec::new(),
             states: Default::default(),
             skin: None,

@@ -557,6 +557,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                graph: None,
                 markers: Vec::new(),
                 states: Default::default(),
                 skin: None,
@@ -606,6 +607,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                graph: None,
                 markers: Vec::new(),
                 states: Default::default(),
                 skin: None,
@@ -632,6 +634,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
     pack.models.insert(
         "effect-ribbon".into(),
         Model {
+            graph: None,
             markers: Vec::new(),
             states: Default::default(),
             skin: None,
@@ -687,6 +690,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                graph: None,
                 markers: Vec::new(),
                 states: Default::default(),
                 skin: None,

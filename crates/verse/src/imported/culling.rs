@@ -114,6 +114,7 @@ mod tests {
         use glam::Vec4;
         use verse_engine::assets::{Surface, Vertex};
         let mut model = Model {
+            graph: None,
             markers: Vec::new(),
             states: Default::default(),
             skin: None,

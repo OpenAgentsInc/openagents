@@ -77,6 +77,7 @@ mod tests {
             models: std::collections::BTreeMap::from([(
                 "actor".into(),
                 Model {
+                    graph: None,
                     markers: Vec::new(),
                     states: Default::default(),
                     skin: None,

@@ -517,6 +517,172 @@ impl Graph {
         Ok(poses.pop().unwrap())
     }
 }
+/// Versioned semantic input bindings accompany the authored graph artifact.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Authored {
+    pub version: u16,
+    pub graph: Graph,
+    #[serde(deserialize_with = "read_selectors")]
+    pub selectors: std::collections::BTreeMap<State, usize>,
+}
+fn read_selectors<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<std::collections::BTreeMap<State, usize>, D::Error> {
+    struct Selectors;
+    impl<'de> serde::de::Visitor<'de> for Selectors {
+        type Value = std::collections::BTreeMap<State, usize>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("unique semantic animation selectors")
+        }
+        fn visit_map<M: serde::de::MapAccess<'de>>(
+            self,
+            mut map: M,
+        ) -> Result<Self::Value, M::Error> {
+            let mut values = std::collections::BTreeMap::new();
+            while let Some((state, index)) = map.next_entry()? {
+                if values.insert(state, index).is_some() {
+                    return Err(serde::de::Error::custom(
+                        "Duplicate semantic animation selector",
+                    ));
+                }
+            }
+            Ok(values)
+        }
+    }
+    deserializer.deserialize_map(Selectors)
+}
+impl Authored {
+    /// Builds a candidate from semantic bindings. Asset admission validates it.
+    pub fn from_bindings(model: &Model) -> Self {
+        let bindings: Vec<_> = model.states.iter().collect();
+        let names: Vec<String> = bindings
+            .iter()
+            .map(|(state, _)| {
+                serde_json::to_value(state)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect();
+        let parameters = names
+            .iter()
+            .map(|name| Parameter::Boolean {
+                name: format!("select_{name}"),
+                default: false,
+            })
+            .collect();
+        let nodes = bindings
+            .iter()
+            .map(|(state, _)| Node::Clip {
+                state: **state,
+                rate: 1.,
+            })
+            .collect();
+        let states = bindings
+            .iter()
+            .enumerate()
+            .map(|(i, _)| GraphState {
+                name: names[i].clone(),
+                node: i,
+                transitions: bindings
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| *j != i)
+                    .map(|(j, (_, binding))| Transition {
+                        target: j,
+                        seconds: binding.transition_seconds,
+                        conditions: vec![Condition::Boolean {
+                            parameter: j,
+                            value: true,
+                        }],
+                    })
+                    .collect(),
+            })
+            .collect();
+        Self {
+            version: 1,
+            graph: Graph {
+                parameters,
+                nodes,
+                states,
+                initial: bindings
+                    .iter()
+                    .position(|(state, _)| **state == State::Idle)
+                    .unwrap_or(0),
+            },
+            selectors: bindings
+                .iter()
+                .enumerate()
+                .map(|(i, (state, _))| (**state, i))
+                .collect(),
+        }
+    }
+    pub fn validate(&self, model: &Model) -> Result<(), String> {
+        if self.version != 1 || self.selectors.is_empty() || self.selectors.len() > State::ALL.len()
+        {
+            return Err("Invalid semantic animation graph version or selector count".into());
+        }
+        self.graph.validate(model)?;
+        let mut slots = BTreeSet::new();
+        for (state, parameter) in &self.selectors {
+            if !model.states.contains_key(state)
+                || !slots.insert(*parameter)
+                || !matches!(
+                    self.graph.parameters.get(*parameter),
+                    Some(Parameter::Boolean { default: false, .. })
+                )
+            {
+                return Err("Invalid semantic animation graph selector".into());
+            }
+        }
+        Ok(())
+    }
+    pub fn values(&self, state: State) -> Result<Vec<Value>, String> {
+        let mut values = self.graph.defaults()?;
+        let parameter = *self
+            .selectors
+            .get(&state)
+            .ok_or("Missing semantic animation graph selector")?;
+        let value = values
+            .get_mut(parameter)
+            .ok_or("Invalid semantic animation graph selector index")?;
+        if !matches!(value, Value::Boolean(false)) {
+            return Err("Invalid semantic animation graph selector type or default".into());
+        }
+        *value = Value::Boolean(true);
+        Ok(values)
+    }
+}
+/// Compiled semantic selectors share one immutable motion admission.
+pub struct Semantic {
+    admitted: Admitted,
+    defaults: Vec<Value>,
+    selectors: std::collections::BTreeMap<State, usize>,
+}
+impl Semantic {
+    pub fn new(authored: &Authored, model: &Model) -> Result<Self, String> {
+        authored.validate(model)?;
+        Ok(Self {
+            defaults: authored.graph.defaults()?,
+            selectors: authored.selectors.clone(),
+            admitted: Admitted::new(authored.graph.clone(), model)?,
+        })
+    }
+    pub fn admitted(&self) -> &Admitted {
+        &self.admitted
+    }
+    pub fn values(&self, state: State) -> Result<Vec<Value>, String> {
+        let index = *self
+            .selectors
+            .get(&state)
+            .ok_or("Missing semantic animation graph selector")?;
+        let mut values = self.defaults.clone();
+        values[index] = Value::Boolean(true);
+        Ok(values)
+    }
+}
 /// Immutable admission owns only skeletal motion data, excluding mesh geometry.
 pub struct Admitted {
     id: u64,
@@ -538,6 +704,7 @@ impl Admitted {
             id,
             graph,
             model: Model {
+                graph: None,
                 source: String::new(),
                 source_sha256: String::new(),
                 height: model.height,
@@ -773,6 +940,12 @@ impl Playback {
     }
 }
 fn blend(a: Local, b: Local, weight: f32) -> Local {
+    if weight == 0. {
+        return a;
+    }
+    if weight == 1. {
+        return b;
+    }
     Local {
         translation: a.translation.lerp(b.translation, weight),
         rotation: a.rotation.slerp(b.rotation, weight).normalize(),
@@ -813,6 +986,7 @@ mod tests {
             })
             .collect();
         let model = Model {
+            graph: None,
             source: "owned-test".into(),
             source_sha256: String::new(),
             height: 2.,
@@ -1444,6 +1618,74 @@ mod tests {
         );
         assert_eq!(playback.life, Some(life(0)));
         assert_eq!(playback.epoch, u64::MAX);
+    }
+    #[test]
+    fn semantic_graphs_select_named_states_without_numeric_clip_ids() {
+        let (mut model, _) = fixture();
+        let authored = Authored::from_bindings(&model);
+        authored.validate(&model).unwrap();
+        let serialized = serde_json::to_vec(&authored).unwrap();
+        let restored: Authored = serde_json::from_slice(&serialized).unwrap();
+        assert_eq!(restored, authored);
+        model.clips[1].id = 999;
+        model.states.get_mut(&State::Walk).unwrap().clip = 999;
+        let semantic = Semantic::new(&restored, &model).unwrap();
+        let mut playback = Playback::default();
+        let frame = playback
+            .update_sampled(
+                semantic.admitted(),
+                life(0),
+                &semantic.values(State::Walk).unwrap(),
+                0.3,
+                100.,
+            )
+            .unwrap();
+        assert!(
+            frame.matrices[1]
+                .transform_point3(Vec3::ZERO)
+                .abs_diff_eq(Vec3::X * 2., 1e-5)
+        );
+        assert!(semantic.values(State::Death).is_err());
+    }
+    #[test]
+    fn graph_pose_endpoints_preserve_exact_rotations_across_interruptions() {
+        let (mut model, graph) = playback_fixture();
+        model.clips[1].bones[0].rotation = vec![(0., Quat::from_rotation_y(0.731).to_array())];
+        model.clips[2].bones[0].rotation = vec![(0., Quat::from_rotation_y(-0.319).to_array())];
+        let admitted = Admitted::new(graph, &model).unwrap();
+        let mut playback = Playback::default();
+        let first = playback
+            .update(&admitted, life(0), &[Value::Boolean(true)], 0.)
+            .unwrap();
+        let held = playback
+            .update(&admitted, life(0), &[Value::Boolean(true)], 0.1)
+            .unwrap();
+        assert_eq!(first.matrices, held.matrices);
+        let interrupted = playback
+            .update(&admitted, life(0), &[Value::Boolean(false)], 0.1)
+            .unwrap();
+        assert_eq!(held.matrices, interrupted.matrices);
+    }
+    #[test]
+    fn duplicate_serialized_selector_names_are_refused() {
+        let (model, _) = fixture();
+        let json = serde_json::to_string(&Authored::from_bindings(&model)).unwrap();
+        let duplicate = json.replace("\"idle\":0", "\"idle\":0,\"idle\":0");
+        assert_ne!(json, duplicate);
+        assert!(serde_json::from_str::<Authored>(&duplicate).is_err());
+    }
+    #[test]
+    fn semantic_graph_version_and_selector_aliases_are_refused() {
+        let (model, _) = fixture();
+        let mut authored = Authored::from_bindings(&model);
+        authored.version = 2;
+        assert!(authored.validate(&model).is_err());
+        authored.version = 1;
+        let idle = authored.selectors[&State::Idle];
+        authored.selectors.insert(State::Walk, idle);
+        assert!(authored.validate(&model).is_err());
+        authored.selectors.insert(State::Walk, usize::MAX);
+        assert!(authored.validate(&model).is_err());
     }
     #[test]
     fn serialization_retains_graph_data_and_refuses_unknown_fields() {

@@ -110,6 +110,8 @@ fn read_states<'de, D: serde::Deserializer<'de>>(
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Model {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph: Option<crate::animation_graph::Authored>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub markers: Vec<crate::markers::ClipTrack>,
     #[serde(
@@ -220,6 +222,9 @@ impl Pack {
         let mut vertices = 0;
         for model in self.models.values() {
             model.validate_animation()?;
+            if let Some(graph) = &model.graph {
+                graph.validate(model)?;
+            }
             if model
                 .attachments
                 .iter()
@@ -371,6 +376,7 @@ mod tests {
             models: BTreeMap::from([(
                 "room".into(),
                 Model {
+                    graph: None,
                     markers: Vec::new(),
                     states: Default::default(),
                     skin: None,

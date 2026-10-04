@@ -62,6 +62,7 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path) -> Result<(), String> {
         pack.models.insert(format!("prop/{name}"), model);
     }
     let mut flame = Model {
+        graph: None,
         source: "verse/original/torch-flame".into(),
         source_sha256: String::new(),
         surfaces: vec![],

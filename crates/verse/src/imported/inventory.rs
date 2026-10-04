@@ -212,6 +212,7 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
         include_bytes!("../../../verse-engine/src/overlay.rs"),
         include_bytes!("../../../verse-engine/src/render_world.rs"),
         include_bytes!("../../../verse-engine/src/material.rs"),
+        include_bytes!("../../../verse-engine/src/animation_graph.rs"),
         include_bytes!("../render.rs"),
         include_bytes!("../../../../assets/verse/original/ritual.json"),
     ]);

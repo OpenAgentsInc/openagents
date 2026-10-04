@@ -138,6 +138,7 @@ pub struct FrameTimings {
     pub cached_shadow_casters: usize,
     pub static_shadow_refreshes: usize,
     pub marker_events: usize,
+    pub graph_instances: usize,
 }
 /// A presentation marker sampled at the actor's current world placement.
 #[derive(Clone, Debug, serde::Serialize)]
@@ -192,7 +193,14 @@ fn motion_digest(model: &verse_engine::assets::Model) -> Result<[u8; 32], String
     let mut writer = HashWriter(Sha256::new());
     serde_json::to_writer(
         &mut writer,
-        &(&model.bones, &model.skin, &model.clips, &model.states),
+        &(
+            &model.bones,
+            &model.skin,
+            &model.clips,
+            &model.states,
+            &model.markers,
+            &model.graph,
+        ),
     )
     .map_err(|e| e.to_string())?;
     Ok(writer.0.finalize().into())
@@ -278,6 +286,9 @@ pub struct Renderer {
     actors: Vec<Actor>,
     marker_events: Vec<MarkerEvent>,
     playback: HashMap<(verse_engine::core::LifeId, String), animation::Playback>,
+    graphs: HashMap<String, std::sync::Arc<verse_engine::animation_graph::Semantic>>,
+    graph_playback:
+        HashMap<(verse_engine::core::LifeId, String), verse_engine::animation_graph::Playback>,
     grounding: HashMap<(Option<verse_engine::core::LifeId>, String), Grounding>,
     bounds: HashMap<String, Option<culling::BoneBounds>>,
     ui_pipeline: wgpu::RenderPipeline,
@@ -518,6 +529,16 @@ impl Renderer {
     ) -> Result<Self, String> {
         let (pack, decoded, pack_receipt) = prepared.into_parts();
         let catalog = verse_engine::residency::Catalog::new(&pack)?;
+        let graphs = pack
+            .models
+            .iter()
+            .filter_map(|(name, model)| {
+                model.graph.as_ref().map(|graph| {
+                    verse_engine::animation_graph::Semantic::new(graph, model)
+                        .map(|compiled| (name.clone(), std::sync::Arc::new(compiled)))
+                })
+            })
+            .collect::<Result<HashMap<_, _>, String>>()?;
         if width == 0 || height == 0 || width > 4096 || height > 4096 {
             return Err("Invalid imported viewport".into());
         }
@@ -1021,6 +1042,8 @@ impl Renderer {
             ui_buffer,
             marker_events: Vec::new(),
             playback: HashMap::new(),
+            graphs,
+            graph_playback: HashMap::new(),
             grounding: HashMap::new(),
             bounds,
             adapter_name,
@@ -1127,6 +1150,17 @@ impl Renderer {
         let mut playback = std::mem::take(&mut self.playback);
         playback.retain(|(_, model), _| candidate.keep_playback.contains(model));
         candidate.renderer.playback = playback;
+        for name in &candidate.keep_playback {
+            if let Some(graph) = self.graphs.get(name) {
+                candidate
+                    .renderer
+                    .graphs
+                    .insert(name.clone(), graph.clone());
+            }
+        }
+        let mut graphs = std::mem::take(&mut self.graph_playback);
+        graphs.retain(|(_, model), _| candidate.renderer.graphs.contains_key(model));
+        candidate.renderer.graph_playback = graphs;
         candidate.renderer.resize(self.width, self.height)?;
         Ok(std::mem::replace(self, candidate.renderer))
     }
@@ -1248,11 +1282,17 @@ impl Renderer {
                 .iter()
                 .any(|i| i.actor == Some(*id) && i.model == *model)
         });
+        self.graph_playback.retain(|(id, model), _| {
+            instances
+                .iter()
+                .any(|instance| instance.actor == Some(*id) && instance.model == *model)
+        });
         self.grounding.retain(|(id, model), _| {
             instances
                 .iter()
                 .any(|i| i.actor == *id && i.model == *model && i.animation.grounded())
         });
+        let mut graph_instances = 0;
         let mut adventurer_pose: Option<Pose> = None;
         let mut bow_drawn = false;
         let mut actor_bounds = Vec::with_capacity(instances.len());
@@ -1261,17 +1301,36 @@ impl Renderer {
         for (i, instance) in instances.iter().enumerate() {
             let mut palette = make_pose(&self.pack, Some(instance))?;
             if let Some(id) = instance.actor {
-                let (bones, events) = self
-                    .playback
-                    .entry((id, instance.model.clone()))
-                    .or_default()
-                    .update_with_markers(
-                        id,
-                        &self.pack.models[&instance.model],
-                        instance.animation,
-                        instance.time,
-                        lighting.time,
-                    )?;
+                let (bones, events) = if let Some(graph) = self.graphs.get(&instance.model) {
+                    graph_instances += 1;
+                    let verse_engine::motion::Selection::Named(state) = instance.animation else {
+                        return Err("Authored animation graph requires a semantic selection".into());
+                    };
+                    let values = graph.values(state)?;
+                    let frame = self
+                        .graph_playback
+                        .entry((id, instance.model.clone()))
+                        .or_default()
+                        .update_sampled(
+                            graph.admitted(),
+                            id,
+                            &values,
+                            f64::from(instance.time),
+                            f64::from(lighting.time),
+                        )?;
+                    (frame.matrices, frame.markers)
+                } else {
+                    self.playback
+                        .entry((id, instance.model.clone()))
+                        .or_default()
+                        .update_with_markers(
+                            id,
+                            &self.pack.models[&instance.model],
+                            instance.animation,
+                            instance.time,
+                            lighting.time,
+                        )?
+                };
                 if self.marker_events.len() + events.len() > 4096 {
                     return Err("Frame animation markers exceed the presentation budget".into());
                 }
@@ -1712,6 +1771,7 @@ impl Renderer {
                 cached_shadow_casters: frozen.iter().filter(|revision| revision.is_some()).count(),
                 static_shadow_refreshes: refresh.iter().filter(|value| **value).count(),
                 marker_events: self.marker_events.len(),
+                graph_instances,
                 ..Default::default()
             };
             return Ok(vec![]);
@@ -1753,6 +1813,7 @@ impl Renderer {
             cached_shadow_casters: frozen.iter().filter(|revision| revision.is_some()).count(),
             static_shadow_refreshes: refresh.iter().filter(|value| **value).count(),
             marker_events: self.marker_events.len(),
+            graph_instances,
         };
         Ok(out)
     }
@@ -1802,6 +1863,7 @@ mod tests {
     fn reload_motion_identity_ignores_source_paths_and_tracks_animation_changes() {
         use verse_engine::assets::{Clip, Model};
         let mut model = Model {
+            graph: None,
             markers: Vec::new(),
             states: Default::default(),
             skin: None,
@@ -1822,12 +1884,36 @@ mod tests {
             bones: vec![],
         });
         assert_ne!(super::motion_digest(&model).unwrap(), original);
+        model.bones.push(verse_engine::assets::Bone {
+            parent: -1,
+            pivot: [0.; 3],
+        });
+        model.states.insert(
+            verse_engine::motion::State::Idle,
+            verse_engine::motion::Binding {
+                clip: 0,
+                mode: verse_engine::motion::Mode::Loop,
+                transition_seconds: 0.2,
+            },
+        );
+        model.graph = Some(verse_engine::animation_graph::Authored::from_bindings(
+            &model,
+        ));
+        model.graph.as_ref().unwrap().validate(&model).unwrap();
+        let graph = super::motion_digest(&model).unwrap();
+        if let verse_engine::animation_graph::Node::Clip { rate, .. } =
+            &mut model.graph.as_mut().unwrap().graph.nodes[0]
+        {
+            *rate = 1.5;
+        }
+        assert_ne!(super::motion_digest(&model).unwrap(), graph);
     }
     #[test]
     fn corpse_grounding_ignores_world_translation_but_tracks_skin_and_basis_changes() {
         use super::*;
         use verse_engine::assets::{Model, Surface, Vertex};
         let model = Model {
+            graph: None,
             markers: Vec::new(),
             states: Default::default(),
             skin: None,

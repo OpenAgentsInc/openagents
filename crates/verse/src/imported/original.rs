@@ -20,6 +20,7 @@ fn png_file(dir: &Path, name: &str, size: u32, pixels: &[u8]) -> Result<(), Stri
 }
 fn model(name: &str, height: f32) -> Model {
     Model {
+        graph: None,
         markers: Vec::new(),
         states: Default::default(),
         skin: None,
@@ -212,6 +213,9 @@ pub(super) fn bind_states(model: &mut Model) {
             },
         });
     }
+    model.graph = Some(verse_engine::animation_graph::Authored::from_bindings(
+        model,
+    ));
 }
 fn actor(name: &str, robe: [f32; 3], monster: bool) -> Model {
     let mut m = model(name, 2.35);
