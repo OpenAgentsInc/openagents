@@ -77,6 +77,8 @@ pub(crate) struct Profile {
     pub preparation_ms: Samples,
     pub render_submission_ms: Samples,
     pub frame_interval_ms: Samples,
+    pub renderer_phases: std::collections::BTreeMap<&'static str, Samples>,
+    pub renderer_counts: std::collections::BTreeMap<&'static str, Samples>,
     pub correction_meters: Samples,
     pub discontinuity_meters: Samples,
     pub retirement_correction_meters: Samples,
@@ -89,6 +91,31 @@ pub(crate) struct Profile {
     pub bindings: std::collections::BTreeMap<u64, std::time::Instant>,
 }
 impl Profile {
+    pub fn render(&mut self, timing: super::FrameTimings, present_ms: f64) {
+        for (name, value) in [
+            ("prepare_ms", timing.prepare_ms),
+            ("shadow_encode_ms", timing.shadow_encode_ms),
+            ("world_encode_ms", timing.world_encode_ms),
+            ("overlay_encode_ms", timing.overlay_encode_ms),
+            ("command_finish_ms", timing.command_finish_ms),
+            ("queue_submit_ms", timing.queue_submit_ms),
+            ("total_draw_ms", timing.total_ms),
+            ("window_present_ms", present_ms),
+        ] {
+            self.renderer_phases.entry(name).or_default().add(value);
+        }
+        for (name, value) in [
+            ("instances", timing.instances),
+            ("graph_instances", timing.graph_instances),
+            ("shadow_draws", timing.shadow_draws),
+            ("static_shadow_refreshes", timing.static_shadow_refreshes),
+        ] {
+            self.renderer_counts
+                .entry(name)
+                .or_default()
+                .add(value as f64);
+        }
+    }
     pub fn retirement(&mut self, distance: f64, context: serde_json::Value) {
         if !distance.is_finite() || distance < 0. {
             return;
@@ -123,10 +150,12 @@ impl Profile {
         }
     }
     pub fn summary(&self) -> serde_json::Value {
-        serde_json::json!({"schema":"verse.remote.profile.v4",
+        serde_json::json!({"schema":"verse.remote.profile.v5",
             "client_preparation_ms":self.preparation_ms.summary(),
             "render_submission_cpu_ms":self.render_submission_ms.summary(),
             "frame_interval_ms":self.frame_interval_ms.summary(),
+            "renderer_phase_ms":self.renderer_phases.iter().map(|(key, value)| (*key, value.summary())).collect::<std::collections::BTreeMap<_, _>>(),
+            "renderer_counts":self.renderer_counts.iter().map(|(key, value)| (*key, value.summary())).collect::<std::collections::BTreeMap<_, _>>(),
             "prediction_correction_meters":self.correction_meters.summary(),
             "intentional_discontinuity_meters":self.discontinuity_meters.summary(),
             "reset_observations":self.reset_observations,
@@ -136,7 +165,7 @@ impl Profile {
             "correction_trace":self.correction_trace,
             "omitted_corrections":self.omitted_corrections,
             "binding_to_outcome_ms":self.bound_to_outcome_ms.summary(),
-            "limits":["Render submission includes presentation waits; GPU execution is not measured.",
+            "limits":["Render submission and renderer phases measure CPU elapsed time, including driver and presentation waits; GPU execution is not measured.",
             "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
             "Samples retain the first 8192 observations per series; omitted observations are counted."]})
     }

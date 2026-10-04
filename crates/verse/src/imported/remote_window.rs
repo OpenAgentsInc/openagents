@@ -691,8 +691,13 @@ impl App {
             &ui,
             &lighting,
         )?;
+        let present_started = Instant::now();
         renderer.present_window(self.presenter.as_mut().unwrap(), [size.width, size.height])?;
         if self.record.is_some() {
+            self.profile.render(
+                renderer.last_timings,
+                present_started.elapsed().as_secs_f64() * 1000.,
+            );
             self.profile
                 .render_submission_ms
                 .add(render_started.elapsed().as_secs_f64() * 1000.);
