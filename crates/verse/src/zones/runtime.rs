@@ -145,6 +145,9 @@ impl WorldRuntime {
         if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.settle_light();
         }
+        if let Some(everglade) = &mut self.zone_state.everglade {
+            everglade.settle_light();
+        }
     }
 
     pub fn install_lagrange(&mut self) {

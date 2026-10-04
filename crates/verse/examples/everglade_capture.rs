@@ -78,6 +78,7 @@ fn main() -> Result<(), String> {
             ));
         }
     };
+    runtime.settle_zone_light();
     runtime.set_spawn(at, yaw)?;
     // Kept until the shot is rendered; the recording holds no file in it.
     let _scratch = if view.starts_with("studio-") {

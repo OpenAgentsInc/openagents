@@ -512,6 +512,21 @@ impl Everglade {
         }
     }
 
+    /// Waits for the light bake to finish and takes its result, for
+    /// offline captures.
+    pub fn settle_light(&mut self) {
+        while let Some(job) = &mut self.bake {
+            if let Some(probes) = job.poll() {
+                self.probes = Some(Arc::new(probes));
+            }
+            if job.finished() {
+                self.bake = None;
+            } else {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        }
+    }
+
     /// Whether the pack's character draws the player and the seats, so the
     /// studio draws no boxy figures.
     #[must_use]
