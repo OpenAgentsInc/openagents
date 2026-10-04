@@ -51,9 +51,12 @@ fn bounded(path: &std::path::Path, limit: usize) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn sample(values: &mut Vec<f64>, value: f64) {
+fn sample(values: &mut Vec<f64>, value: f64) -> bool {
     if values.len() < 8192 {
         values.push(value);
+        true
+    } else {
+        false
     }
 }
 fn summary(mut values: Vec<f64>) -> serde_json::Value {
@@ -85,6 +88,7 @@ async fn player(
     let mut epoch = 0;
     let mut pending = VecDeque::new();
     let mut latency = Vec::new();
+    let mut omitted_latency = 0u64;
     let mut casts = BTreeMap::<String, u64>::new();
     let mut refused = 0;
     let mut snapshots = 0;
@@ -157,7 +161,7 @@ async fn player(
      },
      Update::Outcome(response)=>{
       if let Some((started,ability))=pending.pop_front() {
-       sample(&mut latency,started.elapsed().as_secs_f64()*1000.);
+       if !sample(&mut latency,started.elapsed().as_secs_f64()*1000.) {omitted_latency+=1;}
        match response.body {Reply::Accepted=>{if let Some(ability)=ability {*casts.entry(ability).or_default()+=1;}},Reply::Refused {..}=>refused+=1,_=>{}}
       }
      }
@@ -168,11 +172,18 @@ async fn player(
   Ok::<(),String>(())
  }.await;
     let _ = stop.send(());
-    let worker_result = task.await.map_err(|_| "Load worker task failed")?;
-    result?;
-    worker_result?;
+    let worker_result = task.await;
+    let failure_stage = if result.is_err() {
+        Some("observation")
+    } else {
+        match worker_result {
+            Err(_) => Some("worker_task"),
+            Ok(Err(_)) => Some("worker_transport"),
+            Ok(Ok(())) => None,
+        }
+    };
     Ok(
-        serde_json::json!({"player":index,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_inputs":movement,"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
+        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_inputs":movement,"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
     )
 }
 async fn run(config: Config) -> Result<(), String> {
@@ -242,15 +253,27 @@ async fn run(config: Config) -> Result<(), String> {
     }
     let mut rows = Vec::new();
     while let Some(result) = tasks.join_next().await {
-        rows.push(result.map_err(|_| "Load player task failed")??);
+        rows.push(match result {
+            Ok(Ok(row)) => row,
+            Ok(Err(_)) => {
+                serde_json::json!({"player":null,"status":"failed","failure_stage":"player"})
+            }
+            Err(_) => {
+                serde_json::json!({"player":null,"status":"failed","failure_stage":"player_task"})
+            }
+        });
     }
     rows.sort_by_key(|r| r["player"].as_u64());
-    let receipt = serde_json::json!({"schema":"verse.multiplayer.load.v1","seconds":config.seconds,"players":rows,"limits":["Headless authenticated clients measure transport and authority load, not rendering.","Binding-to-outcome includes server processing and client delivery, not isolated RTT.","Timing retains at most 8192 samples per player."]});
+    let failed = rows.iter().any(|row| row["status"] != "complete");
+    let receipt = serde_json::json!({"schema":"verse.multiplayer.load.v2","status":if failed {"failed"} else {"complete"},"seconds":config.seconds,"players":rows,"limits":["Headless authenticated clients measure transport and authority load, not rendering.","Binding-to-outcome includes server processing and client delivery, not isolated RTT.","Timing retains at most 8192 samples per player."]});
     std::fs::write(
         config.output,
         serde_json::to_vec_pretty(&receipt).map_err(|_| "Cannot encode load receipt")?,
     )
     .map_err(|_| "Cannot write load receipt")?;
+    if failed {
+        return Err("Load failed; partial player measurements retained in the receipt".into());
+    }
     Ok(())
 }
 fn main() {
