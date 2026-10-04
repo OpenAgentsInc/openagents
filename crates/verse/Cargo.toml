@@ -16,9 +16,11 @@ capture = []
 # Rust Native panels (the chat transcript and the diff pane) painted by
 # `rust-native-desktop` and composited over the world.
 panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
-imported-desktop = ["dep:winit", "capture"]
+imported-desktop = ["dep:winit", "capture", "native-audio"]
+native-audio = ["dep:cpal"]
 
 [dependencies]
+cpal = { version = "=0.18.2", optional = true }
 gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names"] }
 verse-engine = { path = "../verse-engine", features = ["asset-io"] }
 verse-world = { path = "../verse-world" }

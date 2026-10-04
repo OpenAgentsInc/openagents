@@ -10,6 +10,8 @@
 pub mod agent;
 #[cfg(feature = "desktop")]
 pub mod app;
+#[cfg(feature = "native-audio")]
+pub mod audio_native;
 pub mod avatar;
 pub mod ball;
 pub mod blocks;
