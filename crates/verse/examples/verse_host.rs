@@ -108,6 +108,7 @@ async fn serve(config: Config) -> Result<(), String> {
             .local_addr()
             .map_err(|_| "Cannot inspect chamber listener")?
     );
+    gateway.game().enable_query_profiling();
     let signal_failure = Arc::new(Mutex::new(None));
     let failure = signal_failure.clone();
     let shutdown = async move {
@@ -126,6 +127,12 @@ async fn serve(config: Config) -> Result<(), String> {
         exit.stats.completed_connections,
         exit.stats.dropped_seconds
     );
+    if let Some(profile) = exit.gateway.game().query_profile() {
+        println!(
+            "Collision queries: {}",
+            serde_json::to_string(&profile).map_err(|_| "Cannot encode collision measurements")?
+        );
+    }
     println!(
         "Motor recovery: {} blocked advances, last diagnostic {:?}",
         exit.gateway.game().motor_recovery.blocks,

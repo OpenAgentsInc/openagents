@@ -245,6 +245,14 @@ pub struct Game {
     npc_deaths: BTreeMap<u64, (f32, Vec3)>,
 }
 impl Game {
+    /// Enables collision-query measurements without changing gameplay or checkpoint state.
+    pub fn enable_query_profiling(&self) {
+        self.query_scene.enable_profiling();
+    }
+    pub fn query_profile(&self) -> Option<physics::queries::QueryProfile> {
+        self.query_scene.query_profile()
+    }
+
     fn fence_world_generation(&mut self, previous: &Self) -> Result<(), String> {
         let generation = previous
             .lives

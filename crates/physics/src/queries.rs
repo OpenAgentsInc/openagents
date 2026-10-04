@@ -3,6 +3,8 @@ use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+mod profiling;
+pub use profiling::{QueryMetrics, QueryProfile};
 mod snapshot;
 pub use snapshot::{GeometrySnapshot, SceneCache, SceneSnapshot, ShapeSnapshot};
 
@@ -344,6 +346,7 @@ impl Collector {
 /// Collider identities determine iteration order; queries never update geometry.
 #[derive(Clone, Debug, Default)]
 pub struct Scene {
+    profiling: std::sync::Arc<profiling::Measurements>,
     poses: BTreeMap<ColliderKey, Pose>,
     colliders: BTreeMap<ColliderKey, MeshCollider>,
     capsules: BTreeMap<ColliderKey, CapsuleCollider>,
@@ -386,6 +389,14 @@ impl Pose {
     }
 }
 impl Scene {
+    /// Enables bounded measurements for this scene and its clones.
+    pub fn enable_profiling(&self) {
+        self.profiling.enable();
+    }
+    pub fn query_profile(&self) -> Option<QueryProfile> {
+        self.profiling.snapshot()
+    }
+
     pub fn capsule_keys(&self) -> impl Iterator<Item = ColliderKey> + '_ {
         self.capsules.keys().copied()
     }
@@ -471,6 +482,7 @@ impl Scene {
         distance: f64,
         filter: Filter,
     ) -> Result<Results, String> {
+        let mut observation = self.profiling.observe(profiling::Kind::Ray);
         valid_point(origin)?;
         filter.validate()?;
         if !direction.is_finite()
@@ -523,9 +535,11 @@ impl Scene {
                 Ok(())
             })?;
         }
+        observation.finish(stats, out.truncated);
         Ok(out.finish(stats))
     }
     pub fn overlap(&self, capsule: Capsule, filter: Filter) -> Result<Results, String> {
+        let mut observation = self.profiling.observe(profiling::Kind::Overlap);
         capsule.validate()?;
         filter.validate()?;
         let mut out = Collector::new(filter.limit);
@@ -590,9 +604,11 @@ impl Scene {
                     Ok(())
                 })?;
         }
+        observation.finish(stats, out.truncated);
         Ok(out.finish(stats))
     }
     pub fn sweep(&self, capsule: Capsule, delta: DVec3, filter: Filter) -> Result<Results, String> {
+        let mut observation = self.profiling.observe(profiling::Kind::Sweep);
         capsule.validate()?;
         filter.validate()?;
         if !delta.is_finite() || delta.length() > 1_000_000. {
@@ -651,6 +667,7 @@ impl Scene {
                 Ok(())
             })?;
         }
+        observation.finish(stats, out.truncated);
         Ok(out.finish(stats))
     }
 }
