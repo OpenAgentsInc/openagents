@@ -154,10 +154,14 @@ details summary{cursor:pointer;color:var(--w75)}
 .flow-recent{list-style:none;padding:0;margin:0 0 1rem}
 .flow-recent li{border-bottom:1px solid var(--w25);padding:.25rem 0;overflow-wrap:anywhere}
 
-/* /everglade: the Everglade web build's canvas (static/everglade.js). */
-.glade{position:relative;border:1px solid var(--w25);aspect-ratio:16/10;margin:0 0 .75rem;background:var(--bg)}
-.glade canvas{display:block;width:100%;height:100%;touch-action:none}
-.glade-status{position:absolute;inset:auto 0 0 0;margin:0;padding:.5rem .75rem;color:var(--w100);background:rgba(0,0,0,.72)}
+/* /everglade: the Everglade web build's canvas fills the window
+   (static/everglade.js), and the build sizes its drawing buffer from the
+   canvas every frame. No header, footer, scrolling, or page zoom. */
+html.stage,html.stage body{width:100%;height:100%;margin:0;overflow:hidden;overscroll-behavior:none;touch-action:none}
+html.stage body{display:block}
+.glade{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;background:var(--bg);touch-action:none}
+.glade canvas{display:block;width:100%;height:100%;outline:none;touch-action:none}
+.glade-status{position:absolute;inset:auto 0 0 0;margin:0;padding:.5rem .75rem calc(.5rem + env(safe-area-inset-bottom));color:var(--w100);background:rgba(0,0,0,.72)}
 .glade-status:empty{display:none}
 
 /* /stats: the payment numbers as tables and bar series, no script. */
@@ -176,6 +180,5 @@ details summary{cursor:pointer;color:var(--w75)}
   .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
   .box{padding:1.25rem 1.5ch 1rem}
   .flow{aspect-ratio:1/1}
-  .glade{aspect-ratio:3/4}
   .stats-totals{grid-template-columns:repeat(2,minmax(0,1fr))}
 }

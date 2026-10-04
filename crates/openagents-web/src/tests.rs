@@ -312,6 +312,12 @@ async fn the_everglade_page_serves_the_web_build_and_its_pack() {
     assert!(html.contains(&format!("data-module=\"/everglade/{}\"", pages::GLUE)));
     assert!(html.contains(&format!("data-wasm=\"/everglade/{}\"", pages::WASM)));
     assert!(html.contains("data-pack=\"/everglade/pack/\""));
+    // The canvas fills the window: no site header or footer, no page zoom.
+    assert!(html.contains("<html lang=\"en\" class=\"stage\">"));
+    assert!(html.contains("user-scalable=no"));
+    assert!(!html.contains("site-header"));
+    assert!(!html.contains("site-footer"));
+    assert!(html.contains("id=\"everglade-status\""));
     let lower = html.to_ascii_lowercase();
     assert_eq!(lower.matches("<script").count(), 1, "one script");
     assert!(html.contains("<script type=\"module\" src=\"/static/everglade.js\"></script>"));

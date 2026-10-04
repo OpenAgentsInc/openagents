@@ -91,6 +91,29 @@ pub fn page(title: &str, section: Option<&str>, body: &str) -> Response {
     Html(document(title, section, body)).into_response()
 }
 
+/// A page with no header or footer: `body` fills the whole window, and the
+/// viewport doesn't zoom, so a canvas in it takes every touch. `/everglade`
+/// is one.
+#[must_use]
+pub fn fullscreen_document(title: &str, body: &str) -> String {
+    let title = escape(title);
+    format!(
+        "<!doctype html><html lang=\"en\" class=\"stage\"><head><meta charset=\"utf-8\">\
+<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, \
+user-scalable=no, viewport-fit=cover\">\
+<meta name=\"color-scheme\" content=\"dark\"><title>{title} \u{b7} OpenAgents</title>\
+<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\">\
+<link rel=\"stylesheet\" href=\"/static/site.css\"></head><body>\
+<main id=\"content\">{body}</main></body></html>"
+    )
+}
+
+/// A full-screen page answered with `200`.
+#[must_use]
+pub fn fullscreen(title: &str, body: &str) -> Response {
+    Html(fullscreen_document(title, body)).into_response()
+}
+
 /// A page answered with `status`: a heading, a sentence, and a way back.
 #[must_use]
 pub fn problem(status: StatusCode, title: &str, text: &str, back: (&str, &str)) -> Response {

@@ -27,7 +27,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 
 use crate::App;
-use crate::layout::page;
+use crate::layout::{fullscreen, page};
 
 /// The JS glue module's file name in the build directory. It must match
 /// the file `scripts/build-everglade-web.sh` writes: wasm-bindgen names it
@@ -73,22 +73,16 @@ fn build(app: &App) -> Option<&Path> {
     (directory.join(GLUE).is_file() && directory.join(WASM).is_file()).then_some(directory)
 }
 
+/// The page is the canvas, filling the window, with the status line over its
+/// foot. The heading is for screen readers only.
 fn body(wasm_bytes: u64) -> String {
     format!(
-        "<section class=\"everglade\" aria-labelledby=\"everglade-title\">\
-<h1 id=\"everglade-title\">Everglade</h1>\
-<p class=\"lede\">A forest glade with a small workshop, the Verse zone where a person works \
-with a team of coding agents. It runs here in your browser.</p>\
+        "<h1 class=\"unseen\">Everglade</h1>\
 <div class=\"glade\" id=\"everglade\" data-module=\"/everglade/{GLUE}\" \
 data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PACK_PATH}\">\
 <canvas id=\"{CANVAS_ID}\" tabindex=\"0\" aria-label=\"The Everglade zone\"></canvas>\
-<p class=\"glade-status\" id=\"everglade-status\" aria-live=\"polite\">Loading Everglade…</p></div>\
-<p class=\"dim\">Move and look as in the Verse on your Mac. The world's download is large \
-the first time; your browser keeps it after that.</p>\
-<p><a href=\"/docs/verse\">[ The Verse ]</a> <span class=\"dim\">The guide to the Verse \
-on your phone and your Mac.</span></p>\
-<noscript><p class=\"dim\">Turn on JavaScript to open Everglade.</p></noscript>\
-</section>\
+<p class=\"glade-status\" id=\"everglade-status\" aria-live=\"polite\">Loading Everglade…</p>\
+<noscript><p class=\"glade-status\">Turn on JavaScript to open Everglade.</p></noscript></div>\
 <script type=\"module\" src=\"/static/everglade.js\"></script>"
     )
 }
@@ -112,7 +106,7 @@ async fn everglade(State(app): State<App>) -> Response {
             .map_or(0, |metadata| metadata.len()),
         None => 0,
     };
-    let mut response = page("Everglade", None, &body(wasm_bytes));
+    let mut response = fullscreen("Everglade", &body(wasm_bytes));
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(EVERGLADE_POLICY),
