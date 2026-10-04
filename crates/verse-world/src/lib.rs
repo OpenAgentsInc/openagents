@@ -243,4 +243,5 @@ pub mod room;
 pub mod rules;
 pub mod telekinesis;
 pub mod utilities;
+pub mod wall_of_stone;
 pub mod wind_wall;
