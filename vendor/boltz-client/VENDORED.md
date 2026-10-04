@@ -9,7 +9,8 @@ fetch it. The root `Cargo.toml` and `crates/openagents-mobile/Cargo.toml`
 patch that git source to the crates here.
 
 The files are copied unchanged from Cargo's checkout of that revision,
-except that the upstream `CLAUDE.md` agent-instructions file is left out.
+except that the upstream `CLAUDE.md` agent-instructions file and its
+`.github` CI configuration are left out.
 The code is MIT-licensed; `LICENSE` is the upstream notice. Remove this
 directory and the two `[patch]` sections once Breez publishes the revision
 again or `breez-sdk-spark` stops depending on it.
