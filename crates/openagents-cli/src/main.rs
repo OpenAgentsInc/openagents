@@ -21,6 +21,7 @@ mod argv;
 mod background;
 mod boat_run;
 mod catalog;
+mod chamber;
 mod chat;
 mod cloud;
 mod computer;
@@ -140,6 +141,7 @@ Verse (NIP-MV):
   xp           This identity's XP and level (openagents verse xp), and
                verify-card to re-derive a trainer card from the relays.
   zone         Drive the Lagrange 1 construction zone.
+  chamber      Host or play the authoritative combat chamber.
   sov          Sovereign agents under NIP-SOV: profile, spawn, status.
 
 Gym (NIP-EVAL):
@@ -289,6 +291,7 @@ fn main() -> ExitCode {
         }
         "xp" => world::run_xp(&output, &rest),
         "zone" => zone::run(&output, &rest),
+        "chamber" => chamber::run(&output, &rest),
         "study" => study::run(&output, &rest),
         "session" | "sessions" => session::run(&output, &rest),
         "sov" => sov::run(&output, &rest),

@@ -6609,7 +6609,7 @@
                     ]
                   }
                 ],
-                "summary": "Add a seat or change one: a lead plans goals, a worker (the default ROLE) works plan entries. ROUTE is PROVIDER:MODEL, the form the host's auto-start routes use.",
+                "summary": "Add a seat or change one: a lead plans goals, a worker (the default ROLE) works plan entries. ROUTE is PROVIDER[/ENGINE]:MODEL, the form the host's auto-start routes use; a claude or codex route may name its engine, session or loop, which overrides the owner's host-wide engine setting for the seat's tasks.",
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }
@@ -6777,6 +6777,101 @@
                 ],
                 "summary": "Pause a seat (it keeps its task and takes no new one), resume it, or stop it: cancel its task, return that task to the board, and pause the seat.",
                 "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "lead-review",
+          "children": [
+            {
+              "name": "on",
+              "leaf": {
+                "path": [
+                  "studio",
+                  "lead-review",
+                  "on"
+                ],
+                "usage": [
+                  "lead-review on|off|status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "lead-review"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "on"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Whether the lead reviews a worker's green change before the person's merge decision (on by default), or print the current setting.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "off",
+              "leaf": {
+                "path": [
+                  "studio",
+                  "lead-review",
+                  "off"
+                ],
+                "usage": [
+                  "lead-review on|off|status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "lead-review"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "off"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Whether the lead reviews a worker's green change before the person's merge decision (on by default), or print the current setting.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "status",
+              "leaf": {
+                "path": [
+                  "studio",
+                  "lead-review",
+                  "status"
+                ],
+                "usage": [
+                  "lead-review on|off|status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "lead-review"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "status"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Whether the lead reviews a worker's green change before the person's merge decision (on by default), or print the current setting.",
+                "effect": "read_only",
                 "runs_on": "connected_computer"
               }
             }
@@ -9241,6 +9336,672 @@
           "kind": "option",
           "name": "world",
           "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "chamber",
+      "summary": "Host or play the authoritative combat chamber.",
+      "children": [
+        {
+          "name": "host",
+          "leaf": {
+            "path": [
+              "chamber",
+              "host"
+            ],
+            "usage": [
+              "host CONFIG.json"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "host"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "CONFIG.json"
+                  }
+                ]
+              }
+            ],
+            "summary": "Run a chamber host on this machine until stopped: the configuration names the scene, pack, TLS certificate and key (DER), and enrolled keys.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "tls",
+          "leaf": {
+            "path": [
+              "chamber",
+              "tls"
+            ],
+            "usage": [
+              "tls DIR [--name NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "tls"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DIR"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "name",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Write a self-signed TLS certificate and key for a host under DIR (cert.der, key.der; NAME defaults to localhost).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "pack",
+          "leaf": {
+            "path": [
+              "chamber",
+              "pack"
+            ],
+            "usage": [
+              "pack DIR"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "pack"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DIR"
+                  }
+                ]
+              }
+            ],
+            "summary": "Compile the original ritual asset pack under DIR (runtime-pack.json) for a host and its clients.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "chamber",
+              "status"
+            ],
+            "usage": [
+              "status"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  }
+                ]
+              }
+            ],
+            "summary": "This identity's admission, the host tick, and the living actors.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "snapshot",
+          "leaf": {
+            "path": [
+              "chamber",
+              "snapshot"
+            ],
+            "usage": [
+              "snapshot"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "snapshot"
+                  }
+                ]
+              }
+            ],
+            "summary": "The full authoritative state the host serves.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "events",
+          "leaf": {
+            "path": [
+              "chamber",
+              "events"
+            ],
+            "usage": [
+              "events [--after SERIAL] [--limit N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "events"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "after",
+                    "value": "SERIAL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Committed authority events: dialogue, damage, deaths, respawns.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "watch",
+          "leaf": {
+            "path": [
+              "chamber",
+              "watch"
+            ],
+            "usage": [
+              "watch [--wait SECONDS] [--hz N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "watch"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "wait",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "hz",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Follow snapshots and events as NDJSON until the wait ends.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "move",
+          "leaf": {
+            "path": [
+              "chamber",
+              "move"
+            ],
+            "usage": [
+              "move X,Z [--yaw DEGREES] [--ticks N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "move"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "X,Z"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "yaw",
+                    "value": "DEGREES",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "ticks",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Walk the owned adventurer along the axes (-1..1, forward is Z) for N ticks (default 30).",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "jump",
+          "leaf": {
+            "path": [
+              "chamber",
+              "jump"
+            ],
+            "usage": [
+              "jump"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "jump"
+                  }
+                ]
+              }
+            ],
+            "summary": "Jump once.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "cast",
+          "leaf": {
+            "path": [
+              "chamber",
+              "cast"
+            ],
+            "usage": [
+              "cast ABILITY [--target ACTOR] [--aim X,Z]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "cast"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ABILITY"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "target",
+                    "value": "ACTOR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "aim",
+                    "value": "X,Z",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Cast bow, fire-bolt, magic-missile, fireball, misty-step, thunderwave, web, grease, light, or shield at a hostile actor or along a horizontal direction (default: forward, -Z). The host refuses row-two catalog spells from remote players.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "respawn",
+          "leaf": {
+            "path": [
+              "chamber",
+              "respawn"
+            ],
+            "usage": [
+              "respawn"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "respawn"
+                  }
+                ]
+              }
+            ],
+            "summary": "Return a dead adventurer to its spawn.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "inventory",
+          "leaf": {
+            "path": [
+              "chamber",
+              "inventory"
+            ],
+            "usage": [
+              "inventory"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "inventory"
+                  }
+                ]
+              }
+            ],
+            "summary": "Items, quests, level, outfit, and equipment.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "use",
+          "leaf": {
+            "path": [
+              "chamber",
+              "use"
+            ],
+            "usage": [
+              "use ITEM"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "use"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ITEM"
+                  }
+                ]
+              }
+            ],
+            "summary": "Use an inventory item by its ID.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "equip",
+          "leaf": {
+            "path": [
+              "chamber",
+              "equip"
+            ],
+            "usage": [
+              "equip SLOT ITEM"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "equip"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "SLOT"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ITEM"
+                  }
+                ]
+              }
+            ],
+            "summary": "Equip ITEM (head or main-hand), or an outfit with `equip outfit ID`.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "quest",
+          "children": [
+            {
+              "name": "accept",
+              "leaf": {
+                "path": [
+                  "chamber",
+                  "quest",
+                  "accept"
+                ],
+                "usage": [
+                  "quest accept ID --giver ACTOR"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "quest"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "accept"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "giver",
+                        "value": "ACTOR",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Accept a quest from a scene actor.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "claim",
+              "leaf": {
+                "path": [
+                  "chamber",
+                  "quest",
+                  "claim"
+                ],
+                "usage": [
+                  "quest claim ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "quest"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "claim"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Claim a completed quest's reward.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "name",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "after",
+          "value": "SERIAL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "limit",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "wait",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "hz",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "yaw",
+          "value": "DEGREES",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "ticks",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "target",
+          "value": "ACTOR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "aim",
+          "value": "X,Z",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "giver",
+          "value": "ACTOR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "to",
+          "value": "HOST:PORT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "instance",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "trust",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "server-name",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "content",
+          "value": "HEX",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "as",
+          "value": "PROFILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "chamber",
+          "value": "FILE",
           "open": true,
           "optional": true,
           "repeated": true

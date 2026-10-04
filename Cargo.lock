@@ -9766,9 +9766,11 @@ dependencies = [
  "pay-ledger",
  "playtest",
  "plugin",
+ "rcgen",
  "reqwest 0.12.28",
  "ring",
  "route-contract",
+ "rustls",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -9780,7 +9782,9 @@ dependencies = [
  "toml",
  "uuid",
  "verse",
+ "verse-engine",
  "verse-lagrange",
+ "verse-world",
 ]
 
 [[package]]
