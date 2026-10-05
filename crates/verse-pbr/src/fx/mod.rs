@@ -1,0 +1,8 @@
+//! The renderer's half of Verse's particle effects: the sprite sheets and
+//! the sprite quads the physical pipeline draws. Effects, emitters, and the
+//! simulation live in `verse::fx`; read `docs/verse/particles.md`.
+
+pub mod sheet;
+pub mod sprite;
+
+pub use sprite::{Facing, Sprite, SpriteVertex, budget, vertices};

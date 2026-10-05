@@ -6,6 +6,7 @@
 //! `docs/verse/README.md`.
 
 pub mod fog;
+pub mod fx;
 pub mod mesh;
 pub mod pbr;
 #[cfg(not(target_arch = "wasm32"))]
