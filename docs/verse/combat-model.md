@@ -1,68 +1,65 @@
-# Verse combat model: real time, no dice
+# Verse combat model: MMO play, dice behind the scenes
 
 Status: decision, October 4, 2026, from the owner. It applies to every zone,
 game, demo, and agent in Verse, now and later.
 
-Verse plays like an MMO, not a tabletop game. Nothing rolls dice. When Verse
-borrows from the System Reference Document (SRD) or any tabletop source, it
-keeps the idea of an ability, meaning what it does, its shape, its fantasy, and
-its relative power, and translates the mechanics into the real-time model
-below. There is no separate dice-based "fifth edition" ruleset to select, and
-none is planned.
+Verse plays like an MMO, not a tabletop game: real time, mana, cooldowns, cast
+bars, buffs and debuffs. The dice stay. The simulation rolls SRD-style dice
+behind the scenes for hits, damage, saves, and critical hits, and the player
+sees the outcome (a hit or a miss, a damage number, a resist, a crit), never a
+turn-based procedure. When Verse borrows an ability from the System Reference
+Document (SRD), it keeps its dice and its saving throw and translates its
+timing and resources into the model below.
 
-The chamber and Everglade already work this way. Their spells cost mana and
+The chamber and Everglade already work this way: their spells cost mana and
 have cooldowns (`SpellDef::cost` and `cooldown`: "MMO tuning, not tabletop
-rules"). This page makes that the rule everywhere and fixes how each tabletop
-mechanic translates.
+rules"), and `verse-world`'s seeded `dice::Dice` rolls their damage and saves.
 
 ## Translation table
 
 | Tabletop mechanic | Verse model |
 | --- | --- |
-| Rounds and turns | Continuous real time on the world's fixed clock. One tabletop round is **6 seconds** wherever a duration or tick needs converting. There is no initiative and no turn order. |
+| Rounds and turns | Continuous real time on the world's fixed clock. One tabletop round is **6 seconds** wherever a duration or tick needs converting. No initiative and no turn order. |
 | Action, Bonus Action, Reaction | **Global cooldown** (GCD) of 1.0 s for actions. Bonus actions get their own 1.0 s off-GCD lane. Reactions become instant abilities with cooldowns, or procs. |
 | Casting time | Instant (an action), or a **cast bar** for longer casts: 1.0 to 2.5 s by spell tier. Moving or being stunned interrupts a cast bar. |
-| Attack roll against AC | **Always hits** within range and line of sight. Armor appears as **mitigation**, a percentage reduction of physical damage, never a miss chance. |
-| Damage dice | A **fixed amount**, the dice's average rounded down, scaled by the caster's spell power. For example, 8d6 is 28. No variance, no criticals. |
-| Saving throws | No saves. An effect "save for half" deals its full listed (average) damage. Control that a save could resist becomes a **diminishing-returns** duration: each repeat on the same target within 15 s halves the duration, and the third is immune. |
-| Spell slots and levels | **Mana** plus **cooldowns**. The spell level sets the tier, which sets cost, cooldown, and power (table below). Cantrips cost no mana. |
-| Limited uses per rest (Wild Shape, Channel Divinity) | **Charges** that recharge over time (for example, one charge per 30 s), with a maximum. |
-| Short and Long Rest | Out of combat for 5 s regenerates mana and health quickly. A demo can add an explicit "rest" control that refills everything. |
-| Concentration | One **maintained effect** per caster. Starting another ends the first. Taking damage does not break it; hard control (stun, incapacitate) does. |
-| Conditions | Timed **debuffs** with icons and durations in seconds, mapped from the tabletop meaning: Restrained becomes rooted, Prone becomes knocked down for 1.5 s, Blinded misses ranged targeting, Poisoned takes damage over time, Charmed or Frightened stop attacking or run, Incapacitated or Stunned is a stun. |
-| Advantage and Disadvantage | A damage or healing modifier (+20% / -20%) or a cast-speed change, never a reroll. |
-| Resistance, Vulnerability, Immunity | Damage multipliers 0.5, 1.5, and 0. |
-| Hit points and temporary hit points | Health and **shields** (absorbs) that decay after their duration. |
+| Attack roll against AC | **Rolled behind the scenes.** A d20 plus the attack bonus against the target's AC decides hit or miss; a natural 20 crits. The player sees "Miss" or a damage number. |
+| Damage dice | **Rolled behind the scenes** with the SRD dice, scaled by the caster's level where the SRD scales them. Tooltips show the range (for example, 8 to 48 for 8d6). |
+| Saving throws | **Rolled behind the scenes** against the caster's save DC. A success shows as "Resisted" or half damage, as the spell says. Repeated hard control on one target also gets **diminishing returns** (each repeat within 15 s halves the duration; the third is immune), so it can't chain-lock. |
+| Spell slots and levels | **Mana** plus **cooldowns**. The spell level sets the tier, which sets cost, cooldown, and cast time (table below). Cantrips cost no mana. |
+| Limited uses per rest (Wild Shape, Channel Divinity) | **Charges** that recharge over time (for example, one per 30 s), with a maximum. |
+| Short and Long Rest | 5 s out of combat regenerates mana and health quickly. A demo can add an explicit "rest" control that refills everything. |
+| Concentration | One **maintained effect** per caster. Starting another ends the first. Damage may break it on a behind-the-scenes Constitution save, as in the SRD. |
+| Conditions | Timed **debuffs** with icons and durations in seconds: Restrained becomes rooted, Prone becomes knocked down for 1.5 s, Blinded misses ranged targeting, Poisoned takes damage over time, Charmed or Frightened stop attacking or run, Incapacitated or Stunned is a stun. A debuff that the SRD lets the target save against each round rolls that save every 6 s. |
+| Advantage and Disadvantage | Kept as rolls: roll two d20s and take the higher or lower, behind the scenes. |
+| Resistance, Vulnerability, Immunity | Damage multipliers 0.5, 2, and 0, as in the SRD. |
+| Hit points and temporary hit points | Health and **shields** (absorbs). |
 | Range and area in feet | Meters, at **5 ft = 1.5 m**. A 60-foot range is 18 m, and a 20-foot radius is 6 m. |
-| Ability scores and proficiency | Character stats feed **spell power** (Wisdom for druids), health (Constitution), and mitigation (armor). Players never see a modifier added to a die. |
-| Level-based scaling (cantrips at 5, 11, 17) | Scales with character level through spell power, smoothly rather than in steps. |
-| Skill checks and contests | Not part of combat. Out of combat, an interaction succeeds or fails by stated, deterministic conditions, such as having a tool or a stat at or above a threshold. |
+| Ability scores and proficiency | Kept: they set attack bonuses, save DCs, and saves. Players see them on the character sheet, not on every cast. |
+| Skill checks and contests | Rolled behind the scenes where an interaction needs one; the player sees success or failure. |
 
 ## Spell tiers
 
-Defaults that a zone may tune, but never replace with dice:
+Defaults that a zone may tune. Damage stays the spell's dice.
 
-| Spell level | Mana | Cooldown | Cast | Typical power (level 20 caster) |
-| --- | --- | --- | --- | --- |
-| Cantrip | 0 | GCD only | Instant | 20 to 30 damage |
-| 1 to 2 | 10 to 15 | 6 to 10 s | Instant | 25 to 45 damage, or short control |
-| 3 to 4 | 20 to 25 | 12 to 20 s | Instant or 1.0 s | 50 to 80 damage, or an area |
-| 5 to 6 | 30 to 40 | 20 to 30 s | 1.5 s | 80 to 120 damage, walls, summons |
-| 7 to 8 | 45 to 60 | 45 to 60 s | 2.0 s | 120 to 180 damage, large areas |
-| 9 | 75+ | 90 to 180 s | 2.5 s | 200+ damage, or a transformation |
+| Spell level | Mana | Cooldown | Cast |
+| --- | --- | --- | --- |
+| Cantrip | 0 | GCD only | Instant |
+| 1 to 2 | 10 to 15 | 6 to 10 s | Instant |
+| 3 to 4 | 20 to 25 | 12 to 20 s | Instant or 1.0 s |
+| 5 to 6 | 30 to 40 | 20 to 30 s | 1.5 s |
+| 7 to 8 | 45 to 60 | 45 to 60 s | 2.0 s |
+| 9 | 75+ | 90 to 180 s | 2.5 s |
 
 ## Rules for authors and agents
 
-- Never add dice, random hit or miss, random damage, or critical hits to
-  combat. Randomness may appear only in presentation, such as particle
-  scatter, and in deterministic seeded world events.
-- The source's numbers inform tuning; Verse keeps no copy of the tabletop
-  procedure. An ability's tooltip states its Verse numbers (damage, mana,
-  cooldown, duration, range in meters), not dice.
+- Keep the dice in the simulation, seeded so a fight replays exactly, and
+  out of the player's way: no roll prompts, no turn order, no waiting.
+- Show outcomes the MMO way: floating numbers, "Miss", "Resisted", "Crit",
+  and tooltips with damage ranges, mana, cooldown, and range in meters.
 - SRD material keeps its CC-BY attribution where an ability or text is taken
   from it, such as SRD 5.2.1 in the [druid demo](druid-demo.md).
 - Authority stays with the world's simulation. Clients send intents, never
-  results.
+  results or rolls.
 
 [Zone rules](zone-rules.md) describes each zone's current gameplay under this
 model.

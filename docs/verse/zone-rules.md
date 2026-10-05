@@ -27,13 +27,12 @@ cannot replace the compiled game code. This profile is the source game's tuning,
 not a complete implementation of Dungeons & Dragons Fifth Edition. Its original
 SRD 5.2.1 references do not change that claim.
 
-## No dice: the combat model
+## The combat model
 
-There is no dice-based fifth-edition profile, and none is planned (owner,
-2026-10-04). Every zone uses the real-time [combat model](combat-model.md):
-fixed damage, mana and cooldowns, timed debuffs, and no attack rolls or saving
-throws. SRD abilities are translated into that model, never run by tabletop
-procedure.
+Every zone uses the [combat model](combat-model.md) (owner, 2026-10-04):
+MMO play in real time with mana, cooldowns, and timed debuffs, and SRD dice,
+attack rolls, and saving throws rolled behind the scenes. There is no
+separate turn-based fifth-edition profile.
 
 ## Creator-selected profiles
 

@@ -8,11 +8,11 @@ action bar, maps each ability to what Verse already implements, and specifies
 the build.
 
 Every ability follows the [combat model](combat-model.md): real time, MMO
-style, no dice. Tabletop dice become fixed values scaled by spell power,
-saving throws become full effects with diminishing-returns control, and spell
-slots and rest-limited uses become mana, cooldowns, and recharging charges.
-The class summary below describes the SRD source; the action bar and the build
-use Verse numbers.
+style, with SRD dice rolled behind the scenes. Spell slots and rest-limited
+uses become mana, cooldowns, and recharging charges; attack rolls, damage
+dice, and saving throws still roll, against a save DC of 19 and a +11 spell
+attack. Damage figures in the action bar are the dice's averages; tooltips
+show each spell's dice range.
 
 The abilities come from the
 [System Reference Document 5.2.1](https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf)
@@ -194,9 +194,8 @@ placeholder burst.
   Gust of Wind, Wind Wall, Wall of Stone, and Reverse Gravity, all druid spells,
   plus Telekinesis, Levitate, Feather Fall, Black Tentacles, and Meteor Swarm,
   which aren't. The chamber kit adds Fire Bolt, Fireball, Misty Step, and
-  Web, which arrive through land spells. These carry mana, cooldowns, maintained
-  effects, and fields. Their seeded dice and saving throws come out under the
-  combat model (a follow-up issue).
+  Web, which arrive through land spells. These carry seeded dice, saving throws,
+  mana, cooldowns, maintained effects, and fields.
 - **Everglade in the browser** (`crates/everglade-web`, `openagents.com/everglade`)
   runs the shared `WorldRuntime` on WebGPU and WebGL2. It already has the icon
   hotbar with held controls and four spells (Feather Fall, Wall of Stone, Wind
@@ -258,8 +257,10 @@ concentration, the chosen land, the current form, and temporary hit points.
 and conditions (Restrained, Prone, Blinded, Poisoned, Faerie Fire,
 Polymorphed, Burning), with condition icons shown above the health bar.
 
-**No dice:** every spell deals its fixed Verse value; control uses diminishing
-returns; armor and resistances are multipliers.
+**Dice behind the scenes:** `verse-world`'s seeded `dice::Dice` rolls each
+attack, damage, and save, so a page load replays from its seed. The log and
+floating numbers show the outcome ("Miss", "Resisted", a crit), not the
+procedure. Repeated hard control on one dummy also gets diminishing returns.
 
 **Timing:** mana and cooldowns from the tier table, a 1-second global
 cooldown, and a separate 1-second lane for off-GCD abilities (Wild Shape,
