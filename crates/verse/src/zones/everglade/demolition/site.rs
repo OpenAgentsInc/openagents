@@ -40,6 +40,12 @@ const BLOW: f64 = 450.0;
 /// them apart fast enough to throw them across the field.
 const MAX_SPEED: f64 = 10.0;
 const MAX_SPIN: f64 = 12.0;
+/// Fastest an explosion throws a chunk, m/s, for [`THROWN`] seconds after
+/// the blast; past that the ordinary cap applies again.
+pub const BLAST_SPEED: f64 = 26.0;
+const THROWN: f64 = 1.6;
+/// How far above horizontal an explosion throws what it hits, degrees.
+const BLAST_UPWARD: f64 = 38.0;
 /// Speed at which an unsupported wall's top starts to tip outward, m/s.
 const TIP: f64 = 0.9;
 
@@ -192,6 +198,20 @@ pub struct Puff {
     pub color: [f32; 3],
 }
 
+/// How a breaking piece's chunks are pushed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Push {
+    /// The chunks nearest `point` take `push`, as from a hammer blow.
+    Along { point: DVec3, push: DVec3 },
+    /// Every chunk flies away from `center` at up to `speed`, falling off
+    /// to nothing at `radius`, as from an explosion.
+    From {
+        center: DVec3,
+        speed: f64,
+        radius: f64,
+    },
+}
+
 /// What a hammer blow did.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Blow {
@@ -215,6 +235,9 @@ pub struct Site {
     pending: f64,
     /// Bumped whenever a piece stops standing, so blockers are rebuilt.
     revision: u64,
+    /// Bodies an explosion threw, and until when they may outrun
+    /// [`MAX_SPEED`], s; sorted by body.
+    thrown: Vec<(BodyId, f64)>,
 }
 
 impl Site {
@@ -230,6 +253,7 @@ impl Site {
             rng: seed,
             pending: 0.0,
             revision: 0,
+            thrown: Vec::new(),
         };
         site.raise();
         site
@@ -297,6 +321,7 @@ impl Site {
         self.pieces = pieces;
         self.puffs.clear();
         self.pending = 0.0;
+        self.thrown.clear();
     }
 
     /// Rebuilds every piece as it was first raised.
@@ -406,6 +431,12 @@ impl Site {
     /// Takes `amount` hit points from `piece`; at zero it breaks, its chunks
     /// near `point` pushed at `push`. Returns whether it broke.
     pub fn damage(&mut self, piece: usize, amount: i32, point: DVec3, push: DVec3) -> bool {
+        self.hurt(piece, amount, Push::Along { point, push })
+    }
+
+    /// Takes `amount` hit points from `piece`; at zero it breaks, its chunks
+    /// pushed as `push` says. Returns whether it broke.
+    fn hurt(&mut self, piece: usize, amount: i32, push: Push) -> bool {
         let state = &mut self.pieces[piece];
         if state.status == Status::Broken || amount <= 0 {
             return false;
@@ -414,14 +445,14 @@ impl Site {
         if state.hit_points > 0 {
             return false;
         }
-        self.shatter(piece, point, push);
+        self.shatter(piece, push);
         self.support();
         true
     }
 
-    /// Breaks `piece` into its chunks with its momentum, the ones nearest
-    /// `point` pushed at up to `push`.
-    fn shatter(&mut self, piece: usize, point: DVec3, push: DVec3) {
+    /// Breaks `piece` into its chunks with its momentum, pushed as `push`
+    /// says.
+    fn shatter(&mut self, piece: usize, push: Push) {
         let id = self.pieces[piece].body;
         let body = self.world[id];
         wake_near(&mut self.world, id);
@@ -447,11 +478,33 @@ impl Site {
             let mut chunk = Body::new(mass, Body::box_inertia(mass, cuboid.half * 2.0), pos);
             chunk.orientation = orientation;
             chunk.prev_orientation = orientation;
-            let near = (1.0 - pos.distance(point) / 2.5).clamp(0.0, 1.0);
             let spread = DVec3::new(self.unit(), self.unit().abs(), self.unit()) * 0.8;
-            chunk.vel = body.vel + omega.cross(pos - body.pos) + push * near + spread;
-            chunk.omega = DVec3::new(self.unit(), self.unit(), self.unit()) * 2.0;
+            // The push on this chunk, and how near an explosion's heart it
+            // was, from 0 to 1.
+            let (kick, k) = match push {
+                Push::Along { point, push } => {
+                    let near = (1.0 - pos.distance(point) / 2.5).clamp(0.0, 1.0);
+                    (push * near, 0.0)
+                }
+                Push::From {
+                    center,
+                    speed,
+                    radius,
+                } => {
+                    let k = (1.0 - pos.distance(center) / radius).clamp(0.0, 1.0);
+                    // At least a third of the speed, so a chunk at the
+                    // edge of the blast still leaves its piece.
+                    let speed = speed * (0.35 + 0.65 * k) * (0.8 + 0.4 * self.unit().abs());
+                    (blast_direction(center, pos) * speed + spread * 2.0, k)
+                }
+            };
+            chunk.vel = body.vel + omega.cross(pos - body.pos) + kick + spread;
+            chunk.omega = DVec3::new(self.unit(), self.unit(), self.unit())
+                * if k > 0.0 { 2.0 + 8.0 * k } else { 2.0 };
             let chunk_id = self.world.add(chunk);
+            if matches!(push, Push::From { .. }) {
+                self.throw(chunk_id);
+            }
             // Slightly smaller, so neighbouring chunks start apart.
             self.world.add_collider(
                 Collider::new(
@@ -462,9 +515,12 @@ impl Site {
                 )
                 .with_material(MATERIAL),
             );
+            // The fragments nearest an explosion's heart end first, so
+            // the debris cap takes them, hidden in the fireball, before
+            // the ones that fly.
             chunks.push(Chunk {
                 body: chunk_id,
-                until: time + DEBRIS_LIFETIME + self.unit().abs() * 4.0,
+                until: time + DEBRIS_LIFETIME * (1.0 - 0.6 * k) + self.unit().abs() * 4.0,
                 gone: false,
             });
             puffs.push(pos.as_vec3());
@@ -521,6 +577,92 @@ impl Site {
             let b = &mut self.world[body];
             let scale = (b.mass / 60.0).min(1.0);
             b.apply_impulse_at((push + DVec3::Y * 0.3) * impulse * scale, at);
+        }
+    }
+
+    /// Whether `point` is within `reach` of a standing or loose piece.
+    #[must_use]
+    pub fn touches(&self, point: Vec3, reach: f32) -> bool {
+        let point = point.as_dvec3();
+        self.world.colliders().iter().any(|collider| {
+            self.pieces
+                .iter()
+                .any(|p| p.body == collider.body && p.status != Status::Broken)
+                && collider.closest_point(&self.world, point).distance(point) <= f64::from(reach)
+        })
+    }
+
+    /// An explosion at `center`: every piece within `radius` takes
+    /// `damage` scaled from all of it at the center to none at the edge,
+    /// what breaks flies outward at up to `speed`, and loose pieces and
+    /// chunks in reach are thrown the same way. Returns a blow for each
+    /// piece it reached, nearest first.
+    pub fn explode(&mut self, center: Vec3, radius: f32, damage: i32, speed: f32) -> Vec<Blow> {
+        let c = center.as_dvec3();
+        let (radius, speed) = (f64::from(radius), f64::from(speed));
+        let mut blows = Vec::new();
+        for (piece, distance, point) in self.near(c, radius) {
+            let k = 1.0 - distance / radius;
+            let amount = (f64::from(damage) * k).round() as i32;
+            // An earlier piece's fall may have broken this one already.
+            if self.pieces[piece].status == Status::Broken || amount <= 0 {
+                continue;
+            }
+            let broke = self.hurt(
+                piece,
+                amount,
+                Push::From {
+                    center: c,
+                    speed,
+                    radius,
+                },
+            );
+            blows.push(Blow {
+                piece,
+                damage: amount,
+                hit_points: self.pieces[piece].hit_points,
+                broke,
+                at: point.as_vec3(),
+            });
+        }
+        // What is loose now, and what earlier blows left lying, is thrown.
+        let mut bodies: Vec<BodyId> = Vec::new();
+        for piece in &self.pieces {
+            match piece.status {
+                Status::Loose => bodies.push(piece.body),
+                Status::Broken => {
+                    bodies.extend(piece.chunks.iter().filter(|c| !c.gone).map(|c| c.body));
+                }
+                Status::Standing => {}
+            }
+        }
+        for id in bodies {
+            let at = self.world[id].pos;
+            let k = 1.0 - at.distance(c) / radius;
+            if k <= 0.0 {
+                continue;
+            }
+            self.world.wake(id);
+            let kick = blast_direction(c, at) * speed * k * 0.7;
+            let body = &mut self.world[id];
+            // A chunk this blast just threw keeps its speed.
+            if body.vel.length() < kick.length() {
+                body.vel += kick;
+            }
+            self.throw(id);
+        }
+        self.dust(center, 10, 2.6, Matter::Brick);
+        self.dust(center, 8, 2.0, Matter::Plaster);
+        blows
+    }
+
+    /// Lets `body` outrun the speed cap for a moment, as an explosion
+    /// throws it.
+    fn throw(&mut self, body: BodyId) {
+        let until = self.world.time() + THROWN;
+        match self.thrown.binary_search_by_key(&body.0, |(id, _)| id.0) {
+            Ok(i) => self.thrown[i].1 = until,
+            Err(i) => self.thrown.insert(i, (body, until)),
         }
     }
 
@@ -594,7 +736,13 @@ impl Site {
             };
             for piece in weak {
                 let at = self.world[self.pieces[piece].body].pos;
-                self.shatter(piece, at + DVec3::Y, out * 2.5);
+                self.shatter(
+                    piece,
+                    Push::Along {
+                        point: at + DVec3::Y,
+                        push: out * 2.5,
+                    },
+                );
             }
         }
     }
@@ -705,10 +853,21 @@ impl Site {
     fn step(&mut self) {
         let gravity = Uniform(DVec3::new(0.0, -9.81, 0.0));
         self.world.step(&gravity);
-        for body in self.world.bodies_mut() {
+        let now = self.world.time();
+        self.thrown.retain(|&(_, until)| until > now);
+        for (index, body) in self.world.bodies_mut().iter_mut().enumerate() {
             if body.kind == BodyKind::Dynamic {
-                body.vel = body.vel.clamp_length_max(MAX_SPEED);
-                body.omega = body.omega.clamp_length_max(MAX_SPIN);
+                let thrown = self
+                    .thrown
+                    .binary_search_by_key(&(index as u32), |(id, _)| id.0)
+                    .is_ok();
+                let (speed, spin) = if thrown {
+                    (BLAST_SPEED, MAX_SPIN * 2.0)
+                } else {
+                    (MAX_SPEED, MAX_SPIN)
+                };
+                body.vel = body.vel.clamp_length_max(speed);
+                body.omega = body.omega.clamp_length_max(spin);
             }
         }
         // Impacts: the summed contact impulse between each pair of bodies.
@@ -754,7 +913,13 @@ impl Site {
             let limit = if spec.role == Role::Roof { 50.0 } else { 62.0 };
             if up.dot(built) < f64::to_radians(limit).cos() {
                 let at = body.pos;
-                self.shatter(piece, at, DVec3::ZERO);
+                self.shatter(
+                    piece,
+                    Push::Along {
+                        point: at,
+                        push: DVec3::ZERO,
+                    },
+                );
                 self.support();
             }
         }
@@ -769,7 +934,9 @@ impl Site {
         }
     }
 
-    fn dust(&mut self, at: Vec3, count: usize, scale: f32, matter: Matter) {
+    /// Adds `count` puffs of `matter`'s dust at `at`, `scale` times the
+    /// size and speed of a hammer blow's.
+    pub fn dust(&mut self, at: Vec3, count: usize, scale: f32, matter: Matter) {
         let base = match matter {
             Matter::Tile | Matter::Brick => [0.4, 0.27, 0.21],
             _ => [0.44, 0.4, 0.33],
@@ -808,8 +975,8 @@ impl Site {
         self.puffs.retain(|p| p.age < p.life);
     }
 
-    /// A die roll from 1 to `sides`.
-    fn roll(&mut self, sides: u32) -> i32 {
+    /// A die roll from 1 to `sides`, from the yard's seeded dice.
+    pub fn roll(&mut self, sides: u32) -> i32 {
         (self.next() % u64::from(sides)) as i32 + 1
     }
 
@@ -883,6 +1050,16 @@ impl Site {
         let state = &self.pieces[piece];
         let chunk = state.chunks.get(index)?;
         (!chunk.gone).then(|| self.body_pose(chunk.body))
+    }
+}
+
+/// Which way an explosion at `center` throws something at `at`: outward
+/// and [`BLAST_UPWARD`] degrees up, or straight up at the center.
+fn blast_direction(center: DVec3, at: DVec3) -> DVec3 {
+    let up = BLAST_UPWARD.to_radians();
+    match DVec3::new(at.x - center.x, 0.0, at.z - center.z).try_normalize() {
+        Some(out) => out * up.cos() + DVec3::Y * up.sin(),
+        None => DVec3::Y,
     }
 }
 

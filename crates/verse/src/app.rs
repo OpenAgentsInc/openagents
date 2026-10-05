@@ -2058,6 +2058,25 @@ impl App {
             .update(slot, self.started.elapsed().as_secs_f32())
     }
 
+    /// Puts Meteor Swarm's circle on the ground under the cursor while
+    /// the demolition yard aims it.
+    fn aim_meteor_swarm(&mut self) {
+        if !self.runtime.demolition_targeting() {
+            return;
+        }
+        let Some((size, aspect)) = self.viewport() else {
+            return;
+        };
+        if size[0] <= 0.0 || size[1] <= 0.0 {
+            return;
+        }
+        self.runtime.demolition_aim(
+            aspect,
+            (self.cursor[0] / size[0]).clamp(0.0, 1.0),
+            (self.cursor[1] / size[1]).clamp(0.0, 1.0),
+        );
+    }
+
     /// Everglade's hotbar slot under `at`, in logical units.
     fn hotbar_at(&self, at: [f32; 2]) -> Option<ZoneIntent> {
         let (size, _) = self.viewport()?;
@@ -2196,11 +2215,16 @@ impl App {
                 });
                 return;
             }
-            // The demolition yard's hotbar: 1 swings the sledgehammer, R
-            // rebuilds.
+            // The demolition yard's hotbar: 1 swings the sledgehammer, 2
+            // aims Meteor Swarm, and R rebuilds. Escape leaves the aim or
+            // stops the cast.
             if self.runtime.in_demolition() {
+                if code == KeyCode::Escape && self.runtime.demolition_cancel() {
+                    return;
+                }
                 let name = match code {
                     KeyCode::Digit1 => "Digit1",
+                    KeyCode::Digit2 => "Digit2",
                     KeyCode::KeyR => "KeyR",
                     _ => "",
                 };
@@ -2599,6 +2623,22 @@ impl App {
             self.zone_action(intent);
             return;
         }
+        // Aiming Meteor Swarm in the demolition yard: a click casts it at
+        // the circle, and a right click leaves the aim.
+        if pressed && self.runtime.demolition_targeting() {
+            match button {
+                MouseButton::Left => {
+                    self.aim_meteor_swarm();
+                    self.runtime.demolition_confirm();
+                    return;
+                }
+                MouseButton::Right => {
+                    self.runtime.demolition_cancel();
+                    return;
+                }
+                _ => {}
+            }
+        }
         if button == MouseButton::Left && !pressed && self.climb != 0.0 {
             self.climb = 0.0;
         }
@@ -2845,6 +2885,7 @@ impl App {
         self.sync_zone_services(true);
         self.tick_ritual();
         self.runtime.zone_tick();
+        self.aim_meteor_swarm();
         self.open_pending_everglade();
         if self.runtime.zone_revision != self.rendered_zone_revision {
             self.stop_map();

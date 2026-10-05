@@ -52,7 +52,9 @@ The page that serves them must:
 
 Add `?demolition` to the page's URL to open the demolition yard instead of
 the glade, as `verse --demolition` does: `1` or a quick tap swings the
-sledgehammer and `R` rebuilds the cottages.
+sledgehammer, `2` aims Meteor Swarm (a click or a quick tap casts it where
+the circle is, and right click or `Esc` cancels), and `R` rebuilds the
+cottages.
 ### Grove mode
 
 The same module starts in the Grove, the druid training field

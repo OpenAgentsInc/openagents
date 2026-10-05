@@ -6,8 +6,10 @@
 //! `1`), playing the pack's two-handed chop; the blow lands at the chop's
 //! impact. A struck piece darkens and cracks, shows the damage as a
 //! floating number, breaks into its chunks ([`chunks`]) at zero hit
-//! points, and what it held up drops, leans, and crashes ([`site`]). `R`
-//! rebuilds the cottages. The yard's [`hotbar`] replaces the zone panel.
+//! points, and what it held up drops, leans, and crashes ([`site`]). `2`
+//! aims Meteor Swarm at a circle of ground and calls it down on the
+//! cottages ([`meteor`]). `R` rebuilds the cottages and refills the mana.
+//! The yard's [`hotbar`] replaces the zone panel.
 //!
 //! The cottages are not in the zone's merged static cells. Every piece
 //! draws as part of the frame's one textured figure, after the player's
@@ -18,6 +20,7 @@
 pub mod chunks;
 pub mod cottage;
 pub mod hotbar;
+pub mod meteor;
 pub mod site;
 #[cfg(test)]
 mod tests;
@@ -105,6 +108,8 @@ pub(crate) struct Demolition {
     /// Seconds since the yard opened, and the blows' numbers in the air.
     clock: f32,
     floaters: Vec<Floater>,
+    /// Meteor Swarm: its mana, targeting, cast, and meteors.
+    swarm: meteor::Swarm,
 }
 
 impl Demolition {
@@ -174,6 +179,7 @@ impl Demolition {
             revision: None,
             clock: 0.0,
             floaters: Vec::new(),
+            swarm: meteor::Swarm::default(),
         };
         demolition.pose();
         Ok(demolition)
@@ -190,11 +196,13 @@ impl Demolition {
         self.track = track;
     }
 
-    /// Starts a swing unless one is under way. Returns whether it started.
+    /// Starts a swing unless one or a cast is under way, leaving Meteor
+    /// Swarm's targeting. Returns whether it started.
     pub fn swing(&mut self) -> bool {
-        if self.swing.is_some() {
+        if self.swing.is_some() || self.swarm.casting() {
             return false;
         }
+        self.swarm.cancel();
         self.swing = Some(0.0);
         self.struck = false;
         true
@@ -206,8 +214,61 @@ impl Demolition {
         self.track.as_ref().and(self.swing)
     }
 
-    /// Rebuilds both cottages.
+    /// Enters Meteor Swarm's targeting, or leaves it.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the spell can't be cast now.
+    pub fn meteor_swarm(&mut self) -> Result<(), String> {
+        if self.swing.is_some() {
+            return Err("Finish the swing first".into());
+        }
+        self.swarm.target()
+    }
+
+    /// Meteor Swarm's state.
+    #[must_use]
+    pub fn swarm(&self) -> &meteor::Swarm {
+        &self.swarm
+    }
+
+    /// Puts Meteor Swarm's circle on the ground the ray from `origin`
+    /// along `direction` meets, within range of `player`. Returns whether
+    /// the circle moved.
+    pub fn aim(&mut self, origin: Vec3, direction: Vec3, player: &PlayerController) -> bool {
+        if !self.swarm.targeting() {
+            return false;
+        }
+        match meteor::ground_hit(origin, direction) {
+            Some(ground) => {
+                self.swarm.aim_at(ground, player);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Casts Meteor Swarm at its circle. Returns whether the cast began.
+    pub fn confirm(&mut self, player: &PlayerController) -> bool {
+        self.swarm.confirm(player)
+    }
+
+    /// Leaves Meteor Swarm's targeting or stops its cast, spending
+    /// nothing.
+    pub fn cancel(&mut self) {
+        self.swarm.cancel();
+    }
+
+    /// Where the camera is this frame, shaken by the meteors' blasts.
+    #[must_use]
+    pub fn shake(&self) -> Vec3 {
+        self.swarm.shake()
+    }
+
+    /// Rebuilds both cottages and refills the mana, clearing Meteor
+    /// Swarm's cooldown, as a demo's rest does.
     pub fn reset(&mut self) {
+        self.swarm.reset();
         self.site.reset();
         self.last = None;
         self.misses = 0;
@@ -281,6 +342,18 @@ impl Demolition {
             if t >= length {
                 self.swing = None;
             }
+        }
+        let mut blows = self.swarm.tick(dt, player, &mut self.site);
+        // The hardest hits float their numbers; a strike reaches too many
+        // pieces to number them all.
+        blows.sort_by(|a, b| b.damage.cmp(&a.damage));
+        for blow in blows.iter().take(8) {
+            self.floaters.push(Floater {
+                at: blow.at + Vec3::Y * 0.8,
+                text: blow.damage.to_string(),
+                color: if blow.broke { BREAK } else { HIT },
+                start: self.clock,
+            });
         }
         let now = self.clock;
         self.floaters.retain(|f| now - f.start < FLOAT);
@@ -486,6 +559,7 @@ impl Demolition {
             ];
             cloud(&mut mesh, puff.at, axes, size * 0.5, puff.color);
         }
+        self.swarm.draw(&mut mesh, eye);
         if !self.floaters.is_empty() {
             let mut painter = Painter::new(eye);
             for floater in &self.floaters {
@@ -496,13 +570,14 @@ impl Demolition {
         mesh
     }
 
-    /// The yard's hotbar: whether a swing is under way and how many
-    /// pieces are down.
+    /// The yard's hotbar: whether a swing is under way, Meteor Swarm's
+    /// state, and how many pieces are down.
     #[must_use]
     pub fn bar(&self) -> hotbar::Bar {
         let pieces = self.site.pieces();
         hotbar::Bar {
             swinging: self.swing.is_some(),
+            swarm: self.swarm.status(),
             down: pieces
                 .iter()
                 .filter(|p| p.status != Status::Standing)
@@ -519,7 +594,8 @@ impl Demolition {
             .filter(|p| p.status != Status::Standing)
             .count();
         let mut caption = format!(
-            "Demolition yard\nClick or press 1 to swing the sledgehammer · R rebuilds\n{down} of {} pieces down",
+            "Demolition yard\n{}\n{down} of {} pieces down",
+            hotbar::help(&self.swarm.status()),
             pieces.len()
         );
         if let Some(blow) = self.last {

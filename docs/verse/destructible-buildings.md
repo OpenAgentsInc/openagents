@@ -578,6 +578,20 @@ Accept: a capture shows a wall section cracking over two hits and breaking
 into chunks that topple outward from the swing. Desktop and phone frame times
 are recorded during a break.
 
+**Meteor Swarm in the yard.** The owner asked for a spell that destroys
+buildings. `2` on the yard's hotbar aims Meteor Swarm: a pulsing ring of
+fire 6 m in radius follows the cursor on the ground, up to 36 m from the
+player; a click or tap casts it, and right click, `Esc`, or `2` cancels. It
+is a level 9 spell under the [combat model](combat-model.md): 75 of 100
+mana, a 90 s cooldown, and a 2.5 s cast bar that moving interrupts. Six
+meteors fall through the circle, and each explosion deals the SRD's 20d6
+Fire and 20d6 Bludgeoning, rolled once per cast, to every piece within 4 m,
+falling off with distance; what breaks is thrown outward at up to 26 m/s
+for 1.6 s past the yard's 10 m/s cap, and the support graph brings down
+what the blast left unsupported. `R` rebuilds the cottages and refills the
+mana. `crates/verse/src/zones/everglade/demolition/meteor.rs` holds the
+tuning.
+
 ### D2: Structural collapse and leaning
 
 - Support graph, activation and deactivation, plastic yield, and hinges.

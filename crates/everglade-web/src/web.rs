@@ -569,6 +569,20 @@ impl Page {
         }
     }
 
+    /// Puts Meteor Swarm's circle on the ground under `at` (CSS pixels)
+    /// while the demolition yard aims it.
+    fn aim_meteor_swarm(&mut self, at: [f32; 2]) {
+        let size = self.css_size();
+        if size[0] > 0.0 && size[1] > 0.0 {
+            let aspect = self.renderer.aspect();
+            self.runtime.demolition_aim(
+                aspect,
+                (at[0] / size[0]).clamp(0.0, 1.0),
+                (at[1] / size[1]).clamp(0.0, 1.0),
+            );
+        }
+    }
+
     /// The canvas's size in CSS pixels.
     fn css_size(&self) -> [f32; 2] {
         let size = self.renderer.size();
@@ -765,8 +779,17 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 event.prevent_default();
                 return;
             }
-            // The demolition yard's hotbar: 1 swings the sledgehammer, R
-            // rebuilds.
+            // The demolition yard's hotbar: 1 swings the sledgehammer, 2
+            // aims Meteor Swarm, and R rebuilds. Escape leaves the aim or
+            // stops the cast.
+            if down
+                && event.code() == "Escape"
+                && page.runtime.in_demolition()
+                && page.runtime.demolition_cancel()
+            {
+                event.prevent_default();
+                return;
+            }
             if down
                 && page.runtime.in_demolition()
                 && let Some(intent) = zones::everglade::demolition::hotbar::key(&event.code())
@@ -803,6 +826,24 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             if page.press_hotbar(on_canvas, Some(event.pointer_id()), touch, now) {
                 return;
             }
+            // Aiming Meteor Swarm: a click casts it at the circle and a
+            // right click leaves the aim; a touch moves the circle, and a
+            // quick tap casts it there.
+            if page.runtime.demolition_targeting() {
+                page.aim_meteor_swarm(on_canvas);
+                if event.pointer_type() != "touch" {
+                    match event.button() {
+                        0 => {
+                            page.runtime.demolition_confirm();
+                        }
+                        2 => {
+                            page.runtime.demolition_cancel();
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+            }
             if event.is_primary() && event.button() == 0 {
                 page.pressed_at = Some(event.time_stamp());
             }
@@ -827,6 +868,9 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 page.hover = (event.buttons() == 0)
                     .then(|| [event.offset_x() as f32, event.offset_y() as f32]);
             }
+            if event.pointer_type() != "touch" && page.runtime.demolition_targeting() {
+                page.aim_meteor_swarm([event.offset_x() as f32, event.offset_y() as f32]);
+            }
             let action = if event.pointer_type() == "touch" {
                 let at = [event.client_x() as f32, event.client_y() as f32];
                 page.input.touch_move(event.pointer_id(), at)
@@ -849,7 +893,12 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 && event.time_stamp() - at <= 300.0
                 && page.runtime.in_demolition()
             {
-                let _ = page.runtime.zone_intent(zones::Intent::Swing);
+                if page.runtime.demolition_targeting() {
+                    page.aim_meteor_swarm([event.offset_x() as f32, event.offset_y() as f32]);
+                    page.runtime.demolition_confirm();
+                } else {
+                    let _ = page.runtime.zone_intent(zones::Intent::Swing);
+                }
             }
             if event.pointer_type() == "touch" {
                 page.input.touch_end(event.pointer_id());

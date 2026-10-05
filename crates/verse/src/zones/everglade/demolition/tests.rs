@@ -294,3 +294,188 @@ fn the_yard_builds_from_the_pack_and_draws_with_the_character() {
 }
 
 use super::super::player;
+
+mod meteor_swarm {
+    use super::super::meteor::{self, COOLDOWN, COST, MAX_MANA, RANGE, Swarm};
+    use super::*;
+
+    /// The caster, south of the west cottage.
+    fn caster() -> PlayerController {
+        PlayerController::new(Vec3::new(-6.0, 0.0, -26.0), 0.0)
+    }
+
+    /// Casts at `at` and runs the cast, the meteors, and `after` more
+    /// seconds of the site.
+    fn strike(site: &mut Site, swarm: &mut Swarm, at: Vec3, after: f64) {
+        let player = caster();
+        swarm.target().expect("the spell is ready");
+        swarm.aim_at(at, &player);
+        assert!(swarm.confirm(&player));
+        let dt = 1.0 / 60.0;
+        let mut seconds = 0.0;
+        while swarm.casting() || swarm.meteors_left() > 0 {
+            swarm.tick(dt, &player, site);
+            site.tick(dt);
+            seconds += dt;
+            assert!(seconds < 6.0, "the strike ends");
+        }
+        run(site, after);
+    }
+
+    #[test]
+    fn targeting_clamps_to_the_spells_range() {
+        let player = caster();
+        let mut swarm = Swarm::default();
+        // Not targeting: aiming does nothing.
+        swarm.aim_at(Vec3::new(0.0, 0.0, 0.0), &player);
+        assert_eq!(swarm.aim(), None);
+        swarm.target().unwrap();
+        swarm.aim_at(Vec3::new(-6.0, 0.0, -14.0), &player);
+        let near = swarm.aim().expect("the circle is down");
+        assert!((near - Vec3::new(-6.0, 0.0, -14.0)).length() < 1e-4);
+        swarm.aim_at(Vec3::new(-6.0, 0.0, 200.0), &player);
+        let far = swarm.aim().unwrap();
+        let reach = Vec3::new(far.x - player.pos.x, 0.0, far.z - player.pos.z).length();
+        assert!((reach - RANGE).abs() < 1e-3, "{reach}");
+        assert!(far.z > player.pos.z, "it keeps the cursor's direction");
+        assert!((far.y - crate::zones::everglade::height(far.x, far.z)).abs() < 1e-4);
+        // A ray from a raised camera meets the ground where it points.
+        let eye = Vec3::new(-6.0, 4.0, -30.0);
+        let hit = meteor::ground_hit(eye, (Vec3::new(-6.0, 0.0, -18.0) - eye).normalize())
+            .expect("the ray meets the ground");
+        assert!((hit - Vec3::new(-6.0, 0.0, -18.0)).length() < 0.05, "{hit}");
+        // A ray at the sky aims the circle ahead.
+        let up = meteor::ground_hit(eye, Vec3::new(0.0, 1.0, 1.0)).unwrap();
+        assert!(up.z > eye.z);
+    }
+
+    #[test]
+    fn a_strike_breaks_the_pieces_near_its_center_and_leaves_far_ones_standing() {
+        let mut site = site();
+        let mut swarm = Swarm::default();
+        // Just outside the middle of the west cottage's south front.
+        let target = find(&site, wall(Side::South, 1));
+        let center = site.specs()[target].center.as_vec3();
+        let at = Vec3::new(center.x, 0.0, center.z - 0.5);
+        strike(&mut site, &mut swarm, at, 2.0);
+        assert_eq!(site.pieces()[target].status, Status::Broken);
+        let near_broken = site
+            .specs()
+            .iter()
+            .zip(site.pieces())
+            .filter(|(s, _)| s.center.as_vec3().distance(at) < 3.0)
+            .filter(|(_, p)| p.status == Status::Broken)
+            .count();
+        assert!(
+            near_broken >= 3,
+            "{near_broken} pieces broke near the center"
+        );
+        // The other cottage, far outside the circle, is untouched.
+        for (spec, piece) in site.specs().iter().zip(site.pieces()) {
+            if spec.building == 1 {
+                assert_eq!(piece.status, Status::Standing, "{:?}", spec.role);
+                assert_eq!(piece.hit_points, spec.hit_points, "{:?}", spec.role);
+            }
+        }
+        // The debris stays within the cap.
+        let alive = site
+            .pieces()
+            .iter()
+            .flat_map(|p| &p.chunks)
+            .filter(|c| !c.gone)
+            .count();
+        assert!(alive <= site::MAX_CHUNKS);
+        assert!(alive > 0);
+    }
+
+    #[test]
+    fn the_roof_falls_when_its_walls_are_destroyed() {
+        let mut site = site();
+        let mut swarm = Swarm::default();
+        let roof = find(&site, Role::Roof);
+        let start = site.specs()[roof].center.y as f32;
+        // Just outside the west eave wall's middle.
+        let ([cx, cz], [hx, _]) = COTTAGES[0];
+        strike(
+            &mut site,
+            &mut swarm,
+            Vec3::new(cx - hx - 0.5, 0.0, cz),
+            3.0,
+        );
+        let west = (0..5)
+            .filter(|&i| site.pieces()[find(&site, wall(Side::West, i))].status != Status::Standing)
+            .count();
+        assert!(west >= 4, "{west} of the west wall's sections are down");
+        let state = &site.pieces()[roof];
+        assert_ne!(state.status, Status::Standing, "the roof came down");
+        if state.status == Status::Loose {
+            assert!(
+                site.piece_pose(roof).w_axis.y < start - 0.5,
+                "the roof dropped"
+            );
+        }
+    }
+
+    #[test]
+    fn a_cast_spends_mana_and_starts_the_cooldown() {
+        let mut site = site();
+        let mut swarm = Swarm::default();
+        assert!(swarm.status().ready);
+        strike(&mut site, &mut swarm, Vec3::new(-6.0, 0.0, -16.0), 0.0);
+        let status = swarm.status();
+        assert!(
+            (status.mana - (MAX_MANA - COST)).abs() < 1e-3,
+            "{}",
+            status.mana
+        );
+        assert!(swarm.cooldown_left() > COOLDOWN - 5.0);
+        assert!(!status.ready);
+        // On cooldown and short of mana, it refuses to aim.
+        assert!(swarm.target().is_err());
+        assert!(!swarm.targeting());
+        // The yard's rebuild refills it.
+        swarm.reset();
+        assert!(swarm.status().ready);
+        assert_eq!(swarm.status().mana, MAX_MANA);
+    }
+
+    #[test]
+    fn cancelling_spends_nothing() {
+        let mut site = site();
+        let player = caster();
+        let mut swarm = Swarm::default();
+        swarm.target().unwrap();
+        swarm.aim_at(Vec3::new(-6.0, 0.0, -16.0), &player);
+        assert!(swarm.aim().is_some());
+        swarm.cancel();
+        assert!(!swarm.targeting());
+        assert!(!swarm.confirm(&player), "nothing is aimed");
+        // Pressing the slot again also leaves the aim.
+        swarm.target().unwrap();
+        swarm.target().unwrap();
+        assert!(!swarm.targeting());
+        // A cast the caster walks out of is interrupted.
+        swarm.target().unwrap();
+        swarm.aim_at(Vec3::new(-6.0, 0.0, -16.0), &player);
+        assert!(swarm.confirm(&player));
+        let mut walked = player.clone();
+        for _ in 0..30 {
+            walked.pos.x += 0.05;
+            swarm.tick(1.0 / 60.0, &walked, &mut site);
+        }
+        assert!(!swarm.casting());
+        for _ in 0..240 {
+            swarm.tick(1.0 / 60.0, &walked, &mut site);
+        }
+        assert_eq!(swarm.meteors_left(), 0);
+        assert_eq!(swarm.status().mana, MAX_MANA);
+        assert_eq!(swarm.cooldown_left(), 0.0);
+        assert!(swarm.status().ready);
+        assert!(
+            site.pieces()
+                .iter()
+                .zip(site.specs())
+                .all(|(p, s)| p.hit_points == s.hit_points)
+        );
+    }
+}

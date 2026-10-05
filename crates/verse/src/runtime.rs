@@ -545,6 +545,8 @@ impl WorldRuntime {
                 self.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT,
                 eye,
             );
+            // The demolition yard's meteors shake the camera.
+            eye += self.demolition_shake();
         }
         View {
             view_proj: self.camera.view_proj_from_eye(eye, self.player.yaw, aspect),

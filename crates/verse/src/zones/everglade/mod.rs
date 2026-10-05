@@ -174,6 +174,11 @@ impl Everglade {
         self.demolition.as_deref()
     }
 
+    /// The demolition yard to change, when this zone is one.
+    pub fn demolition_mut(&mut self) -> Option<&mut demolition::Demolition> {
+        self.demolition.as_deref_mut()
+    }
+
     /// Swings the yard's sledgehammer, or rebuilds its cottages with
     /// `rebuild`.
     ///

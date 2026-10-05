@@ -583,6 +583,15 @@ impl WorldRuntime {
                     .demolish(intent == Intent::Rebuild)?;
                 self.zone_state.error = None;
             }
+            Intent::MeteorSwarm => {
+                self.zone_state
+                    .everglade
+                    .as_mut()
+                    .and_then(Everglade::demolition_mut)
+                    .ok_or("Enter the demolition yard first")?
+                    .meteor_swarm()?;
+                self.zone_state.error = None;
+            }
             Intent::Interact => {
                 if self.studio_panel_here().is_none() {
                     return Err("Walk up to a station".into());
@@ -741,6 +750,75 @@ impl WorldRuntime {
             wind,
             reverse,
         ])
+    }
+
+    /// How far the demolition yard's meteors shake the camera this frame.
+    #[must_use]
+    pub(crate) fn demolition_shake(&self) -> Vec3 {
+        self.zone_state
+            .everglade
+            .as_ref()
+            .and_then(Everglade::demolition)
+            .map_or(Vec3::ZERO, |yard| yard.shake())
+    }
+
+    /// Whether Meteor Swarm's circle follows the cursor in the demolition
+    /// yard.
+    #[must_use]
+    pub fn demolition_targeting(&self) -> bool {
+        self.zone == ZoneId::Everglade
+            && self
+                .zone_state
+                .everglade
+                .as_ref()
+                .and_then(Everglade::demolition)
+                .is_some_and(|yard| yard.swarm().targeting())
+    }
+
+    /// Puts Meteor Swarm's circle on the ground under the normalized
+    /// viewport point `(x, y)` of a view with `aspect`. Returns whether it
+    /// moved.
+    pub fn demolition_aim(&mut self, aspect: f32, x: f32, y: f32) -> bool {
+        if !self.demolition_targeting() {
+            return false;
+        }
+        let Some((origin, direction)) =
+            crate::runtime::viewport_ray(&self.view(aspect), aspect, x, y)
+        else {
+            return false;
+        };
+        let player = self.player.clone();
+        self.zone_state
+            .everglade
+            .as_mut()
+            .and_then(Everglade::demolition_mut)
+            .is_some_and(|yard| yard.aim(origin, direction, &player))
+    }
+
+    /// Casts Meteor Swarm at its circle. Returns whether the cast began.
+    pub fn demolition_confirm(&mut self) -> bool {
+        let player = self.player.clone();
+        self.zone_state
+            .everglade
+            .as_mut()
+            .and_then(Everglade::demolition_mut)
+            .is_some_and(|yard| yard.confirm(&player))
+    }
+
+    /// Leaves Meteor Swarm's targeting or stops its cast, spending
+    /// nothing. Returns whether there was either to stop.
+    pub fn demolition_cancel(&mut self) -> bool {
+        let Some(yard) = self
+            .zone_state
+            .everglade
+            .as_mut()
+            .and_then(Everglade::demolition_mut)
+        else {
+            return false;
+        };
+        let busy = yard.swarm().targeting() || yard.swarm().casting();
+        yard.cancel();
+        busy
     }
 
     /// The demolition yard's hotbar, or `None` outside the yard.
@@ -945,6 +1023,12 @@ impl WorldRuntime {
             // The yard's hotbar ([`Self::demolition_bar`]) draws these;
             // Space jumps.
             add("swing", "Swing", Intent::Swing, true);
+            add(
+                "meteor_swarm",
+                "Meteor Swarm",
+                Intent::MeteorSwarm,
+                yard.swarm().status().ready,
+            );
             add("rebuild", "Rebuild", Intent::Rebuild, true);
             yard.caption()
         } else if let Some(glade) = &self.zone_state.everglade {

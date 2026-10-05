@@ -284,9 +284,10 @@ pub enum Intent {
     Web,
     /// The Grove's demo control: refills mana, cooldowns, and the dummies.
     LongRest,
-    /// The demolition yard: swing the sledgehammer, or rebuild the
-    /// cottages ([`everglade::demolition`]).
+    /// The demolition yard: swing the sledgehammer, aim Meteor Swarm, or
+    /// rebuild the cottages ([`everglade::demolition`]).
     Swing,
+    MeteorSwarm,
     Rebuild,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]

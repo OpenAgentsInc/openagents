@@ -38,7 +38,8 @@
 //!
 //! `--demolition` opens straight into the demolition yard instead: two kit
 //! cottages on Everglade's ground to knock down with a sledgehammer. A
-//! quick left click or `1` swings, and `R` rebuilds the cottages.
+//! quick left click or `1` swings, `2` aims Meteor Swarm at a circle of
+//! ground that a click casts, and `R` rebuilds the cottages.
 //!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
