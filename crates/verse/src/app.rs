@@ -2348,7 +2348,8 @@ impl App {
             _ => 0.0,
         };
         if climb != 0.0 && (self.in_bare_everglade() || self.in_bare_grove()) && !self.chat.open {
-            if pressed && self.runtime.everglade_levitating() {
+            // A flying form takes off with the climb.
+            if pressed && (self.runtime.everglade_levitating() || climb > 0.0) {
                 self.climb = climb;
                 return;
             }
@@ -3152,7 +3153,8 @@ impl App {
                 .tick_with_mode(&input, dt, self.keys.left_button, self.replay.is_none());
         if self.climb != 0.0 {
             if (self.in_bare_everglade() || self.in_bare_grove())
-                && self.runtime.everglade_levitating()
+                && (self.runtime.everglade_levitating()
+                    || (self.climb > 0.0 && self.runtime.grove_form_flies()))
             {
                 self.runtime.everglade_climb(self.climb, dt);
             } else {

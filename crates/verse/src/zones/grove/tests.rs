@@ -1083,6 +1083,20 @@ fn the_dragon_takes_off_with_jump_and_outflies_the_eagle() {
     assert!(runtime.player.pos.y < high - 3.0);
     let figure = runtime.dynamic_mesh().figure.expect("a figure");
     figure.validate().unwrap();
+    // A held Space (the app's climb) takes off from the ground too.
+    let mut runtime = dragon(8.0, STRAW);
+    assert!(!runtime.everglade_levitating());
+    let ground = runtime.player.pos.y;
+    for _ in 0..25 {
+        runtime.everglade_climb(1.0, DT);
+        runtime.tick(&InputState::default(), DT);
+    }
+    assert!(runtime.everglade_levitating());
+    assert!(
+        runtime.player.pos.y > ground + 1.5,
+        "{}",
+        runtime.player.pos.y
+    );
 }
 
 #[test]

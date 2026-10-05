@@ -992,6 +992,15 @@ impl WorldRuntime {
     /// (-1) for `dt` seconds of a held key, such as X to descend.
     pub fn everglade_climb(&mut self, direction: f32, dt: f32) {
         let (x, z) = (self.player.pos.x, self.player.pos.z);
+        // A flying form on the ground, such as the Grove's dragon, takes
+        // off as the climb begins.
+        let takes_off = direction > 0.0 && self.grove_form_flies();
+        if let Some(glade) = self.zone_state.everglade.as_mut()
+            && takes_off
+            && !glade.levitating
+        {
+            glade.toggle_levitate(&self.player);
+        }
         if let Some(glade) = self.zone_state.everglade.as_mut()
             && glade.levitating
         {
