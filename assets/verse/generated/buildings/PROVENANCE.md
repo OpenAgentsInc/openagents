@@ -9,7 +9,9 @@ $B -b --factory-startup --python scripts/blender/buildings.py -- \
     assets/verse/generated/buildings [NAME ...] [--kit KIT_DIR]
 ```
 
-They aren't admitted into the Everglade pack. Admission is a later step.
+They are admitted into the Everglade pack's `generated` set by
+`scripts/blender/everglade_admit.py`
+([`assets/verse/everglade/generated/`](../../everglade/generated/README.md)).
 
 ## Source
 

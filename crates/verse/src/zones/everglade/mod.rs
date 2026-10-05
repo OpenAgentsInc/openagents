@@ -221,7 +221,7 @@ impl Everglade {
     /// shadows over the clearing, a cool rim, and sky and ground fill.
     fn key() -> Key {
         Key {
-            dir: Vec3::new(-0.35, 0.8, -0.45).normalize(),
+            dir: Vec3::new(-0.42, 0.6, -0.56).normalize(),
             illuminance: 4_000.0,
             angular_radius: 0.03,
             rim_dir: Vec3::new(0.5, 0.35, 0.6).normalize(),
@@ -288,7 +288,7 @@ impl Everglade {
                 daylight: Some(Daylight {
                     zenith: [0.10, 0.30, 0.73],
                     horizon: air.color,
-                    sun: [1.0, 0.86, 0.62],
+                    sun: [1.0, 0.8, 0.54],
                     clouds: 0.38,
                     // Grass and leaf litter: under the key and the sky it
                     // returns about the irradiance the key's ground fill
@@ -318,7 +318,8 @@ impl Everglade {
     /// exceeds the renderer's bounds.
     pub fn world(pack: &ZonePack) -> Result<World, String> {
         let mut world = World::default();
-        let (mut scene, blockers) = scene::build(pack, &layout::placements())?;
+        let (mut scene, blockers) =
+            scene::build_painted(pack, &layout::placements(), layout::paint)?;
         draw::ground(&mut scene);
         scene.validate()?;
         world.mesh.textured = Some(Arc::new(scene));

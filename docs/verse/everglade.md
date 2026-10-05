@@ -69,6 +69,16 @@ beside the admitted files.
 | Medieval Village MegaKit (Standard) | 176 modular static models on a 2 m grid: walls (2 m × 3.12 m) in plaster, brick, and wood, doors, windows and shutters, floors, stairs, balconies, overhangs, roofs, chimneys, fences, vines, a wagon and crates. 22 PNG textures at 2048² with normal and ORM or roughness maps, plus an alpha-blended glass material. | The workshop and its yard. |
 | Fantasy Props MegaKit (Standard) | Furniture and props. Fourteen are already admitted under [`assets/verse/props/quaternius/`](../../assets/verse/props/quaternius/README.md) for the summoning lair. | Station furniture. This kit is an addition to the two the owner named, proposed because neither of them has desks, shelves, or lecterns. |
 
+The fourth set, [`generated/`](../../assets/verse/everglade/generated/README.md),
+holds the models `scripts/blender` builds ([Generated models with
+Blender](blender-pipeline.md)): the village buildings assembled from the
+Medieval Village MegaKit's pieces, the landmarks (the observatory, the
+fountain, the bandshell, and the market stalls), the street furniture, the
+far forest's low-poly trees, and a lighter copy of the kit's round-tile roof.
+`scripts/blender/everglade_admit.py` converts each committed glb to the
+glTF and `.bin` the compiler reads and points its textures at the village
+set's admitted images, so the pack carries one copy of each kit image.
+
 Measured facts that shape the design:
 
 - Every model is meters, Y-up, with no skins, animations, or glTF extensions.
@@ -98,8 +108,12 @@ Admission follows the Fantasy Props precedent:
   redirects, exact length and digest, bounded decoding, and the
   content-addressed disk cache. Committed files are the pack and the curated
   sources, not the full kits.
-- Budgets: at most 30.5 MB committed for sources and pack together, at most
-  720,000 triangles placed (300,000 before the town grew), and at most 64 MB of decoded textures.
+- Budgets: at most 46 MB committed for sources and pack together (30.5 MB
+  before the generated set), a pack of at most 24 MiB, at most 420,000
+  triangles in the pack's models with at most 20,000 in any one, at most
+  1,850,000 triangles placed with the ground
+  (`everglade_pack::PLACED_TRIANGLE_BUDGET`), and at most 64 MB of decoded
+  textures.
 
 ## Rendering
 
@@ -111,8 +125,13 @@ The zone renderer gains textured static meshes:
   `imported::merge` does for the lair; there is no GPU instancing to depend on.
 - The same shaders run on desktop and on phones, within the GLES 3.0 limits
   every backend requests (no storage buffers or compute).
-- Everglade's atmosphere has its own colors: a late-morning daylight sky
-  (`pbr::Daylight`) from warm horizon haze to a blue zenith, a Sun in the key
+- Kit-built houses are painted: each takes a plaster and a roof color from
+  short palettes (`layout::paint`), and its kit plaster and tiles then sample
+  the neutral `T_Plaster_Luma` and `T_RoundTiles_Luma` images tinted by those
+  colors (`scene::Paint`), so the streets vary without another model.
+- Everglade's atmosphere has its own colors: an afternoon daylight sky
+  (`pbr::Daylight`) from warm horizon haze to a blue zenith, with a low,
+  warm sun that draws long shadows across the streets, a Sun in the key
   light's direction, value-noise clouds, fog that takes the sky's color along
   each view ray so distant ground meets the horizon, and lamplight inside the
   workshop. Amber stays the plaza's palette.
@@ -167,26 +186,49 @@ ring, with grass and path textures. Its sign reads `EVERGLADE`.
 The zone is about 510 m across, with a flat clearing 272 m across: sixteen
 times the first glade's area. The workshop stands at its center on a flat
 pad, with a yard in front, and a city grows around it after the
-[illustrated map](everglade-map.svg), joined by dirt roads, inside a tree
-ring about 300 m across. Every building is the workshop's own kit pieces,
-one to three stories under round-tile roofs; no model was added to the
-pack. The city's buildings are a table in `layout::city`, and each wall run
-blocks walking as one footprint.
+[illustrated map](everglade-map.svg), inside a tree ring about 300 m across
+and a forest belt of low-poly stands beyond it. Main Street, Market Way,
+Library Way, Hearth Road, Brownstone Row, the commons walk, and the
+Fountain Plaza are cobbled (`layout::PAVED`); the lanes are dirt. Glade Run
+leaves Reed Pond and runs south through the long meadow, under Brownstone
+Row's footbridge, into Walden Woods.
+
+The city's buildings are a table in `layout::city`. Most are the workshop's
+own kit pieces, one to three stories under round-tile roofs, painted in
+varied plaster and roof colors, and each wall run blocks walking as one
+footprint. Twenty places hold a whole generated building instead
+(`city::STAND_INS`), mixed among the kit-built ones: jettied and balconied
+townhouses on Main Street, Stoop Lane, and in the Creative District, corner
+shops at Main Street's corners, the open market hall on the Fountain Plaza,
+the tavern in the Lantern Quarter, terraces of row houses on Brownstone Row,
+L-shaped houses, the cottage with its round tower in Walden Woods, and the
+observatory on its hill; the Stacks is the generated library. A generated
+building blocks by the boxes of its `<name>.footprint.json`, its roofs are
+surfaces to land on (`layout::generated`), and its door is closed: a walk
+leads to its front step. The market hall's arcade stays open.
+
+Street furniture (`layout::streets`) follows the map: warm lamps along the
+paved streets and the main lanes, flower boxes under the shop fronts,
+bunting over the plaza and the streets, a clipped hedge between Main Street
+and the commons, signposts at the crossings, wells, lily pads on the ponds,
+a dry-stone wall around the orchard, wildflower meadows, and park trees on
+the commons. Each piece stands only on open ground: off every road, walk,
+building, pond, and station.
 
 | District | Built from | Roads |
 | --- | --- | --- |
-| The Commons | Lantern Pond with reeds and stones, benches, an open bandshell | The commons walk, west of the hall |
-| Main Street | Twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), market stalls, street trees | Main Street, about 200 m long |
-| Fountain Plaza | A paved plaza with a fountain and stalls, two cafés, the two-story Market Hall | Market Way |
+| The Commons | Lantern Pond with reeds, stones, and lily pads, benches, park trees, wildflowers, the generated bandshell | The commons walk, west of the hall |
+| Main Street | Twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), two generated corner shops and three townhouses among them, red and blue market stalls, lamps, flower boxes, bunting, street trees | Main Street, about 200 m long, cobbled |
+| Fountain Plaza | A cobbled plaza with the generated fountain, stalls, barrels, a hand cart, two cafés, the generated market hall | Market Way |
 | Creative District | The Makers' Hall, a studio, an atelier, a pottery, the Atelier Hall, the Sculpture Walk | Studio Road |
 | The Foundry | The Server Barn and fab yard, a workshop, the Fab Hall, the forge, an annex | Foundry Road |
-| Knowledge District | The Stacks, the Old College, the college and lecture halls, the archive, the map room, Observatory Hill's three-story tower, Reed Pond, the long meadow and its sketch cabin | Library Way |
-| Stoop Lane | Ten homes and townhouses with lanterns and little gardens, the cottage | Stoop Lane, Hearth Road |
-| Lantern Quarter | The Music Hall, the meeting hall, the guild and choir houses, four pubs | Hearth Road, Lantern Road |
-| Brownstone Row | Six two-story brownstones with stoops, six row houses, a community garden | Brownstone Row |
-| Walden Woods | The writing and code cabins, the quiet cabin, the prototype shed, the Thinking Pond, pines | The woods paths, Lantern Road |
-| Fernhollow | The lookout hut by the Fern Pond, pines and ferns | The Fernhollow path |
-| Gardens and orchards | Fenced beds, two orchards of young fruit trees, the beekeeper's hut | The orchard lane |
+| Knowledge District | The Stacks (the generated library up its steps), the Old College, the college and lecture halls, the archive, the map room, an L-shaped seminar house, the generated observatory on Observatory Hill, Reed Pond, the long meadow's wildflowers and its sketch cabin | Library Way |
+| Stoop Lane | Ten homes and townhouses, four of them generated, with lanterns, flower boxes, and little gardens, the cottage, a well | Stoop Lane, Hearth Road |
+| Lantern Quarter | The generated tavern and music hall, the meeting hall, the guild and choir houses, the pubs, an L-shaped house, bunting, a well | Hearth Road, Lantern Road |
+| Brownstone Row | Four two-story brownstones with stoops, two terraces of generated row houses, six row houses, a community garden, the footbridge over Glade Run | Brownstone Row |
+| Walden Woods | The writing and code cabins, the generated cottage with its tower, the prototype shed, the Thinking Pond, dense stands of pines | The woods paths, Lantern Road |
+| Fernhollow | The lookout hut by the Fern Pond, stands of pines and ferns | The Fernhollow path |
+| Gardens and orchards | Fenced beds, two orchards of young fruit trees behind a dry-stone wall, the beekeeper's hut | The orchard lane |
 
 The studio's stations stay where they were:
 

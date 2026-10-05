@@ -10,7 +10,8 @@
 //!   grass into forest floor toward the tree ring.
 //! - The dirt: a blended sheet just above the grass over the town: the
 //!   yard, the approach path, the roads (`layout::ROADS`), and the ponds'
-//!   muddy banks. Its image holds the dirt's color and a smooth mask in
+//!   muddy banks, with cobbles on the paved streets and the Fountain Plaza
+//!   (`layout::PAVED`). Its image holds the color and a smooth mask in
 //!   alpha, so the edge against the grass is soft at any grid size.
 //! - The water: a still, glossy disc over each pond (`layout::PONDS`).
 //!
@@ -50,10 +51,10 @@ const ROUGHNESS: f32 = 0.95;
 /// grid, so its triangles run parallel to the grass under them, and it
 /// reaches past the yard, the path, and the roads so its mask fades to
 /// nothing before its border.
-const DIRT_MIN: [f32; 2] = [-125.0, -103.0];
+const DIRT_MIN: [f32; 2] = [-125.0, -135.0];
 const DIRT_MAX: [f32; 2] = [121.0, 101.0];
 /// The dirt image's size, texels: about 15 cm on the ground.
-const DIRT_SIZE: [u32; 2] = [1640, 1360];
+const DIRT_SIZE: [u32; 2] = [1640, 1573];
 /// Side of the square buckets the dirt's roads are indexed in, m.
 const ROAD_BUCKET: f32 = 8.0;
 /// Height of the water above the ground, m, and its look: dark, slightly
@@ -78,6 +79,14 @@ const PATH_ROUND: f32 = 1.2;
 /// Linear albedo of the trodden path and of the yard.
 const PATH: [f32; 3] = [0.3, 0.24, 0.14];
 const YARD_DIRT: [f32; 3] = [0.24, 0.2, 0.13];
+/// Linear albedo of the cobbles, lightest and darkest, and of the joints
+/// between them.
+const COBBLE_LIGHT: [f32; 3] = [0.36, 0.31, 0.25];
+const COBBLE_DARK: [f32; 3] = [0.21, 0.18, 0.15];
+const JOINT: [f32; 3] = [0.09, 0.085, 0.075];
+/// A cobble's length and width, m; rows run east to west, each offset by
+/// half a cobble.
+const COBBLE: [f32; 2] = [0.75, 0.5];
 
 /// Sunlight from above and slightly behind the approach, so slopes facing
 /// the arriving player read lighter.
@@ -96,6 +105,88 @@ pub(super) fn triangles() -> u64 {
         ((DIRT_MAX[0] - DIRT_MIN[0]) / CELL) as u64 * ((DIRT_MAX[1] - DIRT_MIN[1]) / CELL) as u64;
     2 * (CELLS as u64 * CELLS as u64 + dirt)
         + super::layout::PONDS.len() as u64 * u64::from(WATER_SEGMENTS)
+        + stream_triangles()
+}
+
+/// Triangles of the stream's water: two per piece of its course.
+fn stream_triangles() -> u64 {
+    2 * stream_points().len().saturating_sub(1) as u64
+}
+
+/// The stream's course resampled every meter or so, each point with the
+/// unit normal across the water there.
+fn stream_points() -> Vec<([f32; 2], [f32; 2])> {
+    let course = &super::layout::STREAM;
+    let mut points = Vec::new();
+    for (i, w) in course.windows(2).enumerate() {
+        let (a, b) = (w[0], w[1]);
+        let length = (b[0] - a[0]).hypot(b[1] - a[1]);
+        let pieces = length.ceil() as usize;
+        let first = if i == 0 { 0 } else { 1 };
+        for k in first..=pieces {
+            let t = k as f32 / pieces as f32;
+            points.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+        }
+    }
+    (0..points.len())
+        .map(|i| {
+            let (p, q) = (
+                points[i.saturating_sub(1)],
+                points[(i + 1).min(points.len() - 1)],
+            );
+            let (dx, dz) = (q[0] - p[0], q[1] - p[1]);
+            let length = dx.hypot(dz).max(1e-6);
+            (points[i], [-dz / length, dx / length])
+        })
+        .collect()
+}
+
+/// The stream's water: a ribbon [`WATER_LIFT`] above the ground along its
+/// course, a little wider and narrower as it goes, relative to its first
+/// point.
+fn stream(material: usize) -> (TexturedMesh, [f32; 2]) {
+    let points = stream_points();
+    let origin = points[0].0;
+    let mut vertices = Vec::with_capacity(points.len() * 2);
+    for (i, ([x, z], n)) in points.iter().enumerate() {
+        let half = super::layout::STREAM_HALF
+            * (0.85 + 0.3 * value_noise(i as f32 * 0.2, 0.0, 1 << 12, 97));
+        for s in [-1.0_f32, 1.0] {
+            let (vx, vz) = (x + n[0] * half * s, z + n[1] * half * s);
+            vertices.push(TexturedVertex {
+                pos: [vx - origin[0], height(vx, vz) + WATER_LIFT, vz - origin[1]],
+                normal: [0.0, 1.0, 0.0],
+                uv: [0.0, 0.0],
+                color: [255; 4],
+                light: UNBAKED,
+            });
+        }
+    }
+    let mut indices = Vec::new();
+    for i in 0..points.len() as u32 - 1 {
+        let [a, b, c, d] = [2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3];
+        // Both windings are tried by the test's facing check; keep the
+        // face up whichever side the normal points.
+        let up = {
+            let p = |k: u32| glam::Vec3::from(vertices[k as usize].pos);
+            (p(b) - p(a)).cross(p(c) - p(a)).y > 0.0
+        };
+        if up {
+            indices.extend_from_slice(&[a, b, c, b, d, c]);
+        } else {
+            indices.extend_from_slice(&[a, c, b, b, c, d]);
+        }
+    }
+    (
+        TexturedMesh {
+            primitives: vec![Primitive {
+                vertices,
+                indices,
+                material,
+            }],
+        },
+        origin,
+    )
 }
 
 /// Adds the ground to `scene`: its two images and materials, a grass mesh
@@ -166,6 +257,9 @@ pub(crate) fn ground_with(scene: &mut TexturedScene, dirt: bool) {
         let mesh = scene.add_mesh(pond(cx, cz, r, water));
         scene.place(mesh, Mat4::from_translation(Vec3::new(cx, 0.0, cz)));
     }
+    let (mesh, [ox, oz]) = stream(water);
+    let mesh = scene.add_mesh(mesh);
+    scene.place(mesh, Mat4::from_translation(Vec3::new(ox, 0.0, oz)));
 }
 
 /// A pond's water: a disc of radius `r` around `(cx, cz)`,
@@ -270,8 +364,15 @@ fn grass_tint(x: f32, z: f32) -> [u8; 4] {
     let t = ((x.hypot(z) - super::CLEARING_RADIUS) / (super::RING_RADIUS - super::CLEARING_RADIUS))
         .clamp(0.0, 1.0);
     let t = t * t * (3.0 - 2.0 * t);
+    // Broad patches of lusher and drier grass, so the lawns do not read
+    // as one flat green.
+    let lush = value_noise(x * 0.045 + 7.0, z * 0.045 - 3.0, 1 << 12, 71) - 0.5;
+    let dry = (value_noise(x * 0.11, z * 0.11, 1 << 12, 73) - 0.55).max(0.0);
+    let k = 1.0 + 0.35 * lush;
     let rgb: [u8; 3] = std::array::from_fn(|i| {
-        let albedo = GRASS[i] + (FOREST[i] - GRASS[i]) * t;
+        let albedo = (GRASS[i] + (FOREST[i] - GRASS[i]) * t) * k;
+        let straw = [0.2, 0.17, 0.05][i];
+        let albedo = albedo + (straw - albedo) * dry * 0.9 * (1.0 - t);
         unorm(albedo / DETAIL_MEAN)
     });
     [rgb[0], rgb[1], rgb[2], 255]
@@ -408,8 +509,44 @@ pub(super) fn dirt_cover(x: f32, z: f32) -> (f32, f32) {
     let bank = super::layout::PONDS
         .iter()
         .map(|&([cx, cz], r)| (cx - x).hypot(cz - z) - r - BANK)
-        .fold(f32::INFINITY, f32::min);
+        .fold(f32::INFINITY, f32::min)
+        .min(super::layout::stream_distance(x, z) - super::layout::STREAM_HALF - BANK);
     (cover(yard), cover(path.min(road).min(bank)))
+}
+
+/// How much of the cobbled paving covers `(x, z)`, 0 to 1: the paved
+/// streets and squares (`layout::PAVED`, `layout::PAVED_SQUARES`), fading
+/// over [`FADE`] meters at their edges.
+#[must_use]
+pub(super) fn paved_cover(x: f32, z: f32) -> f32 {
+    let wander = 0.5 * WANDER * (2.0 * value_noise(x * 0.9, z * 0.9, 1 << 12, 59) - 1.0);
+    let street = super::layout::PAVED
+        .iter()
+        .map(|&(a, b, half)| super::layout::segment_distance(a, b, x, z) - half)
+        .fold(f32::INFINITY, f32::min);
+    let square = super::layout::PAVED_SQUARES
+        .iter()
+        .map(|&(c, h)| rounded_rect(c, h, 1.5, x, z))
+        .fold(f32::INFINITY, f32::min);
+    smoothstep(0.5 - (street.min(square) + wander) / (0.6 * FADE))
+}
+
+/// The color of the cobbles at `(x, z)`: stones in running rows, each its
+/// own shade, with dark joints between them.
+fn cobble(x: f32, z: f32) -> [f32; 3] {
+    let row = (z / COBBLE[1]).floor();
+    let along = x / COBBLE[0] + 0.5 * row.rem_euclid(2.0);
+    let column = along.floor();
+    let (u, v) = (along - column, z / COBBLE[1] - row);
+    let joint = u.min(1.0 - u) * COBBLE[0] < 0.06 || v.min(1.0 - v) * COBBLE[1] < 0.05;
+    if joint {
+        return JOINT;
+    }
+    let shade = hash(column as i32, row as i32, 83);
+    let grain = value_noise(x * 6.0, z * 6.0, 1 << 14, 89);
+    std::array::from_fn(|i| {
+        (COBBLE_DARK[i] + (COBBLE_LIGHT[i] - COBBLE_DARK[i]) * shade) * (0.85 + 0.3 * grain)
+    })
 }
 
 /// The roads whose dirt may reach `(x, z)`: those within a bucket of the
@@ -458,8 +595,9 @@ pub(super) fn dirt_image() -> BaseColorImage {
             let x = DIRT_MIN[0] + u * (DIRT_MAX[0] - DIRT_MIN[0]);
             let z = DIRT_MIN[1] + v * (DIRT_MAX[1] - DIRT_MIN[1]);
             let (yard, path) = dirt_cover(x, z);
-            let cover = yard.max(path);
-            let trodden = if cover > 0.0 {
+            let paved = paved_cover(x, z);
+            let cover = yard.max(path).max(paved);
+            let trodden = if yard + path > 0.0 {
                 path / (yard + path)
             } else {
                 1.0
@@ -467,8 +605,10 @@ pub(super) fn dirt_image() -> BaseColorImage {
             let patches = value_noise(x * 0.5, z * 0.5, 1 << 12, 61);
             let gravel = value_noise(x * 9.0, z * 9.0, 1 << 14, 67);
             let k = 0.75 + 0.3 * patches + 0.25 * (gravel - 0.5);
+            let stone = if paved > 0.0 { cobble(x, z) } else { JOINT };
             let rgb: [u8; 3] = std::array::from_fn(|i| {
-                srgb((YARD_DIRT[i] + (PATH[i] - YARD_DIRT[i]) * trodden) * k)
+                let dirt = (YARD_DIRT[i] + (PATH[i] - YARD_DIRT[i]) * trodden) * k;
+                srgb(dirt + (stone[i] - dirt) * paved)
             });
             rgba.extend_from_slice(&[rgb[0], rgb[1], rgb[2], unorm(cover)]);
         }
@@ -545,7 +685,15 @@ mod tests {
         assert!((extent - HALF_EXTENT).abs() < 1e-3);
         // Each grass tile lands in a merge cell of its own.
         let merged = scene.merge().unwrap();
-        assert_eq!(merged.batches.len(), scene.placements.len());
+        let tiles = (CELLS / TILE_CELLS).pow(2) as usize;
+        assert_eq!(
+            merged
+                .batches
+                .iter()
+                .filter(|b| b.material == grass)
+                .count(),
+            tiles
+        );
     }
 
     #[test]

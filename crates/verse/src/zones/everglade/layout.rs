@@ -14,6 +14,7 @@
 //! stands ahead of them, and validation tests check that every station
 //! stays reachable and that no blocker covers a path.
 
+use super::scene::Paint;
 use super::{HALL, PATH_HALF_WIDTH, RETURN_PORTAL, STATIONS, STRONGROOM, YARD, height};
 use crate::controller::Footprint;
 use glam::{Mat4, Quat, Vec3};
@@ -21,6 +22,8 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use verse_world::social::everglade::DESK_SEATS;
 
 pub mod city;
+pub mod generated;
+pub mod streets;
 
 /// How a placement blocks walking.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -225,21 +228,96 @@ pub fn board_blockers() -> Vec<Footprint> {
 
 /// The ponds the ground draws: center and water radius, m. Lantern Pond
 /// lies on the commons; Reed Pond in the long meadow by the Knowledge
-/// District.
-/// The city's are the Fountain Plaza's fountain, the Thinking Pond in
-/// Walden Woods, and the Fern Pond in Fernhollow.
-pub const PONDS: [([f32; 2], f32); 5] = [
+/// District. The city's are the Thinking Pond in Walden Woods and the Fern
+/// Pond in Fernhollow; the Fountain Plaza's fountain is a generated model
+/// (`city::PLAZA_FOUNTAIN`).
+pub const PONDS: [([f32; 2], f32); 4] = [
     ([-1.0, 29.0], 4.5),
     ([6.0, -42.0], 4.0),
-    ([-6.0, 77.0], 2.0),
     ([-114.0, -64.0], 5.0),
     ([90.0, 76.0], 4.5),
 ];
 
+/// Glade Run: the stream that leaves Reed Pond and runs south through the
+/// long meadow, under Brownstone Row's footbridge, into Walden Woods. Its
+/// course as points on the ground, m.
+pub const STREAM: [[f32; 2]; 8] = [
+    [6.0, -45.5],
+    [5.0, -56.0],
+    [9.0, -66.0],
+    [9.0, -78.0],
+    [6.0, -90.0],
+    [0.0, -102.0],
+    [-6.0, -114.0],
+    [-9.0, -128.0],
+];
+/// Half the stream's width of water, m.
+pub const STREAM_HALF: f32 = 1.1;
+/// The footbridge that carries Brownstone Row over the stream: its center
+/// and heading, as the controller's yaw; the deck runs along the model's z.
+pub const BRIDGE: ([f32; 2], f32) = ([9.0, -78.0], FRAC_PI_2);
+/// The footbridge deck's half length and half width, m, and its rise.
+const BRIDGE_HALF: [f32; 2] = [3.5, 1.0];
+const BRIDGE_RISE: f32 = 0.55;
+
+/// Distance from `(x, z)` to the stream's course, m.
+#[must_use]
+pub fn stream_distance(x: f32, z: f32) -> f32 {
+    STREAM
+        .windows(2)
+        .map(|w| segment_distance(w[0], w[1], x, z))
+        .fold(f32::INFINITY, f32::min)
+}
+
+/// The footbridge's deck as steps to walk over: one footprint per plank
+/// with its top, m, each within a step of the last.
+#[must_use]
+pub fn bridge_steps() -> Vec<(Footprint, f32)> {
+    let ([bx, bz], yaw) = BRIDGE;
+    let along = crate::controller::forward(yaw);
+    let planks = 14;
+    (0..planks)
+        .map(|i| {
+            let t = (i as f32 + 0.5) / planks as f32;
+            let d = -BRIDGE_HALF[0] + 2.0 * BRIDGE_HALF[0] * t;
+            let half = BRIDGE_HALF[0] / planks as f32;
+            let (cx, cz) = (bx + along.x * d, bz + along.z * d);
+            let (hx, hz) = (
+                (along.x * half).abs() + (along.z * BRIDGE_HALF[1]).abs(),
+                (along.z * half).abs() + (along.x * BRIDGE_HALF[1]).abs(),
+            );
+            let top = height(cx, cz) + 0.24 + BRIDGE_RISE * (std::f32::consts::PI * t).sin();
+            (
+                Footprint {
+                    min: [cx - hx, cz - hz],
+                    max: [cx + hx, cz + hz],
+                },
+                top,
+            )
+        })
+        .collect()
+}
+
 /// Each pond's blockers: a cross of two boxes inside its water, so the
-/// player stops at the bank.
+/// player stops at the bank; and the stream's, a box every meter or two of
+/// its course, but for under the footbridge.
 #[must_use]
 pub fn pond_blockers() -> Vec<Footprint> {
+    let ([bx, bz], _) = BRIDGE;
+    let stream = STREAM.windows(2).flat_map(move |w| {
+        let (a, b) = (w[0], w[1]);
+        let length = (b[0] - a[0]).hypot(b[1] - a[1]);
+        let pieces = (length / 1.5).ceil() as usize;
+        (0..pieces).filter_map(move |k| {
+            let t = (k as f32 + 0.5) / pieces as f32;
+            let (x, z) = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
+            let r = 0.75 * STREAM_HALF;
+            ((x - bx).hypot(z - bz) > 3.0).then_some(Footprint {
+                min: [x - r, z - r],
+                max: [x + r, z + r],
+            })
+        })
+    });
     PONDS
         .iter()
         .flat_map(|&([x, z], r)| {
@@ -255,6 +333,7 @@ pub fn pond_blockers() -> Vec<Footprint> {
                 },
             ]
         })
+        .chain(stream)
         .collect()
 }
 
@@ -275,7 +354,7 @@ pub const ROADS: [([f32; 2], [f32; 2], f32); 22] = [
     ([43.0, 46.0], [43.0, 36.0], 1.2),
     // Library Way, from the approach to the Knowledge District.
     ([1.8, -29.0], [39.0, -29.0], 1.4),
-    ([31.0, -29.0], [31.0, -34.4], 1.2),
+    ([32.0, -29.0], [32.0, -34.9], 1.2),
     ([39.0, -29.0], [39.0, -25.6], 1.2),
     // The Walden Woods path to the two cabins.
     ([-34.0, -36.0], [-23.0, -36.0], 1.1),
@@ -296,6 +375,22 @@ pub const ROADS: [([f32; 2], [f32; 2], f32); 22] = [
     ([21.0, 1.2], [21.0, 9.4], 1.0),
 ];
 
+/// The cobbled streets, drawn over the dirt (`draw`): each a segment and
+/// its half width, m. Main Street, Market Way, Library Way, Hearth Road,
+/// Brownstone Row, and the commons walk are paved; lanes and paths stay
+/// dirt.
+pub const PAVED: [([f32; 2], [f32; 2], f32); 6] = [
+    ([-100.0, 46.0], [104.0, 46.0], 2.5),
+    ([0.0, 46.0], [0.0, 80.0], 2.0),
+    ([1.8, -29.0], [104.0, -29.0], 2.0),
+    ([-118.0, -8.0], [-34.0, -8.0], 1.9),
+    ([-100.0, -78.0], [20.0, -78.0], 2.0),
+    ([-11.0, -2.0], [-11.0, 46.0], 1.8),
+];
+/// The cobbled squares: center and half extents, m. The Fountain Plaza and
+/// the market hall's forecourt.
+pub const PAVED_SQUARES: [([f32; 2], [f32; 2]); 1] = [([0.0, 74.5], [11.0, 10.5])];
+
 /// Every road of the town and the city ([`city::roads`]), with each city
 /// building's walk.
 #[must_use]
@@ -309,6 +404,33 @@ pub fn roads() -> &'static [([f32; 2], [f32; 2], f32)] {
     })
 }
 
+/// The generated models of the first town and the city (`generated`):
+/// the library on Library Way, the bandshell on the commons, and the
+/// city's ([`city::instances`]).
+#[must_use]
+pub fn generated() -> Vec<generated::Instance> {
+    let mut out = FIRST_TOWN.to_vec();
+    out.extend(city::instances());
+    out
+}
+
+/// The first town's generated models: the Stacks and the bandshell.
+const FIRST_TOWN: [generated::Instance; 2] = [
+    generated::Instance::new("the stacks", &generated::LIBRARY, LIBRARY_AT, NORTH),
+    generated::Instance::new("bandshell", &generated::BANDSHELL, BANDSHELL.0, WEST),
+];
+
+/// Every generated model whose door stays closed: its name and the point
+/// on its walk outside the door, m.
+#[must_use]
+pub fn fronts() -> Vec<(&'static str, [f32; 2])> {
+    generated()
+        .into_iter()
+        .filter(|i| i.model.inside.is_none())
+        .map(|i| (i.name, i.front()))
+        .collect()
+}
+
 /// Every closed building's doorway, the first town's ([`DOORS`]) and the
 /// city's: a point outside it on its walk and a point inside, m.
 #[must_use]
@@ -320,7 +442,7 @@ pub fn doors() -> Vec<(&'static str, [f32; 2], [f32; 2])> {
 
 /// Each closed building's doorway: a point outside it on its walk and a
 /// point inside, m. The straight line between them passes the doorway.
-pub const DOORS: [(&str, [f32; 2], [f32; 2]); 16] = [
+pub const DOORS: [(&str, [f32; 2], [f32; 2]); 15] = [
     ("cottage", [-15.5, 4.0], [-19.0, 4.0]),
     ("reading room", [21.0, 8.5], [21.0, 12.0]),
     ("bakery", [-25.0, 48.5], [-25.0, 52.0]),
@@ -329,7 +451,6 @@ pub const DOORS: [(&str, [f32; 2], [f32; 2]); 16] = [
     ("grocer", [23.0, 48.5], [23.0, 52.0]),
     ("makers hall", [43.0, 36.5], [43.0, 33.0]),
     ("server barn", [44.5, 0.0], [48.0, 0.0]),
-    ("the stacks", [31.0, -33.5], [31.0, -37.0]),
     ("old college", [39.0, -26.5], [39.0, -23.0]),
     ("home 1", [-36.5, -16.0], [-40.0, -16.0]),
     ("home 2", [-36.5, 0.0], [-40.0, 0.0]),
@@ -386,7 +507,7 @@ pub(crate) const TREES: [&str; 5] = [
 /// Trees in the Grove's ring, which keeps the first glade's ring.
 pub(crate) const RING_TREES: u32 = 22;
 /// Trees in the town's ring, four times as far out as the Grove's.
-const TOWN_RING_TREES: u32 = 44;
+const TOWN_RING_TREES: u32 = 25;
 /// Bushes tried around the clearing's edge; those on a road or a plot are
 /// left out.
 const EDGE_BUSHES: u32 = 24;
@@ -423,6 +544,91 @@ fn inside(rect: ([f32; 2], [f32; 2]), x: f32, z: f32, margin: f32) -> bool {
     (x - center[0]).abs() <= half[0] + margin && (z - center[1]).abs() <= half[1] + margin
 }
 
+/// Plaster colors a kit-built house may be painted, as sRGB; the first is
+/// the kit's own.
+const PLASTERS: [Option<[f32; 3]>; 9] = [
+    None,
+    Some([0.93, 0.86, 0.70]),
+    Some([0.88, 0.70, 0.45]),
+    Some([0.90, 0.74, 0.70]),
+    Some([0.96, 0.95, 0.91]),
+    Some([0.76, 0.82, 0.68]),
+    Some([0.74, 0.82, 0.88]),
+    Some([0.95, 0.87, 0.58]),
+    Some([0.84, 0.60, 0.48]),
+];
+/// Roof-tile colors, as sRGB; the kit's own red comes up twice as often.
+const ROOFS: [Option<[f32; 3]>; 8] = [
+    None,
+    None,
+    Some([0.55, 0.36, 0.24]),
+    Some([0.36, 0.40, 0.47]),
+    Some([0.45, 0.53, 0.43]),
+    Some([0.30, 0.29, 0.29]),
+    Some([0.74, 0.54, 0.30]),
+    Some([0.50, 0.33, 0.35]),
+];
+/// The mean sRGB value of the neutral plaster and tile images
+/// (`scripts/blender/everglade_admit.py`), which a paint's factor divides
+/// out.
+const PLASTER_LUMA: f32 = 0.92;
+const TILES_LUMA: f32 = 0.80;
+
+fn srgb_to_linear(c: f32) -> f32 {
+    if c <= 0.040_45 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// The linear factor that turns a neutral image of mean `luma` into `srgb`.
+fn tint(srgb: [f32; 3], luma: f32) -> [f32; 3] {
+    srgb.map(|c| (srgb_to_linear(c) / srgb_to_linear(luma)).min(1.0))
+}
+
+/// Every kit-built house's footprint with its paint: the city's and the
+/// first town's, but not the workshop hall.
+fn painted() -> &'static [(([f32; 2], [f32; 2]), Paint)] {
+    static PAINTED: std::sync::OnceLock<Vec<(([f32; 2], [f32; 2]), Paint)>> =
+        std::sync::OnceLock::new();
+    PAINTED.get_or_init(|| {
+        let mut rects = vec![COTTAGE, PAVILION, READING_ROOM, MAKERS_HALL, OLD_COLLEGE];
+        rects.extend(SHOPS);
+        rects.extend(HOMES);
+        rects.extend(CABINS);
+        rects.extend(city::kit_rects());
+        rects
+            .into_iter()
+            .enumerate()
+            .map(|(k, rect)| {
+                let k = k as u32;
+                let plaster = PLASTERS[(noise(k, 70) * PLASTERS.len() as f32) as usize];
+                let roof = ROOFS[(noise(k, 71) * ROOFS.len() as f32) as usize];
+                let paint = Paint {
+                    plaster: plaster.map(|c| tint(c, PLASTER_LUMA)),
+                    roof: roof.map(|c| tint(c, TILES_LUMA)),
+                };
+                (rect, paint)
+            })
+            .collect()
+    })
+}
+
+/// How `placement` is painted: a kit piece of a kit-built house takes its
+/// house's plaster and roof colors (`scene::Paint`); anything else keeps
+/// the kit's.
+pub(crate) fn paint(placement: &Placement) -> Paint {
+    if !placement.model.starts_with("village/") && placement.model != HOUSE_ROOF {
+        return Paint::default();
+    }
+    let [x, z] = placement.at;
+    painted()
+        .iter()
+        .find(|(rect, _)| inside(*rect, x, z, 0.7))
+        .map_or_else(Paint::default, |(_, paint)| *paint)
+}
+
 /// The lane: three small buildings around the clearing, each a little of
 /// the city the map imagines (`docs/verse/everglade-map.png`): a cottage
 /// (Stoop Lane), an open café pavilion (Main Street), and a reading room
@@ -447,7 +653,10 @@ pub const SHOPS: [([f32; 2], [f32; 2]); 4] = [
 pub const MAKERS_HALL: ([f32; 2], [f32; 2]) = ([44.0, 30.0], [8.0, 5.0]);
 pub const SERVER_BARN: ([f32; 2], [f32; 2]) = ([50.0, 0.0], [4.0, 5.0]);
 pub const FAB_YARD: ([f32; 2], [f32; 2]) = ([51.0, -13.0], [4.0, 4.0]);
-pub const STACKS: ([f32; 2], [f32; 2]) = ([32.0, -40.0], [8.0, 5.0]);
+/// The Stacks, the generated library: its reserved ground, from the foot of
+/// its steps to its back wall, and its origin at its front wall's center.
+pub const STACKS: ([f32; 2], [f32; 2]) = ([32.0, -42.5], [8.0, 7.5]);
+const LIBRARY_AT: [f32; 2] = [32.0, -39.5];
 pub const OLD_COLLEGE: ([f32; 2], [f32; 2]) = ([40.0, -20.0], [4.0, 5.0]);
 pub const HOMES: [([f32; 2], [f32; 2]); 4] = [
     ([-42.0, -16.0], [4.0, 5.0]),
@@ -520,6 +729,7 @@ fn open_ground(x: f32, z: f32) -> bool {
         && !path
         && !on_road(x, z, 0.8)
         && !PONDS.iter().any(|(c, r)| near(*c, r + 1.8))
+        && stream_distance(x, z) > STREAM_HALF + 1.6
         && !near([RETURN_PORTAL.x, RETURN_PORTAL.z], 3.5)
         && !near(BENCH, 4.0)
         && !near([WAGON[0], WAGON[1] - 1.0], 4.5)
@@ -778,6 +988,11 @@ fn roof(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2])) {
     roof_at(out, rect, WALL_TOP);
 }
 
+/// The round-tile roof every house but the workshop hall wears: the kit's
+/// `Roof_RoundTiles_8x10` thinned to 55 percent of its triangles
+/// (`scripts/blender/kit_lod.py`), which the town repeats dozens of times.
+pub const HOUSE_ROOF: &str = "generated/roof_round_tiles_8x10";
+
 /// [`roof`] with its eaves `lift` meters up, over a taller building.
 fn roof_at(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2]), lift: f32) {
     let ([cx, cz], [hx, hz]) = rect;
@@ -785,15 +1000,7 @@ fn roof_at(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2]), lift: f32) {
     for k in 0..spans {
         let x = cx - hx + 4.0 + 8.0 * k as f32;
         let x = if spans == 1 { cx } else { x };
-        out.push(
-            Placement::new(
-                "village/Roof_RoundTiles_8x10",
-                [x, cz],
-                0.0,
-                Collision::None,
-            )
-            .lift(lift),
-        );
+        out.push(Placement::new(HOUSE_ROOF, [x, cz], 0.0, Collision::None).lift(lift));
         for (z, facing) in [(cz - hz, SOUTH), (cz + hz, NORTH)] {
             out.push(
                 Placement::new("village/Roof_Front_Brick8", [x, z], facing, Collision::None)
@@ -953,7 +1160,9 @@ fn town(out: &mut Vec<Placement>) {
     homes(out);
     woods(out);
     gardens(out);
+    out.extend(FIRST_TOWN.iter().map(generated::Instance::placement));
     city::build(out);
+    streets::build(out);
 }
 
 /// The commons: the great lawn north of the hall, with Lantern Pond, its
@@ -997,37 +1206,16 @@ fn commons(out: &mut Vec<Placement>) {
     ] {
         prop(out, "props/Bench", at, yaw + PI);
     }
-    // The bandshell: an open roof on posts over a wood stage, facing the
-    // pond across the lawn.
-    let ([bx, bz], [bhx, bhz]) = BANDSHELL;
-    for corner in [
-        [bx - bhx, bz - bhz],
-        [bx + bhx, bz - bhz],
-        [bx - bhx, bz + bhz],
-        [bx + bhx, bz + bhz],
-        [bx - bhx, bz],
-        [bx + bhx, bz],
+    // The bandshell faces the pond across the lawn (`generated`), with a
+    // music stand and stools on its stage.
+    let ([bx, bz], _) = BANDSHELL;
+    for (at, model) in [
+        ([bx + 0.4, bz], "props/BookStand"),
+        ([bx + 1.8, bz - 1.6], "props/Stool"),
+        ([bx + 1.8, bz + 1.4], "props/Stool"),
     ] {
-        out.push(Placement::new(
-            "village/Corner_Exterior_Wood",
-            corner,
-            0.0,
-            Collision::Core(0.2),
-        ));
+        out.push(Placement::new(model, at, WEST, Collision::None).lift(0.9));
     }
-    roof(out, BANDSHELL);
-    for i in 0..4 {
-        for j in 0..5 {
-            let at = [
-                bx - bhx + 1.0 + 2.0 * i as f32,
-                bz - bhz + 1.0 + 2.0 * j as f32,
-            ];
-            out.push(Placement::new("village/Floor_WoodDark", at, 0.0, Collision::None).lift(0.02));
-        }
-    }
-    prop(out, "props/Stool", [bx - 1.0, bz + 1.5], PI);
-    prop(out, "props/Stool", [bx + 1.2, bz + 1.0], PI);
-    prop(out, "props/BookStand", [bx, bz + 3.0], WEST);
     for (i, at) in [[-6.0, 20.0], [5.0, 22.0], [-7.0, 38.0], [3.0, 40.0]]
         .into_iter()
         .enumerate()
@@ -1110,12 +1298,10 @@ fn main_street(out: &mut Vec<Placement>) {
         }
     }
     // Market stalls and benches across the street, by the commons.
-    for x in [4.0_f32, 18.0, 32.0] {
-        prop(out, "props/Table_Large", [x, 42.0], 0.0);
-        prop(out, "village/Prop_Crate", [x + 2.2, 41.6], 0.4);
-        out.push(
-            Placement::new("props/Scroll_1", [x - 0.5, 42.0], 0.7, Collision::None).lift(0.81),
-        );
+    for (k, x) in [4.0_f32, 18.0, 32.0].into_iter().enumerate() {
+        let stall = ["generated/market_stall_blue", "generated/market_stall_red"][k % 2];
+        prop(out, stall, [x, 42.2], NORTH);
+        prop(out, "generated/barrel", [x + 2.0, 42.4], 0.4 * k as f32);
     }
     for x in [-3.0_f32, 11.0, 25.0, 38.0] {
         prop(out, "props/Bench", [x, 43.0], PI);
@@ -1207,40 +1393,10 @@ fn foundry(out: &mut Vec<Placement>) {
     prop(out, "village/Prop_Crate", [fx - 1.4, fz - 1.4], -0.3);
 }
 
-/// The Knowledge District: the Stacks, a long library with bookcases along
-/// its back wall, and the Old College beside Library Way.
+/// The Knowledge District: the Stacks, the generated library up its steps
+/// (`generated`), and the Old College beside Library Way.
 fn knowledge(out: &mut Vec<Placement>) {
-    use Piece::{Base, Door, Flat, Plain, Round, Timber};
-    house(
-        out,
-        STACKS,
-        [
-            &[Base, Plain, Plain, Plain, Plain, Plain, Plain, Base],
-            &[Base, Round, Round, Door, Door, Round, Round, Base],
-            &[Base, Flat, Timber, Flat, Base],
-            &[Base, Flat, Timber, Flat, Base],
-        ],
-        None,
-    );
-    let ([sx, sz], [_, shz]) = STACKS;
-    wall_lantern(out, [sx, sz + shz], NORTH, 0.0);
-    for x in [sx - 5.6, sx - 3.8, sx + 3.8, sx + 5.6] {
-        prop(out, "props/Bookcase_2", [x, sz - shz + 0.6], 0.0);
-    }
-    prop(out, "props/Table_Large", [sx + 3.0, sz - 0.4], 0.0);
-    out.push(
-        Placement::new(
-            "props/Book_Stack_1",
-            [sx + 2.4, sz - 0.4],
-            0.2,
-            Collision::None,
-        )
-        .lift(0.81),
-    );
-    out.push(
-        Placement::new("props/Scroll_1", [sx + 3.6, sz - 0.3], 1.1, Collision::None).lift(0.81),
-    );
-    prop(out, "props/BookStand", [sx - 4.0, sz + 0.2], 0.0);
+    use Piece::{Base, Door, Flat, Round, Timber};
     house(
         out,
         OLD_COLLEGE,

@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|winds|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|winds|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -34,6 +34,8 @@
 //!   their streets: the Fountain Plaza and the Market Hall, Stoop Lane's
 //!   townhouses, Hearth Road into the Lantern Quarter, Brownstone Row,
 //!   Observatory Hill, and Foundry Road.
+//! - `at:X,Z,YAW,TILT`: the player standing anywhere, at `(X, Z)` facing
+//!   `YAW` radians, with the camera tilted by `TILT`.
 //! - `studio-atrium`: inside the gate, at the goal board, with the goal
 //!   bar and its waiting badge over the view.
 //! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
@@ -113,12 +115,25 @@ fn main() -> Result<(), String> {
         "city-foundry" => (glam::Vec3::new(64.0, 0.0, 6.0), 1.2, 30.0),
         // Inside the gate, looking up at the goal board.
         "studio-atrium" => (glam::Vec3::new(2.8, 0.0, -13.3), 0.5, 10.0),
+        // Anywhere: `at:X,Z,YAW,TILT` stands the player at (X, Z) facing
+        // YAW radians with the camera tilted by TILT.
+        other if other.starts_with("at:") => {
+            let v: Vec<f32> = other[3..]
+                .split(',')
+                .map(str::parse)
+                .collect::<Result<_, _>>()
+                .map_err(|_| format!("`{other}` is not at:X,Z,YAW,TILT"))?;
+            let [x, z, yaw, tilt] = v[..] else {
+                return Err(format!("`{other}` is not at:X,Z,YAW,TILT"));
+            };
+            (glam::Vec3::new(x, 0.0, z), yaw, tilt)
+        }
         other => {
             return Err(format!(
                 "unknown view `{other}`; use approach, winds, sky, yard, hall, lane-east, lane-west, reverse, reverse-top, \
                  overhead, town-north, town-west, tooltip, city-market, city-stoop, city-lantern, \
                  city-brownstone, city-observatory, city-foundry, studio-yard, studio-hall, studio-atrium, eyes, \
-                 or hall-eyes"
+                 hall-eyes, or at:X,Z,YAW,TILT"
             ));
         }
     };

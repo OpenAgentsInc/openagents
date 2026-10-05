@@ -103,12 +103,12 @@ pub struct Limits {
 impl Limits {
     /// The Everglade budgets from `docs/verse/everglade.md`.
     pub const EVERGLADE: Self = Self {
-        pack_bytes: 16 * 1024 * 1024,
+        pack_bytes: 24 * 1024 * 1024,
         decoded_texture_bytes: 64 * 1024 * 1024,
         texture_edge: 1024,
-        triangles: 250_000,
-        model_triangles: 16_384,
-        committed_bytes: 30_500_000,
+        triangles: 420_000,
+        model_triangles: 20_000,
+        committed_bytes: 46_000_000,
         character_triangles: 40_000,
     };
 }

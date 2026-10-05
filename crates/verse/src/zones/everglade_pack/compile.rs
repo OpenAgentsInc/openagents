@@ -32,8 +32,11 @@ use super::format::{
 
 /// The manifest schema every admitted set declares.
 pub const SCHEMA: &str = "openagents.verse.source-manifest.v1";
-/// The admitted source sets, in pack order.
-pub const SETS: [&str; 3] = ["nature", "village", "props"];
+/// The admitted source sets, in pack order. `generated` holds the models
+/// `scripts/blender` builds, converted by `scripts/blender/everglade_admit.py`;
+/// they sample the village set's images (`../village/<file>.png`) rather
+/// than carrying their own.
+pub const SETS: [&str; 4] = ["nature", "village", "props", "generated"];
 /// The longest edge of a texture that covers small or distant geometry.
 pub const SMALL_TEXTURE_EDGE: u32 = 512;
 /// The longest edge of a texture that covers large or near surfaces.
@@ -82,7 +85,9 @@ pub const PLAYER_CLIPS: [(&str, u16); 8] = [
 /// retargeted from (`animations.glb`, already retained): a two-handed
 /// chop, which the demolition yard plays with a sledgehammer.
 pub const SWING_CLIP: (u16, &str) = (71, "TreeChopping_Loop");
-const CREATOR: &str = "Quaternius";
+/// Who may make an admitted set: Quaternius's kits, and the models
+/// OpenAgents generates from them.
+const CREATORS: [&str; 2] = ["Quaternius", "OpenAgents"];
 const LICENSE: &str = "CC0-1.0";
 const LICENSE_FILE: &str = "license.txt";
 const MANIFEST_FILE: &str = "manifest.json";
@@ -196,8 +201,8 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<Manifest, String> {
     if text("schema") != SCHEMA {
         return Err("Source manifest has an unsupported schema".into());
     }
-    if text("creator") != CREATOR || text("license") != LICENSE {
-        return Err("Source manifest must declare Quaternius and CC0-1.0".into());
+    if !CREATORS.contains(&text("creator")) || text("license") != LICENSE {
+        return Err("Source manifest must declare Quaternius or OpenAgents and CC0-1.0".into());
     }
     let package = text("package").to_owned();
     if package.trim().is_empty() {
@@ -234,7 +239,7 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<Manifest, String> {
         }
         match transforms.get(name) {
             Some(transform) => {
-                if !name.ends_with(".png") || transform.trim().is_empty() || original == digest {
+                if transform.trim().is_empty() || original == digest {
                     return Err(format!(
                         "Source manifest has an invalid transform for {name}"
                     ));
@@ -507,12 +512,32 @@ fn pack_name(raw: &str) -> String {
 /// Accumulates deduplicated textures and materials while models import.
 struct Builder<'l> {
     limits: &'l Limits,
+    /// Every loaded set, which a model's `../<set>/<file>` image names.
+    sets: &'l [SourceSet],
     contents: Contents,
     textures: BTreeMap<(String, String), u16>,
 }
 
 impl Builder<'_> {
     fn texture(&mut self, set: &SourceSet, uri: &str) -> Result<u16, String> {
+        // A sibling set's admitted image, shared rather than copied.
+        if let Some((name, file)) = uri
+            .strip_prefix("../")
+            .and_then(|rest| rest.split_once('/'))
+        {
+            let sets = self.sets;
+            let sibling = sets
+                .iter()
+                .find(|s| s.name == name && s.name != set.name)
+                .ok_or(format!(
+                    "Base-color image names an unloaded set: {}/{uri}",
+                    set.name
+                ))?;
+            if file.contains('/') {
+                return Err(format!("Base-color image path is too deep: {uri}"));
+            }
+            return self.texture(sibling, file);
+        }
         let key = (set.name.clone(), uri.to_owned());
         if let Some(&index) = self.textures.get(&key) {
             return Ok(index);
@@ -1071,6 +1096,7 @@ pub fn compile(
     }
     let mut builder = Builder {
         limits,
+        sets: &loaded,
         contents: Contents::default(),
         textures: BTreeMap::new(),
     };

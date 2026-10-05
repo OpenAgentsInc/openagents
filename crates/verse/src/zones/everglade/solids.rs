@@ -23,8 +23,15 @@ pub fn build(pack: &ZonePack, placements: &[Placement]) -> Result<Solids, String
     let mut walls = layout::board_blockers();
     walls.extend(layout::pond_blockers());
     let mut solids = build_with(pack, placements, &walls)?;
-    // The city's walls, one block per run, as tall as their stories.
+    // The city's walls, one block per run as tall as their stories, and the generated models' boxes and roofs.
     for (footprint, top) in layout::city::blocks() {
+        solids.add_block(footprint, top);
+    }
+    for roof in layout::generated().iter().flat_map(|i| i.roofs()) {
+        solids.add_roof(roof);
+    }
+    // The footbridge's deck, plank by plank, low enough to step onto.
+    for (footprint, top) in layout::bridge_steps() {
         solids.add_block(footprint, top);
     }
     Ok(solids)
@@ -53,7 +60,9 @@ pub fn build_with(
             for footprint in placement.footprints((min, max)) {
                 solids.add_block(footprint, top);
             }
-        } else if placement.model.starts_with("village/Roof_RoundTiles") {
+        } else if placement.model.starts_with("village/Roof_RoundTiles")
+            || placement.model == layout::HOUSE_ROOF
+        {
             let across = placement.transform().transform_vector3(Vec3::X).normalize();
             solids.add_roof(Roof {
                 center: placement.at,

@@ -292,7 +292,7 @@ fn every_placement_names_an_admitted_model_and_stays_in_the_glade() {
             .unwrap_or_else(|| panic!("{} is not in the pack", placement.model));
         let set = placement.model.split('/').next().unwrap();
         assert!(
-            ["nature", "village", "props"].contains(&set),
+            ["nature", "village", "props", "generated"].contains(&set),
             "{}",
             placement.model
         );
@@ -1191,8 +1191,21 @@ fn the_city_is_sixteen_times_the_glade_and_every_door_opens_from_the_spawn() {
     assert!(blockers.len() <= 4_096, "{}", blockers.len());
     let spawn = [Everglade::spawn().x, Everglade::spawn().z];
     let doors = layout::doors();
-    assert!(doors.len() >= 70, "{}", doors.len());
+    let fronts = layout::fronts();
+    assert!(doors.len() + fronts.len() >= 70, "{}", doors.len());
     let mut names = std::collections::BTreeSet::new();
+    // A generated building's door is closed; the step outside it is on
+    // open ground and reached from the spawn.
+    for (name, front) in &fronts {
+        assert!(names.insert(*name), "duplicate {name}");
+        assert!(
+            !blockers.iter().any(|b| b.contains(front[0], front[1], 0.3)),
+            "{name}'s front step is blocked"
+        );
+        let route = crate::nav::plan(spawn, *front, blockers, HALF_EXTENT);
+        assert!(route.is_ok(), "{name}: {route:?}");
+        assert!(front[0].hypot(front[1]) < CLEARING_RADIUS, "{name}");
+    }
     for (name, outside, inside) in doors {
         assert!(names.insert(name), "duplicate {name}");
         let route = crate::nav::plan(spawn, outside, blockers, HALF_EXTENT);
@@ -1207,12 +1220,18 @@ fn the_city_is_sixteen_times_the_glade_and_every_door_opens_from_the_spawn() {
     for ([x, z], _) in layout::PONDS {
         assert!(blockers.iter().any(|b| b.contains(x, z, 0.0)));
     }
-    // Each district has its buildings: dozens of roofs, not one hall.
+    // Each district has its buildings: dozens of roofs, not one hall,
+    // kit-built and generated.
     let roofs = layout::placements()
         .iter()
-        .filter(|p| p.model == "village/Roof_RoundTiles_8x10")
+        .filter(|p| p.model == layout::HOUSE_ROOF)
         .count();
-    assert!(roofs >= 80, "{roofs}");
+    let generated = layout::generated()
+        .iter()
+        .filter(|i| !i.model.roofs.is_empty())
+        .count();
+    assert!(generated >= 20, "{generated}");
+    assert!(roofs + generated >= 80, "{roofs} + {generated}");
     // No two city buildings overlap.
     let rects: Vec<_> = layout::city::BUILDINGS
         .iter()
@@ -1301,5 +1320,65 @@ fn a_frame_draws_a_fraction_of_the_city() {
         let (frustum, drawn) = drawn_triangles(eye, toward);
         eprintln!("from the {name}: {frustum} triangles in view, {drawn} drawn");
         assert!(drawn <= frustum && drawn < total * 3 / 4, "{name}: {drawn}");
+    }
+}
+
+#[test]
+fn brownstone_row_crosses_glade_run_on_its_footbridge() {
+    let blockers = &world().blockers;
+    // The stream stops walking along its course, but Brownstone Row passes
+    // over it on the footbridge.
+    let ([bx, bz], _) = layout::BRIDGE;
+    assert!(crate::nav::segment_clear(
+        [bx - 6.0, bz],
+        [bx + 6.0, bz],
+        blockers,
+        HALF_EXTENT
+    ));
+    assert!(!crate::nav::segment_clear(
+        [-4.0, -102.0],
+        [4.0, -102.0],
+        blockers,
+        HALF_EXTENT
+    ));
+    // The deck climbs and falls a step at a time, so a walker goes over it.
+    let steps = layout::bridge_steps();
+    let mut last = height(bx - 4.0, bz);
+    for (footprint, top) in &steps {
+        assert!((top - last).abs() <= solids::STEP, "{top} after {last}");
+        assert!(footprint.max[0] > footprint.min[0]);
+        last = *top;
+    }
+    assert!((last - height(bx + 4.0, bz)).abs() <= solids::STEP);
+    // Every generated landmark and building is in the pack and placed.
+    let placements = layout::placements();
+    for model in [
+        "generated/observatory",
+        "generated/fountain",
+        "generated/bandshell",
+        "generated/market_stall_red",
+        "generated/market_stall_blue",
+        "generated/library",
+        "generated/tavern",
+        "generated/market_hall",
+        "generated/corner_shop",
+        "generated/l_house",
+        "generated/cottage_tower",
+        "generated/row_townhouse",
+        "generated/townhouse_jettied",
+        "generated/townhouse_balcony",
+        "generated/footbridge",
+    ] {
+        assert!(placements.iter().any(|p| p.model == model), "{model}");
+    }
+    // A generated building's roof is a surface to land on, like a kit
+    // roof.
+    let solids = solids::build(pack(), &placements).unwrap();
+    for instance in layout::generated() {
+        for roof in instance.roofs() {
+            let [x, z] = roof.center;
+            let floor = solids.floor(x, z, 40.0);
+            assert!(floor >= roof.eave - 0.01, "{}: {floor}", instance.name);
+        }
     }
 }

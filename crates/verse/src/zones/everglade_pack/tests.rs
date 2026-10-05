@@ -363,8 +363,14 @@ fn committed_manifests_admit_only_base_color_sources_with_licenses() {
         let license = std::fs::read_to_string(directory.join("license.txt")).unwrap();
         assert!(license.contains("CC0"), "{set} license text");
         assert!(directory.join("README.md").is_file(), "{set} README");
-        for name in manifest.transforms.keys() {
-            assert!(name.ends_with(".png"), "{set}/{name}");
+        // Only images change in the kits' sets; the generated set records
+        // each model's conversion from its committed glb.
+        for (name, transform) in &manifest.transforms {
+            if set == "generated" {
+                assert!(transform.contains("everglade_admit.py"), "{set}/{name}");
+            } else {
+                assert!(name.ends_with(".png"), "{set}/{name}");
+            }
         }
     }
 }

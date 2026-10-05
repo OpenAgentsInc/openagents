@@ -127,8 +127,8 @@ to `assets/verse/generated/buildings/` as a glb with a
 renders review sheets (`views`), footprint overlays (`boxes`), close-ups
 (`look`), and an overview of a folder (`gallery`).
 `assets/verse/generated/buildings/PROVENANCE.md` lists the pieces and textures.
-None is admitted yet. `build-models.sh` rebuilds them with the other models,
-and `gallery.py` includes them, scaled to fit its grid.
+`build-models.sh` rebuilds them with the other models, and `gallery.py`
+includes them, scaled to fit its grid.
 
 | Model | Triangles | What it is |
 | --- | ---: | --- |
@@ -141,6 +141,34 @@ and `gallery.py` includes them, scaled to fit its grid.
 | `corner_shop` | 11,112 | Shop windows on two faces under striped awnings, hanging sign |
 | `l_house` | 13,660 | L-shaped house: side-gabled block with a gabled wing to the street |
 | `cottage_tower` | 7,805 | One-storey cottage with a round stone tower and cone roof |
+
+## Admitted into Everglade
+
+On October 5, the buildings, the observatory, the fountain, the bandshell,
+and both market stalls were admitted into the Everglade pack's `generated`
+set and placed in the city ([Everglade](everglade.md#layout)), with three
+more kinds of model made for it:
+
+- `street_props.py` builds the city's street furniture: a lamp post, a
+  barrel, a flower box, a well, a dry-stone wall, a hedge, a hand cart, a
+  signpost, lily pads, a footbridge, wildflowers, bunting, and two low-poly
+  far-forest trees (`pine_low` and `oak_low`), each under 500 triangles.
+  They are written to `assets/verse/generated/street/`.
+- `kit_lod.py` writes a lighter copy of the village kit's
+  `Roof_RoundTiles_8x10`, thinned to 55 percent of its triangles, to
+  `assets/verse/generated/kit/`. Every kit-built house in the town wears it.
+- `everglade_admit.py` converts each committed glb into the glTF and `.bin`
+  the pack compiler reads, without touching its geometry, and points every
+  texture at the village set's admitted image with a base-color factor
+  that keeps the model's color. Plaster and roof tiles in new colors sample
+  two neutral images it derives from the kit, `T_Plaster_Luma` and
+  `T_RoundTiles_Luma`. It writes the set's manifest, which records each
+  file's source glb digest and the conversion.
+
+The animals and the training dummies are not admitted. The creatures are
+skinned and animated, and the pack holds static models and the one player
+character; ambient wildlife needs skinned props in the pack format first.
+The Grove's dummies are its own concern.
 
 ## How an agent makes a model
 

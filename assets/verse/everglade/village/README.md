@@ -44,4 +44,13 @@ Plaster, wood trim, and roof tiles keep 1,024 pixels on their long edge; the
 rest are at most 512 pixels, as the compiler's texture policy requires. Images
 larger than their edge were downscaled with macOS `sips -Z`, as `transforms`
 records, to keep the committed sources and pack within 30 MB. The uneven
-brick and red brick pieces are left out so their textures are not needed.
+brick and red brick pieces are left out.
+
+Three more images serve the generated set (`../generated/`), whose models
+sample this set's images rather than carrying their own:
+`T_UnevenBrick_BaseColor`, downscaled to 512 pixels, for the generated
+buildings' stone, and `T_Plaster_Luma` and `T_RoundTiles_Luma`, the kit
+plaster's and tiles' luminance as neutral images that a material's
+base-color factor tints. `scripts/blender/everglade_admit.py` derives them
+from the kit's images and records how in `transforms`. The zone also paints
+kit-built houses with them (`verse::zones::everglade::layout::paint`).

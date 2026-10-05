@@ -6,8 +6,13 @@ Every model here was written by Blender 5.2.2 LTS, run headless
 `scripts/blender/build-models.sh`. Blender's glTF export isn't byte-identical
 across versions, so compare rebuilds by their previews, not their bytes.
 
-The models aren't admitted into any zone pack yet. Admission is a later step
-that follows [the pipeline](../../../docs/verse/blender-pipeline.md).
+The fountain, the observatory, the bandshell, the market stalls, the
+buildings, the street furniture, and the kit roof are admitted into the
+Everglade pack's `generated` set by `scripts/blender/everglade_admit.py`
+([`assets/verse/everglade/generated/`](../everglade/generated/README.md)),
+following [the pipeline](../../../docs/verse/blender-pipeline.md). The
+creatures, the training dummies, the animals, and the sledgehammer are not
+admitted.
 
 All models use 1 unit = 1 m and glTF's +Y up, with the origin at the center
 of the base. A model's front faces glTF +Z.
@@ -56,3 +61,33 @@ The sledgehammer's origin is the handle's butt, with the handle along +Y, so
 a hand can hold it. The fountain's water is the separate `Fountain_Water`
 and `Fountain_Spill` materials, and the warded dummy's runes are the emissive
 `Dummy_Rune` material.
+
+## Street furniture
+
+`scripts/blender/street_props.py` builds each piece from primitives in flat
+colors and writes it to `street/`:
+
+| File | Triangles | Use in Everglade |
+| --- | ---: | --- |
+| `lamp_post.glb` | 172 | Lamps along the streets and lanes |
+| `barrel.glb` | 176 | Stock by the stalls and the tavern |
+| `flower_box.glb` | 452 | Under the shop and townhouse fronts |
+| `well.glb` | 284 | Wells on the greens |
+| `stone_wall.glb` | 440 | The orchard's dry-stone wall, 2 m a piece |
+| `hedge.glb` | 254 | Between Main Street and the commons, 2 m a piece |
+| `hand_cart.glb` | 378 | The Fountain Plaza |
+| `signpost.glb` | 64 | The crossings |
+| `lily_pads.glb` | 268 | The ponds |
+| `footbridge.glb` | 408 | Brownstone Row over Glade Run |
+| `wildflowers.glb` | 440 | The meadows |
+| `bunting.glb` | 240 | Over the plaza and the streets |
+| `pine_low.glb` | 88 | The forest belt and the woods' stands |
+| `oak_low.glb` | 184 | The forest belt and the woods' stands |
+
+## Kit pieces
+
+`scripts/blender/kit_lod.py` imports the Medieval Village MegaKit's
+`Roof_RoundTiles_8x10` (Quaternius, CC0 1.0) and thins it with collapse
+decimation to `kit/roof_round_tiles_8x10.glb`, 2,464 triangles of the
+original's 4,480. Its images are thumbnails that only name the kit's images,
+which the admitted copy samples from the village set.

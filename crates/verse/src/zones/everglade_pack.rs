@@ -6,7 +6,9 @@
 //! no redirects, an exact length and digest, bounded decoding, and a
 //! content-addressed disk cache. It carries no scripts, URLs, or authority.
 //!
-//! Rebuild the pack after changing an admitted source:
+//! Rebuild the pack after changing an admitted source (after rebuilding a
+//! generated model, readmit it first with
+//! `python3 scripts/blender/everglade_admit.py`):
 //!
 //! ```text
 //! cargo run --release -p verse --example everglade_pack -- assets/verse/everglade
@@ -31,14 +33,16 @@ pub use format::{
 use pinned::PinnedFile;
 
 /// Exact content identity of the reviewed Everglade pack.
-pub const PACK_SHA256: &str = "f29673c6a8fd0fe3728418084f373e077bb5dee72c87679d15e668918fbc4d46";
+pub const PACK_SHA256: &str = "2c6d0e58a10d2549b9fc897b31eec65b0af903eaa2f149a3126f15d387dc89df";
 /// Transfer size of the reviewed Everglade pack.
-pub const PACK_BYTES: u64 = 15020817;
+pub const PACK_BYTES: u64 = 22371190;
 /// The most triangles the Everglade layout may place, counting each placement.
 /// The city is sixteen times the first glade's area and places about 1.8
-/// million with the ground, which merges to about 107 MiB, under the
-/// renderer's 128 MiB bound (`pbr::textured::MAX_BYTES`). Roofs are the
-/// largest share, about 4,500 triangles each. A frame draws only the merged
+/// million with the ground, which merges to about 111 MiB, under the
+/// renderer's 128 MiB bound (`pbr::textured::MAX_BYTES`). Trees and roofs
+/// are the largest shares: a kit tree is 3,000 to 6,000 triangles, a house
+/// roof 2,464 (the kit's thinned by `scripts/blender/kit_lod.py`), and a
+/// generated building 7,800 to 17,800. A frame draws only the merged
 /// 8 m cells in view, nearer than the fog's close at 180 m, and large
 /// enough to see at their distance, so a street-level view draws a third
 /// to a half of them (`tests::a_frame_draws_a_fraction_of_the_city`), and a
@@ -52,6 +56,7 @@ pub const PACK_EXTENSION: &str = "vtp";
 // zones share the cache directory; arbitrary digest names are not ours.
 const EVERGLADE_PACK_HISTORY: &[&str] = &[
     PACK_SHA256,
+    "f29673c6a8fd0fe3728418084f373e077bb5dee72c87679d15e668918fbc4d46",
     "3bbdbfc043c8f0e02159e93190889b69fd5d58d873bbad990147d39a68b689e4",
     "12b5f3d7b48e655590119e2b55b42567375c553099df28ada93715be076226f4",
     "4bbd3b18ae0f698a37da40e738176b180e3d7b2a4e72944102424a16ce0b598c",
