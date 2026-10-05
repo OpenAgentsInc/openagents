@@ -78,6 +78,27 @@ pub struct Shown {
     pub online: bool,
 }
 
+/// One remote entity's pose and walk cycle this frame.
+#[derive(Clone, Debug)]
+pub struct Figure {
+    /// Publisher pubkey.
+    pub pubkey: String,
+    /// Entity id.
+    pub id: String,
+    /// Entity role: `avatar` or `agent`.
+    pub role: String,
+    /// Interpolated position.
+    pub pos: Vec3,
+    /// Interpolated orientation.
+    pub rot: Quat,
+    /// Whether frames are arriving.
+    pub online: bool,
+    /// Ground speed since the last frame, meters per second.
+    pub speed: f32,
+    /// The walk cycle, advanced to this frame.
+    pub gait: Gait,
+}
+
 /// Every remote entity in one world.
 #[derive(Debug)]
 pub struct Crowd {
@@ -287,37 +308,65 @@ impl Crowd {
         found
     }
 
-    /// Advances walk cycles and builds every remote entity's geometry.
-    pub fn mesh(&mut self, now: Instant, dt: f32) -> Mesh {
+    /// Advances walk cycles and reports every remote entity's pose this
+    /// frame, for a renderer that draws its own figures.
+    pub fn figures(&mut self, now: Instant, dt: f32) -> Vec<Figure> {
         if self.hosted {
-            return Mesh::default();
+            return vec![];
         }
-        let mut mesh = Mesh::default();
-        for remote in self.entities.values_mut() {
+        let mut out = Vec::new();
+        for ((pubkey, id), remote) in &mut self.entities {
             let Some((pos, rot, online)) = remote.at(now, self.delay) else {
                 continue;
             };
             if self.live_only && !online {
                 continue;
             }
-            let bright = if online {
+            let mut speed = 0.0;
+            if remote.role == "avatar" {
+                let flat = Vec3::new(pos.x, 0.0, pos.z);
+                speed = remote.last_drawn.map_or(0.0, |last| {
+                    let d = flat - Vec3::new(last.x, 0.0, last.z);
+                    if dt > 0.0 { d.length() / dt } else { 0.0 }
+                });
+                remote.last_drawn = Some(pos);
+                remote.gait.advance(speed.min(12.0), pos.y > 0.05, dt);
+            }
+            out.push(Figure {
+                pubkey: pubkey.clone(),
+                id: id.clone(),
+                role: remote.role.clone(),
+                pos,
+                rot,
+                online,
+                speed,
+                gait: remote.gait,
+            });
+        }
+        out.sort_by(|a, b| (&a.pubkey, &a.id).cmp(&(&b.pubkey, &b.id)));
+        out
+    }
+
+    /// Advances walk cycles and builds every remote entity's geometry.
+    pub fn mesh(&mut self, now: Instant, dt: f32) -> Mesh {
+        let mut mesh = Mesh::default();
+        for figure in self.figures(now, dt) {
+            let bright = if figure.online {
                 Intensity::Full
             } else {
                 Intensity::Quarter
             };
-            match remote.role.as_str() {
+            match figure.role.as_str() {
                 "avatar" => {
-                    let flat = Vec3::new(pos.x, 0.0, pos.z);
-                    let speed = remote.last_drawn.map_or(0.0, |last| {
-                        let d = flat - Vec3::new(last.x, 0.0, last.z);
-                        if dt > 0.0 { d.length() / dt } else { 0.0 }
-                    });
-                    remote.last_drawn = Some(pos);
-                    remote.gait.advance(speed.min(12.0), pos.y > 0.05, dt);
-                    mesh.extend(&avatar::figure(pos, rot, &remote.gait, bright));
+                    mesh.extend(&avatar::figure(
+                        figure.pos,
+                        figure.rot,
+                        &figure.gait,
+                        bright,
+                    ));
                 }
                 "agent" => {
-                    let transform = Mat4::from_rotation_translation(rot, pos);
+                    let transform = Mat4::from_rotation_translation(figure.rot, figure.pos);
                     mesh.extend(&agent::spade(transform, bright));
                 }
                 _ => {}

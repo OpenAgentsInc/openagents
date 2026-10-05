@@ -23,6 +23,8 @@ use crate::controller::{InputState, PlayerController};
 use crate::doors::hud::DoorHud;
 use crate::doors::{DemoItem, DoorId, DoorIntent, Doors};
 use crate::feed::Feed;
+use crate::grid_engine::GridEngine;
+use crate::grid_frame;
 use crate::hud;
 use crate::minimap::{MapAction, MapHud};
 use crate::nav::NavigationStatus;
@@ -72,6 +74,8 @@ pub struct Options {
     /// Open straight into the Grove, the druid training field, once the
     /// window shows (`verse --grove`).
     pub grove: bool,
+    /// Print one JSON line of frame times per second to stdout.
+    pub frame_times: bool,
     /// A notice Everglade's caption leads with, such as that no coding
     /// agent can sign in, so the studio's seats cannot work.
     pub studio_notice: Option<String>,
@@ -95,6 +99,7 @@ impl Default for Options {
             studio_muted: false,
             everglade: false,
             grove: false,
+            frame_times: false,
             studio_notice: None,
             ritual: crate::ritual::default_config(),
         }
@@ -468,7 +473,12 @@ impl Keys {
 
 struct App {
     window: Option<Arc<Window>>,
+    /// The legacy line renderer, for every zone but the Grid.
     renderer: Option<Renderer>,
+    /// The engine renderer, while the window shows the Grid.
+    grid: Option<GridEngine>,
+    /// Frame-time summaries, when `--frame-times` asked for them.
+    timing: Option<grid_frame::Timing>,
     runtime: WorldRuntime,
     keys: Keys,
     mount: Option<SurfaceLifecycle>,
@@ -737,6 +747,10 @@ impl App {
         Ok(Self {
             window: None,
             renderer: None,
+            grid: None,
+            timing: options
+                .frame_times
+                .then(|| grid_frame::Timing::start(Instant::now())),
             runtime,
             keys: Keys::default(),
             mount: None,
@@ -1047,13 +1061,9 @@ impl App {
         {
             return None;
         }
-        let renderer = self.renderer.as_ref()?;
-        let size = renderer.size();
-        self.runtime.studio_pick(
-            renderer.aspect(),
-            self.cursor[0] / size[0],
-            self.cursor[1] / size[1],
-        )
+        let (size, aspect) = self.viewport()?;
+        self.runtime
+            .studio_pick(aspect, self.cursor[0] / size[0], self.cursor[1] / size[1])
     }
 
     /// Hands a key to the panel while it has focus. Every key is consumed
@@ -1411,12 +1421,11 @@ impl App {
         {
             return false;
         }
-        let Some(renderer) = &self.renderer else {
+        let Some((size, aspect)) = self.viewport() else {
             return false;
         };
-        let size = renderer.size();
         self.runtime.zone_hit_with_entities(
-            renderer.aspect(),
+            aspect,
             self.cursor[0] / size[0],
             self.cursor[1] / size[1],
             &self.presented_entities,
@@ -1991,13 +2000,13 @@ impl App {
 
     /// The Grove's hotbar slot under `at`, in logical units.
     fn grove_hotbar_at(&self, at: [f32; 2]) -> Option<ZoneIntent> {
-        let size = self.renderer.as_ref()?.size();
+        let (size, _) = self.viewport()?;
         zones::grove::hotbar::hit(at, size.map(|v| v / self.scale), HOTBAR_BOTTOM)
     }
 
     /// Everglade's hotbar slot under `at`, in logical units.
     fn hotbar_at(&self, at: [f32; 2]) -> Option<ZoneIntent> {
-        let size = self.renderer.as_ref()?.size();
+        let (size, _) = self.viewport()?;
         zones::everglade::hotbar::hit(at, size.map(|v| v / self.scale), HOTBAR_BOTTOM)
     }
 
@@ -2120,7 +2129,7 @@ impl App {
         if pressed && !self.chat.open && !self.map.expanded {
             let snapshot = self
                 .runtime
-                .zone_snapshot(self.renderer.as_ref().map_or(1.0, Renderer::aspect));
+                .zone_snapshot(self.viewport().map_or(1.0, |(_, aspect)| aspect));
             if code == KeyCode::KeyF && snapshot.portal.near && snapshot.portal.visible {
                 self.zone_action(if self.runtime.is_plaza() {
                     ZoneIntent::Enter
@@ -2331,12 +2340,11 @@ impl App {
         {
             return false;
         }
-        let Some(renderer) = &self.renderer else {
+        let Some((size, aspect)) = self.viewport() else {
             return false;
         };
-        let size = renderer.size();
         self.runtime.companion_hit_with_entities(
-            renderer.aspect(),
+            aspect,
             self.cursor[0] / size[0],
             self.cursor[1] / size[1],
             &self.presented_entities,
@@ -2354,7 +2362,7 @@ impl App {
         {
             return None;
         }
-        let aspect = self.renderer.as_ref()?.aspect();
+        let (_, aspect) = self.viewport()?;
         DoorId::ALL
             .into_iter()
             .filter(|&id| {
@@ -2391,11 +2399,10 @@ impl App {
         {
             return None;
         }
-        let renderer = self.renderer.as_ref()?;
-        let size = renderer.size();
+        let (size, aspect) = self.viewport()?;
         point_door(
             &self.runtime,
-            renderer.aspect(),
+            aspect,
             [self.cursor[0] / size[0], self.cursor[1] / size[1]],
             &self.presented_entities,
         )
@@ -2750,6 +2757,7 @@ impl App {
             }
             _ => return,
         };
+        let wall_dt = dt;
 
         // Suspend the plaza before a completed download can install a ruins pose.
         self.sync_zone_services(true);
@@ -2763,7 +2771,16 @@ impl App {
             self.keys = Keys::default();
             self.capture(false);
             self.presented_entities = crate::mesh::Mesh::default();
-            if let Some(renderer) = &mut self.renderer {
+            if self.on_grid() != self.grid.is_some() {
+                if let (Some(window), Some(atlas)) = (self.window.clone(), self.atlas.take()) {
+                    let opened = self.open_surface(window, &atlas);
+                    self.atlas = Some(atlas);
+                    if let Err(error) = opened {
+                        self.error = Some(error);
+                        return;
+                    }
+                }
+            } else if let Some(renderer) = &mut self.renderer {
                 if let Err(error) = renderer
                     .replace_world(&self.runtime.world.mesh)
                     .and_then(|()| renderer.set_atmosphere(zones::atmosphere(self.runtime.zone)))
@@ -2771,6 +2788,8 @@ impl App {
                     self.error = Some(error);
                     return;
                 }
+                self.rendered_zone_revision = self.runtime.zone_revision;
+            } else {
                 self.rendered_zone_revision = self.runtime.zone_revision;
             }
             self.sync_zone_services(true);
@@ -2805,8 +2824,15 @@ impl App {
                 None => self.runtime.agent.look_around(&[]),
             }
         }
-        let mut dynamic = self.runtime.dynamic_mesh();
+        let on_grid = self.grid.is_some();
+        let mut dynamic = if on_grid {
+            crate::mesh::Mesh::default()
+        } else {
+            self.runtime.dynamic_mesh()
+        };
         let mut entities = crate::mesh::Mesh::default();
+        let mut peers: Vec<crate::crowd::Figure> = Vec::new();
+        let mut standing: Vec<grid_frame::Standing> = Vec::new();
         if self.replay.as_ref().is_some_and(|r| r.ghost.is_ok()) {
             entities.extend(
                 &self
@@ -2854,25 +2880,31 @@ impl App {
                     self.runtime.player.pos,
                 );
             }
-            entities.extend(&session.crowd.mesh(now, dt));
+            if on_grid {
+                peers = session.crowd.figures(now, dt);
+            } else {
+                entities.extend(&session.crowd.mesh(now, dt));
+            }
         }
         if self.frames.is_multiple_of(30) {
             self.update_title();
         }
         self.frames = self.frames.wrapping_add(1);
 
-        let Some(renderer) = &self.renderer else {
+        let Some((size, aspect)) = self.viewport() else {
             return;
         };
-        let view = view(
-            &self.runtime.camera,
-            &self.runtime.player,
-            renderer.aspect(),
-        );
-        let size = renderer.size();
+        let view = view(&self.runtime.camera, &self.runtime.player, aspect);
         if let Some(feed) = &mut self.feed {
             feed.tick(now);
             for v in &feed.visitors {
+                if on_grid {
+                    standing.push(grid_frame::Standing {
+                        pos: v.pos,
+                        yaw: v.yaw,
+                    });
+                    continue;
+                }
                 let rot = glam::Quat::from_rotation_y(v.yaw);
                 entities.extend(&avatar::figure(
                     v.pos,
@@ -3129,7 +3161,21 @@ impl App {
             (Some(panel), None) => panel.image(px, self.scale).map(Some),
             _ => Ok(None),
         };
-        if let Some(renderer) = &mut self.renderer {
+        let mut render_ms = 0.0;
+        let mut instances = 0;
+        if let Some(grid) = &mut self.grid {
+            if let Err(error) = overlay {
+                eprintln!("verse: panel not drawn: {error}");
+                self.panel = None;
+            }
+            let dynamic = grid_frame::dynamic(&self.runtime, &peers, &standing);
+            instances = dynamic.len();
+            let lighting = grid_frame::lighting(&self.runtime.atmosphere());
+            match grid.draw(view, &dynamic, &ui, &lighting) {
+                Ok(ms) => render_ms = ms,
+                Err(error) => self.error = Some(error),
+            }
+        } else if let Some(renderer) = &mut self.renderer {
             if let Err(error) = overlay.and_then(|image| renderer.set_overlay(image)) {
                 eprintln!("verse: panel not drawn: {error}");
                 self.panel = None;
@@ -3142,6 +3188,44 @@ impl App {
                 render::DrawStatus::Skipped(_) => {}
             }
         }
+        if let Some(timing) = &mut self.timing
+            && let Some(summary) = timing.frame(now, wall_dt, instances, render_ms)
+            && let Ok(line) = serde_json::to_string(&summary)
+        {
+            println!("{line}");
+        }
+    }
+
+    /// Whether the window shows the Grid, which the engine renderer draws.
+    fn on_grid(&self) -> bool {
+        self.runtime.is_bare() && self.runtime.is_plaza()
+    }
+
+    /// The viewport in pixels and its aspect, from whichever renderer is
+    /// attached.
+    fn viewport(&self) -> Option<([f32; 2], f32)> {
+        if let Some(grid) = &self.grid {
+            return Some((grid.size(), grid.aspect()));
+        }
+        let renderer = self.renderer.as_ref()?;
+        Some((renderer.size(), renderer.aspect()))
+    }
+
+    /// Attaches the renderer the current zone needs to the window, dropping
+    /// the other one first because they cannot share its surface.
+    fn open_surface(&mut self, window: Arc<Window>, atlas: &Atlas) -> Result<(), String> {
+        if self.on_grid() {
+            self.renderer = None;
+            let size = window.inner_size();
+            self.grid = Some(GridEngine::new(window, atlas, size.width, size.height)?);
+        } else {
+            self.grid = None;
+            let mut renderer = Renderer::new(window, &self.runtime.world.mesh, atlas)?;
+            renderer.set_atmosphere(zones::atmosphere(self.runtime.zone))?;
+            self.renderer = Some(renderer);
+        }
+        self.rendered_zone_revision = self.runtime.zone_revision;
+        Ok(())
     }
 
     /// Name tags and speech bubbles: over you, your agent, nearby players,
@@ -3326,24 +3410,13 @@ impl ApplicationHandler for App {
         if let Err(error) = zones::grove::hotbar::add_sprites(&mut atlas) {
             eprintln!("verse: the Grove's hotbar has no icons: {error}");
         }
-        match Renderer::new(window.clone(), &self.runtime.world.mesh, &atlas) {
-            Ok(mut renderer) => {
-                if let Err(error) = renderer.set_atmosphere(zones::atmosphere(self.runtime.zone)) {
-                    self.error = Some(error);
-                    event_loop.exit();
-                    return;
-                }
-                self.rendered_zone_revision = self.runtime.zone_revision;
-                self.renderer = Some(renderer);
-                self.map_atlas = atlas.layout_at_scale(self.scale);
-                self.atlas = Some(atlas);
-            }
-            Err(e) => {
-                self.error = Some(e);
-                event_loop.exit();
-                return;
-            }
+        if let Err(error) = self.open_surface(window.clone(), &atlas) {
+            self.error = Some(error);
+            event_loop.exit();
+            return;
         }
+        self.map_atlas = atlas.layout_at_scale(self.scale);
+        self.atlas = Some(atlas);
         window.focus_window();
         let size = window.inner_size();
         let mount = Viewport::new(size.width, size.height, self.scale)
@@ -3402,6 +3475,11 @@ impl ApplicationHandler for App {
                     Ok(()) => {
                         if let Some(renderer) = &mut self.renderer
                             && let Err(error) = renderer.resize(size.width, size.height)
+                        {
+                            self.error = Some(error);
+                        }
+                        if let Some(grid) = &mut self.grid
+                            && let Err(error) = grid.resize(size.width, size.height)
                         {
                             self.error = Some(error);
                         }
