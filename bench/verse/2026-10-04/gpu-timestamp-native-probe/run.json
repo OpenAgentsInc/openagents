@@ -1,0 +1,20 @@
+{
+  "schema": "verse.gpu.timestamp.probe.v1",
+  "code_revision": "760c2a9dba",
+  "workload": "Two 16x16 clear-only render passes, no recorder, four timestamp queries, bounded five-second wait.",
+  "encoder_probe_result": "Completion returns, but elapsed GPU timestamps are zero; positive-duration assertion fails.",
+  "pass_boundary_probe_result": "Native probe passes and returns positive timestamp spans.",
+  "sample": {
+    "frame": 1,
+    "shadow_ms": 0.004917,
+    "world_ms": 0.137458,
+    "overlay_ms": 0.004583,
+    "total_ms": 0.146958
+  },
+  "limits": [
+    "Sample field names reflect the shared timer format; these synthetic intervals are not chamber shadow/world/overlay costs.",
+    "The scene renderer still uses encoder timestamps and remains opt-in and unvalidated.",
+    "Pass-boundary probe does not prove a full scene capture will succeed.",
+    "This diagnostic is not a frame-rate or multiplayer acceptance measurement."
+  ]
+}
