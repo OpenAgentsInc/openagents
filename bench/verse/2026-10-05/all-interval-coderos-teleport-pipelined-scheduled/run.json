@@ -1,0 +1,922 @@
+{
+  "schema": "verse.battle.acceptance.evidence.v1",
+  "wire_version": 28,
+  "workload": {
+    "players": 20,
+    "live_hostiles": 40,
+    "persistent": true,
+    "delay_mode": "scheduled",
+    "delay_ms": 40,
+    "jitter_ms": 20
+  },
+  "acceptance": "failed",
+  "compiled_revisions": {
+    "host": "4a4a128cf8bd78fdfa014c88d6049e91686058f0",
+    "native_client": "94555e0d65e06618137bed77e71f51cb12f5f695",
+    "headless_clients": "62b1515f90d18d9c74256aa7d49ff4c21826aa29"
+  },
+  "movement_expiry": {
+    "total": 34,
+    "admission": 1,
+    "primary_tick": 7,
+    "additional_tick": 26,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 229,
+        "epoch": 2,
+        "authority_tick": 628,
+        "origin": "additional_tick",
+        "world_step": 112,
+        "confirmed_step": 76,
+        "projected_step": 76,
+        "received_at": 92,
+        "applied_sequence": 2,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 234,
+        "epoch": 2,
+        "authority_tick": 628,
+        "origin": "additional_tick",
+        "world_step": 112,
+        "confirmed_step": 76,
+        "projected_step": 76,
+        "received_at": 92,
+        "applied_sequence": 2,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 239,
+        "epoch": 2,
+        "authority_tick": 628,
+        "origin": "additional_tick",
+        "world_step": 112,
+        "confirmed_step": 76,
+        "projected_step": 76,
+        "received_at": 92,
+        "applied_sequence": 2,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 240,
+        "epoch": 2,
+        "authority_tick": 628,
+        "origin": "additional_tick",
+        "world_step": 112,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 104,
+        "applied_sequence": 1,
+        "queued_frames": 2,
+        "queued_steps": 16,
+        "first_start": 72,
+        "last_end": 88
+      },
+      {
+        "actor": 241,
+        "epoch": 2,
+        "authority_tick": 628,
+        "origin": "additional_tick",
+        "world_step": 112,
+        "confirmed_step": 76,
+        "projected_step": 76,
+        "received_at": 92,
+        "applied_sequence": 2,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 245,
+        "epoch": 2,
+        "authority_tick": 628,
+        "origin": "additional_tick",
+        "world_step": 112,
+        "confirmed_step": 76,
+        "projected_step": 76,
+        "received_at": 92,
+        "applied_sequence": 2,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 227,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 228,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 230,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 231,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 232,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 233,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 235,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 236,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 237,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 238,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 2,
+        "queued_steps": 16,
+        "first_start": 72,
+        "last_end": 88
+      },
+      {
+        "actor": 243,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 244,
+        "epoch": 2,
+        "authority_tick": 629,
+        "origin": "additional_tick",
+        "world_step": 116,
+        "confirmed_step": 72,
+        "projected_step": 76,
+        "received_at": 108,
+        "applied_sequence": 1,
+        "queued_frames": 1,
+        "queued_steps": 4,
+        "first_start": 72,
+        "last_end": 76
+      },
+      {
+        "actor": 242,
+        "epoch": 2,
+        "authority_tick": 968,
+        "origin": "additional_tick",
+        "world_step": 1472,
+        "confirmed_step": 1436,
+        "projected_step": 1436,
+        "received_at": 1440,
+        "applied_sequence": 203,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 4,
+        "authority_tick": 1103,
+        "origin": "primary_tick",
+        "world_step": 2012,
+        "confirmed_step": 1979,
+        "projected_step": 1979,
+        "received_at": 2000,
+        "applied_sequence": 138,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 8,
+        "authority_tick": 1292,
+        "origin": "primary_tick",
+        "world_step": 2768,
+        "confirmed_step": 2734,
+        "projected_step": 2734,
+        "received_at": 2756,
+        "applied_sequence": 51,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 10,
+        "authority_tick": 1319,
+        "origin": "primary_tick",
+        "world_step": 2876,
+        "confirmed_step": 2840,
+        "projected_step": 2840,
+        "received_at": 2864,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 12,
+        "authority_tick": 1343,
+        "origin": "admission",
+        "world_step": 2972,
+        "confirmed_step": 2939,
+        "projected_step": 2939,
+        "received_at": 2968,
+        "applied_sequence": 1,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 14,
+        "authority_tick": 1436,
+        "origin": "primary_tick",
+        "world_step": 3344,
+        "confirmed_step": 3311,
+        "projected_step": 3311,
+        "received_at": 3336,
+        "applied_sequence": 44,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 16,
+        "authority_tick": 1465,
+        "origin": "primary_tick",
+        "world_step": 3460,
+        "confirmed_step": 3426,
+        "projected_step": 3426,
+        "received_at": 3444,
+        "applied_sequence": 1,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 229,
+        "epoch": 8,
+        "authority_tick": 2175,
+        "origin": "additional_tick",
+        "world_step": 6300,
+        "confirmed_step": 6264,
+        "projected_step": 6264,
+        "received_at": 6272,
+        "applied_sequence": 310,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 233,
+        "epoch": 6,
+        "authority_tick": 2175,
+        "origin": "additional_tick",
+        "world_step": 6300,
+        "confirmed_step": 6264,
+        "projected_step": 6264,
+        "received_at": 6264,
+        "applied_sequence": 309,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 238,
+        "epoch": 8,
+        "authority_tick": 2175,
+        "origin": "additional_tick",
+        "world_step": 6300,
+        "confirmed_step": 6264,
+        "projected_step": 6264,
+        "received_at": 6276,
+        "applied_sequence": 309,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 230,
+        "epoch": 6,
+        "authority_tick": 2177,
+        "origin": "additional_tick",
+        "world_step": 6308,
+        "confirmed_step": 6272,
+        "projected_step": 6272,
+        "received_at": 6272,
+        "applied_sequence": 313,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 231,
+        "epoch": 8,
+        "authority_tick": 2177,
+        "origin": "additional_tick",
+        "world_step": 6308,
+        "confirmed_step": 6272,
+        "projected_step": 6272,
+        "received_at": 6272,
+        "applied_sequence": 300,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 241,
+        "epoch": 6,
+        "authority_tick": 2177,
+        "origin": "additional_tick",
+        "world_step": 6308,
+        "confirmed_step": 6272,
+        "projected_step": 6272,
+        "received_at": 6276,
+        "applied_sequence": 311,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 244,
+        "epoch": 7,
+        "authority_tick": 2177,
+        "origin": "additional_tick",
+        "world_step": 6308,
+        "confirmed_step": 6272,
+        "projected_step": 6272,
+        "received_at": 6276,
+        "applied_sequence": 422,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 2
+  },
+  "steady_measurements": {
+    "client_preparation_cpu_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.40683400000000003,
+      "p95": 1.688375,
+      "p99": 2.999458,
+      "maximum": 18.134500000000003
+    },
+    "command_finish_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.984999999999999,
+      "p95": 9.320208,
+      "p99": 12.348125,
+      "maximum": 21.886292
+    },
+    "command_turnaround_ms": {
+      "samples": 727,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 155.79825,
+      "p95": 207.851708,
+      "p99": 237.502375,
+      "maximum": 317.060292
+    },
+    "command_verified_to_sample_ms": {
+      "samples": 730,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 7.16625,
+      "p95": 15.127458,
+      "p99": 21.362167000000003,
+      "maximum": 327.23524999999995
+    },
+    "events_turnaround_ms": {
+      "samples": 219,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 154.01325,
+      "p95": 202.327,
+      "p99": 248.443208,
+      "maximum": 289.795583
+    },
+    "events_verified_to_sample_ms": {
+      "samples": 219,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 6.7560839999999995,
+      "p95": 14.628083,
+      "p99": 18.857875,
+      "maximum": 258.063459
+    },
+    "frame_interval_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 12.989165999999999,
+      "p95": 18.974332999999998,
+      "p99": 24.117875,
+      "maximum": 343.317333
+    },
+    "gpu_overlay_ms": {
+      "samples": 2465,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.017959,
+      "p95": 0.183125,
+      "p99": 2.051125,
+      "maximum": 11.570333
+    },
+    "gpu_query_poll_cpu_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.014624999999999999,
+      "p95": 0.588083,
+      "p99": 0.93225,
+      "maximum": 4.743291
+    },
+    "gpu_shadow_ms": {
+      "samples": 2465,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 1.50125,
+      "p95": 3.439375,
+      "p99": 11.177333,
+      "maximum": 19.827583
+    },
+    "gpu_total_ms": {
+      "samples": 2465,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 2.359917,
+      "p95": 12.598875,
+      "p99": 14.688834,
+      "maximum": 23.149666
+    },
+    "gpu_world_ms": {
+      "samples": 2465,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.638625,
+      "p95": 10.295792,
+      "p99": 12.127167,
+      "maximum": 14.9495
+    },
+    "input_channel_depth": {
+      "samples": 1240,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 1.0,
+      "maximum": 3.0
+    },
+    "inventory_turnaround_ms": {
+      "samples": 39,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 148.865958,
+      "p95": 243.24124999999998,
+      "p99": 248.505625,
+      "maximum": 248.505625
+    },
+    "inventory_verified_to_sample_ms": {
+      "samples": 39,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 7.880041000000001,
+      "p95": 14.142291,
+      "p99": 35.845542,
+      "maximum": 35.845542
+    },
+    "oldest_input_handler_to_next_submit_cpu_ms": {
+      "samples": 9,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 15.472667000000001,
+      "p95": 66.542875,
+      "p99": 66.542875,
+      "maximum": 66.542875
+    },
+    "overlay_encode_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.00175,
+      "p95": 0.00325,
+      "p99": 0.004792,
+      "maximum": 0.040333999999999995
+    },
+    "pending_requests": {
+      "samples": 1240,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.0,
+      "p95": 6.0,
+      "p99": 6.0,
+      "maximum": 7.0
+    },
+    "prepare_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 3.670708,
+      "p95": 6.301374999999999,
+      "p99": 9.013708000000001,
+      "maximum": 18.96475
+    },
+    "present_call_cpu_ms": {
+      "samples": 1866,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.01675,
+      "p95": 0.028958,
+      "p99": 0.047958,
+      "maximum": 8.86875
+    },
+    "presentation_encode_cpu_ms": {
+      "samples": 1866,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.127458,
+      "p95": 0.18720900000000001,
+      "p99": 0.226542,
+      "maximum": 0.650416
+    },
+    "presentation_queue_submit_cpu_ms": {
+      "samples": 1866,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.048541999999999995,
+      "p95": 0.42941700000000005,
+      "p99": 0.659875,
+      "maximum": 5.984167
+    },
+    "queue_submit_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.759625,
+      "p95": 1.677708,
+      "p99": 7.119625,
+      "maximum": 326.283958
+    },
+    "rendered_snapshot_applied_age_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 91.315083,
+      "p95": 179.61112500000002,
+      "p99": 231.47375,
+      "maximum": 357.41483400000004
+    },
+    "sdk_verified_snapshot_age_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 84.872375,
+      "p95": 172.14041699999999,
+      "p99": 224.003875,
+      "maximum": 341.67816600000003
+    },
+    "shadow_encode_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.579875,
+      "p95": 1.0287499999999998,
+      "p99": 1.7755830000000001,
+      "maximum": 8.942583
+    },
+    "snapshot_turnaround_ms": {
+      "samples": 251,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 159.076625,
+      "p95": 213.924667,
+      "p99": 251.61833300000004,
+      "maximum": 298.159917
+    },
+    "snapshot_verified_to_sample_ms": {
+      "samples": 252,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 6.660334000000001,
+      "p95": 14.724041999999999,
+      "p99": 47.12175,
+      "maximum": 202.874958
+    },
+    "surface_acquire_cpu_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.06724999999999999,
+      "p95": 5.3794580000000005,
+      "p99": 7.761375,
+      "maximum": 40.54725
+    },
+    "surface_configure_cpu_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "maximum": 0.0
+    },
+    "total_draw_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 10.762875,
+      "p95": 16.783125,
+      "p99": 21.213541999999997,
+      "maximum": 341.111042
+    },
+    "update_channel_depth": {
+      "samples": 1240,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 2.0,
+      "p99": 3.0,
+      "maximum": 6.0
+    },
+    "window_present_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.210667,
+      "p95": 5.7920419999999995,
+      "p99": 8.273083,
+      "maximum": 41.664334
+    },
+    "world_encode_ms": {
+      "samples": 3133,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.17858300000000002,
+      "p95": 0.324333,
+      "p99": 0.609333,
+      "maximum": 7.614208
+    }
+  },
+  "reset_reasons": {
+    "control_epoch": 15
+  },
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "94555e0d65e06618137bed77e71f51cb12f5f695",
+      "verse_load": "62b1515f90d18d9c74256aa7d49ff4c21826aa29"
+    },
+    "sha256": {
+      "verse_remote": "6f09d5c4d93e0fc75fb470e86dbb13589205680917258f969bfc06d1bf8b2d7f",
+      "verse_load": "96b4135148556e15d6bcca22895311b1c8edd82f98f7b394d5300b89767b3b47"
+    },
+    "native_build": {
+      "compiled_revision": "94555e0d65e06618137bed77e71f51cb12f5f695",
+      "sha256": "6f09d5c4d93e0fc75fb470e86dbb13589205680917258f969bfc06d1bf8b2d7f",
+      "platform": "macOS arm64",
+      "features": [
+        "imported-desktop",
+        "remote-chamber"
+      ],
+      "build_wall_seconds": 546,
+      "compiler_cache_disabled": true,
+      "behavior_revision": "62b1515f90d18d9c74256aa7d49ff4c21826aa29"
+    },
+    "headless_build": {
+      "platform": "Linux x86_64",
+      "features": [
+        "remote-chamber"
+      ],
+      "wall_seconds": 158,
+      "compiler_cache_disabled": true
+    },
+    "wire_version": 28,
+    "sequenced_teleport_skips_pre_send_drain": true,
+    "post_teleport_reply_barrier": true
+  },
+  "exits": {
+    "clients": {
+      "primary": 0,
+      "load": 0
+    },
+    "host": 0,
+    "proxy": 0
+  },
+  "remote_load_proxy": {
+    "schema": "verse.delayed-route.v2",
+    "delay_ms": 40,
+    "jitter_ms": 20,
+    "delay_mode": "scheduled",
+    "delay_queue_capacity": 32,
+    "delay_queue_peak": 5,
+    "connections": 19,
+    "upstream_bytes": 9269194,
+    "downstream_bytes": 182470361,
+    "forwarded_chunks": 71229,
+    "errors": 3,
+    "refused_connections": 0,
+    "error_details": [
+      {
+        "elapsed_seconds": 82.68327828799374,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 104
+      },
+      {
+        "elapsed_seconds": 82.6832981450134,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 104
+      },
+      {
+        "elapsed_seconds": 82.69378535298165,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 104
+      }
+    ],
+    "omitted_error_details": 0,
+    "limits": [
+      "Delay applies to each TCP read chunk, not decrypted game messages.",
+      "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+      "Serial mode adds delay after each read and also limits chunk throughput.",
+      "TCP preserves byte order; this fixture does not simulate packet loss."
+    ],
+    "wall_seconds": 83.55096920998767
+  },
+  "load_deployment": {
+    "schema": "verse.battle.remote-load.v1",
+    "compiled_revision": "62b1515f90d18d9c74256aa7d49ff4c21826aa29",
+    "binary_sha256": "96b4135148556e15d6bcca22895311b1c8edd82f98f7b394d5300b89767b3b47",
+    "native_route": "Mac delayed proxy to SSH-forwarded Linux authority",
+    "headless_route": "Linux delayed loopback proxy to Linux authority",
+    "limits": [
+      "Headless drivers and authority share Linux CPU and storage.",
+      "Only the native player renders.",
+      "Headless route has no SSH forwarding hop."
+    ]
+  },
+  "limitations": [
+    "Movement expiry target is not met.",
+    "Three remote load-proxy errors remain unclassified.",
+    "Shared hardware and intervening client changes prevent isolated causal comparisons.",
+    "Only the native primary renders; headless clients establish server workload.",
+    "Input-to-display latency and one-way network age are not measured."
+  ],
+  "diagnosis": "The persistent battle completes but has 34 movement expiries. Early additional-player expiries occur at world steps 112 and 116 after movement-frame entry. Inspect startup cursor, verified credit, and request freshness around those first intervals. The queue regression is fixed, but whole-battle acceptance remains unproven."
+}
