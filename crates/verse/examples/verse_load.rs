@@ -117,6 +117,9 @@ async fn player(
     let mut producer_first = Vec::new();
     let mut producer_recent = VecDeque::new();
     let mut producer_observations = 0u64;
+    let mut producer_context = None;
+    let mut producer_transitions = Vec::new();
+    let mut omitted_producer_transitions = 0u64;
     let began = tokio::time::Instant::now();
     let result=async {
   loop {
@@ -149,6 +152,13 @@ async fn player(
       if let Some(baseline)=state.movement {
        // Retain both startup and recent timing without recording input or identity keys.
        let observation=serde_json::json!({"elapsed_ms":began.elapsed().as_millis(),"actor":baseline.life.actor,"epoch":baseline.epoch,"profile":baseline.profile,"confirmed_step":baseline.physics_step,"snapshot_world_step":baseline.world_step,"verified_credit":world_credit.filter(|(life,e,_)|(*life,*e)==(baseline.life,baseline.epoch)).map(|(_,_,step)|step),"cursor":frame_cursor.filter(|(life,e,_)|(*life,*e)==(baseline.life,baseline.epoch)).map(|(_,_,step)|step),"outstanding":outstanding.len(),"pending":pending.len(),"input_depth":send.max_capacity()-send.capacity()});
+       let context=(baseline.life,baseline.epoch);
+       if producer_context.is_some_and(|old|old!=context) {
+        if producer_transitions.len()<8 {
+         producer_transitions.push(serde_json::json!({"before":producer_recent,"after":observation}));
+        } else {omitted_producer_transitions=omitted_producer_transitions.saturating_add(1);}
+       }
+       producer_context=Some(context);
        producer_observations=producer_observations.saturating_add(1);
        if producer_first.len()<128 {producer_first.push(observation.clone());}
        if producer_recent.len()==128 {producer_recent.pop_front();}
@@ -255,7 +265,7 @@ async fn player(
         }
     };
     Ok(
-        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"producer_timing":{"observations":producer_observations,"first":producer_first,"recent":producer_recent,"window_capacity":128},"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
+        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"producer_timing":{"observations":producer_observations,"first":producer_first,"recent":producer_recent,"window_capacity":128,"transitions":producer_transitions,"transition_capacity":8,"omitted_transitions":omitted_producer_transitions},"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
     )
 }
 async fn run(config: Config) -> Result<(), String> {
@@ -337,7 +347,7 @@ async fn run(config: Config) -> Result<(), String> {
     }
     rows.sort_by_key(|r| r["player"].as_u64());
     let failed = rows.iter().any(|row| row["status"] != "complete");
-    let receipt = serde_json::json!({"schema":"verse.multiplayer.load.v3","movement_frames_requested":config.movement_frames,"status":if failed {"failed"} else {"complete"},"seconds":config.seconds,"players":rows,"limits":["Headless authenticated clients measure transport and authority load, not rendering.","Headless intervals use confirmed server time plus the existing bounded authority lookahead, without native prediction or rendering; the receipt declares the requested movement mode.","Binding-to-outcome includes server processing and client delivery, not isolated RTT.","Timing retains at most 8192 latency samples and two 128-observation producer windows per player. The producer windows can overlap."]});
+    let receipt = serde_json::json!({"schema":"verse.multiplayer.load.v3","movement_frames_requested":config.movement_frames,"status":if failed {"failed"} else {"complete"},"seconds":config.seconds,"players":rows,"limits":["Headless authenticated clients measure transport and authority load, not rendering.","Headless intervals use confirmed server time plus the existing bounded authority lookahead, without native prediction or rendering; the receipt declares the requested movement mode.","Binding-to-outcome includes server processing and client delivery, not isolated RTT.","Timing retains at most 8192 latency samples and two 128-observation producer windows and eight context-transition histories per player. Each transition retains up to 128 preceding observations. The windows can overlap."]});
     std::fs::write(
         config.output,
         serde_json::to_vec_pretty(&receipt).map_err(|_| "Cannot encode load receipt")?,
