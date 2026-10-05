@@ -11,7 +11,12 @@
 //! `village/T_RoundTiles_Luma`, admitted for the generated buildings)
 //! tinted by the paint's colors, so kit-built houses vary in color without
 //! another model or image.
+//!
+//! A carved placement ([`super::demolition::carve`]) draws its model with
+//! every triangle split on the model's block lattice, so the town can take
+//! one block's triangles out of the merged cells when it breaks.
 
+use super::demolition::carve::{Lattice, split};
 use super::{detail, layout::Placement};
 use crate::controller::Footprint;
 use crate::pbr::textured::{
@@ -64,7 +69,8 @@ pub(crate) struct Copied<'a> {
     /// White materials that a placed model's colors fold into, by image,
     /// alpha mode and cutoff, and face culling.
     folded: BTreeMap<(Option<usize>, u8, u32, bool), usize>,
-    meshes: BTreeMap<(&'a str, [u32; 6]), (usize, ([f32; 3], [f32; 3]))>,
+    #[allow(clippy::type_complexity)]
+    meshes: BTreeMap<(&'a str, [u32; 6], Option<[u32; 6]>), (usize, ([f32; 3], [f32; 3]))>,
 }
 
 /// A material's look once its paint is applied: the scene image, the
@@ -109,20 +115,33 @@ pub(crate) fn build_painted(
     };
     let mut copied = Copied::default();
     let mut blockers = Vec::new();
-    for placement in placements {
+    let carved = super::demolition::carve::carved(placements);
+    let lattice = |placement: &Placement, carved: bool| -> Result<Option<Lattice>, String> {
+        if !carved {
+            return Ok(None);
+        }
+        let model = pack
+            .model(placement.model)
+            .ok_or_else(|| format!("The Everglade pack has no {}", placement.model))?;
+        Ok(Some(Lattice::of(model.bounds(), placement.scale)))
+    };
+    for (placement, &carved) in placements.iter().zip(&carved) {
         let colors = paint(placement);
-        let (mesh, bounds) = mesh(pack, placement.model, colors, &mut scene, &mut copied)?;
+        let cut = lattice(placement, carved)?;
+        let (mesh, bounds) = mesh(pack, placement.model, colors, cut, &mut scene, &mut copied)?;
         let (level, _) = detail::plan(pack, placement.model);
         scene.place_detail(mesh, placement.transform(), level);
         blockers.extend(placement.footprints(bounds));
     }
     // Far levels of detail follow, in layout order (`detail::far_placements`).
+    // A far level is not split: its few large triangles hide with the
+    // block their middle lies in.
     for (placement, far) in placements
         .iter()
         .zip(detail::far_placements(pack, placements))
     {
         if let Some((far, _)) = far {
-            let (mesh, _) = mesh(pack, far, paint(placement), &mut scene, &mut copied)?;
+            let (mesh, _) = mesh(pack, far, paint(placement), None, &mut scene, &mut copied)?;
             scene.place_detail(mesh, placement.transform(), detail::FAR_DETAIL);
         }
     }
@@ -130,24 +149,30 @@ pub(crate) fn build_painted(
     Ok((scene, blockers))
 }
 
-/// The scene mesh of pack model `name` in `colors`, copied once, and the
-/// model's bounds.
+/// The scene mesh of pack model `name` in `colors`, split on `lattice`
+/// when it is carved, copied once, and the model's bounds.
 fn mesh<'a>(
     pack: &'a ZonePack,
     name: &'a str,
     colors: Paint,
+    lattice: Option<Lattice>,
     scene: &mut TexturedScene,
     copied: &mut Copied<'a>,
 ) -> Result<(usize, ([f32; 3], [f32; 3])), String> {
-    if let Some(entry) = copied.meshes.get(&(name, colors.key())) {
+    let cut = lattice.map(|l| {
+        let [a, b, c] = l.size.to_array().map(f32::to_bits);
+        let [d, e, f] = l.min.to_array().map(f32::to_bits);
+        [a, b, c, d, e, f]
+    });
+    if let Some(entry) = copied.meshes.get(&(name, colors.key(), cut)) {
         return Ok(*entry);
     }
     let model = pack
         .model(name)
         .ok_or_else(|| format!("The Everglade pack has no {name}"))?;
-    let mesh = copy_model(pack, model, scene, copied, colors)?;
+    let mesh = copy_model(pack, model, scene, copied, colors, lattice.as_ref())?;
     let entry = (mesh, model.bounds());
-    copied.meshes.insert((name, colors.key()), entry);
+    copied.meshes.insert((name, colors.key(), cut), entry);
     Ok(entry)
 }
 
@@ -162,6 +187,7 @@ fn copy_model(
     scene: &mut TexturedScene,
     copied: &mut Copied<'_>,
     paint: Paint,
+    lattice: Option<&Lattice>,
 ) -> Result<usize, String> {
     let mut primitives = Vec::with_capacity(model.primitives.len());
     for primitive in &model.primitives {
@@ -187,21 +213,26 @@ fn copy_model(
             }
         };
         let tint = look.base_color;
+        let mut vertices: Vec<TexturedVertex> = primitive
+            .vertices
+            .iter()
+            .map(|v| TexturedVertex {
+                pos: v.position,
+                normal: v.normal,
+                uv: v.uv,
+                color: std::array::from_fn(|c| {
+                    (f32::from(v.color[c]) * tint[c]).round().clamp(0.0, 255.0) as u8
+                }),
+                light: UNBAKED,
+            })
+            .collect();
+        let indices = match lattice {
+            Some(lattice) => split(&mut vertices, &primitive.indices, lattice),
+            None => primitive.indices.clone(),
+        };
         primitives.push(Primitive {
-            vertices: primitive
-                .vertices
-                .iter()
-                .map(|v| TexturedVertex {
-                    pos: v.position,
-                    normal: v.normal,
-                    uv: v.uv,
-                    color: std::array::from_fn(|c| {
-                        (f32::from(v.color[c]) * tint[c]).round().clamp(0.0, 255.0) as u8
-                    }),
-                    light: UNBAKED,
-                })
-                .collect(),
-            indices: primitive.indices.clone(),
+            vertices,
+            indices,
             material,
         });
     }

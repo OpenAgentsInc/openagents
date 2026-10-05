@@ -607,18 +607,38 @@ and [`site.rs`](../../crates/verse/src/zones/everglade/demolition/site.rs).
 - **Controls.** Key 6 on Everglade's hotbar aims Meteor Swarm (a click or a
   tap casts it, right click or `Esc` cancels) and key 7 swings the
   sledgehammer. Both cost nothing and have no cooldown; the 2.5 s cast bar
-  and the targeting circle stay. `R` restores every building.
+  and the targeting circle stay. The circle lies over whatever is highest
+  under it, roofs included, and a cursor over a building puts it there
+  rather than on the ground hidden inside. `R` restores every building.
 - **Buildings.** Kit wall sections that meet side by side, at a corner, or
   one over another make one building. Its posts, roof spans, gables,
   chimney, glass, shutters, door frames, and door leaves map onto the
   yard's pieces with a story and a roof span, so upper stories need the
   section under them and a wide roof's inner eaves rest on the south and
-  north walls. Generated whole-model buildings, the open pavilion and
-  bandshell, the arch, the boards, and the furniture are not kit walls and
-  stay whole.
-- **The studio.** A building over the workshop hall, the strongroom, or a
-  station's standing point is protected: a swing there floats "Protected",
-  and a meteor bursts on it without harm.
+  north walls.
+- **Carved models.** Everything else the town places except the ground,
+  water, plants, and the footbridge and docks is carved
+  ([`carve.rs`](../../crates/verse/src/zones/everglade/demolition/carve.rs)):
+  the generated buildings and landmarks, the open pavilion, the stalls, the
+  studio's furniture, fences, and props. A carved model is cut on a lattice
+  of blocks at most 3.5 m across and 3.2 m tall in its own frame; the
+  static scene draws it with its triangles split on that lattice, so one
+  block leaves the merged cells on its own. Placements whose bounds touch
+  make one building. A block stands on the ground, on the blocks under it,
+  or within two blocks sideways of a block a column holds up, so floors and
+  roofs sag and fall when their columns go. Its chunks are cut from its
+  triangles a few blocks a frame while the player is within 50 m.
+- **Collision.** A carved model collides by its triangles: 0.25 m columns,
+  each holding the solid height spans over it, tagged with their block
+  (`verse_world::social::columns`). A span blocks a character whose body it
+  crosses and holds up one standing on it, so the bandshell's steps climb
+  onto its stage, its curved shell can't be entered, closed doors block,
+  open arcades don't, and roofs keep their real slopes. A broken block's
+  spans stop blocking.
+- **The studio.** The workshop hall, the strongroom, and the stations'
+  furniture break like the rest. Restoring or regrowth brings them back,
+  and the studio's routes plan over the same blockers throughout, so seats
+  walk through rubble while it lies there.
 - **Laziness.** A building stays in the merged static cells until a swing or
   a blast reaches it. It is then raised into the rules as static bodies, and
   only its damaged, loose, or broken pieces leave the static cells, by
@@ -627,10 +647,19 @@ and [`site.rs`](../../crates/verse/src/zones/everglade/demolition/site.rs).
   draw in the frame's figure. The
   blockers and roof surfaces of a raised building come from its standing
   pieces.
-- **Budgets.** At most four raised buildings and 220 chunks on desktop, and
-  two and 96 in a browser or on a phone. A raised building that took no
-  damage goes back after 2 s; a damaged one regrows whole after 60 s of rest
-  with the player 30 m away.
+- **Budgets.** At most 12 raised buildings, 520 raised pieces, and 260
+  chunks on desktop, and 6, 240, and 128 in a browser or on a phone. A
+  raised building that took no damage goes back after 2 s; a damaged one
+  regrows whole after 60 s of rest with the player 30 m away. Measured on
+  October 5, 2026: a strike that breaks the library (94 blocks, 109 to 128
+  chunks) holds 60 frames a second in headless Chrome on an Apple silicon
+  Mac, at 11 to 16 ms of page work a frame on WebGPU and 14 to 21 ms on
+  WebGL2 against 8 to 10 ms before it; the town's own step costs 3.8 ms a
+  frame on average and 8 ms at most natively.
+- **The web.** The physics step timed itself with `std::time::Instant`,
+  which panics in a browser, so the first strike that raised a building
+  stopped the page; it now reads the page's clock. A figure's images are
+  cooked once and reused when the town's chunk buffers grow.
 
 ### D2: Structural collapse and leaning
 

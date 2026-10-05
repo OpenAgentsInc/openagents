@@ -577,13 +577,24 @@ pub fn roads() -> Vec<([f32; 2], [f32; 2], f32)> {
 
 /// Each kit building's walls as one footprint per run between doorways,
 /// and every generated model's boxes (`super::generated`), the first
-/// town's and the city's, with their tops, m.
+/// town's and the city's, with their tops, m: what navigation plans
+/// around.
 #[must_use]
 pub fn blocks() -> Vec<(Footprint, f32)> {
     let mut out: Vec<(Footprint, f32)> = super::generated()
         .iter()
         .flat_map(Instance::blocks)
         .collect();
+    out.extend(kit_blocks());
+    out
+}
+
+/// Each kit building's walls as one footprint per run between doorways,
+/// with their tops, m. A generated model collides by its own triangles
+/// instead (`demolition::carve`).
+#[must_use]
+pub fn kit_blocks() -> Vec<(Footprint, f32)> {
+    let mut out = Vec::new();
     for b in all().filter(|b| !replaced(b)) {
         let ([cx, cz], [hx, hz]) = b.rect;
         let (west, east, south, north) = (cx - hx, cx + hx, cz - hz, cz + hz);

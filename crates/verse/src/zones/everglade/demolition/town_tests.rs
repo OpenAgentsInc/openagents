@@ -88,25 +88,36 @@ fn south_front(b: &Building) -> Vec3 {
 }
 
 #[test]
-fn the_survey_maps_the_kit_buildings_and_protects_the_studio() {
+fn the_survey_maps_the_kit_buildings_and_carves_everything_else() {
     let town = town();
     let buildings = town.buildings();
-    let destructible = buildings.iter().filter(|b| b.destructible()).count();
-    // Nearly every kit building maps onto the rules.
-    let valid = buildings.iter().filter(|b| b.valid).count();
-    assert!(
-        valid * 10 >= buildings.len() * 9,
-        "{valid} of {}",
-        buildings.len()
-    );
+    let kit: Vec<&Building> = buildings.iter().filter(|b| !b.is_carved()).collect();
     // The lane's and Main Street's houses and the city's storied
-    // buildings, most of the town.
-    assert!(destructible >= 40, "{destructible} destructible buildings");
-    // The workshop hall is the studio's, and protected.
+    // buildings, most of the town, map onto the kit rules.
+    assert!(kit.len() >= 40, "{} kit buildings", kit.len());
+    // The workshop hall is the studio's, and breaks like the rest.
     let hall = building(&town, HALL);
-    assert!(buildings[hall].protected);
-    assert!(!buildings[hall].destructible());
-    for b in buildings.iter().filter(|b| b.destructible()) {
+    assert!(buildings[hall].destructible());
+    // Every generated building and landmark is carved into blocks.
+    let placements = layout::placements();
+    for instance in layout::generated() {
+        let carved = buildings.iter().find(|b| {
+            b.carved.iter().any(|c| {
+                placements[c.placement].model == instance.model.name
+                    && placements[c.placement].at == instance.at
+            })
+        });
+        let b = carved.unwrap_or_else(|| panic!("{} is carved", instance.name));
+        assert!(b.destructible(), "{} breaks", instance.name);
+    }
+    // The studio's furniture is too.
+    assert!(buildings.iter().any(|b| {
+        b.is_carved()
+            && b.carved
+                .iter()
+                .any(|c| placements[c.placement].model == "props/Workbench")
+    }));
+    for b in kit.iter().filter(|b| b.destructible()) {
         // Every destructible building has a roof span over every 8 m and
         // walls on every story.
         let spans = b
@@ -191,26 +202,22 @@ fn a_meteor_strike_breaks_the_pieces_near_its_center() {
 }
 
 #[test]
-fn the_studio_takes_no_damage() {
+fn the_studio_breaks_and_comes_back() {
     let mut town = town();
     let hall = building(&town, HALL);
     let at = south_front(&town.buildings()[hall]);
     let player = caster(at, 14.0);
     strike(&mut town, &player, at, 1.0);
-    assert!(!town.raised().contains(&hall));
+    assert!(town.raised().contains(&hall));
     assert!(
-        town.refs()
+        pieces(&town, hall)
             .iter()
-            .all(|&(b, _)| !town.buildings()[b].protected)
+            .any(|&(_, s)| s == Status::Broken),
+        "the hall's front broke"
     );
-    // A swing at its wall only says it is protected.
-    let mut close = caster(at, 1.3);
-    close.yaw = 0.0;
-    assert!(town.swing());
-    run(&mut town, &close, 1.5);
-    assert!(!town.raised().contains(&hall));
-    let mesh = town.mesh(&close, close.pos + Vec3::new(0.0, 2.0, -4.0), None);
-    assert!(!mesh.faces.is_empty(), "the hammer and the word draw");
+    town.restore();
+    assert!(town.raised().is_empty());
+    assert_eq!(town.hidden(), 0);
 }
 
 #[test]

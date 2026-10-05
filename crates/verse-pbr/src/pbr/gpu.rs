@@ -482,6 +482,13 @@ pub struct Photo {
     pipelines: Pipelines,
     /// A textured material's image, sampler, and factors (group 2).
     material_layout: wgpu::BindGroupLayout,
+    /// Cooked and uploaded base-color images by name, size, a sample of
+    /// their texels, and role: the world scene's and the figures' drawn
+    /// since, so a figure whose scene changes (a town's chunks growing
+    /// their buffers) reuses the images already uploaded instead of cooking
+    /// their levels again. A new world scene starts it over, so leaving a
+    /// zone frees its images.
+    cooked: std::sync::Mutex<std::collections::BTreeMap<TextureKey, wgpu::TextureView>>,
     /// Fills group 1 for the masked shadow pipeline, which reads no guides.
     empty_group: wgpu::BindGroup,
     /// Repeating, trilinear sampling for base-color images.
@@ -1326,6 +1333,7 @@ impl Photo {
             sky_light,
             pipelines,
             material_layout,
+            cooked: std::sync::Mutex::default(),
             empty_group,
             textured_sampler,
             post,
@@ -1423,6 +1431,7 @@ impl Photo {
             scene,
             merged,
             wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            false,
         )
     }
 
@@ -1440,6 +1449,7 @@ impl Photo {
             &figure.scene,
             &figure.merged(),
             wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            true,
         )
     }
 
@@ -1450,13 +1460,28 @@ impl Photo {
         scene: &TexturedScene,
         merged: &textured::Merged,
         vertex_usage: wgpu::BufferUsages,
+        figure: bool,
     ) -> TexturedGpu {
         let max = device.limits().max_texture_dimension_2d;
+        let mut cooked = self
+            .cooked
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // A world scene starts the cache over with its own images, which a
+        // figure drawn over it (a town's chunks, in the same pack's images)
+        // then reuses.
+        if !figure || cooked.len() > MAX_COOKED {
+            cooked.clear();
+        }
         let images: std::collections::BTreeMap<_, wgpu::TextureView> = scene
             .mip_variants()
             .into_iter()
             .map(|variant| {
                 let image = &scene.images[variant.texture];
+                let key = TextureKey::of(image, variant.role);
+                if let Some(view) = cooked.get(&key) {
+                    return (variant, view.clone());
+                }
                 let levels = verse_engine::mips::cook(
                     image.width,
                     image.height,
@@ -1465,9 +1490,12 @@ impl Photo {
                     max,
                 )
                 .expect("admitted image and material");
-                (variant, upload_levels(device, queue, &image.name, &levels))
+                let view = upload_levels(device, queue, &image.name, &levels);
+                cooked.insert(key, view.clone());
+                (variant, view)
             })
             .collect();
+        drop(cooked);
         let white = upload_levels(
             device,
             queue,
@@ -2852,6 +2880,37 @@ fn upload_fx_sheets(
 }
 
 /// Uploads RGBA8 sRGB mip levels, largest first, as one texture.
+/// Most cooked images [`Photo`] keeps for reuse; past it the cache starts
+/// over.
+const MAX_COOKED: usize = 256;
+
+/// What identifies a cooked image: its name, size, a sample of its texels,
+/// and the role its levels were cooked for.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct TextureKey {
+    name: String,
+    size: (u32, u32, usize),
+    sample: u64,
+    role: verse_engine::mips::Role,
+}
+
+impl TextureKey {
+    fn of(image: &textured::BaseColorImage, role: verse_engine::mips::Role) -> Self {
+        // FNV-1a over every 997th byte: cheap, and two different images
+        // with one name and size differ in it.
+        let mut sample: u64 = 0xcbf2_9ce4_8422_2325;
+        for byte in image.rgba.iter().step_by(997) {
+            sample = (sample ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3);
+        }
+        Self {
+            name: image.name.clone(),
+            size: (image.width, image.height, image.rgba.len()),
+            sample,
+            role,
+        }
+    }
+}
+
 fn upload_levels(
     device: &wgpu::Device,
     queue: &wgpu::Queue,

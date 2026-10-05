@@ -10,11 +10,15 @@
 //! kit pieces on its footprint. Each wall section, post, roof span, gable,
 //! and chimney becomes a [`super::kit`] piece with its story and roof span,
 //! so the yard's support rules hold up storied buildings and wide roofs.
-//! The Agent Studio is never touched: a building over the workshop hall,
-//! the strongroom, or a station's standing point is protected, and a blow
-//! there only says so. Generated whole-model buildings, the open pavilion
-//! and bandshell, the arch, the boards, and the furniture aren't kit walls
-//! and stay as they are.
+//!
+//! Everything else the town places that isn't ground, water, or a plant is
+//! carved ([`super::carve`]): the generated buildings and landmarks, the
+//! open pavilion and bandshell, the stalls, the studio's furniture, and
+//! fences and props. Carved placements whose bounds touch make one
+//! building, each of its blocks a piece that rests on the blocks under it
+//! or is carried a short way by the blocks beside it. The Agent Studio is
+//! no exception: its hall, strongroom, and stations break like the rest
+//! and come back with the town.
 //!
 //! Destruction is lazy. Every building stays in the zone's merged static
 //! cells until a swing or a meteor reaches it. Then it is raised into a
@@ -28,14 +32,16 @@
 //! static cells at once; a damaged one regrows whole after [`REGROW`]
 //! seconds of rest with the player away; `R` restores the whole town.
 //! While a building is raised, its blockers and roof surface come from its
-//! standing pieces, so the player walks through gaps and never stands on a
-//! roof that fell.
+//! standing pieces, and a carved building's columns from its standing
+//! blocks, so the player walks through gaps and never stands on a roof
+//! that fell.
 
+use super::carve::{self, Lattice, Split};
 use super::chunks::{self, ChunkMesh};
 use super::hammer::{self, Hammer};
 use super::kit::{self, CORNER_TRIM, Draft, SEAM, WALL_TOP};
 use super::meteor::{self, Swarm};
-use super::site::{Blow, Cuboid, PieceSpec, Role, Side, Site, Status, Target};
+use super::site::{Blow, Cuboid, Link, Matter, PieceSpec, Role, Side, Site, Status, Target};
 use super::{BREAK, HIT, join};
 use crate::controller::{Footprint, PlayerController};
 use crate::mesh::Mesh;
@@ -43,16 +49,17 @@ use crate::pbr::textured::{
     Figure, IndexRange, Primitive, TexturedMesh, TexturedScene, TexturedVertex, UNBAKED,
 };
 use crate::pbr::textured_bake::AmbientProbes;
+use crate::zones::everglade::height;
 use crate::zones::everglade::layout::{self, Placement};
 use crate::zones::everglade::player::{Hold, SwingTrack};
 use crate::zones::everglade::scene::{Copied, Paint, copy_painted};
 use crate::zones::everglade::solids::{self, Roof, Solids};
-use crate::zones::everglade::{HALL, STATIONS, STRONGROOM, height};
 use crate::zones::everglade_pack::ZonePack;
 use crate::zones::grove::draw::{FLOAT, Floater, Painter};
-use glam::{DVec3, Vec3};
+use glam::{DVec3, Mat4, Quat, Vec3};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
+use verse_world::social::columns::Columns;
 
 /// Whether this build runs on a browser or a phone, whose budgets are
 /// smaller (`docs/verse/destructible-buildings.md`, Performance budgets).
@@ -62,9 +69,12 @@ const SMALL: bool = cfg!(any(
     target_os = "android"
 ));
 /// Most buildings raised into the rules at once.
-pub const MAX_LIVE: usize = if SMALL { 2 } else { 4 };
+pub const MAX_LIVE: usize = if SMALL { 6 } else { 12 };
+/// Most pieces of the raised buildings at once: a big carved hall has a
+/// hundred blocks.
+pub const MAX_PIECES: usize = if SMALL { 240 } else { 520 };
 /// Most chunks alive at once across the town.
-pub const MAX_CHUNKS: usize = if SMALL { 96 } else { 220 };
+pub const MAX_CHUNKS: usize = if SMALL { 128 } else { 260 };
 /// Seconds a damaged building rests, with the player at least
 /// [`REGROW_DISTANCE`] m away, before it stands whole again.
 pub const REGROW: f32 = 60.0;
@@ -86,8 +96,15 @@ const NEAR: f32 = 0.6;
 const GROUND: f64 = 180.0;
 /// Seed of the town's dice and debris spread.
 const SEED: u64 = 0x70E7_D3B0;
-/// The color "Protected" floats in over the studio.
-const SHIELD: [f32; 3] = [0.62, 0.8, 1.0];
+/// How close two carved placements' bounds come to make one building, m.
+const TOUCH: f32 = 0.05;
+/// How near the player a carved building is cut into chunks ahead of a
+/// strike, m, and how many blocks a frame.
+const WARM: f32 = 50.0;
+const WARM_BLOCKS: usize = 2;
+/// How far above the ground a carved block's underside may be and still
+/// stand on it, m.
+const FOOTING: f32 = 0.5;
 /// Where a chunk that is gone, or a pool slot nobody uses, is drawn: a
 /// point under the ground.
 const COLLAPSED: TexturedVertex = TexturedVertex {
@@ -107,6 +124,12 @@ pub struct TownPiece {
     pub placements: Vec<usize>,
     look: Look,
     roof: Option<Roof>,
+    /// What holds a carved block up.
+    link: Link,
+    /// A carved block's placement and lattice cell.
+    pub carve: Option<(usize, u32)>,
+    /// Whether its chunks are cut; a kit piece's always are.
+    cut: bool,
 }
 
 /// One building of the town.
@@ -115,11 +138,14 @@ pub struct Building {
     /// Center and half extents, m.
     pub rect: ([f32; 2], [f32; 2]),
     pub stories: u8,
-    /// Part of the Agent Studio.
-    pub protected: bool,
     /// Whether its pieces map onto the rules; a building that doesn't
     /// stays as placed.
     pub valid: bool,
+    /// Its carved placements, each with its columns, lattice, and split
+    /// model; empty for a kit building.
+    pub carved: Vec<Carved>,
+    /// Whether its carved blocks' chunks are cut.
+    ready: bool,
     /// The ground under its center, and the highest point of its roof, m.
     pub base: f32,
     pub top: f32,
@@ -133,7 +159,13 @@ impl Building {
     /// Whether the rules may break it.
     #[must_use]
     pub fn destructible(&self) -> bool {
-        self.valid && !self.protected && !self.pieces.is_empty()
+        self.valid && !self.pieces.is_empty()
+    }
+
+    /// Whether it is carved rather than built of kit pieces.
+    #[must_use]
+    pub fn is_carved(&self) -> bool {
+        !self.carved.is_empty()
     }
 
     /// The distance from `point` to the building's box, m.
@@ -152,6 +184,21 @@ impl Building {
         if (point.x - cx).abs() > hx + 0.35 + reach || (point.z - cz).abs() > hz + 0.35 + reach {
             return false;
         }
+        if self.is_carved() {
+            // Under the top of its solid columns near the point.
+            return self.carved.iter().any(|c| {
+                [
+                    [0.0, 0.0],
+                    [reach, 0.0],
+                    [-reach, 0.0],
+                    [0.0, reach],
+                    [0.0, -reach],
+                ]
+                .iter()
+                .flat_map(|[dx, dz]| c.columns.spans_at(point.x + dx, point.z + dz))
+                .any(|s| point.y <= s.hi + reach && point.y >= s.lo - reach)
+            });
+        }
         let eaves = self.base + WALL_TOP * f32::from(self.stories);
         let roof = self
             .roofs
@@ -159,6 +206,27 @@ impl Building {
             .filter_map(|r| surface(r, point.x, point.z))
             .fold(eaves, f32::max);
         point.y >= self.base - reach && point.y <= roof + reach
+    }
+}
+
+/// One carved placement of a building.
+#[derive(Clone)]
+pub struct Carved {
+    pub placement: usize,
+    pub columns: Arc<Columns>,
+    pub lattice: Lattice,
+    split: Arc<Split>,
+    /// Each cell's piece in the building, by cell number.
+    cells: BTreeMap<u32, usize>,
+}
+
+impl std::fmt::Debug for Carved {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Carved")
+            .field("placement", &self.placement)
+            .field("lattice", &self.lattice)
+            .field("cells", &self.cells.len())
+            .finish_non_exhaustive()
     }
 }
 
@@ -192,11 +260,12 @@ struct Wreck {
     /// For each site piece, its building and its index there.
     refs: Vec<(usize, usize)>,
     lifted: Vec<Lifted>,
-    /// Each chunk shape's boxes, in the body frame.
+    /// Each chunk shape's boxes, in the body frame, and its meshes.
     cuboids: Vec<Vec<Cuboid>>,
+    meshes: Vec<Vec<ChunkMesh>>,
+    /// The placements, for cutting carved blocks.
+    placements: Vec<crate::zones::everglade::layout::Placement>,
     clock: f32,
-    /// Where the last blow met a protected building.
-    protected_hit: Option<Vec3>,
     /// Bumped when a building is raised or let go.
     revision: u64,
 }
@@ -214,6 +283,73 @@ impl Wreck {
         self.lifted.iter().any(|l| l.building == building)
     }
 
+    /// The pieces of the raised buildings.
+    fn live_pieces(&self) -> usize {
+        self.lifted
+            .iter()
+            .map(|l| self.buildings[l.building].pieces.len())
+            .sum()
+    }
+
+    /// Cuts a carved building's blocks into chunks the first time it is
+    /// raised: each block's chunk shape, and its colliders, which are its
+    /// chunks' boxes.
+    fn prepare(&mut self, building: usize) {
+        self.prepare_some(building, usize::MAX);
+    }
+
+    /// Cuts up to `budget` of a carved building's blocks that aren't cut
+    /// yet, so the town can cut the buildings near the player a few blocks
+    /// a frame before anything strikes them.
+    fn prepare_some(&mut self, building: usize, budget: usize) {
+        if self.buildings[building].ready {
+            return;
+        }
+        let b = &self.buildings[building];
+        let mut cut: Vec<(usize, Vec<ChunkMesh>)> = Vec::new();
+        for (k, piece) in b.pieces.iter().enumerate() {
+            if cut.len() >= budget {
+                break;
+            }
+            let Some((placement, cell)) = piece.carve else {
+                continue;
+            };
+            if piece.cut {
+                continue;
+            }
+            let Some(carved) = b.carved.iter().find(|c| c.placement == placement) else {
+                continue;
+            };
+            let meshes = carve::cut_cell(
+                &carved.split,
+                &self.placements[placement],
+                cell,
+                piece.draft.placement,
+            );
+            cut.push((k, meshes));
+        }
+        for (k, meshes) in cut {
+            let boxes: Vec<Cuboid> = meshes.iter().filter_map(|m| m.cuboid).collect();
+            self.cuboids.push(boxes.clone());
+            self.meshes.push(meshes);
+            let shape = self.meshes.len() - 1;
+            let piece = &mut self.buildings[building].pieces[k];
+            piece.look.shape = shape;
+            piece.cut = true;
+            // Colliders a little inside the chunks' boxes, so a block's
+            // neighbors don't start touching it.
+            piece.draft.colliders = boxes
+                .iter()
+                .map(|c| Cuboid {
+                    half: (c.half - DVec3::splat(0.01)).max(DVec3::splat(0.02)),
+                    ..*c
+                })
+                .collect();
+        }
+        let b = &mut self.buildings[building];
+        b.ready = b.pieces.iter().all(|p| p.cut);
+    }
+
     /// Raises `building` into the rules, letting a quiet one go first when
     /// [`MAX_LIVE`] are up, unless it is in `keep`. Returns whether it is
     /// raised.
@@ -224,7 +360,11 @@ impl Wreck {
         if !self.buildings[building].destructible() {
             return false;
         }
-        if self.lifted.len() >= MAX_LIVE {
+        let size = self.buildings[building].pieces.len();
+        while self.lifted.len() >= MAX_LIVE || self.live_pieces() + size > MAX_PIECES {
+            if self.lifted.is_empty() {
+                return false;
+            }
             let now = self.clock;
             let candidate = self
                 .lifted
@@ -237,11 +377,19 @@ impl Wreck {
                 None => return false,
             }
         }
+        self.prepare(building);
         let b = &self.buildings[building];
         let specs: Vec<PieceSpec> = b
             .pieces
             .iter()
-            .map(|p| p.draft.spec(self.cuboids[p.look.shape].clone()))
+            .map(|p| {
+                let mut spec = p.draft.spec(self.cuboids[p.look.shape].clone());
+                if p.carve.is_some() {
+                    spec.link = p.link.clone();
+                    spec.blocks = false;
+                }
+                spec
+            })
             .collect();
         let count = specs.len();
         self.site.add(specs);
@@ -312,16 +460,8 @@ impl Target for Wreck {
     fn strike(&mut self, path: &[Vec3], push: Vec3, reach: f32) -> Option<Blow> {
         self.lift_near(path, reach + 0.5);
         let blow = self.site.strike(path, push, reach);
-        match blow {
-            Some(blow) => self.note(&[blow]),
-            None => {
-                // A blow at the studio only says it is protected.
-                self.protected_hit = path.iter().copied().find(|&p| {
-                    self.buildings
-                        .iter()
-                        .any(|b| b.protected && b.distance(p) <= reach)
-                });
-            }
+        if let Some(blow) = blow {
+            self.note(&[blow]);
         }
         blow
     }
@@ -478,9 +618,7 @@ impl Pool {
 /// ones, the hammer and the spell, and what they draw.
 pub struct Town {
     wreck: Wreck,
-    /// Each chunk shape's meshes, in the pack's materials, and the pool
-    /// material each pack material takes under each paint.
-    meshes: Vec<Vec<ChunkMesh>>,
+    /// The pool material each pack material takes under each paint.
     materials: BTreeMap<(u16, usize), usize>,
     /// For each site piece, how it looks.
     looks: Vec<Look>,
@@ -490,10 +628,14 @@ pub struct Town {
     /// its own and its far level of detail's, with their ranges.
     world: Arc<TexturedScene>,
     ranges: BTreeMap<usize, Vec<(usize, IndexRange)>>,
+    /// Each carved scene mesh's triangles' cells, by primitive.
+    cells: BTreeMap<usize, Arc<Vec<Vec<u32>>>>,
     /// The pieces whose placements are hidden, by building and piece.
     hidden: BTreeSet<(usize, usize)>,
-    /// The solids without any building, and whether they changed.
+    /// The solids without any building, the solids now, and whether they
+    /// changed.
     base: Solids,
+    current: Solids,
     solids: Option<Solids>,
     seen: (u64, u64),
     /// The character's scene, and the scene of it and the pool together.
@@ -517,11 +659,18 @@ impl Town {
         placements: &[Placement],
         world: Arc<TexturedScene>,
     ) -> Result<Self, String> {
-        let surveyed = survey(placements);
-        let members: BTreeSet<usize> = surveyed
+        let surveyed: Vec<Surveyed> = survey(placements)
+            .into_iter()
+            .enumerate()
+            .filter(|(i, s)| s.build(*i, placements).valid)
+            .map(|(_, s)| s)
+            .collect();
+        let carved_set = carve::carved(placements);
+        let mut members: BTreeSet<usize> = surveyed
             .iter()
             .flat_map(|s| s.members.iter().copied())
             .collect();
+        members.extend((0..placements.len()).filter(|&i| carved_set[i]));
         // The zone's solids without the buildings' own: everything else
         // the layout places, and the city's blocks off the buildings.
         let others: Vec<Placement> = placements
@@ -532,7 +681,7 @@ impl Town {
             .collect();
         let mut base = solids::build(pack, &others)?;
         let mut city: Vec<Option<(Footprint, f32)>> =
-            layout::city::blocks().into_iter().map(Some).collect();
+            layout::city::kit_blocks().into_iter().map(Some).collect();
         let mut taken: Vec<(Footprint, f32)> = Vec::new();
         // Chunk shapes, cut once each and shared by every piece like it,
         // and each house's paint.
@@ -544,7 +693,17 @@ impl Town {
         let mut paints: Vec<Paint> = Vec::new();
         let mut materials: BTreeMap<(u16, usize), usize> = BTreeMap::new();
         let mut buildings = Vec::with_capacity(surveyed.len());
-        for (index, s) in surveyed.iter().enumerate() {
+        let paint_of =
+            |colors: Paint, paints: &mut Vec<Paint>| match paints.iter().position(|p| *p == colors)
+            {
+                Some(paint) => paint,
+                None => {
+                    paints.push(colors);
+                    paints.len() - 1
+                }
+            };
+        for s in &surveyed {
+            let index = buildings.len();
             let mut building = s.build(index, placements);
             // The city's wall runs on this building's lines are its own.
             for slot in &mut city {
@@ -563,47 +722,75 @@ impl Town {
                 building.blocks.extend(blocks);
                 building.roofs.extend(roof);
             }
-            if building.destructible() {
-                for piece in &mut building.pieces {
-                    let key = piece.draft.shape();
-                    let shape = match keys.get(&key) {
-                        Some(&shape) => shape,
-                        None => {
-                            let cut = chunks::cut(pack, &piece.draft)?;
-                            cuboids.push(cut.iter().filter_map(|m| m.cuboid).collect());
-                            meshes.push(cut);
-                            keys.insert(key, meshes.len() - 1);
-                            meshes.len() - 1
-                        }
-                    };
-                    let host = piece.placements[0];
-                    let colors = layout::paint(&placements[host]);
-                    let paint = match paints.iter().position(|p| *p == colors) {
-                        Some(paint) => paint,
-                        None => {
-                            paints.push(colors);
-                            paints.len() - 1
-                        }
-                    };
-                    for mesh in &meshes[shape] {
-                        for (source, _) in &mesh.parts {
-                            if let std::collections::btree_map::Entry::Vacant(entry) =
-                                materials.entry((*source, paint))
-                            {
-                                entry.insert(copy_painted(
-                                    pack,
-                                    *source,
-                                    &mut kit,
-                                    &mut copied,
-                                    colors,
-                                )?);
-                            }
+            for piece in &mut building.pieces {
+                let key = piece.draft.shape();
+                let shape = match keys.get(&key) {
+                    Some(&shape) => shape,
+                    None => {
+                        let cut = chunks::cut(pack, &piece.draft)?;
+                        cuboids.push(cut.iter().filter_map(|m| m.cuboid).collect());
+                        meshes.push(cut);
+                        keys.insert(key, meshes.len() - 1);
+                        meshes.len() - 1
+                    }
+                };
+                let host = piece.placements[0];
+                let colors = layout::paint(&placements[host]);
+                let paint = paint_of(colors, &mut paints);
+                for mesh in &meshes[shape] {
+                    for (source, _) in &mesh.parts {
+                        if let std::collections::btree_map::Entry::Vacant(entry) =
+                            materials.entry((*source, paint))
+                        {
+                            entry.insert(copy_painted(
+                                pack,
+                                *source,
+                                &mut kit,
+                                &mut copied,
+                                colors,
+                            )?);
                         }
                     }
-                    piece.look = Look { shape, paint };
-                    if matches!(piece.draft.role, Role::Roof { .. }) {
-                        piece.roof = solids::of_placement(pack, &placements[host])?.1;
+                }
+                piece.look = Look { shape, paint };
+                if matches!(piece.draft.role, Role::Roof { .. }) {
+                    piece.roof = solids::of_placement(pack, &placements[host])?.1;
+                }
+            }
+            buildings.push(building);
+        }
+        // The carved buildings: carved placements whose bounds touch.
+        for group in groups(pack, placements, &carved_set)? {
+            let index = buildings.len();
+            let building = carved_building(pack, placements, index, &group)?;
+            // City wall runs inside it stand in for its own walls.
+            for slot in &mut city {
+                if let Some((f, top)) = *slot {
+                    let center = [(f.min[0] + f.max[0]) * 0.5, (f.min[1] + f.max[1]) * 0.5];
+                    if within(building.rect, center, NEAR) {
+                        taken.push((f, top));
+                        *slot = None;
                     }
+                }
+            }
+            // Every pack material its placements draw in, painted as the
+            // scene paints it.
+            for c in &building.carved {
+                let colors = layout::paint(&placements[c.placement]);
+                let paint = paint_of(colors, &mut paints);
+                let used: BTreeSet<u16> = c.split.triangles.iter().map(|t| t.1).collect();
+                for source in used {
+                    if let std::collections::btree_map::Entry::Vacant(entry) =
+                        materials.entry((source, paint))
+                    {
+                        entry.insert(copy_painted(pack, source, &mut kit, &mut copied, colors)?);
+                    }
+                }
+            }
+            let mut building = building;
+            for piece in &mut building.pieces {
+                if let Some((placement, _)) = piece.carve {
+                    piece.look.paint = paint_of(layout::paint(&placements[placement]), &mut paints);
                 }
             }
             buildings.push(building);
@@ -619,7 +806,7 @@ impl Town {
         // on it rather than at the flat ground's height.
         let floors: Vec<(DVec3, DVec3)> = buildings
             .iter()
-            .filter(|b| b.destructible() && b.base > 0.05)
+            .filter(|b| b.destructible() && b.base > 0.05 && b.rect.1[0].max(b.rect.1[1]) > 1.5)
             .map(|b| {
                 let ([cx, cz], [hx, hz]) = b.rect;
                 let base = f64::from(b.base);
@@ -634,15 +821,49 @@ impl Town {
             .iter()
             .filter(|b| b.destructible())
             .flat_map(|b| b.pieces.iter().flat_map(|p| p.placements.iter().copied()))
-            .filter_map(|p| {
+            .collect::<BTreeSet<usize>>()
+            .into_iter()
+            .map(|p| {
                 let drawn = std::iter::once(p).chain(fars.get(p).copied().flatten().map(|f| f.1));
                 let ranges: Vec<(usize, IndexRange)> = drawn
                     .filter_map(|q| Some(all.get(q)?.iter().map(move |r| (q, *r))))
                     .flatten()
                     .collect();
-                Some((p, ranges))
+                (p, ranges)
             })
-            .collect();
+            .collect::<BTreeMap<usize, Vec<(usize, IndexRange)>>>();
+        // Each carved scene mesh's triangle cells, near and far, on its
+        // placement's lattice.
+        let mut cells: BTreeMap<usize, Arc<Vec<Vec<u32>>>> = BTreeMap::new();
+        for b in &buildings {
+            for c in &b.carved {
+                for (q, _) in ranges.get(&c.placement).into_iter().flatten() {
+                    let Some(mesh) = world.placements.get(*q).map(|p| p.mesh) else {
+                        continue;
+                    };
+                    cells.entry(mesh).or_insert_with(|| {
+                        Arc::new(
+                            world.meshes[mesh]
+                                .primitives
+                                .iter()
+                                .map(|primitive| {
+                                    primitive
+                                        .indices
+                                        .chunks_exact(3)
+                                        .map(|t| {
+                                            c.lattice.cell_of(
+                                                &[0, 1, 2]
+                                                    .map(|k| primitive.vertices[t[k] as usize]),
+                                            )
+                                        })
+                                        .collect()
+                                })
+                                .collect(),
+                        )
+                    });
+                }
+            }
+        }
         let mut town = Self {
             wreck: Wreck {
                 buildings,
@@ -651,17 +872,19 @@ impl Town {
                 refs: Vec::new(),
                 lifted: Vec::new(),
                 cuboids,
+                meshes,
+                placements: placements.to_vec(),
                 clock: 0.0,
-                protected_hit: None,
                 revision: 0,
             },
-            meshes,
             materials,
             looks: Vec::new(),
             pool: Pool::new(kit),
             world,
             ranges,
+            cells,
             hidden: BTreeSet::new(),
+            current: base.clone(),
             base,
             solids: None,
             seen: (u64::MAX, u64::MAX),
@@ -759,7 +982,8 @@ impl Town {
         if !self.swarm.targeting() {
             return false;
         }
-        match meteor::ground_hit(origin, direction) {
+        let solids = &self.current;
+        match meteor::surface_hit(origin, direction, &|x, z| solids.top(x, z)) {
             Some(ground) => {
                 self.swarm.aim_at(ground, player);
                 true
@@ -816,23 +1040,13 @@ impl Town {
         self.wield = (self.wield - dt).max(0.0);
         if let Some(path) = self.hammer.advance(dt, player) {
             self.wield = WIELD;
-            match self.wreck.strike(&path, player.forward(), hammer::REACH) {
-                Some(blow) => self.floaters.push(Floater {
+            if let Some(blow) = self.wreck.strike(&path, player.forward(), hammer::REACH) {
+                self.floaters.push(Floater {
                     at: blow.at + Vec3::Y * 0.6 - player.forward() * 0.45,
                     text: blow.damage.to_string(),
                     color: if blow.broke { BREAK } else { HIT },
                     start: self.clock,
-                }),
-                None => {
-                    if let Some(at) = self.wreck.protected_hit.take() {
-                        self.floaters.push(Floater {
-                            at: at + Vec3::Y * 0.6,
-                            text: "Protected".into(),
-                            color: SHIELD,
-                            start: self.clock,
-                        });
-                    }
-                }
+                });
             }
         }
         let mut blows = self.swarm.tick(dt, player, &mut self.wreck);
@@ -848,9 +1062,28 @@ impl Town {
         let now = self.clock;
         self.floaters.retain(|f| now - f.start < FLOAT);
         self.wreck.site.tick(dt);
+        self.warm(player);
         self.settle(player);
         self.sync();
         self.pose();
+    }
+
+    /// Cuts a few blocks of the nearest carved building within [`WARM`] m
+    /// of `player` that isn't cut yet, so a strike there raises it without
+    /// a pause.
+    fn warm(&mut self, player: &PlayerController) {
+        let nearest = self
+            .wreck
+            .buildings
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| !b.ready && b.destructible())
+            .map(|(i, b)| (i, b.distance(player.pos)))
+            .filter(|&(_, d)| d < WARM)
+            .min_by(|a, b| a.1.total_cmp(&b.1));
+        if let Some((building, _)) = nearest {
+            self.wreck.prepare_some(building, WARM_BLOCKS);
+        }
     }
 
     /// Lets go of raised buildings that took no damage, and regrows
@@ -909,9 +1142,17 @@ impl Town {
         let hidden: BTreeSet<(usize, usize)> = drawn.iter().map(|&i| self.wreck.refs[i]).collect();
         if hidden != self.hidden {
             let edits = &self.world.edits;
+            // A carved placement's ranges are rewritten whole, with the
+            // triangles of each of its hidden cells made degenerate.
+            let mut carved: BTreeSet<usize> = BTreeSet::new();
             for &(b, k) in self.hidden.symmetric_difference(&hidden) {
+                let piece = &self.wreck.buildings[b].pieces[k];
+                if let Some((placement, _)) = piece.carve {
+                    carved.insert(placement);
+                    continue;
+                }
                 let hide = hidden.contains(&(b, k));
-                for &placement in &self.wreck.buildings[b].pieces[k].placements {
+                for &placement in &piece.placements {
                     for (drawn, range) in self.ranges.get(&placement).into_iter().flatten() {
                         let indices = if hide {
                             vec![range.base; range.count as usize]
@@ -922,6 +1163,27 @@ impl Town {
                     }
                 }
             }
+            let gone: BTreeSet<(usize, u32)> = hidden
+                .iter()
+                .filter_map(|&(b, k)| self.wreck.buildings[b].pieces[k].carve)
+                .collect();
+            for placement in carved {
+                for (drawn, range) in self.ranges.get(&placement).into_iter().flatten() {
+                    let mut indices = self.world.range_indices(*drawn, range);
+                    let mesh = self.world.placements[*drawn].mesh;
+                    if let Some(cells) = self.cells.get(&mesh).and_then(|c| c.get(range.primitive))
+                    {
+                        for (t, cell) in cells.iter().enumerate() {
+                            if gone.contains(&(placement, *cell))
+                                && let Some(tri) = indices.get_mut(3 * t..3 * t + 3)
+                            {
+                                tri.fill(range.base);
+                            }
+                        }
+                    }
+                    edits.write(range.first, indices);
+                }
+            }
             self.hidden = hidden;
         }
         if drawn != self.pool.drawn || self.pool.spans.len() != self.count_spans(&drawn) {
@@ -929,7 +1191,7 @@ impl Town {
                 self.pool.clear();
             } else {
                 self.pool
-                    .pack(drawn, &self.looks, &self.meshes, &self.materials);
+                    .pack(drawn, &self.looks, &self.wreck.meshes, &self.materials);
             }
         }
         let seen = (self.wreck.revision, self.wreck.site.revision());
@@ -944,7 +1206,7 @@ impl Town {
         drawn
             .iter()
             .map(|&i| {
-                self.meshes[self.looks[i].shape]
+                self.wreck.meshes[self.looks[i].shape]
                     .iter()
                     .map(|m| m.parts.len())
                     .sum::<usize>()
@@ -956,8 +1218,35 @@ impl Town {
     /// blocks and roofs, and each raised building's standing pieces.
     fn refresh_solids(&mut self) {
         let mut solids = self.base.clone();
+        // A raised carved building's standing blocks, by placement and cell.
+        let mut standing: BTreeMap<usize, Vec<bool>> = BTreeMap::new();
+        for (i, piece) in self.wreck.site.pieces().iter().enumerate() {
+            let (b, k) = self.wreck.refs[i];
+            if let Some((placement, cell)) = self.wreck.buildings[b].pieces[k].carve {
+                let count = self.wreck.buildings[b]
+                    .carved
+                    .iter()
+                    .find(|c| c.placement == placement)
+                    .map_or(0, |c| c.lattice.count());
+                let cells = standing
+                    .entry(placement)
+                    .or_insert_with(|| vec![true; count]);
+                if let Some(slot) = cells.get_mut(cell as usize) {
+                    *slot = piece.status == Status::Standing;
+                }
+            }
+        }
         for (b, building) in self.wreck.buildings.iter().enumerate() {
-            if self.wreck.lifted(b) {
+            let lifted = self.wreck.lifted(b);
+            for c in &building.carved {
+                let mask = if lifted {
+                    standing.remove(&c.placement).map(Arc::new)
+                } else {
+                    None
+                };
+                solids.add_columns(c.columns.clone(), mask);
+            }
+            if lifted {
                 continue;
             }
             for &(footprint, top) in &building.blocks {
@@ -979,6 +1268,7 @@ impl Town {
                 solids.add_roof(roof);
             }
         }
+        self.current = solids.clone();
         self.solids = Some(solids);
     }
 
@@ -1006,7 +1296,7 @@ impl Town {
                     )
                 }
             };
-            let (_, source) = &self.meshes[span.shape][span.chunk].parts[span.part];
+            let (_, source) = &self.wreck.meshes[span.shape][span.chunk].parts[span.part];
             let out = &mut pool.posed[span.start..span.start + span.len];
             match transform {
                 Some(m) => {
@@ -1125,7 +1415,9 @@ impl Town {
             }
         }
         hammer::dust(&mut mesh, site.puffs());
-        self.swarm.draw(&mut mesh, eye);
+        let solids = &self.current;
+        self.swarm
+            .draw_over(&mut mesh, eye, &|x, z| solids.top(x, z));
         if !self.floaters.is_empty() {
             let mut painter = Painter::new(eye);
             for floater in &self.floaters {
@@ -1285,16 +1577,13 @@ impl Surveyed {
         let ([cx, cz], [hx, hz]) = self.rect;
         let (west, east, south, north) = (cx - hx, cx + hx, cz - hz, cz + hz);
         let near = |a: f32, b: f32| (a - b).abs() < 0.1;
-        let protected = [HALL, STRONGROOM]
-            .iter()
-            .any(|&(c, h)| overlaps(self.rect, (c, h)))
-            || STATIONS.iter().any(|s| within(self.rect, s.at, 0.5));
         let base = height(cx, cz);
         let mut building = Building {
             rect: self.rect,
             stories: self.stories,
-            protected,
             valid: false,
+            carved: Vec::new(),
+            ready: true,
             base,
             top: base + WALL_TOP * f32::from(self.stories) + 6.0,
             pieces: Vec::new(),
@@ -1496,6 +1785,9 @@ impl Surveyed {
                     placements,
                     look: Look { shape: 0, paint: 0 },
                     roof: None,
+                    link: Link::default(),
+                    carve: None,
+                    cut: true,
                 }
             })
             .collect();
@@ -1503,7 +1795,236 @@ impl Surveyed {
     }
 }
 
-/// Whether two rectangles, each a center and half extents, overlap.
-fn overlaps(a: ([f32; 2], [f32; 2]), b: ([f32; 2], [f32; 2])) -> bool {
-    (a.0[0] - b.0[0]).abs() < a.1[0] + b.1[0] && (a.0[1] - b.0[1]).abs() < a.1[1] + b.1[1]
+/// The placements that are pieces of the kit buildings the town's rules
+/// map: what stays out of carving ([`carve::carved`]).
+#[must_use]
+pub(crate) fn kit_members(placements: &[Placement]) -> BTreeSet<usize> {
+    survey(placements)
+        .iter()
+        .enumerate()
+        .filter(|(i, s)| s.build(*i, placements).valid)
+        .flat_map(|(_, s)| s.members.iter().copied())
+        .collect()
+}
+
+/// A placement's box in the world, from its model's bounds.
+fn world_box(pack: &ZonePack, placement: &Placement) -> Result<(Vec3, Vec3), String> {
+    let model = pack
+        .model(placement.model)
+        .ok_or_else(|| format!("The Everglade pack has no {}", placement.model))?;
+    let (min, max) = model.bounds();
+    let transform = placement.transform();
+    let (mut lo, mut hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+    for i in 0..8 {
+        let corner = Vec3::new(
+            if i & 1 == 0 { min[0] } else { max[0] },
+            if i & 2 == 0 { min[1] } else { max[1] },
+            if i & 4 == 0 { min[2] } else { max[2] },
+        );
+        let p = transform.transform_point3(corner);
+        lo = lo.min(p);
+        hi = hi.max(p);
+    }
+    Ok((lo, hi))
+}
+
+/// The carved placements of `placements` (marked in `carved`) whose boxes
+/// touch, each group in placement order.
+fn groups(
+    pack: &ZonePack,
+    placements: &[Placement],
+    carved: &[bool],
+) -> Result<Vec<Vec<usize>>, String> {
+    let chosen: Vec<usize> = (0..placements.len()).filter(|&i| carved[i]).collect();
+    let boxes: Vec<(Vec3, Vec3)> = chosen
+        .iter()
+        .map(|&i| world_box(pack, &placements[i]))
+        .collect::<Result<_, _>>()?;
+    let mut parent: Vec<usize> = (0..chosen.len()).collect();
+    fn find(parent: &mut [usize], mut i: usize) -> usize {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    }
+    // Boxes by the 8 m squares they cover.
+    let mut grid: BTreeMap<(i32, i32), Vec<usize>> = BTreeMap::new();
+    let square = |v: f32| (v / 8.0).floor() as i32;
+    for (k, (lo, hi)) in boxes.iter().enumerate() {
+        for x in square(lo.x - TOUCH)..=square(hi.x + TOUCH) {
+            for z in square(lo.z - TOUCH)..=square(hi.z + TOUCH) {
+                grid.entry((x, z)).or_default().push(k);
+            }
+        }
+    }
+    for members in grid.values() {
+        for (n, &a) in members.iter().enumerate() {
+            for &b in &members[n + 1..] {
+                let (la, ha) = boxes[a];
+                let (lb, hb) = boxes[b];
+                let touch =
+                    (0..3).all(|axis| la[axis] <= hb[axis] + TOUCH && lb[axis] <= ha[axis] + TOUCH);
+                if touch {
+                    let (ra, rb) = (find(&mut parent, a), find(&mut parent, b));
+                    if ra != rb {
+                        parent[ra.max(rb)] = ra.min(rb);
+                    }
+                }
+            }
+        }
+    }
+    let mut out: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for k in 0..chosen.len() {
+        let root = find(&mut parent, k);
+        out.entry(root).or_default().push(chosen[k]);
+    }
+    Ok(out.into_values().collect())
+}
+
+/// What a carved placement of `model` is made of.
+fn matter(model: &str) -> Matter {
+    if model.starts_with("props/")
+        || [
+            "fence", "cart", "barrel", "bench", "stall", "sign", "Crate", "Wagon",
+        ]
+        .iter()
+        .any(|k| model.contains(k))
+    {
+        Matter::Timber
+    } else if model.contains("Roof") {
+        Matter::Tile
+    } else {
+        Matter::Plaster
+    }
+}
+
+/// The carved building `index` of the placements in `group`: a block for
+/// every lattice cell that holds triangles, each resting on the blocks
+/// under it and carried by the blocks beside it.
+fn carved_building(
+    pack: &ZonePack,
+    placements: &[Placement],
+    index: usize,
+    group: &[usize],
+) -> Result<Building, String> {
+    struct Block {
+        placement: usize,
+        cell: u32,
+        lo: Vec3,
+        hi: Vec3,
+        level: u8,
+    }
+    let mut carved = Vec::new();
+    let mut blocks: Vec<Block> = Vec::new();
+    for &p in group {
+        let placement = &placements[p];
+        let split = carve::split_model(pack, placement.model, placement.scale)?;
+        let Some(columns) = carve::columns(pack, placement)? else {
+            continue;
+        };
+        let lattice = split.lattice;
+        // Each cell's solid box, from its columns.
+        let mut extents: BTreeMap<u32, (Vec3, Vec3)> = BTreeMap::new();
+        for (square, spans) in columns.iter() {
+            for span in spans {
+                let e = extents
+                    .entry(span.part)
+                    .or_insert((Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)));
+                e.0 = e.0.min(Vec3::new(square.min[0], span.lo, square.min[1]));
+                e.1 = e.1.max(Vec3::new(square.max[0], span.hi, square.max[1]));
+            }
+        }
+        let mut cells = BTreeMap::new();
+        for (cell, (lo, hi)) in extents {
+            cells.insert(cell, blocks.len());
+            blocks.push(Block {
+                placement: p,
+                cell,
+                lo,
+                hi,
+                level: lattice.index(cell)[1].min(255) as u8,
+            });
+        }
+        carved.push(Carved {
+            placement: p,
+            columns,
+            lattice,
+            split,
+            cells,
+        });
+    }
+    let (mut lo, mut hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+    for b in &blocks {
+        lo = lo.min(b.lo);
+        hi = hi.max(b.hi);
+    }
+    let overlap =
+        |a0: f32, a1: f32, b0: f32, b1: f32, margin: f32| a0 < b1 + margin && b0 < a1 + margin;
+    let mut pieces = Vec::with_capacity(blocks.len());
+    for (k, a) in blocks.iter().enumerate() {
+        let center = (a.lo + a.hi) * 0.5;
+        let footing = a.lo.y <= height(center.x, center.z) + FOOTING;
+        let mut under = Vec::new();
+        let mut beside = Vec::new();
+        for (j, b) in blocks.iter().enumerate() {
+            if j == k {
+                continue;
+            }
+            let across = overlap(a.lo.x, a.hi.x, b.lo.x, b.hi.x, -0.05)
+                && overlap(a.lo.z, a.hi.z, b.lo.z, b.hi.z, -0.05);
+            if across && b.hi.y >= a.lo.y - 0.3 && b.lo.y < a.lo.y - 0.1 {
+                under.push(j as u16);
+                continue;
+            }
+            let near = overlap(a.lo.x, a.hi.x, b.lo.x, b.hi.x, 0.3)
+                && overlap(a.lo.z, a.hi.z, b.lo.z, b.hi.z, 0.3);
+            let tall = (a.hi.y - a.lo.y).min(b.hi.y - b.lo.y).max(0.05);
+            let shared = a.hi.y.min(b.hi.y) - a.lo.y.max(b.lo.y);
+            if near && shared >= 0.3 * tall && !(across && a.lo.y < b.lo.y - 0.1) {
+                beside.push(j as u16);
+            }
+        }
+        let placement = &placements[a.placement];
+        let size = a.hi - a.lo;
+        let frame = Mat4::from_rotation_translation(Quat::from_rotation_y(placement.yaw), center);
+        let draft = Draft {
+            building: index,
+            role: Role::Block { level: a.level },
+            matter: matter(placement.model),
+            placement: frame,
+            models: Vec::new(),
+            colliders: Vec::new(),
+            origin: Vec3::ZERO,
+            mass: f64::from((size.x * size.y * size.z * 40.0).clamp(30.0, 3000.0)),
+            hit_points: if size.max_element() < 1.6 { 12 } else { 27 },
+        };
+        pieces.push(TownPiece {
+            draft,
+            placements: vec![a.placement],
+            look: Look { shape: 0, paint: 0 },
+            roof: None,
+            link: Link {
+                footing,
+                under,
+                beside,
+            },
+            carve: Some((a.placement, a.cell)),
+            cut: false,
+        });
+    }
+    let center = [(lo.x + hi.x) * 0.5, (lo.z + hi.z) * 0.5];
+    let levels = blocks.iter().map(|b| b.level).max().unwrap_or(0);
+    Ok(Building {
+        rect: (center, [(hi.x - lo.x) * 0.5, (hi.z - lo.z) * 0.5]),
+        stories: levels.saturating_add(1),
+        valid: !pieces.is_empty(),
+        carved,
+        ready: false,
+        base: height(center[0], center[1]),
+        top: hi.y,
+        pieces,
+        blocks: Vec::new(),
+        roofs: Vec::new(),
+    })
 }

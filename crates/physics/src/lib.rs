@@ -59,6 +59,7 @@ pub mod solid;
 pub mod thrusters;
 pub mod trace;
 pub mod walkable;
+pub(crate) mod wall;
 pub mod world;
 
 pub use body::{Body, BodyKind, Composite};

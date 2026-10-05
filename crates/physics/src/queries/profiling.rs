@@ -1,10 +1,10 @@
 //! Optional bounded measurements for one collision scene and its clones.
 use super::Stats;
+use crate::wall::Instant;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct QueryMetrics {

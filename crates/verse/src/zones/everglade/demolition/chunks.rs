@@ -45,10 +45,10 @@ pub struct ChunkMesh {
 
 /// A triangle in the host's model space, whether it is the host model's,
 /// and its pack material.
-struct Triangle {
-    corners: [TexturedVertex; 3],
-    host: bool,
-    material: u16,
+pub(super) struct Triangle {
+    pub(super) corners: [TexturedVertex; 3],
+    pub(super) host: bool,
+    pub(super) material: u16,
 }
 
 /// `draft`'s models from `pack`, cut into chunks.
@@ -95,7 +95,7 @@ pub fn cut(pack: &ZonePack, draft: &Draft) -> Result<Vec<ChunkMesh>, String> {
     Ok(chunks)
 }
 
-fn cut_region(triangles: &[Triangle], region: &Cut, origin: Vec3) -> Vec<ChunkMesh> {
+pub(super) fn cut_region(triangles: &[Triangle], region: &Cut, origin: Vec3) -> Vec<ChunkMesh> {
     let frame = Mat4::from_quat(region.frame);
     let inside = |t: &&Triangle| match region.side {
         None => true,
@@ -422,7 +422,7 @@ fn bounds(values: impl Iterator<Item = f32>) -> (f32, f32) {
 
 /// Clips `polygon` to the side of the plane `pos[axis] = plane` that is
 /// above it (`keep_above`) or below it, interpolating every attribute.
-fn clip(
+pub(super) fn clip(
     polygon: &[TexturedVertex],
     axis: usize,
     plane: f32,

@@ -52,10 +52,11 @@ pub const MAX_MATERIALS: usize = 1024;
 pub const MAX_PLACEMENTS: usize = 1 << 16;
 /// Most bytes of merged vertices and indices, the zone geometry bound.
 /// Everglade's city, about 2 million triangles with its far levels of
-/// detail, merges to about 130 MiB. The vertices and the indices are
-/// separate buffers, each well under wgpu's default 256 MiB buffer limit,
-/// which phones and browsers keep.
-pub const MAX_BYTES: usize = 160 * 1024 * 1024;
+/// detail and its carved models split on their block lattices, merges to
+/// about 175 MiB. The vertices and the indices are separate buffers, each
+/// well under wgpu's default 256 MiB buffer limit, which phones and
+/// browsers keep.
+pub const MAX_BYTES: usize = 224 * 1024 * 1024;
 /// Most switch distances in one scene ([`TexturedScene::switches`]).
 pub const MAX_SWITCHES: usize = 8;
 /// How far past its switch distance a cell must move before it changes

@@ -206,7 +206,7 @@ impl World {
     /// current poses correct velocities; then positions advance by
     /// semi-implicit Euler and rotation by the torque-free [`Body::rotate`].
     pub fn step(&mut self, field: &impl Field) {
-        let started = std::time::Instant::now();
+        let started = crate::wall::Instant::now();
         self.stats = StepStats::default();
         let dt = self.dt;
         self.slept.clear();
@@ -231,7 +231,7 @@ impl World {
         self.contacts = if self.colliders.is_empty() && self.joints.iter().all(Option::is_none) {
             Vec::new()
         } else {
-            let detecting = std::time::Instant::now();
+            let detecting = crate::wall::Instant::now();
             let base = self.solver.margin;
             let (wake_nodes, wake_candidates, wake_updates) = self.wake_near_kinematic(base);
             let speeds: Vec<_> = self
@@ -268,7 +268,7 @@ impl World {
             self.stats.detection = detection;
             self.stats.detect = detecting.elapsed();
             self.wake_touched(&manifolds);
-            let solving = std::time::Instant::now();
+            let solving = crate::wall::Instant::now();
             let contacts = self.solve(&manifolds, dt);
             self.stats.solve = solving.elapsed();
             contacts

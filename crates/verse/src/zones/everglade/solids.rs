@@ -2,7 +2,8 @@
 //! blocker's footprint and top, and each round-tile roof's gabled surface.
 //! The solids themselves live in `verse_world::social::solids`, so a hosted
 //! instance walks avatars over the same values; this module builds them
-//! from the pinned pack's models.
+//! from the pinned pack's models. A carved model
+//! ([`super::demolition::carve`]) collides by its own triangles' columns.
 
 use super::height;
 use super::layout::{self, Collision, Placement};
@@ -23,12 +24,9 @@ pub fn build(pack: &ZonePack, placements: &[Placement]) -> Result<Solids, String
     let mut walls = layout::board_blockers();
     walls.extend(layout::pond_blockers());
     let mut solids = build_with(pack, placements, &walls)?;
-    // The city's walls, one block per run as tall as their stories, and the generated models' boxes and roofs.
-    for (footprint, top) in layout::city::blocks() {
+    // The city's kit walls, one block per run as tall as their stories.
+    for (footprint, top) in layout::city::kit_blocks() {
         solids.add_block(footprint, top);
-    }
-    for roof in layout::generated().iter().flat_map(|i| i.roofs()) {
-        solids.add_roof(roof);
     }
     // The footbridge's deck, plank by plank, low enough to step onto.
     for (footprint, top) in layout::bridge_steps() {
@@ -49,7 +47,14 @@ pub fn build_with(
     boards: &[crate::controller::Footprint],
 ) -> Result<Solids, String> {
     let mut solids = Solids::over(height);
-    for placement in placements {
+    let carved = super::demolition::carve::carved(placements);
+    for (placement, carved) in placements.iter().zip(carved) {
+        if carved {
+            if let Some(grid) = super::demolition::carve::columns(pack, placement)? {
+                solids.add_columns(grid, None);
+            }
+            continue;
+        }
         let (blocks, roof) = of_placement(pack, placement)?;
         for (footprint, top) in blocks {
             solids.add_block(footprint, top);

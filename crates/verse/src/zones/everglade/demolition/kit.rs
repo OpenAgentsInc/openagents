@@ -114,6 +114,7 @@ impl Draft {
                 thickness: Some(0.2),
             }],
             Role::Chimney { .. } => whole([1, 2, 1]),
+            Role::Block { .. } => whole([2, 2, 2]),
             Role::Roof { .. } => {
                 let angle = slope_angle();
                 vec![
@@ -202,6 +203,7 @@ impl Draft {
             Role::Roof { .. } => DVec3::new(10.0, 6.8, 11.9),
             Role::Gable { .. } => DVec3::new(6.0, 4.0, 0.5),
             Role::Chimney { .. } => DVec3::new(1.0, 3.2, 1.0),
+            Role::Block { .. } => DVec3::splat(3.0),
         };
         PieceSpec {
             building: self.building,
@@ -215,6 +217,7 @@ impl Draft {
             colliders,
             chunks,
             blocks: matches!(self.role, Role::Wall { .. } | Role::Post { .. }),
+            link: super::site::Link::default(),
         }
     }
 }

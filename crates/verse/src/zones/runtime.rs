@@ -818,6 +818,25 @@ impl WorldRuntime {
                 .is_some_and(super::everglade::demolition::meteor::Swarm::targeting)
     }
 
+    /// How much of Everglade's town is in the rules now, for a frame log:
+    /// the raised buildings, their pieces, and the chunks alive; `None`
+    /// outside the town.
+    #[must_use]
+    pub fn everglade_wreckage(&self) -> Option<[usize; 3]> {
+        if self.zone != ZoneId::Everglade {
+            return None;
+        }
+        let town = self.zone_state.everglade.as_ref()?.town()?;
+        let site = town.site();
+        let chunks = site
+            .pieces()
+            .iter()
+            .flat_map(|p| &p.chunks)
+            .filter(|c| !c.gone)
+            .count();
+        Some([town.raised().len(), site.pieces().len(), chunks])
+    }
+
     /// Meteor Swarm's state in Everglade's town, for the overlay that
     /// draws its help and cast bar over the hotbar; `None` elsewhere and
     /// in the demolition yard, whose own hotbar draws them.

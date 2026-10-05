@@ -489,15 +489,28 @@ impl Swarm {
     /// The targeting circle, the cast's gathering fire, the meteors, their
     /// explosions, sparks, and scorch marks, seen from `eye`.
     pub fn draw(&self, mesh: &mut Mesh, eye: Vec3) {
+        self.draw_over(mesh, eye, &height);
+    }
+
+    /// [`Self::draw`], with the circle laid over `surface`, the height of
+    /// whatever is highest at a point: the ground, a roof, or a stage.
+    pub fn draw_over(&self, mesh: &mut Mesh, eye: Vec3, surface: &dyn Fn(f32, f32) -> f32) {
         let glow = &mut mesh.glow;
         let pulse = 0.75 + 0.25 * (self.clock * 6.0).sin();
         if let Some(at) = self.aim() {
-            circle(glow, at, AREA, pulse, self.clock);
+            circle(glow, at, AREA, pulse, self.clock, surface);
         }
         if let Some(cast) = self.casting {
             let k = (cast.elapsed / CAST).clamp(0.0, 1.0);
             let quick = 0.7 + 0.3 * (self.clock * (8.0 + 14.0 * k)).sin();
-            circle(glow, cast.at, AREA, quick * (1.0 + 1.5 * k), self.clock);
+            circle(
+                glow,
+                cast.at,
+                AREA,
+                quick * (1.0 + 1.5 * k),
+                self.clock,
+                surface,
+            );
         }
         for scorch in &self.scorches {
             scorch_mark(mesh, scorch);
@@ -550,11 +563,23 @@ pub fn clamp_to_range(ground: Vec3, player: Vec3) -> Vec3 {
 /// [`RANGE`] away.
 #[must_use]
 pub fn ground_hit(origin: Vec3, direction: Vec3) -> Option<Vec3> {
+    surface_hit(origin, direction, &height)
+}
+
+/// [`ground_hit`] against `surface`, the height of whatever is highest at
+/// a point, so a ray at a roof meets the roof; the point is still on the
+/// ground under it, where meteors aim.
+#[must_use]
+pub fn surface_hit(
+    origin: Vec3,
+    direction: Vec3,
+    surface: &dyn Fn(f32, f32) -> f32,
+) -> Option<Vec3> {
     if !origin.is_finite() || !direction.is_finite() || direction.length_squared() < 1e-6 {
         return None;
     }
     let direction = direction.normalize();
-    let under = |p: Vec3| p.y <= height(p.x, p.z);
+    let under = |p: Vec3| p.y <= surface(p.x, p.z);
     let step = 0.5;
     let mut t = 0.0;
     while t < 400.0 {
@@ -580,10 +605,18 @@ pub fn ground_hit(origin: Vec3, direction: Vec3) -> Option<Vec3> {
     Some(Vec3::new(p.x, height(p.x, p.z), p.z))
 }
 
-/// The targeting ring of `radius` at `at`, `level` times its plain glow:
-/// a bright rim, a fainter inner ring, a soft fill, and turning marks.
-fn circle(out: &mut Vec<GlowVertex>, at: Vec3, radius: f32, level: f32, clock: f32) {
-    let ground = |x: f32, z: f32| Vec3::new(x, height(x, z) + 0.06, z);
+/// The targeting ring of `radius` at `at`, `level` times its plain glow,
+/// laid over `surface`: a bright rim, a fainter inner ring, a soft fill,
+/// and turning marks.
+fn circle(
+    out: &mut Vec<GlowVertex>,
+    at: Vec3,
+    radius: f32,
+    level: f32,
+    clock: f32,
+    surface: &dyn Fn(f32, f32) -> f32,
+) {
+    let ground = |x: f32, z: f32| Vec3::new(x, surface(x, z) + 0.06, z);
     let rim = 64;
     for i in 0..rim {
         let angle = TAU * i as f32 / rim as f32;

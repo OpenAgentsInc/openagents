@@ -21,6 +21,9 @@
 //! ([`town`]), raising a building into the rules only when something
 //! first reaches it.
 
+pub mod carve;
+#[cfg(test)]
+mod carve_tests;
 pub mod chunks;
 pub mod cottage;
 pub mod hammer;
@@ -487,6 +490,7 @@ pub fn piece_name(role: Role) -> &'static str {
         Role::Roof { .. } => "roof",
         Role::Gable { .. } => "gable",
         Role::Chimney { .. } => "chimney",
+        Role::Block { .. } => "block",
     }
 }
 

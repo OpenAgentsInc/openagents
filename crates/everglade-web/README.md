@@ -52,6 +52,11 @@ The page that serves them must:
   `PACK_BYTES`, and refuses bytes whose length or SHA-256 differ. A new pack
   digest is a new URL, so the file can be cached as immutable.
 
+Two query parameters help captures: `at=X,Z` or `at=X,Z,YAW` starts the
+player at that point of Everglade, and `frames` logs a line to the console
+once a second, `Everglade frames {...}`, with the frame gaps, the page's
+work per frame, and the town's raised buildings, pieces, and chunks.
+
 Add `?demolition` to the page's URL to open the demolition yard instead of
 the glade, as `verse --demolition` does: `1` or a quick tap swings the
 sledgehammer, `2` aims Meteor Swarm (a click or a quick tap casts it where

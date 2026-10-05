@@ -1321,14 +1321,15 @@ fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resources, Strin
 }
 /// The additive glow triangles a frame draws at `quality`; the rest of
 /// `Mesh::glow` is dropped, in order. Spell particles spend most of it, so
-/// it is larger than the instance effect budget (`optional_effects`): 64
-/// quads on the low tier, 512 on medium, and 1024 on high. A glow vertex is
-/// 32 bytes, so even the high tier's 6144 vertices are under 200 KB, and
-/// each quad is a small blended sprite.
+/// it is larger than the instance effect budget (`optional_effects`): 256
+/// quads on the low tier, enough for Meteor Swarm's 130-quad targeting
+/// circle, 512 on medium, and 1024 on high. A glow vertex is 32 bytes, so
+/// even the high tier's 6144 vertices are under 200 KB, and each quad is a
+/// small blended sprite.
 #[must_use]
 pub fn glow_triangles(quality: verse_engine::quality::Quality) -> usize {
     match quality.tier {
-        verse_engine::quality::Tier::Low => quality.budget().optional_effects,
+        verse_engine::quality::Tier::Low => 512,
         verse_engine::quality::Tier::Medium => 1024,
         verse_engine::quality::Tier::High => 2048,
     }
@@ -2594,7 +2595,8 @@ mod tests {
     fn the_glow_budget_grows_by_tier_and_holds_spell_particles() {
         use verse_engine::quality::Tier;
         let quads = |tier: Tier| glow_triangles(tier.quality()) / 2;
-        assert_eq!(quads(Tier::Low), 64);
+        // The low tier holds Meteor Swarm's 130-quad targeting circle.
+        assert_eq!(quads(Tier::Low), 256);
         assert_eq!(quads(Tier::Medium), 512);
         assert_eq!(quads(Tier::High), 1024);
         // The glow buffer is admitted as geometry; the high tier's fits in

@@ -137,7 +137,13 @@ impl Quality {
                 Tier::Medium => 512 * 1024 * 1024,
                 _ => memory,
             },
-            geometry_bytes: memory,
+            // Everglade's merged town, with its far levels of detail, is
+            // about 160 MB of vertices and indices, which WebGL2 holds; the
+            // low tier draws less, not less of the world.
+            geometry_bytes: match self.tier {
+                Tier::Low => 256 * 1024 * 1024,
+                _ => memory,
+            },
             texture_bytes: memory,
             buffer_bytes: memory,
             cpu_frame_ms: 1000. / 60.,

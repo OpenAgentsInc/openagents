@@ -211,6 +211,70 @@ struct Page {
     grove_row: usize,
     /// The Grid's presence session, when the page opened the Grid online.
     presence: Option<Presence>,
+    /// With `?frames`, the frame times gathered for the console's
+    /// once-a-second line.
+    frames: Option<Frames>,
+}
+
+/// Frame times over the current second, for `?frames`.
+#[derive(Default)]
+struct Frames {
+    /// When the second began, in milliseconds.
+    since: f64,
+    count: u32,
+    /// The time between frames and the time the page spent in a frame, in
+    /// milliseconds: their sums and their largest.
+    gap: (f64, f64),
+    work: (f64, f64),
+}
+
+impl Frames {
+    /// Adds one frame that came `gap` ms after the last and took `work` ms,
+    /// and logs the second when it is over.
+    fn add(&mut self, now: f64, gap: f64, work: f64, wreckage: Option<[usize; 3]>) {
+        if self.count == 0 && self.since == 0.0 {
+            self.since = now;
+        }
+        self.count += 1;
+        self.gap = (self.gap.0 + gap, self.gap.1.max(gap));
+        self.work = (self.work.0 + work, self.work.1.max(work));
+        if now - self.since < 1000.0 {
+            return;
+        }
+        let n = f64::from(self.count.max(1));
+        let [raised, pieces, chunks] = wreckage.unwrap_or_default();
+        web_sys::console::info_1(&JsValue::from_str(&format!(
+            "Everglade frames {{\"frames\":{},\"gap_ms\":{:.1},\"gap_max_ms\":{:.1},\"work_ms\":{:.2},\"work_max_ms\":{:.2},\"raised\":{raised},\"pieces\":{pieces},\"chunks\":{chunks}}}",
+            self.count,
+            self.gap.0 / n,
+            self.gap.1,
+            self.work.0 / n,
+            self.work.1,
+        )));
+        *self = Self {
+            since: now,
+            ..Self::default()
+        };
+    }
+}
+
+/// Whether the page's query string has `name`, alone or as `name=value`.
+fn query_has(window: &Window, name: &str) -> bool {
+    query_value(window, name).is_some()
+}
+
+/// The value of `name` in the page's query string: empty for a bare
+/// `name`.
+fn query_value(window: &Window, name: &str) -> Option<String> {
+    let query = window.location().search().ok()?;
+    query
+        .trim_start_matches('?')
+        .split('&')
+        .find_map(|part| match part.split_once('=') {
+            Some((key, value)) if key == name => Some(value.to_owned()),
+            None if part == name => Some(String::new()),
+            _ => None,
+        })
 }
 
 async fn run() -> Result<(), String> {
@@ -270,6 +334,15 @@ async fn run() -> Result<(), String> {
     // The page opens no studio panel, on a keyboard or a touchscreen.
     runtime.interact_hint = verse::runtime::InteractHint::None;
     drop(bytes);
+    // `?at=X,Z` or `?at=X,Z,YAW` starts the player there, for captures of
+    // one place in the town.
+    if let Some(at) = query_value(&window, "at") {
+        let numbers: Vec<f32> = at.split(',').filter_map(|n| n.parse().ok()).collect();
+        if let [x, z, ref rest @ ..] = numbers[..] {
+            let yaw = rest.first().copied().unwrap_or(0.0);
+            let _ = runtime.set_spawn(glam::Vec3::new(x, 0.0, z), yaw);
+        }
+    }
 
     let scale = (window.device_pixel_ratio() as f32).clamp(1.0, 3.0);
     let (width, height) = drawing_size(&canvas, scale);
@@ -355,6 +428,7 @@ async fn run() -> Result<(), String> {
         grove_keys: Vec::new(),
         grove_row: 0,
         presence: None,
+        frames: query_has(&window, "frames").then(Frames::default),
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -424,6 +498,7 @@ async fn run_grid(
         grove_keys: Vec::new(),
         grove_row: 0,
         presence,
+        frames: None,
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -505,6 +580,20 @@ fn drawing_size(canvas: &HtmlCanvasElement, scale: f32) -> (u32, u32) {
 
 impl Page {
     fn frame(&mut self, now: f64) {
+        let gap = self.last.map_or(0.0, |last| now - last);
+        let started = web_sys::window()
+            .and_then(|w| w.performance())
+            .map_or(now, |p| p.now());
+        self.draw_frame(now);
+        if let Some(frames) = &mut self.frames {
+            let ended = web_sys::window()
+                .and_then(|w| w.performance())
+                .map_or(started, |p| p.now());
+            frames.add(now, gap, ended - started, self.runtime.everglade_wreckage());
+        }
+    }
+
+    fn draw_frame(&mut self, now: f64) {
         let dt = self
             .last
             .map_or(0.0, |last| ((now - last) / 1000.0) as f32)

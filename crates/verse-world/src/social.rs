@@ -11,6 +11,7 @@
 //! feature, [`studio`] places a NIP-HOST studio snapshot's seats, drives
 //! them for every viewer, and checks the studio rights a panel needs.
 
+pub mod columns;
 pub mod controller;
 pub mod everglade;
 pub mod hosted;

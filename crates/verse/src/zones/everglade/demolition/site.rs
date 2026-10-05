@@ -94,6 +94,25 @@ pub enum Role {
     Gable { side: Side, span: u8 },
     /// A chimney through roof span `span`.
     Chimney { span: u8 },
+    /// One block of a model cut on a grid ([`super::carve`]), `level`
+    /// blocks over its base. What holds it up is in its spec's [`Link`].
+    Block { level: u8 },
+}
+
+/// Most blocks a carved building's floor or roof reaches sideways from a
+/// block that a column holds up.
+const MAX_SPAN: u8 = 2;
+
+/// What holds a carved block up, by the indices of its building's other
+/// pieces in the order they were raised.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Link {
+    /// It stands on the ground.
+    pub footing: bool,
+    /// The blocks it rests on.
+    pub under: Vec<u16>,
+    /// The blocks beside it on its level, which carry it a short way.
+    pub beside: Vec<u16>,
 }
 
 /// Wall sections under one 8 m roof span.
@@ -160,6 +179,8 @@ pub struct PieceSpec {
     pub chunks: Vec<Cuboid>,
     /// Whether the player walks through it: only walls and posts block.
     pub blocks: bool,
+    /// What holds a carved block up; empty for a kit piece.
+    pub link: Link,
 }
 
 impl PieceSpec {
@@ -854,8 +875,15 @@ impl Site {
     /// and a chimney its roof span.
     pub fn support(&mut self) {
         loop {
+            let blocks = self.block_holds();
             let falling: Vec<usize> = (0..self.pieces.len())
-                .filter(|&i| self.standing(i) && !self.held(i))
+                .filter(|&i| {
+                    self.standing(i)
+                        && match self.specs[i].role {
+                            Role::Block { .. } => !blocks[i],
+                            _ => !self.held(i),
+                        }
+                })
                 .collect();
             if falling.is_empty() {
                 return;
@@ -869,6 +897,66 @@ impl Site {
                 }
             }
         }
+    }
+
+    /// Whether each standing carved block is held up: it stands on the
+    /// ground, on a block that is, or within [`MAX_SPAN`] blocks sideways
+    /// of one that a column holds up.
+    fn block_holds(&self) -> Vec<bool> {
+        let mut holds = vec![false; self.pieces.len()];
+        for members in self.members.values() {
+            if !members
+                .iter()
+                .any(|&i| matches!(self.specs[i].role, Role::Block { .. }))
+            {
+                continue;
+            }
+            let at = |k: u16| members.get(usize::from(k)).copied();
+            let mut cost: Vec<u8> = members
+                .iter()
+                .map(|&i| {
+                    if self.standing(i) && self.specs[i].link.footing {
+                        0
+                    } else {
+                        u8::MAX
+                    }
+                })
+                .collect();
+            let mut changed = true;
+            while changed {
+                changed = false;
+                for (k, &i) in members.iter().enumerate() {
+                    if !self.standing(i) || cost[k] == 0 {
+                        continue;
+                    }
+                    let link = &self.specs[i].link;
+                    let mut best = cost[k];
+                    for &u in &link.under {
+                        if let Some(j) = at(u)
+                            && self.standing(j)
+                        {
+                            best = best.min(cost[usize::from(u)]);
+                        }
+                    }
+                    for &b in &link.beside {
+                        if let Some(j) = at(b)
+                            && self.standing(j)
+                            && cost[usize::from(b)] < MAX_SPAN
+                        {
+                            best = best.min(cost[usize::from(b)] + 1);
+                        }
+                    }
+                    if best < cost[k] {
+                        cost[k] = best;
+                        changed = true;
+                    }
+                }
+            }
+            for (k, &i) in members.iter().enumerate() {
+                holds[i] = cost[k] <= MAX_SPAN;
+            }
+        }
+        holds
     }
 
     /// The top story of `building`.
@@ -1049,6 +1137,7 @@ impl Site {
                 roof(span) && sections(side, first..=first + i32::from(SPAN_SECTIONS) - 1) >= 1
             }
             Role::Chimney { span } => roof(span),
+            Role::Block { .. } => self.block_holds()[piece],
         }
     }
 
@@ -1062,13 +1151,23 @@ impl Site {
         let outward = match spec.role {
             Role::Wall { side, .. } | Role::Gable { side, .. } => Some(side),
             Role::Post { a, .. } => Some(a),
-            Role::Roof { .. } | Role::Chimney { .. } => None,
+            Role::Roof { .. } | Role::Chimney { .. } | Role::Block { .. } => None,
         }
         .map(|side| match side {
             Side::South => -DVec3::Z,
             Side::North => DVec3::Z,
             Side::West => -DVec3::X,
             Side::East => DVec3::X,
+        })
+        .or_else(|| {
+            // A carved block leans away from its building's middle.
+            if !matches!(spec.role, Role::Block { .. }) {
+                return None;
+            }
+            let members = self.members.get(&spec.building)?;
+            let middle = members.iter().map(|&i| self.specs[i].center).sum::<DVec3>()
+                / members.len().max(1) as f64;
+            DVec3::new(spec.center.x - middle.x, 0.0, spec.center.z - middle.z).try_normalize()
         });
         let body = &mut self.world[id];
         body.kind = BodyKind::Dynamic;

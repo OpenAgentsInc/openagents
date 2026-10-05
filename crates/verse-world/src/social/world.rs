@@ -239,7 +239,8 @@ impl World {
                 .filter(|(other, p)| other != id && (p.y - avatar.body.pos.y).abs() < AVATAR_HEIGHT)
                 .map(|(_, p)| *p)
                 .collect();
-            let blockers = solids.blocking(avatar.body.pos.y);
+            let p = avatar.body.pos;
+            let blockers = solids.blocking_near(p.x, p.z, 1.5, p.y);
             avatar.body.separate(&others, &blockers, self.profile.bound);
         }
     }

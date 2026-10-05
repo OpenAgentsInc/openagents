@@ -53,11 +53,12 @@ pub const PLACED_TRIANGLE_BUDGET: u64 = 1_250_000;
 pub const DRAWN_TRIANGLE_BUDGET: u64 = 600_000;
 /// The most triangles the city may merge and upload, every level of detail
 /// and the ground counted: the zone's geometry memory, under the
-/// renderer's 160 MiB bound (`pbr::textured::MAX_BYTES`). Trees and roofs
+/// renderer's 224 MiB bound (`pbr::textured::MAX_BYTES`). Trees and roofs
 /// are the largest shares: a kit tree is 3,000 to 6,000 triangles, a house
 /// roof 2,464 (the kit's thinned by `scripts/blender/kit_lod.py`), and a
-/// generated building 7,800 to 19,200.
-pub const MERGED_TRIANGLE_BUDGET: u64 = 2_350_000;
+/// generated building 7,800 to 19,200, about a tenth more once split on
+/// its block lattice (`demolition::carve`).
+pub const MERGED_TRIANGLE_BUDGET: u64 = 2_600_000;
 /// Where packs are committed, relative to the repository root.
 pub const PACK_DIRECTORY: &str = "assets/verse/everglade";
 /// The pack file extension.

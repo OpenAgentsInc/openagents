@@ -672,16 +672,20 @@ impl Everglade {
     /// broken faces, cracks, and dust.
     #[must_use]
     pub fn spell_mesh_from(&self, player: &PlayerController, eye: Vec3) -> Mesh {
-        let mut mesh = self.spells.mesh(player, eye);
+        let hold = self.cast.as_ref().and_then(player::Cast::hold);
+        // The town's targeting circle and meteors come first, so a frame
+        // that has to drop glow drops the spells' particles first.
+        let mut mesh = self
+            .town
+            .as_ref()
+            .map(|town| town.mesh(player, eye, hold))
+            .unwrap_or_default();
+        mesh.extend(&self.spells.mesh(player, eye));
         if let Some(smoke) = &self.smoke {
             smoke.draw(&mut mesh.sprites);
         }
-        let hold = self.cast.as_ref().and_then(player::Cast::hold);
         if let Some(yard) = &self.demolition {
             mesh.extend(&yard.mesh(player, eye, hold));
-        }
-        if let Some(town) = &self.town {
-            mesh.extend(&town.mesh(player, eye, hold));
         }
         mesh
     }
