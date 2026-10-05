@@ -17,7 +17,7 @@ mod character;
 
 const LEAF_RECEIPTS: usize = 16;
 const NODE_BYTES: usize = 256 * 1024;
-const PENDING_BYTES: usize = 128 * 1024 * 1024;
+pub(in crate::service) const PENDING_BYTES: usize = 128 * 1024 * 1024;
 pub(super) type Root = Option<[u8; 32]>;
 
 #[derive(Serialize, Deserialize)]
@@ -100,6 +100,44 @@ impl History {
         let mut history = Self::open(&path)?;
         Arc::get_mut(&mut history.0).unwrap().temporary = true;
         Ok(history)
+    }
+    pub(in crate::service) fn reachable(
+        &self,
+        root: Option<[u8; 32]>,
+        nodes: &mut std::collections::BTreeSet<[u8; 32]>,
+        limit: usize,
+    ) -> Result<(), String> {
+        fn visit(
+            history: &History,
+            root: Option<[u8; 32]>,
+            nodes: &mut std::collections::BTreeSet<[u8; 32]>,
+            limit: usize,
+            depth: usize,
+        ) -> Result<(), String> {
+            let Some(root) = root else {
+                return Ok(());
+            };
+            if depth > 64 {
+                return Err("Backup reward index depth exceeded".into());
+            }
+            if nodes.contains(&root) {
+                return Ok(());
+            }
+            if nodes.len() >= limit {
+                return Err("Backup reachable history exceeds file budget".into());
+            }
+            nodes.insert(root);
+            if let Node::Branch(children) = history.read_disk(root)? {
+                for child in children {
+                    visit(history, child, nodes, limit, depth + 1)?;
+                }
+            }
+            Ok(())
+        }
+        visit(self, root, nodes, limit, 0)
+    }
+    pub(in crate::service) fn verify_node(&self, digest: [u8; 32]) -> Result<(), String> {
+        self.read_disk(digest).map(|_| ())
     }
     pub(super) fn same_directory(&self, other: &Self) -> bool {
         self.0.path == other.0.path

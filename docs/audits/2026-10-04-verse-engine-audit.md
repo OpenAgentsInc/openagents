@@ -46,7 +46,7 @@ contains recoverable crowd movement and passes a declared durable 20-player/
 40-hostile profile, including three combined repeats and a ten-minute soak.
 Historical failed battles remain retained. The accepted profile uses one native
 renderer and nineteen headless clients on one machine; broader device,
-authoring, operational, and population readiness remains open in V19–V28.
+authoring, coordinated operations, device, and population readiness remains open in V20–V28.
 
 The [engine roadmap](../verse/engine/roadmap.md) already names a battle with
 about 20 authenticated players and 40 active NPCs. That milestone now has a bounded accepted profile. Neither a 64-player admission limit nor a video with two
@@ -157,7 +157,7 @@ Evidence labels:
 | V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters | Complete (chamber profile; [#10635](https://github.com/OpenAgentsInc/openagents/issues/10635)) |
 | V17 | P1 | Shared rendering, compiled content, and dedicated TLS hosting have working consumers. | Code, recorded | Engine extraction and host packaging | Complete ([#10636](https://github.com/OpenAgentsInc/openagents/issues/10636)) |
 | V18 | P0 | Contained crowd recovery and a durable 20/40 battle pass the declared profile. | Recorded, code | Movement failure handling and scale acceptance | Complete ([#10637](https://github.com/OpenAgentsInc/openagents/issues/10637)), one native renderer |
-| V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Open |
+| V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Complete ([#10735](https://github.com/OpenAgentsInc/openagents/issues/10735)) |
 | V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Open |
 | V21 | P2 | Animation needs production locomotion and authoring support. | Code, gap | Animation and character content | Open |
 | V22 | P2 | Lighting paths need a common visual and performance contract. | Code, risk | Rendering and art direction | Open |
@@ -1421,27 +1421,69 @@ parity, larger realms, or multi-host operations. Matching wire-29 host/client
 deployment remains an owner step in `NEEDS_OWNER.md`. V19, V24, V25, and V27
 address the remaining operational, platform, MMO, and acceptance scope.
 
-### V19: Operators need visibility while the world is running
+### V19: Live chamber diagnostics and verified recovery
 
-[`net::Stats`](../../crates/verse-world/src/service/net.rs) retains aggregate
-connections, requests, ticks, dropped time, and checkpoint totals. The example
-prints these on exit. Socket worker errors are discarded. There are no live
-per-client bandwidth/age counters or world-specific backup/restore tools in the
-original host path. V02 adds lifetime simulation/capture/commit histograms,
-writer queue watermarks, explicit storage pauses/refusals, and an ordered shutdown
-drain. These metrics still need a live operator surface and verified backups.
+**Status:** Complete in [#10735](https://github.com/OpenAgentsInc/openagents/issues/10735).
 
-**Improve:** Add structured live diagnostics, health/readiness distinctions,
-bounded audit records, backup verification, safe draining, version reporting,
-and a restore tool. Record refusals by stage and cause without keys or private
-chat. Define storage failure behavior and recovery objectives before public use.
+The original finding was exit-only visibility and missing chamber recovery tools.
+V02 added ordered persistence and shutdown draining; later transport admission
+added bounded stage counters. This remediation exposes those contracts while a
+dedicated TLS world is running.
 
-**Acceptance:** An operator can identify a slow client, expensive encounter,
-stalled writer, exhausted budget, and incompatible build while the service is
-running. A backup restores into a scratch host with verified receipt and
-character state; rollback never creates a second active writer.
+[`operator`](../../crates/verse-world/src/service/operator.rs) retains one latest
+snapshot, 128 volatile connection observations, and 128 phase/reason records.
+Observers receive owned copies, so retaining an old sample cannot hold the
+publisher's channel lock. Snapshots report build/wire/content/instance identity,
+health and readiness, timing histograms, queue occupancy and budgets, durable
+revision and pending age, encounter population, and motor/navigation refusals.
+Per-connection fields report payload totals, delivered tick lag, activity age,
+authentication state, and budget refusals. There are no keys, addresses, names,
+chat, command bodies, or raw errors in this surface.
 
-## Production content and player experience
+The [dedicated host](../../crates/verse-host/README.md#local-operations) provides
+owner-local status and drain commands. Its eight IPC workers have two-second
+limits, responses have a 256 KiB limit, and the caller has a three-second total
+timeout. Samples older than three seconds cannot report readiness. Retained
+post-exit status is explicitly unavailable. Drain stops admission, commits final
+admitted state, and releases writer ownership after persistence completes.
+A failed write produces failed health and prevents its acknowledgment. A blocked
+writer keeps its lock and produces stalled or stale diagnostics.
+
+[`backup`](../../crates/verse-world/src/service/persistence/backup.rs) acquires
+exclusive offline ownership, exports the last durable revision and reachable
+receipt nodes, and verifies all manifest/checkpoint/history digests, characters,
+and retained migration records. Restore requires a new directory, holds its
+writer lock through verification and synchronization, and marks interrupted
+restores so host admission refuses them. It preserves reviewed rollback and its
+refusal after later progress. Offline pruning plans a bounded scan before
+removing only history unreachable from current state and every migration backup.
+The default operation limits are 65,536 files, 1 GiB, and a 16 MiB manifest.
+These bounds limit maintenance operations without exhausting the reward ledger.
+
+The [retained evidence](../../bench/verse/2026-10-05/operator-recovery/README.md)
+binds source, compressed patch, executables, tests, and structured receipts. The
+accepted scratch run observed a 1,864 ms oldest pending commit, two writer copies,
+a 47.81 ms injected expensive tick, an idle authenticated client, and one pending
+handshake. Readiness was false during the writer stall; drain recovered authority
+tick 4 and durable revision 6. A 104-file, 132,075-byte backup restored all 300
+reward transactions and the original retry receipt. Five process-death boundaries
+refused partial restoration and retained a verified source; each retry recovered
+all 140 transactions. Rollback remained exclusive and refused later progress.
+The real host commands also passed live status, active-writer export refusal,
+drain, offline readiness refusal, export, verify, restore, and pruning for scratch
+original content. Targeted checks passed 572 world tests and four host unit tests,
+plus the integration covering two original worlds; three ignored helpers run
+through their parent crash tests. Formatting passed. Development test-fixture
+failures and a disk-exhausted combined build remain retained with their corrected
+successful checks.
+
+Recovery targets every effect and exact retry receipt in the selected verified
+backup revision. Backup frequency determines the recovery point; no production
+recovery-time target is inferred from scratch storage. The implementation covers
+one chamber store. Coordinated realm transfer/registry recovery, off-machine
+backup custody, and deployment/storage-specific drills need their own operating
+profile. Native reference rendering and battle receipts remain scoped to V18;
+this issue does not establish production MMORPG availability.
 
 ### V20: Artists need tools over the runtime's own contracts
 

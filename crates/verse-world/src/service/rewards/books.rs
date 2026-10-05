@@ -34,6 +34,11 @@ pub(super) fn equivalent(a: &Transaction, b: &Transaction) -> bool {
     b.source = normalized(b.source);
     a == b
 }
+impl Book {
+    pub(in crate::service) fn history_roots(&self) -> [history::Root; 2] {
+        [self.root, self.legacy_root]
+    }
+}
 impl Ledger {
     pub(in crate::service) fn realm_character(&self, actor: u64) -> Option<u64> {
         self.books.as_ref()?.get(&actor).map(|book| book.character)

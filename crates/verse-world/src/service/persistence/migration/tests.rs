@@ -813,3 +813,47 @@ fn a_corrupt_backup_cannot_replace_the_applied_world() {
         .validate_recovered(&store.recover().unwrap())
         .unwrap();
 }
+
+#[test]
+fn restored_backup_preserves_reviewed_rollback_and_refuses_later_progress() {
+    use super::super::backup::{self, Budget};
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("source");
+    let f = populate(&root, false);
+    let mut store = Store::open(&root, [8; 32], 120).unwrap();
+    let review = plan(&store, &f);
+    let record = store
+        .apply_migration(
+            &f.config,
+            &f.target,
+            game(&f.target, true),
+            [9; 32],
+            &review,
+        )
+        .unwrap();
+    let archive = dir.path().join("backup");
+    let report = store.export_backup(&archive, Budget::default()).unwrap();
+    assert_eq!(report.migrations, 1);
+    let reverted = dir.path().join("reverted");
+    backup::restore(&archive, &reverted, [9; 32], 120, Budget::default()).unwrap();
+    let mut restored = Store::open(&reverted, [9; 32], 120).unwrap();
+    assert!(Store::open(&reverted, [9; 32], 120).is_err());
+    restored.rollback_migration(&record.id).unwrap();
+    drop(restored);
+    let mut restored = Store::open(&reverted, [8; 32], 120).unwrap();
+    assert_eq!(
+        restored
+            .recover()
+            .unwrap()
+            .grant_reward(f.original.clone())
+            .unwrap(),
+        f.original_receipt
+    );
+    let advanced = dir.path().join("advanced");
+    backup::restore(&archive, &advanced, [9; 32], 120, Budget::default()).unwrap();
+    let mut restored = Store::open(&advanced, [9; 32], 120).unwrap();
+    let mut gateway = restored.recover().unwrap();
+    gateway.tick(1. / 30.).unwrap();
+    restored.commit(&mut gateway).unwrap();
+    assert!(restored.rollback_migration(&record.id).is_err());
+}

@@ -1,0 +1,54 @@
+{
+  "schema": "verse.operations.acceptance.v1",
+  "accepted_at_utc": "2026-10-05T22:21:34.245640+00:00",
+  "platform": "Linux x86_64 scratch TLS and temporary storage",
+  "source": "source-main.json",
+  "checks": [
+    {
+      "command": "cargo test -p verse-world --features service-net --lib -- --nocapture",
+      "passed": 572,
+      "ignored_child_helpers": 3,
+      "log": "world-main-tests.log"
+    },
+    {
+      "command": "cargo test -p verse-host -- --nocapture",
+      "unit_passed": 4,
+      "integration_passed": 1,
+      "original_worlds": 2,
+      "log": "host-main-tests.log"
+    },
+    {
+      "command": "cargo fmt --all --check",
+      "exit_code": 0
+    }
+  ],
+  "executables_sha256": {
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9": "ccf7dbf25c8036733823ed07c7fd76c65d3ffdc3f42e5fc8dd1c78eb1d5ea4ec",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-e597c9790b65f206": "d856629a8455e504cacd86031cc6ecb2281ad8fc398e0ea014fbcdbef470922f",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-af6c778f53370144": "4547af29c7d219a25132b3fa91f6fa7b60cf5869f23e47065df070c3e23cd500",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-6c121bd16d39647b": "4a51c191b7cdb36b3ae2a0b51b3fe0c599121e83856e9596e53b7128085e8a64"
+  },
+  "artifacts_sha256": {
+    "world-receipts.json": "0a334f24c2f3b17763e0c8ce6ba51159d461a04c9f3c870caeb4c70561e723f8",
+    "host-tests.log": "f5a142c07307cafcc106e296ed3f4a8e0a35922782168aa8976d31002cad5d22",
+    "source-main.json": "ee0bf3605de9ee9ed95eaad2582845b85f36c889d53c37091a882017b463bc30",
+    "source.patch.gz": "87c39caf5baf015c3c97601852bcc88e3a39be172e2cb75f528c37d2b9748cca",
+    "source.json": "839015efdda95f15929d31eda73cb72c793c77114130c82840e572fe54657625",
+    "host-main-tests.log": "948ab4ed61ed202c8c54e72de93c16178e58e4a54f1b93d3e75e6b44974ec8d6",
+    "final-integration.json": "ab7eb461afe7b8fedd6988878807b8c54ec3acd1f60af9b3531e5b21831ce8cc",
+    "source-main.patch.gz": "87c39caf5baf015c3c97601852bcc88e3a39be172e2cb75f528c37d2b9748cca",
+    "README.md": "3d866d226275ade900e165fd8a13f3c065855d618296f8b8c8aebb319eb5eb2a",
+    "world-main-tests.log": "cdc67b52dba0af42a88f1c6ac6fef703fb935905c2deaba287e2127999dd503d",
+    "world-tests.log": "285715b0688ce967da3e55e00b239cdaaef5d29875f10988654e25828cd4a61f",
+    "initial-README.md": "12178da740ab212b0cab11d4e40dda0b13f9cc7b12dc0d98a3d541912d920843",
+    "combined-build-no-space.log": "f755ab0c890dd39263b6f303f2996e8d90c31d1a49184b47b3cb00e54e473122",
+    "host-main-receipts.json": "216e66245df37e9b14f561d062623139ef701b383518329317586ab9a945de68",
+    "world-main-receipts.json": "c66ced6caf4c2b62c4297daa3155da6fd2da1d7ebff5f34ce515ac5ba16a4744",
+    "obsolete-executables.json": "dcab2fbbcfdf8ce7862afb938068bb88662eae3c1429ba39ec36f4847ac91c5f",
+    "host-development-check.log": "af577106d4c6ed30745b837488e061ca313a95c56aa3f9934068ff1153d77a10",
+    "acceptance.json": "246cc21e029b76363f866c5673fad3c16aacf9c0d29e23898ec89337b10b18b0",
+    "restore-development-check.log": "d23525d2e5f8b56d2c90a7082c90f5f3a7bb81471eab52bd854b4ad37d3ae7f5",
+    "host-receipts.json": "027e63a4582bf6bfe7a1f469d8f881c3695b04edef6e94e8f7bdc562710cdbd1"
+  },
+  "final_integration": "final-integration.json"
+}

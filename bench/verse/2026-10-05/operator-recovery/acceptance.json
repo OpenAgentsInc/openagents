@@ -1,0 +1,45 @@
+{
+  "schema": "verse.operations.acceptance.v1",
+  "accepted_at_utc": "2026-10-05T22:10:30.868888+00:00",
+  "platform": "Linux x86_64 scratch TLS and temporary storage",
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "source": "source.json",
+  "checks": [
+    {
+      "command": "cargo test -p verse-world --features service-net --lib -- --nocapture",
+      "passed": 562,
+      "ignored_child_helpers": 3,
+      "log": "world-tests.log"
+    },
+    {
+      "command": "cargo test -p verse-host -- --nocapture",
+      "unit_passed": 4,
+      "integration_passed": 1,
+      "original_worlds": 2,
+      "log": "host-tests.log"
+    },
+    {
+      "command": "cargo fmt --all --check",
+      "exit_code": 0
+    }
+  ],
+  "executables_sha256": {
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9": "8190ac9644ebf6be526d212914ee4f45449c0d6ae8f666a6012f8c7b9b002767",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-d0adc36b608e3c9d": "e052c199885ab2e9c9811abecf6ff99c07fd91dbbd0ed05567e66afe7fa5a5c3",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-570b279f3e9af891": "035479f4519ed15fb62a58caa1ad1e74561f0f0286fa264c41884521333d007a",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-ceffb7c82d95cc66": "98e7107226e8dcafa3c413ef860bb5151a97eafe0d83eb436bdba8690a9e95c1"
+  },
+  "artifacts_sha256": {
+    "world-receipts.json": "0a334f24c2f3b17763e0c8ce6ba51159d461a04c9f3c870caeb4c70561e723f8",
+    "host-tests.log": "f5a142c07307cafcc106e296ed3f4a8e0a35922782168aa8976d31002cad5d22",
+    "source.patch.gz": "87c39caf5baf015c3c97601852bcc88e3a39be172e2cb75f528c37d2b9748cca",
+    "source.json": "839015efdda95f15929d31eda73cb72c793c77114130c82840e572fe54657625",
+    "world-tests.log": "285715b0688ce967da3e55e00b239cdaaef5d29875f10988654e25828cd4a61f",
+    "combined-build-no-space.log": "f755ab0c890dd39263b6f303f2996e8d90c31d1a49184b47b3cb00e54e473122",
+    "obsolete-executables.json": "dcab2fbbcfdf8ce7862afb938068bb88662eae3c1429ba39ec36f4847ac91c5f",
+    "host-development-check.log": "af577106d4c6ed30745b837488e061ca313a95c56aa3f9934068ff1153d77a10",
+    "restore-development-check.log": "d23525d2e5f8b56d2c90a7082c90f5f3a7bb81471eab52bd854b4ad37d3ae7f5",
+    "host-receipts.json": "027e63a4582bf6bfe7a1f469d8f881c3695b04edef6e94e8f7bdc562710cdbd1",
+    "initial-README.md": "12178da740ab212b0cab11d4e40dda0b13f9cc7b12dc0d98a3d541912d920843"
+  }
+}

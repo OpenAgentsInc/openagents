@@ -163,6 +163,7 @@ pub(super) async fn run<S: Transport + 'static>(
                 let response: ResponseHeader = serde_json::from_slice(&bytes).map_err(|_| "Invalid chamber response")?;
                 timeout(WRITE, write_frame(&mut write, &bytes, MAX_RESPONSE_BYTES))
                     .await.map_err(|_| "Chamber write timed out")??;
+                slot.delivered(bytes.len(), Some(response.tick));
                 last = response.refusal_template();
                 if !authenticated { return Err("Chamber connection is not authenticated".into()); }
             }
@@ -173,6 +174,7 @@ pub(super) async fn run<S: Transport + 'static>(
                     Some(Err(error)) => { terminal = Some(error); continue; }
                     None => { terminal = Some("Chamber request reader stopped".into()); continue; }
                 };
+                slot.received(bytes.len());
                 if window.elapsed() >= Duration::from_secs(1) { window = Instant::now(); count = 0; }
                 count += 1;
                 if count > REQUESTS_PER_SECOND { return Err("Chamber request rate exceeded".into()); }

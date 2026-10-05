@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod backup;
 #[cfg(test)]
 mod checks;
 mod journal;
@@ -135,6 +136,11 @@ impl Store {
             .map_err(|_| "Cannot open chamber writer lock")?;
         lock.try_lock()
             .map_err(|_| "Chamber storage already has a writer or cannot lock")?;
+        for marker in ["restore.pending", "backup.pending", "backup.json"] {
+            if std::fs::symlink_metadata(root.join(marker)).is_ok() {
+                return Err("Chamber storage is an incomplete restore or a backup archive".into());
+            }
+        }
         migration::recover_pending(root)?;
         let history = super::rewards::history::History::open(&root.join("rewards"))?;
         history.defer_writes();

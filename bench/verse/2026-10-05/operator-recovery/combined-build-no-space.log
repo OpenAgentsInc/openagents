@@ -1,0 +1,125 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+
+thread 'opt 1h9ffth4tuuwhv175avmygwi1' (4092009) panicked at /rustc-dev/8bab26f4f68e0e26f0bb7960be334d5b520ea452/compiler/rustc_codegen_ssa/src/back/write.rs:843:21:
+Error writing pre-lto-bitcode file `/home/christopherdavid/work/openagents-target-agent1/debug/incremental/verse_world-0vmhzaplnn4b8/s-hmxv789klp-081tjsj-working/1h9ffth4tuuwhv175avmygwi1.pre-lto.bc`: No space left on device (os error 28)
+stack backtrace:
+   0:     0x70e649e901f9 - <<std[1e3c4ec04c5261a9]::sys::backtrace::BacktraceLock>::print::DisplayBacktrace as core[37f591cfbe66b0b1]::fmt::Display>::fmt
+   1:     0x70e64a620cc8 - core[37f591cfbe66b0b1]::fmt::write
+   2:     0x70e64ba0d936 - <std[1e3c4ec04c5261a9]::sys::stdio::unix::Stderr as std[1e3c4ec04c5261a9]::io::Write>::write_fmt
+   3:     0x70e649e663fe - std[1e3c4ec04c5261a9]::panicking::default_hook::{closure#0}
+   4:     0x70e649e83b33 - std[1e3c4ec04c5261a9]::panicking::default_hook
+   5:     0x70e648c76c31 - std[1e3c4ec04c5261a9]::panicking::update_hook::<alloc[24b8200b0946867]::boxed::Box<rustc_driver_impl[4e5b0da0f4005eeb]::install_ice_hook::{closure#1}>>::{closure#0}
+   6:     0x70e649e83e12 - std[1e3c4ec04c5261a9]::panicking::panic_with_hook
+   7:     0x70e649e664c2 - std[1e3c4ec04c5261a9]::panicking::panic_handler::{closure#0}
+   8:     0x70e649e5a9a9 - std[1e3c4ec04c5261a9]::sys::backtrace::__rust_end_short_backtrace::<std[1e3c4ec04c5261a9]::panicking::panic_handler::{closure#0}, !>
+   9:     0x70e649e67f2d - __rustc[6ef78fba13ac776c]::rust_begin_unwind
+  10:     0x70e6469192dc - core[37f591cfbe66b0b1]::panicking::panic_fmt
+  11:     0x70e64b752543 - std[1e3c4ec04c5261a9]::sys::backtrace::__rust_begin_short_backtrace::<rustc_codegen_ssa[20a34f9232644acf]::back::write::spawn_work<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>::{closure#0}, ()>
+  12:     0x70e64b75192b - <std[1e3c4ec04c5261a9]::thread::lifecycle::spawn_unchecked<rustc_codegen_ssa[20a34f9232644acf]::back::write::spawn_work<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>::{closure#0}, ()>::{closure#1} as core[37f591cfbe66b0b1]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  13:     0x70e64b75556c - <std[1e3c4ec04c5261a9]::sys::thread::unix::Thread>::new::thread_start
+  14:     0x70e644c9dd93 - start_thread
+  15:     0x70e644d258bc - __clone3
+  16:                0x0 - <unknown>
+
+error: the compiler unexpectedly panicked. This is a bug
+
+note: we would appreciate a bug report: https://github.com/rust-lang/rust/issues/new?labels=C-bug%2C+I-ICE%2C+T-compiler&template=ice.md
+
+note: rustc 1.97.1 (8bab26f4f 2026-07-14) running on x86_64-unknown-linux-gnu
+
+note: compiler flags: -C opt-level=3 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on -C incremental=[REDACTED]
+
+note: some of the compiler flags provided by cargo are hidden
+
+query stack during panic:
+end of query stack
+
+thread 'coordinator' (4091891) panicked at /rustc-dev/8bab26f4f68e0e26f0bb7960be334d5b520ea452/compiler/rustc_codegen_ssa/src/back/write.rs:1687:29:
+/rustc-dev/8bab26f4f68e0e26f0bb7960be334d5b520ea452/compiler/rustc_codegen_ssa/src/back/write.rs:1687:29: worker thread panicked
+stack backtrace:
+   0:     0x70e649e901f9 - <<std[1e3c4ec04c5261a9]::sys::backtrace::BacktraceLock>::print::DisplayBacktrace as core[37f591cfbe66b0b1]::fmt::Display>::fmt
+   1:     0x70e64a620cc8 - core[37f591cfbe66b0b1]::fmt::write
+   2:     0x70e64ba0d936 - <std[1e3c4ec04c5261a9]::sys::stdio::unix::Stderr as std[1e3c4ec04c5261a9]::io::Write>::write_fmt
+   3:     0x70e649e663fe - std[1e3c4ec04c5261a9]::panicking::default_hook::{closure#0}
+   4:     0x70e649e83b33 - std[1e3c4ec04c5261a9]::panicking::default_hook
+   5:     0x70e648c76c31 - std[1e3c4ec04c5261a9]::panicking::update_hook::<alloc[24b8200b0946867]::boxed::Box<rustc_driver_impl[4e5b0da0f4005eeb]::install_ice_hook::{closure#1}>>::{closure#0}
+   6:     0x70e649e83e12 - std[1e3c4ec04c5261a9]::panicking::panic_with_hook
+   7:     0x70e6493455c2 - std[1e3c4ec04c5261a9]::panicking::begin_panic::<alloc[24b8200b0946867]::string::String>::{closure#0}
+   8:     0x70e64932ef96 - std[1e3c4ec04c5261a9]::sys::backtrace::__rust_end_short_backtrace::<std[1e3c4ec04c5261a9]::panicking::begin_panic<alloc[24b8200b0946867]::string::String>::{closure#0}, !>
+   9:     0x70e649327f53 - std[1e3c4ec04c5261a9]::panicking::begin_panic::<alloc[24b8200b0946867]::string::String>
+  10:     0x70e6493459b6 - rustc_middle[8a940fbd8c5d50e6]::util::bug::opt_span_bug_fmt::<rustc_span[d86c6dd34b0962f8]::span_encoding::Span>::{closure#0}
+  11:     0x70e649345b12 - rustc_middle[8a940fbd8c5d50e6]::ty::context::tls::with_opt::<rustc_middle[8a940fbd8c5d50e6]::util::bug::opt_span_bug_fmt<rustc_span[d86c6dd34b0962f8]::span_encoding::Span>::{closure#0}, !>::{closure#0}
+  12:     0x70e6493345bb - rustc_middle[8a940fbd8c5d50e6]::ty::context::tls::with_context_opt::<rustc_middle[8a940fbd8c5d50e6]::ty::context::tls::with_opt<rustc_middle[8a940fbd8c5d50e6]::util::bug::opt_span_bug_fmt<rustc_span[d86c6dd34b0962f8]::span_encoding::Span>::{closure#0}, !>::{closure#0}, !>
+  13:     0x70e6463759b4 - rustc_middle[8a940fbd8c5d50e6]::util::bug::bug_fmt
+  14:     0x70e64b74e213 - rustc_codegen_ssa[20a34f9232644acf]::back::write::start_executing_work::<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>::{closure#3}
+  15:     0x70e64b74c61d - std[1e3c4ec04c5261a9]::sys::backtrace::__rust_begin_short_backtrace::<rustc_codegen_ssa[20a34f9232644acf]::back::write::start_executing_work<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>::{closure#3}, core[37f591cfbe66b0b1]::result::Result<rustc_codegen_ssa[20a34f9232644acf]::back::write::MaybeLtoModules<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>, ()>>
+  16:     0x70e64b7543eb - <std[1e3c4ec04c5261a9]::thread::lifecycle::spawn_unchecked<rustc_codegen_ssa[20a34f9232644acf]::back::write::start_executing_work<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>::{closure#3}, core[37f591cfbe66b0b1]::result::Result<rustc_codegen_ssa[20a34f9232644acf]::back::write::MaybeLtoModules<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>, ()>>::{closure#1} as core[37f591cfbe66b0b1]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  17:     0x70e64b75556c - <std[1e3c4ec04c5261a9]::sys::thread::unix::Thread>::new::thread_start
+  18:     0x70e644c9dd93 - start_thread
+  19:     0x70e644d258bc - __clone3
+  20:                0x0 - <unknown>
+
+error: the compiler unexpectedly panicked. This is a bug
+
+note: we would appreciate a bug report: https://github.com/rust-lang/rust/issues/new?labels=C-bug%2C+I-ICE%2C+T-compiler&template=ice.md
+
+note: rustc 1.97.1 (8bab26f4f 2026-07-14) running on x86_64-unknown-linux-gnu
+
+note: compiler flags: -C opt-level=3 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on -C incremental=[REDACTED]
+
+note: some of the compiler flags provided by cargo are hidden
+
+query stack during panic:
+end of query stack
+
+thread 'opt 8w96eh71g1mfw2ky1rudsxwg6' (4092010) panicked at /rustc-dev/8bab26f4f68e0e26f0bb7960be334d5b520ea452/compiler/rustc_codegen_ssa/src/back/write.rs:843:21:
+Error writing pre-lto-bitcode file `/home/christopherdavid/work/openagents-target-agent1/debug/incremental/verse_world-0vmhzaplnn4b8/s-hmxv789klp-081tjsj-working/8w96eh71g1mfw2ky1rudsxwg6.pre-lto.bc`: No space left on device (os error 28)
+stack backtrace:
+   0:     0x70e649e901f9 - <<std[1e3c4ec04c5261a9]::sys::backtrace::BacktraceLock>::print::DisplayBacktrace as core[37f591cfbe66b0b1]::fmt::Display>::fmt
+   1:     0x70e64a620cc8 - core[37f591cfbe66b0b1]::fmt::write
+   2:     0x70e64ba0d936 - <std[1e3c4ec04c5261a9]::sys::stdio::unix::Stderr as std[1e3c4ec04c5261a9]::io::Write>::write_fmt
+   3:     0x70e649e663fe - std[1e3c4ec04c5261a9]::panicking::default_hook::{closure#0}
+   4:     0x70e649e83b33 - std[1e3c4ec04c5261a9]::panicking::default_hook
+   5:     0x70e648c76c31 - std[1e3c4ec04c5261a9]::panicking::update_hook::<alloc[24b8200b0946867]::boxed::Box<rustc_driver_impl[4e5b0da0f4005eeb]::install_ice_hook::{closure#1}>>::{closure#0}
+   6:     0x70e649e83e12 - std[1e3c4ec04c5261a9]::panicking::panic_with_hook
+   7:     0x70e649e664c2 - std[1e3c4ec04c5261a9]::panicking::panic_handler::{closure#0}
+   8:     0x70e649e5a9a9 - std[1e3c4ec04c5261a9]::sys::backtrace::__rust_end_short_backtrace::<std[1e3c4ec04c5261a9]::panicking::panic_handler::{closure#0}, !>
+   9:     0x70e649e67f2d - __rustc[6ef78fba13ac776c]::rust_begin_unwind
+  10:     0x70e6469192dc - core[37f591cfbe66b0b1]::panicking::panic_fmt
+  11:     0x70e64b752543 - std[1e3c4ec04c5261a9]::sys::backtrace::__rust_begin_short_backtrace::<rustc_codegen_ssa[20a34f9232644acf]::back::write::spawn_work<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>::{closure#0}, ()>
+  12:     0x70e64b75192b - <std[1e3c4ec04c5261a9]::thread::lifecycle::spawn_unchecked<rustc_codegen_ssa[20a34f9232644acf]::back::write::spawn_work<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>::{closure#0}, ()>::{closure#1} as core[37f591cfbe66b0b1]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  13:     0x70e64b75556c - <std[1e3c4ec04c5261a9]::sys::thread::unix::Thread>::new::thread_start
+  14:     0x70e644c9dd93 - start_thread
+  15:     0x70e644d258bc - __clone3
+  16:                0x0 - <unknown>
+
+error: the compiler unexpectedly panicked. This is a bug
+
+note: we would appreciate a bug report: https://github.com/rust-lang/rust/issues/new?labels=C-bug%2C+I-ICE%2C+T-compiler&template=ice.md
+
+note: rustc 1.97.1 (8bab26f4f 2026-07-14) running on x86_64-unknown-linux-gnu
+
+note: compiler flags: -C opt-level=3 -C embed-bitcode=no -C debuginfo=2 -C debug-assertions=on -C incremental=[REDACTED]
+
+note: some of the compiler flags provided by cargo are hidden
+
+query stack during panic:
+end of query stack
+error: failed to write query cache to `/home/christopherdavid/work/openagents-target-agent1/debug/incremental/verse_world-0vmhzaplnn4b8/s-hmxv789klp-081tjsj-working/query-cache.bin`: No space left on device (os error 28)
+
+warning: `verse-world` (lib test) generated 1 warning (1 duplicate)
+error: could not compile `verse-world` (lib test) due to 1 previous error; 1 warning emitted

@@ -1,0 +1,40 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+warning: `verse-world` (lib) generated 1 warning
+error[E0624]: method `server_identity` is private
+   --> crates/verse-host/tests/worlds.rs:317:38
+    |
+317 |                     restored_gateway.server_identity(),
+    |                                      ^^^^^^^^^^^^^^^ private method
+    |
+   ::: crates/verse-world/src/service/auth.rs:249:5
+    |
+249 |     pub(super) fn server_identity(&self) -> [u8; 32] {
+    |     ------------------------------------------------ private method defined here
+
+error[E0624]: method `server_identity` is private
+   --> crates/verse-host/tests/worlds.rs:318:36
+    |
+318 |                     source_gateway.server_identity()
+    |                                    ^^^^^^^^^^^^^^^ private method
+    |
+   ::: crates/verse-world/src/service/auth.rs:249:5
+    |
+249 |     pub(super) fn server_identity(&self) -> [u8; 32] {
+    |     ------------------------------------------------ private method defined here
+
+For more information about this error, try `rustc --explain E0624`.
+error: could not compile `verse-host` (test "worlds") due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...

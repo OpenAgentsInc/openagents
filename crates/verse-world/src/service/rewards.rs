@@ -163,6 +163,17 @@ pub(super) struct Checkpoint {
     legacy_revision: Option<u64>,
 }
 
+#[cfg(feature = "service-auth")]
+impl Checkpoint {
+    pub(in crate::service) fn history_roots(&self) -> Vec<Option<[u8; 32]>> {
+        let mut roots = vec![self.root];
+        if let Some(books) = &self.books {
+            roots.extend(books.values().flat_map(|book| book.history_roots()));
+        }
+        roots
+    }
+}
+
 pub(super) fn entries(entries: &[Entry]) -> Result<(), String> {
     if entries.len() > MAX_ENTRIES {
         return Err("Reward entry budget exceeded".into());

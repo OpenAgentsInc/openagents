@@ -1,0 +1,39 @@
+{
+  "schema": "verse.operations.obsolete-executables.v1",
+  "reason": "Completed V18 drivers and superseded V19 test executable; completed runs retain receipts; no removed inode is running",
+  "files": [
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale-2e9357f4a6237198",
+      "sha256": "6136dae2b32b6941b0093327eb6222313bcd6d8f43dfcc0028108020247f8a92",
+      "bytes": 774944016,
+      "inode": 41081101
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget-31acc94714b88f97",
+      "sha256": "eb809733aff3c32df67d142edfb382a623f60d23f08a5693c366ceff92e7d548",
+      "bytes": 559346408,
+      "inode": 41078892
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+      "sha256": "eb809733aff3c32df67d142edfb382a623f60d23f08a5693c366ceff92e7d548",
+      "bytes": 559346408,
+      "inode": 41078892
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+      "sha256": "6136dae2b32b6941b0093327eb6222313bcd6d8f43dfcc0028108020247f8a92",
+      "bytes": 774944016,
+      "inode": 41081101
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9",
+      "sha256": "9893d2ec56bb18e305c172682edb2fac5444c9a1c22487d501a64fbeee9317a9",
+      "bytes": 268900584,
+      "inode": 41084300
+    }
+  ],
+  "unique_bytes": 1603191008,
+  "active_candidates_preserved": [],
+  "unreadable_other_process_count": 3
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "verse.operations.final.integration.v1",
+  "accepted_base_revision": "992e3d6621b8fc04864a0a5ee5c6992e55d8fcb9",
+  "final_base_revision": "67ae7561b5e1c40fcc0d06bfd741ef283fca8c98",
+  "changed_workspace_inputs": {
+    "Cargo.lock": {
+      "accepted_sha256": "767874747a488f6e5d5b45a792a3762dd96c0d0ca8d481509dceda555edf76a4",
+      "final_sha256": "fb5700a9344f67c49962b41911f0f83ad7c0c24ac1fdf4310042bd811bb7221b"
+    },
+    "Cargo.toml": {
+      "accepted_sha256": "33278b5bc321e7565ff96425230194ff2d4dda622fdbd160dac65689287e8860",
+      "final_sha256": "88733914852aa853801cf314287260655a9e3ce8be671dac49d6a5eb132fdc49"
+    }
+  },
+  "owning_source_and_manifests_unchanged": true,
+  "description": "Main moved unrelated Verse zones into zone crates and added their package records and dev profile entries. The tested world, host, engine, physics, and content source/manifests, toolchain, and fixture are unchanged."
+}

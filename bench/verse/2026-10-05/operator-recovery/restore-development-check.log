@@ -1,0 +1,39 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 53s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9)
+
+running 8 tests
+test service::persistence::backup::tests::restore_crash_child ... ignored, Launched with an isolated root by the restore-boundary recovery test
+test service::persistence::backup::tests::symlinked_history_and_parent_paths_are_refused ... ok
+test service::persistence::backup::tests::corruption_scope_budget_and_incomplete_publication_refuse_without_overwrite ... ok
+test service::persistence::migration::tests::a_corrupt_backup_cannot_replace_the_applied_world ... ok
+
+thread 'service::persistence::backup::tests::interrupted_restore_refuses_partial_state_and_keeps_the_verified_source' (4087496) panicked at crates/verse-world/src/service/persistence/backup/tests.rs:205:18:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test service::persistence::backup::tests::interrupted_restore_refuses_partial_state_and_keeps_the_verified_source ... FAILED
+test service::persistence::migration::tests::restored_backup_preserves_reviewed_rollback_and_refuses_later_progress ... ok
+test service::persistence::backup::tests::offline_retention_keeps_current_retry_roots_and_removes_only_unreferenced_files ... ok
+{"schema":"verse.operations.recovery.v1","report":{"schema":"verse.backup.v1","content":[8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8],"instance":120,"revision":2,"checkpoint_digest":[116,142,208,245,92,225,156,84,170,161,124,135,159,255,144,153,167,62,83,35,114,164,11,70,229,143,246,190,211,173,162,200],"manifest_digest":[192,242,145,37,42,180,75,94,231,61,106,216,101,230,213,166,73,192,228,41,35,166,248,93,114,42,62,10,149,225,43,126],"files":104,"bytes":132075,"migrations":0},"reward_transactions":300,"exact_retry_receipt":true,"exclusive_writer":true}
+test service::persistence::backup::tests::backup_restores_acknowledged_characters_and_archived_retry_receipts ... ok
+
+failures:
+
+failures:
+    service::persistence::backup::tests::interrupted_restore_refuses_partial_state_and_keeps_the_verified_source
+
+test result: FAILED. 6 passed; 1 failed; 1 ignored; 0 measured; 556 filtered out; finished in 4.24s
+
+error: test failed, to rerun pass `-p verse-world --lib`

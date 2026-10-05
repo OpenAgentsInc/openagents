@@ -63,11 +63,14 @@ fn two_original_worlds_use_the_same_dedicated_host_and_authentication() {
             .local_addr()
             .unwrap();
         let instance = 8400 + index as u64;
-        let json = serde_json::json!({"listen": address, "instance": instance,
+        let mut json = serde_json::json!({"listen": address, "instance": instance,
             "scene": dir.join("scene.json"), "pack": dir.join("pack.json"),
             "certificate_der": root.path().join("cert.der"), "private_key_der": root.path().join("key.der"),
             "enrollments": [{"public_key": public.iter().map(|byte| format!("{byte:02x}")).collect::<String>(), "role": {"type":"primary"}}],
             "social_profile": profile });
+        if index == 0 {
+            json["state_dir"] = serde_json::json!(dir.join("state"));
+        }
         let path = dir.join("host.json");
         std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
         let config = Config::from_json(&std::fs::read(&path).unwrap()).unwrap();
@@ -132,14 +135,17 @@ fn two_original_worlds_use_the_same_dedicated_host_and_authentication() {
             String::from_utf8_lossy(&output.stdout)
         );
         let log = std::fs::File::create(dir.join("host.log")).unwrap();
-        let mut process = Process(
-            Command::new(env!("CARGO_BIN_EXE_verse-host"))
-                .arg(&path)
-                .stdout(Stdio::from(log.try_clone().unwrap()))
-                .stderr(Stdio::from(log))
-                .spawn()
-                .unwrap(),
-        );
+        let operations = dir.join("operations");
+        let mut command = Command::new(env!("CARGO_BIN_EXE_verse-host"));
+        command
+            .arg(&path)
+            .stdout(Stdio::from(log.try_clone().unwrap()))
+            .stderr(Stdio::from(log));
+        #[cfg(unix)]
+        if index == 0 {
+            command.arg("--operations").arg(&operations);
+        }
+        let mut process = Process(command.spawn().unwrap());
         runtime.block_on(async {
             let deadline = Instant::now() + Duration::from_secs(10);
             let mut client = loop {
@@ -193,17 +199,53 @@ fn two_original_worlds_use_the_same_dedicated_host_and_authentication() {
                 instance,
                 state.actors.len()
             );
+            #[cfg(unix)]
+            if index == 0 {
+                let deadline = Instant::now() + Duration::from_secs(3);
+                loop {
+                    let output = Command::new(env!("CARGO_BIN_EXE_verse-host")).arg("--status").arg(&operations).output().unwrap();
+                    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+                    let status: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+                    if status["snapshot"]["metrics"]["admission"]["active"].as_u64().unwrap() > 0 {
+                        assert_eq!(status["availability"], "fresh");
+                        assert_eq!(status["snapshot"]["build"]["wire_version"], serde_json::json!(verse_world::service::wire::VERSION));
+                        println!("{}", serde_json::json!({"schema":"verse.host.operations.cli.live.v1", "status":status}));
+                        break;
+                    }
+                    assert!(Instant::now() < deadline, "No live admitted client measurement");
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                let busy = Command::new(env!("CARGO_BIN_EXE_verse-host")).arg(&path).arg("--backup").arg(dir.join("busy-backup")).output().unwrap();
+                assert!(!busy.status.success());
+                assert!(String::from_utf8_lossy(&busy.stderr).contains("writer"));
+                assert!(!dir.join("busy-backup").exists());
+            }
             client.close().await.unwrap();
         });
         #[cfg(unix)]
         {
-            assert!(
-                Command::new("kill")
-                    .args(["-TERM", &process.0.id().to_string()])
-                    .status()
-                    .unwrap()
-                    .success()
-            );
+            if index == 0 {
+                let output = Command::new(env!("CARGO_BIN_EXE_verse-host"))
+                    .arg("--drain")
+                    .arg(&operations)
+                    .output()
+                    .unwrap();
+                assert!(
+                    output.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let status: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+                assert_eq!(status["drain_requested"], true);
+            } else {
+                assert!(
+                    Command::new("kill")
+                        .args(["-TERM", &process.0.id().to_string()])
+                        .status()
+                        .unwrap()
+                        .success()
+                );
+            }
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 if let Some(status) = process.0.try_wait().unwrap() {
@@ -217,6 +259,75 @@ fn two_original_worlds_use_the_same_dedicated_host_and_authentication() {
                 std::thread::sleep(Duration::from_millis(10));
             }
             println!("{}", std::fs::read_to_string(dir.join("host.log")).unwrap());
+            if index == 0 {
+                let status = Command::new(env!("CARGO_BIN_EXE_verse-host"))
+                    .arg("--status")
+                    .arg(&operations)
+                    .output()
+                    .unwrap();
+                assert!(status.status.success());
+                let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+                assert_eq!(status["availability"], "unavailable");
+                assert_eq!(status["ready"], false);
+                assert_eq!(status["snapshot"]["phase"], "stopped");
+                let backup = dir.join("backup");
+                let restored = dir.join("restored");
+                for (mode, source, destination) in [
+                    ("--backup", &backup, None),
+                    ("--verify-backup", &backup, None),
+                    ("--restore-backup", &backup, Some(&restored)),
+                ] {
+                    let mut command = Command::new(env!("CARGO_BIN_EXE_verse-host"));
+                    command.arg(&path).arg(mode).arg(source);
+                    if let Some(destination) = destination {
+                        command.arg(destination);
+                    }
+                    let output = command.output().unwrap();
+                    assert!(
+                        output.status.success(),
+                        "{mode}: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+                    assert_eq!(report["instance"], instance);
+                    println!(
+                        "{}",
+                        serde_json::json!({"schema":"verse.host.operations.cli.recovery.v1", "operation":mode, "report":report})
+                    );
+                }
+                let prune = Command::new(env!("CARGO_BIN_EXE_verse-host"))
+                    .arg(&path)
+                    .arg("--prune-history")
+                    .output()
+                    .unwrap();
+                assert!(
+                    prune.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&prune.stderr)
+                );
+                let (source_gateway, _) = verse_host::prepare(&config).unwrap();
+                let mut restore_config = config.clone();
+                restore_config.state_dir = Some(restored);
+                let (restored_gateway, _) = verse_host::prepare(&restore_config).unwrap();
+                assert_eq!(
+                    restored_gateway.game().authority_tick,
+                    source_gateway.game().authority_tick
+                );
+                assert_eq!(
+                    serde_json::from_slice::<serde_json::Value>(
+                        &restored_gateway.checkpoint().unwrap()
+                    )
+                    .unwrap(),
+                    serde_json::from_slice::<serde_json::Value>(
+                        &source_gateway.checkpoint().unwrap()
+                    )
+                    .unwrap()
+                );
+                println!(
+                    "{}",
+                    serde_json::json!({"schema":"verse.host.operations.cli.result.v1", "live_status":true, "active_writer_export_refused":true, "clean_drain":true, "offline_readiness_refused":true, "backup_verified":true, "restored_authority_tick":restored_gateway.game().authority_tick, "prune_passed":true})
+                );
+            }
         }
         let mut missing = serde_json::from_slice::<verse_engine::director::Scene>(
             &std::fs::read(&config.scene).unwrap(),

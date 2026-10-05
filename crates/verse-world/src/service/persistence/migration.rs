@@ -567,7 +567,7 @@ fn directory(path: &Path) -> Result<(), String> {
         Err(_) => Err("Cannot inspect migration directory".into()),
     }
 }
-fn load_record(root: &Path, id: &str) -> Result<(Record, Committed, Committed), String> {
+pub(super) fn load_record(root: &Path, id: &str) -> Result<(Record, Committed, Committed), String> {
     valid_id(id)?;
     let base = root.join("migrations");
     let dir = base.join(id);
@@ -618,7 +618,7 @@ fn load_record(root: &Path, id: &str) -> Result<(Record, Committed, Committed), 
     }
     Ok((record, before, after))
 }
-fn sealed(dir: &Path, record: &Record) -> Result<bool, String> {
+pub(super) fn sealed(dir: &Path, record: &Record) -> Result<bool, String> {
     let path = dir.join("seal.json");
     regular_or_absent(&path)?;
     if !path.exists() {

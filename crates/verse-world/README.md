@@ -933,3 +933,10 @@ Local render values distinguish the prediction control epoch from authority and
 authored animation clocks. A clock-owner handoff starts marker delivery at the
 new phase without catching up another source's history. Gameplay snapshots and
 control authority remain unchanged; marker budgets and atomic refusals still apply.
+
+The `service-net` operator monitor publishes bounded latest-value diagnostics and
+requests the existing ordered drain. The dedicated
+[host operations commands](../verse-host/README.md#local-operations) expose it
+through owner-local IPC. `service::persistence::backup` verifies and restores
+chamber checkpoints, reachable reward history, and migration archives into new
+storage. Offline pruning retains every current and migration history root.

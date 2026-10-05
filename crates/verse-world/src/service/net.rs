@@ -25,14 +25,16 @@ use super::{
     },
 };
 use std::collections::BTreeMap;
+#[cfg(test)]
+mod operator_tests;
 mod session_pipeline;
 mod timing;
 pub use timing::{Phases, Timing};
 
 pub(crate) mod admission;
 pub use admission::Stats as AdmissionStats;
-const QUEUE: usize = 128;
-const REPLY_BYTES: usize = 16 * 1024 * 1024;
+pub(super) const QUEUE: usize = 128;
+pub(super) const REPLY_BYTES: usize = 16 * 1024 * 1024;
 const CLOCK_BYTES: usize = 20;
 const CONFIRMATION_BYTES: usize = 4096;
 const MAX_HELD_REPLY_BYTES: usize = MAX_RESPONSE_BYTES + CLOCK_BYTES + CONFIRMATION_BYTES;
@@ -60,6 +62,7 @@ pub struct Stats {
     pub ticks: u64,
     pub dropped_seconds: f64,
     pub checkpoint_commits: u64,
+    pub durable_revision: u64,
     pub checkpoint_bytes: u64,
     pub checkpoint_seconds: f64,
     pub simulation: Timing,
@@ -148,6 +151,7 @@ impl CommitView {
     }
 }
 struct Fence {
+    created: Instant,
     view: CommitView,
     replies: Vec<(oneshot::Sender<DispatchReply>, DispatchReply)>,
     reply_bytes: usize,
@@ -177,6 +181,7 @@ fn finish(
     }
     stats.commit_phases.record(done.seconds);
     let committed = done.result?;
+    stats.durable_revision = committed.revision;
     if committed.written {
         stats.checkpoint_commits += 1;
         stats.checkpoint_bytes += committed.bytes as u64;
@@ -465,12 +470,83 @@ pub async fn serve_ticked<F: Future<Output = ()>>(
     let listen = Listen::Tls(TlsAcceptor::from(tls));
     serve_with_store(listener, listen, gateway, store, Some(tick), shutdown).await
 }
+/// Runs TLS with bounded live diagnostics and an operator-requested ordered drain.
+pub async fn serve_monitored<F: Future<Output = ()>>(
+    listener: TcpListener,
+    tls: Arc<ServerConfig>,
+    gateway: Gateway,
+    store: Option<Store>,
+    tick: Option<Tick>,
+    monitor: super::operator::Monitor,
+    shutdown: F,
+) -> Exit {
+    serve_observed(
+        listener,
+        Listen::Tls(TlsAcceptor::from(tls)),
+        gateway,
+        store,
+        tick,
+        Some(monitor),
+        shutdown,
+    )
+    .await
+}
 pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+    listener: TcpListener,
+    listen: Listen,
+    gateway: Gateway,
+    store: Option<Store>,
+    hook: Option<Tick>,
+    shutdown: F,
+) -> Exit {
+    serve_observed(listener, listen, gateway, store, hook, None, shutdown).await
+}
+async fn serve_observed<F: Future<Output = ()>>(
+    listener: TcpListener,
+    listen: Listen,
+    gateway: Gateway,
+    store: Option<Store>,
+    hook: Option<Tick>,
+    monitor: Option<super::operator::Monitor>,
+    shutdown: F,
+) -> Exit {
+    let start = Instant::now();
+    if let Some(m) = &monitor {
+        let snapshot = m.snapshot();
+        if snapshot.instance != gateway.game().player_life().instance
+            || snapshot.content != gateway.content()
+        {
+            let exit = Exit {
+                gateway,
+                stats: Stats::default(),
+                failure: Some("Operator context is incompatible".into()),
+            };
+            m.terminal(&exit, start);
+            return exit;
+        }
+    }
+    let exit = serve_loop(
+        listener,
+        listen,
+        gateway,
+        store,
+        hook,
+        monitor.as_ref(),
+        shutdown,
+    )
+    .await;
+    if let Some(m) = monitor {
+        m.terminal(&exit, start);
+    }
+    exit
+}
+async fn serve_loop<F: Future<Output = ()>>(
     listener: TcpListener,
     listen: Listen,
     mut gateway: Gateway,
     store: Option<Store>,
     mut hook: Option<Tick>,
+    monitor: Option<&super::operator::Monitor>,
     shutdown: F,
 ) -> Exit {
     let mut stats = Stats::default();
@@ -512,6 +588,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
         stats.commit_phases.record(seconds);
         match result {
             Ok(commit) => {
+                stats.durable_revision = commit.revision;
                 if commit.written {
                     stats.checkpoint_commits += 1;
                     stats.checkpoint_bytes += commit.bytes as u64;
@@ -562,6 +639,8 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
     let mut committed = CommitView::capture(&gateway);
     let mut token = 0u64;
     let mut dirty = false;
+    let mut diagnostics = tokio::time::interval(Duration::from_secs(1));
+    diagnostics.set_missed_tick_behavior(MissedTickBehavior::Skip);
     tokio::pin!(shutdown);
     loop {
         stats.request_queue_peak = stats.request_queue_peak.max(receive.len());
@@ -574,6 +653,14 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
         );
         tokio::select! {
             _ = &mut shutdown => break,
+            _ = async { monitor.unwrap().draining().await }, if monitor.is_some() => break,
+            _ = diagnostics.tick(), if monitor.is_some() => {
+                stats.admission = limits.stats();
+                let held = pending_bytes + fences.values().map(|f: &Fence| f.reply_bytes).sum::<usize>();
+                monitor.unwrap().running(&gateway, &stats, start, receive.len(), fences.len(), held,
+                    fences.first_key_value().map(|(_, f)| f.created.elapsed()),
+                    gateway.chamber.rewards.history_capacity().unwrap_or(false), limits.clients(gateway.game().authority_tick));
+            },
             completed = async { writer.as_mut().unwrap().done.recv().await }, if writer.is_some() && !fences.is_empty() => {
                 let result = completed.ok_or_else(|| "Chamber storage writer stopped".to_string())
                     .and_then(|done| finish(done, &mut fences, &mut committed, &mut stats));
@@ -671,7 +758,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         Some(token) => token,
                         None => {failure = Some("Chamber storage tokens exhausted".into()); break;}
                     };
-                    fences.insert(token, Fence {view:CommitView::capture(&gateway), replies, reply_bytes});
+                    fences.insert(token, Fence {created: Instant::now(), view:CommitView::capture(&gateway), replies, reply_bytes});
                     let seconds = capture.elapsed().as_secs_f64();
                     stats.capture.record(seconds);
                     stats.capture_phases.record(seconds);
@@ -765,6 +852,13 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
             }
         }
     }
+    if let Some(m) = monitor {
+        m.phase(
+            super::operator::Phase::Draining,
+            super::operator::Reason::Draining,
+            start,
+        );
+    }
     workers.abort_all();
     while let Some(result) = workers.join_next().await {
         stats.completed_connections += 1;
@@ -806,6 +900,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                     fences.insert(
                         token,
                         Fence {
+                            created: Instant::now(),
                             view: CommitView::capture(&gateway),
                             replies: vec![],
                             reply_bytes: 0,
@@ -932,6 +1027,7 @@ async fn session_until<S: Transport + 'static>(
         timeout(WRITE, write_frame(&mut stream, &hello, MAX_RESPONSE_BYTES))
             .await
             .map_err(|_| "Chamber write timed out")??;
+        slot.delivered(hello.len(), None);
         let mut authenticated = false;
         let mut last_response: Option<Response> = None;
         let mut window = Instant::now();
@@ -944,6 +1040,7 @@ async fn session_until<S: Transport + 'static>(
                 read = tokio::time::timeout_at(deadline, read_frame(&mut stream, MAX_REQUEST_BYTES)) =>
                     read.map_err(|_| if authenticated { "Chamber read timed out" } else { "Chamber authentication timed out" })??,
             };
+            slot.received(bytes.len());
             if window.elapsed() >= Duration::from_secs(1) {
                 window = Instant::now();
                 count = 0;
@@ -969,6 +1066,7 @@ async fn session_until<S: Transport + 'static>(
                 let refused = response.encode()?;
                 timeout(WRITE, write_frame(&mut stream, &refused, MAX_RESPONSE_BYTES)).await
                     .map_err(|_| "Chamber write timed out")??;
+                slot.delivered(refused.len(), Some(response.tick));
                 continue;
             }
             let wait_for_storage = movement_storage_wait(authenticated, &request.body);
@@ -979,10 +1077,12 @@ async fn session_until<S: Transport + 'static>(
             if admitted && !authenticated && response.body.kind == "accepted" {
                 slot.authenticate(authenticate_key.ok_or("Chamber authentication key unavailable")?)?;
             }
+            let delivered_tick = response.tick;
             last_response = Some(response.refusal_template());
             timeout(WRITE, write_frame(&mut stream, &bytes, MAX_RESPONSE_BYTES))
                 .await
                 .map_err(|_| "Chamber write timed out")??;
+            slot.delivered(bytes.len(), Some(delivered_tick));
             authenticated = admitted;
             if authenticated {
                 return session_pipeline::run(stream, &guard, &send, &mut slot, id,
@@ -2264,11 +2364,14 @@ pub(super) mod tests {
         let address = listener.local_addr().unwrap();
         let (tls, connector) = tls();
         let (_stop, stopped) = oneshot::channel::<()>();
-        let server = tokio::spawn(serve_durable(
+        let monitor = super::operator_tests::monitor();
+        let server = tokio::spawn(serve_monitored(
             listener,
             tls,
             gateway(&keys).with_content([8; 32]).unwrap(),
-            store,
+            Some(store),
+            None,
+            monitor.clone(),
             async {
                 let _ = stopped.await;
             },
@@ -2304,6 +2407,19 @@ pub(super) mod tests {
             Some("Chamber storage entry must be a regular file")
         );
         assert_eq!(std::fs::read(root.join("chamber.json")).unwrap(), committed);
+        let snapshot = monitor.snapshot();
+        assert_eq!(snapshot.phase, super::super::operator::Phase::Failed);
+        assert!(!snapshot.live && !snapshot.ready);
+        assert_eq!(
+            snapshot.reasons,
+            vec![super::super::operator::Reason::StorageFailure]
+        );
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(root.join("writer.lock"))
+            .unwrap();
+        lock.try_lock().unwrap();
     }
     #[tokio::test]
     async fn tls_players_and_spectator_share_one_world_and_shutdown_parks_controls() {

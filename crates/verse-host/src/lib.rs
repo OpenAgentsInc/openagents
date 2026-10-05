@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use verse_world::service::{host::Config, net, persistence::Store};
+pub mod operations;
 pub fn bounded(path: &Path, limit: usize, private: bool) -> Result<Vec<u8>, String> {
     use std::io::Read;
     let file = std::fs::File::open(path).map_err(|_| "Cannot open chamber host input")?;
@@ -85,7 +86,15 @@ pub async fn serve(
     config: Config,
     stop: impl std::future::Future<Output = ()>,
 ) -> Result<(), String> {
-    let (gateway, store) = prepare(&config)?;
+    let prepared = prepare(&config)?;
+    serve_prepared(config, prepared, None, stop).await
+}
+async fn serve_prepared(
+    config: Config,
+    (gateway, store): (verse_world::service::auth::Gateway, Option<Store>),
+    monitor: Option<verse_world::service::operator::Monitor>,
+    stop: impl std::future::Future<Output = ()>,
+) -> Result<(), String> {
     let certificate = rustls::pki_types::CertificateDer::from(bounded(
         &config.certificate_der,
         1024 * 1024,
@@ -116,9 +125,13 @@ pub async fn serve(
             .map_err(|_| "Cannot inspect chamber listener")?
     );
     gateway.game().enable_query_profiling();
-    let exit = match store {
-        Some(store) => net::serve_durable(listener, Arc::new(tls), gateway, store, stop).await,
-        None => net::serve(listener, Arc::new(tls), gateway, stop).await,
+    let exit = if let Some(monitor) = monitor {
+        net::serve_monitored(listener, Arc::new(tls), gateway, store, None, monitor, stop).await
+    } else {
+        match store {
+            Some(store) => net::serve_durable(listener, Arc::new(tls), gateway, store, stop).await,
+            None => net::serve(listener, Arc::new(tls), gateway, stop).await,
+        }
     };
     println!(
         "Chamber stopped: {} ticks, {} requests, {} completed connections, {:.6} dropped seconds",
@@ -188,28 +201,164 @@ pub async fn serve(
     }
     Ok(())
 }
+#[cfg(unix)]
+pub async fn serve_with_operations(
+    config: Config,
+    root: &Path,
+    stop: impl std::future::Future<Output = ()>,
+) -> Result<(), String> {
+    let prepared = prepare(&config)?;
+    let monitor = verse_world::service::operator::Monitor::new(
+        operations::build(),
+        config.instance,
+        prepared.0.content(),
+    )?;
+    let server = operations::Server::bind(root)?;
+    let (stopping, stopped) = tokio::sync::oneshot::channel();
+    let host_monitor = monitor.clone();
+    let host = async {
+        let result = serve_prepared(config, prepared, Some(host_monitor), stop).await;
+        if result.is_err()
+            && monitor.snapshot().phase == verse_world::service::operator::Phase::Starting
+        {
+            monitor.phase(
+                verse_world::service::operator::Phase::Failed,
+                verse_world::service::operator::Reason::TransportFailure,
+                std::time::Instant::now(),
+            );
+        }
+        let _ = stopping.send(());
+        result
+    };
+    let operator = async {
+        let result = server
+            .run(monitor.clone(), async {
+                let _ = stopped.await;
+            })
+            .await;
+        if result.is_err() {
+            monitor.request_drain();
+        }
+        result
+    };
+    let (host, operator) = tokio::join!(host, operator);
+    host?;
+    operator
+}
 pub fn run() -> Result<(), String> {
     let mut args = std::env::args_os().skip(1);
-    let path = args
-        .next()
-        .ok_or("Usage: verse-host CONFIG.json [--check TICKS]")?;
+    let path = args.next().ok_or("Usage: verse-host CONFIG [--check TICKS | --operations DIR | --backup NEW_DIR | --verify-backup DIR | --restore-backup DIR NEW_DIR]; verse-host --status DIR | --drain DIR")?;
+    if path == "--status" || path == "--drain" {
+        let root = args.next().ok_or("Missing operations directory")?;
+        if args.next().is_some() {
+            return Err("Unexpected operations argument".into());
+        }
+        println!(
+            "{}",
+            operations::command(Path::new(&root), path == "--drain")?
+        );
+        return Ok(());
+    }
     let mode = args.next();
-    let ticks = if mode.as_deref() == Some(std::ffi::OsStr::new("--check")) {
-        Some(
-            args.next()
-                .and_then(|n| n.to_str().and_then(|s| s.parse::<u32>().ok()))
-                .filter(|n| *n > 0 && *n <= 108_000)
-                .ok_or("Check ticks must be 1 through 108000")?,
-        )
-    } else if mode.is_none() {
-        None
-    } else {
-        return Err("Unknown host option".into());
-    };
+    let mut config = Config::from_json(&bounded(Path::new(&path), 64 * 1024, false)?)?;
+    let mut ticks = None;
+    let mut operations = None;
+    match mode.as_deref().and_then(|s| s.to_str()) {
+        None => {}
+        Some("--check") => {
+            ticks = Some(
+                args.next()
+                    .and_then(|n| n.to_str().and_then(|s| s.parse::<u32>().ok()))
+                    .filter(|n| *n > 0 && *n <= 108_000)
+                    .ok_or("Check ticks must be 1 through 108000")?,
+            );
+        }
+        Some("--prune-history") => {
+            if args.next().is_some() {
+                return Err("Unexpected history retention argument".into());
+            }
+            let root = config
+                .state_dir
+                .take()
+                .ok_or("History pruning requires configured durable storage")?;
+            if !root.is_dir() {
+                return Err("History retention source does not exist".into());
+            }
+            use verse_world::service::persistence::backup;
+            backup::validate_source_path(&root)?;
+            let (gateway, _) = prepare(&config)?;
+            let store = Store::open(
+                &root,
+                gateway
+                    .content()
+                    .ok_or("Missing admitted retention content")?,
+                config.instance,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string(&store.prune_history(backup::Budget::default())?)
+                    .map_err(|_| "Cannot encode history retention report")?
+            );
+            return Ok(());
+        }
+        Some("--operations") => {
+            operations = Some(std::path::PathBuf::from(
+                args.next().ok_or("Missing operations directory")?,
+            ));
+        }
+        Some(option @ ("--backup" | "--verify-backup" | "--restore-backup")) => {
+            let source = std::path::PathBuf::from(args.next().ok_or("Missing backup directory")?);
+            let destination = if option == "--restore-backup" {
+                Some(std::path::PathBuf::from(
+                    args.next().ok_or("Missing new restore directory")?,
+                ))
+            } else {
+                None
+            };
+            if args.next().is_some() {
+                return Err("Unexpected backup argument".into());
+            }
+            use verse_world::service::persistence::backup::{self, Budget};
+            let report = if option == "--backup" {
+                let root = config
+                    .state_dir
+                    .as_ref()
+                    .ok_or("Backup requires configured durable storage")?;
+                if !root.is_dir() {
+                    return Err("Backup source storage does not exist".into());
+                }
+                backup::validate_source_path(root)?;
+                let (_, store) = prepare(&config)?;
+                store
+                    .ok_or("Backup requires configured durable storage")?
+                    .export_backup(&source, Budget::default())?
+            } else {
+                // Admits configured content without acquiring or creating configured live storage.
+                config.state_dir = None;
+                let (gateway, _) = prepare(&config)?;
+                let content = gateway.content().ok_or("Missing admitted backup content")?;
+                match destination {
+                    Some(destination) => backup::restore(
+                        &source,
+                        &destination,
+                        content,
+                        config.instance,
+                        Budget::default(),
+                    )?,
+                    None => backup::verify(&source, content, config.instance, Budget::default())?,
+                }
+            };
+            println!(
+                "{}",
+                serde_json::to_string(&report).map_err(|_| "Cannot encode backup report")?
+            );
+            return Ok(());
+        }
+        _ => return Err("Unknown host option".into()),
+    }
     if args.next().is_some() {
         return Err("Unexpected host argument".into());
     }
-    let config = Config::from_json(&bounded(Path::new(&path), 64 * 1024, false)?)?;
     if config.transport != (verse_world::service::host::Transport::Tls {}) {
         return Err("verse-host serves TLS; use openagents chamber host for REACH".into());
     }
@@ -240,11 +389,18 @@ pub fn run() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let signal_failure = Arc::new(Mutex::new(None));
     let failure = signal_failure.clone();
-    runtime.block_on(serve(config, async move {
+    let stopping = async move {
         if let Err(error) = shutdown().await {
             *failure.lock().unwrap() = Some(error);
         }
-    }))?;
+    };
+    match operations {
+        #[cfg(unix)]
+        Some(root) => runtime.block_on(serve_with_operations(config, &root, stopping))?,
+        #[cfg(not(unix))]
+        Some(_) => return Err("Local operations IPC requires a Unix host".into()),
+        None => runtime.block_on(serve(config, stopping))?,
+    }
     if let Some(error) = signal_failure.lock().unwrap().take() {
         return Err(error);
     }

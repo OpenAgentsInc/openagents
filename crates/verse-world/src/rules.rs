@@ -1110,6 +1110,12 @@ impl Simulation {
     pub(crate) fn player_ids(&self) -> impl Iterator<Item = u32> + '_ {
         self.players.keys().copied()
     }
+    pub(crate) fn live_hostiles(&self) -> usize {
+        self.actors
+            .values()
+            .filter(|actor| actor.faction == "undead" && actor.alive)
+            .count()
+    }
     pub fn snapshot(&self) -> Snapshot {
         self.snapshot_for(0)
             .expect("The local player remains admitted")

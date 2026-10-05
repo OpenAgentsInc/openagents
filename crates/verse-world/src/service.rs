@@ -16,6 +16,8 @@ pub mod host;
 pub mod items;
 #[cfg(feature = "service-net")]
 pub mod net;
+#[cfg(feature = "service-net")]
+pub mod operator;
 pub mod outfits;
 #[cfg(feature = "service-net")]
 pub mod persistence;

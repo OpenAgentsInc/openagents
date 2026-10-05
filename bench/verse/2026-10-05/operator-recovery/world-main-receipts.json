@@ -1,0 +1,541 @@
+{
+  "schema": "verse.operations.evidence.v1",
+  "receipts": [
+    {
+      "schema": "verse.operations.restore.crash.v1",
+      "boundary": "reserved",
+      "partial_host_admission_refused": true,
+      "verified_source_retained": true,
+      "retry_reward_transactions": 140
+    },
+    {
+      "schema": "verse.operations.live.v1",
+      "stalled": {
+        "schema": "verse.host.operations.v1",
+        "build": {
+          "package_version": "test",
+          "source_revision": "scratch-operations",
+          "wire_version": 29
+        },
+        "instance": 120,
+        "content": [
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "sampled_unix_ms": 1791238523115,
+        "elapsed_ms": 2000,
+        "phase": "running",
+        "live": true,
+        "ready": false,
+        "reasons": [
+          "storage_backpressure",
+          "writer_stalled",
+          "simulation_over_budget"
+        ],
+        "metrics": {
+          "admission": {
+            "capacity_refusals": 0,
+            "pre_auth_refusals": 0,
+            "ip_refusals": 0,
+            "handshake_rate_refusals": 0,
+            "principal_capacity_refusals": 0,
+            "principal_work_refusals": 0,
+            "aggregate_work_refusals": 0,
+            "projections": 1,
+            "commands": 0,
+            "pending_peak": 1,
+            "active_peak": 1,
+            "pending": 1,
+            "active": 1,
+            "principal_records": 1,
+            "completed": 0,
+            "handshake_timeouts": 0,
+            "handshake_refusals": 0,
+            "authentication_timeouts": 0,
+            "authentication_refusals": 0,
+            "grant_refusals": 0,
+            "retired_connections": 0,
+            "frame_failures": 0,
+            "read_timeouts": 0,
+            "write_failures": 0,
+            "request_rate_failures": 0,
+            "host_failures": 0,
+            "transport_closures": 0,
+            "cancelled_workers": 0
+          },
+          "ticks": 4,
+          "requests": 2,
+          "dropped_seconds": 0.0,
+          "simulation": {
+            "observations": 4,
+            "p95_upper_bound_ms": 47.813904,
+            "p99_upper_bound_ms": 47.813904,
+            "maximum_ms": 47.813904,
+            "total_ms": 52.73734399999999
+          },
+          "read_projection": {
+            "observations": 0,
+            "p95_upper_bound_ms": null,
+            "p99_upper_bound_ms": null,
+            "maximum_ms": 0.0,
+            "total_ms": 0.0
+          },
+          "storage_commit": {
+            "observations": 3,
+            "p95_upper_bound_ms": 30.205607,
+            "p99_upper_bound_ms": 30.205607,
+            "maximum_ms": 30.205607,
+            "total_ms": 67.887826
+          },
+          "journal_sync": {
+            "observations": 2,
+            "p95_upper_bound_ms": 26.424322,
+            "p99_upper_bound_ms": 26.424322,
+            "maximum_ms": 26.424322,
+            "total_ms": 34.447415
+          },
+          "request_queue": 0,
+          "request_queue_peak": 0,
+          "writer_queue": 2,
+          "writer_queue_peak": 2,
+          "held_reply_bytes": 0,
+          "held_reply_bytes_peak": 27198,
+          "storage_refusals": 0,
+          "storage_paused_seconds": 1.8504756729999998,
+          "durable_commits": 3,
+          "durable_revision": 3,
+          "pending_commit_age_ms": 1864,
+          "actor_count": 15,
+          "live_hostiles": 13,
+          "motor_recovery_blocks": 0,
+          "navigation_refusals": 0
+        },
+        "budgets": {
+          "connections": 128,
+          "pre_auth_connections": 32,
+          "request_queue": 128,
+          "writer_copies": 2,
+          "held_reply_bytes": 33554432,
+          "receipt_staging_bytes": 134217728,
+          "client_observations": 128,
+          "diagnostic_records": 128,
+          "status_bytes": 262144
+        },
+        "clients": [
+          {
+            "connection": 1,
+            "authenticated": true,
+            "requests": 2,
+            "received_payload_bytes": 491,
+            "sent_payload_bytes": 23683,
+            "idle_ms": 1879,
+            "delivered_tick": 2,
+            "delivered_tick_lag": 2,
+            "last_delivery_ms_ago": 1879,
+            "work_refusals": 0
+          },
+          {
+            "connection": 2,
+            "authenticated": false,
+            "requests": 0,
+            "received_payload_bytes": 0,
+            "sent_payload_bytes": 0,
+            "idle_ms": 1879,
+            "delivered_tick": null,
+            "delivered_tick_lag": null,
+            "last_delivery_ms_ago": null,
+            "work_refusals": 0
+          }
+        ],
+        "records": [
+          {
+            "sequence": 1,
+            "elapsed_ms": 1,
+            "phase": "running",
+            "reasons": []
+          },
+          {
+            "sequence": 2,
+            "elapsed_ms": 1000,
+            "phase": "running",
+            "reasons": [
+              "storage_backpressure",
+              "simulation_over_budget"
+            ]
+          },
+          {
+            "sequence": 3,
+            "elapsed_ms": 2000,
+            "phase": "running",
+            "reasons": [
+              "storage_backpressure",
+              "writer_stalled",
+              "simulation_over_budget"
+            ]
+          }
+        ],
+        "omitted_records": 0
+      },
+      "final": {
+        "schema": "verse.host.operations.v1",
+        "build": {
+          "package_version": "test",
+          "source_revision": "scratch-operations",
+          "wire_version": 29
+        },
+        "instance": 120,
+        "content": [
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "sampled_unix_ms": 1791238523164,
+        "elapsed_ms": 2079,
+        "phase": "stopped",
+        "live": false,
+        "ready": false,
+        "reasons": [
+          "stopped"
+        ],
+        "metrics": {
+          "admission": {
+            "capacity_refusals": 0,
+            "pre_auth_refusals": 0,
+            "ip_refusals": 0,
+            "handshake_rate_refusals": 0,
+            "principal_capacity_refusals": 0,
+            "principal_work_refusals": 0,
+            "aggregate_work_refusals": 0,
+            "projections": 1,
+            "commands": 0,
+            "pending_peak": 1,
+            "active_peak": 1,
+            "pending": 0,
+            "active": 0,
+            "principal_records": 1,
+            "completed": 0,
+            "handshake_timeouts": 0,
+            "handshake_refusals": 0,
+            "authentication_timeouts": 0,
+            "authentication_refusals": 0,
+            "grant_refusals": 0,
+            "retired_connections": 0,
+            "frame_failures": 0,
+            "read_timeouts": 0,
+            "write_failures": 0,
+            "request_rate_failures": 0,
+            "host_failures": 0,
+            "transport_closures": 0,
+            "cancelled_workers": 2
+          },
+          "ticks": 4,
+          "requests": 2,
+          "dropped_seconds": 0.0,
+          "simulation": {
+            "observations": 4,
+            "p95_upper_bound_ms": 47.813904,
+            "p99_upper_bound_ms": 47.813904,
+            "maximum_ms": 47.813904,
+            "total_ms": 52.73734399999999
+          },
+          "read_projection": {
+            "observations": 0,
+            "p95_upper_bound_ms": null,
+            "p99_upper_bound_ms": null,
+            "maximum_ms": 0.0,
+            "total_ms": 0.0
+          },
+          "storage_commit": {
+            "observations": 6,
+            "p95_upper_bound_ms": 1889.3125830000001,
+            "p99_upper_bound_ms": 1889.3125830000001,
+            "maximum_ms": 1889.3125830000001,
+            "total_ms": 1979.8873680000002
+          },
+          "journal_sync": {
+            "observations": 5,
+            "p95_upper_bound_ms": 26.424322,
+            "p99_upper_bound_ms": 26.424322,
+            "maximum_ms": 26.424322,
+            "total_ms": 63.342721000000004
+          },
+          "request_queue": 0,
+          "request_queue_peak": 0,
+          "writer_queue": 0,
+          "writer_queue_peak": 2,
+          "held_reply_bytes": 0,
+          "held_reply_bytes_peak": 27198,
+          "storage_refusals": 0,
+          "storage_paused_seconds": 1.8504756729999998,
+          "durable_commits": 6,
+          "durable_revision": 6,
+          "pending_commit_age_ms": null,
+          "actor_count": 15,
+          "live_hostiles": 13,
+          "motor_recovery_blocks": 0,
+          "navigation_refusals": 0
+        },
+        "budgets": {
+          "connections": 128,
+          "pre_auth_connections": 32,
+          "request_queue": 128,
+          "writer_copies": 2,
+          "held_reply_bytes": 33554432,
+          "receipt_staging_bytes": 134217728,
+          "client_observations": 128,
+          "diagnostic_records": 128,
+          "status_bytes": 262144
+        },
+        "clients": [],
+        "records": [
+          {
+            "sequence": 1,
+            "elapsed_ms": 1,
+            "phase": "running",
+            "reasons": []
+          },
+          {
+            "sequence": 2,
+            "elapsed_ms": 1000,
+            "phase": "running",
+            "reasons": [
+              "storage_backpressure",
+              "simulation_over_budget"
+            ]
+          },
+          {
+            "sequence": 3,
+            "elapsed_ms": 2000,
+            "phase": "running",
+            "reasons": [
+              "storage_backpressure",
+              "writer_stalled",
+              "simulation_over_budget"
+            ]
+          },
+          {
+            "sequence": 4,
+            "elapsed_ms": 2015,
+            "phase": "draining",
+            "reasons": [
+              "draining"
+            ]
+          },
+          {
+            "sequence": 5,
+            "elapsed_ms": 2079,
+            "phase": "stopped",
+            "reasons": [
+              "stopped"
+            ]
+          }
+        ],
+        "omitted_records": 0
+      },
+      "drain_recovered_tick": 4
+    },
+    {
+      "schema": "verse.operations.restore.crash.v1",
+      "boundary": "copied",
+      "partial_host_admission_refused": true,
+      "verified_source_retained": true,
+      "retry_reward_transactions": 140
+    },
+    {
+      "schema": "verse.operations.recovery.v1",
+      "report": {
+        "schema": "verse.backup.v1",
+        "content": [
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "instance": 120,
+        "revision": 2,
+        "checkpoint_digest": [
+          116,
+          142,
+          208,
+          245,
+          92,
+          225,
+          156,
+          84,
+          170,
+          161,
+          124,
+          135,
+          159,
+          255,
+          144,
+          153,
+          167,
+          62,
+          83,
+          35,
+          114,
+          164,
+          11,
+          70,
+          229,
+          143,
+          246,
+          190,
+          211,
+          173,
+          162,
+          200
+        ],
+        "manifest_digest": [
+          192,
+          242,
+          145,
+          37,
+          42,
+          180,
+          75,
+          94,
+          231,
+          61,
+          106,
+          216,
+          101,
+          230,
+          213,
+          166,
+          73,
+          192,
+          228,
+          41,
+          35,
+          166,
+          248,
+          93,
+          114,
+          42,
+          62,
+          10,
+          149,
+          225,
+          43,
+          126
+        ],
+        "files": 104,
+        "bytes": 132075,
+        "migrations": 0
+      },
+      "reward_transactions": 300,
+      "exact_retry_receipt": true,
+      "exclusive_writer": true
+    },
+    {
+      "schema": "verse.operations.restore.crash.v1",
+      "boundary": "durable",
+      "partial_host_admission_refused": true,
+      "verified_source_retained": true,
+      "retry_reward_transactions": 140
+    },
+    {
+      "schema": "verse.operations.restore.crash.v1",
+      "boundary": "before_publish",
+      "partial_host_admission_refused": true,
+      "verified_source_retained": true,
+      "retry_reward_transactions": 140
+    },
+    {
+      "schema": "verse.operations.restore.crash.v1",
+      "boundary": "published",
+      "partial_host_admission_refused": false,
+      "verified_source_retained": true,
+      "retry_reward_transactions": 140
+    }
+  ]
+}

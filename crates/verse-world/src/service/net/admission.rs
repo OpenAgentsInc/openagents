@@ -1,6 +1,6 @@
 //! Bounded transport admission and work budgets, shared across reconnects.
 use super::super::wire::Body;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     net::IpAddr,
@@ -19,7 +19,8 @@ const PRINCIPALS: usize = 128;
 const RETAIN: Duration = Duration::from_secs(120);
 
 /// Aggregate counters contain neither principal keys nor network addresses.
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Stats {
     pub capacity_refusals: u64,
     pub pre_auth_refusals: u64,
@@ -88,7 +89,18 @@ struct Stop {
     retired: AtomicBool,
     wake: Notify,
 }
+struct Activity {
+    authenticated: bool,
+    requests: u64,
+    received: u64,
+    sent: u64,
+    used: Instant,
+    delivered: Option<(u64, Instant)>,
+    refusals: u64,
+}
 struct State {
+    serial: u64,
+    clients: BTreeMap<u64, Activity>,
     stats: Stats,
     ips: BTreeMap<IpAddr, usize>,
     principals: BTreeMap<[u8; 32], Principal>,
@@ -102,6 +114,8 @@ impl Limits {
     pub fn new() -> Self {
         let now = Instant::now();
         Self(Arc::new(Mutex::new(State {
+            serial: 0,
+            clients: BTreeMap::new(),
             stats: Stats::default(),
             ips: BTreeMap::new(),
             principals: BTreeMap::new(),
@@ -133,11 +147,32 @@ impl Limits {
             s.stats.handshake_rate_refusals += 1;
             return Err("Chamber handshake rate exceeded");
         }
+        if s.serial == u64::MAX {
+            return Err("Chamber connection identity exhausted");
+        }
         s.handshakes.charge(1);
         s.stats.pending += 1;
         s.stats.pending_peak = s.stats.pending_peak.max(s.stats.pending);
         *s.ips.entry(ip).or_default() += 1;
+        s.serial = s
+            .serial
+            .checked_add(1)
+            .ok_or("Chamber connection identity exhausted")?;
+        let serial = s.serial;
+        s.clients.insert(
+            serial,
+            Activity {
+                authenticated: false,
+                requests: 0,
+                received: 0,
+                sent: 0,
+                used: Instant::now(),
+                delivered: None,
+                refusals: 0,
+            },
+        );
         Ok(Slot {
+            serial,
             limits: self.clone(),
             ip,
             principal: None,
@@ -149,6 +184,29 @@ impl Limits {
         let mut out = s.stats.clone();
         out.principal_records = s.principals.len();
         out
+    }
+    pub fn clients(&self, tick: u64) -> Vec<super::super::operator::Client> {
+        let s = self.0.lock().unwrap();
+        let now = Instant::now();
+        s.clients
+            .iter()
+            .map(|(&connection, a)| super::super::operator::Client {
+                connection,
+                authenticated: a.authenticated,
+                requests: a.requests,
+                received_payload_bytes: a.received,
+                sent_payload_bytes: a.sent,
+                idle_ms: super::super::operator::millis(now.saturating_duration_since(a.used)),
+                delivered_tick: a.delivered.map(|(tick, _)| tick),
+                delivered_tick_lag: a
+                    .delivered
+                    .map(|(delivered, _)| tick.saturating_sub(delivered)),
+                last_delivery_ms_ago: a.delivered.map(|(_, at)| {
+                    super::super::operator::millis(now.saturating_duration_since(at))
+                }),
+                work_refusals: a.refusals,
+            })
+            .collect()
     }
     pub fn cancelled(&self) {
         self.0.lock().unwrap().stats.cancelled_workers += 1;
@@ -198,6 +256,7 @@ impl Limits {
     }
 }
 pub(in crate::service) struct Slot {
+    serial: u64,
     limits: Limits,
     ip: IpAddr,
     principal: Option<[u8; 32]>,
@@ -213,6 +272,22 @@ fn release_pending(s: &mut State, ip: IpAddr) {
     }
 }
 impl Slot {
+    pub fn received(&self, bytes: usize) {
+        let mut s = self.limits.0.lock().unwrap();
+        let a = s.clients.get_mut(&self.serial).unwrap();
+        a.requests = a.requests.saturating_add(1);
+        a.received = a.received.saturating_add(bytes as u64);
+        a.used = Instant::now();
+    }
+    pub fn delivered(&self, bytes: usize, tick: Option<u64>) {
+        let mut s = self.limits.0.lock().unwrap();
+        let a = s.clients.get_mut(&self.serial).unwrap();
+        a.sent = a.sent.saturating_add(bytes as u64);
+        a.used = Instant::now();
+        if let Some(tick) = tick {
+            a.delivered = Some((tick, a.used));
+        }
+    }
     /// Called only after signature verification and world-right admission.
     pub fn authenticate(&mut self, key: [u8; 32]) -> Result<(), String> {
         let mut s = self.limits.0.lock().unwrap();
@@ -244,6 +319,7 @@ impl Slot {
         release_pending(&mut s, self.ip);
         s.stats.active += 1;
         s.stats.active_peak = s.stats.active_peak.max(s.stats.active);
+        s.clients.get_mut(&self.serial).unwrap().authenticated = true;
         self.principal = Some(key);
         self.stop = Some(stop);
         Ok(())
@@ -293,6 +369,7 @@ impl Slot {
         };
         if !local.ready(cost, now) {
             s.stats.principal_work_refusals += 1;
+            s.clients.get_mut(&self.serial).unwrap().refusals += 1;
             return false;
         }
         let global = if projection {
@@ -302,6 +379,7 @@ impl Slot {
         };
         if !global.ready(cost, now) {
             s.stats.aggregate_work_refusals += 1;
+            s.clients.get_mut(&self.serial).unwrap().refusals += 1;
             return false;
         }
         global.charge(cost);
@@ -323,6 +401,7 @@ impl Slot {
 impl Drop for Slot {
     fn drop(&mut self) {
         let mut s = self.limits.0.lock().unwrap();
+        s.clients.remove(&self.serial);
         if self.principal.is_some() {
             s.stats.active -= 1;
         } else {
