@@ -3,7 +3,7 @@ use crate::ui::Atlas;
 pub use verse_content::compiler::original::generate;
 /// Builds original UI art and uses the bundled OFL font.
 pub fn atlas() -> Result<Atlas, String> {
-    let font = include_bytes!("../../assets/FiraMono-Medium.ttf");
+    let font = include_bytes!("../../../verse/assets/FiraMono-Medium.ttf");
     let mut atlas = Atlas::from_font(font, 54.)?;
     for (name, size) in [
         ("small", 10.),

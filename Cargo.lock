@@ -14976,6 +14976,7 @@ dependencies = [
  "verse-engine",
  "verse-gfx",
  "verse-host",
+ "verse-imported",
  "verse-lagrange",
  "verse-net",
  "verse-pbr",
@@ -15064,6 +15065,31 @@ dependencies = [
  "verse-content",
  "verse-engine",
  "verse-world",
+]
+
+[[package]]
+name = "verse-imported"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "physics",
+ "png",
+ "rustls",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "verse-content",
+ "verse-core",
+ "verse-engine",
+ "verse-gfx",
+ "verse-net",
+ "verse-pbr",
+ "verse-world",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]

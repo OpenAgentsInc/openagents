@@ -21,15 +21,15 @@ panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 terminal = ["dep:coder-pty", "dep:coder-vt", "dep:winit", "dep:arboard", "dep:memmap2"]
 # The Agent Studio from a live host, over its same-user control socket.
 studio-host = ["dep:openagents-connect"]
-imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface", "verse-pbr/imported-desktop"]
+imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface", "verse-pbr/imported-desktop", "verse-imported/imported-desktop"]
 # The engine renderer presenting on a surface the host made (a phone's
 # layer or window, a browser canvas); no window library.
 imported-surface = ["verse-pbr/imported-surface"]
 native-audio = ["dep:cpal"]
 hosted-social = ["verse-world/service-auth"]
-remote-chamber = ["hosted-social", "verse-world/service-reach", "tokio/signal"]
+remote-chamber = ["hosted-social", "verse-world/service-reach", "tokio/signal", "verse-imported/remote-chamber"]
 # An in-process chamber host over memory streams, for other crates' tests.
-chamber-loopback = ["remote-chamber", "tokio/io-util"]
+chamber-loopback = ["remote-chamber", "tokio/io-util", "verse-imported/chamber-loopback"]
 # The browser build (`wasm32-unknown-unknown`), used without default
 # features: WebGL2 as well as WebGPU. Network, threads, processes, and disk
 # are native-only by target, so this feature only adds what the web needs.
@@ -56,6 +56,9 @@ verse-pbr = { path = "../verse-pbr" }
 # effects, tooltips, and scene labels the zones share; `verse` re-exports
 # each under its old path.
 verse-core = { path = "../verse-core" }
+# The imported content and the RITUAL client; `verse` re-exports them
+# as `imported` and `ritual`.
+verse-imported = { path = "../verse-imported" }
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
 coder-delegate = { path = "../coder-delegate", optional = true }
@@ -141,6 +144,8 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 verse-pbr = { path = "../verse-pbr", features = ["diagnostics"] }
 verse-host = { path = "../verse-host" }
 verse-net = { path = "../verse-net", features = ["test-support"] }
+# The in-process chamber the remote-chamber tests play against.
+verse-imported = { path = "../verse-imported", features = ["chamber-loopback"] }
 tempfile = "3"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 # A scratch host the live studio source is tested against.

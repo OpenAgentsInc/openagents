@@ -46,8 +46,8 @@ pub mod gym_results;
 #[cfg(feature = "hosted-social")]
 pub mod hosted;
 pub mod hud;
+pub use verse_imported::imported;
 pub use verse_net::identity;
-pub mod imported;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod loopback;
 pub use verse_pbr::mesh;
@@ -64,7 +64,7 @@ pub mod pillar;
 pub use verse_gfx::profiling;
 pub mod render;
 pub mod replay;
-pub mod ritual;
+pub use verse_imported::ritual;
 pub mod runtime;
 pub mod session;
 pub mod shared;

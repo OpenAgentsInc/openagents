@@ -9147,6 +9147,7 @@ dependencies = [
  "verse-core",
  "verse-engine",
  "verse-gfx",
+ "verse-imported",
  "verse-lagrange",
  "verse-net",
  "verse-pbr",
@@ -9214,6 +9215,29 @@ dependencies = [
  "serde_json",
  "swash",
  "verse-engine",
+ "verse-world",
+ "wgpu",
+]
+
+[[package]]
+name = "verse-imported"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "physics",
+ "png",
+ "rustls",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "verse-content",
+ "verse-core",
+ "verse-engine",
+ "verse-gfx",
+ "verse-net",
+ "verse-pbr",
  "verse-world",
  "wgpu",
 ]
