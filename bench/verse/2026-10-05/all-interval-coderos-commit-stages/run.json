@@ -1,0 +1,39 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "host_revision": "d0022d479f",
+  "client_revision": "a1a05de003",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "movement_send_steps": 6,
+  "wire_version": 26,
+  "timings": {
+    "frame_p95_ms": 17.028,
+    "gpu_p95_ms": 9.966958,
+    "verified_snapshot_age_p95_ms": 128.18325,
+    "command_turnaround_p95_ms": 162.40475,
+    "movement_expiries": 562,
+    "native_control_epoch_resets": 6,
+    "storage_paused_seconds": 0.599454,
+    "storage_commit_max_ms": 264.467,
+    "commit_preparation_max_ms": 7.307,
+    "journal_encoding_max_ms": 2.935,
+    "journal_write_and_sync_max_ms": 256.213,
+    "snapshot_compaction_max_ms": 31.886
+  },
+  "limits": [
+    "Stage timings cover storage-writer commits; the initial synchronous commit contributes only to the existing total commit timing.",
+    "Wall durations include process scheduling and are not isolated CPU time.",
+    "Journal file timing combines writes and sync; it does not isolate the sync syscall.",
+    "Shared Linux CPU includes two other rustc processes; no isolated causal comparison.",
+    "No injected network impairment, input-to-display measurement, or soak acceptance."
+  ],
+  "validation": [
+    "All client and host exits zero.",
+    "Every headless worker observed 20 players and minimum 40 live hostiles.",
+    "15440 headless movement inputs.",
+    "Headless producer cadence is 33 ms, enough for six-step interval production at 120 Hz.",
+    "44 targeted checks passed across world and dedicated-host checks before this host build."
+  ]
+}
