@@ -1874,6 +1874,29 @@ impl Site {
         self.world.step(&gravity);
         let now = self.world.time();
         self.thrown.retain(|&(_, until)| until > now);
+        // Bodies that touch something fixed this step (the ground, a floor,
+        // or debris already frozen): only these may freeze, so a piece
+        // slowed at the top of its arc or resting on moving debris never
+        // freezes in midair.
+        let supported: std::collections::BTreeSet<u32> = {
+            let bodies = self.world.bodies();
+            let fixed = |id: physics::BodyId| {
+                bodies
+                    .get(id.0 as usize)
+                    .is_some_and(|b| b.kind == BodyKind::Static)
+            };
+            self.world
+                .contacts
+                .iter()
+                .flat_map(|c| {
+                    [
+                        fixed(c.body_a).then_some(c.body_b.0),
+                        fixed(c.body_b).then_some(c.body_a.0),
+                    ]
+                })
+                .flatten()
+                .collect()
+        };
         for (index, body) in self.world.bodies_mut().iter_mut().enumerate() {
             if body.kind == BodyKind::Dynamic {
                 let thrown = self
@@ -1902,7 +1925,8 @@ impl Site {
                 }
                 if debris {
                     let slow = body.vel.length() < FREEZE_SPEED
-                        && body.omega.length() < 2.0 * FREEZE_SPEED;
+                        && body.omega.length() < 2.0 * FREEZE_SPEED
+                        && supported.contains(&(index as u32));
                     let rest = self.resting.entry(index as u32).or_insert(0.0);
                     *rest = if slow { *rest + STEP } else { 0.0 };
                     if *rest > FREEZE_AFTER {

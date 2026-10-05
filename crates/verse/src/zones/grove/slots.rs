@@ -2,10 +2,11 @@
 //! each ability's icon and tooltip sentence (`docs/verse/druid-demo.md`,
 //! The action bar).
 //!
-//! Row 1 holds Wild Shape and the druid's features, row 2 the cantrips and
-//! levels 1 and 2, row 3 levels 2 to 7, and row 4 levels 8 and 9, Speak
-//! with Animals, the chosen land's six spells on keys 5 to 0, and Meteor
-//! Swarm and the Thunderbolt on - and =. In a beast's shape, or
+//! Row 1 opens with Meteor Swarm and the Thunderbolt on keys 1 and 2, then
+//! Wild Shape and the druid's features; row 2 holds the cantrips and levels 1
+//! and 2, row 3 levels 2 to 7, and row 4 levels 8 and 9, Speak with
+//! Animals, the chosen land's six spells on keys 5 to 0, and Wild
+//! Resurgence and Long Rest on - and =. In a beast's shape, or
 //! Shapechange's dragon, its attacks take row 2's first slots, and the
 //! other rows still cast, as Beast Spells allows. The tooltip sentences are our own
 //! summaries of SRD 5.2.1; the numbers on a card come from [`Spell::def`].
@@ -35,6 +36,8 @@ pub const LAYOUT: [[Entry; COLUMNS]; ROWS] = {
     use Spell as K;
     [
         [
+            S(K::MeteorSwarm),
+            S(K::Thunderbolt),
             S(K::WildShapeBear),
             S(K::WildShapeWolf),
             S(K::WildShapeEagle),
@@ -45,8 +48,6 @@ pub const LAYOUT: [[Entry; COLUMNS]; ROWS] = {
             S(K::NaturesSanctuary),
             S(K::ChooseLand),
             S(K::NatureMagician),
-            S(K::WildResurgence),
-            S(K::LongRest),
         ],
         [
             S(K::ProduceFlame),
@@ -87,8 +88,8 @@ pub const LAYOUT: [[Entry; COLUMNS]; ROWS] = {
             L(3),
             L(4),
             L(5),
-            S(K::MeteorSwarm),
-            S(K::Thunderbolt),
+            S(K::WildResurgence),
+            S(K::LongRest),
         ],
     ]
 };

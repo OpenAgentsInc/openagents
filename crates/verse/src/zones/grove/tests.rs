@@ -65,10 +65,10 @@ const STRAW: usize = 0;
 /// Slots: Wall of Stone (Arid, Alt+0) and Reverse Gravity (Ctrl+=).
 const STONE_SLOT: usize = 45;
 const GRAVITY_SLOT: usize = 35;
-/// Wild Shape: Giant Spider (4), Return to Form (5), and the beast's first
+/// Wild Shape: Giant Spider (6), Return to Form (7), and the beast's first
 /// attack (Shift+1).
-const SPIDER: u8 = 3;
-const RETURN: u8 = 4;
+const SPIDER: u8 = 5;
+const RETURN: u8 = 6;
 const BITE: u8 = 12;
 
 /// Casts the spell on slot `index`.
@@ -131,7 +131,7 @@ fn the_grove_opens_with_its_hotbar_and_no_cooldowns() {
         Some(Spell::Thunderwave)
     );
     assert_eq!(
-        grove(&runtime).resolve(Intent::GroveSlot(11)),
+        grove(&runtime).resolve(Intent::GroveSlot(47)),
         Some(Spell::LongRest)
     );
     // The default land is Arid.
