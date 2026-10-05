@@ -95,6 +95,8 @@ pub struct Application {
     pub typed: Instant,
     /// The fixed sheet, the default view of a mount (`paper`).
     pub paper: crate::paper::Paper,
+    /// A multiline clipboard paste waiting for Enter ([`crate::paste`]).
+    pub paste_hold: Option<crate::paste::Held>,
 }
 
 impl std::fmt::Debug for Application {
@@ -138,6 +140,7 @@ impl Application {
             focus_sent: None,
             typed: Instant::now(),
             paper: crate::paper::Paper::default(),
+            paste_hold: None,
         }
     }
 
@@ -451,6 +454,9 @@ impl Application {
                 };
                 if self.smart.pending.is_some() {
                     return Err("a pending proposal waits for a key on the keyboard".into());
+                }
+                if self.paste_hold.is_some() {
+                    return Err("a held paste waits for a key on the keyboard".into());
                 }
                 let mut key = crate::KeyIn {
                     code,
@@ -853,8 +859,11 @@ impl Application {
         }
         if chord(KeyCode::KeyV) {
             if let Some(text) = self.sessions().0.clipboard() {
-                self.paste(&text);
+                self.paste_clipboard(&text);
             }
+            return true;
+        }
+        if self.paste_key(key) {
             return true;
         }
         if cmd {

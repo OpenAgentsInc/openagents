@@ -409,8 +409,10 @@ impl Overlay {
             ),
         );
         let help_y = self.core.area.y + self.core.area.h + 6.0;
+        let held = self.core.paste_prompt();
         let help = match (&self.core.copy, &self.core.notice) {
             (Some(_), _) => copy::HELP.to_owned(),
+            (None, _) if held.is_some() => held.unwrap_or_default(),
             (None, Some(notice)) => notice.clone(),
             (None, None) => {
                 if self.mount == Mount::Window {

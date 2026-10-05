@@ -551,3 +551,103 @@ fn an_agent_drives_its_own_pane_until_a_key_takes_it_back() {
     assert!(app.show_pane(pane));
     assert!(!app.show_pane(pane + 100));
 }
+
+#[test]
+fn a_multiline_clipboard_paste_waits_for_enter_at_a_plain_prompt() {
+    use crate::input::{KeyCode, NamedKey};
+    let transport = Arc::new(Fake::default());
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.toggle();
+    app.ensure_started();
+    app.paper.on = false;
+    let sent = || transport.input.lock().unwrap().concat();
+    // One line goes at once, and a paste past the bound is refused whole.
+    app.paste_clipboard("echo one");
+    assert_eq!(sent(), b"echo one");
+    transport.input.lock().unwrap().clear();
+    app.paste_clipboard(&"x\n".repeat(crate::paste::MAX_PASTE));
+    assert!(sent().is_empty() && app.paste_hold.is_none());
+    // Two lines wait, showing their count; Escape sends nothing.
+    app.paste_clipboard("rm -rf build\r\nls é\r\n");
+    assert!(sent().is_empty());
+    assert_eq!(
+        app.paste_prompt().as_deref(),
+        Some("Paste 2 lines? Enter sends them; Escape cancels.")
+    );
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(sent().is_empty() && app.paste_hold.is_none());
+    // Other keys, a repeated or synthetic Enter, and an agent's press do
+    // not send it.
+    app.paste_clipboard("rm -rf build\r\nls é\r\n");
+    typing(&mut app, "y");
+    let mut enter = crate::KeyIn {
+        code: KeyCode::Enter,
+        logical: crate::input::Logical::Named(NamedKey::Enter),
+        text: None,
+        plain: None,
+        pressed: true,
+        repeat: true,
+        synthetic: false,
+    };
+    app.key(&enter);
+    enter.repeat = false;
+    enter.synthetic = true;
+    app.key(&enter);
+    assert!(
+        app.apply(&crate::control::Request::Press {
+            name: "enter".into()
+        })
+        .is_err()
+    );
+    assert!(sent().is_empty());
+    // Enter sends the exact text once; the next Enter is only a key.
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert_eq!(sent(), "rm -rf build\rls é\r".as_bytes());
+    assert!(app.paste_hold.is_none() && app.paste_prompt().is_none());
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert_eq!(sent(), "rm -rf build\rls é\r\r".as_bytes());
+}
+
+#[test]
+fn negotiated_bracketed_paste_and_full_screen_programs_take_a_paste_at_once() {
+    let transport = Arc::new(Fake::default());
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.toggle();
+    app.ensure_started();
+    app.paper.on = false;
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b[?2004h".to_vec());
+    app.tick();
+    app.paste_clipboard("one\ntwo\n");
+    assert!(app.paste_hold.is_none());
+    assert_eq!(
+        transport.input.lock().unwrap().concat(),
+        b"\x1b[200~one\rtwo\r\x1b[201~"
+    );
+    transport.input.lock().unwrap().clear();
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b[?2004l\x1b[?1049h".to_vec());
+    app.tick();
+    app.paste_clipboard("one\ntwo");
+    assert!(app.paste_hold.is_none());
+    assert_eq!(transport.input.lock().unwrap().concat(), b"one\rtwo");
+    // The control socket's text is an agent's input, never held.
+    transport.input.lock().unwrap().clear();
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b[?1049l".to_vec());
+    app.tick();
+    app.apply(&crate::control::Request::Send {
+        text: "one\ntwo".into(),
+    })
+    .unwrap();
+    assert_eq!(transport.input.lock().unwrap().concat(), b"one\rtwo");
+}

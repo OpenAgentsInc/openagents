@@ -16,6 +16,7 @@ pub mod keys;
 pub mod layout;
 pub mod mouse;
 pub mod paper;
+pub mod paste;
 pub mod pty;
 pub mod select;
 pub mod smart;

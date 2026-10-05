@@ -577,8 +577,11 @@ Rules:
   The deny list in `crates/coder/src/shell.rs` refuses the commands that end
   a machine outright, as it does for Coder's own shell rounds. Commands you
   type yourself are never second-guessed.
-- **Paste.** A multi-line paste at a prompt shows its line count and asks
-  once, unless the program enabled bracketed paste.
+- **Paste.** A multi-line clipboard paste bound for a program that did not
+  enable bracketed paste, on the primary screen, shows its line count and
+  waits; Enter sends the exact text once and Escape drops it
+  (`crates/terminal-core/src/paste.rs`). A full-screen program, the sheet's
+  input line, and text an agent sends over the control socket are not held.
 - **Secrets on screen when sharing.** A share starts at the terminal's head,
   so earlier output is never sent; pausing blanks the pane for viewers; the
   pane shows who watches and who types; a password prompt with echo off
