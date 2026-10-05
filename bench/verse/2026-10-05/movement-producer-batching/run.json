@@ -1,0 +1,52 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "published_revision": "17b90b1eddc46b936c91a0d40128429846c010ac",
+  "tested_base_revision": "750b3c12b3f5be77cae6444d29df38e016dbb89e",
+  "source_patch_sha256": "40e41e9a16d83c5d987f7c9046e13564617f7e95c9d2d6c5d9b32d02fe80c573",
+  "wire_version": 28,
+  "checks": {
+    "native_consumer": {
+      "command": "cargo test -p verse --no-default-features --features imported-desktop,remote-chamber --lib -- imported::chamber_session::tests:: --quiet",
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0,
+      "runtime_seconds": 0.91
+    }
+  },
+  "contract": "Each producer wake can enqueue two contiguous six-step movement packets. The load driver queues movement during casting wakes. Cursors advance only after successful enqueue. Existing authority credit, expiry, and queue bounds remain unchanged.",
+  "regressions": [
+    "One native wake sends two contiguous intervals with distinct recorded movement directions and no third packet.",
+    "Existing chamber-session binding and reconciliation checks pass."
+  ],
+  "limitations": [
+    "Crowded delayed performance acceptance remains unproven.",
+    "Focused tests preceded an unrelated upstream verse-core extraction; the updated client build checks integration."
+  ],
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "17b90b1eddc46b936c91a0d40128429846c010ac",
+      "verse_load": "17b90b1eddc46b936c91a0d40128429846c010ac"
+    },
+    "wire_version": 28,
+    "sha256": {
+      "verse_remote": "8d57fa91b0d79e8dc7d2bd9a7c3514c2469e2f0f14a73fa6d4bbb3f8359d0f23",
+      "verse_load": "299de37b227725a99258dd7b720da91254df98be5be5065dc5a7515779950c13"
+    },
+    "client_platform": "macOS arm64",
+    "client_features": [
+      "imported-desktop",
+      "remote-chamber"
+    ],
+    "movement_send_steps": 6,
+    "authority_credit_source": "verified control.credit_step",
+    "periodic_reads_reserve_gameplay_slot": true,
+    "tracked_teleport_barrier": true,
+    "obsolete_inputs_retire_without_reads": true,
+    "independent_checkpoint_credit": true,
+    "bounded_interval_batch_steps": 12,
+    "casts_preserve_movement_production": true,
+    "status": "complete",
+    "wall_seconds": 371
+  }
+}

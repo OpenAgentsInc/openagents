@@ -1,0 +1,10 @@
+{
+  "schema": "verse.host.cpu-observation.v1",
+  "samples": [],
+  "sample_errors": 0,
+  "limits": [
+    "External process CPU time includes all host threads, not isolated simulation stages.",
+    "CPU time precision depends on the system ps implementation.",
+    "Samples cover native capture and load completion; startup is excluded."
+  ]
+}

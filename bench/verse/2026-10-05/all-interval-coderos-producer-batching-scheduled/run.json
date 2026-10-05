@@ -1,0 +1,380 @@
+{
+  "schema": "verse.battle.acceptance.evidence.v1",
+  "acceptance": "failed",
+  "compiled_revisions": {
+    "host": "4a4a128cf8bd78fdfa014c88d6049e91686058f0",
+    "native_client": "17b90b1eddc46b936c91a0d40128429846c010ac",
+    "headless_clients": "17b90b1eddc46b936c91a0d40128429846c010ac"
+  },
+  "wire_version": 28,
+  "workload": {
+    "players": 20,
+    "live_hostiles": 40,
+    "persistent": true,
+    "delay_mode": "scheduled",
+    "delay_ms": 40,
+    "jitter_ms": 20
+  },
+  "movement_expiry": {
+    "total": 116,
+    "admission": 0,
+    "primary_tick": 6,
+    "additional_tick": 110,
+    "bootstrap": 1,
+    "omitted": 84
+  },
+  "steady_measurements": {
+    "client_preparation_cpu_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.375542,
+      "p95": 1.226625,
+      "p99": 1.5778750000000001,
+      "maximum": 3.86725
+    },
+    "command_finish_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.1535,
+      "p95": 6.082542,
+      "p99": 7.3885000000000005,
+      "maximum": 8.93775
+    },
+    "command_turnaround_ms": {
+      "samples": 819,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 156.81525,
+      "p95": 188.226166,
+      "p99": 233.79554199999998,
+      "maximum": 342.01433399999996
+    },
+    "command_verified_to_sample_ms": {
+      "samples": 822,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 6.537249999999999,
+      "p95": 16.904959,
+      "p99": 21.900625,
+      "maximum": 26.361375
+    },
+    "events_turnaround_ms": {
+      "samples": 220,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 158.56725,
+      "p95": 182.946375,
+      "p99": 203.35229199999998,
+      "maximum": 280.610209
+    },
+    "events_verified_to_sample_ms": {
+      "samples": 221,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 6.320125,
+      "p95": 16.616334,
+      "p99": 22.41525,
+      "maximum": 26.354667
+    },
+    "frame_interval_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 11.79175,
+      "p95": 22.132709000000002,
+      "p99": 26.336292,
+      "maximum": 33.724833000000004
+    },
+    "gpu_overlay_ms": {
+      "samples": 3308,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.017792,
+      "p95": 0.091666,
+      "p99": 6.288458,
+      "maximum": 10.789375
+    },
+    "gpu_query_poll_cpu_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.010875,
+      "p95": 0.472917,
+      "p99": 0.637666,
+      "maximum": 0.949084
+    },
+    "gpu_shadow_ms": {
+      "samples": 3308,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 1.536459,
+      "p95": 2.246916,
+      "p99": 3.360917,
+      "maximum": 4.905167
+    },
+    "gpu_total_ms": {
+      "samples": 3308,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 2.39625,
+      "p95": 12.137375,
+      "p99": 14.078708,
+      "maximum": 18.941917
+    },
+    "gpu_world_ms": {
+      "samples": 3308,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.681333,
+      "p95": 10.353917,
+      "p99": 12.25725,
+      "maximum": 16.358375
+    },
+    "input_channel_depth": {
+      "samples": 1347,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 1.0,
+      "maximum": 7.0
+    },
+    "inventory_turnaround_ms": {
+      "samples": 37,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 158.577042,
+      "p95": 199.870208,
+      "p99": 216.762125,
+      "maximum": 216.762125
+    },
+    "inventory_verified_to_sample_ms": {
+      "samples": 37,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 6.982292,
+      "p95": 15.235417,
+      "p99": 23.348,
+      "maximum": 23.348
+    },
+    "overlay_encode_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.001833,
+      "p95": 0.002833,
+      "p99": 0.004083,
+      "maximum": 0.020333
+    },
+    "pending_requests": {
+      "samples": 1347,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.0,
+      "p95": 6.0,
+      "p99": 6.0,
+      "maximum": 7.0
+    },
+    "prepare_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 3.204292,
+      "p95": 5.002167,
+      "p99": 7.007083,
+      "maximum": 8.786957999999998
+    },
+    "present_call_cpu_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.014833,
+      "p95": 0.026333,
+      "p99": 0.04275,
+      "maximum": 0.12774999999999997
+    },
+    "presentation_encode_cpu_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.103459,
+      "p95": 0.182917,
+      "p99": 0.213083,
+      "maximum": 0.295833
+    },
+    "presentation_queue_submit_cpu_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0385,
+      "p95": 0.295584,
+      "p99": 0.550458,
+      "maximum": 9.951292
+    },
+    "queue_submit_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.6652910000000001,
+      "p95": 13.667584,
+      "p99": 18.288417000000003,
+      "maximum": 23.441416
+    },
+    "rendered_snapshot_applied_age_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 85.923667,
+      "p95": 165.47087499999998,
+      "p99": 216.152292,
+      "maximum": 332.780209
+    },
+    "sdk_verified_snapshot_age_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 80.009167,
+      "p95": 159.017459,
+      "p99": 203.87608400000002,
+      "maximum": 319.49841699999996
+    },
+    "shadow_encode_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.501708,
+      "p95": 0.722125,
+      "p99": 0.876625,
+      "maximum": 1.2013749999999999
+    },
+    "snapshot_turnaround_ms": {
+      "samples": 266,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 154.398542,
+      "p95": 185.71379199999998,
+      "p99": 265.20275,
+      "maximum": 303.92525
+    },
+    "snapshot_verified_to_sample_ms": {
+      "samples": 267,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 6.144875,
+      "p95": 15.306000000000001,
+      "p99": 18.853041,
+      "maximum": 24.342459
+    },
+    "surface_acquire_cpu_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.07104200000000001,
+      "p95": 6.421666,
+      "p99": 8.328292,
+      "maximum": 17.078166999999997
+    },
+    "surface_configure_cpu_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "maximum": 0.0
+    },
+    "total_draw_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 9.742083000000001,
+      "p95": 21.059583,
+      "p99": 24.910291,
+      "maximum": 32.318208
+    },
+    "update_channel_depth": {
+      "samples": 1347,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 2.0,
+      "p99": 3.0,
+      "maximum": 4.0
+    },
+    "window_present_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.233083,
+      "p95": 6.727208999999999,
+      "p99": 8.875124999999999,
+      "maximum": 18.128375
+    },
+    "world_encode_ms": {
+      "samples": 3311,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.156625,
+      "p95": 0.250167,
+      "p99": 0.303834,
+      "maximum": 0.6742090000000001
+    }
+  },
+  "reset_reasons": {
+    "control_epoch": 10
+  },
+  "prediction_correction_meters": {
+    "samples": 274,
+    "omitted": 0,
+    "median": 0.0,
+    "p95": 0.0,
+    "max": 0.7972912788391113
+  },
+  "load_summary": {
+    "completed": 19,
+    "minimum_observed_maximum_players": 20,
+    "minimum_live_hostiles": 40,
+    "movement_inputs": 23337,
+    "input_pressure": 0
+  },
+  "proxy": {
+    "schema": "verse.delayed-route.v2",
+    "delay_ms": 40,
+    "jitter_ms": 20,
+    "delay_mode": "scheduled",
+    "delay_queue_capacity": 32,
+    "delay_queue_peak": 5,
+    "connections": 20,
+    "upstream_bytes": 10623898,
+    "downstream_bytes": 182015222,
+    "forwarded_chunks": 63561,
+    "errors": 0,
+    "refused_connections": 0,
+    "error_details": [],
+    "omitted_error_details": 0,
+    "limits": [
+      "Delay applies to each TCP read chunk, not decrypted game messages.",
+      "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+      "Serial mode adds delay after each read and also limits chunk throughput.",
+      "TCP preserves byte order; this fixture does not simulate packet loss."
+    ],
+    "wall_seconds": 84.349447083
+  },
+  "exits": {
+    "clients": {
+      "primary": 0,
+      "load": 0
+    },
+    "host": 0,
+    "proxy": 0
+  },
+  "limitations": [
+    "Movement expiry target is not met.",
+    "A shared-load run cannot establish causality against earlier runs.",
+    "Input-to-display latency and one-way network age are not measured.",
+    "Only the native primary renders; headless players establish server workload, not multi-device rendering performance.",
+    "Histogram quantiles in host.log are upper bounds."
+  ]
+}

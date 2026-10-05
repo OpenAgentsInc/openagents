@@ -1,0 +1,24 @@
+{
+  "compiled_revisions": {
+    "verse_remote": "17b90b1eddc46b936c91a0d40128429846c010ac",
+    "verse_load": "17b90b1eddc46b936c91a0d40128429846c010ac"
+  },
+  "wire_version": 28,
+  "sha256": {
+    "verse_remote": "8d57fa91b0d79e8dc7d2bd9a7c3514c2469e2f0f14a73fa6d4bbb3f8359d0f23",
+    "verse_load": "299de37b227725a99258dd7b720da91254df98be5be5065dc5a7515779950c13"
+  },
+  "client_platform": "macOS arm64",
+  "client_features": [
+    "imported-desktop",
+    "remote-chamber"
+  ],
+  "movement_send_steps": 6,
+  "authority_credit_source": "verified control.credit_step",
+  "periodic_reads_reserve_gameplay_slot": true,
+  "tracked_teleport_barrier": true,
+  "obsolete_inputs_retire_without_reads": true,
+  "independent_checkpoint_credit": true,
+  "bounded_interval_batch_steps": 12,
+  "casts_preserve_movement_production": true
+}
