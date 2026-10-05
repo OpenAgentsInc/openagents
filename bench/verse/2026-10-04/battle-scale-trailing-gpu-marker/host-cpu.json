@@ -1,0 +1,203 @@
+{
+  "schema": "verse.host.cpu-observation.v1",
+  "samples": [
+    {
+      "elapsed_seconds": 0.0043910839999998785,
+      "cumulative_cpu_seconds": 1.86
+    },
+    {
+      "elapsed_seconds": 0.007958750000000236,
+      "cumulative_cpu_seconds": 1.86
+    },
+    {
+      "elapsed_seconds": 1.0221607919999993,
+      "cumulative_cpu_seconds": 2.42
+    },
+    {
+      "elapsed_seconds": 2.0346825840000005,
+      "cumulative_cpu_seconds": 3.05
+    },
+    {
+      "elapsed_seconds": 3.048542417,
+      "cumulative_cpu_seconds": 3.71
+    },
+    {
+      "elapsed_seconds": 4.0593879170000005,
+      "cumulative_cpu_seconds": 4.42
+    },
+    {
+      "elapsed_seconds": 5.0701656669999995,
+      "cumulative_cpu_seconds": 5.12
+    },
+    {
+      "elapsed_seconds": 6.085144584,
+      "cumulative_cpu_seconds": 5.82
+    },
+    {
+      "elapsed_seconds": 7.100284042,
+      "cumulative_cpu_seconds": 6.57
+    },
+    {
+      "elapsed_seconds": 8.105941583999998,
+      "cumulative_cpu_seconds": 7.34
+    },
+    {
+      "elapsed_seconds": 9.111796666999998,
+      "cumulative_cpu_seconds": 8.04
+    },
+    {
+      "elapsed_seconds": 10.118368250000001,
+      "cumulative_cpu_seconds": 8.67
+    },
+    {
+      "elapsed_seconds": 11.123304333999998,
+      "cumulative_cpu_seconds": 9.39
+    },
+    {
+      "elapsed_seconds": 12.131126708999998,
+      "cumulative_cpu_seconds": 10.08
+    },
+    {
+      "elapsed_seconds": 13.141107125,
+      "cumulative_cpu_seconds": 10.88
+    },
+    {
+      "elapsed_seconds": 14.153114959000002,
+      "cumulative_cpu_seconds": 11.7
+    },
+    {
+      "elapsed_seconds": 15.166487250000001,
+      "cumulative_cpu_seconds": 12.47
+    },
+    {
+      "elapsed_seconds": 16.17506375,
+      "cumulative_cpu_seconds": 13.26
+    },
+    {
+      "elapsed_seconds": 17.182257167000003,
+      "cumulative_cpu_seconds": 14.21
+    },
+    {
+      "elapsed_seconds": 18.19154675,
+      "cumulative_cpu_seconds": 15.15
+    },
+    {
+      "elapsed_seconds": 19.207342084000004,
+      "cumulative_cpu_seconds": 16.12
+    },
+    {
+      "elapsed_seconds": 20.218234709,
+      "cumulative_cpu_seconds": 17.01
+    },
+    {
+      "elapsed_seconds": 21.233756167000003,
+      "cumulative_cpu_seconds": 17.98
+    },
+    {
+      "elapsed_seconds": 22.243224417,
+      "cumulative_cpu_seconds": 18.96
+    },
+    {
+      "elapsed_seconds": 23.254006459000003,
+      "cumulative_cpu_seconds": 19.93
+    },
+    {
+      "elapsed_seconds": 24.268848,
+      "cumulative_cpu_seconds": 20.9
+    },
+    {
+      "elapsed_seconds": 25.282821042000002,
+      "cumulative_cpu_seconds": 21.88
+    },
+    {
+      "elapsed_seconds": 26.291149959000002,
+      "cumulative_cpu_seconds": 22.84
+    },
+    {
+      "elapsed_seconds": 27.301179542,
+      "cumulative_cpu_seconds": 23.81
+    },
+    {
+      "elapsed_seconds": 28.316425292000005,
+      "cumulative_cpu_seconds": 24.79
+    },
+    {
+      "elapsed_seconds": 29.328621459000004,
+      "cumulative_cpu_seconds": 25.76
+    },
+    {
+      "elapsed_seconds": 30.343255459000005,
+      "cumulative_cpu_seconds": 26.73
+    },
+    {
+      "elapsed_seconds": 31.357821584,
+      "cumulative_cpu_seconds": 27.71
+    },
+    {
+      "elapsed_seconds": 32.366286667000004,
+      "cumulative_cpu_seconds": 28.64
+    },
+    {
+      "elapsed_seconds": 33.375093750000005,
+      "cumulative_cpu_seconds": 29.55
+    },
+    {
+      "elapsed_seconds": 34.384257459000004,
+      "cumulative_cpu_seconds": 30.5
+    },
+    {
+      "elapsed_seconds": 35.390479625000005,
+      "cumulative_cpu_seconds": 31.41
+    },
+    {
+      "elapsed_seconds": 36.398058792,
+      "cumulative_cpu_seconds": 32.36
+    },
+    {
+      "elapsed_seconds": 37.411016625,
+      "cumulative_cpu_seconds": 33.32
+    },
+    {
+      "elapsed_seconds": 38.418646959,
+      "cumulative_cpu_seconds": 34.28
+    },
+    {
+      "elapsed_seconds": 39.433777500000005,
+      "cumulative_cpu_seconds": 35.24
+    },
+    {
+      "elapsed_seconds": 40.442939334,
+      "cumulative_cpu_seconds": 36.21
+    },
+    {
+      "elapsed_seconds": 41.451779417000004,
+      "cumulative_cpu_seconds": 37.17
+    },
+    {
+      "elapsed_seconds": 42.46674525,
+      "cumulative_cpu_seconds": 38.12
+    },
+    {
+      "elapsed_seconds": 43.475793292,
+      "cumulative_cpu_seconds": 39.08
+    },
+    {
+      "elapsed_seconds": 44.4824975,
+      "cumulative_cpu_seconds": 39.98
+    },
+    {
+      "elapsed_seconds": 45.489813792,
+      "cumulative_cpu_seconds": 40.96
+    },
+    {
+      "elapsed_seconds": 59.964569958999995,
+      "cumulative_cpu_seconds": 51.41
+    }
+  ],
+  "sample_errors": 0,
+  "limits": [
+    "External process CPU time includes all host threads, not isolated simulation stages.",
+    "CPU time precision depends on the system ps implementation.",
+    "Samples cover native capture and load completion; startup is excluded."
+  ]
+}

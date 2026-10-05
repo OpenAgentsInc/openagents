@@ -1,0 +1,36 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 30,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": true,
+    "compiled_revisions": {
+      "host": "7de56c1f57",
+      "clients": "7de56c1f57"
+    },
+    "fixture_revision": "7de56c1f57922a6e1d06a281a3a62cb2f055a548",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "stability": "All twenty connections and processes complete; all occupancy samples retain forty live hostile NPCs.",
+  "limits": [
+    "1355 timestamp frames are submitted; all 1353 completed readbacks are valid, with two pending. No out-of-order, zero-duration, map errors, or ring-busy frames occur.",
+    "The recorder retains 1186 GPU samples; 167 older valid samples are coalesced away when multiple slots complete together. The distribution omits those samples.",
+    "Retained GPU span p95 is 6.3245 ms; CPU command finalization p95 is 18.5537 ms; native frame p95 is 26.7047 ms. The 16.7 ms target remains unmet.",
+    "World draw count median/p95/maximum is 99/112/171.",
+    "A trailing pass-start marker adds optional measurement work; boundary spans include inter-pass gaps and are not isolated shader execution costs.",
+    "Prediction correction p95 is 0.9914 m, maximum 1.2946 m.",
+    "Simulation p99 histogram upper bound is 33.333 ms, maximum 40.498 ms.",
+    "Storage is disabled; headless players use legacy movement commands, so this does not prove persistent or interval-based multiplayer acceptance.",
+    "Only thirty seconds are recorded on shared contributor hardware. No isolated causal frame improvement or input-to-display latency is established."
+  ]
+}
