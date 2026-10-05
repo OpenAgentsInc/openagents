@@ -1,0 +1,20 @@
+{
+  "wire_version": 28,
+  "compiled_revisions": {
+    "host": "d6d4f87a54ac1dcab20735947fdfc070c1766be3",
+    "native_client": "91275745f7e27ea2df5f644bcbe62f644be61aeb",
+    "headless_clients": "b70ba4e51442c0c75360f1edbe95a1a7227b03f6"
+  },
+  "sha256": {
+    "host": "9af3ad26044d9961b2dc43fbf98e3ff5844667c563f74288751e4fbcf6fa7ab7",
+    "native_client": "ffbedb23ae5c6f91128f8236d8c4851edaaac4d64256b6999c91fa94b6a2cfb6",
+    "headless_clients": "f7e46f7da6b0d58a309ab186db71fd42732f96020f3d8e57f942a6ddd35b4f4e"
+  },
+  "build_seconds": {
+    "native_client": 1455,
+    "headless_clients": 39.31
+  },
+  "movement_continues_during_pending_teleport": true,
+  "native_verified_credit_recovery": true,
+  "batched_instance_index_upload": true
+}
