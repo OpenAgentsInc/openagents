@@ -361,3 +361,18 @@ Chrome driven in real time drew `/grid` online on the public relay with a
 name tag, Everglade's town at `/everglade`, and the Grove at `/druid`
 before traffic moved. Rollback:
 `--to-revisions coder-web-addbb9b72f=100`.
+
+## 2026-10-05: coder-web-9cbc7e6dd4, destruction on the web
+
+Everglade on the web now destroys buildings (9cbc7e6dd4): the physics clock
+no longer panics in the browser on the first strike, WebGL2 starts again
+(the geometry budget fits the town), the Meteor Swarm circle lies over
+roofs and walls, and every building, landmark, and prop breaks, the
+workshop included. Image `openagents/openagents-web:9cbc7e6dd4`, built from
+GitHub by the automation account and applied as `chris@` from the live spec
+with only the revision name and image changed (`CODER_CHAT_SYNC` quoted).
+On the `new` tag, `/`, `/grid`, `/everglade`, `/druid`, and `/api/stats`
+answered 200, headless Chrome drew the town on WebGPU and WebGL2 (`?gl`)
+and the Grove, and a Meteor Swarm cast with real key and mouse input
+destroyed the workshop hall in front of spawn without stopping the page,
+before traffic moved. Rollback: `--to-revisions coder-web-f6ed2aa223=100`.
