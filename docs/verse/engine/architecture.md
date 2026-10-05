@@ -92,12 +92,17 @@ MPL-2.0. This study imports no source files, shaders, assets, or plugin ABI.
 
 ## Current project baseline
 
-The existing [`verse` runtime](../../../crates/verse/src/runtime.rs) shares
-platform-independent local behavior, but rendering and game-specific adapters
-still live together in a broad crate. [`imported`](../../../crates/verse/src/imported/mod.rs)
-owns the chamber's geometry submission, materials, shadows, lighting, and UI.
-[`verse-engine`](../../../crates/verse-engine/README.md) now owns generic pack,
-skeletal animation, and cinematic contracts.
+The [`verse` runtime](../../../crates/verse/src/runtime.rs) composes the application.
+[`verse-pbr`](../../../crates/verse-pbr/src/imported/mod.rs) owns the generic
+skeletal renderer, admitted frames, materials, shadows, lighting, and GPU
+submission. [`verse-gfx`](../../../crates/verse-gfx/src/lib.rs) owns atlas/UI,
+camera, and device facilities. [`verse-engine`](../../../crates/verse-engine/README.md)
+owns portable assets, animation, presentation, life identities, and the fixed
+schedule. [`verse-content`](../../../crates/verse-content/README.md) owns portable
+content admission and optional Rust compilation; [`verse-host`](../../../crates/verse-host/README.md)
+is a dedicated TLS authority executable without rendering or agent dependencies.
+The Verse application retains its original UI, game-specific frame composition,
+zones, and compatibility imports.
 [`verse-ruins`](../../../crates/verse-ruins/README.md)
 wraps retained source combat. These are useful evidence and transition paths;
 they are not the final engine boundary.

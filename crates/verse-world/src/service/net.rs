@@ -383,6 +383,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
     let mut workers = JoinSet::new();
     let start = Instant::now();
     let mut last_tick = start;
+    let mut schedule = verse_engine::core::FixedSchedule::new(30, 3).expect("fixed host schedule");
     let period = Duration::from_secs_f64(1. / 30.);
     let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -446,17 +447,23 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                     continue;
                 }
                 if history {
-                    let dt = elapsed.min(0.1);
-                    stats.dropped_seconds += elapsed - dt;
+                    let batch = match schedule.advance(elapsed) {
+                        Ok(batch) => batch,
+                        Err(error) => {failure = Some(error); break;}
+                    };
+                    stats.dropped_seconds += batch.dropped_seconds;
                     let tick = Instant::now();
-                    if let Err(error) = gateway.tick(dt as f32) {failure = Some(error); break;}
-                    if let Some(hook) = hook.as_mut() {
-                        hook(&mut gateway, dt as f32);
+                    for _ in 0..batch.steps {
+                        if let Err(error) = gateway.tick(batch.seconds) {failure = Some(error); break;}
+                        if let Some(hook) = hook.as_mut() { hook(&mut gateway, batch.seconds); }
                     }
-                    let seconds = tick.elapsed().as_secs_f64();
-                    stats.simulation.record(seconds);
-                    stats.simulation_phases.record(seconds);
-                    stats.ticks += 1;
+                    if failure.is_some() { break; }
+                    if batch.steps > 0 {
+                        let seconds = tick.elapsed().as_secs_f64();
+                        stats.simulation.record(seconds);
+                        stats.simulation_phases.record(seconds);
+                        stats.ticks += u64::from(batch.steps);
+                    }
                 } else {
                     // Flush already admitted state without adding more simulation mutations.
                     stats.storage_paused_ticks += 1;

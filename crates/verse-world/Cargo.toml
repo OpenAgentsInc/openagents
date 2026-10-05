@@ -23,7 +23,7 @@ sha2 = "0.10"
 getrandom = { version = "0.3", optional = true }
 verse-engine = { path = "../verse-engine" }
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["float_roundtrip"] }
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
 glam = { version = "0.30.10", features = ["serde"] }
 physics = { path = "../physics" }
 coder-reach = { path = "../coder-reach", optional = true }

@@ -74,6 +74,17 @@ pub(super) fn hash(value: &Value) -> Result<[u8; 32], String> {
     }
     Ok(Sha256::digest(bytes).into())
 }
+// Older minimal hosts used serde_json's sorted maps. Accept that representation
+// only when its complete digest matches the sealed parent or state exactly.
+fn restore_representation(value: &mut Value, expected: [u8; 32]) -> Result<bool, String> {
+    let mut sorted = value.clone();
+    sorted.sort_all_objects();
+    if hash(&sorted)? != expected {
+        return Ok(false);
+    }
+    *value = sorted;
+    Ok(true)
+}
 fn diff(
     old: &Value,
     new: &Value,
@@ -84,6 +95,14 @@ fn diff(
         return Err("Chamber journal change budget exceeded".into());
     }
     match (old, new) {
+        (Value::Object(old), Value::Object(new)) if !old.keys().eq(new.keys()) => {
+            // Consumers can enable preserve_order. Replace changed key layouts so
+            // replay retains the exact representation sealed by the state digest.
+            changes.push(Change::Put {
+                path: path.clone(),
+                value: Value::Object(new.clone()),
+            });
+        }
         (Value::Object(old), Value::Object(new)) => {
             for (name, value) in new {
                 path.push(name.clone());
@@ -258,17 +277,20 @@ pub(super) fn replay(
                 != revision
                     .checked_add(1)
                     .ok_or("Chamber journal revisions exhausted")?
-                || record.parent != head
             {
+                return Err("Chamber journal revision chain is incompatible".into());
+            }
+            if record.parent != head && !restore_representation(value, record.parent)? {
                 return Err("Chamber journal revision chain is incompatible".into());
             }
             for change in record.changes {
                 apply(value, change)?;
             }
             head = hash(value)?;
-            if head != record.state {
+            if head != record.state && !restore_representation(value, record.state)? {
                 return Err("Chamber journal state digest is incompatible".into());
             }
+            head = record.state;
             revision = record.revision;
             applied += 1;
         }
@@ -310,6 +332,84 @@ mod tests {
                 }
                 assert_eq!(hash(&restored).unwrap(), hash(&new).unwrap());
             }
+        }
+    }
+    #[test]
+    fn legacy_sorted_map_journals_recover_only_the_sealed_representation() {
+        let baseline: Value = serde_json::from_str(r#"{"z":9,"actors":{"2":{},"9":{}}}"#).unwrap();
+        let mut old = baseline.clone();
+        old.sort_all_objects();
+        let mut new = old.clone();
+        new["actors"]["1"] = serde_json::json!({});
+        new.sort_all_objects();
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut journal = std::fs::OpenOptions::new()
+            .append(true)
+            .open(file.path())
+            .unwrap();
+        // The former sorted-map writer inserted individual keys instead of
+        // replacing an object whose serialized key layout changed.
+        let mut record = Record {
+            version: 1,
+            revision: 2,
+            parent: hash(&old).unwrap(),
+            state: hash(&new).unwrap(),
+            changes: vec![Change::Put {
+                path: vec!["actors".into(), "1".into()],
+                value: serde_json::json!({}),
+            }],
+            digest: [0; 32],
+        };
+        record.digest = seal(&record).unwrap();
+        let mut bytes = serde_json::to_vec(&record).unwrap();
+        bytes.push(b'\n');
+        journal.write_all(&bytes).unwrap();
+        journal.sync_all().unwrap();
+        let mut restored = baseline.clone();
+        assert_ne!(hash(&restored).unwrap(), hash(&old).unwrap());
+        assert_eq!(
+            replay(&mut File::open(file.path()).unwrap(), 1, &mut restored).unwrap(),
+            1
+        );
+        assert_eq!(hash(&restored).unwrap(), hash(&new).unwrap());
+        let mut corrupted = baseline;
+        corrupted["z"] = Value::from(10);
+        assert!(replay(&mut File::open(file.path()).unwrap(), 1, &mut corrupted).is_err());
+    }
+    #[test]
+    fn journal_replays_reordered_and_inserted_object_keys_with_exact_digests() {
+        for (old, new) in [
+            (
+                r#"{"actors":{"2":{},"9":{}}}"#,
+                r#"{"actors":{"1":{},"2":{},"9":{}}}"#,
+            ),
+            (r#"{"pose":{"x":1,"y":2}}"#, r#"{"pose":{"y":2,"x":1}}"#),
+            (r#"{"pose":{"x":1,"y":2}}"#, r#"{"pose":{"y":2}}"#),
+        ] {
+            let old: Value = serde_json::from_str(old).unwrap();
+            let new: Value = serde_json::from_str(new).unwrap();
+            let file = tempfile::NamedTempFile::new().unwrap();
+            let mut journal = std::fs::OpenOptions::new()
+                .append(true)
+                .open(file.path())
+                .unwrap();
+            append(
+                &mut journal,
+                2,
+                &old,
+                &new,
+                hash(&old).unwrap(),
+                hash(&new).unwrap(),
+            )
+            .unwrap();
+            let mut restored = old;
+            let mut journal = File::open(file.path()).unwrap();
+            assert_eq!(replay(&mut journal, 1, &mut restored).unwrap(), 1);
+            assert_eq!(
+                serde_json::to_vec(&restored).unwrap(),
+                serde_json::to_vec(&new).unwrap()
+            );
+            assert_eq!(hash(&restored).unwrap(), hash(&new).unwrap());
         }
     }
     #[test]

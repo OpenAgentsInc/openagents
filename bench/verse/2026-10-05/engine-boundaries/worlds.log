@@ -1,0 +1,63 @@
+    Blocking waiting for file lock on build directory
+   Compiling serde_json v1.0.151
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+   Compiling gltf-json v1.4.1
+   Compiling gltf v1.4.1
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2844:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2844 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+warning: `verse-world` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4m 53s
+     Running tests/worlds.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-b88cdf63ee888e7c)
+
+running 1 test
+ritual check: {"instance":8400,"ticks":300,"content":[52,4,36,222,205,239,110,235,203,9,91,130,60,92,74,225,11,19,161,109,169,155,202,229,9,116,128,204,173,130,173,14],"checkpoint_bytes":40263,"actors":14}
+
+ritual authenticated: instance 8400 with 14 actors
+Chamber 8400 listening on 127.0.0.1:43061
+Chamber stopped: 4 ticks, 2 requests, 1 completed connections, 0.000000 dropped seconds
+Admission: {"capacity_refusals":0,"pre_auth_refusals":0,"ip_refusals":0,"handshake_rate_refusals":0,"principal_capacity_refusals":0,"principal_work_refusals":0,"aggregate_work_refusals":0,"projections":1,"commands":0,"pending_peak":1,"active_peak":1,"pending":0,"active":0,"principal_records":1,"completed":1,"handshake_timeouts":0,"handshake_refusals":0,"authentication_timeouts":0,"authentication_refusals":0,"grant_refusals":0,"retired_connections":0,"frame_failures":0,"read_timeouts":0,"write_failures":0,"request_rate_failures":0,"host_failures":0,"transport_closures":1,"cancelled_workers":0}
+Collision queries: {"ray":{"calls":0,"errors":0,"truncated":0,"nodes":0,"triangles":0,"capsule_tests":0,"scene_nodes":0,"scene_candidates":0,"wall_seconds":0.0,"maximum_wall_seconds":0.0},"overlap":{"calls":0,"errors":0,"truncated":0,"nodes":0,"triangles":0,"capsule_tests":0,"scene_nodes":0,"scene_candidates":0,"wall_seconds":0.0,"maximum_wall_seconds":0.0},"sweep":{"calls":0,"errors":0,"truncated":0,"nodes":0,"triangles":0,"capsule_tests":0,"scene_nodes":0,"scene_candidates":0,"wall_seconds":0.0,"maximum_wall_seconds":0.0}}
+Motor recovery: 0 blocked advances, last diagnostic None
+Movement expiry: {"total":0,"admission":0,"primary_tick":0,"additional_tick":0,"bootstrap":0,"samples":[],"omitted":0}
+Checkpoint storage: 0 commits, 0 bytes, 0.000000 seconds
+Storage backlog: 0 peak copies, 0 refused requests, 0 paused ticks, 0.000000 paused seconds
+Simulation: 4 observations, p50/p95/p99 upper bounds 0.000017/0.000017/0.000017 seconds, maximum 0.000017 seconds
+Persistence capture: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds
+Deferred read projection: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds
+Running checkpoint copy: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds
+Storage commit: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds
+
+observatory check: {"instance":8401,"ticks":300,"content":[67,127,183,16,204,181,90,43,193,79,213,155,199,175,190,176,83,16,70,165,67,132,192,142,236,211,130,86,112,68,18,64],"checkpoint_bytes":6850,"actors":1}
+
+observatory authenticated: instance 8401 with 1 actors
+Chamber 8401 listening on 127.0.0.1:44945
+Chamber stopped: 4 ticks, 4 requests, 1 completed connections, 0.000000 dropped seconds
+Admission: {"capacity_refusals":0,"pre_auth_refusals":0,"ip_refusals":0,"handshake_rate_refusals":0,"principal_capacity_refusals":0,"principal_work_refusals":0,"aggregate_work_refusals":0,"projections":2,"commands":1,"pending_peak":1,"active_peak":1,"pending":0,"active":0,"principal_records":1,"completed":1,"handshake_timeouts":0,"handshake_refusals":0,"authentication_timeouts":0,"authentication_refusals":0,"grant_refusals":0,"retired_connections":0,"frame_failures":0,"read_timeouts":0,"write_failures":0,"request_rate_failures":0,"host_failures":0,"transport_closures":1,"cancelled_workers":0}
+Collision queries: {"ray":{"calls":0,"errors":0,"truncated":0,"nodes":0,"triangles":0,"capsule_tests":0,"scene_nodes":0,"scene_candidates":0,"wall_seconds":0.0,"maximum_wall_seconds":0.0},"overlap":{"calls":16,"errors":0,"truncated":0,"nodes":48,"triangles":192,"capsule_tests":0,"scene_nodes":48,"scene_candidates":32,"wall_seconds":0.000099879,"maximum_wall_seconds":0.000011417},"sweep":{"calls":32,"errors":0,"truncated":0,"nodes":96,"triangles":384,"capsule_tests":0,"scene_nodes":96,"scene_candidates":64,"wall_seconds":0.000071864,"maximum_wall_seconds":4.337e-6}}
+Motor recovery: 0 blocked advances, last diagnostic None
+Movement expiry: {"total":0,"admission":0,"primary_tick":0,"additional_tick":0,"bootstrap":0,"samples":[],"omitted":0}
+Checkpoint storage: 0 commits, 0 bytes, 0.000000 seconds
+Storage backlog: 0 peak copies, 0 refused requests, 0 paused ticks, 0.000000 paused seconds
+Simulation: 4 observations, p50/p95/p99 upper bounds 0.000100/0.000105/0.000105 seconds, maximum 0.000105 seconds
+Persistence capture: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds
+Deferred read projection: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds
+Running checkpoint copy: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds
+Storage commit: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds
+
+test two_original_worlds_use_the_same_dedicated_host_and_authentication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s
+

@@ -57,6 +57,10 @@ opt-level = 3
 # development builds, including the binary used by the local verse-play alias.
 [profile.dev.package.verse]
 opt-level = 3
+[profile.dev.package.verse-content]
+opt-level = 3
+[profile.dev.package.verse-host]
+opt-level = 3
 [profile.dev.package.verse-engine]
 opt-level = 3
 [profile.dev.package.verse-gfx]

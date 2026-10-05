@@ -18,10 +18,10 @@ capture = []
 panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 # The Agent Studio from a live host, over its same-user control socket.
 studio-host = ["dep:openagents-connect"]
-imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface"]
+imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface", "verse-pbr/imported-desktop"]
 # The engine renderer presenting on a surface the host made (a phone's
 # layer or window, a browser canvas); no window library.
-imported-surface = []
+imported-surface = ["verse-pbr/imported-surface"]
 native-audio = ["dep:cpal"]
 hosted-social = ["verse-world/service-auth"]
 remote-chamber = ["hosted-social", "verse-world/service-reach", "tokio/signal"]
@@ -33,6 +33,7 @@ chamber-loopback = ["remote-chamber", "tokio/io-util"]
 web = ["wgpu/webgl", "imported-surface"]
 
 [dependencies]
+verse-content = { path = "../verse-content", features = ["compiler"] }
 # The studio review's copy-path key, on the desktop.
 arboard = { version = "3.6.1", optional = true }
 cpal = { version = "=0.18.2", optional = true }
@@ -113,6 +114,8 @@ web-time = "1.1.0"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
+verse-pbr = { path = "../verse-pbr", features = ["diagnostics"] }
+verse-host = { path = "../verse-host" }
 verse-net = { path = "../verse-net", features = ["test-support"] }
 tempfile = "3"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }

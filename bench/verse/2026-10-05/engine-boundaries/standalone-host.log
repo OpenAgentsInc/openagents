@@ -1,0 +1,22 @@
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2844:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2844 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+warning: `verse-world` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 16s
+compiler: {"world":"ritual","models":38,"content":[52,4,36,222,205,239,110,235,203,9,91,130,60,92,74,225,11,19,161,109,169,155,202,229,9,116,128,204,173,130,173,14]}
+default host: {"instance":8700,"ticks":300,"content":[52,4,36,222,205,239,110,235,203,9,91,130,60,92,74,225,11,19,161,109,169,155,202,229,9,116,128,204,173,130,173,14],"checkpoint_bytes":40271,"actors":14}
+compiler: {"world":"observatory","models":38,"content":[23,236,91,157,171,39,78,66,54,197,251,128,189,111,199,121,183,108,232,116,70,235,34,131,89,98,86,79,170,3,242,22]}
+default host: {"instance":8701,"ticks":300,"content":[67,127,183,16,204,181,90,43,193,79,213,155,199,175,190,176,83,16,70,165,67,132,192,142,236,211,130,86,112,68,18,64],"checkpoint_bytes":6858,"actors":1}
+Both compiler commands, default host checks, and compiler refusals passed

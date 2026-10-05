@@ -28,6 +28,68 @@ pub struct Mount {
     pub parent_model: String,
     pub socket: u16,
     pub local: Mat4,
+    pub pose: MountPose,
+}
+/// Generic socket placement supplied by the application for each admitted frame.
+#[derive(Clone, Copy, Debug, Default)]
+pub enum MountPose {
+    #[default]
+    Socket,
+    /// Upright grip whose horizontal facing follows a second posed socket.
+    PlanarGrip { direction_socket: u16 },
+    /// A posed socket frame with a world-sized offset and local rotation.
+    OffsetFrame {
+        socket: u16,
+        offset: Vec3,
+        rotation: glam::Quat,
+    },
+}
+impl Mount {
+    pub fn frame(
+        &self,
+        sockets: crate::sockets::Sockets<'_>,
+        palette: crate::sockets::Palette<'_>,
+        body: Mat4,
+    ) -> Result<Mat4, String> {
+        let frame = match self.pose {
+            MountPose::Socket => sockets.frame(palette, body, self.socket, Mat4::IDENTITY)?,
+            MountPose::PlanarGrip { direction_socket } => {
+                let palm = sockets.point(palette, body, self.socket)?;
+                let elbow = sockets.point(palette, body, direction_socket)?;
+                let (scale, rotation, _) = body.to_scale_rotation_translation();
+                let flat = |v: Vec3| Vec3::new(v.x, 0., v.z).try_normalize();
+                let forward = flat(rotation * Vec3::X).unwrap_or(Vec3::NEG_Z);
+                let facing = flat(palm - elbow).unwrap_or(forward);
+                let side = facing.cross(Vec3::Y).normalize();
+                let up = side.cross(facing).normalize();
+                Mat4::from_translation(palm)
+                    * Mat4::from_mat3(glam::Mat3::from_cols(side, facing, up))
+                    * Mat4::from_scale(scale)
+            }
+            MountPose::OffsetFrame {
+                socket,
+                offset,
+                rotation,
+            } => {
+                if !offset.is_finite()
+                    || !rotation.is_finite()
+                    || (rotation.length_squared() - 1.).abs() > 0.001
+                {
+                    return Err("Invalid mounted offset or rotation".into());
+                }
+                let frame = sockets.frame(palette, body, socket, Mat4::IDENTITY)?;
+                let scale = frame.transform_vector3(Vec3::X).length();
+                if !scale.is_finite() || scale < 0.000001 {
+                    return Err("Mounted socket frame is degenerate".into());
+                }
+                frame * Mat4::from_translation(offset / scale) * Mat4::from_quat(rotation)
+            }
+        } * self.local;
+        if !frame.is_finite() {
+            return Err("Mounted render transform overflowed".into());
+        }
+        Ok(frame)
+    }
 }
 /// Presentation values contain no GPU resources or mutable simulation authority.
 #[derive(Clone, Debug)]
@@ -170,6 +232,26 @@ impl<'a> ResolvedInstances<'a> {
                 return Err("Attachment parent transform must be affine".into());
             }
             catalog.check_socket(models[parent], mount.socket)?;
+            match mount.pose {
+                MountPose::Socket => {}
+                MountPose::PlanarGrip { direction_socket } => {
+                    catalog.check_socket(models[parent], direction_socket)?
+                }
+                MountPose::OffsetFrame {
+                    socket,
+                    offset,
+                    rotation,
+                } => {
+                    catalog.check_socket(models[parent], socket)?;
+                    if !offset.is_finite()
+                        || offset.abs().max_element() > 1000.
+                        || !rotation.is_finite()
+                        || (rotation.length_squared() - 1.).abs() > 0.001
+                    {
+                        return Err("Invalid mounted offset or rotation".into());
+                    }
+                }
+            }
             parents.push(Some(parent));
         }
         Ok(Self {
@@ -240,6 +322,7 @@ mod tests {
             parent_model: "room".into(),
             socket: 1,
             local: Mat4::IDENTITY,
+            pose: MountPose::Socket,
         });
         let mut values = vec![actor, mount];
         for priority in 0..1500 {
@@ -317,13 +400,14 @@ mod tests {
             parent_model: "room".into(),
             socket: 5,
             local: Mat4::from_translation(Vec3::X),
+            pose: MountPose::Socket,
         });
         let valid = vec![child.clone(), other, parent.clone()];
         let resolved = ResolvedInstances::extract(&catalog, &valid).unwrap();
         assert_eq!(resolved.parents(), &[Some(2), None, None]);
         let replacement = Catalog::new(&pack).unwrap();
         assert!(resolved.validate(&replacement).is_err());
-        for case in 0..10 {
+        for case in 0..13 {
             let mut bad = valid.clone();
             match case {
                 0 => bad[0].mount.as_mut().unwrap().parent.generation += 1,
@@ -337,7 +421,26 @@ mod tests {
                 8 => {
                     bad[2].mount = Some(child.mount.clone().unwrap());
                 }
-                _ => bad[2].transform = Mat4::perspective_rh(1., 1., 0.1, 10.),
+                9 => bad[2].transform = Mat4::perspective_rh(1., 1., 0.1, 10.),
+                10 => {
+                    bad[0].mount.as_mut().unwrap().pose = MountPose::PlanarGrip {
+                        direction_socket: 99,
+                    }
+                }
+                11 => {
+                    bad[0].mount.as_mut().unwrap().pose = MountPose::OffsetFrame {
+                        socket: 5,
+                        offset: Vec3::splat(f32::NAN),
+                        rotation: glam::Quat::IDENTITY,
+                    }
+                }
+                _ => {
+                    bad[0].mount.as_mut().unwrap().pose = MountPose::OffsetFrame {
+                        socket: 5,
+                        offset: Vec3::ZERO,
+                        rotation: glam::Quat::from_xyzw(0., 0., 0., 2.),
+                    }
+                }
             }
             assert!(
                 ResolvedInstances::extract(&catalog, &bad).is_err(),

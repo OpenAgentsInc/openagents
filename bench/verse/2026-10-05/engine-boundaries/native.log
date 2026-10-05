@@ -1,0 +1,109 @@
+    Blocking waiting for file lock on build directory
+    Checking verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+    Checking gltf v1.4.1
+   Compiling coder v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder)
+    Checking verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2844:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2844 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+    Checking verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+    Checking verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+    Checking verse-net v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-net)
+    Checking verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+    Checking verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+    Checking microcoder v1.0.0-rc.2 (/home/christopherdavid/work/openagents-verse-audit/crates/microcoder)
+    Checking coder-labor v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-labor)
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:441:12
+    |
+113 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+441 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+452 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+
+warning: function `stream_triangles` is never used
+   --> crates/verse/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: method `land` is never used
+   --> crates/verse/src/zones/grove/mod.rs:200:12
+    |
+159 | impl Grove {
+    | ---------- method in this implementation
+...
+200 |     pub fn land(&self) -> Land {
+    |            ^^^^
+
+warning: `verse` (lib) generated 5 warnings (run `cargo fix --lib -p verse` to apply 1 suggestion)
+    Checking coder-mobile v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-mobile)
+    Checking openagents-cli v1.0.0-rc.2 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-cli)
+warning: field `started` is never read
+  --> crates/coder-mobile/src/chamber.rs:37:9
+   |
+32 | pub(crate) struct Play {
+   |                   ---- field in this struct
+...
+37 |     pub started: Instant,
+   |         ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `dir` is never read
+   --> crates/coder-mobile/src/chamber.rs:113:9
+    |
+109 | pub(crate) struct Content {
+    |                   ------- field in this struct
+...
+113 |     pub dir: PathBuf,
+    |         ^^^
+
+warning: variants `Legacy` and `Grid` are never constructed
+   --> crates/coder-mobile/src/verse_ffi.rs:150:5
+    |
+149 | pub(crate) enum Surface {
+    |                 ------- variants in this enum
+150 |     Legacy(verse::render::Renderer),
+    |     ^^^^^^
+151 |     Grid(verse::grid_engine::GridEngine),
+    |     ^^^^
+
+warning: function `engine_content` is never used
+   --> crates/coder-mobile/src/verse_ffi.rs:181:4
+    |
+181 | fn engine_content(scene: &Scene) -> Result<verse::grid_engine::Content, String> {
+    |    ^^^^^^^^^^^^^^
+
+warning: `coder-mobile` (lib) generated 4 warnings
+    Checking openagents-desktop v1.0.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-desktop)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3m 21s

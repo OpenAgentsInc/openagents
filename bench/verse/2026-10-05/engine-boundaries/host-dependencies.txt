@@ -1,0 +1,114 @@
+verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+rustls v0.23.45
+once_cell v1.21.4
+ring v0.17.14
+cfg-if v1.0.5
+getrandom v0.2.17
+cfg-if v1.0.5
+libc v0.2.189
+untrusted v0.9.0
+rustls-pki-types v1.15.1
+zeroize v1.9.0
+rustls-webpki v0.103.15
+ring v0.17.14 (*)
+rustls-pki-types v1.15.1 (*)
+untrusted v0.9.0
+subtle v2.6.1
+zeroize v1.9.0
+serde_json v1.0.151
+indexmap v2.14.2
+equivalent v1.0.2
+hashbrown v0.17.1
+itoa v1.0.18
+memchr v2.8.3
+serde_core v1.0.229
+zmij v1.0.23
+tokio v1.53.1
+bytes v1.12.1
+libc v0.2.189
+mio v1.2.3
+libc v0.2.189
+pin-project-lite v0.2.17
+signal-hook-registry v1.4.8
+errno v0.3.14
+libc v0.2.189
+libc v0.2.189
+socket2 v0.6.5
+libc v0.2.189
+tokio-macros v2.7.2 (proc-macro)
+proc-macro2 v1.0.107
+unicode-ident v1.0.26
+quote v1.0.47
+proc-macro2 v1.0.107 (*)
+syn v3.0.6
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+unicode-ident v1.0.26
+verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+glam v0.30.10
+serde_core v1.0.229
+physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+glam v0.30.10 (*)
+serde v1.0.229
+serde_core v1.0.229
+serde_derive v1.0.229 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+serde_json v1.0.151 (*)
+sha2 v0.10.9
+cfg-if v1.0.5
+cpufeatures v0.2.17
+digest v0.10.7
+block-buffer v0.10.4
+generic-array v0.14.7
+typenum v1.20.1
+crypto-common v0.1.7
+generic-array v0.14.7 (*)
+typenum v1.20.1
+serde_json v1.0.151 (*)
+sha2 v0.10.9 (*)
+verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+bytemuck v1.25.2
+bytemuck_derive v1.12.1 (proc-macro)
+proc-macro2 v1.0.107 (*)
+quote v1.0.47 (*)
+syn v3.0.6 (*)
+glam v0.30.10 (*)
+libc v0.2.189
+png v0.18.1
+bitflags v2.13.2
+crc32fast v1.5.2
+cfg-if v1.0.5
+fdeflate v0.3.7
+simd-adler32 v0.3.10
+flate2 v1.1.10
+crc32fast v1.5.2 (*)
+miniz_oxide v0.9.1
+adler2 v2.0.1
+simd-adler32 v0.3.10
+miniz_oxide v0.8.9
+adler2 v2.0.1
+simd-adler32 v0.3.10
+serde v1.0.229 (*)
+serde_json v1.0.151 (*)
+sha2 v0.10.9 (*)
+verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+getrandom v0.3.4
+cfg-if v1.0.5
+libc v0.2.189
+glam v0.30.10 (*)
+physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics) (*)
+rustls v0.23.45 (*)
+secp256k1 v0.31.1
+secp256k1-sys v0.11.0
+serde v1.0.229 (*)
+serde_json v1.0.151 (*)
+sha2 v0.10.9 (*)
+tokio v1.53.1 (*)
+tokio-rustls v0.26.5
+rustls v0.23.45 (*)
+tokio v1.53.1 (*)
+verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine) (*)
+verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine) (*)
+verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world) (*)

@@ -14963,8 +14963,10 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "toml",
+ "verse-content",
  "verse-engine",
  "verse-gfx",
+ "verse-host",
  "verse-lagrange",
  "verse-net",
  "verse-pbr",
@@ -14975,6 +14977,22 @@ dependencies = [
  "wgpu",
  "winit",
  "xp-ledger",
+]
+
+[[package]]
+name = "verse-content"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "gltf",
+ "physics",
+ "png",
+ "resvg",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "verse-engine",
+ "verse-world",
 ]
 
 [[package]]
@@ -15003,6 +15021,22 @@ dependencies = [
  "verse-engine",
  "verse-world",
  "wgpu",
+]
+
+[[package]]
+name = "verse-host"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "rcgen",
+ "rustls",
+ "secp256k1 0.31.1",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "verse-content",
+ "verse-engine",
+ "verse-world",
 ]
 
 [[package]]
@@ -15049,10 +15083,15 @@ dependencies = [
  "png",
  "pollster",
  "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "tempfile",
+ "verse-content",
  "verse-engine",
  "verse-gfx",
+ "web-time",
  "wgpu",
+ "winit",
 ]
 
 [[package]]

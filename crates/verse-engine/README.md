@@ -77,3 +77,5 @@ alpha contrast against bilinear coverage. Both native rendering paths use these
 recipes and reserve every distinct chain before upload. Fractional coverage at a
 single texel, authored compressed chains, and vertex-varying alpha remain content
 production limits.
+
+The dedicated `verse-host` and network service use `core::FixedSchedule`. Actor identities use `LifeId`; actor storage remains in `verse-world` rather than adopting the separate `Entities` container. Applications supply generic `MountPose` values to the admitted renderer frame, including planar grips and offset socket frames.

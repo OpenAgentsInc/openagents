@@ -62,6 +62,7 @@ fn run() -> Result<(), String> {
                     parent_model: "adventurer".into(),
                     socket: 2,
                     local: Mat4::IDENTITY,
+                    pose: verse_engine::presentation::MountPose::Socket,
                 }),
                 model: "bow".into(),
                 transform: Mat4::IDENTITY,

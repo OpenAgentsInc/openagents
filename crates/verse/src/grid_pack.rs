@@ -308,7 +308,7 @@ fn admit(pack: &mut Pack, dir: &Path) -> Result<(), String> {
         include_bytes!("zones/mod.rs"),
         include_bytes!("zones/gate.rs"),
         include_bytes!("doors/mesh.rs"),
-        include_bytes!("imported/flat.rs"),
+        include_bytes!("../../verse-pbr/src/imported/flat.rs"),
     ]);
     let mut assets = vec![inventory::source(
         project.as_str(),

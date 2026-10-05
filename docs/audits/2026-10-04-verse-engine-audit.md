@@ -160,7 +160,7 @@ Evidence labels:
 | V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics | Complete ([#10630](https://github.com/OpenAgentsInc/openagents/issues/10630)) |
 | V15 | P1 | Content-bound navigation tiles have scheduled routes and local invalidation. | Code, recorded | Navigation and AI | Complete ([#10634](https://github.com/OpenAgentsInc/openagents/issues/10634)), grounded profile |
 | V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters | Complete (chamber profile; [#10635](https://github.com/OpenAgentsInc/openagents/issues/10635)) |
-| V17 | P1 | Engine boundaries remain intertwined with the Verse application. | Code | Engine extraction and host packaging | Open |
+| V17 | P1 | Shared rendering, compiled content, and dedicated TLS hosting have working consumers. | Code, recorded | Engine extraction and host packaging | Complete ([#10636](https://github.com/OpenAgentsInc/openagents/issues/10636)) |
 | V18 | P0 | Crowd recovery improves, but failure containment and scale acceptance remain. | Recorded, code | Movement failure handling and scale acceptance | Open |
 | V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Open |
 | V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Open |
@@ -327,8 +327,8 @@ rollback refusal, deleted/reintroduced NPC and prop generations, seven apply
 crash boundaries, and four rollback boundaries. These are local scratch-store
 checks, not a power-loss or production rollout experiment. Instance-scoped
 character capacity and global identity remain V09; verified operational backups
-and retention remain V19. The asset-loading command still depends on the
-renderer crate until V17 separates that boundary.
+and retention remain V19. V17 moves portable content admission into `verse-content` and provides a
+dedicated TLS host that does not link the renderer.
 
 ### V04: Confirmed intervals establish bounded delayed movement acceptance
 
@@ -1217,27 +1217,71 @@ raid throughput nor cross-platform replay equivalence, which remain V18 and V27.
 
 ### V17: Engine extraction needs actual consumers
 
-The broad [`verse` dependency graph](../../crates/verse/Cargo.toml) contains
-GPU, glTF, fonts, Nostr, zones, retained compatibility, and optional agent/UI
-systems. Generic renderer and original content compilation remain under
-`imported`. The headless host example calls `verse::imported` for content and
-collision admission, so its executable does not have the same minimal boundary
-as the default `verse-world` crate.
+**Status:** Complete in [#10636](https://github.com/OpenAgentsInc/openagents/issues/10636).
 
-[`core::Entities`](../../crates/verse-engine/src/core.rs) provides generational
-slots, but the inspected world/runtime paths do not use that container.
-`FixedSchedule` is also not the production world's common scheduling owner.
-An extracted API with only tests does not establish migration of real consumers.
+The broad [`verse` dependency graph](../../crates/verse/Cargo.toml) remains the
+application composition. [Issue #10636](https://github.com/OpenAgentsInc/openagents/issues/10636)
+extracts working engine consumers from its imported path:
 
-**Improve:** Move portable content identity, collision cooking, and validation
-out of the renderer. Extract the renderer behind admitted frame contracts, then
-move original compilation into Rust tools. Adopt a common schedule/entity
-contract where it removes duplication; avoid a speculative ECS rewrite or crate
-proliferation without a real consumer.
+- [`verse-content`](../../crates/verse-content/README.md) owns portable content
+  identity, scene/model admission, outfit/equipment admission, and original
+  furnishing collision. Its optional Rust compiler owns procedural geometry,
+  glTF character/prop import, retargeting, icons, effects, and inventory
+  provenance. Native clients and the dedicated host use the same admission.
+- [`verse-pbr::imported`](../../crates/verse-pbr/src/imported/mod.rs) owns the
+  shared skeletal renderer, materials, shadows, culling, instancing, semantic
+  mip upload, and GPU timing. Its frame contract depends on engine presentation
+  values. Engine `MountPose` describes socket, planar grip, and offset frames;
+  the renderer no longer selects bow behavior by an application model name.
+  The shared UI pipeline lives in `verse-gfx`.
+- [`verse-host`](../../crates/verse-host/README.md) is a dedicated authenticated
+  TLS executable. Its normal dependency graph excludes GPU, windows, fonts,
+  glTF import, private readers, Coder, and agents. The previous Verse example
+  delegates to this executable's library entry point. REACH hosting remains
+  available through the OpenAgents CLI.
+- [`FixedSchedule`](../../crates/verse-engine/src/core.rs) now drives the world
+  network loop and host check mode at 30 Hz, with at most three catch-up steps
+  and explicit dropped time. Storage pauses retain their separate metric.
+  `core::Entities` remains an unused generational container; this change does
+  not claim migration to a new entity system.
 
-**Acceptance:** Build and run a dedicated world host without GPU/window/font,
-private-reader, or agent dependencies. A second original world uses the same
-engine contracts without copying the chamber application.
+The Rust compiler produces the original ritual combat world and an independent
+observatory social world. The observatory authors a different floor, spawn,
+seat, and switch through the same asset, scene, collision, content identity,
+render extraction, social authority, and checkpoint contracts. It does not copy
+the chamber application. Host `--check` admits a configured world, advances its
+schedule, and checks checkpoint restoration without opening a listener or
+writing a checkpoint.
+
+Combined consumer tests exposed journal replay depending on JSON map feature
+unification. The world crate now pins ordered maps and exact float round trips;
+journal changes replace objects whose key layout changes. Recovery accepts an
+older sorted-map representation only when its complete digest matches the
+sealed parent or state. Regressions cover insertion, deletion, reordered keys,
+legacy sorted-map records, and tampering. This preserves journal version and
+digest validation.
+
+**Verification:** The final library suite passes 509 Verse, 11 content, 136
+engine, 25 graphics, two host, 72 renderer, and 514 world tests, with 18
+intentional GPU, artifact-writing, or subprocess helper tests ignored. The
+standalone integration, both compiler commands, separate minimal host build,
+300-tick checks through that binary, native desktop/mobile/CLI compilation,
+browser compilation, formatting, and local documentation links pass. The stale
+Everglade pack is regenerated and repinned; its previous reviewed platform pack
+is retained. Evidence and source checksums are under
+[`engine-boundaries`](../../bench/verse/2026-10-05/engine-boundaries/README.md).
+The standalone integration compiles both worlds, validates their admitted render
+frames, runs 300 scheduled check ticks, starts each actual TLS host process,
+connects with enrolled scratch credentials and its content digest, observes live
+ticks, toggles the observatory switch, and requests clean shutdown. It also
+refuses absent actor models and modified runtime textures.
+
+**Remaining limits:** These two offline scratch worlds establish working engine
+boundaries, not production population or raid throughput. Original furnishing
+collision retains its explicit model whitelist. New mechanics and arbitrary
+world authoring remain V20; platform and zone authority parity remain V24;
+scale and cross-platform replay remain V18 and V27. The application still owns
+its UI, zones, authored frame composition, and optional agent integrations.
 
 ### V18: Crowd recovery improves without passing scale acceptance
 

@@ -11,3 +11,5 @@ pub mod overlay;
 pub mod palette;
 pub mod profiling;
 pub mod ui;
+
+pub mod ui_pipeline;

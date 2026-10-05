@@ -138,6 +138,7 @@ fn append_equipment(
                     parent_model: name.into(),
                     socket: gear.slot.socket(),
                     local,
+                    pose: verse_engine::presentation::MountPose::Socket,
                 }),
                 actor: None,
                 model: gear.model.clone(),
@@ -151,11 +152,7 @@ fn append_equipment(
     Ok(())
 }
 
-pub fn basis() -> Mat4 {
-    Mat4::from_cols_array(&[
-        0.0, 0.0, -0.9144, 0.0, -0.9144, 0.0, 0.0, 0.0, 0.0, 0.9144, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    ])
-}
+pub use verse_content::basis;
 
 pub fn instances(
     pack: &Pack,
@@ -218,6 +215,7 @@ fn instances_with_outfits(
                     parent_model: render_model(&a.actor),
                     socket: 2,
                     local: Mat4::IDENTITY,
+                    pose: bow_mount_pose(a.animation),
                 }),
                 actor: None,
                 model: "bow".into(),
@@ -620,307 +618,7 @@ pub fn lighting_from_visuals(
     lighting.lights.extend(effects);
     lighting
 }
-fn particle_quad() -> (Vec<verse_engine::assets::Vertex>, Vec<u32>) {
-    use verse_engine::assets::Vertex;
-    let vertices = [
-        ([-1.0, -1.0, 0.0], [0.0, 1.0]),
-        ([1.0, -1.0, 0.0], [1.0, 1.0]),
-        ([1.0, 1.0, 0.0], [1.0, 0.0]),
-        ([-1.0, 1.0, 0.0], [0.0, 0.0]),
-    ]
-    .into_iter()
-    .map(|(position, uv)| Vertex {
-        position,
-        normal: [0.0, 0.0, 1.0],
-        uv,
-        joints: [0; 4],
-        weights: [1.0, 0.0, 0.0, 0.0],
-    })
-    .collect();
-    (vertices, vec![0, 1, 2, 0, 2, 3])
-}
-fn particle_texture(pack: &mut Pack, dir: &std::path::Path, name: &str) -> Result<usize, String> {
-    use sha2::{Digest, Sha256};
-    let file = format!("{name}.png");
-    if let Some(i) = pack.textures.iter().position(|t| t.file == file) {
-        return Ok(i);
-    }
-    let bytes = std::fs::read(dir.join(&file))
-        .map_err(|e| format!("Missing particle texture {file}: {e}"))?;
-    let reader = png::Decoder::new(std::io::Cursor::new(&bytes))
-        .read_info()
-        .map_err(|e| e.to_string())?;
-    let i = pack.textures.len();
-    pack.textures.push(verse_engine::assets::Texture {
-        file,
-        sha256: format!("{:x}", Sha256::digest(&bytes)),
-        width: reader.info().width,
-        height: reader.info().height,
-    });
-    Ok(i)
-}
-pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), String> {
-    use sha2::{Digest, Sha256};
-    use verse_engine::assets::{Model, Surface, Texture, Vertex};
-    let mut bytes = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut bytes, 1, 1);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        encoder
-            .write_header()
-            .map_err(|e| e.to_string())?
-            .write_image_data(&[255; 4])
-            .map_err(|e| e.to_string())?;
-    }
-    std::fs::write(dir.join("verse-effect-white.png"), &bytes).map_err(|e| e.to_string())?;
-    let texture = pack.textures.len();
-    pack.textures.push(Texture {
-        file: "verse-effect-white.png".into(),
-        sha256: format!("{:x}", Sha256::digest(&bytes)),
-        width: 1,
-        height: 1,
-    });
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-    for row in 0..=12 {
-        for col in 0..=16 {
-            let y = row as f32 / 12.0 * std::f32::consts::PI;
-            let a = col as f32 / 16.0 * std::f32::consts::TAU;
-            let p = Vec3::new(y.sin() * a.cos(), y.cos(), y.sin() * a.sin());
-            vertices.push(Vertex {
-                position: p.into(),
-                normal: p.into(),
-                uv: [0.5, 0.5],
-                joints: [0; 4],
-                weights: [1.0, 0.0, 0.0, 0.0],
-            });
-        }
-    }
-    for row in 0..12 {
-        for col in 0..16 {
-            let a = row * 17 + col;
-            indices.extend_from_slice(&[a, a + 1, a + 17, a + 1, a + 18, a + 17]);
-        }
-    }
-    for (name, color) in [
-        ("effect-fire", [1.0, 0.15, 0.015]),
-        ("effect-force", [0.18, 0.25, 1.0]),
-        ("effect-impact", [1.0, 0.14, 0.015]),
-        ("effect-mist", [0.5, 0.8, 1.0]),
-        ("effect-web", [0.7, 0.8, 0.9]),
-        ("effect-grease", [0.15, 0.12, 0.07]),
-        ("effect-shadow", [0.7, 0.05, 1.0]),
-        ("effect-light", [1.0, 0.85, 0.45]),
-    ] {
-        let sprite = match name {
-            "effect-fire" | "effect-impact" => Some("particle-fire"),
-            "effect-force" | "effect-light" => Some("particle-arcane"),
-            "effect-mist" => Some("particle-smoke"),
-            "effect-web" => Some("particle-web"),
-            "effect-grease" => Some("particle-smoke"),
-            "effect-shadow" => Some("particle-shadow"),
-            _ => None,
-        };
-        let texture = if let Some(sprite) = sprite {
-            particle_texture(pack, dir, sprite)?
-        } else {
-            texture
-        };
-        let (mesh, triangles) = if sprite.is_some() {
-            particle_quad()
-        } else {
-            (vertices.clone(), indices.clone())
-        };
-        pack.models.insert(
-            name.into(),
-            Model {
-                graph: None,
-                markers: Vec::new(),
-                states: Default::default(),
-                skin: None,
-                source: format!(
-                    "verse/{}/{name}",
-                    if ["effect-web", "effect-grease"].contains(&name) {
-                        "ground"
-                    } else if sprite.is_some() {
-                        "particles"
-                    } else {
-                        "procedural"
-                    }
-                ),
-                source_sha256: format!("{:x}", Sha256::digest(name.as_bytes())),
-                height: 2.0,
-                bones: vec![],
-                clips: vec![],
-                attachments: vec![],
-                surfaces: vec![Surface {
-                    material: Default::default(),
-                    vertices: mesh,
-                    indices: triangles,
-                    texture,
-                    blend: if ["effect-grease", "effect-web", "effect-mist"].contains(&name) {
-                        2
-                    } else {
-                        3
-                    },
-                    emissive: true,
-                    topology: Default::default(),
-                    unlit: false,
-                    tint: if name == "effect-grease" {
-                        [0.1, 0.075, 0.04]
-                    } else if sprite.is_some() {
-                        [1.0; 3]
-                    } else {
-                        color
-                    },
-                }],
-            },
-        );
-    }
-    for (name, image, blend, tint) in [
-        ("particle-smoke", "particle-smoke", 2, [0.28, 0.22, 0.2]),
-        ("particle-spark", "particle-spark", 3, [1.0, 0.65, 0.2]),
-    ] {
-        let texture = particle_texture(pack, dir, image)?;
-        let (vertices, indices) = particle_quad();
-        pack.models.insert(
-            name.into(),
-            Model {
-                graph: None,
-                markers: Vec::new(),
-                states: Default::default(),
-                skin: None,
-                source: format!("verse/particles/{name}"),
-                source_sha256: format!("{:x}", Sha256::digest(name.as_bytes())),
-                height: 2.0,
-                bones: vec![],
-                clips: vec![],
-                attachments: vec![],
-                surfaces: vec![Surface {
-                    material: Default::default(),
-                    vertices,
-                    indices,
-                    texture,
-                    blend,
-                    emissive: true,
-                    topology: Default::default(),
-                    unlit: false,
-                    tint,
-                }],
-            },
-        );
-    }
-    let texture = particle_texture(pack, dir, "particle-ribbon")?;
-    let (mesh, triangles) = particle_quad();
-    pack.models.insert(
-        "effect-ribbon".into(),
-        Model {
-            graph: None,
-            markers: Vec::new(),
-            states: Default::default(),
-            skin: None,
-            source: "verse/ribbon/effect-ribbon".into(),
-            source_sha256: format!("{:x}", Sha256::digest(b"effect-ribbon")),
-            height: 2.0,
-            bones: vec![],
-            clips: vec![],
-            attachments: vec![],
-            surfaces: vec![Surface {
-                material: Default::default(),
-                vertices: mesh,
-                indices: triangles,
-                texture,
-                blend: 3,
-                emissive: true,
-                topology: Default::default(),
-                unlit: false,
-                tint: [1.0; 3],
-            }],
-        },
-    );
-    // Thin luminous rings keep the shield transparent around the character.
-    for (name, planes, color) in [
-        ("effect-rune", 1, [0.8, 0.04, 0.65]),
-        ("effect-shield", 3, [0.08, 0.6, 1.0]),
-    ] {
-        let mut vertices = Vec::new();
-        let mut indices = Vec::new();
-        for plane in 0..planes {
-            let base = vertices.len() as u32;
-            for segment in 0..=64 {
-                let angle = segment as f32 / 64.0 * std::f32::consts::TAU;
-                for radius in [0.98, 1.0] {
-                    let (x, z) = (angle.cos() * radius, angle.sin() * radius);
-                    let p = match plane {
-                        0 => Vec3::new(x, 0.0, z),
-                        1 => Vec3::new(x, z, 0.0),
-                        _ => Vec3::new(0.0, x, z),
-                    };
-                    vertices.push(Vertex {
-                        position: p.into(),
-                        normal: Vec3::Y.into(),
-                        uv: [0.5, 0.5],
-                        joints: [0; 4],
-                        weights: [1.0, 0.0, 0.0, 0.0],
-                    });
-                }
-            }
-            for segment in 0..64 {
-                let i = base + segment * 2;
-                indices.extend_from_slice(&[i, i + 1, i + 2, i + 1, i + 3, i + 2]);
-            }
-        }
-        pack.models.insert(
-            name.into(),
-            Model {
-                graph: None,
-                markers: Vec::new(),
-                states: Default::default(),
-                skin: None,
-                source: format!("verse/procedural/{name}"),
-                source_sha256: format!("{:x}", Sha256::digest(name.as_bytes())),
-                height: 2.0,
-                bones: vec![],
-                clips: vec![],
-                attachments: vec![],
-                surfaces: vec![Surface {
-                    material: Default::default(),
-                    vertices,
-                    indices,
-                    texture,
-                    blend: 3,
-                    emissive: true,
-                    topology: Default::default(),
-                    unlit: false,
-                    tint: color,
-                }],
-            },
-        );
-    }
-    let texture = particle_texture(pack, dir, "particle-rune")?;
-    let (quad, triangles) = particle_quad();
-    pack.models.get_mut("effect-rune").unwrap().surfaces[0] = Surface {
-        material: Default::default(),
-        vertices: quad,
-        indices: triangles,
-        texture,
-        blend: 3,
-        emissive: true,
-        topology: Default::default(),
-        unlit: false,
-        tint: [0.65, 0.15, 0.85],
-    };
-    pack.models.get_mut("effect-rune").unwrap().source = "verse/ground/effect-rune".into();
-    let mut wave = pack.models["effect-rune"].clone();
-    wave.source = "verse/ground/effect-wave".into();
-    wave.surfaces[0].tint = [0.2, 0.55, 1.0];
-    pack.models.insert("effect-wave".into(), wave);
-    let shell = &mut pack.models.get_mut("effect-shield").unwrap().surfaces[0];
-    shell.vertices = vertices;
-    shell.indices = indices;
-    pack.validate()
-}
+pub use verse_content::compiler::effects::add_effect_models;
 pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
     spell_instances_from_visuals(&verse_world::visuals::Combat::extract(game))
 }
@@ -1535,19 +1233,20 @@ mod tests {
                     }
                 }
                 let mut instances =
-                    instances_with_outfits(&renderer.pack, &frame, &outfits).unwrap();
+                    instances_with_outfits(renderer.pack(), &frame, &outfits).unwrap();
                 let mut poses = poses.clone();
                 for (p, a) in poses.iter_mut().zip(&frame.actors) {
                     p.life = a.life.unwrap().into();
                 }
-                append_equipment(&renderer.pack, &frame, &outfits, &poses, &mut instances).unwrap();
+                append_equipment(renderer.pack(), &frame, &outfits, &poses, &mut instances)
+                    .unwrap();
                 if n == 90 {
                     let mut stale = instances.clone();
                     let mount = stale.iter_mut().find_map(|i| i.mount.as_mut()).unwrap();
                     mount.parent.generation -= 1;
                     assert!(
                         verse_engine::presentation::ResolvedInstances::extract(
-                            &renderer.catalog,
+                            renderer.catalog(),
                             &stale
                         )
                         .is_err()
@@ -1577,15 +1276,15 @@ mod tests {
                             p.actor == Some(mount.parent) && p.model == mount.parent_model
                         })
                         .unwrap();
-                    let parent_pose = renderer.evaluated_poses[parent];
-                    let model = &renderer.pack.models[&mount.parent_model];
-                    let matrices = parent_pose.bones[..model.bones.len().max(1)]
+                    let parent_pose = renderer.evaluated_pose(parent).unwrap();
+                    let model = &renderer.pack().models[&mount.parent_model];
+                    let matrices = parent_pose.1[..model.bones.len().max(1)]
                         .iter()
                         .map(Mat4::from_cols_array_2d)
                         .collect::<Vec<_>>();
                     let palette = verse_engine::sockets::Palette::admit(model, &matrices).unwrap();
                     let sockets = verse_engine::sockets::Sockets::admit(model).unwrap();
-                    let body = Mat4::from_cols_array_2d(&parent_pose.model);
+                    let body = Mat4::from_cols_array_2d(&parent_pose.0);
                     let expected = if instance.model == "bow" {
                         mounted_bow(
                             sockets,
@@ -1600,7 +1299,7 @@ mod tests {
                             .frame(palette, body, mount.socket, mount.local)
                             .unwrap()
                     };
-                    let actual = Mat4::from_cols_array_2d(&renderer.evaluated_poses[i].model);
+                    let actual = Mat4::from_cols_array_2d(&renderer.evaluated_pose(i).unwrap().0);
                     if instance.model == "bow" && !bow_drawn(instances[parent].animation) {
                         let spine = sockets.frame(palette, body, 3, Mat4::IDENTITY).unwrap();
                         assert!(
@@ -1907,30 +1606,46 @@ pub fn bow_drawn(animation: verse_engine::motion::Selection) -> bool {
 /// string on its -Y side. A drawn bow stands upright in the fist with its back
 /// (+Y) pointing along the bow arm, so the string faces the archer. A stowed
 /// bow hangs diagonally against the upper back with its string outward.
+pub fn bow_mount_pose(
+    animation: verse_engine::motion::Selection,
+) -> verse_engine::presentation::MountPose {
+    if bow_drawn(animation) {
+        verse_engine::presentation::MountPose::PlanarGrip {
+            direction_socket: 4,
+        }
+    } else {
+        verse_engine::presentation::MountPose::OffsetFrame {
+            socket: 3,
+            offset: -Vec3::X * BOW_BACK_DEPTH,
+            rotation: Quat::from_rotation_x(BOW_BACK_TILT)
+                * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
+        }
+    }
+}
+#[cfg(test)]
 pub(super) fn mounted_bow(
     sockets: verse_engine::sockets::Sockets<'_>,
     palette: verse_engine::sockets::Palette<'_>,
     body: Mat4,
     drawn: bool,
 ) -> Result<Mat4, String> {
-    if drawn {
-        return Ok(bow_pose(
-            body,
-            sockets.point(palette, body, 2)?,
-            sockets.point(palette, body, 3)?,
-            sockets.point(palette, body, 4)?,
-            true,
-        ));
+    use verse_engine::{motion::State, presentation::Mount};
+    Mount {
+        parent: verse_engine::core::LifeId {
+            instance: 0,
+            actor: 1,
+            generation: 0,
+        },
+        parent_model: String::new(),
+        socket: 2,
+        local: Mat4::IDENTITY,
+        pose: bow_mount_pose(if drawn {
+            State::BowReady.into()
+        } else {
+            State::Idle.into()
+        }),
     }
-    let spine = sockets.frame(palette, body, 3, Mat4::IDENTITY)?;
-    let scale = spine.transform_vector3(Vec3::X).length();
-    if !scale.is_finite() || scale < 0.000001 {
-        return Err("Stowed bow spine frame is degenerate".into());
-    }
-    Ok(spine
-        * Mat4::from_translation(-Vec3::X * (BOW_BACK_DEPTH / scale))
-        * Mat4::from_rotation_x(BOW_BACK_TILT)
-        * Mat4::from_rotation_z(-std::f32::consts::FRAC_PI_2))
+    .frame(sockets, palette, body)
 }
 pub fn bow_pose(body: Mat4, palm: Vec3, back: Vec3, elbow: Vec3, drawn: bool) -> Mat4 {
     let (scale, rotation, _) = body.to_scale_rotation_translation();

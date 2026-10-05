@@ -11,3 +11,6 @@ pub mod mesh;
 pub mod pbr;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod streaming;
+
+pub mod imported;
+pub use verse_gfx::{gles, gpu_lifecycle, ui};
