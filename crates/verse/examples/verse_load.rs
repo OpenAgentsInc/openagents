@@ -97,6 +97,7 @@ async fn player(
     let mut omitted_latency = 0u64;
     let mut casts = BTreeMap::<String, u64>::new();
     let mut refused = 0;
+    let mut refusal_trace = Vec::new();
     let mut snapshots = 0;
     let mut snapshot_bytes = 0u64;
     let mut movement = 0;
@@ -187,16 +188,16 @@ async fn player(
      }
      Update::CommandBound {binding,..}=>match binding {
       Ok(command)=>{let ability=match command.intent {Intent::Cast {ability,..}=>Some(ability.label().to_string()),_=>None};pending.push_back((tokio::time::Instant::now(),ability));},
-      Err(_)=>refused+=1,
+      Err(message)=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"command_binding","message":message}));}},
      },
      Update::FrameBound {binding,..}=>match binding {
       Ok(_)=>pending.push_back((tokio::time::Instant::now(),None)),
-      Err(_)=>refused+=1,
+      Err(message)=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"frame_binding","message":message}));}},
      },
      Update::Outcome(response)=>{
       if let Some((started,ability))=pending.pop_front() {
        if !sample(&mut latency,started.elapsed().as_secs_f64()*1000.) {omitted_latency+=1;}
-       match response.body {Reply::Accepted=>{if let Some(ability)=ability {*casts.entry(ability).or_default()+=1;}},Reply::Refused {..}=>refused+=1,_=>{}}
+       match response.body {Reply::Accepted=>{if let Some(ability)=ability {*casts.entry(ability).or_default()+=1;}},Reply::Refused {message,code,..}=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"outcome","message":message,"code":code,"tick":response.tick,"control":response.control}));}},_=>{}}
       }
      }
      Update::Events {..}|Update::Inventory(_)|Update::MovementSuperseded {..}=>{},
@@ -207,6 +208,16 @@ async fn player(
  }.await;
     let _ = stop.send(());
     let worker_result = task.await;
+    let observation_error = result
+        .as_ref()
+        .err()
+        .map(|e| e.chars().take(2048).collect::<String>());
+    let worker_error = match &worker_result {
+        Err(e) => Some(e.to_string()),
+        Ok(Err(e)) => Some(e.clone()),
+        Ok(Ok(())) => None,
+    }
+    .map(|e| e.chars().take(2048).collect::<String>());
     let failure_stage = if result.is_err() {
         Some("observation")
     } else {
@@ -217,7 +228,7 @@ async fn player(
         }
     };
     Ok(
-        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"confirmed_time_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
+        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"confirmed_time_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
     )
 }
 async fn run(config: Config) -> Result<(), String> {
