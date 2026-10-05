@@ -27,7 +27,7 @@ use coder::cli_route::tree::{Declared, Effect};
 
 pub(crate) const USAGE: &str = "usage: openagents chamber COMMAND [OPTIONS]
   host CONFIG.json [--state DIR] [--root DIR] [--keys DIR | --keychain]
-       [--label TEXT] [--loopback-test]
+       [--label TEXT] [--loopback-test] [--studio-socket PATH]
                             Run a chamber host on this machine until stopped:
                             the configuration names the scene, pack, and
                             transport. Over TLS (the default) it also names
@@ -45,6 +45,11 @@ pub(crate) const USAGE: &str = "usage: openagents chamber COMMAND [OPTIONS]
                             (Linux); the access options pass through.
   service uninstall | status
                             Remove the unit, or report whether it runs.
+                            With profile `everglade` it hosts Everglade
+                            under the social rules, bound to the pinned
+                            Everglade pack, and walks the Agent Studio's
+                            seats from the Coder host's control socket on
+                            this computer (--studio-socket overrides it).
   tls DIR [--name NAME]     Write a self-signed TLS certificate and key for a
                             host under DIR (cert.der, key.der; NAME defaults
                             to localhost).
@@ -348,6 +353,33 @@ impl Connection {
     }
 }
 
+impl Connection {
+    /// The NIP-HOST rights of the grant this device joins a REACH chamber
+    /// with, or `None` over TLS.
+    fn reach_rights(&self) -> Result<Option<Vec<coder_access::Right>>, String> {
+        use coder_computers::live::{FileStore, Store as _};
+        let Some(host) = &self.reach else {
+            return Ok(None);
+        };
+        let store = crate::computer::store_dir(self.store.as_deref().and_then(Path::to_str));
+        let saved = FileStore::open(&store)?.load()?.unwrap_or_default();
+        let known: Vec<crate::hosts::Known> = saved
+            .hosts
+            .iter()
+            .map(|saved| crate::hosts::Known {
+                key: saved.access.grant.host.clone(),
+                label: saved.label.clone(),
+            })
+            .collect();
+        let host = crate::hosts::resolve(&store, &known, host)?;
+        Ok(saved
+            .hosts
+            .iter()
+            .find(|saved| saved.access.grant.host == host)
+            .map(|saved| saved.access.grant.rights.iter().collect()))
+    }
+}
+
 fn hex_bytes(text: &str) -> Result<Vec<u8>, String> {
     if !text.len().is_multiple_of(2) || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(format!("{text}: not hex"));
@@ -389,7 +421,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "host" => parse_command(
             rest,
             "host",
-            &["state", "root", "keys", "label"],
+            &["state", "root", "keys", "label", "studio-socket"],
             &["keychain", "loopback-test"],
             1,
             1,
@@ -403,8 +435,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "pack" => parse_command(rest, "pack", &[], &[], 1, 1)
             .map_err(Fail::Usage)
             .and_then(|args| pack_command(output, Path::new(&args.positional()[0]))),
-        "status" => connected(output, rest, "status", &[], 0, 0, |o, c, _| {
-            Box::pin(status(o, c))
+        "status" => connected(output, rest, "status", &[], 0, 0, |o, c, a| {
+            Box::pin(status(o, c, a))
         }),
         "snapshot" => connected(output, rest, "snapshot", &[], 0, 0, |o, c, _| {
             Box::pin(snapshot(o, c))
@@ -611,6 +643,12 @@ fn status_json(client: &Client, state: &State) -> Value {
         "projectiles": state.snapshot.projectiles.len(),
         "effects": state.snapshot.effects.len(),
         "population": population_json(state),
+        "social": state.social.as_ref().map(|social| json!({
+            "zone": social.profile.zone,
+            "revision": social.revision,
+            "studio": social.studio,
+            "occupants": social.occupants,
+        })),
     })
 }
 
@@ -628,6 +666,13 @@ fn population_json(state: &State) -> Value {
         "players": players.len(),
         "alive": players.iter().filter(|actor| actor.alive).count(),
     })
+}
+
+/// What the studio's panels would let this device do in a social
+/// instance, from its grant's rights: `world` alone opens none.
+fn panels_json(rights: &[coder_access::Right]) -> Value {
+    let access = verse_world::social::studio::PanelAccess::of(rights);
+    json!({ "read": access.read, "act": access.act, "merge": access.merge })
 }
 
 fn render_status(value: &Value) -> String {
@@ -680,9 +725,17 @@ fn render_status(value: &Value) -> String {
     lines.join("\n")
 }
 
-async fn status(output: &Output, client: &mut Client) -> Result<u8, Fail> {
+async fn status(output: &Output, client: &mut Client, args: &Args) -> Result<u8, Fail> {
     let state = client.snapshot().await.map_err(Fail::Run)?;
-    output.emit(&status_json(client, &state), render_status);
+    let mut value = status_json(client, &state);
+    if state.social.is_some()
+        && let Some(rights) = Connection::from_args(args)
+            .and_then(|c| c.reach_rights())
+            .map_err(Fail::Run)?
+    {
+        value["panels"] = panels_json(&rights);
+    }
+    output.emit(&value, render_status);
     Ok(0)
 }
 
@@ -1108,10 +1161,70 @@ fn host_command(output: &Output, args: &Args) -> Result<u8, Fail> {
             "--state, --root, --keys, --keychain, --label, and --loopback-test go with a REACH chamber (\"transport\":{\"type\":\"reach\"})".into(),
         ));
     }
+    let studio = args.option("studio-socket").map(PathBuf::from);
+    if studio.is_some() && config.profile.is_none() {
+        return Err(Fail::Usage(
+            "--studio-socket goes with an Everglade chamber (\"profile\":\"everglade\")".into(),
+        ));
+    }
     crate::runtime()
-        .block_on(serve(*output, config, access))
+        .block_on(serve(*output, config, access, studio))
         .map_err(Fail::Run)?;
     Ok(0)
+}
+
+/// The content identity of a hosted Everglade instance: the scene and pack
+/// identity bound to the pinned Everglade pack's digest
+/// (`everglade_pack::content_digest`), so a client whose zone pack differs
+/// from the host's is refused at the login challenge.
+fn everglade_content(content: [u8; 32]) -> Result<[u8; 32], String> {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    hash.update(b"verse.everglade.hosted.content.v1\0");
+    hash.update(content);
+    hash.update(verse::zones::everglade_pack::content_digest()?);
+    Ok(hash.finalize().into())
+}
+
+/// The Agent Studio of the Coder host on this computer, read over its
+/// same-user control socket: a worker thread asks for `studio.snapshot`
+/// every [`studio_live::POLL`] and keeps the newest answer for the
+/// chamber's tick. A host that does not answer leaves the seats where they
+/// are; the worker stops when the chamber does.
+struct ControlStudio {
+    snapshots: std::sync::mpsc::Receiver<coder_access::studio::Snapshot>,
+}
+
+use verse::zones::everglade::studio::live as studio_live;
+
+impl ControlStudio {
+    fn start(socket: PathBuf) -> Self {
+        use studio_live::Transport as _;
+        let (send, snapshots) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut control = studio_live::ControlSocket::new(socket);
+            loop {
+                let request: String = verse::identity::random_bytes::<32>()
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect();
+                if let Ok(coder_access::Outcome::Studio { snapshot }) =
+                    control.call(&request, &coder_access::Operation::StudioSnapshot {})
+                    && send.send(*snapshot).is_err()
+                {
+                    return;
+                }
+                std::thread::sleep(studio_live::POLL);
+            }
+        });
+        Self { snapshots }
+    }
+}
+
+impl verse_world::social::studio::SnapshotSource for ControlStudio {
+    fn poll(&mut self) -> Option<coder_access::studio::Snapshot> {
+        self.snapshots.try_iter().last()
+    }
 }
 
 /// Where a REACH chamber finds the Coder host's key and grants: the same
@@ -1221,7 +1334,12 @@ impl WorldHost {
     }
 }
 
-async fn serve(output: Output, config: host::Config, access: WorldAccess) -> Result<(), String> {
+async fn serve(
+    output: Output,
+    config: host::Config,
+    access: WorldAccess,
+    studio: Option<PathBuf>,
+) -> Result<(), String> {
     let scene = verse_engine::director::Scene::from_json(&bounded(&config.scene, 1024 * 1024)?)?;
     let pack = verse_engine::assets::Pack::read(&config.pack)?;
     verse::imported::remote_content::outfit_models(&pack, &config.outfits)?;
@@ -1236,6 +1354,12 @@ async fn serve(output: Output, config: host::Config, access: WorldAccess) -> Res
         &scene,
         config.pack.parent().unwrap_or(Path::new(".")),
     )?;
+    let everglade = config.profile == Some(host::Named::Everglade);
+    let content = if everglade {
+        everglade_content(content)?
+    } else {
+        content
+    };
     let content = config.bind_content(content)?;
     let mut game = config.prepare_game(scene)?;
     verse::imported::props::admit_collision(&pack, &mut game)?;
@@ -1270,6 +1394,15 @@ async fn serve(output: Output, config: host::Config, access: WorldAccess) -> Res
         .local_addr()
         .map_err(|_| "Cannot inspect chamber listener")?;
     let content_hex: String = content.iter().map(|b| format!("{b:02x}")).collect();
+    // An Everglade instance walks the studio's seats on its tick, read from
+    // the Coder host beside it.
+    let studio = everglade
+        .then(|| studio.or_else(openagents_connect::control::socket_path))
+        .flatten();
+    let tick = studio.clone().map(|socket| {
+        verse_world::social::hosted::StudioFeed::new(Box::new(ControlStudio::start(socket)))
+            .into_tick()
+    });
     let (transport_name, host_key) = match &transport {
         Transport::Tls(_) => ("tls", None),
         Transport::Reach(server, reach::Carrier::Tcp, _) => {
@@ -1289,6 +1422,8 @@ async fn serve(output: Output, config: host::Config, access: WorldAccess) -> Res
             "host": host_key,
             "enrollments": config.enrollments.len(),
             "durable": config.state_dir.is_some(),
+            "profile": config.profile,
+            "studio": studio,
         }),
         |v| match v["host"].as_str() {
             Some(host) => format!(
@@ -1310,18 +1445,26 @@ async fn serve(output: Output, config: host::Config, access: WorldAccess) -> Res
         let _ = tokio::signal::ctrl_c().await;
     };
     let exit = match transport {
-        Transport::Tls(tls) => match store {
-            Some(store) => net::serve_durable(listener, tls, gateway, store, shutdown).await,
-            None => net::serve(listener, tls, gateway, shutdown).await,
+        Transport::Tls(tls) => match (store, tick) {
+            (store, Some(tick)) => {
+                net::serve_ticked(listener, tls, gateway, store, tick, shutdown).await
+            }
+            (Some(store), None) => {
+                net::serve_durable(listener, tls, gateway, store, shutdown).await
+            }
+            (None, None) => net::serve(listener, tls, gateway, shutdown).await,
         },
         Transport::Reach(server, _, owner) => {
             let host = server.host_key().to_owned();
             let serving = async {
-                match store {
-                    Some(store) => {
+                match (store, tick) {
+                    (store, Some(tick)) => {
+                        reach::serve_ticked(listener, *server, gateway, store, tick, shutdown).await
+                    }
+                    (Some(store), None) => {
                         reach::serve_durable(listener, *server, gateway, store, shutdown).await
                     }
-                    None => reach::serve(listener, *server, gateway, shutdown).await,
+                    (None, None) => reach::serve(listener, *server, gateway, shutdown).await,
                 }
             };
             let world = coder_reach::directory::WorldInstance {

@@ -286,7 +286,7 @@ where
     F: Future<Output = ()>,
 {
     let listen = Listen::Reach(Arc::new(server));
-    net::serve_with_store(listener, listen, gateway, None, shutdown).await
+    net::serve_with_store(listener, listen, gateway, None, None, shutdown).await
 }
 
 /// Serves world channels, committing world mutations before replies.
@@ -302,7 +302,25 @@ where
     F: Future<Output = ()>,
 {
     let listen = Listen::Reach(Arc::new(server));
-    net::serve_with_store(listener, listen, gateway, Some(store), shutdown).await
+    net::serve_with_store(listener, listen, gateway, Some(store), None, shutdown).await
+}
+
+/// [`serve`] or, with `store`, [`serve_durable`], running `tick` on every
+/// authority tick after the simulation steps.
+pub async fn serve_ticked<G, F>(
+    listener: TcpListener,
+    server: Server<G>,
+    gateway: Gateway,
+    store: Option<Store>,
+    tick: net::Tick,
+    shutdown: F,
+) -> Exit
+where
+    G: GrantCheck + 'static,
+    F: Future<Output = ()>,
+{
+    let listen = Listen::Reach(Arc::new(server));
+    net::serve_with_store(listener, listen, gateway, store, Some(tick), shutdown).await
 }
 
 /// Joins a world instance over a direct channel on `stream`: a TCP

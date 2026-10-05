@@ -208,8 +208,20 @@ execution".
    `social::studio::StudioHost` walks seats from a snapshot source and
    publishes `SeatPose`s, which `Studio::follow_authority` draws; `world`
    alone opens no panel, and panels need `observe`, `operate`, and
-   `review`. The chamber wire does not yet carry a social instance or seat
-   poses, and the host binaries do not yet start one.
+   `review`. Hosted (#10553): `openagents chamber host` with
+   `"profile": "everglade"` serves Everglade under the chamber's social
+   rules (`social::hosted::everglade_profile`: the heightfield as one
+   bounded mesh and one seat object per studio slot) and binds the pinned
+   pack digest into the login challenge's content identity. Its
+   `StudioFeed` reads the co-located Coder host's studio over the control
+   socket (`studio.snapshot`, or `--studio-socket`), walks the seats on the
+   authority's tick, and publishes them as the wire's public seat poses
+   (`State::social.studio`), so every viewer sees the same seat at the same
+   place. Desktop Verse joins with `--join FILE` (built with
+   `remote-chamber`), records its grant's rights as the studio grant, and
+   draws the host's avatars and seats. Reading the studio under an
+   `observe` grant over NIP-HOST, rather than the control socket, is not
+   implemented.
 4. **Mirrors.** WORK, COORD, CTX, KB, RUN, and POL records beside host state;
    the Block-lane group mirror.
 5. **Later.** Seat keys (AP, OA, GS), seats on the plaza, studio XP.

@@ -15,6 +15,7 @@
 //! ([`player`], [`pose`]); no companion follows.
 
 mod boards;
+pub mod demolition;
 pub(crate) mod draw;
 pub mod hotbar;
 pub mod layout;
@@ -81,6 +82,8 @@ pub(crate) struct Everglade {
     /// Blocks another zone's rules add to the spells' own, such as the
     /// Grove's training dummies, each a footprint and its top, m.
     extra_blocks: Vec<(crate::controller::Footprint, f32)>,
+    /// The demolition yard, when Everglade opened as one (`--demolition`).
+    demolition: Option<Box<demolition::Demolition>>,
 }
 
 impl Everglade {
@@ -119,7 +122,65 @@ impl Everglade {
             bake: None,
             probes: None,
             extra_blocks: Vec::new(),
+            demolition: None,
         })
+    }
+
+    /// Everglade's ground and sky with none of its layout: the demolition
+    /// yard's static world, a ring of trees around an open field. The
+    /// cottages draw with the player ([`Self::player_mesh`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack lacks a tree or the scene exceeds
+    /// the renderer's bounds.
+    pub fn demolition_world(pack: &ZonePack) -> Result<World, String> {
+        let mut world = World::default();
+        let (mut scene, _) = scene::build(pack, &demolition::trees())?;
+        draw::ground(&mut scene);
+        scene.validate()?;
+        world.mesh.textured = Some(Arc::new(scene));
+        Ok(world)
+    }
+
+    /// Turns this zone into the demolition yard: two kit cottages from
+    /// `pack` stand in the clearing and nothing else blocks the player.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack lacks a kit model.
+    pub fn start_demolition(&mut self, pack: &ZonePack) -> Result<(), String> {
+        let mut yard = demolition::Demolition::new(pack)?;
+        self.solids = demolition::solids();
+        let blocks = yard.take_blocks().unwrap_or_default();
+        self.demolition = Some(Box::new(yard));
+        self.set_extra_blocks(blocks);
+        Ok(())
+    }
+
+    /// The demolition yard, when this zone is one.
+    #[must_use]
+    pub fn demolition(&self) -> Option<&demolition::Demolition> {
+        self.demolition.as_deref()
+    }
+
+    /// Swings the yard's sledgehammer, or rebuilds its cottages with
+    /// `rebuild`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message outside the demolition yard.
+    pub fn demolish(&mut self, rebuild: bool) -> Result<(), String> {
+        let yard = self
+            .demolition
+            .as_mut()
+            .ok_or("Open the demolition yard first")?;
+        if rebuild {
+            yard.reset();
+        } else {
+            yard.swing();
+        }
+        Ok(())
     }
 
     /// The afternoon light: a warm sun from behind the approach that casts
@@ -310,6 +371,9 @@ impl Everglade {
         spell: spells::Spell,
         player: &PlayerController,
     ) -> Result<(), String> {
+        if self.demolition.is_some() {
+            return Err("The demolition yard has only the sledgehammer".into());
+        }
         self.cast_spell_ahead(spell, player, spells::AHEAD)
     }
 
@@ -325,6 +389,9 @@ impl Everglade {
         player: &PlayerController,
         ahead: f64,
     ) -> Result<(), String> {
+        if self.demolition.is_some() {
+            return Err("The demolition yard has only the sledgehammer".into());
+        }
         self.spells.cast_ahead(spell, player, &self.solids, ahead)?;
         if spell == spells::Spell::ReverseGravity && self.spells.active(spell) {
             self.levitating = false;
@@ -371,10 +438,22 @@ impl Everglade {
         self.spells.slot(spell, player, &self.solids)
     }
 
-    /// The live spells as drawn around `player`.
+    /// The live spells as drawn around `player`, seen from its head.
     #[must_use]
     pub fn spell_mesh(&self, player: &PlayerController) -> Mesh {
-        self.spells.mesh(player)
+        self.spell_mesh_from(player, player.pos + Vec3::Y * 1.6)
+    }
+
+    /// The live spells as drawn around `player`, seen from `eye`: the
+    /// particles turn toward it. The demolition yard adds its hammer,
+    /// broken faces, cracks, and dust.
+    #[must_use]
+    pub fn spell_mesh_from(&self, player: &PlayerController, eye: Vec3) -> Mesh {
+        let mut mesh = self.spells.mesh(player, eye);
+        if let Some(yard) = &self.demolition {
+            mesh.extend(&yard.mesh(player));
+        }
+        mesh
     }
 
     /// One step of the shared controller over the solids: the blockers the
@@ -406,6 +485,16 @@ impl Everglade {
         }
         if let Some(cast) = &mut self.cast {
             cast.advance(at, seats, dt);
+        }
+        let blocks = self.demolition.as_mut().and_then(|yard| {
+            yard.tick(dt, at);
+            yard.take_blocks()
+        });
+        if let Some(blocks) = blocks {
+            self.set_extra_blocks(blocks);
+        }
+        if let Some(yard) = &mut self.demolition {
+            yard.prepare(self.cast.as_ref().map(|cast| cast.figure().scene).as_ref());
         }
         if let Some(job) = &mut self.bake {
             if let Some(probes) = job.poll() {
@@ -466,13 +555,25 @@ impl Everglade {
                     probes.shade(&mut vertices);
                     figure.vertices = Arc::new(vertices);
                 }
+                if let Some(yard) = &self.demolition {
+                    figure = yard.figure(Some(figure));
+                }
                 Mesh {
                     figure: Some(figure),
                     ..Mesh::default()
                 }
             }
-            None if hide_player => Mesh::default(),
-            None => crate::avatar::mesh(at, gait),
+            None => {
+                let mut mesh = if hide_player {
+                    Mesh::default()
+                } else {
+                    crate::avatar::mesh(at, gait)
+                };
+                if let Some(yard) = &self.demolition {
+                    mesh.figure = Some(yard.figure(None));
+                }
+                mesh
+            }
         }
     }
 

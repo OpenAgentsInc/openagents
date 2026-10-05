@@ -37,6 +37,7 @@ fn config(root: &Path) -> Config {
         authored_combat_health: false,
         social_profile: None,
         guests: None,
+        profile: None,
         enrollments: vec![
             enrollment(91, Role::Primary {}),
             enrollment(

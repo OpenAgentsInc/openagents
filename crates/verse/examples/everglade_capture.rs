@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|sky|yard|hall|lane-east|lane-west|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -15,6 +15,10 @@
 //!   gallery and the hearth.
 //! - `eyes` and `hall-eyes`: the approach and the hall in first person,
 //!   zoomed all the way in, with the player's character hidden.
+//! - `reverse`: Reverse Gravity cast on the approach, seen from outside
+//!   its cylinder after its particles have climbed and gathered.
+//! - `reverse-top`: the same cylinder from the caster hovering at its top,
+//!   looking down through the rising particles.
 //! - `studio-atrium`: inside the gate, at the goal board, with the goal
 //!   bar and its waiting badge over the view.
 //! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
@@ -34,6 +38,8 @@ use verse::{
 
 const SKY_YAW: f32 = -2.48;
 const SKY_TILT: f32 = -250.0;
+/// Where the `reverse` views cast Reverse Gravity, on the approach.
+const REVERSE_Z: f32 = -26.0;
 
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
@@ -73,13 +79,15 @@ fn main() -> Result<(), String> {
         "lane-east" => (glam::Vec3::new(10.0, 0.0, -20.0), 0.65, 40.0),
         // From the yard toward the cottage.
         "lane-west" => (glam::Vec3::new(-7.0, 0.0, -12.0), -0.68, 40.0),
+        // Reverse Gravity's caster on the approach.
+        "reverse" | "reverse-top" => (glam::Vec3::new(0.0, 0.0, REVERSE_Z), 0.0, 0.0),
         "hall" | "studio-hall" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
         // Inside the gate, looking up at the goal board.
         "studio-atrium" => (glam::Vec3::new(2.8, 0.0, -13.3), 0.5, 10.0),
         other => {
             return Err(format!(
-                "unknown view `{other}`; use approach, sky, yard, hall, lane-east, lane-west, studio-yard, studio-hall, \
-                 studio-atrium, eyes, or hall-eyes"
+                "unknown view `{other}`; use approach, sky, yard, hall, lane-east, lane-west, reverse, reverse-top, studio-yard, \
+                 studio-hall, studio-atrium, eyes, or hall-eyes"
             ));
         }
     };
@@ -91,11 +99,14 @@ fn main() -> Result<(), String> {
     } else {
         None
     };
+    let idle = InputState::default();
+    if view.starts_with("reverse") {
+        reverse(&mut runtime, &view, &idle)?;
+    }
     runtime.apply(Action::Orbit { dx: 0.0, dy: tilt })?;
     if first_person {
         runtime.apply(Action::Zoom { lines: 100.0 })?;
     }
-    let idle = InputState::default();
     for _ in 0..10 {
         runtime.tick(&idle, 0.05);
     }
@@ -126,6 +137,23 @@ fn main() -> Result<(), String> {
         &atlas,
         zones::atmosphere(runtime.zone),
     )
+}
+
+/// Casts Reverse Gravity and lets its particles climb. For `reverse` the
+/// caster then walks out of the cylinder and turns back toward it; for
+/// `reverse-top` the caster stays, hovering at the top, and looks down.
+fn reverse(runtime: &mut WorldRuntime, view: &str, idle: &InputState) -> Result<(), String> {
+    runtime.zone_intent(zones::Intent::ReverseGravity)?;
+    for _ in 0..240 {
+        runtime.tick(idle, 0.05);
+    }
+    if view == "reverse" {
+        runtime.set_spawn(glam::Vec3::new(-10.0, 0.0, REVERSE_Z - 24.0), 0.25)?;
+        runtime.apply(Action::Orbit { dx: 0.0, dy: -60.0 })?;
+    } else {
+        runtime.apply(Action::Orbit { dx: 0.0, dy: 260.0 })?;
+    }
+    Ok(())
 }
 
 /// Plays the simulated team's recording in `runtime`'s Everglade, held at

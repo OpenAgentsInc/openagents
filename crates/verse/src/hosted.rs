@@ -226,6 +226,22 @@ impl Client {
             revision: world.zone_revision,
         })
     }
+    /// As [`Self::attach`], for a viewer whose NIP-HOST grant holds
+    /// `rights`: the world records them as the studio grant, so the `world`
+    /// right alone opens no studio panel ([`WorldRuntime::set_studio_grant`]).
+    /// The instance's studio seats come from the authority's snapshots,
+    /// which every viewer draws alike.
+    pub async fn attach_granted(
+        client: verse_world::service::client::Client,
+        world: &mut WorldRuntime,
+        instance: u64,
+        profile: &Profile,
+        rights: Vec<coder_access::Right>,
+    ) -> Result<Self, String> {
+        let attached = Self::attach(client, world, instance, profile).await?;
+        world.set_studio_grant(Some(rights));
+        Ok(attached)
+    }
     fn check_attachment(&self, world: &WorldRuntime) -> Result<(), String> {
         if world.zone_revision != self.revision
             || world
@@ -273,6 +289,292 @@ impl Client {
         let response = self.client.social(action).await?;
         self.refresh(world).await?;
         Ok(response)
+    }
+}
+
+/// A hosted instance joined from a frame loop that never waits on the
+/// network: a worker thread owns the attached connection, sends the
+/// latest steering as movement commands, and reads replicated snapshots;
+/// the frame applies whatever arrived ([`Link::pump`]). Dropping the link
+/// closes the connection.
+#[cfg(feature = "remote-chamber")]
+pub struct Link {
+    steer: std::sync::Arc<std::sync::Mutex<[f32; 3]>>,
+    updates: std::sync::mpsc::Receiver<Result<verse_world::service::wire::Response, String>>,
+    replica: Buffer,
+    instance: u64,
+    revision: u64,
+}
+
+#[cfg(feature = "remote-chamber")]
+impl Link {
+    /// How often the worker sends movement and asks for a snapshot.
+    pub const PERIOD: std::time::Duration = std::time::Duration::from_millis(33);
+
+    /// Hands an attached `client` to a worker thread that drives it on
+    /// `runtime`, the runtime that opened its connection. `world` must
+    /// still be attached to it.
+    ///
+    /// # Errors
+    /// Returns a message when the attachment is retired or the worker
+    /// cannot start.
+    pub fn start(
+        attached: Client,
+        world: &WorldRuntime,
+        runtime: tokio::runtime::Runtime,
+    ) -> Result<Self, String> {
+        use std::sync::{Arc, Mutex, mpsc};
+        attached.check_attachment(world)?;
+        let Client {
+            mut client,
+            replica,
+            revision,
+        } = attached;
+        let instance = client.instance();
+        let steer = Arc::new(Mutex::new([0.0f32; 3]));
+        let (send, updates) = mpsc::channel();
+        let steering = steer.clone();
+        std::thread::Builder::new()
+            .name("verse-hosted".into())
+            .spawn(move || {
+                runtime.block_on(async move {
+                    let mut moving = false;
+                    loop {
+                        let [x, z, yaw] = *steering.lock().unwrap_or_else(|e| e.into_inner());
+                        let axes = [x, z];
+                        // A held direction moves every period; letting go
+                        // sends one stop.
+                        if axes != [0.0; 2] || moving {
+                            moving = axes != [0.0; 2];
+                            if let Err(error) = client
+                                .command(verse_world::Intent::Move { axes, yaw })
+                                .await
+                            {
+                                let _ = send.send(Err(error));
+                                return;
+                            }
+                        }
+                        let update = client.replicated_snapshot().await;
+                        let failed = update.is_err();
+                        if send.send(update).is_err() || failed {
+                            let _ = client.close().await;
+                            return;
+                        }
+                        tokio::time::sleep(Self::PERIOD).await;
+                    }
+                });
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(Self {
+            steer,
+            updates,
+            replica,
+            instance,
+            revision,
+        })
+    }
+
+    /// How fast `A` and `D` turn a hosted avatar, rad/s.
+    pub const TURN_RATE: f32 = 2.5;
+
+    /// Steers from the keyboard: `W` and `S` walk along `heading`, `Q` and
+    /// `E` strafe, and `A` and `D` turn `heading` (the controller's yaw,
+    /// whose forward is `(sin, cos)`) over `dt` seconds.
+    pub fn steer_input(&self, input: &crate::controller::InputState, heading: &mut f32, dt: f32) {
+        let axis = |plus: bool, minus: bool| f32::from(u8::from(plus)) - f32::from(u8::from(minus));
+        let turn = axis(input.left, input.right);
+        if dt.is_finite() {
+            *heading += turn * Self::TURN_RATE * dt.clamp(0.0, 0.1);
+        }
+        // The chamber's forward is `(-sin, -cos)` of its yaw: half a turn
+        // from the controller's.
+        self.steer(
+            [
+                axis(input.strafe_right, input.strafe_left),
+                axis(input.forward, input.backward),
+            ],
+            *heading + std::f32::consts::PI,
+        );
+    }
+
+    /// Steers the owned avatar along `axes` (strafe and forward, each
+    /// -1..1) facing the chamber's `yaw`, from the next period on.
+    pub fn steer(&self, axes: [f32; 2], yaw: f32) {
+        let axes = axes.map(|v| {
+            if v.is_finite() {
+                v.clamp(-1.0, 1.0)
+            } else {
+                0.0
+            }
+        });
+        let yaw = if yaw.is_finite() { yaw } else { 0.0 };
+        *self.steer.lock().unwrap_or_else(|e| e.into_inner()) = [axes[0], axes[1], yaw];
+    }
+
+    /// Applies the snapshots that arrived since the last call to `world`.
+    /// Returns whether one did.
+    ///
+    /// # Errors
+    /// Returns the connection's failure, or a message when `world` left
+    /// the instance or a snapshot is refused.
+    pub fn pump(&mut self, world: &mut WorldRuntime) -> Result<bool, String> {
+        if world.zone_revision != self.revision
+            || world
+                .hosted
+                .as_ref()
+                .is_none_or(|p| p.instance != self.instance)
+        {
+            return Err("Hosted link attachment has been retired".into());
+        }
+        let mut applied = false;
+        for update in self.updates.try_iter() {
+            self.replica.push(&update?)?;
+            applied = true;
+        }
+        if applied {
+            world.apply_hosted_social(&self.replica)?;
+        }
+        Ok(applied)
+    }
+}
+
+/// A hosted Everglade instance to join over a NIP-REACH channel, as
+/// desktop Verse's `--join FILE` names it: where the chamber listens,
+/// its instance, the Coder host's key, and the computers store with this
+/// device's key and the grant that host signed for it (it must hold
+/// `world`).
+#[cfg(feature = "remote-chamber")]
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Join {
+    pub address: std::net::SocketAddr,
+    pub instance: u64,
+    /// The Coder host's x-only public key.
+    pub host: String,
+    /// The computers store with `device.key` and `computers.json`.
+    pub store: std::path::PathBuf,
+    /// The content identity the chamber reports, as hex.
+    #[serde(default)]
+    pub content: Option<String>,
+    /// Open the channel over a WebSocket upgrade.
+    #[serde(default)]
+    pub websocket: bool,
+}
+
+#[cfg(feature = "remote-chamber")]
+impl Join {
+    /// Reads a join file of at most 64 KiB.
+    ///
+    /// # Errors
+    /// Returns a message when the file is unreadable or malformed.
+    pub fn read(path: &std::path::Path) -> Result<Self, String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        if bytes.len() > 64 * 1024 {
+            return Err(format!("{}: exceeds 64 KiB", path.display()));
+        }
+        serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// This device's key and the grant the host signed for it, with the
+    /// grant's rights.
+    fn grant(
+        &self,
+    ) -> Result<
+        (
+            verse_world::service::reach::ClientConfig,
+            Vec<coder_access::Right>,
+        ),
+        String,
+    > {
+        let key = std::fs::read_to_string(self.store.join("device.key"))
+            .map_err(|_| "The computers store has no device key")?;
+        let device: secp256k1::SecretKey = key.trim().parse().map_err(|_| "Invalid device key")?;
+        let saved: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(self.store.join("computers.json"))
+                .map_err(|_| "The computers store has no saved computers")?,
+        )
+        .map_err(|_| "The saved computers record is unreadable")?;
+        let grant = saved["hosts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|host| &host["access"]["grant"])
+            .find(|grant| grant["host"].as_str() == Some(self.host.as_str()))
+            .ok_or("This device holds no grant from that host")?;
+        let device_key = secp256k1::Keypair::from_secret_key(&secp256k1::Secp256k1::new(), &device)
+            .x_only_public_key()
+            .0
+            .to_string();
+        if grant["device"].as_str() != Some(device_key.as_str()) {
+            return Err("The saved grant names another device key".into());
+        }
+        let rights: Vec<coder_access::Right> = serde_json::from_value(grant["rights"].clone())
+            .map_err(|_| "The saved grant's rights are unreadable")?;
+        Ok((
+            verse_world::service::reach::ClientConfig {
+                device,
+                host: self.host.clone(),
+                grant: grant["grant"]
+                    .as_str()
+                    .ok_or("The saved grant has no ID")?
+                    .to_owned(),
+                epoch: grant["epoch"]
+                    .as_u64()
+                    .ok_or("The saved grant has no epoch")?,
+                // A chamber's channel names its instance as the generation.
+                generation: self.instance,
+                timeout: std::time::Duration::from_secs(10),
+            },
+            rights,
+        ))
+    }
+
+    /// Joins the instance as this device, enters its Everglade profile in
+    /// `world` with the grant's rights as the studio grant, and hands the
+    /// connection to a [`Link`].
+    ///
+    /// # Errors
+    /// Returns a message when the grant, the channel, or the instance's
+    /// content refuses.
+    pub fn open(&self, world: &mut WorldRuntime) -> Result<Link, String> {
+        use verse_world::service::reach;
+        let (config, rights) = self.grant()?;
+        let content = self
+            .content
+            .as_deref()
+            .map(|hex| {
+                let bytes: Vec<u8> = (0..hex.len())
+                    .step_by(2)
+                    .map(|i| {
+                        hex.get(i..i + 2)
+                            .and_then(|b| u8::from_str_radix(b, 16).ok())
+                    })
+                    .collect::<Option<_>>()
+                    .ok_or("The content identity is not hex")?;
+                <[u8; 32]>::try_from(bytes).map_err(|_| "The content identity is not 32 bytes")
+            })
+            .transpose()?;
+        let profile = verse_world::social::hosted::everglade_profile()?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| e.to_string())?;
+        let attached = runtime.block_on(async {
+            let socket = tokio::net::TcpStream::connect(self.address)
+                .await
+                .map_err(|e| format!("Cannot reach {}: {e}", self.address))?;
+            let _ = socket.set_nodelay(true);
+            let client = if self.websocket {
+                let socket = reach::websocket::client(&format!("ws://{}/", self.address), socket)
+                    .await
+                    .map_err(|e| format!("Chamber channel refused: {e}"))?;
+                reach::join(socket, &config, self.instance, content).await?
+            } else {
+                reach::join(socket, &config, self.instance, content).await?
+            };
+            Client::attach_granted(client, world, self.instance, &profile, rights).await
+        })?;
+        Link::start(attached, world, runtime)
     }
 }
 
@@ -503,5 +805,50 @@ mod tests {
     }
     fn gateway_for_destination() -> Arc<Mutex<Gateway>> {
         gateway(3002, Zone::Everglade)
+    }
+    #[tokio::test]
+    async fn a_linked_everglade_viewer_walks_sees_the_studio_and_opens_no_panel_with_world_alone() {
+        let gateway = gateway(3003, Zone::Everglade);
+        gateway.lock().unwrap().tick(1. / 30.).unwrap();
+        gateway
+            .lock()
+            .unwrap()
+            .publish_social_studio(vec![verse_world::play::social::SeatActor {
+                seat: 1,
+                feet: [0.5, 0., 0.5],
+                yaw: 0.,
+            }])
+            .unwrap();
+        let one = connect(gateway.clone(), 3003, 31).await;
+        let mut world = WorldRuntime::bare();
+        let attached = Client::attach_granted(
+            one,
+            &mut world,
+            3003,
+            &profile(Zone::Everglade),
+            vec![coder_access::Right::World],
+        )
+        .await
+        .unwrap();
+        // The `world` right walks; it opens no studio panel.
+        assert!(!world.studio().access().read);
+        assert_eq!(world.hosted_social_state().unwrap().studio.len(), 1);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut link = Link::start(attached, &world, runtime).unwrap();
+        let at = world.player.pos;
+        link.steer([0., 1.], 0.);
+        let started = std::time::Instant::now();
+        while world.player.pos == at {
+            assert!(started.elapsed() < std::time::Duration::from_secs(20));
+            gateway.lock().unwrap().tick(1. / 30.).unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            link.pump(&mut world).unwrap();
+        }
+        // Leaving the instance retires the link.
+        world.leave_hosted_social();
+        assert!(link.pump(&mut world).is_err());
     }
 }

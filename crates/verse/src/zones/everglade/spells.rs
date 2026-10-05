@@ -8,7 +8,8 @@
 //! the only creature they act on. They draw as the chamber draws them: Wind
 //! Wall's updraft streaks and Reverse Gravity's cylinder are the chamber's
 //! guide lines, and the panels are granite slabs in the chamber's stone
-//! color.
+//! color. Reverse Gravity also fills its cylinder with particles that fall
+//! upward ([`motes`]).
 //!
 //! Wall of Stone, Wind Wall, and Reverse Gravity need concentration, so
 //! casting one ends the one before it, and pressing a live one's slot ends
@@ -20,6 +21,8 @@ use crate::controller::{AVATAR_HEIGHT, Footprint, PlayerController, RADIUS};
 use crate::mesh::{Mesh, Vertex};
 use crate::zones::Intent;
 use glam::{DVec2, DVec3, Vec3};
+mod motes;
+
 use verse_world::{
     feather_fall as feather, reverse_gravity as reverse, wall_of_stone as stone, wind_wall as wind,
 };
@@ -493,9 +496,9 @@ impl Spells {
         player.set_vertical_speed(v);
     }
 
-    /// The live spells as drawn around `player`.
+    /// The live spells as drawn around `player`, seen from `eye`.
     #[must_use]
-    pub fn mesh(&self, player: &PlayerController) -> Mesh {
+    pub fn mesh(&self, player: &PlayerController, eye: Vec3) -> Mesh {
         let mut mesh = Mesh::default();
         let time = self.time as f32;
         let mut line = |a: Vec3, b: Vec3, [r, g, bl, alpha]: [f32; 4]| {
@@ -514,12 +517,14 @@ impl Spells {
                     line(a, b, color);
                 }
             }
-            Some(Concentration::Reverse { gravity, .. }) => {
+            Some(Concentration::Reverse { gravity, at }) => {
                 for (a, b, color) in
                     verse_world::spells::reverse_gravity::cylinder_lines(&gravity.cylinder)
                 {
                     line(a, b, color);
                 }
+                let age = (self.time - at) as f32;
+                motes::draw(&mut mesh, &gravity.cylinder, age, eye);
             }
             Some(Concentration::Stone { panels, at }) => {
                 let rise = ((self.time - at) / RAISE).clamp(0.0, 1.0);

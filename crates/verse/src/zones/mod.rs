@@ -281,6 +281,10 @@ pub enum Intent {
     Web,
     /// The Grove's demo control: refills mana, cooldowns, and the dummies.
     LongRest,
+    /// The demolition yard: swing the sledgehammer, or rebuild the
+    /// cottages ([`everglade::demolition`]).
+    Swing,
+    Rebuild,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -359,6 +363,8 @@ pub(crate) struct State {
     /// The Grove's training field. The Grove also fills `everglade`, whose
     /// movement, spells, and character it walks with.
     grove: Option<grove::Grove>,
+    /// Open Everglade as the demolition yard (`verse --demolition`).
+    demolition: bool,
     /// The Agent Studio Everglade draws. It keeps its source across visits
     /// and observes only while the player is in Everglade.
     studio: everglade::studio::Studio,
@@ -390,6 +396,7 @@ impl Default for State {
             lab: None,
             everglade: None,
             grove: None,
+            demolition: false,
             studio: everglade::studio::Studio::default(),
             studio_notice: None,
             destination: ZoneId::Ruins,

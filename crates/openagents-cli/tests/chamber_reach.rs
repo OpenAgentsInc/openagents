@@ -262,3 +262,219 @@ fn a_reach_chamber_admits_world_grants_and_refuses_others() {
     let output = status(&home, &address, &host_key, &stores[1], &content);
     assert!(output.status.success());
 }
+
+/// A scripted Coder host control socket: it answers every
+/// `studio.snapshot` with a studio of two seats at their desks, as the
+/// Coder host beside a chamber does (#10553). The thread ends with the
+/// test process.
+fn scripted_studio(socket: &Path) {
+    use coder_access::studio::{Activity, Role, Seat, Snapshot, View};
+    use openagents_connect::control::{Reply, Request, Response};
+    use std::io::{Read, Write};
+    let seat = |name: &str, desk: u32| Seat {
+        seat: name.into(),
+        role: if desk == 0 { Role::Lead } else { Role::Worker },
+        route: "codex:studio-sim".into(),
+        look: "default".into(),
+        desk,
+        activity: Activity::Editing,
+        station: Activity::Editing.station(),
+        task: None,
+        paused: false,
+        spend: Default::default(),
+    };
+    let mut view = View {
+        seats: vec![seat("lead", 0), seat("ada", 1)],
+        ..View::default()
+    };
+    view.canonicalize();
+    let snapshot = Snapshot {
+        stream: "ab".into(),
+        sequence: 1,
+        view,
+    };
+    let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            let mut length = [0u8; 4];
+            if stream.read_exact(&mut length).is_err() {
+                continue;
+            }
+            let mut body = vec![0u8; u32::from_be_bytes(length) as usize];
+            if stream.read_exact(&mut body).is_err() {
+                continue;
+            }
+            let request: Request = serde_json::from_slice(&body).unwrap();
+            let response = Response::new(
+                request.id,
+                Reply::Task {
+                    outcome: coder_access::Outcome::Studio {
+                        snapshot: Box::new(snapshot.clone()),
+                    },
+                },
+            );
+            let body = serde_json::to_vec(&response).unwrap();
+            let mut frame = (body.len() as u32).to_be_bytes().to_vec();
+            frame.extend(body);
+            let _ = stream.write_all(&frame);
+        }
+    });
+}
+
+/// Everglade under the social rules over REACH (#10553): two granted
+/// players join, see the same studio seats where the host walks them, and
+/// see each other's avatars; a device with only the `world` right opens no
+/// studio panel, and one with `observe` may read them.
+#[test]
+fn an_everglade_chamber_shares_studio_seats_and_avatars_over_reach() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let state = temp.path().join("coder-access");
+    let root = temp.path().join("host");
+    let assets = temp.path().join("assets");
+
+    let packed = openagents(&home)
+        .args(["--json", "chamber", "pack"])
+        .arg(&assets)
+        .output()
+        .unwrap();
+    assert!(
+        packed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&packed.stderr)
+    );
+
+    // A social scene: the ritual's adventurer alone, in control at once,
+    // on Everglade's approach path.
+    let mut scene: Value = serde_json::from_slice(
+        &std::fs::read(workspace().join("assets/verse/original/ritual.json")).unwrap(),
+    )
+    .unwrap();
+    scene["actors"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|actor| actor["model"] == "adventurer");
+    scene["actors"][0]["position"] = json!([0.0, 0.0, -20.0]);
+    scene["cut_at"] = json!(0.0);
+    scene["cues"] = json!([]);
+    scene.as_object_mut().unwrap().remove("collision_profile");
+    let scene_path = temp.path().join("everglade.json");
+    std::fs::write(&scene_path, serde_json::to_vec(&scene).unwrap()).unwrap();
+
+    let socket = temp.path().join("studio.sock");
+    scripted_studio(&socket);
+
+    let owner = SecretKey::new(&mut secp256k1::rand::rng());
+    coder_access::host::ensure_parent(&state).unwrap();
+    let host_key = Host::new(&state, POLICY).init(&pubkey(&owner)).unwrap();
+    let devices: Vec<SecretKey> = (0..3)
+        .map(|_| SecretKey::new(&mut secp256k1::rand::rng()))
+        .collect();
+    let stores: Vec<PathBuf> = devices
+        .iter()
+        .zip(["world", "world", "observe,world"])
+        .enumerate()
+        .map(|(i, (device, rights))| {
+            let access = pair(&state, device, rights);
+            device_store(&temp.path().join(format!("device-{i}")), device, access)
+        })
+        .collect();
+
+    let config = temp.path().join("host.json");
+    std::fs::write(
+        &config,
+        serde_json::to_vec(&json!({
+            "listen": "127.0.0.1:0",
+            "instance": INSTANCE,
+            "scene": scene_path,
+            "pack": assets.join("runtime-pack.json"),
+            "transport": {"type": "reach"},
+            "profile": "everglade",
+            "enrollments": [
+                {"public_key": pubkey(&devices[0]), "role": {"type": "primary"}},
+                {"public_key": pubkey(&devices[1]), "role": {"type": "player", "spawn": [2.0, 0.0, -20.0]}},
+            ],
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let mut child = openagents(&home)
+        .args(["--json", "chamber", "host"])
+        .arg(&config)
+        .arg("--state")
+        .arg(&state)
+        .arg("--root")
+        .arg(&root)
+        .arg("--loopback-test")
+        .arg("--studio-socket")
+        .arg(&socket)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let _chamber = Chamber(child);
+    let mut lines = BufReader::new(stdout).lines();
+    let listening = next_event(&mut lines, "listening");
+    assert_eq!(listening["profile"], "everglade");
+    assert_eq!(listening["studio"], json!(socket));
+    let address = listening["address"].as_str().unwrap().to_owned();
+    let content = listening["content"].as_str().unwrap().to_owned();
+
+    let read = |store: &Path| -> Value {
+        let output = status(&home, &address, &host_key, store, &content);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).unwrap()
+    };
+
+    // The host reads the studio within its poll and seats it.
+    let started = Instant::now();
+    let first = loop {
+        let value = read(&stores[0]);
+        if value["social"]["studio"]
+            .as_array()
+            .is_some_and(|seats| seats.len() == 2)
+        {
+            break value;
+        }
+        assert!(started.elapsed() < STARTUP, "no studio seats: {value}");
+        std::thread::sleep(Duration::from_millis(250));
+    };
+    let second = read(&stores[1]);
+    assert_eq!(first["social"]["zone"], "everglade");
+    // Seats stand at their desks once placed, so both players read the
+    // same seats at the same places.
+    assert_eq!(first["social"]["studio"], second["social"]["studio"]);
+
+    // Each player is in control of its own avatar and sees the other's.
+    for (own, other) in [(&first, &second), (&second, &first)] {
+        assert_eq!(own["control"]["role"], "player", "{own}");
+        let lives: Vec<&Value> = own["actors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|actor| &actor["life"])
+            .collect();
+        assert!(lives.contains(&&own["control"]["life"]), "{own}");
+        assert!(lives.contains(&&other["control"]["life"]), "{own}");
+    }
+
+    // `world` alone walks but opens no studio panel; `observe` reads them.
+    let none = json!({"read": false, "act": false, "merge": false});
+    assert_eq!(first["panels"], none);
+    assert_eq!(second["panels"], none);
+    let observer = read(&stores[2]);
+    assert_eq!(observer["control"]["role"], "spectator");
+    assert_eq!(
+        observer["panels"],
+        json!({"read": true, "act": false, "merge": false})
+    );
+    assert_eq!(observer["social"]["studio"], first["social"]["studio"]);
+}

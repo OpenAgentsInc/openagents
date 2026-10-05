@@ -74,6 +74,9 @@ pub struct Options {
     /// Open straight into the Grove, the druid training field, once the
     /// window shows (`verse --grove`).
     pub grove: bool,
+    /// Open Everglade as the demolition yard (`--demolition`): two kit
+    /// cottages to knock down with a sledgehammer.
+    pub demolition: bool,
     /// Print one JSON line of frame times per second to stdout.
     pub frame_times: bool,
     /// A notice Everglade's caption leads with, such as that no coding
@@ -82,6 +85,10 @@ pub struct Options {
     /// The pinned chamber the Grid's RITUAL arch joins
     /// ([`crate::ritual::Config`]); `None` draws no arch.
     pub ritual: Option<std::path::PathBuf>,
+    /// A hosted Everglade instance to join over REACH instead of walking
+    /// the local world (`--join FILE`, [`crate::hosted::Join`]).
+    #[cfg(feature = "remote-chamber")]
+    pub chamber: Option<std::path::PathBuf>,
 }
 
 impl Default for Options {
@@ -99,9 +106,12 @@ impl Default for Options {
             studio_muted: false,
             everglade: false,
             grove: false,
+            demolition: false,
             frame_times: false,
             studio_notice: None,
             ritual: crate::ritual::default_config(),
+            #[cfg(feature = "remote-chamber")]
+            chamber: None,
         }
     }
 }
@@ -578,6 +588,13 @@ struct App {
     everglade_pending: Option<zones::ZoneId>,
     /// A held Up (1) or Down (-1) while levitating in Everglade, or 0.
     climb: f32,
+    /// The hosted instance this window walks in, and the heading its
+    /// keyboard steers.
+    #[cfg(feature = "remote-chamber")]
+    hosted: Option<(crate::hosted::Link, f32)>,
+    /// When the left button went down in the demolition yard: a quick
+    /// click swings the hammer, a drag turns the camera.
+    swing_press: Option<Instant>,
 }
 
 /// The replay list: the retained `beats-winner` runs and which is chosen.
@@ -743,6 +760,16 @@ impl App {
             ));
         }
         runtime.set_studio_notice(options.studio_notice.clone());
+        #[cfg(feature = "remote-chamber")]
+        let hosted = match &options.chamber {
+            Some(path) => {
+                let heading = runtime.player.yaw;
+                let link = crate::hosted::Join::read(path)?.open(&mut runtime)?;
+                Some((link, heading))
+            }
+            None => None,
+        };
+        runtime.set_demolition(options.demolition);
         let zone_operators = zone_operators_for(session.as_ref());
         Ok(Self {
             window: None,
@@ -829,7 +856,10 @@ impl App {
             studio_badge: None,
             window_focused: true,
             everglade_pending: None,
+            swing_press: None,
             climb: 0.0,
+            #[cfg(feature = "remote-chamber")]
+            hosted,
         })
     }
 
@@ -2138,6 +2168,14 @@ impl App {
                 });
                 return;
             }
+            // The demolition yard: 1 swings the sledgehammer, R rebuilds.
+            if self.runtime.in_demolition() {
+                match code {
+                    KeyCode::Digit1 => return self.zone_action(ZoneIntent::Swing),
+                    KeyCode::KeyR => return self.zone_action(ZoneIntent::Rebuild),
+                    _ => {}
+                }
+            }
             // The Grove's hotbar: 1 to 9 cast its spells, and 0 rests.
             if self.in_bare_grove() {
                 let digit = match code {
@@ -2665,6 +2703,17 @@ impl App {
             }
             return;
         }
+        if button == MouseButton::Left && self.runtime.in_demolition() {
+            if pressed {
+                self.swing_press = Some(Instant::now());
+            } else if self
+                .swing_press
+                .take()
+                .is_some_and(|at| at.elapsed() <= Duration::from_millis(300))
+            {
+                self.zone_action(ZoneIntent::Swing);
+            }
+        }
         match button {
             MouseButton::Left if pressed && !self.keys.left_button && self.click() => return,
             MouseButton::Left
@@ -2807,6 +2856,15 @@ impl App {
                 self.climb = 0.0;
             }
         }
+        #[cfg(feature = "remote-chamber")]
+        if let Some((link, heading)) = &mut self.hosted {
+            link.steer_input(&input, heading, dt);
+            if let Err(error) = link.pump(&mut self.runtime) {
+                self.error = Some(error);
+                self.hosted = None;
+                self.runtime.leave_hosted_social();
+            }
+        }
         self.update_gym(true);
         self.runtime.update_studio(true, dt);
         self.studio_signals();
@@ -2841,7 +2899,13 @@ impl App {
             );
         }
         if let Some(session) = &mut self.session {
-            session.tick(now, &self.runtime.player, &self.runtime.agent);
+            if self.runtime.is_hosted() {
+                // Other players come from the host's snapshots; the
+                // relay's crowd keeps discovery but draws no pose here.
+                session.tick_world(now, &mut self.runtime);
+            } else {
+                session.tick(now, &self.runtime.player, &self.runtime.agent);
+            }
             if let Some(found) = session.scan_result(now, &self.runtime.agent) {
                 self.runtime.agent.look_around(&found);
             }
@@ -3102,7 +3166,7 @@ impl App {
                         && !self.board_open
                         && !self.gym_open
                         && self.picker.is_none()
-                        && !self.in_bare_everglade()
+                        && (!self.in_bare_everglade() || self.runtime.in_demolition())
                         && !self.in_bare_grove(),
                 ));
                 if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.zone_frame) {

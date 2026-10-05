@@ -204,7 +204,12 @@ impl WorldRuntime {
         if self.is_hosted() || !self.is_plaza() {
             return;
         }
-        let world = match Everglade::world(pack) {
+        let world = if self.zone_state.demolition {
+            Everglade::demolition_world(pack)
+        } else {
+            Everglade::world(pack)
+        };
+        let world = match world {
             Ok(world) => world,
             Err(error) => {
                 self.zone_load_failed(&error);
@@ -221,6 +226,12 @@ impl WorldRuntime {
                 return;
             }
         };
+        if self.zone_state.demolition
+            && let Err(error) = everglade.start_demolition(pack)
+        {
+            self.zone_load_failed(&error);
+            return;
+        }
         if let Some(scene) = &world.mesh.textured {
             everglade.bake_light(scene.clone());
         }
@@ -564,6 +575,14 @@ impl WorldRuntime {
                     .cast_spell(spell, &self.player)?;
                 self.zone_state.error = None;
             }
+            Intent::Swing | Intent::Rebuild => {
+                self.zone_state
+                    .everglade
+                    .as_mut()
+                    .ok_or("Enter the demolition yard first")?
+                    .demolish(intent == Intent::Rebuild)?;
+                self.zone_state.error = None;
+            }
             Intent::Interact => {
                 if self.studio_panel_here().is_none() {
                     return Err("Walk up to a station".into());
@@ -703,6 +722,9 @@ impl WorldRuntime {
             return None;
         }
         let glade = self.zone_state.everglade.as_ref()?;
+        if glade.demolition().is_some() {
+            return None;
+        }
         let on = |enabled, active| Slot {
             enabled,
             active,
@@ -904,6 +926,17 @@ impl WorldRuntime {
             add("long_rest", "Long Rest", Intent::LongRest, true);
             add("return", self.return_label(), Intent::Return, true);
             grove.caption(&self.player)
+        } else if let Some(yard) = self
+            .zone_state
+            .everglade
+            .as_ref()
+            .and_then(Everglade::demolition)
+        {
+            add("swing", "Swing", Intent::Swing, true);
+            add("rebuild", "Rebuild", Intent::Rebuild, true);
+            add("jump", "Jump", Intent::Jump, !self.player.airborne());
+            add("return", self.return_label(), Intent::Return, true);
+            yard.caption()
         } else if let Some(glade) = &self.zone_state.everglade {
             add("jump", "Jump", Intent::Jump, !self.player.airborne());
             add(
@@ -1303,6 +1336,22 @@ impl WorldRuntime {
         result
     }
 
+    /// Opens Everglade as the demolition yard from now on (`verse
+    /// --demolition`): two kit cottages to knock down in place of its
+    /// layout and the studio. Takes effect at the next entry.
+    pub fn set_demolition(&mut self, on: bool) {
+        self.zone_state.demolition = on;
+    }
+
+    /// Whether the player is in the demolition yard.
+    #[must_use]
+    pub fn in_demolition(&self) -> bool {
+        self.zone_state
+            .everglade
+            .as_ref()
+            .is_some_and(|glade| glade.demolition().is_some())
+    }
+
     pub fn enter_everglade(&mut self) -> Result<(), String> {
         if !self.is_plaza() || self.zone_loading() {
             return Err("Everglade enters only from the plaza".into());
@@ -1362,8 +1411,10 @@ impl WorldRuntime {
         if self.is_hosted() {
             return;
         }
-        let active =
-            surface_active && self.zone == ZoneId::Everglade && self.zone_state.everglade.is_some();
+        let active = surface_active
+            && self.zone == ZoneId::Everglade
+            && self.zone_state.everglade.is_some()
+            && !self.zone_state.demolition;
         let studio = &mut self.zone_state.studio;
         studio.set_active(active);
         studio.poll(dt, &self.world.blockers);
@@ -1417,6 +1468,7 @@ impl WorldRuntime {
         // panel opens under the grant's `observe`.
         if self.zone_state.everglade.is_none()
             || self.zone != ZoneId::Everglade
+            || self.zone_state.demolition
             || self.zone_loading()
             || !self.zone_state.studio.access().read
         {
@@ -1439,6 +1491,7 @@ impl WorldRuntime {
         const REACH: f32 = 40.0;
         if self.zone_state.everglade.is_none()
             || self.zone != ZoneId::Everglade
+            || self.zone_state.demolition
             || self.zone_loading()
             || !self.zone_state.studio.access().read
             || !aspect.is_finite()
@@ -1516,7 +1569,12 @@ impl WorldRuntime {
             // The seats move first, so the characters pose where they stand.
             state.studio.set_player(Some(self.player.pos));
             state.studio.tick(dt);
-            everglade.tick(dt, &self.player, &state.studio.figures());
+            let seats = if state.demolition {
+                Vec::new()
+            } else {
+                state.studio.figures()
+            };
+            everglade.tick(dt, &self.player, &seats);
         }
     }
     pub(crate) fn zone_dynamic_mesh(&self) -> crate::mesh::Mesh {
@@ -1553,17 +1611,20 @@ impl WorldRuntime {
             // The player, and the seats when the pack's character draws them.
             // In first person the player's own character is not drawn.
             mesh.extend(&everglade.player_mesh(&self.player, &self.gait, self.hides_avatar()));
-            // The live spells: stone panels, wind, the cylinder, feathers.
-            mesh.extend(&everglade.spell_mesh(&self.player));
+            let eye = self.view(1.0).eye;
+            // The live spells: stone panels, wind, the cylinder and its
+            // rising particles, feathers.
+            mesh.extend(&everglade.spell_mesh_from(&self.player, eye));
             // The studio's nameplates, lamps, marks, bubbles, particles, and
             // live boards, and boxy seats when there is no character.
-            let eye = self.view(1.0).eye;
-            mesh.extend(
-                &self
-                    .zone_state
-                    .studio
-                    .draw(eye, !everglade.has_characters()),
-            );
+            if everglade.demolition().is_none() {
+                mesh.extend(
+                    &self
+                        .zone_state
+                        .studio
+                        .draw(eye, !everglade.has_characters()),
+                );
+            }
         }
         mesh
     }

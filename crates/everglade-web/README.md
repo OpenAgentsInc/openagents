@@ -50,6 +50,9 @@ The page that serves them must:
   `PACK_BYTES`, and refuses bytes whose length or SHA-256 differ. A new pack
   digest is a new URL, so the file can be cached as immutable.
 
+Add `?demolition` to the page's URL to open the demolition yard instead of
+the glade, as `verse --demolition` does: `1` or a quick tap swings the
+sledgehammer and `R` rebuilds the cottages.
 ### Grove mode
 
 The same module starts in the Grove, the druid training field

@@ -36,6 +36,10 @@
 //! `--studio-notice <text>` leads Everglade's caption with a notice;
 //! `openagents studio up` passes both.
 //!
+//! `--demolition` opens straight into the demolition yard instead: two kit
+//! cottages on Everglade's ground to knock down with a sledgehammer. A
+//! quick left click or `1` swings, and `R` rebuilds the cottages.
+//!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
 //!
@@ -202,6 +206,12 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--studio-mute" => options.studio_muted = true,
             "--everglade" => options.everglade = true,
             "--grove" => options.grove = true,
+            #[cfg(feature = "remote-chamber")]
+            "--join" => options.chamber = Some(value()?.into()),
+            "--demolition" => {
+                options.everglade = true;
+                options.demolition = true;
+            }
             "--frame-times" => options.frame_times = true,
             "--studio-notice" => options.studio_notice = Some(value()?),
             "--ritual" => options.ritual = Some(value()?.into()),
