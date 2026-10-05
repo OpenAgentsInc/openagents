@@ -1,0 +1,20 @@
+{
+  "recorded_at_utc": "2026-10-05T07:19:18.320423+00:00",
+  "cpu_affinity": [
+    0
+  ],
+  "cpu_warmup_seconds": 0.2,
+  "exclusive_cpu": false,
+  "public_base_commit": "817a747eddba5d3320782c9e2585427865f78d0c",
+  "source_sha256": {
+    "crates/physics/src/lib.rs": "dea651070261424fcf1b2f8526c523ddabb626748468f5b07a48e831079056b8",
+    "crates/physics/src/collision.rs": "0c0e8aeeaeeb312f0942a871f652681a382d36ff89b2638e8238836a090ee7bc",
+    "crates/physics/src/world.rs": "89408d92cda30081ea2fec5fef0a40e18fea254e3e5281a0ce0ef499eddafff2",
+    "crates/physics/src/queries.rs": "d6ea09d2773a01bd3d296212c4e0ea408052e1f03ee87c0dadae8877a7f0c7d6",
+    "crates/physics/src/queries/profiling.rs": "0b0d66a7c474fcf4743b893317bed33d6a47ef10383e9bc88035b5e046796d93",
+    "crates/physics/src/broadphase.rs": "ae2bf03bb020cc6cf5ba8eec5dcfd642bd02859e4190a25f14cfe4ed0e063329",
+    "crates/physics/examples/scene_broadphase.rs": "5b34e23f338a681b2292d9a4b255991bff60452a4b73b223f70c36355a1a3fa3"
+  },
+  "executable_sha256": "6ed253096fbf7422f50a0abe81eeaea48274112003027e3cec87363acec7f4bc",
+  "cpu": "Intel(R) Core(TM) i7-14700K"
+}

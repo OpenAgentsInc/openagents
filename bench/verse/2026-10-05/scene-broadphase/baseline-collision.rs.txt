@@ -640,30 +640,19 @@ pub struct DetectionStats {
     pub bound_tests: usize,
     pub narrow_phase: usize,
     pub index_updates: usize,
-    pub wake_scene_nodes: usize,
-    pub wake_candidate_pairs: usize,
-    pub wake_index_updates: usize,
 }
 
 impl World {
     /// Contact manifolds between colliders whose filters allow it and whose
     /// bodies can respond (at least one dynamic), within `margin` of
-    /// touching. Colliders on the same body never collide. An arbitrary callback
-    /// requires exhaustive pair enumeration; use `detect_bounded` for a constant
-    /// margin. `World::step` uses indexed per-collider motion bounds.
+    /// touching. Colliders on the same body never collide.
     #[must_use]
     pub fn detect(&self, margin: &dyn Fn(&Collider, &Collider) -> f64) -> Vec<Manifold> {
         self.detect_profiled(margin).0
     }
     /// Exhaustive reference for arbitrary pair-specific margins.
-    pub fn detect_profiled(
-        &self,
-        margin: &dyn Fn(&Collider, &Collider) -> f64,
-    ) -> (Vec<Manifold>, DetectionStats) {
-        let mut stats = DetectionStats {
-            colliders: self.colliders().len(),
-            ..Default::default()
-        };
+    pub fn detect_profiled(&self, margin: &dyn Fn(&Collider, &Collider) -> f64) -> (Vec<Manifold>, DetectionStats) {
+        let mut stats = DetectionStats { colliders: self.colliders().len(), ..Default::default() };
         let placed: Vec<(Placed, DVec3, f64)> = self
             .colliders()
             .iter()
@@ -707,129 +696,4 @@ impl World {
         }
         (manifolds, stats)
     }
-    /// Indexed detection with a constant nonnegative margin.
-    pub fn detect_bounded(
-        &mut self,
-        margin: f64,
-    ) -> Result<(Vec<Manifold>, DetectionStats), String> {
-        self.detect_motion_profiled(margin, &vec![0.; self.colliders().len()])
-    }
-    /// Per-collider motion reaches bound the pair margin: `base + reach[a] + reach[b]`.
-    pub fn detect_motion_profiled(
-        &mut self,
-        base: f64,
-        reaches: &[f64],
-    ) -> Result<(Vec<Manifold>, DetectionStats), String> {
-        self.detect_motion_with_margin(base, reaches, &|i, j| base + reaches[i] + reaches[j])
-    }
-    pub(crate) fn detect_motion_with_margin(
-        &mut self,
-        base: f64,
-        reaches: &[f64],
-        margin: &dyn Fn(usize, usize) -> f64,
-    ) -> Result<(Vec<Manifold>, DetectionStats), String> {
-        #[cfg(test)]
-        if self.exhaustive_detection {
-            return Err("Exhaustive test reference".into());
-        }
-        if !base.is_finite()
-            || base < 0.
-            || reaches.len() != self.colliders().len()
-            || reaches.iter().any(|v| !v.is_finite() || *v < 0.)
-        {
-            return Err("Invalid rigid broadphase margin or motion reaches".into());
-        }
-        let mut stats = DetectionStats {
-            colliders: self.colliders().len(),
-            ..Default::default()
-        };
-        let placed: Vec<_> = self
-            .colliders()
-            .iter()
-            .map(|c| {
-                let (pos, rotation) = c.pose(self);
-                (place(c.shape, pos, rotation), pos, c.shape.bound())
-            })
-            .collect();
-        if placed
-            .iter()
-            .any(|(_, pos, radius)| !pos.is_finite() || !radius.is_finite() || *radius < 0.)
-        {
-            return Err("Invalid rigid broadphase geometry".into());
-        }
-        let bounds: Vec<_> = placed
-            .iter()
-            .enumerate()
-            .map(|(i, (_, pos, radius))| {
-                let extent = DVec3::splat(radius + base * 0.5 + reaches[i]);
-                crate::broadphase::Bounds {
-                    min: *pos - extent,
-                    max: *pos + extent,
-                }
-            })
-            .collect();
-        for (i, &bounds) in bounds.iter().enumerate() {
-            let collider = &self.colliders()[i];
-            let present = collider.filter != Filter::NONE;
-            let responds = self[collider.body].responds();
-            if present {
-                stats.index_updates += usize::from(self.collision_index.set(i, bounds));
-            } else {
-                stats.index_updates += usize::from(self.collision_index.remove(i));
-            }
-            if present && responds {
-                stats.index_updates += usize::from(self.responding_index.set(i, bounds));
-            } else {
-                stats.index_updates += usize::from(self.responding_index.remove(i));
-            }
-        }
-        let mut manifolds = Vec::new();
-        for (i, &bounds) in bounds.iter().enumerate() {
-            let a = &self.colliders()[i];
-            if a.filter == Filter::NONE {
-                continue;
-            }
-            let responds = self[a.body].responds();
-            let tree = if responds {
-                &self.collision_index
-            } else {
-                &self.responding_index
-            };
-            for j in tree
-                .query(bounds, &mut stats.scene_nodes)
-                .into_iter()
-                .filter(|&j| j > i)
-            {
-                stats.candidate_pairs += 1;
-                let b = &self.colliders()[j];
-                if a.body == b.body
-                    || !a.filter.allows(b.filter)
-                    || (!responds && !self[b.body].responds())
-                {
-                    continue;
-                }
-                stats.filtered_pairs += 1;
-                let m = margin(i, j);
-                stats.bound_tests += 1;
-                let (pa, ca, ra) = placed[i];
-                let (pb, cb, rb) = placed[j];
-                if ca.distance(cb) > ra + rb + m {
-                    continue;
-                }
-                stats.narrow_phase += 1;
-                let points = contact(pa, pb, m);
-                if !points.is_empty() {
-                    manifolds.push(Manifold {
-                        a: ColliderId(i as u32),
-                        b: ColliderId(j as u32),
-                        points,
-                    });
-                }
-            }
-        }
-        Ok((manifolds, stats))
-    }
 }
-
-#[cfg(test)]
-mod index_tests;

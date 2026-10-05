@@ -1,0 +1,15 @@
+{
+  "recorded_at_utc": "2026-10-05T06:57:54.086445+00:00",
+  "public_base_commit": "5f901e2b2f3ded9258546ecf3c0b64e4be0b21d1",
+  "instrumented_baseline": true,
+  "source_sha256": {
+    "crates/physics/src/collision.rs": "0c0e8aeeaeeb312f0942a871f652681a382d36ff89b2638e8238836a090ee7bc",
+    "crates/physics/src/world.rs": "89408d92cda30081ea2fec5fef0a40e18fea254e3e5281a0ce0ef499eddafff2",
+    "crates/physics/src/queries.rs": "d6ea09d2773a01bd3d296212c4e0ea408052e1f03ee87c0dadae8877a7f0c7d6",
+    "crates/physics/src/broadphase.rs": "ae2bf03bb020cc6cf5ba8eec5dcfd642bd02859e4190a25f14cfe4ed0e063329",
+    "crates/physics/examples/scene_broadphase.rs": "5b34e23f338a681b2292d9a4b255991bff60452a4b73b223f70c36355a1a3fa3"
+  },
+  "executable_sha256": "6ed253096fbf7422f50a0abe81eeaea48274112003027e3cec87363acec7f4bc",
+  "platform": "Linux-6.18.49-x86_64-with-glibc2.42",
+  "cpu": "Intel(R) Core(TM) i7-14700K"
+}

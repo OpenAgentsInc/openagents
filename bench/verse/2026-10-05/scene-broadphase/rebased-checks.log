@@ -1,0 +1,104 @@
+    Blocking waiting for file lock on build directory
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2505:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2505 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:381:19
+     |
+ 289 | impl Game {
+     | --------- methods in this implementation
+...
+ 381 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1264 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, and `quest_log` are never used
+   --> crates/verse-world/src/service.rs:148:8
+    |
+ 98 | impl Chamber {
+    | ------------ methods in this implementation
+...
+148 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+256 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+307 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+
+warning: method `validate_use` is never used
+  --> crates/verse-world/src/service/items.rs:54:19
+   |
+27 | impl Catalog {
+   | ------------ method in this implementation
+...
+54 |     pub(super) fn validate_use(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^
+
+warning: method `validate_change` is never used
+  --> crates/verse-world/src/service/outfits.rs:70:19
+   |
+33 | impl Catalog {
+   | ------------ method in this implementation
+...
+70 |     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib test) generated 5 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3m 49s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-af55db77b86492c2)
+
+running 24 tests
+test feather_fall::tests::checkpoints_round_trip_and_reject_corruption ... ok
+test rules::multiplayer_tests::friendly_roles_refuse_players_late_changes_and_hostile_checkpoint_effects ... ok
+test rules::multiplayer_tests::admission_rejects_corrupt_player_and_caster_checkpoint_state ... ok
+test rules::tests::checkpoint_replays_pending_projectiles_and_cooldowns ... ok
+test play::social::tests::social_profiles_and_checkpoint_rules_are_closed ... ok
+test wind_wall::tests::a_checkpoint_with_a_deflected_flight_replays_identically ... ok
+test telekinesis::tests::a_checkpoint_mid_grip_replays_identically ... ok
+test reverse_gravity::tests::a_checkpoint_mid_rise_replays_identically ... ok
+test levitate::tests::a_checkpoint_mid_drift_replays_identically ... ok
+test wall_of_stone::tests::a_checkpoint_with_broken_joints_replays_identically ... ok
+test play::checkpoint_tests::restart_fences_commands_from_the_previous_encounter ... ok
+test play::body_lifetime_tests::restart_and_checkpoint_reject_stale_body_ownership ... ok
+test play::checkpoint_tests::checkpoint_refuses_wrong_revision_and_invalid_health ... ok
+test play::friendly_tests::checkpoint_fences_scene_factions_and_legacy_friendly_roles ... ok
+test play::multiplayer::tests::corrupted_player_checkpoint_and_obstructed_spawn_are_refused ... ok
+test play::compiled_navigation_tests::blocker_replanning_collision_and_checkpoint_keep_the_same_life ... ok
+test meteor_swarm::tests::a_checkpoint_mid_fall_replays_identically ... ok
+test play::checkpoint_tests::admitted_remote_movement_is_solved_and_handoff_clears_it ... ok
+test play::multiplayer::tests::held_remote_movement_survives_gaps_then_expires_and_replays_checkpoints ... ok
+test spells::thunderwave::tests::checkpoints_replay_identically_with_props_in_flight ... ok
+test play::grounded_movement_tests::four_substeps_jump_checkpoint_and_read_only_interpolation ... ok
+test play::multiplayer::tests::movement_interrupts_only_its_casters_windup_and_checkpoints_replay ... ok
+test black_tentacles::tests::a_checkpoint_mid_grab_replays_identically ... ok
+test play::checkpoint_tests::mid_battle_checkpoint_replays_casts_projectiles_ai_and_defeat ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 289 filtered out; finished in 3.98s
+
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.03s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/physics-bfa467f2e8ab145e)
+
+running 4 tests
+test collision::index_tests::scripted_motion_wakes_near_sleepers_without_enumerating_distant_pairs ... ok
+test collision::index_tests::sparse_background_prunes_pairs_and_tracks_kind_changes_and_reused_leaves ... ok
+test collision::index_tests::indexed_steps_replay_exhaustive_state_through_wake_reuse_and_restore ... ok
+test collision::index_tests::bounded_motion_matches_exhaustive_manifolds_after_moves_filters_and_removal ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 120 filtered out; finished in 0.04s
+

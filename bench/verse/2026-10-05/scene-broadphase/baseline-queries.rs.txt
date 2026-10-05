@@ -1,10 +1,8 @@
 //! Instance-scoped, read-only mesh and capsule queries in double-precision meters.
 use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
-#[cfg(test)]
-mod index_tests;
 mod profiling;
 pub use profiling::{QueryMetrics, QueryProfile};
 mod snapshot;
@@ -117,8 +115,8 @@ struct Node {
 /// Validated source triangles and a deterministic median-split bounding hierarchy.
 #[derive(Clone, Debug)]
 pub struct Mesh {
-    triangles: Arc<Vec<Triangle>>,
-    nodes: Arc<Vec<Node>>,
+    triangles: Vec<Triangle>,
+    nodes: Vec<Node>,
     solid_box: Option<Bounds>,
 }
 impl Mesh {
@@ -177,8 +175,8 @@ impl Mesh {
             }
         }
         let mut mesh = Self {
-            triangles: Arc::new(triangles),
-            nodes: Arc::new(vec![]),
+            triangles,
+            nodes: vec![],
             solid_box: None,
         };
         mesh.build((0..mesh.triangles.len()).collect());
@@ -191,13 +189,13 @@ impl Mesh {
             .reduce(Bounds::union)
             .unwrap();
         let index = self.nodes.len();
-        Arc::make_mut(&mut self.nodes).push(Node {
+        self.nodes.push(Node {
             bounds,
             children: None,
             triangles: vec![],
         });
         if indices.len() <= 8 {
-            Arc::make_mut(&mut self.nodes)[index].triangles = indices;
+            self.nodes[index].triangles = indices;
             return index;
         }
         let extent = bounds.max - bounds.min;
@@ -215,7 +213,7 @@ impl Mesh {
         let right = indices.split_off(indices.len() / 2);
         let left = self.build(indices);
         let right = self.build(right);
-        Arc::make_mut(&mut self.nodes)[index].children = Some([left, right]);
+        self.nodes[index].children = Some([left, right]);
         index
     }
     pub fn triangles(&self) -> &[Triangle] {
@@ -301,8 +299,6 @@ pub struct Stats {
     pub nodes: usize,
     pub triangles: usize,
     pub capsule_tests: usize,
-    pub scene_nodes: usize,
-    pub scene_candidates: usize,
 }
 #[derive(Clone, Debug)]
 pub struct Results {
@@ -354,12 +350,8 @@ pub struct Scene {
     profiling: std::sync::Arc<profiling::Measurements>,
     poses: BTreeMap<ColliderKey, Pose>,
     colliders: BTreeMap<ColliderKey, MeshCollider>,
-    triangle_count: usize,
     capsules: BTreeMap<ColliderKey, CapsuleCollider>,
     world_capsules: BTreeMap<ColliderKey, CapsuleCollider>,
-    index: BTreeMap<u64, crate::broadphase::Tree<ColliderKey>>,
-    #[cfg(test)]
-    exhaustive: bool,
 }
 /// A local-space capsule retains its exact life and query usage.
 #[derive(Clone, Copy, Debug)]
@@ -424,7 +416,6 @@ impl Scene {
         }
         self.world_capsules.insert(collider.key, collider);
         self.capsules.insert(collider.key, collider);
-        self.update_index(collider.key);
         Ok(())
     }
     pub fn remove_capsule(&mut self, key: ColliderKey) -> Option<CapsuleCollider> {
@@ -433,90 +424,13 @@ impl Scene {
         }
         self.poses.remove(&key);
         self.world_capsules.remove(&key);
-        self.remove_index(key);
         self.capsules.remove(&key)
     }
-    fn capsule_shapes<'a>(
-        &'a self,
-        filter: Filter,
-        keys: &'a [ColliderKey],
-    ) -> impl Iterator<Item = (ColliderKey, Capsule)> + 'a {
-        keys.iter()
-            .filter_map(|key| self.world_capsules.get(key))
+    fn capsule_shapes(&self, filter: Filter) -> impl Iterator<Item = (ColliderKey, Capsule)> + '_ {
+        self.world_capsules
+            .values()
             .filter(move |c| filter.admits_shape(c.key, c.layers, c.usage))
             .map(|c| (c.key, c.capsule))
-    }
-    fn meshes<'a>(
-        &'a self,
-        filter: Filter,
-        keys: &'a [ColliderKey],
-    ) -> impl Iterator<Item = &'a MeshCollider> + 'a {
-        keys.iter()
-            .filter_map(|key| self.colliders.get(key))
-            .filter(move |c| filter.admits(c))
-    }
-    fn update_index(&mut self, key: ColliderKey) {
-        let bounds = if let Some(collider) = self.world_capsules.get(&key) {
-            collider.capsule.bounds()
-        } else {
-            let pose = self.pose(key).unwrap();
-            let local = self.colliders[&key].mesh.nodes[0].bounds;
-            let mut bounds = Bounds {
-                min: DVec3::splat(f64::INFINITY),
-                max: DVec3::splat(f64::NEG_INFINITY),
-            };
-            for i in 0..8 {
-                let corner = DVec3::new(
-                    if i & 1 == 0 { local.min.x } else { local.max.x },
-                    if i & 2 == 0 { local.min.y } else { local.max.y },
-                    if i & 4 == 0 { local.min.z } else { local.max.z },
-                );
-                let world = pose.point(corner);
-                bounds.min = bounds.min.min(world);
-                bounds.max = bounds.max.max(world);
-            }
-            bounds
-        };
-        self.index.entry(key.life.instance).or_default().set(
-            key,
-            crate::broadphase::Bounds {
-                min: bounds.min,
-                max: bounds.max,
-            },
-        );
-    }
-    fn remove_index(&mut self, key: ColliderKey) {
-        if let Some(tree) = self.index.get_mut(&key.life.instance) {
-            tree.remove(key);
-            if tree.is_empty() {
-                self.index.remove(&key.life.instance);
-            }
-        }
-    }
-    fn candidates(&self, bounds: Bounds, filter: Filter, stats: &mut Stats) -> Vec<ColliderKey> {
-        #[cfg(test)]
-        if self.exhaustive {
-            return self
-                .colliders
-                .keys()
-                .chain(self.capsules.keys())
-                .copied()
-                .collect();
-        }
-        let keys = self
-            .index
-            .get(&filter.instance)
-            .map_or_else(Vec::new, |tree| {
-                tree.query(
-                    crate::broadphase::Bounds {
-                        min: bounds.min,
-                        max: bounds.max,
-                    },
-                    &mut stats.scene_nodes,
-                )
-            });
-        stats.scene_candidates += keys.len();
-        keys
     }
     pub fn pose(&self, key: ColliderKey) -> Option<Pose> {
         (self.colliders.contains_key(&key) || self.capsules.contains_key(&key))
@@ -537,7 +451,6 @@ impl Scene {
             self.world_capsules.insert(key, world);
         }
         self.poses.insert(key, pose);
-        self.update_index(key);
         Ok(())
     }
     pub fn insert(&mut self, collider: MeshCollider) -> Result<(), String> {
@@ -547,25 +460,24 @@ impl Scene {
         if self.colliders.len() + self.capsules.len() >= 4096 {
             return Err("Collision scene budget exceeded".into());
         }
-        if self.triangle_count + collider.mesh.triangles.len() > MAX_TRIANGLES {
+        if self
+            .colliders
+            .values()
+            .map(|c| c.mesh.triangles.len())
+            .sum::<usize>()
+            + collider.mesh.triangles.len()
+            > MAX_TRIANGLES
+        {
             return Err("Collision scene triangle budget exceeded".into());
         }
-        self.triangle_count += collider.mesh.triangles.len();
-        let key = collider.key;
-        self.colliders.insert(key, collider);
-        self.update_index(key);
+        self.colliders.insert(collider.key, collider);
         Ok(())
     }
     pub fn remove(&mut self, key: ColliderKey) -> Option<MeshCollider> {
         if self.colliders.contains_key(&key) {
             self.poses.remove(&key);
-            self.remove_index(key);
         }
-        let removed = self.colliders.remove(&key);
-        if let Some(collider) = &removed {
-            self.triangle_count -= collider.mesh.triangles.len();
-        }
-        removed
+        self.colliders.remove(&key)
     }
     pub fn ray(
         &self,
@@ -586,16 +498,7 @@ impl Scene {
         }
         let mut out = Collector::new(filter.limit);
         let mut stats = Stats::default();
-        let end = origin + direction * distance;
-        let keys = self.candidates(
-            Bounds {
-                min: origin.min(end) - DVec3::splat(EPS),
-                max: origin.max(end) + DVec3::splat(EPS),
-            },
-            filter,
-            &mut stats,
-        );
-        for (key, target) in self.capsule_shapes(filter, &keys) {
+        for (key, target) in self.capsule_shapes(filter) {
             stats.nodes += 1;
             // A zero-radius point uses the same convex sweep as capsule queries.
             let point = Capsule {
@@ -608,7 +511,7 @@ impl Scene {
                 out.push(hit);
             }
         }
-        for collider in self.meshes(filter, &keys) {
+        for collider in self.colliders.values().filter(|c| filter.admits(c)) {
             let pose = self.pose(collider.key).unwrap();
             let origin = pose.inverse_point(origin);
             let direction = pose.rotation.conjugate() * direction;
@@ -649,8 +552,7 @@ impl Scene {
         let mut bounds = capsule.bounds();
         bounds.min -= DVec3::splat(EPS);
         bounds.max += DVec3::splat(EPS);
-        let keys = self.candidates(bounds, filter, &mut stats);
-        for (key, target) in self.capsule_shapes(filter, &keys) {
+        for (key, target) in self.capsule_shapes(filter) {
             stats.nodes += 1;
             if !bounds.intersects(target.bounds()) {
                 continue;
@@ -672,7 +574,7 @@ impl Scene {
                 });
             }
         }
-        for collider in self.meshes(filter, &keys) {
+        for collider in self.colliders.values().filter(|c| filter.admits(c)) {
             let pose = self.pose(collider.key).unwrap();
             let capsule = pose.capsule(capsule);
             if let Some(bounds) = collider.mesh.solid_box {
@@ -727,8 +629,7 @@ impl Scene {
         let mut out = Collector::new(filter.limit);
         let mut stats = Stats::default();
         let swept_bounds = capsule.bounds().union(capsule.translated(delta).bounds());
-        let keys = self.candidates(swept_bounds, filter, &mut stats);
-        for (key, target) in self.capsule_shapes(filter, &keys) {
+        for (key, target) in self.capsule_shapes(filter) {
             stats.nodes += 1;
             if !swept_bounds.intersects(target.bounds()) {
                 continue;
@@ -738,7 +639,7 @@ impl Scene {
                 out.push(hit);
             }
         }
-        for collider in self.meshes(filter, &keys) {
+        for collider in self.colliders.values().filter(|c| filter.admits(c)) {
             let pose = self.pose(collider.key).unwrap();
             let capsule = pose.capsule(capsule);
             let delta = pose.rotation.conjugate() * delta;
@@ -1100,36 +1001,6 @@ mod tests {
         assert_eq!(hit.normal, DVec3::Y);
     }
     #[test]
-    fn scene_clones_share_mesh_buffers_and_keep_collider_membership_independent() {
-        let id = key(1, 1, 0);
-        let mut original = Scene::default();
-        original.insert(wall(1., id, Usage::Blocking, 1)).unwrap();
-        let cloned = original.clone();
-        let before = cloned
-            .ray(DVec3::ZERO, DVec3::X, 5., Filter::blocking(1))
-            .unwrap();
-        let a = &original.colliders[&id].mesh;
-        let b = &cloned.colliders[&id].mesh;
-        assert!(Arc::ptr_eq(&a.triangles, &b.triangles));
-        assert!(Arc::ptr_eq(&a.nodes, &b.nodes));
-        original.remove(id).unwrap();
-        assert!(
-            original
-                .ray(DVec3::ZERO, DVec3::X, 5., Filter::blocking(1))
-                .unwrap()
-                .hits
-                .is_empty()
-        );
-        drop(original);
-        assert_eq!(
-            cloned
-                .ray(DVec3::ZERO, DVec3::X, 5., Filter::blocking(1))
-                .unwrap()
-                .hits,
-            before.hits
-        );
-    }
-    #[test]
     fn life_instance_layer_and_usage_filters_are_independent() {
         let mut scene = Scene::default();
         for collider in [
@@ -1340,9 +1211,7 @@ mod capsule_contact_tests {
         let result = scene.overlap(capsule, filter).unwrap();
         assert_eq!(result.hits.len(), 1);
         assert_eq!(result.hits[0].collider, key(1));
-        assert_eq!(result.stats.nodes, 1);
-        assert_eq!(result.stats.scene_candidates, 1);
-        assert!(result.stats.scene_nodes < 32);
+        assert_eq!(result.stats.nodes, 64);
         assert_eq!(result.stats.capsule_tests, 1);
         let pose = Pose {
             position: DVec3::new(1., 1., 0.),

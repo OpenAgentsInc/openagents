@@ -1,0 +1,156 @@
+//! Derived, deterministic dynamic AABB trees; leaves keep stable caller identities.
+use glam::DVec3;
+use std::collections::BTreeMap;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Bounds { pub min: DVec3, pub max: DVec3 }
+impl Bounds {
+    pub fn union(self, other: Self) -> Self { Self { min: self.min.min(other.min), max: self.max.max(other.max) } }
+    pub fn intersects(self, other: Self) -> bool { self.min.cmple(other.max).all() && other.min.cmple(self.max).all() }
+    fn contains(self, other: Self) -> bool { self.min.cmple(other.min).all() && self.max.cmpge(other.max).all() }
+    pub fn expanded(self, margin: f64) -> Self { Self { min: self.min - DVec3::splat(margin), max: self.max + DVec3::splat(margin) } }
+    fn area(self) -> f64 { let d = self.max - self.min; 2. * (d.x * d.y + d.x * d.z + d.y * d.z) }
+}
+#[derive(Clone, Debug)]
+struct Node<K> { bounds: Bounds, parent: Option<usize>, children: Option<[usize; 2]>, key: Option<K>, height: u32 }
+#[derive(Clone, Debug)]
+pub(crate) struct Tree<K> { root: Option<usize>, nodes: Vec<Option<Node<K>>>, free: Vec<usize>, leaves: BTreeMap<K, usize> }
+impl<K> Default for Tree<K> {
+    fn default() -> Self { Self { root: None, nodes: Vec::new(), free: Vec::new(), leaves: BTreeMap::new() } }
+}
+/// The tree is a derived cache, excluded from authoritative state comparisons.
+impl<K> PartialEq for Tree<K> { fn eq(&self, _: &Self) -> bool { true } }
+impl<K: Copy + Ord> Tree<K> {
+    fn node(&self, id: usize) -> &Node<K> { self.nodes[id].as_ref().unwrap() }
+    fn node_mut(&mut self, id: usize) -> &mut Node<K> { self.nodes[id].as_mut().unwrap() }
+    fn allocate(&mut self, node: Node<K>) -> usize {
+        if let Some(id) = self.free.pop() { self.nodes[id] = Some(node); id }
+        else { self.nodes.push(Some(node)); self.nodes.len() - 1 }
+    }
+    fn release(&mut self, id: usize) { self.nodes[id] = None; self.free.push(id); }
+    fn replace(&mut self, parent: Option<usize>, old: usize, new: Option<usize>) {
+        if let Some(parent) = parent {
+            let children = self.node_mut(parent).children.as_mut().unwrap();
+            let slot = usize::from(children[0] != old);
+            children[slot] = new.unwrap();
+        } else { self.root = new; }
+        if let Some(new) = new { self.node_mut(new).parent = parent; }
+    }
+    fn refit(&mut self, id: usize) {
+        if let Some([a, b]) = self.node(id).children {
+            let bounds = self.node(a).bounds.union(self.node(b).bounds);
+            let height = 1 + self.node(a).height.max(self.node(b).height);
+            let node = self.node_mut(id); node.bounds = bounds; node.height = height;
+        }
+    }
+    fn rotate(&mut self, root: usize, right: bool) -> usize {
+        // Rotate toward the taller child. Child arrays are spatial, not search-key partitions.
+        let side = usize::from(!right);
+        let children = self.node(root).children.unwrap();
+        let pivot = children[side];
+        let grandchildren = self.node(pivot).children.unwrap();
+        let parent = self.node(root).parent;
+        self.replace(parent, root, Some(pivot));
+        self.node_mut(root).children.as_mut().unwrap()[side] = grandchildren[1 - side];
+        self.node_mut(grandchildren[1 - side]).parent = Some(root);
+        self.node_mut(pivot).children.as_mut().unwrap()[1 - side] = root;
+        self.node_mut(root).parent = Some(pivot);
+        self.refit(root); self.refit(pivot); pivot
+    }
+    fn balance(&mut self, id: usize) -> usize {
+        self.refit(id);
+        let Some([a, b]) = self.node(id).children else { return id; };
+        let difference = i64::from(self.node(a).height) - i64::from(self.node(b).height);
+        if difference > 1 {
+            let [left, right] = self.node(a).children.unwrap();
+            if self.node(left).height < self.node(right).height { self.rotate(a, false); }
+            self.rotate(id, true)
+        } else if difference < -1 {
+            let [left, right] = self.node(b).children.unwrap();
+            if self.node(left).height > self.node(right).height { self.rotate(b, true); }
+            self.rotate(id, false)
+        } else { id }
+    }
+    fn ascend(&mut self, mut at: Option<usize>) {
+        while let Some(id) = at { let root = self.balance(id); at = self.node(root).parent; }
+    }
+    pub fn set(&mut self, key: K, bounds: Bounds) -> bool {
+        if self.leaves.get(&key).is_some_and(|&id| self.node(id).bounds.contains(bounds)) { return false; }
+        self.remove(key);
+        let bounds = bounds.expanded(0.05);
+        let leaf = self.allocate(Node { bounds, parent: None, children: None, key: Some(key), height: 0 });
+        self.leaves.insert(key, leaf);
+        let Some(mut sibling) = self.root else { self.root = Some(leaf); return true; };
+        while let Some([a, b]) = self.node(sibling).children {
+            let cost = |id| self.node(id).bounds.union(bounds).area() - self.node(id).bounds.area();
+            sibling = if cost(a).total_cmp(&cost(b)).is_le() { a } else { b };
+        }
+        let old_parent = self.node(sibling).parent;
+        let parent = self.allocate(Node { bounds: self.node(sibling).bounds.union(bounds), parent: old_parent,
+            children: Some([sibling, leaf]), key: None, height: 1 });
+        self.replace(old_parent, sibling, Some(parent));
+        self.node_mut(sibling).parent = Some(parent); self.node_mut(leaf).parent = Some(parent);
+        self.ascend(Some(parent)); true
+    }
+    pub fn remove(&mut self, key: K) -> bool {
+        let Some(leaf) = self.leaves.remove(&key) else { return false; };
+        if let Some(parent) = self.node(leaf).parent {
+            let [a, b] = self.node(parent).children.unwrap();
+            let sibling = if a == leaf { b } else { a };
+            let grandparent = self.node(parent).parent;
+            self.replace(grandparent, parent, Some(sibling)); self.release(parent); self.ascend(grandparent);
+        } else { self.root = None; }
+        self.release(leaf); true
+    }
+    pub fn query(&self, bounds: Bounds, visits: &mut usize) -> Vec<K> {
+        let mut keys = Vec::new(); let mut stack = Vec::new();
+        if let Some(root) = self.root { stack.push(root); }
+        while let Some(id) = stack.pop() {
+            *visits += 1;
+            let node = self.node(id);
+            if !node.bounds.intersects(bounds) { continue; }
+            if let Some(key) = node.key { keys.push(key); }
+            else { stack.extend(node.children.unwrap()); }
+        }
+        keys.sort_unstable(); keys
+    }
+    pub fn is_empty(&self) -> bool { self.leaves.is_empty() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn bounds(x: f64, y: f64) -> Bounds { Bounds { min: DVec3::new(x, y, -0.25), max: DVec3::new(x + 0.5, y + 0.5, 0.25) } }
+    fn check(tree: &Tree<u32>) {
+        fn walk(tree: &Tree<u32>, id: usize, parent: Option<usize>) -> (u32, Bounds, usize) {
+            let node = tree.node(id); assert_eq!(node.parent, parent);
+            if let Some(key) = node.key { assert_eq!(tree.leaves[&key], id); assert_eq!(node.height, 0); return (0, node.bounds, 1); }
+            let [a, b] = node.children.unwrap();
+            let (ha, ba, na) = walk(tree, a, Some(id)); let (hb, bb, nb) = walk(tree, b, Some(id));
+            assert!(ha.abs_diff(hb) <= 1); assert_eq!(node.height, 1 + ha.max(hb)); assert_eq!(node.bounds, ba.union(bb));
+            (node.height, node.bounds, na + nb)
+        }
+        if let Some(root) = tree.root { assert_eq!(walk(tree, root, None).2, tree.leaves.len()); }
+        else { assert!(tree.leaves.is_empty()); }
+        assert_eq!(tree.nodes.iter().filter(|n| n.is_some()).count(), tree.leaves.len().saturating_mul(2).saturating_sub(1));
+    }
+    #[test]
+    fn ordered_insertions_updates_removal_and_reuse_preserve_bounds_and_candidates() {
+        let mut tree = Tree::default(); let mut source = BTreeMap::new();
+        for key in 0..1024 { let b = bounds(f64::from(key % 32) * 3., f64::from(key / 32) * 3.); tree.set(key, b); source.insert(key, b); check(&tree); }
+        let slots = tree.nodes.len();
+        for iteration in 0..3000u32 {
+            let key = (iteration * 317) % 1024;
+            if iteration % 3 == 0 { tree.remove(key); source.remove(&key); }
+            else { let b = bounds(f64::from((iteration * 73) % 128), f64::from((iteration * 157) % 128)); tree.set(key, b); source.insert(key, b); }
+            check(&tree);
+            let query = bounds(f64::from(iteration % 128), f64::from((iteration * 13) % 128)).expanded(8.);
+            let mut visits = 0; let actual = tree.query(query, &mut visits);
+            let reference: Vec<_> = tree.leaves.iter().filter(|(_, id)| tree.node(**id).bounds.intersects(query)).map(|(&key, _)| key).collect();
+            assert_eq!(actual, reference);
+            assert!(source.iter().all(|(key, b)| !b.intersects(query) || actual.contains(key)));
+        }
+        assert!(tree.nodes.len() <= slots);
+        for key in 0..1024 { tree.remove(key); } check(&tree);
+    }
+}

@@ -65,13 +65,6 @@ pub struct World {
     bodies: Vec<Body>,
     #[serde(default)]
     colliders: Vec<Collider>,
-    #[serde(skip)]
-    pub(crate) collision_index: crate::broadphase::Tree<usize>,
-    #[serde(skip)]
-    pub(crate) responding_index: crate::broadphase::Tree<usize>,
-    #[cfg(test)]
-    #[serde(skip)]
-    pub(crate) exhaustive_detection: bool,
     #[serde(default)]
     pub(crate) joints: Vec<Option<Joint>>,
     /// When bodies fall asleep.
@@ -153,10 +146,6 @@ impl World {
             solver: SolverSettings::default(),
             bodies: Vec::new(),
             colliders: Vec::new(),
-            collision_index: Default::default(),
-            responding_index: Default::default(),
-            #[cfg(test)]
-            exhaustive_detection: false,
             joints: Vec::new(),
             sleep: SleepSettings::default(),
             contacts: Vec::new(),
@@ -207,7 +196,6 @@ impl World {
     /// semi-implicit Euler and rotation by the torque-free [`Body::rotate`].
     pub fn step(&mut self, field: &impl Field) {
         let started = std::time::Instant::now();
-        self.stats = StepStats::default();
         let dt = self.dt;
         self.slept.clear();
         for body in &mut self.bodies {
@@ -231,42 +219,20 @@ impl World {
         self.contacts = if self.colliders.is_empty() && self.joints.iter().all(Option::is_none) {
             Vec::new()
         } else {
-            let detecting = std::time::Instant::now();
             let base = self.solver.margin;
-            let (wake_nodes, wake_candidates, wake_updates) = self.wake_near_kinematic(base);
-            let speeds: Vec<_> = self
-                .colliders
-                .iter()
-                .map(|c| {
-                    let body = &self.bodies[c.body.0 as usize];
+            self.wake_near_kinematic(base);
+            let bodies = &self.bodies;
+            let (detected, detection) = self.detect_profiled(&|a, b| {
+                let reach = |c: &Collider| {
+                    let body = &bodies[c.body.0 as usize];
                     body.vel.length()
                         + body.omega_world().length() * (c.offset.length() + c.shape.bound())
-                })
-                .collect();
-            let reaches: Vec<_> = speeds.iter().map(|speed| speed * dt).collect();
-            let (detected, mut detection) = self
-                .detect_motion_with_margin(base, &reaches, &|i, j| {
-                    base + (speeds[i] + speeds[j]) * dt
-                })
-                .unwrap_or_else(|_| {
-                    // Preserve the legacy callback's behavior for unsupported nonfinite/negative settings.
-                    let bodies = &self.bodies;
-                    self.detect_profiled(&|a, b| {
-                        let reach = |c: &Collider| {
-                            let body = &bodies[c.body.0 as usize];
-                            body.vel.length()
-                                + body.omega_world().length()
-                                    * (c.offset.length() + c.shape.bound())
-                        };
-                        base + (reach(a) + reach(b)) * dt
-                    })
-                });
+                };
+                base + (reach(a) + reach(b)) * dt
+            });
             manifolds = detected;
-            detection.wake_scene_nodes = wake_nodes;
-            detection.wake_candidate_pairs = wake_candidates;
-            detection.wake_index_updates = wake_updates;
             self.stats.detection = detection;
-            self.stats.detect = detecting.elapsed();
+            self.stats.detect = started.elapsed();
             self.wake_touched(&manifolds);
             let solving = std::time::Instant::now();
             let contacts = self.solve(&manifolds, dt);
@@ -371,56 +337,14 @@ impl World {
     /// kinematic body's. Detection skips pairs where neither side can
     /// respond, so without this a scripted body would pass through a
     /// sleeper instead of pushing it.
-    fn wake_near_kinematic(&mut self, margin: f64) -> (usize, usize, usize) {
-        let movers: std::collections::BTreeSet<usize> = (0..self.bodies.len())
+    fn wake_near_kinematic(&mut self, margin: f64) {
+        let movers: Vec<usize> = (0..self.bodies.len())
             .filter(|&i| self.bodies[i].kind == BodyKind::Kinematic && self.pushes(i))
             .collect();
         if movers.is_empty() {
-            return (0, 0, 0);
+            return;
         }
         let bound = |c: &Collider, world: &Self| (c.pose(world).0, c.shape.bound());
-        let mut updates = 0;
-        #[cfg(test)]
-        let use_index = !self.exhaustive_detection;
-        #[cfg(not(test))]
-        let use_index = true;
-        let indexed = use_index
-            && margin.is_finite()
-            && margin >= 0.
-            && self.dt.is_finite()
-            && self.dt >= 0.
-            && self.colliders.iter().all(|c| {
-                let (pos, radius) = bound(c, self);
-                pos.is_finite()
-                    && radius.is_finite()
-                    && radius >= 0.
-                    && self[c.body].vel.is_finite()
-                    && self[c.body].omega.is_finite()
-            });
-        if indexed {
-            for i in 0..self.colliders.len() {
-                let c = &self.colliders[i];
-                let (pos, radius) = bound(c, self);
-                let body = &self[c.body];
-                let reach = (body.vel.length()
-                    + body.omega_world().length() * (c.offset.length() + radius))
-                    * self.dt;
-                let extent = DVec3::splat(radius + margin * 0.5 + reach);
-                if c.filter == crate::collision::Filter::NONE {
-                    updates += usize::from(self.collision_index.remove(i));
-                } else {
-                    updates += usize::from(self.collision_index.set(
-                        i,
-                        crate::broadphase::Bounds {
-                            min: pos - extent,
-                            max: pos + extent,
-                        },
-                    ));
-                }
-            }
-        }
-        let mut nodes = 0;
-        let mut candidates = 0;
         let mut wake = Vec::new();
         for mover in &self.colliders {
             if !movers.contains(&(mover.body.0 as usize)) {
@@ -428,21 +352,7 @@ impl World {
             }
             let (pa, ra) = bound(mover, self);
             let reach = self[mover.body].vel.length() * self.dt + margin;
-            let indices = if indexed {
-                let extent = DVec3::splat(ra + reach);
-                self.collision_index.query(
-                    crate::broadphase::Bounds {
-                        min: pa - extent,
-                        max: pa + extent,
-                    },
-                    &mut nodes,
-                )
-            } else {
-                (0..self.colliders.len()).collect()
-            };
-            for index in indices {
-                candidates += 1;
-                let other = &self.colliders[index];
+            for other in &self.colliders {
                 if other.body == mover.body
                     || !self[other.body].sleeping
                     || !mover.filter.allows(other.filter)
@@ -458,7 +368,6 @@ impl World {
         for id in wake {
             self[id].wake();
         }
-        (nodes, candidates, updates)
     }
 
     /// Advance sleep timers and put settled islands to sleep.

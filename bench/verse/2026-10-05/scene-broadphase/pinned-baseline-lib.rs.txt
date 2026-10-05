@@ -6,8 +6,6 @@
 //!   caller-supplied acceleration [`Field`].
 //! - [`collision`]: sphere, capsule, and box colliders with bitmask filters
 //!   and multi-point manifolds.
-//! - [`queries`]: instance-scoped scene trees with pose updates over per-mesh
-//!   hierarchies; stable hit ordering and optional candidate measurements.
 //! - [`contact`]: a sequential-impulse solver with restitution, an elliptic
 //!   friction cone, and torsional friction.
 //! - [`joint`]: point, weld, and tether joints, hard or soft (an implicit

@@ -1,0 +1,20 @@
+{
+  "recorded_at_utc": "2026-10-05T07:13:55.539064+00:00",
+  "public_base_commit": "817a747eddba5d3320782c9e2585427865f78d0c",
+  "source_sha256": {
+    "crates/physics/src/lib.rs": "49a8a88fbaed0cb6aaaa2d58e36b3bad21a8b5809ac81fb8e2c8d95fa967aeb3",
+    "crates/physics/src/collision.rs": "cd7a5a87ea6e041378fc4c3303b3e05b5056fb764fea287b03f2e6e9b307c05c",
+    "crates/physics/src/world.rs": "24b7f04724165db8936aa8d0b173708668517c1844f92ac8a91326ee331a4005",
+    "crates/physics/src/queries.rs": "e3e20c1fe4d54ec40336aa75857bf3a7b2ffa9a8e784ce88732cfce706e2a8a6",
+    "crates/physics/src/queries/profiling.rs": "7c2722193e4a31d0ab77246549d101cd0217b3371ff4b3768ae040cb145f2085",
+    "crates/physics/src/broadphase.rs": "bcf0adda9b3c232388fa2c58af3538485f1dfcf83d10001ac05788ad8bc17425",
+    "crates/physics/examples/scene_broadphase.rs": "b226c4bb282e8bab8a2816691a35098f4b6e1b5c949bebb5f6556282ba48d010",
+    "crates/physics/Cargo.toml": "20f4428c677ff8beea911814b57079b3b5bcdc2d0f3f66210903117552e43dee",
+    "Cargo.toml": "ee540d1fae9a6150471cf4b54c5bb487d0a8ca923ed5e0d8cc97889258dd6c93",
+    "Cargo.lock": "e1a2f61f15bf2986b6cb63d86fa10d94c617027c335be0873b95d0345e83332d"
+  },
+  "executable_sha256": "89e9c3549c7f45112330610464f3969087c1e20d191f5eeef563bb7a0f43c3fd",
+  "platform": "Linux-6.18.49-x86_64-with-glibc2.42",
+  "cpu": "Intel(R) Core(TM) i7-14700K",
+  "command": "cargo run -p physics --example scene_broadphase --release -- OUTPUT.json"
+}

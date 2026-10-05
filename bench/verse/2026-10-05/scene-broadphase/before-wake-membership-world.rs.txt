@@ -372,7 +372,7 @@ impl World {
     /// respond, so without this a scripted body would pass through a
     /// sleeper instead of pushing it.
     fn wake_near_kinematic(&mut self, margin: f64) -> (usize, usize, usize) {
-        let movers: std::collections::BTreeSet<usize> = (0..self.bodies.len())
+        let movers: Vec<usize> = (0..self.bodies.len())
             .filter(|&i| self.bodies[i].kind == BodyKind::Kinematic && self.pushes(i))
             .collect();
         if movers.is_empty() {

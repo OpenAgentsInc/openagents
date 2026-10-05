@@ -157,7 +157,7 @@ Evidence labels:
 | V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities | Complete ([#10623](https://github.com/OpenAgentsInc/openagents/issues/10623)) |
 | V12 | P1 | Cooked static chunks have bounded native streaming residency. | Code, recorded | Content loading and residency | Complete ([#10625](https://github.com/OpenAgentsInc/openagents/issues/10625)), static-content profile |
 | V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload | Complete ([#10629](https://github.com/OpenAgentsInc/openagents/issues/10629)) |
-| V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics | Open |
+| V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics | Complete ([#10630](https://github.com/OpenAgentsInc/openagents/issues/10630)) |
 | V15 | P1 | Navigation needs tiled content and scheduled crowd work. | Code, gap | Navigation and AI | Open |
 | V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters | Open |
 | V17 | P1 | Engine boundaries remain intertwined with the Verse application. | Code | Engine extraction and host packaging | Open |
@@ -1056,31 +1056,55 @@ uses the material recipe when fitting oversized sources to its 2048-texel limit.
 The hardware check uses a scratch generated fixture and does not establish phone or browser image
 quality, frame latency, or production art acceptance.
 
-### V14: Physics acceleration is incomplete at the scene level
+### V14: Deterministic scene and rigid broadphase
 
-[`physics::queries::Mesh`](../../crates/physics/src/queries.rs) has a triangle
-BVH, but scene ray, overlap, and sweep queries iterate admitted collider maps
-and dynamic capsule shapes. [`World::detect`](../../crates/physics/src/collision.rs)
-enumerates collider pairs before filters and bounding tests. Small scenes benefit
-from the existing code; large collider populations still incur broad enumeration.
+**Completed:** [#10630](https://github.com/OpenAgentsInc/openagents/issues/10630).
+[`physics::broadphase`](../../crates/physics/src/broadphase.rs) adds a balanced
+dynamic AABB tree with stable leaf identities, reusable node slots, small retained
+bounds, and explicit pose/removal updates. Scene queries use separate instance
+roots and retain per-mesh triangle BVHs. Sorted candidates preserve hit ordering,
+life/layer/usage exclusions, and nearest-hit truncation. Triangle admission uses
+a maintained count. Main's immutable shared mesh buffers are preserved.
 
-The shared rigid-body path implements capsule-versus-oriented-box contact and
-warm starting. The retained Ruins
-[`collision_static`](../../crates/verse-ruins/vendor/crates/collision_static/src/lib.rs)
-still has its separate unimplemented capsule/OBB function; the documented
-retained limitation does not describe the shared solver. Character sweeps and
-relative-motion sphere/capsule CCD exist; they do not establish general rotating
-rigid-body CCD.
+The rigid step indexes conservative shape-radius and per-collider motion bounds.
+A second tree limits static/sleeping queries to bodies that can respond. Kinematic
+wake-up also uses spatial candidates. The solver receives the original pair order
+and margin arithmetic. Derived indexes stay outside serialized authoritative state.
+The arbitrary pair-margin callback remains an exhaustive reference because its
+return values have no spatial bound; `detect_bounded` and
+`detect_motion_profiled` expose explicit indexed contracts. Optional query/step
+measurements report scene visits, candidate/filter/bound/narrow-phase work, updates,
+and wake-up work separately.
 
-**Improve:** Measure scene candidate counts, then add a deterministic top-level
-broadphase and dynamic updates. Keep static per-mesh BVHs. Define generic rigid
-CCD, islands, and parallel solve only for required workloads, preserving stable
-ordering and replay/conservation checks.
+**Evidence:** [Retained broadphase evidence](../../bench/verse/2026-10-05/scene-broadphase/README.md)
+includes an exact reconstructed baseline binary, a CPU-core-pinned comparison,
+source/executable receipts, and chronological samples. With 4,096 colliders and
+a sparse static background, candidates fall from 8,386,560 pairs to zero with
+4,320 scene visits. Total-step p95 falls from 12.635 ms to 0.408 ms; initial tree
+construction remains visible in a 2.082 ms first step. Local query candidates stay
+at one, with 7–27 top-level visits as distant geometry increases. A 1,024-capsule
+moving fixture returns 59,520 hits from 61,440 sweeps; pose and sweep phase p95
+is 0.303 and 1.014 ms. A separate 256-sphere contact run measures 30,600 narrow
+contacts, solve p95 0.235 ms, linear momentum residual about `7e-16`, zero angular
+residual, and expected energy dissipation.
 
-**Acceptance:** Increasing distant colliders has bounded query cost. Large
-crowds, fast props, rotated contacts, stacks, supports, and removal/reuse pass
-correctness fixtures. Publish candidates, narrow-phase work, solve time, and
-momentum/energy residuals rather than claiming scale from body count alone.
+123 physics, 586 Verse, and 315 world tests pass. New fixtures compare indexed
+hits/manifolds and exact serialized state with exhaustive paths through rotated
+shapes, scopes, filters, truncation, fast motion, wake-up, removal/reuse, and
+restoration. Existing supports, stacks, sweeps, CCD, and conservation tests pass.
+Native consumers and the browser build compile. Timings are observations on a
+shared machine, not a whole-engine performance gate.
+
+**Limits:** Dense overlaps, loose radius bounds, large absolute-speed margins,
+and selective filters can retain large candidate sets. Synchronization remains
+linear in colliders, and small scenes pay tree maintenance overhead. Rigid sensor
+rays, plume scans, and arbitrary-margin detection retain enumeration. Existing
+sleep islands and sequential solve cover the measured workload; general rotating
+rigid-body time of impact and parallel solving need a declared workload before
+implementation. Supported character/capsule sweeps and linear sphere/capsule CCD,
+plus speculative rigid margins, do not establish general rotating-debris CCD.
+The retained Ruins capsule/OBB stub stays separate from the shared solver's working
+capsule/OBB path. V18 retains whole-game overload and tick-budget acceptance.
 
 ### V15: Navigation needs a world-content lifecycle
 

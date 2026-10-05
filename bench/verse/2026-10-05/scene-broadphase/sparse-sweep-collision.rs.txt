@@ -648,9 +648,7 @@ pub struct DetectionStats {
 impl World {
     /// Contact manifolds between colliders whose filters allow it and whose
     /// bodies can respond (at least one dynamic), within `margin` of
-    /// touching. Colliders on the same body never collide. An arbitrary callback
-    /// requires exhaustive pair enumeration; use `detect_bounded` for a constant
-    /// margin. `World::step` uses indexed per-collider motion bounds.
+    /// touching. Colliders on the same body never collide.
     #[must_use]
     pub fn detect(&self, margin: &dyn Fn(&Collider, &Collider) -> f64) -> Vec<Manifold> {
         self.detect_profiled(margin).0

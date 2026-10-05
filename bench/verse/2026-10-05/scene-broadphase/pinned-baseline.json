@@ -1,0 +1,406 @@
+{
+  "profile": "isolated sparse static background, mixed query meshes/capsules, eight moving spheres",
+  "rows": [
+    {
+      "colliders": 8,
+      "energy_residual": 0.0,
+      "hit_counts": [
+        4,
+        1,
+        6
+      ],
+      "momentum_residual": {
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "query_iterations": 200,
+      "query_last_stats": [
+        "Stats { nodes: 10, triangles: 12, capsule_tests: 4 }",
+        "Stats { nodes: 7, triangles: 0, capsule_tests: 0 }",
+        "Stats { nodes: 10, triangles: 12, capsule_tests: 0 }"
+      ],
+      "query_p95_us": {
+        "overlap": 0.362,
+        "ray": 1.4449999999999998,
+        "sweep": 9.626999999999999
+      },
+      "query_profile": {
+        "overlap": {
+          "calls": 200,
+          "capsule_tests": 0,
+          "errors": 0,
+          "maximum_wall_seconds": 1.143e-6,
+          "nodes": 1400,
+          "triangles": 0,
+          "truncated": 0,
+          "wall_seconds": 0.000046845999999999985
+        },
+        "ray": {
+          "calls": 200,
+          "capsule_tests": 800,
+          "errors": 0,
+          "maximum_wall_seconds": 0.000012762,
+          "nodes": 2000,
+          "triangles": 2400,
+          "truncated": 0,
+          "wall_seconds": 0.00023428399999999991
+        },
+        "sweep": {
+          "calls": 200,
+          "capsule_tests": 0,
+          "errors": 0,
+          "maximum_wall_seconds": 0.000017083,
+          "nodes": 2000,
+          "triangles": 2400,
+          "truncated": 0,
+          "wall_seconds": 0.0015367499999999993
+        }
+      },
+      "rigid_last": {
+        "bound_tests": 28,
+        "candidate_pairs": 28,
+        "colliders": 8,
+        "filtered_pairs": 28,
+        "index_updates": 0,
+        "narrow_phase": 0,
+        "scene_nodes": 0
+      },
+      "rigid_p95_ms": {
+        "detect": 0.00065,
+        "solve": 0.00017800000000000002,
+        "total": 0.000851
+      },
+      "rigid_steps": 60,
+      "scene_build_ms": 0.013633
+    },
+    {
+      "colliders": 64,
+      "energy_residual": 0.0,
+      "hit_counts": [
+        4,
+        1,
+        6
+      ],
+      "momentum_residual": {
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "query_iterations": 200,
+      "query_last_stats": [
+        "Stats { nodes: 66, triangles: 12, capsule_tests: 32 }",
+        "Stats { nodes: 63, triangles: 0, capsule_tests: 0 }",
+        "Stats { nodes: 66, triangles: 12, capsule_tests: 0 }"
+      ],
+      "query_p95_us": {
+        "overlap": 1.775,
+        "ray": 4.524,
+        "sweep": 10.179
+      },
+      "query_profile": {
+        "overlap": {
+          "calls": 200,
+          "capsule_tests": 0,
+          "errors": 0,
+          "maximum_wall_seconds": 3.592e-6,
+          "nodes": 12600,
+          "triangles": 0,
+          "truncated": 0,
+          "wall_seconds": 0.00022677600000000007
+        },
+        "ray": {
+          "calls": 200,
+          "capsule_tests": 6400,
+          "errors": 0,
+          "maximum_wall_seconds": 5.329e-6,
+          "nodes": 13200,
+          "triangles": 2400,
+          "truncated": 0,
+          "wall_seconds": 0.0007843919999999998
+        },
+        "sweep": {
+          "calls": 200,
+          "capsule_tests": 0,
+          "errors": 0,
+          "maximum_wall_seconds": 0.000016485,
+          "nodes": 13200,
+          "triangles": 2400,
+          "truncated": 0,
+          "wall_seconds": 0.0016798789999999991
+        }
+      },
+      "rigid_last": {
+        "bound_tests": 476,
+        "candidate_pairs": 2016,
+        "colliders": 64,
+        "filtered_pairs": 476,
+        "index_updates": 0,
+        "narrow_phase": 0,
+        "scene_nodes": 0
+      },
+      "rigid_p95_ms": {
+        "detect": 0.013443,
+        "solve": 0.00046699999999999997,
+        "total": 0.013982
+      },
+      "rigid_steps": 60,
+      "scene_build_ms": 0.031948
+    },
+    {
+      "colliders": 256,
+      "energy_residual": 0.0,
+      "hit_counts": [
+        4,
+        1,
+        6
+      ],
+      "momentum_residual": {
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "query_iterations": 200,
+      "query_last_stats": [
+        "Stats { nodes: 258, triangles: 12, capsule_tests: 128 }",
+        "Stats { nodes: 255, triangles: 0, capsule_tests: 0 }",
+        "Stats { nodes: 258, triangles: 12, capsule_tests: 0 }"
+      ],
+      "query_p95_us": {
+        "overlap": 4.357,
+        "ray": 14.940999999999999,
+        "sweep": 15.105
+      },
+      "query_profile": {
+        "overlap": {
+          "calls": 200,
+          "capsule_tests": 0,
+          "errors": 0,
+          "maximum_wall_seconds": 0.000017971,
+          "nodes": 51000,
+          "triangles": 0,
+          "truncated": 0,
+          "wall_seconds": 0.0008353579999999999
+        },
+        "ray": {
+          "calls": 200,
+          "capsule_tests": 25600,
+          "errors": 0,
+          "maximum_wall_seconds": 0.000019171,
+          "nodes": 51600,
+          "triangles": 2400,
+          "truncated": 0,
+          "wall_seconds": 0.002851265999999999
+        },
+        "sweep": {
+          "calls": 200,
+          "capsule_tests": 0,
+          "errors": 0,
+          "maximum_wall_seconds": 0.00002232,
+          "nodes": 51600,
+          "triangles": 2400,
+          "truncated": 0,
+          "wall_seconds": 0.0026417109999999993
+        }
+      },
+      "rigid_last": {
+        "bound_tests": 2012,
+        "candidate_pairs": 32640,
+        "colliders": 256,
+        "filtered_pairs": 2012,
+        "index_updates": 0,
+        "narrow_phase": 0,
+        "scene_nodes": 0
+      },
+      "rigid_p95_ms": {
+        "detect": 0.076026,
+        "solve": 0.001877,
+        "total": 0.078089
+      },
+      "rigid_steps": 60,
+      "scene_build_ms": 0.134141
+    },
+    {
+      "colliders": 1024,
+      "energy_residual": 0.0,
+      "hit_counts": [
+        4,
+        1,
+        6
+      ],
+      "momentum_residual": {
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "query_iterations": 200,
+      "query_last_stats": [
+        "Stats { nodes: 1026, triangles: 12, capsule_tests: 512 }",
+        "Stats { nodes: 1023, triangles: 0, capsule_tests: 0 }",
+        "Stats { nodes: 1026, triangles: 12, capsule_tests: 0 }"
+      ],
+      "query_p95_us": {
+        "overlap": 23.982,
+        "ray": 65.161,
+        "sweep": 41.31
+      },
+      "query_profile": {
+        "overlap": {
+          "calls": 200,
+          "capsule_tests": 0,
+          "errors": 0,
+          "maximum_wall_seconds": 0.000030561,
+          "nodes": 204600,
+          "triangles": 0,
+          "truncated": 0,
+          "wall_seconds": 0.0040664920000000005
+        },
+        "ray": {
+          "calls": 200,
+          "capsule_tests": 102400,
+          "errors": 0,
+          "maximum_wall_seconds": 0.00007632,
+          "nodes": 205200,
+          "triangles": 2400,
+          "truncated": 0,
+          "wall_seconds": 0.012334898000000006
+        },
+        "sweep": {
+          "calls": 200,
+          "capsule_tests": 0,
+          "errors": 0,
+          "maximum_wall_seconds": 0.000052279,
+          "nodes": 205200,
+          "triangles": 2400,
+          "truncated": 0,
+          "wall_seconds": 0.007348239999999997
+        }
+      },
+      "rigid_last": {
+        "bound_tests": 8156,
+        "candidate_pairs": 523776,
+        "colliders": 1024,
+        "filtered_pairs": 8156,
+        "index_updates": 0,
+        "narrow_phase": 0,
+        "scene_nodes": 0
+      },
+      "rigid_p95_ms": {
+        "detect": 0.8863369999999999,
+        "solve": 0.008735,
+        "total": 0.896426
+      },
+      "rigid_steps": 60,
+      "scene_build_ms": 0.652727
+    },
+    {
+      "colliders": 4096,
+      "energy_residual": 0.0,
+      "hit_counts": [
+        4,
+        1,
+        6
+      ],
+      "momentum_residual": {
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "query_iterations": 200,
+      "query_last_stats": [
+        "Stats { nodes: 4098, triangles: 12, capsule_tests: 2048 }",
+        "Stats { nodes: 4095, triangles: 0, capsule_tests: 0 }",
+        "Stats { nodes: 4098, triangles: 12, capsule_tests: 0 }"
+      ],
+      "query_p95_us": {
+        "overlap": 130.914,
+        "ray": 280.421,
+        "sweep": 158.607
+      },
+      "query_profile": {
+        "overlap": {
+          "calls": 200,
+          "capsule_tests": 0,
+          "errors": 0,
+          "maximum_wall_seconds": 0.000210561,
+          "nodes": 819000,
+          "triangles": 0,
+          "truncated": 0,
+          "wall_seconds": 0.022424131999999996
+        },
+        "ray": {
+          "calls": 200,
+          "capsule_tests": 409600,
+          "errors": 0,
+          "maximum_wall_seconds": 0.000292561,
+          "nodes": 819600,
+          "triangles": 2400,
+          "truncated": 0,
+          "wall_seconds": 0.05308569900000005
+        },
+        "sweep": {
+          "calls": 200,
+          "capsule_tests": 0,
+          "errors": 0,
+          "maximum_wall_seconds": 0.000200275,
+          "nodes": 819600,
+          "triangles": 2400,
+          "truncated": 0,
+          "wall_seconds": 0.029659488000000015
+        }
+      },
+      "rigid_last": {
+        "bound_tests": 32732,
+        "candidate_pairs": 8386560,
+        "colliders": 4096,
+        "filtered_pairs": 32732,
+        "index_updates": 0,
+        "narrow_phase": 0,
+        "scene_nodes": 0
+      },
+      "rigid_p95_ms": {
+        "detect": 12.602506,
+        "solve": 0.031623,
+        "total": 12.634588
+      },
+      "rigid_steps": 60,
+      "scene_build_ms": 4.593254
+    }
+  ],
+  "schema": "openagents.physics.scene-broadphase.v1"
+}

@@ -1,0 +1,80 @@
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+warning: struct `Bounds` is never constructed
+ --> crates/physics/src/broadphase.rs:6:19
+  |
+6 | pub(crate) struct Bounds { pub min: DVec3, pub max: DVec3 }
+  |                   ^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `union`, `intersects`, `contains`, `expanded`, and `area` are never used
+  --> crates/physics/src/broadphase.rs:8:12
+   |
+ 7 | impl Bounds {
+   | ----------- methods in this implementation
+ 8 |     pub fn union(self, other: Self) -> Self { Self { min: self.min.min(other.min), max: self.max.max(other.max) } }
+   |            ^^^^^
+ 9 |     pub fn intersects(self, other: Self) -> bool { self.min.cmple(other.max).all() && other.min.cmple(self.max).all() }
+   |            ^^^^^^^^^^
+10 |     fn contains(self, other: Self) -> bool { self.min.cmple(other.min).all() && self.max.cmpge(other.max).all() }
+   |        ^^^^^^^^
+11 |     pub fn expanded(self, margin: f64) -> Self { Self { min: self.min - DVec3::splat(margin), max: self.max + DVec3::splat(margin) } }
+   |            ^^^^^^^^
+12 |     fn area(self) -> f64 { let d = self.max - self.min; 2. * (d.x * d.y + d.x * d.z + d.y * d.z) }
+   |        ^^^^
+
+warning: struct `Node` is never constructed
+  --> crates/physics/src/broadphase.rs:15:8
+   |
+15 | struct Node<K> { bounds: Bounds, parent: Option<usize>, children: Option<[usize; 2]>, key: Option<K>, height: u32 }
+   |        ^^^^
+
+warning: struct `Tree` is never constructed
+  --> crates/physics/src/broadphase.rs:17:19
+   |
+17 | pub(crate) struct Tree<K> { root: Option<usize>, nodes: Vec<Option<Node<K>>>, free: Vec<usize>, leaves: BTreeMap<K, usize> }
+   |                   ^^^^
+
+warning: multiple methods are never used
+   --> crates/physics/src/broadphase.rs:24:8
+    |
+ 23 | impl<K: Copy + Ord> Tree<K> {
+    | --------------------------- methods in this implementation
+ 24 |     fn node(&self, id: usize) -> &Node<K> { self.nodes[id].as_ref().unwrap() }
+    |        ^^^^
+ 25 |     fn node_mut(&mut self, id: usize) -> &mut Node<K> { self.nodes[id].as_mut().unwrap() }
+    |        ^^^^^^^^
+ 26 |     fn allocate(&mut self, node: Node<K>) -> usize {
+    |        ^^^^^^^^
+...
+ 30 |     fn release(&mut self, id: usize) { self.nodes[id] = None; self.free.push(id); }
+    |        ^^^^^^^
+ 31 |     fn replace(&mut self, parent: Option<usize>, old: usize, new: Option<usize>) {
+    |        ^^^^^^^
+...
+ 39 |     fn refit(&mut self, id: usize) {
+    |        ^^^^^
+...
+ 46 |     fn rotate(&mut self, root: usize, right: bool) -> usize {
+    |        ^^^^^^
+...
+ 60 |     fn balance(&mut self, id: usize) -> usize {
+    |        ^^^^^^^
+...
+ 74 |     fn ascend(&mut self, mut at: Option<usize>) {
+    |        ^^^^^^
+...
+ 77 |     pub fn set(&mut self, key: K, bounds: Bounds) -> bool {
+    |            ^^^
+...
+ 95 |     pub fn remove(&mut self, key: K) -> bool {
+    |            ^^^^^^
+...
+105 |     pub fn query(&self, bounds: Bounds, visits: &mut usize) -> Vec<K> {
+    |            ^^^^^
+...
+117 |     pub fn is_empty(&self) -> bool { self.leaves.is_empty() }
+    |            ^^^^^^^^
+
+warning: `physics` (lib) generated 5 warnings
+    Finished `release` profile [optimized] target(s) in 2.65s
