@@ -343,3 +343,21 @@ the 27,965,018-byte pack `136a9389…` answered 200, and headless Chrome drew
 the Grove at `/druid` (Wild Shape and a cast from the keys) and Everglade's
 town at `/everglade` over WebGPU before traffic moved. Rollback:
 `--to-revisions coder-web-db7f3ddf47=100`.
+
+## 2026-10-05: coder-web-f6ed2aa223, the Grid at `/grid`
+
+`openagents.com/grid` serves the browser Grid with NIP-MV presence (#10587):
+browser players appear with names, can block and mute from a name tag, and
+see when the world is full. It runs on WebGL2 as well as WebGPU (#10626).
+The same image carries round 3 and 4 of Everglade (the 9.8 MB `VTP3` pack,
+levels of detail, wildlife) and destructible town buildings with Meteor
+Swarm. Image `openagents/openagents-web:f6ed2aa223`, built from GitHub by
+the automation account and applied as `chris@` from the live spec with only
+the revision name and image changed (`CODER_CHAT_SYNC` quoted). On the `new`
+tag, `/`, `/grid`, `/everglade`, `/druid`, `/docs`, `/download`, `/live`,
+`/stats`, `/efficiency`, `/api/stats`, `/terms`, and the agent card answered
+200, the page policy allowed `wss://relay.openagents.com`, and headless
+Chrome driven in real time drew `/grid` online on the public relay with a
+name tag, Everglade's town at `/everglade`, and the Grove at `/druid`
+before traffic moved. Rollback:
+`--to-revisions coder-web-addbb9b72f=100`.
