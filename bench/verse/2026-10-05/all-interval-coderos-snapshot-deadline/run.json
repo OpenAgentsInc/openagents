@@ -1,0 +1,33 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "host_revision": "194613eba2",
+  "client_revision": "a1b731c9e3",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "movement_send_steps": 6,
+  "wire_version": 26,
+  "timings": {
+    "frame_p95_ms": 22.445625,
+    "gpu_p95_ms": 10.890542,
+    "verified_snapshot_age_p95_ms": 162.439042,
+    "command_turnaround_p95_ms": 202.798292
+  },
+  "movement_expiries": 318,
+  "native_reset_reasons": {
+    "control_epoch": 20,
+    "teleport": 1
+  },
+  "validation": [
+    "Both clients and host exited zero.",
+    "All 19 headless workers observed 20 players and at least 40 live hostile NPCs.",
+    "18381 movement inputs with zero producer pressure.",
+    "17 focused worker tests passed before building matching clients."
+  ],
+  "limits": [
+    "Shared machine and disk conditions vary; these runs do not isolate causality.",
+    "Snapshot age, command latency, movement continuity, and native frame timing remain unacceptable.",
+    "No impaired-network, input-to-display, or soak acceptance."
+  ]
+}
