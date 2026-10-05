@@ -285,7 +285,12 @@ fn the_yard_builds_from_the_pack_and_draws_with_the_character() {
     assert!(hurt, "the hammer struck the south wall");
     assert!(yard.caption().contains("damage"));
     // The hammer and the damage draw.
-    assert!(!yard.mesh(&at).faces.is_empty());
+    assert!(
+        !yard
+            .mesh(&at, at.pos + Vec3::new(0.0, 2.0, -4.0), None)
+            .faces
+            .is_empty()
+    );
 }
 
 use super::super::player;

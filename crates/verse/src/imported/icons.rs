@@ -134,6 +134,14 @@ pub const ICONS: &[Icon] = &[
         "Delapouite",
         TRANSMUTATION
     ),
+    // The demolition yard's hotbar: swing the sledgehammer, and rebuild.
+    icon!(
+        "sledgehammer-icon",
+        "delapouite/hammer-break.svg",
+        "Delapouite",
+        STONE
+    ),
+    icon!("rebuild-icon", "delapouite/house.svg", "Delapouite", OIL),
 ];
 
 /// Edge length of a rasterized icon. The slot draws 36 logical units at up to

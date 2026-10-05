@@ -66,8 +66,9 @@ pub const PLAYER_DETAIL_TRIANGLES: usize = 1_000;
 /// neighbors, in meters, quaternion units, or scale.
 const KEY_TOLERANCE: f32 = 1e-4;
 /// The player's clips: the pack's name and the chamber's clip ID for idle,
-/// walk, run, the airborne pose, backpedal, and the two strafes.
-pub const PLAYER_CLIPS: [(&str, u16); 7] = [
+/// walk, run, the airborne pose, backpedal, the two strafes, and the
+/// demolition yard's two-handed sledgehammer swing ([`SWING_CLIP`]).
+pub const PLAYER_CLIPS: [(&str, u16); 8] = [
     ("idle", 0),
     ("walk", 4),
     ("run", 5),
@@ -75,7 +76,12 @@ pub const PLAYER_CLIPS: [(&str, u16); 7] = [
     ("backpedal", 13),
     ("strafe_left", 14),
     ("strafe_right", 15),
+    ("swing", SWING_CLIP.0),
 ];
+/// The swing's clip ID and the Universal Animation Library 2 clip it is
+/// retargeted from (`animations.glb`, already retained): a two-handed
+/// chop, which the demolition yard plays with a sledgehammer.
+pub const SWING_CLIP: (u16, &str) = (71, "TreeChopping_Loop");
 const CREATOR: &str = "Quaternius";
 const LICENSE: &str = "CC0-1.0";
 const LICENSE_FILE: &str = "license.txt";
@@ -621,7 +627,13 @@ impl Builder<'_> {
             textures: Vec::new(),
             placements: Vec::new(),
         };
-        let model = characters::appearance(&mut engine, scratch, sources, PLAYER_APPEARANCE)?;
+        let mut model = characters::appearance(&mut engine, scratch, sources, PLAYER_APPEARANCE)?;
+        characters::retarget_clip(
+            &mut model,
+            &sources.join("animations.glb"),
+            SWING_CLIP.0,
+            SWING_CLIP.1,
+        )?;
         let skin = model.skin.as_ref().ok_or("The player has no skin")?;
         let inverse = Mat4::from_cols_array(&skin.basis).inverse();
         if model.bones.len() > format::MAX_JOINTS {

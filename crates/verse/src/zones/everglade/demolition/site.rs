@@ -80,26 +80,13 @@ pub enum Role {
     Chimney,
 }
 
-/// What a piece is made of: its color inside, hit points, and mass.
+/// What a piece is made of: its dust's color, hit points, and mass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Matter {
     Plaster,
     Timber,
     Tile,
     Brick,
-}
-
-impl Matter {
-    /// The color a broken face shows, linear.
-    #[must_use]
-    pub fn interior(self) -> [f32; 3] {
-        match self {
-            Self::Plaster => [0.62, 0.55, 0.45],
-            Self::Timber => [0.30, 0.19, 0.10],
-            Self::Tile => [0.45, 0.20, 0.13],
-            Self::Brick => [0.42, 0.22, 0.16],
-        }
-    }
 }
 
 /// A box in a body's frame.
@@ -212,6 +199,8 @@ pub struct Blow {
     pub damage: i32,
     pub hit_points: i32,
     pub broke: bool,
+    /// Where the head struck, in the world.
+    pub at: Vec3,
 }
 
 /// The yard: its pieces as built, the physics world, and what is alive.
@@ -410,6 +399,7 @@ impl Site {
             damage,
             hit_points: self.pieces[piece].hit_points,
             broke,
+            at: point.as_vec3(),
         })
     }
 
@@ -781,8 +771,8 @@ impl Site {
 
     fn dust(&mut self, at: Vec3, count: usize, scale: f32, matter: Matter) {
         let base = match matter {
-            Matter::Tile | Matter::Brick => [0.55, 0.42, 0.36],
-            _ => [0.72, 0.68, 0.6],
+            Matter::Tile | Matter::Brick => [0.4, 0.27, 0.21],
+            _ => [0.44, 0.4, 0.33],
         };
         for _ in 0..count {
             if self.puffs.len() >= MAX_PUFFS {

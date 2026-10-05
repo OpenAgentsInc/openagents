@@ -1733,7 +1733,7 @@ impl App {
 
     fn update_title(&mut self) {
         let title = if !self.runtime.is_plaza() {
-            format!("Verse — {} — local", self.runtime.zone.label())
+            format!("Verse — {} — local", self.runtime.zone_label())
         } else {
             match &self.session {
                 None => "Verse — offline".to_owned(),
@@ -2037,7 +2037,11 @@ impl App {
     /// Everglade's hotbar slot under `at`, in logical units.
     fn hotbar_at(&self, at: [f32; 2]) -> Option<ZoneIntent> {
         let (size, _) = self.viewport()?;
-        zones::everglade::hotbar::hit(at, size.map(|v| v / self.scale), HOTBAR_BOTTOM)
+        let size = size.map(|v| v / self.scale);
+        if self.runtime.in_demolition() {
+            return zones::everglade::demolition::hotbar::hit(at, size, HOTBAR_BOTTOM);
+        }
+        zones::everglade::hotbar::hit(at, size, HOTBAR_BOTTOM)
     }
 
     fn map_visible(&self) -> bool {
@@ -2168,12 +2172,16 @@ impl App {
                 });
                 return;
             }
-            // The demolition yard: 1 swings the sledgehammer, R rebuilds.
+            // The demolition yard's hotbar: 1 swings the sledgehammer, R
+            // rebuilds.
             if self.runtime.in_demolition() {
-                match code {
-                    KeyCode::Digit1 => return self.zone_action(ZoneIntent::Swing),
-                    KeyCode::KeyR => return self.zone_action(ZoneIntent::Rebuild),
-                    _ => {}
+                let name = match code {
+                    KeyCode::Digit1 => "Digit1",
+                    KeyCode::KeyR => "KeyR",
+                    _ => "",
+                };
+                if let Some(intent) = zones::everglade::demolition::hotbar::key(name) {
+                    return self.zone_action(intent);
                 }
             }
             // The Grove's hotbar: 1 to 9 cast its spells, and 0 rests.
@@ -3166,7 +3174,7 @@ impl App {
                         && !self.board_open
                         && !self.gym_open
                         && self.picker.is_none()
-                        && (!self.in_bare_everglade() || self.runtime.in_demolition())
+                        && !self.in_bare_everglade()
                         && !self.in_bare_grove(),
                 ));
                 if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.zone_frame) {
@@ -3191,6 +3199,23 @@ impl App {
                         vertex.pos = vertex.pos.map(|v| v * self.scale);
                     }
                     ui.vertices.extend(bar.vertices);
+                }
+                if self.in_bare_everglade()
+                    && let (Some(atlas), Some(bar)) =
+                        (&self.map_atlas, self.runtime.demolition_bar())
+                {
+                    let mut batch = crate::ui::UiBatch::default();
+                    zones::everglade::demolition::hotbar::draw(
+                        &mut batch,
+                        atlas,
+                        size.map(|v| v / self.scale),
+                        HOTBAR_BOTTOM,
+                        &bar,
+                    );
+                    for vertex in &mut batch.vertices {
+                        vertex.pos = vertex.pos.map(|v| v * self.scale);
+                    }
+                    ui.vertices.extend(batch.vertices);
                 }
                 if self.in_bare_grove()
                     && let (Some(atlas), Some(slots)) = (&self.map_atlas, self.runtime.grove_bar())
@@ -3473,6 +3498,9 @@ impl ApplicationHandler for App {
         }
         if let Err(error) = zones::grove::hotbar::add_sprites(&mut atlas) {
             eprintln!("verse: the Grove's hotbar has no icons: {error}");
+        }
+        if let Err(error) = zones::everglade::demolition::hotbar::add_sprites(&mut atlas) {
+            eprintln!("verse: the demolition yard's hotbar has no icons: {error}");
         }
         if let Err(error) = self.open_surface(window.clone(), &atlas) {
             self.error = Some(error);

@@ -1,13 +1,14 @@
 # Game-icons.net action icons
 
-These 20 icons come from [game-icons.net](https://game-icons.net), downloaded
-on October 4, 2026, as white SVGs on a transparent background. They are
+These 22 icons come from [game-icons.net](https://game-icons.net), downloaded
+on October 4 and 5, 2026, as white SVGs on a transparent background. They are
 licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/);
 `license.txt` is the archive's license file. The renderer tints each icon and
 flips Reverse Gravity and Everglade's Up arrow vertically. The files are
-unmodified, except that the one added for Everglade's hotbar, fetched from
-the [game-icons repository](https://github.com/game-icons/icons), had their
-black background square removed to match.
+unmodified, except that the ones added for Everglade's and the demolition
+yard's hotbars, fetched from the
+[game-icons repository](https://github.com/game-icons/icons), had their black
+background square removed to match.
 
 Icons made by Lorc (<http://lorcblog.blogspot.com>):
 
@@ -34,3 +35,5 @@ Icons made by Delapouite (<https://delapouite.com>):
 - `delapouite/tentacles-barrier.svg` (Black Tentacles)
 - `delapouite/gravitation.svg` (Reverse Gravity)
 - `delapouite/plain-arrow.svg` (Up and Down, Everglade)
+- `delapouite/hammer-break.svg` (Swing, the demolition yard)
+- `delapouite/house.svg` (Rebuild, the demolition yard)

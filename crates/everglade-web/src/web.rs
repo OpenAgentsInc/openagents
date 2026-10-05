@@ -199,6 +199,7 @@ async fn run() -> Result<(), String> {
     let mut atlas = Atlas::new((14.0 * scale).round());
     zones::everglade::hotbar::add_sprites(&mut atlas)?;
     zones::grove::hotbar::add_sprites(&mut atlas)?;
+    zones::everglade::demolition::hotbar::add_sprites(&mut atlas)?;
     let mut canvas = canvas;
     let mut renderer = open(&canvas, backends, &runtime, &atlas, width, height).await?;
     // Everglade's textured world draws only on the physical renderer. A
@@ -388,6 +389,9 @@ impl Page {
         if let (Some(layout), Some(slots)) = (&self.layout, self.runtime.everglade_hotbar()) {
             zones::everglade::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &slots);
         }
+        if let (Some(layout), Some(bar)) = (&self.layout, self.runtime.demolition_bar()) {
+            zones::everglade::demolition::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &bar);
+        }
         if let (Some(layout), Some(bar)) = (&self.layout, self.runtime.grove_bar()) {
             zones::grove::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &bar);
         }
@@ -408,7 +412,9 @@ impl Page {
     /// Presses the hotbar slot under `at` (CSS pixels) for `pointer`;
     /// returns whether one was there.
     fn press_hotbar(&mut self, at: [f32; 2], pointer: Option<i32>) -> bool {
-        let hit = if self.runtime.grove_bar().is_some() {
+        let hit = if self.runtime.in_demolition() {
+            zones::everglade::demolition::hotbar::hit(at, self.css_size(), 0.0)
+        } else if self.runtime.grove_bar().is_some() {
             zones::grove::hotbar::hit(at, self.css_size(), 0.0)
         } else {
             zones::everglade::hotbar::hit(at, self.css_size(), 0.0)
@@ -547,18 +553,15 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 event.prevent_default();
                 return;
             }
-            // The demolition yard: 1 swings the sledgehammer, R rebuilds.
-            if down && page.runtime.in_demolition() {
-                let intent = match event.code().as_str() {
-                    "Digit1" => Some(zones::Intent::Swing),
-                    "KeyR" => Some(zones::Intent::Rebuild),
-                    _ => None,
-                };
-                if let Some(intent) = intent {
-                    let _ = page.runtime.zone_intent(intent);
-                    event.prevent_default();
-                    return;
-                }
+            // The demolition yard's hotbar: 1 swings the sledgehammer, R
+            // rebuilds.
+            if down
+                && page.runtime.in_demolition()
+                && let Some(intent) = zones::everglade::demolition::hotbar::key(&event.code())
+            {
+                let _ = page.runtime.zone_intent(intent);
+                event.prevent_default();
+                return;
             }
             let used = page.hotbar_key(&event.code(), down);
             if used || page.input.key(&event.code(), down) {

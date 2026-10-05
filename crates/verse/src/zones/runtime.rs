@@ -743,6 +743,16 @@ impl WorldRuntime {
         ])
     }
 
+    /// The demolition yard's hotbar, or `None` outside the yard.
+    #[must_use]
+    pub fn demolition_bar(&self) -> Option<super::everglade::demolition::hotbar::Bar> {
+        if self.zone != ZoneId::Everglade {
+            return None;
+        }
+        let glade = self.zone_state.everglade.as_ref()?;
+        Some(glade.demolition()?.bar())
+    }
+
     /// The Grove's hotbar and mana, or `None` outside the Grove.
     #[must_use]
     pub fn grove_bar(&self) -> Option<super::grove::hotbar::Bar> {
@@ -932,10 +942,10 @@ impl WorldRuntime {
             .as_ref()
             .and_then(Everglade::demolition)
         {
+            // The yard's hotbar ([`Self::demolition_bar`]) draws these;
+            // Space jumps.
             add("swing", "Swing", Intent::Swing, true);
             add("rebuild", "Rebuild", Intent::Rebuild, true);
-            add("jump", "Jump", Intent::Jump, !self.player.airborne());
-            add("return", self.return_label(), Intent::Return, true);
             yard.caption()
         } else if let Some(glade) = &self.zone_state.everglade {
             add("jump", "Jump", Intent::Jump, !self.player.airborne());
@@ -1225,6 +1235,8 @@ impl WorldRuntime {
     pub fn zone_label(&self) -> &'static str {
         if self.is_bare() && self.is_plaza() {
             GRID_LABEL
+        } else if self.in_demolition() {
+            "Demolition yard"
         } else {
             self.zone.label()
         }

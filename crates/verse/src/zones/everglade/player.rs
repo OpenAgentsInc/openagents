@@ -178,6 +178,242 @@ pub(crate) struct Rig {
     /// which a seat's tint colors.
     outfit: Range<usize>,
     head: Option<Head>,
+    /// The demolition yard's swing, when the pack has it.
+    swing: Option<Loop>,
+    hands: Option<Hands>,
+}
+
+/// The pack's name for the demolition yard's two-handed swing, and the
+/// engine ID it plays under.
+const SWING: &str = "swing";
+const SWING_ID: u16 = 60;
+/// The sledgehammer: how far the handle runs past the lower hand to its
+/// butt, and from that hand to the head's center, m.
+pub const BUTT: f32 = 0.16;
+pub const HEAD_AT: f32 = 0.86;
+/// Samples taken of the swing when the zone loads.
+const SWING_SAMPLES: usize = 64;
+/// How long the hold takes to move between the carry and both hands on
+/// the handle at a swing's start and end, s.
+const TAKE_UP: f32 = 0.18;
+
+/// How a character holds the sledgehammer: the lower hand's grip, the
+/// handle's direction from it toward the head, and the head's striking
+/// direction, at right angles to the handle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hold {
+    pub grip: Vec3,
+    pub axis: Vec3,
+    pub face: Vec3,
+}
+
+impl Hold {
+    /// The head's center.
+    #[must_use]
+    pub fn head(&self) -> Vec3 {
+        self.grip + self.axis * HEAD_AT
+    }
+
+    /// This hold placed by `m`.
+    #[must_use]
+    pub fn moved(&self, m: Mat4) -> Self {
+        Self {
+            grip: m.transform_point3(self.grip),
+            axis: m.transform_vector3(self.axis).normalize_or(self.axis),
+            face: m.transform_vector3(self.face).normalize_or(self.face),
+        }
+    }
+
+    /// The hold `k` of the way from this one to `other`.
+    fn toward(&self, other: &Self, k: f32) -> Self {
+        let axis = self.axis.lerp(other.axis, k).normalize_or(other.axis);
+        let face = self.face.lerp(other.face, k);
+        Self {
+            grip: self.grip.lerp(other.grip, k),
+            axis,
+            face: (face - axis * face.dot(axis)).normalize_or(other.face),
+        }
+    }
+}
+
+/// The swing as the character plays it, sampled when the zone loads, in
+/// the character's model space: when the head lands, and the hold at each
+/// sample.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SwingTrack {
+    pub duration: f32,
+    /// When the head lands, s into the clip: where it reaches farthest
+    /// forward.
+    pub impact: f32,
+    pub holds: Vec<Hold>,
+}
+
+impl SwingTrack {
+    /// The sampled hold nearest `t` seconds into the swing.
+    #[must_use]
+    pub fn hold(&self, t: f32) -> Hold {
+        let last = self.holds.len().saturating_sub(1);
+        let i = ((t / self.duration).clamp(0.0, 1.0) * last as f32).round() as usize;
+        self.holds[i.min(last)]
+    }
+
+    /// How fully both hands hold the handle `t` seconds into the swing:
+    /// rising from the carry at the start and falling back at the end.
+    #[must_use]
+    pub fn grasp(&self, t: f32) -> f32 {
+        let ease = |x: f32| {
+            let x = x.clamp(0.0, 1.0);
+            x * x * (3.0 - 2.0 * x)
+        };
+        ease(t / TAKE_UP).min(ease((self.duration - t) / TAKE_UP))
+    }
+}
+
+/// The hands that hold the sledgehammer.
+struct Hands {
+    /// The right hand's joint and bind transform, then the left's.
+    joints: [(usize, Mat4); 2],
+    /// The handle's and the face's directions in the right hand's frame
+    /// as it carries the hammer.
+    carry: (Vec3, Vec3),
+    /// Whether the right hand is the lower one on the handle in the swing.
+    right_lower: bool,
+    track: Option<SwingTrack>,
+}
+
+impl Hands {
+    /// The hands of `skeleton`, the carry fitted to `model`'s `idle` pose,
+    /// and the `swing` sampled when the pack has it.
+    fn find(
+        model: &Model,
+        joints: &[crate::zones::everglade_pack::Joint],
+        skeleton: &Skeleton,
+        idle: Loop,
+        swing: Option<Loop>,
+    ) -> Option<Self> {
+        let bind = |j: usize| {
+            joints
+                .get(j)
+                .map(|joint| Mat4::from_cols_array(&joint.inverse_bind).inverse())
+        };
+        // The model faces +Z, so the character's right is -X: the second
+        // arm.
+        let [left, right] = skeleton.arms.map(|arm| arm.end);
+        let hands = [(right, bind(right)?), (left, bind(left)?)];
+        let pose = |id: u16, t: f32| {
+            Playback::default()
+                .update_selected(model, id.into(), t, 0.0)
+                .ok()
+        };
+        let world = |skin: &[Mat4], k: usize| skin.get(hands[k].0).map(|m| *m * hands[k].1);
+        let rest = world(&pose(idle.id, 0.0)?, 0)?;
+        // Carried in the right hand, the handle points ahead and down and the
+        // head's face looks ahead and up.
+        let axis = Vec3::new(0.0, -0.55, 0.85).normalize();
+        let face = axis.cross(Vec3::X).normalize();
+        let inverse = rest.inverse();
+        let carry = (
+            inverse.transform_vector3(axis),
+            inverse.transform_vector3(face),
+        );
+        let mut right_lower = true;
+        let track = swing.and_then(|swing| {
+            let samples: Vec<[Vec3; 2]> = (0..SWING_SAMPLES)
+                .map(|i| {
+                    let t = swing.duration * i as f32 / (SWING_SAMPLES - 1) as f32;
+                    let skin = pose(swing.id, t)?;
+                    Some(
+                        [0, 1].map(|k| world(&skin, k).map_or(Vec3::ZERO, |m| m.w_axis.truncate())),
+                    )
+                })
+                .collect::<Option<_>>()?;
+            // The lower hand is the one that puts the head farthest ahead.
+            let reach = |lower: usize| {
+                samples
+                    .iter()
+                    .map(|p| {
+                        let axis = (p[1 - lower] - p[lower]).normalize_or_zero();
+                        (p[lower] + axis * HEAD_AT).z
+                    })
+                    .fold(f32::NEG_INFINITY, f32::max)
+            };
+            right_lower = reach(0) >= reach(1);
+            let lower = usize::from(!right_lower);
+            let mut holds: Vec<Hold> = samples
+                .iter()
+                .map(|p| {
+                    let axis = (p[1 - lower] - p[lower]).normalize_or(Vec3::Y);
+                    Hold {
+                        grip: p[lower],
+                        axis,
+                        face: Vec3::ZERO,
+                    }
+                })
+                .collect();
+            // The face looks the way the head moves.
+            let heads: Vec<Vec3> = holds.iter().map(Hold::head).collect();
+            let mut previous = Vec3::Z;
+            for (i, hold) in holds.iter_mut().enumerate() {
+                let a = heads[i.saturating_sub(1)];
+                let b = heads[(i + 1).min(heads.len() - 1)];
+                let moving = b - a;
+                let face = moving - hold.axis * moving.dot(hold.axis);
+                hold.face = if face.length() > 1e-3 {
+                    face.normalize()
+                } else {
+                    previous
+                };
+                previous = hold.face;
+            }
+            let impact = heads
+                .iter()
+                .enumerate()
+                .max_by(|a, b| a.1.z.total_cmp(&b.1.z))
+                .map_or(0.0, |(i, _)| {
+                    swing.duration * i as f32 / (SWING_SAMPLES - 1) as f32
+                });
+            Some(SwingTrack {
+                duration: swing.duration,
+                impact,
+                holds,
+            })
+        });
+        Some(Self {
+            joints: hands,
+            carry,
+            right_lower,
+            track,
+        })
+    }
+
+    /// The hold under skin matrices `skin`, `swing` seconds into a swing
+    /// or carried, in model space.
+    fn hold(&self, skin: &[Mat4], swing: Option<f32>) -> Option<Hold> {
+        let world = |k: usize| skin.get(self.joints[k].0).map(|m| *m * self.joints[k].1);
+        let right = world(0)?;
+        let carry = Hold {
+            grip: right.w_axis.truncate(),
+            axis: right.transform_vector3(self.carry.0).normalize_or(Vec3::Z),
+            face: right.transform_vector3(self.carry.1).normalize_or(Vec3::Y),
+        };
+        let (Some(t), Some(track)) = (swing, &self.track) else {
+            return Some(carry);
+        };
+        let left = world(1)?.w_axis.truncate();
+        let [lower, upper] = if self.right_lower {
+            [carry.grip, left]
+        } else {
+            [left, carry.grip]
+        };
+        let axis = (upper - lower).normalize_or(carry.axis);
+        let sampled = track.hold(t);
+        let both = Hold {
+            grip: lower,
+            axis,
+            face: (sampled.face - axis * sampled.face.dot(axis)).normalize_or(carry.face),
+        };
+        Some(carry.toward(&both, track.grasp(t)))
+    }
 }
 
 /// The engine ID of the motion clip at `index`, clear of the IDs the
@@ -224,6 +460,28 @@ impl Rig {
                     .collect(),
             });
         }
+        // The demolition yard's swing, which a pack before it lacks.
+        let swing = character.clip(SWING).map(|clip| {
+            clips.push(Clip {
+                id: SWING_ID,
+                duration: clip.duration,
+                bones: clip
+                    .tracks
+                    .iter()
+                    .map(|t| BoneKeys {
+                        bone: usize::from(t.joint),
+                        translation: t.translation.clone(),
+                        rotation: t.rotation.clone(),
+                        scale: t.scale.clone(),
+                    })
+                    .collect(),
+            });
+            Loop {
+                id: SWING_ID,
+                duration: clip.duration,
+                distance: 0.0,
+            }
+        });
         // The seats' postures, authored from idle on the skeleton's shape.
         // A skeleton that is not a humanoid's plays idle for each.
         let skeleton = Skeleton::find(&character.joints);
@@ -292,6 +550,15 @@ impl Rig {
             height: 0.0,
             attachments: Vec::new(),
         };
+        let hands = skeleton.as_ref().and_then(|skeleton| {
+            Hands::find(
+                &model,
+                &character.joints,
+                skeleton,
+                motions[Motion::Idle.index()],
+                swing,
+            )
+        });
         let mut base = TexturedScene::default();
         let mut copied = Copied::default();
         let mut primitives: Vec<Primitive> = Vec::new();
@@ -352,6 +619,8 @@ impl Rig {
             bound,
             outfit,
             head,
+            swing,
+            hands,
         };
         rig.scene(1).validate()?;
         Ok(rig)
@@ -515,6 +784,17 @@ impl Actor {
             .ok()
     }
 
+    /// Plays `clip` at `time` seconds in, after `dt` more seconds of the
+    /// clock, so a change of clip still blends; returns the skin matrices.
+    fn hold_at(&mut self, rig: &Rig, clip: Loop, time: f32, dt: f32) -> Option<Vec<Mat4>> {
+        self.clip = clip.id;
+        self.time = time.clamp(0.0, clip.duration);
+        self.clock += if dt.is_finite() { dt.max(0.0) } else { 0.0 };
+        self.playback
+            .update_selected(&rig.model, clip.id.into(), self.time, self.clock)
+            .ok()
+    }
+
     /// Eases the head toward `target`, seen from the posed head of a
     /// character under `joints` placed by `root` facing `yaw`, and
     /// returns the turn.
@@ -581,6 +861,10 @@ pub(crate) struct Cast {
     scene: Arc<TexturedScene>,
     copies: usize,
     vertices: Arc<Vec<TexturedVertex>>,
+    /// Seconds into the player's sledgehammer swing, while one plays.
+    swing: Option<f32>,
+    /// How the player holds the sledgehammer this frame, in the world.
+    hold: Option<Hold>,
 }
 
 impl Cast {
@@ -602,6 +886,8 @@ impl Cast {
             player: Actor::new(),
             seats: Vec::new(),
             copies: 1,
+            swing: None,
+            hold: None,
         };
         cast.advance(at, &[], 0.0);
         Ok(Some(cast))
@@ -623,11 +909,18 @@ impl Cast {
         let rig = &self.rig;
         let mut vertices = Vec::with_capacity(rig.template.len() * (1 + seats.len()));
         let motion = Motion::of_player(at);
-        let joints = self
-            .player
-            .advance(rig, Play::Motion(motion), at.speed, dt)
-            .unwrap_or_default();
+        let swing = self.swing.zip(rig.swing);
+        let joints = match swing {
+            Some((t, clip)) => self.player.hold_at(rig, clip, t, dt),
+            None => self.player.advance(rig, Play::Motion(motion), at.speed, dt),
+        }
+        .unwrap_or_default();
         let root = Mat4::from_rotation_translation(Quat::from_rotation_y(at.yaw), at.pos);
+        self.hold = rig
+            .hands
+            .as_ref()
+            .and_then(|hands| hands.hold(&joints, swing.map(|s| s.0)))
+            .map(|hold| hold.moved(root));
         rig.skin(&joints, root, None, &mut vertices);
         let mut actors = std::mem::take(&mut self.seats);
         for seat in seats {
@@ -650,6 +943,25 @@ impl Cast {
             self.copies = copies;
         }
         self.vertices = Arc::new(vertices);
+    }
+
+    /// Plays the sledgehammer swing `t` seconds in from the next advance,
+    /// or, with `None`, the player's movement again.
+    pub fn set_swing(&mut self, t: Option<f32>) {
+        self.swing = t;
+    }
+
+    /// How the player holds the sledgehammer, in the world, as last posed:
+    /// carried in the right hand, or in both through a swing.
+    #[must_use]
+    pub fn hold(&self) -> Option<Hold> {
+        self.hold
+    }
+
+    /// The swing as the character plays it, when the pack has the clip.
+    #[must_use]
+    pub fn swing_track(&self) -> Option<&SwingTrack> {
+        self.rig.hands.as_ref()?.track.as_ref()
     }
 
     /// Everyone posed for this frame's dynamic mesh.
@@ -763,6 +1075,34 @@ mod tests {
         // The body's heading counts: facing +x, a target on +x is ahead.
         let [yaw, _] = aim(head, std::f32::consts::FRAC_PI_2, Vec3::new(3.0, 1.6, 0.0));
         assert!(yaw.abs() < 1e-4, "{yaw}");
+    }
+
+    #[test]
+    fn the_player_carries_the_sledgehammer_and_chops_with_both_hands() {
+        let pack = super::super::tests::pack();
+        let at = PlayerController::new(Vec3::new(3.0, 0.0, -2.0), 0.7);
+        let mut cast = Cast::new(pack, &at).unwrap().expect("the pack's character");
+        let track = cast.swing_track().expect("the pack has the swing").clone();
+        assert!(track.impact > 0.1 && track.impact < track.duration);
+        // The head lands ahead of the character, about chest to knee high.
+        let head = track.hold(track.impact).head();
+        assert!(head.z > 0.5 && (0.3..1.8).contains(&head.y), "{head}");
+        // Carried, the hammer hangs from the right hand, ahead of it.
+        cast.advance(&at, &[], 0.0);
+        let carry = cast.hold().expect("the character holds the hammer");
+        let right = at.forward().cross(Vec3::Y);
+        assert!((carry.grip - at.pos).dot(right) > 0.05, "{carry:?}");
+        assert!(carry.axis.dot(at.forward()) > 0.3, "{carry:?}");
+        // Through the chop both hands hold the handle, the head out past
+        // them.
+        cast.set_swing(Some(track.impact));
+        for _ in 0..30 {
+            cast.advance(&at, &[], 1.0 / 30.0);
+        }
+        let chop = cast.hold().unwrap();
+        assert!((chop.axis.length() - 1.0).abs() < 1e-3);
+        assert!(chop.face.dot(chop.axis).abs() < 1e-3);
+        assert!((chop.head() - at.pos).dot(at.forward()) > 0.5, "{chop:?}");
     }
 
     #[test]
