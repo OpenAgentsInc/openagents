@@ -318,3 +318,14 @@ impl Layout {
             .map(|(id, _)| id)
     }
 }
+
+pub fn inner(rect: Rect, cell: [f32; 2]) -> Rect {
+    let bar = cell[1] + 4.0;
+    let pad = 4.0;
+    Rect::new(
+        rect.x + pad,
+        rect.y + bar + 2.0,
+        (rect.w - 2.0 * pad).max(0.0),
+        (rect.h - bar - 2.0 - pad).max(0.0),
+    )
+}

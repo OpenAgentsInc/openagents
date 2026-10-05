@@ -4,7 +4,7 @@
 //!
 //! The prefix, then `?`, shows the numbers in the overlay's header, and
 //! while they show the overlay logs one JSON line a second to standard
-//! error. A stress run ([`super::stress`]) records every frame instead.
+//! error. A mount can record every frame for a stress run.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};

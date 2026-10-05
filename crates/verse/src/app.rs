@@ -761,7 +761,7 @@ impl App {
         // Find OpenAgents Terminal for the terminal overlay ahead of time:
         // a fresh build's first run can take seconds while macOS checks it.
         #[cfg(not(test))]
-        std::thread::spawn(crate::terminal::pty::Program::openagents_terminal);
+        std::thread::spawn(crate::terminal::pty::openagents_terminal);
         let world = world::build();
         let mut player = PlayerController::new(world::SPAWN, 0.0);
         let mut session = match &options.relay {
@@ -3728,6 +3728,8 @@ impl App {
                         text: (c != '\r').then(|| c.to_string()),
                         plain: None,
                         pressed: true,
+                        repeat: false,
+                        synthetic: false,
                     });
                 }
                 Action::Finish => {
@@ -4049,7 +4051,11 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            WindowEvent::KeyboardInput { event, .. } => {
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic,
+                ..
+            } => {
                 if let PhysicalKey::Code(code) = event.physical_key
                     && self.terminal_key(&crate::terminal::KeyIn {
                         code,
@@ -4057,6 +4063,8 @@ impl ApplicationHandler for App {
                         text: event.text.as_ref().map(ToString::to_string),
                         plain: plain_key(&event),
                         pressed: event.state == ElementState::Pressed,
+                        repeat: event.repeat,
+                        synthetic: is_synthetic,
                     })
                 {
                     return;
@@ -4340,6 +4348,8 @@ mod tests {
             text: Some(c.to_owned()),
             plain: Some(c.to_owned()),
             pressed: true,
+            repeat: false,
+            synthetic: false,
         };
         // Closed, the world has every key.
         assert!(!app.terminal_key(&key(KeyCode::KeyW, "w")));

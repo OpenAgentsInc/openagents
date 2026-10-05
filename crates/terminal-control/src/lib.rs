@@ -3,12 +3,14 @@
 //! an agent, or a test can drive the same panes the window draws.
 //!
 //! The socket sits in a directory of mode `0700` and is itself `0600`, so
-//! only Verse's own user reaches it. Connections are read on their own
+//! only this process's user reaches it. Connections are read on their own
 //! threads; the requests cross to the frame thread, where the overlay
 //! applies them between frames and sends the reply back.
 //!
-//! This module needs neither the `terminal` feature nor a window, so
+//! This adapter needs no renderer or window, so
 //! `openagents verse terminal` links it as the client.
+
+#![cfg(unix)]
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -18,7 +20,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
 use std::time::Duration;
 
-use serde::Deserialize;
 use serde_json::Value;
 
 /// The environment variable that names the socket instead of the default.
@@ -40,46 +41,7 @@ pub fn default_path() -> Option<PathBuf> {
     )
 }
 
-/// One request, as a line of JSON: `{"op": "split", "axis": "cols"}`.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(tag = "op", rename_all = "kebab-case")]
-pub enum Request {
-    /// The overlay, its tabs, and its panes.
-    Status,
-    /// Show the overlay with focus, starting the first pane when none runs.
-    Open,
-    /// Hide the overlay; its panes keep running.
-    Hide,
-    /// Split the focused pane; `program` is a command line, or empty for
-    /// the shell.
-    Split {
-        axis: String,
-        #[serde(default)]
-        program: Vec<String>,
-    },
-    /// Focus a neighbor (`left`, `right`, `up`, `down`) or a pane by id.
-    Focus {
-        #[serde(default)]
-        direction: Option<String>,
-        #[serde(default)]
-        pane: Option<u64>,
-    },
-    /// Close the focused pane, ending its program.
-    Close,
-    /// Type `text` into the focused pane as a paste.
-    Send { text: String },
-    /// Press a named key in the focused pane: `enter`, `ctrl-c`, `up`, ...
-    Key { name: String },
-    /// The visible text of the focused pane, or of pane `pane`.
-    Read {
-        #[serde(default)]
-        pane: Option<u64>,
-    },
-    /// Tabs: `new`, `next`, or `prev`.
-    Tab { action: String },
-    /// Zoom the focused pane to the whole overlay, or back.
-    Zoom,
-}
+pub use terminal_core::control::Request;
 
 /// A request waiting for the frame thread, with where its reply goes.
 pub type Pending = (Request, SyncSender<Value>);

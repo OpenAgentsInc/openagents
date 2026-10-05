@@ -74,7 +74,7 @@ pub use verse_pbr::streaming;
 #[cfg(all(feature = "terminal", not(target_arch = "wasm32")))]
 pub mod terminal;
 #[cfg(unix)]
-pub mod terminal_control;
+pub use terminal_control;
 pub use verse_core::tooltip;
 pub use verse_gfx::ui;
 pub mod world;

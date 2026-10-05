@@ -7,9 +7,9 @@
 use coder_ui::theme::{Intensity, NEAR_BLACK};
 use coder_vt::{Cell, Color, CursorShape, Flags, Row};
 
-use super::layout::Rect;
-use crate::palette;
-use crate::ui::{Atlas, UiBatch};
+use terminal_core::layout::Rect;
+use verse_gfx::palette;
+use verse_gfx::ui::{Atlas, UiBatch};
 
 /// A ladder step at an opacity, in linear light.
 #[must_use]

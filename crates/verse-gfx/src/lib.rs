@@ -4,6 +4,7 @@
 //! frame profiling, and the third-person follow camera. `verse` re-exports
 //! each module under its old path. Read `docs/verse/README.md`.
 
+#[cfg(feature = "world-camera")]
 pub mod camera;
 pub mod gles;
 pub mod gpu_lifecycle;

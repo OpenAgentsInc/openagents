@@ -96,6 +96,8 @@ fn key(code: KeyCode, logical: Logical, text: Option<&str>) -> KeyIn {
         text: text.map(str::to_owned),
         plain: text.map(str::to_owned),
         pressed: true,
+        repeat: false,
+        synthetic: false,
     }
 }
 
@@ -983,7 +985,7 @@ fn zsh_hooks_keep_user_configuration_and_make_requests_pending() {
 #[test]
 fn attached_context_scrubs_credentials_before_preview() {
     let text = "authorization: Bearer private\napi_key=private\nsafe\n-----BEGIN PRIVATE KEY-----\nprivate\n-----END PRIVATE KEY-----\nvalue sk-example";
-    let clean = super::smart::scrub(text);
+    let clean = terminal_core::smart::scrub(text);
     assert!(!clean.contains("private"));
     assert!(!clean.contains("sk-example"));
     assert!(clean.contains("safe"));
@@ -1039,7 +1041,19 @@ fn a_live_shell_proposal_waits_for_exact_enter_and_destructive_confirmation() {
         text: None,
         plain: None,
         pressed: true,
+        repeat: false,
+        synthetic: false,
     };
+    for (repeat, synthetic) in [(true, false), (false, true)] {
+        let mut generated = enter.clone();
+        generated.repeat = repeat;
+        generated.synthetic = synthetic;
+        assert!(overlay.key(&generated));
+        assert!(matches!(
+            overlay.smart.book.entries[&key].phase,
+            Phase::Pending
+        ));
+    }
     assert!(overlay.key(&enter));
     assert!(matches!(
         overlay.smart.book.entries[&key].phase,

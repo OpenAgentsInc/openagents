@@ -98,6 +98,8 @@ fn press(overlay: &mut Overlay, code: KeyCode, text: &str) {
         text: Some(text.into()),
         plain: Some(text.into()),
         pressed: true,
+        repeat: false,
+        synthetic: false,
     });
 }
 
@@ -129,7 +131,7 @@ fn main() -> Result<(), String> {
             "printf 'cargo test -p verse --lib -- terminal\\n   Compiling coder-vt v0.1.0\\n   Compiling verse v0.1.0\\n    Finished test profile in 41.2s\\ntest result: ok. 24 passed; 0 failed\\nwarning: unused import in render.rs\\n'; exec cat",
             "sh build",
         ),
-        _ => Program::openagents_terminal()
+        _ => verse::terminal::pty::openagents_terminal()
             .unwrap_or_else(|| sh("ls -la /usr/bin | head -40; exec cat", "ls")),
     };
     let mut overlay = Overlay::with(&root, "/bin/sh".into(), first);
@@ -204,6 +206,8 @@ fn main() -> Result<(), String> {
             text: None,
             plain: None,
             pressed: true,
+            repeat: false,
+            synthetic: false,
         });
         let area = Overlay::area_for(size, verse::terminal::draw::cell_size(&atlas));
         let cell = verse::terminal::draw::cell_size(&atlas);

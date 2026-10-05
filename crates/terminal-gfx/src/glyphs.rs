@@ -15,7 +15,7 @@ use swash::scale::image::Content;
 use swash::scale::{Render, ScaleContext, Source, StrikeWith};
 use swash::zeno::Format;
 
-use crate::ui::Atlas;
+use verse_gfx::ui::Atlas;
 
 /// Fonts tried after Fira Mono, in order, with the face index in a
 /// collection. Missing files are skipped.
@@ -107,7 +107,7 @@ impl Fallback {
         let mut fonts = vec![Font {
             path: None,
             index: 0,
-            data: Some(Data::Static(crate::ui::MONO_FONT)),
+            data: Some(Data::Static(verse_gfx::ui::MONO_FONT)),
             failed: false,
         }];
         fonts.extend(

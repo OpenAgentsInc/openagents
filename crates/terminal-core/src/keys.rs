@@ -3,8 +3,8 @@
 //! modifier parameters for Ctrl, Alt, and Shift), Ctrl combinations as
 //! control characters, and Option as Meta on macOS.
 
+use crate::input::{KeyCode, Logical, NamedKey};
 use coder_vt::{Key, Modifiers, Terminal};
-use winit::keyboard::{Key as Logical, KeyCode, NamedKey};
 
 use super::KeyIn;
 

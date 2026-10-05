@@ -1,0 +1,24 @@
+[package]
+name = "terminal-app"
+version = "1.0.0-rc.2"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OpenAgents Terminal: the shared smart terminal in a native window."
+
+[[bin]]
+name = "openagents-terminal"
+path = "src/main.rs"
+
+[dependencies]
+terminal-core = { path = "../terminal-core" }
+terminal-gfx = { path = "../terminal-gfx" }
+verse-gfx = { path = "../verse-gfx", default-features = false }
+winit = "0.30.12"
+wgpu = "29.0.4"
+bytemuck = "1.25"
+pollster = "0.4"
+serde_json = "1"
+
+[lints]
+workspace = true

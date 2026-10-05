@@ -37,3 +37,17 @@ impl Request {
         Ok(text)
     }
 }
+
+/// Only typed helper events cross back into application state.
+pub enum Message {
+    Attached(String),
+    Proposal(crate::proposals::Proposal, crate::proposals::Effect),
+}
+/// A mount owns the helper's process or network connection.
+pub trait Process: Send {
+    fn ended(&mut self) -> Option<bool>;
+}
+pub struct Connection {
+    pub events: std::sync::mpsc::Receiver<Message>,
+    pub process: Box<dyn Process>,
+}

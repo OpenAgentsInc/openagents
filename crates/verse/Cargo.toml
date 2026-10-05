@@ -18,7 +18,7 @@ capture = []
 panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 # The in-world terminal overlay: panes on PTYs of this computer, drawn
 # from a `coder-vt` grid. Native desktop only.
-terminal = ["dep:terminal-core", "dep:coder-pty", "dep:coder-vt", "dep:winit", "dep:arboard", "dep:memmap2"]
+terminal = ["dep:terminal-gfx", "dep:winit"]
 # The Agent Studio from a live host, over its same-user control socket.
 studio-host = ["dep:openagents-connect"]
 imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface", "verse-pbr/imported-desktop", "verse-imported/imported-desktop"]
@@ -68,7 +68,8 @@ atif = { path = "../atif" }
 # draws, without the host.
 coder-access = { path = "../coder-access", default-features = false }
 coder-ui = { path = "../coder-ui" }
-terminal-core = { path = "../terminal-core", optional = true }
+terminal-control = { path = "../terminal-control" }
+terminal-gfx = { path = "../terminal-gfx", optional = true }
 coder-vt = { path = "../coder-vt", optional = true }
 rust-native = { path = "../rust-native" }
 rust-native-desktop = { path = "../rust-native-desktop", default-features = false, optional = true }

@@ -1,14 +1,9 @@
-//! Request preview and a typed subprocess adapter to the shared chat client.
+//! Request preview and the injected typed bridge to the shared chat client.
 
 use super::layout::PaneId;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{self, Receiver};
-use terminal_core::{
-    bridge::Request,
-    context::Context,
-    proposals::{Book, Proposal},
-};
+use crate::bridge::Message;
+use crate::{bridge::Request, context::Context, proposals::Book};
+use std::sync::mpsc::Receiver;
 
 pub struct Draft {
     pub pane: PaneId,
@@ -17,104 +12,30 @@ pub struct Draft {
     pub context: Context,
 }
 
-pub enum Message {
-    Attached(String),
-    Proposal(Proposal, terminal_core::proposals::Effect),
-}
-
 pub struct Worker {
     pub pane: PaneId,
     pub request: Request,
     pub events: Receiver<Message>,
-    child: Child,
     pub eof: bool,
-    started: std::time::Instant,
+    process: Box<dyn crate::bridge::Process>,
 }
-
 impl Worker {
-    pub fn start(pane: PaneId, request: Request) -> Result<Self, String> {
-        let program = super::pty::candidates("openagents")
-            .into_iter()
-            .next()
-            .ok_or("openagents helper not found")?;
-        let mut child = Command::new(program)
-            .args(["--json", "chat", "shell-request", "-"])
-            .current_dir(&request.binding.cwd)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|_| "terminal request helper did not start")?;
-        let body =
-            serde_json::to_vec(&request).map_err(|_| "terminal request could not be encoded")?;
-        let mut input = child
-            .stdin
-            .take()
-            .ok_or("terminal request helper has no input")?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or("terminal request helper has no output")?;
-        let (sender, events) = mpsc::channel();
-        std::thread::spawn(move || {
-            if input.write_all(&body).is_err() {
-                return;
-            }
-            drop(input);
-            let mut reader = BufReader::new(stdout);
-            loop {
-                let mut line = String::new();
-                // The shared helper emits bounded NDJSON; a malformed line fails closed.
-                if (&mut reader)
-                    .take(256 * 1024 + 1)
-                    .read_line(&mut line)
-                    .ok()
-                    .is_none_or(|size| size == 0)
-                {
-                    break;
-                }
-                if line.len() > 256 * 1024 {
-                    break;
-                }
-                let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
-                    continue;
-                };
-                let message = match value["event"].as_str() {
-                    Some("attached") => value["thread"].as_str().map(|thread| Message::Attached(thread.into())),
-                    Some("shell-proposal") => serde_json::from_value(value["proposal"].clone()).ok().map(|proposal| Message::Proposal(proposal, if value["effect"] == "read_only" { terminal_core::proposals::Effect::Ordinary } else { terminal_core::proposals::Effect::Destructive("This command may change files or this computer, or publish data. Press Enter again to approve it.".into()) })),
-                    _ => None,
-                };
-                if let Some(message) = message {
-                    let _ = sender.send(message);
-                }
-            }
-        });
+    pub fn start(
+        transport: &dyn crate::pty::Transport,
+        pane: PaneId,
+        request: Request,
+    ) -> Result<Self, String> {
+        let connection = transport.request(&request)?;
         Ok(Self {
             pane,
             request,
-            events,
-            child,
+            events: connection.events,
+            process: connection.process,
             eof: false,
-            started: std::time::Instant::now(),
         })
     }
-
     pub fn ended(&mut self) -> Option<bool> {
-        if self.started.elapsed() > std::time::Duration::from_secs(150) {
-            let _ = self.child.kill();
-        }
-        self.child
-            .try_wait()
-            .ok()
-            .flatten()
-            .map(|status| status.success())
-    }
-}
-
-impl Drop for Worker {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.process.ended()
     }
 }
 
@@ -135,7 +56,14 @@ pub struct Smart {
 }
 
 pub fn id() -> String {
-    super::pty::request()[32..].to_owned()
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    crate::proposals::digest(&(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |value| value.as_nanos()),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+    ))[..32]
+        .to_owned()
 }
 
 /// Scrubs common credential-bearing lines before their preview and submission.
@@ -195,17 +123,17 @@ pub fn scrub(text: &str) -> String {
 }
 
 #[derive(Default)]
-pub struct Policies(pub std::collections::BTreeMap<String, terminal_core::proposals::Effect>);
-impl terminal_core::proposals::Policy for Policies {
-    fn effect(&self, command: &str) -> terminal_core::proposals::Effect {
+pub struct Policies(pub std::collections::BTreeMap<String, crate::proposals::Effect>);
+impl crate::proposals::Policy for Policies {
+    fn effect(&self, command: &str) -> crate::proposals::Effect {
         self.0.get(command).cloned().unwrap_or_else(|| {
-            terminal_core::proposals::Effect::Denied("no host policy admitted this command".into())
+            crate::proposals::Effect::Denied("no host policy admitted this command".into())
         })
     }
 }
 
 impl super::Overlay {
-    pub(super) fn ask(&mut self, text: String) {
+    pub fn ask(&mut self, text: String) {
         let Some(pane_id) = self.focus_id() else {
             return;
         };
@@ -232,53 +160,7 @@ impl super::Overlay {
             context.attach(block, &scrub);
         }
         if let Some(directory) = &context.directory {
-            let directory = directory.clone();
-            let (sender, receiver) = mpsc::channel();
-            self.smart.git = Some(receiver);
-            std::thread::spawn(move || {
-                let Ok(mut child) = Command::new("git")
-                    .args(["status", "--short", "--branch"])
-                    .env("GIT_OPTIONAL_LOCKS", "0")
-                    .current_dir(&directory)
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::null())
-                    .spawn()
-                else {
-                    return;
-                };
-                let Some(stdout) = child.stdout.take() else {
-                    return;
-                };
-                let (output_sender, output_receiver) = mpsc::channel();
-                std::thread::spawn(move || {
-                    let mut bytes = Vec::new();
-                    let result = stdout.take(8193).read_to_end(&mut bytes);
-                    let _ = output_sender.send((result, bytes));
-                });
-                if let Ok((Ok(_), bytes)) =
-                    output_receiver.recv_timeout(std::time::Duration::from_secs(2))
-                    && bytes.len() <= 8192
-                    && {
-                        let deadline =
-                            std::time::Instant::now() + std::time::Duration::from_millis(100);
-                        loop {
-                            if let Ok(Some(status)) = child.try_wait() {
-                                break status.success();
-                            }
-                            if std::time::Instant::now() >= deadline {
-                                break false;
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(5));
-                        }
-                    }
-                {
-                    let summary = scrub(&String::from_utf8_lossy(&bytes));
-                    let _ = sender.send((pane_id, directory, summary));
-                }
-                let _ = child.kill();
-                let _ = child.wait();
-            });
+            self.smart.git = Some(self.sessions().0.git_summary(pane_id, directory.clone()));
         }
         self.smart.draft = Some(Draft {
             pane: pane_id,
@@ -288,9 +170,13 @@ impl super::Overlay {
         });
     }
 
-    pub(super) fn smart_key(&mut self, key: &super::KeyIn) -> bool {
-        use winit::keyboard::KeyCode;
+    pub fn smart_key(&mut self, key: &super::KeyIn) -> bool {
+        use crate::input::KeyCode;
+        let focus = self.focus_id();
         if let Some(draft) = &mut self.smart.draft {
+            if Some(draft.pane) != focus {
+                return false;
+            }
             match key.code {
                 KeyCode::Escape => self.smart.draft = None,
                 KeyCode::Backspace => {
@@ -302,7 +188,7 @@ impl super::Overlay {
                 }
                 KeyCode::PageDown => draft.scroll = draft.scroll.saturating_add(10),
                 KeyCode::PageUp => draft.scroll = draft.scroll.saturating_sub(10),
-                KeyCode::Enter => self.submit_draft(),
+                KeyCode::Enter | KeyCode::NumpadEnter => self.submit_draft(),
                 _ => {
                     if let Some(text) = &key.text {
                         draft.text.extend(text.chars().filter(|c| !c.is_control()));
@@ -328,7 +214,7 @@ impl super::Overlay {
                 self.smart.proposal_scroll = self.smart.proposal_scroll.saturating_sub(10);
                 return true;
             }
-            if key.code == KeyCode::Enter {
+            if matches!(key.code, KeyCode::Enter | KeyCode::NumpadEnter) {
                 let entry = &self.smart.book.entries[&proposal_key];
                 let Some(pane) = self.panes.get(&pane_id) else {
                     return true;
@@ -358,10 +244,8 @@ impl super::Overlay {
                     &id(),
                     &self.smart.policy,
                 ) {
-                    Ok(terminal_core::proposals::Approval::Warning(warning)) => {
-                        self.notice = Some(warning)
-                    }
-                    Ok(terminal_core::proposals::Approval::Input { identity, bytes }) => {
+                    Ok(crate::proposals::Approval::Warning(warning)) => self.notice = Some(warning),
+                    Ok(crate::proposals::Approval::Input { identity, bytes }) => {
                         let after = pane
                             .session
                             .blocks
@@ -383,11 +267,7 @@ impl super::Overlay {
     }
 
     fn submit_draft(&mut self) {
-        if self
-            .smart
-            .workers
-            .iter()
-            .any(|worker| Some(worker.pane) == self.focus_id())
+        if !self.smart.workers.is_empty()
             || self.smart.pending.is_some()
             || self.smart.execution.is_some()
         {
@@ -421,7 +301,7 @@ impl super::Overlay {
             self.smart.draft = Some(draft);
             return;
         }
-        match Worker::start(draft.pane, request) {
+        match Worker::start(self.sessions().0.as_ref(), draft.pane, request) {
             Ok(worker) => {
                 self.smart.workers.push(worker);
                 self.notice = Some("Request submitted once; waiting for the shared client.".into());
@@ -433,7 +313,7 @@ impl super::Overlay {
         }
     }
 
-    pub(super) fn smart_tick(&mut self) {
+    pub fn smart_tick(&mut self) {
         if let Some((pane_id, directory, summary)) = self
             .smart
             .git
@@ -474,10 +354,20 @@ impl super::Overlay {
                             program,
                             mut args,
                             label,
-                        }) = super::pty::Program::openagents_terminal()
+                        }) = self.sessions().0.thread_program()
                     {
                         args.extend(["--thread".into(), thread, "--observe".into()]);
+                        let active = self.active;
                         let focus = self.focus_id();
+                        let Some(source_tab) = self
+                            .tabs
+                            .iter()
+                            .position(|tab| tab.layout.panes().contains(&pane_id))
+                        else {
+                            continue;
+                        };
+                        self.active = source_tab;
+                        self.tabs[source_tab].layout.set_focus(pane_id);
                         self.split(
                             super::layout::Axis::Columns,
                             &super::pty::Program::Command {
@@ -486,6 +376,7 @@ impl super::Overlay {
                                 label,
                             },
                         );
+                        self.active = active;
                         if let Some(focus) = focus
                             && let Some(tab) = self.tabs.get_mut(self.active)
                         {
@@ -520,7 +411,7 @@ impl super::Overlay {
         }
     }
 
-    pub(super) fn block_move(&mut self, previous: bool) {
+    pub fn block_move(&mut self, previous: bool) {
         let Some(pane_id) = self.focus_id() else {
             return;
         };
@@ -554,7 +445,7 @@ impl super::Overlay {
         ));
     }
 
-    pub(super) fn copy_block(&mut self) {
+    pub fn copy_block(&mut self) {
         let block = self
             .focus_id()
             .and_then(|pane| self.panes.get(&pane))
@@ -571,7 +462,7 @@ impl super::Overlay {
         }
     }
 
-    pub(super) fn collapse_block(&mut self) {
+    pub fn collapse_block(&mut self) {
         let selected = self
             .smart
             .selected
@@ -582,11 +473,11 @@ impl super::Overlay {
                 selected.or_else(|| pane.session.blocks.records.back().map(|block| block.id))
         {
             pane.session.blocks.collapse(id);
-            pane.cache = None;
+            pane.render_revision = pane.render_revision.wrapping_add(1);
         }
     }
 
-    pub(super) fn rerun_block(&mut self) {
+    pub fn rerun_block(&mut self) {
         let block = self
             .focus_id()
             .and_then(|pane| self.panes.get(&pane))
@@ -601,82 +492,6 @@ impl super::Overlay {
         if let Some(block) = block {
             self.paste(&block.command);
             self.notice = Some("Command copied to the shell. Enter runs a new block.".into());
-        }
-    }
-
-    pub(super) fn draw_smart(&self, batch: &mut crate::ui::UiBatch, atlas: &crate::ui::Atlas) {
-        use coder_ui::theme::Intensity;
-        let lines = if let Some(draft) = &self.smart.draft {
-            format!(
-                "Request: {}\n{}\nEnter sends · Ctrl+D removes context · PgUp/PgDn scroll · Esc cancels",
-                draft.text,
-                draft.context.preview()
-            )
-        } else if let Some((_, key)) = &self.smart.pending {
-            let entry = &self.smart.book.entries[key];
-            let proposal = &entry.proposal;
-            let warning = if matches!(entry.phase, terminal_core::proposals::Phase::Warned { .. }) {
-                match self.smart.policy.0.get(&proposal.command) {
-                    Some(terminal_core::proposals::Effect::Destructive(warning)) => {
-                        warning.as_str()
-                    }
-                    _ => "Press Enter again to approve this command.",
-                }
-            } else {
-                "Enter approves · PgUp/PgDn scroll · Esc dismisses"
-            };
-            format!(
-                "Pending command · {}\nThread {} · proposal {} revision {}\n$ {}\n{}",
-                proposal.binding.cwd,
-                proposal.thread,
-                proposal.id,
-                proposal.revision,
-                proposal.command,
-                warning
-            )
-        } else {
-            return;
-        };
-        let [cw, ch] = self.cell;
-        let rect = self.area;
-        batch.rect(
-            atlas,
-            rect.x,
-            rect.y,
-            rect.w,
-            rect.h,
-            super::draw::field(0.98),
-        );
-        let rows = (rect.h / ch).max(1.0) as usize;
-        let columns = (rect.w / cw).max(1.0) as usize;
-        let scroll = self
-            .smart
-            .draft
-            .as_ref()
-            .map_or(self.smart.proposal_scroll, |draft| draft.scroll);
-        let wrapped = lines
-            .lines()
-            .flat_map(|line| {
-                let chars = line.chars().collect::<Vec<_>>();
-                if chars.is_empty() {
-                    vec![String::new()]
-                } else {
-                    chars
-                        .chunks(columns.saturating_sub(2).max(1))
-                        .map(|chunk| chunk.iter().collect::<String>())
-                        .collect()
-                }
-            })
-            .collect::<Vec<_>>();
-        let scroll = scroll.min(wrapped.len().saturating_sub(rows));
-        for (index, line) in wrapped.iter().skip(scroll).take(rows).enumerate() {
-            batch.text(
-                atlas,
-                rect.x + cw,
-                rect.y + index as f32 * ch,
-                line,
-                super::draw::white(Intensity::ThreeQuarters, 1.0),
-            );
         }
     }
 }
@@ -725,7 +540,7 @@ impl super::Overlay {
             context,
             binding,
         };
-        match Worker::start(pane_id, request.clone()) {
+        match Worker::start(self.sessions().0.as_ref(), pane_id, request.clone()) {
             Ok(worker) => {
                 self.smart.results.insert(request.request, (key, approval));
                 self.smart.workers.push(worker);

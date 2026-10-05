@@ -1,0 +1,161 @@
+//! Injected local or remote sessions. The application owns grids and output budgets.
+use crate::{
+    blocks::Blocks,
+    bridge::{Connection, Request},
+    proposals::Binding,
+};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, mpsc::Receiver};
+use std::time::{Duration, Instant};
+
+pub const SCROLLBACK: usize = 5000;
+#[derive(Clone, Debug)]
+pub enum Program {
+    Shell,
+    Command {
+        program: PathBuf,
+        args: Vec<String>,
+        label: String,
+    },
+}
+impl Program {
+    pub fn label(&self, shell: &Path) -> String {
+        match self {
+            Self::Shell => shell.file_name().map_or_else(
+                || "shell".into(),
+                |name| name.to_string_lossy().into_owned(),
+            ),
+            Self::Command { label, .. } => label.clone(),
+        }
+    }
+}
+
+pub enum Event {
+    Output(Vec<u8>),
+    Gap,
+    End(String),
+}
+/// A terminal attachment; implementations retain their protocol and platform objects.
+pub trait Attachment: Send {
+    fn input(&self, bytes: &[u8]);
+    fn resize(&self, rows: u16, cols: u16);
+    fn close(&self);
+    fn poll(&mut self) -> Option<Event>;
+    fn target(&self) -> Option<Binding>;
+    fn directory(&self) -> Option<String>;
+}
+
+/// Mount services are injected; this crate has no window, network, or native clipboard.
+pub trait Transport: Send + Sync {
+    fn shell(&self) -> &Path;
+    fn open(&self, program: &Program, rows: u16, cols: u16) -> Result<Box<dyn Attachment>, String>;
+    fn shutdown(&self);
+    fn thread_program(&self) -> Option<Program>;
+    fn resolve(&self, name: &str) -> Option<PathBuf>;
+    fn request(&self, request: &Request) -> Result<Connection, String>;
+    fn git_summary(&self, pane: u64, directory: String) -> Receiver<(u64, String, String)>;
+    fn open_link(&self, target: &str) -> Result<(), String>;
+    fn clipboard(&self) -> Option<String>;
+    fn copy(&self, text: &str) -> Result<(), String>;
+}
+
+pub struct Sessions(pub Arc<dyn Transport>);
+impl Sessions {
+    pub fn shell(&self) -> &Path {
+        self.0.shell()
+    }
+    pub fn open(&self, program: &Program, rows: u16, cols: u16) -> Result<Session, String> {
+        Ok(Session {
+            vt: coder_vt::Terminal::new(rows.into(), cols.into(), SCROLLBACK),
+            blocks: Blocks::default(),
+            exited: None,
+            cwd: None,
+            started: Instant::now(),
+            checked: None,
+            attachment: self.0.open(program, rows, cols)?,
+        })
+    }
+    pub fn input(&self, session: &Session, bytes: &[u8]) {
+        if session.exited.is_none() {
+            session.attachment.input(bytes);
+        }
+    }
+    pub fn resize(&self, session: &mut Session, rows: u16, cols: u16) {
+        let (rows, cols) = (rows.max(1), cols.max(1));
+        if session.vt.rows() == rows as usize && session.vt.cols() == cols as usize {
+            return;
+        }
+        session.vt.resize(rows.into(), cols.into());
+        session.attachment.resize(rows, cols);
+    }
+    pub fn close(&self, session: &Session) {
+        session.attachment.close();
+    }
+    pub fn shutdown(&self) {
+        self.0.shutdown();
+    }
+    pub fn pump(&self, session: &mut Session, maximum: usize, deadline: Instant) -> (bool, u64) {
+        let mut changed = false;
+        let mut bytes = 0u64;
+        loop {
+            if bytes as usize >= maximum || (bytes > 0 && Instant::now() >= deadline) {
+                break;
+            }
+            let Some(event) = session.attachment.poll() else {
+                break;
+            };
+            changed = true;
+            match event {
+                Event::Output(data) => {
+                    bytes += data.len() as u64;
+                    session.vt.feed(&data);
+                }
+                Event::Gap => session.vt.mark("[output skipped]"),
+                Event::End(reason) => session.exited = Some(reason),
+            }
+            session.blocks.update(
+                &mut session.vt,
+                session.started.elapsed().as_millis() as u64,
+            );
+        }
+        let replies = session.vt.take_replies();
+        if !replies.is_empty() {
+            self.input(session, &replies);
+        }
+        let now = Instant::now();
+        if session
+            .checked
+            .is_none_or(|at| now.duration_since(at) > Duration::from_secs(1))
+        {
+            session.checked = Some(now);
+            session.cwd = session.attachment.directory();
+        }
+        (changed, bytes)
+    }
+}
+
+pub struct Session {
+    pub vt: coder_vt::Terminal,
+    pub blocks: Blocks,
+    pub exited: Option<String>,
+    pub cwd: Option<String>,
+    started: Instant,
+    checked: Option<Instant>,
+    attachment: Box<dyn Attachment>,
+}
+impl Session {
+    pub fn binding(&self, context_digest: String) -> Option<Binding> {
+        let mut binding = self.attachment.target()?;
+        binding.context_digest = context_digest;
+        binding.shell_directory = self.blocks.cwd.clone();
+        Some(binding)
+    }
+}
+impl std::fmt::Debug for Session {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Session")
+            .field("vt", &self.vt)
+            .field("exited", &self.exited)
+            .finish_non_exhaustive()
+    }
+}

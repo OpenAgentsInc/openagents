@@ -63,10 +63,28 @@ Enter. The resulting command block returns to the same thread without
 replaying an uncertain command. `Ctrl+B`, then `j` or `k` navigates blocks,
 `y` copies, `d` collapses output, and `r` types a command for a new run.
 
+The Grid overlay and the standalone `openagents-terminal` window mount the same
+`terminal-core` application and `terminal-gfx` renderer. The core receives session,
+request, clipboard, and link services through an injected interface; it has no
+window, renderer, network, or Verse dependency. The standalone does not link the
+Verse application or world. Native packages support macOS arm64; Linux is a
+development platform. zsh supports request hooks; other shells retain normal PTY
+input and can use the explicit Ask action. Hide/reopen preserves local panes;
+exiting either app ends its local process groups. The chat-only `openagents terminal`
+command remains separate.
+
+Build the native package on the Mac with
+`scripts/release/native-terminal.py build --commit origin/main`, setting an
+absolute, reusable `CARGO_TARGET_DIR` outside the checkout. It bundles the GUI,
+`openagents`, and `microcoder` from that commit under `OpenAgents Terminal.app`.
+The separate `openagents-terminal/` release prefix does not change the existing
+seven-platform TUI channel. Signing, notarization, publication, and both-surface
+Mac verification remain owner steps under #10644.
+
 The overlay also listens on a control socket,
 `~/.openagents/verse/terminal.sock` (`VERSE_TERMINAL_SOCKET` overrides it;
 mode `0600` in a `0700` directory), one JSON request a line and one JSON
-reply a line (`crates/verse/src/terminal_control.rs`). Connections are read
+reply a line (`crates/terminal-control/src/lib.rs`). Connections are read
 on their own threads and the requests cross to the frame thread, where
 `Overlay::tick` applies them, so a reply describes what the window now
 shows. `openagents verse terminal status|open|hide|split|focus|close|send|

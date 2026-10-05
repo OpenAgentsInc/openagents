@@ -1,5 +1,5 @@
 //! Terminals on this computer, in process: a `coder-pty` host that only
-//! Verse's own user drives, and one emulator per terminal.
+//! this process's user drives, and one emulator per terminal.
 //!
 //! This is the demo's local path. The next phase reaches a host through
 //! NIP-TERM (`coder_computers::terminal::session::Session`) instead, so the
@@ -15,6 +15,8 @@ use coder_pty::host::{self, Config, Host, Right, Rights};
 use coder_pty::wire::{
     Attach, Body, Close, Frame, Input, Launch, Mode, Open, Resize, Size, Status, TerminalRef, Value,
 };
+use terminal_core::pty::{Attachment, Event, Transport};
+pub use terminal_core::pty::{Program, Session, Sessions};
 
 /// The one principal the in-process host serves.
 const PRINCIPAL: &str = "7665727365000000000000000000000000000000000000000000000000000000";
@@ -42,7 +44,7 @@ impl host::Wrap for Plain {
     }
 }
 
-/// Verse's user holds every right on its own host.
+/// The local user holds every right on this in-process host.
 struct Owner;
 
 impl Rights for Owner {
@@ -61,50 +63,21 @@ pub(super) fn request() -> String {
 }
 
 /// What a pane runs.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Program {
-    /// The user's login shell.
-    Shell,
-    /// An absolute program and its arguments, with a short label.
-    Command {
-        program: PathBuf,
-        args: Vec<String>,
-        label: String,
-    },
+pub fn openagents_terminal() -> Option<Program> {
+    static FOUND: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    FOUND
+        .get_or_init(|| {
+            candidates("openagents")
+                .into_iter()
+                .find(|path| has_terminal(path))
+        })
+        .clone()
+        .map(|program| Program::Command {
+            program,
+            args: vec!["terminal".into()],
+            label: "openagents terminal".into(),
+        })
 }
-
-impl Program {
-    /// `openagents terminal`, when an `openagents` binary that has the
-    /// command is found. The answer is kept for the process's life.
-    #[must_use]
-    pub fn openagents_terminal() -> Option<Program> {
-        static FOUND: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
-        FOUND
-            .get_or_init(|| {
-                candidates("openagents")
-                    .into_iter()
-                    .find(|path| has_terminal(path))
-            })
-            .clone()
-            .map(|program| Program::Command {
-                program,
-                args: vec!["terminal".into()],
-                label: "openagents terminal".into(),
-            })
-    }
-
-    /// A short name for the title bar.
-    #[must_use]
-    pub fn label(&self, shell: &Path) -> String {
-        match self {
-            Program::Shell => shell
-                .file_name()
-                .map_or_else(|| "shell".into(), |n| n.to_string_lossy().into_owned()),
-            Program::Command { label, .. } => label.clone(),
-        }
-    }
-}
-
 /// Where `name` may be, in order: beside this executable (a workspace
 /// build, the newest), on `PATH`, then in `~/.openagents/bin`.
 #[must_use]
@@ -165,12 +138,15 @@ fn has_terminal(program: &Path) -> bool {
 }
 
 /// The in-process host and what it needs to open terminals.
-pub struct Sessions {
-    host: Host,
+pub struct Local {
+    host: Arc<Host>,
     shell: PathBuf,
+    helper_home: Option<PathBuf>,
+    #[cfg(test)]
+    test_home: Option<tempfile::TempDir>,
 }
 
-impl std::fmt::Debug for Sessions {
+impl std::fmt::Debug for Local {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Sessions")
             .field("shell", &self.shell)
@@ -178,15 +154,16 @@ impl std::fmt::Debug for Sessions {
     }
 }
 
-impl Sessions {
+impl Local {
     /// A host whose terminals start in `root` and run `shell` as a login
     /// shell.
     #[must_use]
     pub fn new(root: &Path, shell: PathBuf) -> Self {
-        Sessions::build(root, shell, None)
+        Local::build(root, shell, None)
     }
 
     fn build(root: &Path, shell: PathBuf, home: Option<&Path>) -> Self {
+        let helper_home = home.map(Path::to_path_buf);
         let mut config = Config::new().workspace(WORKSPACE, root);
         if let Some(home) = home {
             config.base_env.retain(|(name, _)| name != "HOME");
@@ -226,8 +203,11 @@ impl Sessions {
         config.wrap = Some(Arc::new(Plain {
             _integration: integration,
         }));
-        Sessions {
-            host: Host::new(config, Arc::new(Owner)),
+        Local {
+            helper_home,
+            #[cfg(test)]
+            test_home: None,
+            host: Arc::new(Host::new(config, Arc::new(Owner))),
             shell,
         }
     }
@@ -236,11 +216,12 @@ impl Sessions {
     /// they run reads or writes the real one. Tests use it.
     #[must_use]
     pub fn isolated(root: &Path, shell: PathBuf) -> Self {
-        Sessions::build(root, shell, Some(root))
+        Local::build(root, shell, Some(root))
     }
 
     /// The host for the user's home and login shell.
     #[must_use]
+    #[cfg(not(test))]
     pub fn for_user() -> Self {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
@@ -250,17 +231,28 @@ impl Sessions {
             .map(PathBuf::from)
             .filter(|shell| shell.is_absolute() && shell.is_file())
             .unwrap_or_else(|| PathBuf::from("/bin/sh"));
-        Sessions::new(&home, shell)
+        Local::new(&home, shell)
+    }
+
+    #[cfg(test)]
+    pub fn for_user() -> Self {
+        let home = tempfile::tempdir().expect("isolated terminal home");
+        let mut local = Self::isolated(home.path(), PathBuf::from("/bin/sh"));
+        local.test_home = Some(home);
+        local
     }
 
     #[must_use]
     pub fn shell(&self) -> &Path {
         &self.shell
     }
+}
 
-    /// Opens a terminal running `program` at `rows` by `cols` and attaches
-    /// to it.
-    pub fn open(&self, program: &Program, rows: u16, cols: u16) -> Result<Session, String> {
+impl Transport for Local {
+    fn shell(&self) -> &Path {
+        &self.shell
+    }
+    fn open(&self, program: &Program, rows: u16, cols: u16) -> Result<Box<dyn Attachment>, String> {
         let launch = match program {
             Program::Shell => Launch::Shell,
             Program::Command { program, args, .. } => Launch::Command {
@@ -283,165 +275,160 @@ impl Sessions {
                 .close(PRINCIPAL, &Close::new(request(), terminal.clone()));
             return Err(format!("{refusal:?}"));
         }
-        Ok(Session {
-            vt: coder_vt::Terminal::new(rows.into(), cols.into(), SCROLLBACK),
-            blocks: terminal_core::blocks::Blocks::default(),
-            started: Instant::now(),
+        let group = self.host.process_group(&terminal);
+        Ok(Box::new(LocalAttachment {
             terminal,
             frames,
-            exited: None,
-            group: None,
-            cwd: None,
-            checked: None,
-        })
+            group,
+            host: self.host.clone(),
+            ended: false,
+        }))
     }
 
-    /// Writes `bytes` to the session's program, in pieces the wire allows.
-    pub fn input(&self, session: &Session, bytes: &[u8]) {
-        if session.exited.is_some() {
-            return;
-        }
-        for piece in bytes.chunks(coder_pty::wire::INPUT_MAX) {
-            let input = Input::new(request(), session.terminal.clone(), piece);
-            let _ = self.host.input(PRINCIPAL, &input);
-        }
-    }
-
-    /// Resizes the session's grid and the program's terminal.
-    pub fn resize(&self, session: &mut Session, rows: u16, cols: u16) {
-        let (rows, cols) = (rows.max(1), cols.max(1));
-        if session.vt.rows() == usize::from(rows) && session.vt.cols() == usize::from(cols) {
-            return;
-        }
-        session.vt.resize(rows.into(), cols.into());
-        let resize = Resize::new(request(), session.terminal.clone(), Size::new(rows, cols));
-        let _ = self.host.resize(PRINCIPAL, &resize);
-    }
-
-    /// Ends the session's process group.
-    pub fn close(&self, session: &Session) {
-        let _ = self
-            .host
-            .close(PRINCIPAL, &Close::new(request(), session.terminal.clone()));
-    }
-
-    /// Applies waiting output to the session's grid, up to about
-    /// `max_bytes` and until `deadline`, and answers the program's device
-    /// queries. Output past either stays queued for the next call; the
-    /// host's ring holds it, and a gap marks what overflowed. Returns
-    /// whether anything changed and how many output bytes it parsed.
-    pub fn pump(&self, session: &mut Session, max_bytes: usize, deadline: Instant) -> (bool, u64) {
-        let mut changed = false;
-        let mut bytes = 0u64;
-        loop {
-            if bytes as usize >= max_bytes || (bytes > 0 && Instant::now() >= deadline) {
-                break;
-            }
-            match session.frames.try_recv() {
-                Ok(frame) => {
-                    changed = true;
-                    if let Body::Output { data, .. } = &frame.body {
-                        bytes += data.len() as u64;
-                    }
-                    session.apply(&frame);
-                }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => {
-                    if session.exited.is_none() {
-                        session.exited = Some("detached".into());
-                        changed = true;
-                    }
-                    break;
-                }
-            }
-        }
-        let replies = session.vt.take_replies();
-        if !replies.is_empty() {
-            self.input(session, &replies);
-        }
-        let now = Instant::now();
-        if session
-            .checked
-            .is_none_or(|at| now.duration_since(at) > Duration::from_secs(1))
-        {
-            session.checked = Some(now);
-            if session.group.is_none() {
-                session.group = self.host.process_group(&session.terminal);
-            }
-            session.cwd = session.group.and_then(cwd_of);
-        }
-        (changed, bytes)
-    }
-
-    /// Ends every terminal's process group.
-    pub fn shutdown(&self) {
+    fn shutdown(&self) {
         self.host.shutdown();
     }
-}
-
-/// One terminal and its emulator.
-pub struct Session {
-    pub vt: coder_vt::Terminal,
-    pub blocks: terminal_core::blocks::Blocks,
-    started: Instant,
-    terminal: TerminalRef,
-    frames: Receiver<Frame>,
-    /// How the program ended, once it has.
-    pub exited: Option<String>,
-    group: Option<i32>,
-    /// The shell's working directory, when the system says.
-    pub cwd: Option<String>,
-    checked: Option<Instant>,
-}
-
-impl std::fmt::Debug for Session {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Session")
-            .field("vt", &self.vt)
-            .field("exited", &self.exited)
-            .finish_non_exhaustive()
+    fn thread_program(&self) -> Option<Program> {
+        openagents_terminal()
+    }
+    fn resolve(&self, name: &str) -> Option<PathBuf> {
+        candidates(name).into_iter().next()
+    }
+    fn request(
+        &self,
+        request: &terminal_core::bridge::Request,
+    ) -> Result<terminal_core::bridge::Connection, String> {
+        super::helpers::request(request, self.helper_home.as_deref())
+    }
+    fn git_summary(&self, pane: u64, directory: String) -> Receiver<(u64, String, String)> {
+        super::helpers::git_summary(pane, directory, self.helper_home.as_deref())
+    }
+    fn open_link(&self, target: &str) -> Result<(), String> {
+        #[cfg(test)]
+        {
+            let _ = target;
+            return Ok(());
+        }
+        #[cfg(not(test))]
+        {
+            let opener = if cfg!(target_os = "macos") {
+                "open"
+            } else {
+                "xdg-open"
+            };
+            std::process::Command::new(opener)
+                .arg(target)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .map(|_| ())
+                .map_err(|_| "The link opener did not start.".into())
+        }
+    }
+    fn clipboard(&self) -> Option<String> {
+        #[cfg(test)]
+        {
+            None
+        }
+        #[cfg(not(test))]
+        {
+            arboard::Clipboard::new().ok()?.get_text().ok()
+        }
+    }
+    fn copy(&self, text: &str) -> Result<(), String> {
+        #[cfg(test)]
+        {
+            let _ = text;
+            Ok(())
+        }
+        #[cfg(not(test))]
+        {
+            arboard::Clipboard::new()
+                .and_then(|mut clipboard| clipboard.set_text(text))
+                .map_err(|_| "Could not copy to the clipboard.".into())
+        }
     }
 }
 
-impl Session {
-    pub fn binding(&self, context_digest: String) -> Option<terminal_core::proposals::Binding> {
+struct LocalAttachment {
+    host: Arc<Host>,
+    terminal: TerminalRef,
+    frames: Receiver<Frame>,
+    group: Option<i32>,
+    ended: bool,
+}
+impl Attachment for LocalAttachment {
+    fn input(&self, bytes: &[u8]) {
+        for piece in bytes.chunks(coder_pty::wire::INPUT_MAX) {
+            let _ = self.host.input(
+                PRINCIPAL,
+                &Input::new(request(), self.terminal.clone(), piece),
+            );
+        }
+    }
+    fn resize(&self, rows: u16, cols: u16) {
+        let _ = self.host.resize(
+            PRINCIPAL,
+            &Resize::new(request(), self.terminal.clone(), Size::new(rows, cols)),
+        );
+    }
+    fn close(&self) {
+        let _ = self
+            .host
+            .close(PRINCIPAL, &Close::new(request(), self.terminal.clone()));
+    }
+    fn poll(&mut self) -> Option<Event> {
+        if self.ended {
+            return None;
+        }
+        if self.group.is_none() {
+            self.group = self.host.process_group(&self.terminal);
+        }
+        match self.frames.try_recv() {
+            Ok(frame) => match frame.body {
+                Body::Output { data, .. } => Some(Event::Output(data)),
+                Body::Gap { .. } => Some(Event::Gap),
+                Body::Exit { exit, .. } => {
+                    self.ended = true;
+                    Some(Event::End(match (exit.code, exit.signal) {
+                        (Some(code), _) => format!("exited {code}"),
+                        (_, Some(signal)) => format!("signal {signal}"),
+                        _ => "ended".into(),
+                    }))
+                }
+                Body::Detached { .. } => {
+                    self.ended = true;
+                    Some(Event::End("detached".into()))
+                }
+            },
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => {
+                self.ended = true;
+                Some(Event::End("detached".into()))
+            }
+        }
+    }
+    fn target(&self) -> Option<terminal_core::proposals::Binding> {
         Some(terminal_core::proposals::Binding {
             terminal: self.terminal.terminal.clone(),
             generation: self.terminal.generation.clone(),
             cwd: raw_cwd(self.group?)?,
-            shell_directory: self.blocks.cwd.clone(),
-            context_digest,
+            shell_directory: None,
+            context_digest: String::new(),
         })
     }
-
-    fn apply(&mut self, frame: &Frame) {
-        match &frame.body {
-            Body::Output { data, .. } => {
-                self.vt.feed(data);
-                self.blocks
-                    .update(&mut self.vt, self.started.elapsed().as_millis() as u64);
-            }
-            Body::Gap { .. } => {
-                self.vt.mark("[output skipped]");
-                self.blocks
-                    .update(&mut self.vt, self.started.elapsed().as_millis() as u64);
-            }
-            Body::Exit { exit, .. } => {
-                self.exited = Some(match (exit.code, exit.signal) {
-                    (Some(code), _) => format!("exited {code}"),
-                    (_, Some(signal)) => format!("signal {signal}"),
-                    _ => "ended".into(),
-                });
-            }
-            Body::Detached { .. } => {
-                if self.exited.is_none() {
-                    self.exited = Some("detached".into());
-                }
-            }
-        }
+    fn directory(&self) -> Option<String> {
+        cwd_of(self.group?)
     }
 }
 
+pub fn for_user() -> Sessions {
+    Sessions(Arc::new(Local::for_user()))
+}
+pub fn isolated(root: &Path, shell: PathBuf) -> Sessions {
+    Sessions(Arc::new(Local::isolated(root, shell)))
+}
 /// The working directory of process `pid`, home shortened to `~`.
 fn cwd_of(pid: i32) -> Option<String> {
     let path = raw_cwd(pid)?;

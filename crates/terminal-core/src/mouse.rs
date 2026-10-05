@@ -7,9 +7,9 @@ use std::time::{Duration, Instant};
 
 use coder_vt::{MouseButton, MouseEvent, MouseKind, MouseMode};
 
-use super::layout::PaneId;
+use super::layout::{self, PaneId};
 use super::select::{self, Point, Selection, Unit};
-use super::{Overlay, draw, scroll};
+use super::{Overlay, scroll};
 
 /// A mouse button the overlay reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,7 +34,7 @@ const MULTI_CLICK: Duration = Duration::from_millis(400);
 
 /// What the mouse is doing.
 #[derive(Debug, Default)]
-pub(super) struct Mouse {
+pub struct Mouse {
     /// A drag that selects in this pane.
     dragging: Option<PaneId>,
     /// A button held down and reported to this pane's program.
@@ -62,7 +62,7 @@ impl Overlay {
     fn cell_at(&self, id: PaneId, point: [f32; 2]) -> Option<(usize, usize, i8)> {
         let rect = self.rect_of(id)?;
         let pane = self.panes.get(&id)?;
-        let inner = draw::inner(rect, self.cell);
+        let inner = layout::inner(rect, self.cell);
         let [cw, ch] = self.cell;
         let (rows, cols) = (pane.session.vt.rows(), pane.session.vt.cols());
         let fy = (point[1] - inner.y) / ch;
@@ -235,7 +235,7 @@ impl Overlay {
     /// The pointer moved to `point`: a drag grows the selection, scrolling
     /// back or forward past the pane's edge, and programs that follow the
     /// mouse hear about it.
-    pub(super) fn moved(&mut self, point: [f32; 2]) {
+    pub fn moved(&mut self, point: [f32; 2]) {
         if !self.open {
             return;
         }
@@ -344,24 +344,10 @@ impl Overlay {
             ));
             return;
         }
-        let opener = if cfg!(target_os = "macos") {
-            "open"
-        } else {
-            "xdg-open"
-        };
         self.notice = Some(format!("opening {target}"));
-        #[cfg(not(test))]
-        if let Err(error) = std::process::Command::new(opener)
-            .arg(target)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            self.notice = Some(format!("{opener} did not start: {error}"));
+        if let Err(error) = self.sessions().0.open_link(target) {
+            self.notice = Some(error);
         }
-        #[cfg(test)]
-        let _ = opener;
     }
 }
 

@@ -3,7 +3,7 @@
 //! screen, a selection it grows, and searches that move it, as tmux's copy
 //! mode does with vi keys.
 
-use winit::keyboard::{Key as Logical, KeyCode, NamedKey};
+use crate::input::{KeyCode, Logical, NamedKey};
 
 use super::layout::PaneId;
 use super::select::{self, Point, Selection, Unit};
@@ -14,7 +14,7 @@ pub const HELP: &str = "copy mode: arrows or hjkl move · PgUp PgDn · g G top b
 
 /// Copy mode's state.
 #[derive(Clone, Debug)]
-pub(super) struct Copy {
+pub struct Copy {
     pub pane: PaneId,
     pub cursor: Point,
     /// Where the selection started and what it grows by, once begun.
@@ -49,7 +49,7 @@ impl Copy {
 impl Overlay {
     /// Enters copy mode on the focused pane, its cursor where the
     /// program's is; with `search`, a search prompt opens at once.
-    pub(super) fn enter_copy(&mut self, search: bool) {
+    pub fn enter_copy(&mut self, search: bool) {
         let Some(id) = self.focus_id() else {
             return;
         };
@@ -73,7 +73,7 @@ impl Overlay {
     }
 
     /// Handles a key in copy mode.
-    pub(super) fn copy_key(&mut self, key: &KeyIn) {
+    pub fn copy_key(&mut self, key: &KeyIn) {
         let Some(mut copy) = self.copy.take() else {
             return;
         };

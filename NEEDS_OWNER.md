@@ -1,8 +1,11 @@
 # Owner checks
 
-## Smart terminal Mac verification (#10642, #10644)
+## Smart terminal Mac verification (#10642–#10644)
 
-After the standalone package is ready, run the Grid and standalone failing-test,
+Build the native package on macOS arm64 with `scripts/release/native-terminal.py
+build --commit origin/main` and an absolute reusable `CARGO_TARGET_DIR`. The GUI
+and both helpers are archived from one commit; Linux does not establish a signed
+Mac package. After the standalone package is ready, run the Grid and standalone failing-test,
 request-preview, Enter-approval, and same-thread result flow on the Mac. Retain
 both surfaces' captures and the terminal stress workload's p95 receipt under
 #10644. Linux checks cover zsh hooks, proposal approval, shared-client identity,
