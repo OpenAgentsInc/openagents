@@ -71,6 +71,43 @@ fn unavailable(error: openagents_connect::Error) -> coder_access::Error {
     )
 }
 
+/// The access store at `path`, reading its host key from `keys` when the
+/// host keeps its keys there, as `coder host serve` opens it. Another
+/// process that serves beside the host, such as a world host, opens the
+/// same store with the same flags.
+#[must_use]
+pub fn access_store(
+    path: &std::path::Path,
+    policy: coder_access::RelayPolicy,
+    keys: Option<&Keys>,
+) -> coder_access::host::Host {
+    match keys {
+        Some(keys) => {
+            coder_access::host::Host::with_keys(path, policy, Arc::new(HostKey(keys.0.clone())))
+        }
+        None => coder_access::host::Host::new(path, policy),
+    }
+}
+
+/// The owner key the key source holds, without creating one. A host the
+/// desktop app runs holds it; a CLI-only host never does.
+///
+/// # Errors
+/// Refuses a key source that cannot be read or holds a malformed key.
+pub fn held_owner(source: &dyn KeySource) -> openagents_connect::Result<Option<SecretKey>> {
+    source
+        .load(KeyName::Owner)?
+        .map(|secret| {
+            SecretKey::from_byte_array(*secret.expose()).map_err(|_| {
+                openagents_connect::Error::new(
+                    openagents_connect::Code::Malformed,
+                    "the stored owner key is not a key",
+                )
+            })
+        })
+        .transpose()
+}
+
 /// The owner key from the key source, created on first use: the host of a
 /// desktop app establishes its own owner, so there is no owner step.
 ///

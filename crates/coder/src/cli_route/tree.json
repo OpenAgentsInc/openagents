@@ -8479,7 +8479,7 @@
                 ]
               }
             ],
-            "summary": "Walk N simulated players with fresh keys in loops in front of the spawn (default world verse-bare) at the phone's cadence, or RATE frames a second, until stopped or for SECONDS; --loopback starts an in-process relay and prints its address. NDJSON progress.",
+            "summary": "Walk N simulated players with fresh keys in loops in front of the spawn (default world verse-bare) at the shared 5 Hz cadence, or RATE frames a second, until stopped or for SECONDS; --loopback starts an in-process relay and prints its address. NDJSON progress.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -9491,7 +9491,7 @@
               "host"
             ],
             "usage": [
-              "host CONFIG.json"
+              "host CONFIG.json [--state DIR] [--root DIR] [--keys DIR | --keychain] [--label TEXT] [--loopback-test]"
             ],
             "forms": [
               {
@@ -9503,11 +9503,49 @@
                   {
                     "kind": "positional",
                     "name": "CONFIG.json"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "state",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "root",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "keys",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "keychain",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "label",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "loopback-test",
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Run a chamber host on this machine until stopped: the configuration names the scene, pack, TLS certificate and key (DER), and enrolled keys.",
+            "summary": "Run a chamber host on this machine until stopped: the configuration names the scene, pack, and transport. Over TLS (the default) it also names the certificate and key (DER) and enrolled keys. Over REACH (transport type `reach`) the Coder host's key and access store admit devices with the `world` right; the access options are the ones `openagents host serve` takes, and --label names the instance in the owner directory when the keys include the owner key.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -10011,6 +10049,50 @@
       "options": [
         {
           "kind": "option",
+          "name": "state",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "root",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "keys",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "keychain",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "label",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "loopback-test",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "name",
           "value": "NAME",
           "open": true,
@@ -10139,6 +10221,28 @@
           "kind": "option",
           "name": "chamber",
           "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reach",
+          "value": "HOST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "websocket",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "store",
+          "value": "DIR",
           "open": true,
           "optional": true,
           "repeated": true

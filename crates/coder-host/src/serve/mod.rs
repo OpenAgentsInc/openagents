@@ -155,14 +155,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         .as_ref()
         .map(crate::tls::acceptor)
         .transpose()?;
-    let access = match &config.keys {
-        Some(keys) => coder_access::host::Host::with_keys(
-            &config.access,
-            config.policy,
-            Arc::new(keys::HostKey(keys.0.clone())),
-        ),
-        None => coder_access::host::Host::new(&config.access, config.policy),
-    };
+    let access = keys::access_store(&config.access, config.policy, config.keys.as_ref());
     // A host whose keys another program keeps, such as the desktop app's
     // keychain, establishes its own owner on first start: there is no
     // owner step. Once the book exists, its owner never changes here.

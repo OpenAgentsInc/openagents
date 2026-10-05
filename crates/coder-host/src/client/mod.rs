@@ -185,6 +185,77 @@ pub async fn publish_directory(
         .map_err(Error::Transport)
 }
 
+/// What [`list_world`] did to the owner directory.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WorldListing {
+    /// The directory lists the host with the world; this is the revision
+    /// that does, newly published or already current.
+    Listed { revision: u64, published: bool },
+    /// The directory does not list the host, so nothing names the world.
+    HostNotListed,
+    /// The owner published no directory on the relay.
+    NoDirectory,
+}
+
+/// How long relays keep a directory revision a world host publishes, as
+/// for one a device publishes.
+const WORLD_DIRECTORY_RETENTION: u64 = 365 * 86_400;
+
+/// Add `world` to `host`'s entry in the owner's current directory, replacing
+/// an instance with the same number, and publish the next revision under the
+/// current revision's mailbox. Only the owner key can, and only for a host
+/// the owner already listed: a world host never lists itself.
+///
+/// # Errors
+/// Reports transport failures, conflicting revisions, and a world the
+/// directory refuses.
+pub async fn list_world(
+    relay: &str,
+    owner: &SecretKey,
+    host: &str,
+    world: coder_reach::directory::WorldInstance,
+    policy: RelayPolicy,
+) -> Result<WorldListing> {
+    let revisions = fetch_directory_revisions(relay, owner, policy).await?;
+    let bodies: Vec<Directory> = revisions.iter().map(|(body, _)| body.clone()).collect();
+    let Some(current) = Directory::current(&bodies)?.cloned() else {
+        return Ok(WorldListing::NoDirectory);
+    };
+    let Some(mut entry) = current.entry(host).cloned() else {
+        return Ok(WorldListing::HostNotListed);
+    };
+    if entry.worlds.contains(&world) {
+        return Ok(WorldListing::Listed {
+            revision: current.revision,
+            published: false,
+        });
+    }
+    let mailbox = revisions
+        .iter()
+        .find(|(body, _)| *body == current)
+        .map(|(_, mailbox)| mailbox.clone())
+        .ok_or_else(|| Error::Config("the current directory has no mailbox".into()))?;
+    entry
+        .worlds
+        .retain(|listed| listed.instance != world.instance);
+    entry.worlds.push(world);
+    let now = unix_time()?.max(current.issued_at);
+    let next = current.with_entry(entry, now)?;
+    publish_directory(
+        relay,
+        owner,
+        &next,
+        &mailbox,
+        now.saturating_add(WORLD_DIRECTORY_RETENTION),
+        policy,
+    )
+    .await?;
+    Ok(WorldListing::Listed {
+        revision: next.revision,
+        published: true,
+    })
+}
+
 /// Read the newest presence and hints the host sealed to this device.
 ///
 /// # Errors

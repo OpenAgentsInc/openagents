@@ -20,7 +20,7 @@ panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 studio-host = ["dep:openagents-connect"]
 imported-desktop = ["dep:winit", "capture", "native-audio"]
 native-audio = ["dep:cpal"]
-remote-chamber = ["verse-world/service-net", "tokio/signal"]
+remote-chamber = ["verse-world/service-reach", "tokio/signal"]
 # The browser build (`wasm32-unknown-unknown`), used without default
 # features: WebGL2 as well as WebGPU. Network, threads, processes, and disk
 # are native-only by target, so this feature only adds what the web needs.

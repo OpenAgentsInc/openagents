@@ -189,8 +189,15 @@ execution".
    unchanged chamber frames over a REACH channel (TCP or WebSocket), admitted
    by the new NIP-HOST `world` right (`coder_host::authority::WorldGrants`)
    and rechecked before every request and on a timer, and directory entries
-   carry `worlds`. The chamber host binaries still start TLS, and NIP-MV
-   `33300` world events remain.
+   carry `worlds`. `openagents chamber host` serves it when its
+   configuration says `"transport": {"type": "reach"}`: it opens the Coder
+   host's access store and key the way `openagents host serve` does
+   (`--state`, `--keys`, or `--keychain`), names the instance as the
+   channel's generation, and, when its keys include the owner key, adds the
+   instance to the host's existing directory entry. `openagents chamber
+   --reach HOST` and the `verse_remote` example join as this device with the
+   grant from the computers store. TLS stays the default, `verse_host`
+   serves TLS only, and NIP-MV `33300` world events remain.
 3. **Shared Everglade.** A social rules profile in `verse-world`; the shared
    content digest; authority-owned seat actors fed by the studio snapshot;
    panel access checked against studio rights.

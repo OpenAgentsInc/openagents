@@ -1,10 +1,11 @@
 //! The authoritative chamber: the `verse-world` service that runs combat,
-//! movement, items, and quests for a scene at 30 Hz behind TLS and
-//! enrolled keys. `host` runs one from its configuration on this machine;
-//! the other commands connect to one as an enrolled player or spectator
-//! and read or drive it over its wire. The scene and pack are the ones the
-//! host serves; the key is an `openagents key` profile whose public key the
-//! host enrolls.
+//! movement, items, and quests for a scene at 30 Hz. `host` runs one from
+//! its configuration on this machine, behind TLS and enrolled keys, or over
+//! a NIP-REACH channel admitted by the Coder host's NIP-HOST `world` grants.
+//! The other commands connect to one as a player or spectator and read or
+//! drive it over its wire. Over TLS the key is an `openagents key` profile
+//! the host enrolls; over REACH it is this device's key from the computers
+//! store, with the grant the Coder host signed for it.
 
 use std::{
     net::SocketAddr,
@@ -17,7 +18,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use verse_world::service::client::Client;
 use verse_world::service::wire::{Life, Reply, Response, State};
-use verse_world::service::{host, net, persistence::Store};
+use verse_world::service::{host, net, persistence::Store, reach};
 use verse_world::{Intent, play::Ability};
 
 use crate::{Args, Output, argv::parse_command};
@@ -25,9 +26,18 @@ use crate::{Args, Output, argv::parse_command};
 use coder::cli_route::tree::{Declared, Effect};
 
 pub(crate) const USAGE: &str = "usage: openagents chamber COMMAND [OPTIONS]
-  host CONFIG.json          Run a chamber host on this machine until stopped:
-                            the configuration names the scene, pack, TLS
-                            certificate and key (DER), and enrolled keys.
+  host CONFIG.json [--state DIR] [--root DIR] [--keys DIR | --keychain]
+       [--label TEXT] [--loopback-test]
+                            Run a chamber host on this machine until stopped:
+                            the configuration names the scene, pack, and
+                            transport. Over TLS (the default) it also names
+                            the certificate and key (DER) and enrolled keys.
+                            Over REACH (transport type `reach`) the
+                            Coder host's key and access store admit devices
+                            with the `world` right; the access options are
+                            the ones `openagents host serve` takes, and
+                            --label names the instance in the owner
+                            directory when the keys include the owner key.
   tls DIR [--name NAME]     Write a self-signed TLS certificate and key for a
                             host under DIR (cert.der, key.der; NAME defaults
                             to localhost).
@@ -64,7 +74,12 @@ Connection: --to HOST:PORT --instance N --trust CERT.der [--server-name NAME]
   [--content HEX] [--as PROFILE], or --chamber FILE with those fields as JSON
   (address, instance, trust_der, server_name, content or scene+pack+dir).
   The profile's key must be enrolled by the host as primary, player, or
-  spectator; spectators read only.";
+  spectator; spectators read only.
+  Over REACH: --to HOST:PORT --instance N --reach HOST [--websocket]
+  [--store DIR] [--content HEX] (or reach, store, and websocket in the
+  file). HOST is the Coder host's key, alias, or label; the device key and
+  grant come from the computers store (default ~/.openagents/coder-computers),
+  and the grant must hold the `world` right.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -96,7 +111,12 @@ const CONNECTION_OPTIONS: &[&str] = &[
     "content",
     "as",
     "chamber",
+    "reach",
+    "store",
 ];
+const CONNECTION_SWITCHES: &[&str] = &["websocket"];
+/// How long a REACH chamber's channel handshake may take.
+const HANDSHAKE: Duration = Duration::from_secs(10);
 const TICK: Duration = Duration::from_millis(33);
 
 /// Where a chamber is and how to trust it, from `--chamber FILE` or flags.
@@ -114,6 +134,14 @@ struct Connection {
     dir: Option<PathBuf>,
     #[serde(rename = "as")]
     profile: Option<String>,
+    /// The Coder host serving the chamber over a REACH channel: a key,
+    /// alias, or label from the computers store.
+    reach: Option<String>,
+    /// The computers store holding this device's key and grants.
+    store: Option<PathBuf>,
+    /// Open the REACH channel over a WebSocket upgrade.
+    #[serde(default)]
+    websocket: bool,
 }
 
 impl Connection {
@@ -151,6 +179,15 @@ impl Connection {
         if let Some(profile) = args.option("as") {
             connection.profile = Some(profile.to_owned());
         }
+        if let Some(host) = args.option("reach") {
+            connection.reach = Some(host.to_owned());
+        }
+        if let Some(store) = args.option("store") {
+            connection.store = Some(PathBuf::from(store));
+        }
+        if args.switch("websocket") {
+            connection.websocket = true;
+        }
         Ok(connection)
     }
 
@@ -185,6 +222,12 @@ impl Connection {
         let instance = self
             .instance
             .ok_or("--instance N (or instance in --chamber FILE) is required")?;
+        if let Some(host) = &self.reach {
+            return self.connect_reach(address, instance, host).await;
+        }
+        if self.store.is_some() || self.websocket {
+            return Err("--store and --websocket go with --reach HOST".into());
+        }
         let trust = self
             .trust_der
             .as_ref()
@@ -221,6 +264,78 @@ impl Connection {
         Client::connect_with_content(address, server_name, tls, instance, content, &key)
             .await
             .map_err(|e| format!("{e} ({address}, instance {instance})"))
+    }
+}
+
+impl Connection {
+    /// Join over a REACH channel as this device, with the grant `host`
+    /// signed for it. The channel names the instance as its generation.
+    async fn connect_reach(
+        &self,
+        address: SocketAddr,
+        instance: u64,
+        host: &str,
+    ) -> Result<Client, String> {
+        use coder_computers::live::{FileStore, Store as _};
+        if self.trust_der.is_some() || self.server_name.is_some() || self.profile.is_some() {
+            return Err(
+                "--trust, --server-name, and --as go with TLS; a REACH chamber proves the host key and admits this device's grant"
+                    .into(),
+            );
+        }
+        let store = crate::computer::store_dir(self.store.as_deref().and_then(Path::to_str));
+        let saved = FileStore::open(&store)?.load()?.unwrap_or_default();
+        let known: Vec<crate::hosts::Known> = saved
+            .hosts
+            .iter()
+            .map(|saved| crate::hosts::Known {
+                key: saved.access.grant.host.clone(),
+                label: saved.label.clone(),
+            })
+            .collect();
+        let host = crate::hosts::resolve(&store, &known, host)?;
+        let grant = &saved
+            .hosts
+            .iter()
+            .find(|saved| saved.access.grant.host == host)
+            .ok_or_else(|| {
+                format!(
+                    "this device holds no grant from {host}; link it with `openagents computer link`"
+                )
+            })?
+            .access
+            .grant;
+        if !store.join("device.key").is_file() {
+            return Err(format!("{}: no device key", store.display()));
+        }
+        let device = coder_computers::live::load_or_create_key(&store)?;
+        if coder_reach::pubkey(&device) != grant.device {
+            return Err("the saved grant names another device key".into());
+        }
+        let config = reach::ClientConfig {
+            device,
+            host: host.clone(),
+            grant: grant.grant.clone(),
+            epoch: grant.epoch,
+            generation: instance,
+            timeout: HANDSHAKE,
+        };
+        let content = self.content_identity()?;
+        let socket = tokio::net::TcpStream::connect(address)
+            .await
+            .map_err(|e| format!("cannot reach {address}: {e}"))?;
+        let _ = socket.set_nodelay(true);
+        let joined = if self.websocket {
+            let url = format!("ws://{address}/");
+            let socket = tokio::time::timeout(HANDSHAKE, reach::websocket::client(&url, socket))
+                .await
+                .map_err(|_| "the chamber WebSocket upgrade timed out".to_owned())?
+                .map_err(|e| format!("Chamber channel refused: {e}"))?;
+            reach::join(socket, &config, instance, content).await
+        } else {
+            reach::join(socket, &config, instance, content).await
+        };
+        joined.map_err(|e| format!("{e} ({address}, instance {instance}, host {host})"))
     }
 }
 
@@ -262,9 +377,16 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             println!("{USAGE}");
             Ok(0)
         }
-        "host" => parse_command(rest, "host", &[], &[], 1, 1)
-            .map_err(Fail::Usage)
-            .and_then(|args| host_command(output, Path::new(&args.positional()[0]))),
+        "host" => parse_command(
+            rest,
+            "host",
+            &["state", "root", "keys", "label"],
+            &["keychain", "loopback-test"],
+            1,
+            1,
+        )
+        .map_err(Fail::Usage)
+        .and_then(|args| host_command(output, &args)),
         "tls" => parse_command(rest, "tls", &["name"], &[], 1, 1)
             .map_err(Fail::Usage)
             .and_then(|args| tls_command(output, &args)),
@@ -370,7 +492,8 @@ fn connected(
     step: for<'a> fn(&'a Output, &'a mut Client, &'a Args) -> Step<'a>,
 ) -> Result<u8, Fail> {
     let all: Vec<&str> = options.iter().chain(CONNECTION_OPTIONS).copied().collect();
-    let args = parse_command(words, command, &all, &[], min, max).map_err(Fail::Usage)?;
+    let args =
+        parse_command(words, command, &all, CONNECTION_SWITCHES, min, max).map_err(Fail::Usage)?;
     let connection = Connection::from_args(&args).map_err(Fail::Usage)?;
     crate::runtime().block_on(async {
         let mut client = connection.connect().await.map_err(Fail::Run)?;
@@ -948,16 +1071,130 @@ fn pack_command(output: &Output, dir: &Path) -> Result<u8, Fail> {
     Ok(0)
 }
 
-fn host_command(output: &Output, path: &Path) -> Result<u8, Fail> {
+fn host_command(output: &Output, args: &Args) -> Result<u8, Fail> {
+    let path = Path::new(&args.positional()[0]);
     let config = host::Config::from_json(&bounded(path, 64 * 1024).map_err(Fail::Run)?)
         .map_err(|e| Fail::Run(format!("{}: {e}", path.display())))?;
+    let access = WorldAccess::from_args(args).map_err(Fail::Usage)?;
+    if config.reach().is_none() && access.given {
+        return Err(Fail::Usage(
+            "--state, --root, --keys, --keychain, --label, and --loopback-test go with a REACH chamber (\"transport\":{\"type\":\"reach\"})".into(),
+        ));
+    }
     crate::runtime()
-        .block_on(serve(output, config))
+        .block_on(serve(*output, config, access))
         .map_err(Fail::Run)?;
     Ok(0)
 }
 
-async fn serve(output: &Output, config: host::Config) -> Result<(), String> {
+/// Where a REACH chamber finds the Coder host's key and grants: the same
+/// access store, host root, and key source `openagents host serve` uses.
+struct WorldAccess {
+    state: PathBuf,
+    root: PathBuf,
+    keys: Option<String>,
+    keychain: bool,
+    label: Option<String>,
+    policy: coder_access::RelayPolicy,
+    /// Any access option was given.
+    given: bool,
+}
+
+impl WorldAccess {
+    fn from_args(args: &Args) -> Result<Self, String> {
+        let home = || {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .ok_or_else(|| "HOME is not set; pass --state and --root".to_owned())
+        };
+        let state = match args.option("state") {
+            Some(path) => PathBuf::from(path),
+            None => home()?.join(".openagents/coder-access"),
+        };
+        let root = match args.option("root") {
+            Some(path) => PathBuf::from(path),
+            None => home()?.join(".openagents/host"),
+        };
+        let keychain = args.switch("keychain");
+        let keys = args.option("keys").map(str::to_owned);
+        if keychain && keys.is_some() {
+            return Err("--keychain and --keys do not go together".into());
+        }
+        let loopback = args.switch("loopback-test");
+        let given = ["state", "root", "keys", "label"]
+            .iter()
+            .any(|name| args.option(name).is_some())
+            || keychain
+            || loopback;
+        Ok(Self {
+            state,
+            root,
+            keys,
+            keychain,
+            label: args.option("label").map(str::to_owned),
+            policy: if loopback {
+                coder_access::RelayPolicy::LoopbackTest
+            } else {
+                coder_access::RelayPolicy::Production
+            },
+            given,
+        })
+    }
+
+    fn key_source(&self) -> Result<Option<coder_host::serve::keys::Keys>, String> {
+        use coder_host::serve::keys::{FileKeySource, Keys};
+        if self.keychain {
+            return coder_host::cli::keychain_keys()
+                .map(Some)
+                .map_err(|e| e.to_string());
+        }
+        Ok(self
+            .keys
+            .as_ref()
+            .map(|dir| Keys(Arc::new(FileKeySource::new(dir)))))
+    }
+}
+
+/// The Coder host a REACH chamber serves as: its signing key, its grants
+/// with the `world` right, and the owner key when the key source holds it.
+struct WorldHost {
+    secret: secp256k1::SecretKey,
+    grants: coder_host::authority::WorldGrants,
+    owner: Option<secp256k1::SecretKey>,
+}
+
+impl WorldHost {
+    /// Open the access store the Coder host serves from. A store that was
+    /// never initialized refuses: a chamber never establishes an owner.
+    fn open(access: &WorldAccess) -> Result<Self, String> {
+        let keys = access.key_source()?;
+        let store =
+            coder_host::serve::keys::access_store(&access.state, access.policy, keys.as_ref());
+        if !store.state_path().exists() {
+            return Err(format!(
+                "{}: the host access store is not initialized; start the Coder host first (`openagents host serve`)",
+                access.state.display()
+            ));
+        }
+        let authority = coder_host::authority::Authority::open(store)
+            .map_err(|e| format!("{}: {e}", access.state.display()))?;
+        let secret = authority
+            .signing_key()
+            .map_err(|e| format!("the host key cannot be read: {e}"))?;
+        let owner = match &keys {
+            Some(keys) => coder_host::serve::keys::held_owner(keys.0.as_ref())
+                .map_err(|_| "the owner key cannot be read".to_owned())?,
+            None => None,
+        };
+        Ok(Self {
+            secret,
+            grants: coder_host::authority::WorldGrants(Arc::new(authority)),
+            owner,
+        })
+    }
+}
+
+async fn serve(output: Output, config: host::Config, access: WorldAccess) -> Result<(), String> {
     let scene = verse_engine::director::Scene::from_json(&bounded(&config.scene, 1024 * 1024)?)?;
     let pack = verse_engine::assets::Pack::read(&config.pack)?;
     verse::imported::remote_content::outfit_models(&pack, &config.outfits)?;
@@ -986,33 +1223,18 @@ async fn serve(output: &Output, config: host::Config) -> Result<(), String> {
         }
         None => config.gateway(game)?.with_content(content)?,
     };
-    let certificate =
-        rustls::pki_types::CertificateDer::from(bounded(&config.certificate_der, 1024 * 1024)?);
-    let key_bytes = bounded(&config.private_key_der, 64 * 1024)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(&config.private_key_der)
-            .map_err(|e| format!("{}: {e}", config.private_key_der.display()))?
-            .permissions()
-            .mode();
-        if mode & 0o077 != 0 {
-            return Err(format!(
-                "{}: the TLS private key must be readable by its owner only",
-                config.private_key_der.display()
-            ));
+    // Admission comes from TLS and the enrollment list, or from the Coder
+    // host's grants; either is ready before anything binds.
+    let transport = match config.reach() {
+        None => Transport::Tls(Arc::new(tls_server(&config)?)),
+        Some(carrier) => {
+            let world = WorldHost::open(&access)?;
+            // The instance number is the channel's generation: a client
+            // knows it from the directory without reading presence.
+            let server = reach::Server::new(world.secret, config.instance, world.grants, carrier);
+            Transport::Reach(Box::new(server), carrier, world.owner)
         }
-    }
-    let key = rustls::pki_types::PrivateKeyDer::try_from(key_bytes)
-        .map_err(|_| "Invalid configured DER private key")?;
-    let tls = rustls::ServerConfig::builder_with_provider(Arc::new(
-        rustls::crypto::ring::default_provider(),
-    ))
-    .with_safe_default_protocol_versions()
-    .map_err(|_| "Cannot configure TLS protocol versions")?
-    .with_no_client_auth()
-    .with_single_cert(vec![certificate], key)
-    .map_err(|_| "Configured TLS certificate or private key refused")?;
+    };
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(|e| format!("cannot bind {}: {e}", config.listen))?;
@@ -1020,31 +1242,72 @@ async fn serve(output: &Output, config: host::Config) -> Result<(), String> {
         .local_addr()
         .map_err(|_| "Cannot inspect chamber listener")?;
     let content_hex: String = content.iter().map(|b| format!("{b:02x}")).collect();
+    let (transport_name, host_key) = match &transport {
+        Transport::Tls(_) => ("tls", None),
+        Transport::Reach(server, reach::Carrier::Tcp, _) => {
+            ("reach", Some(server.host_key().to_owned()))
+        }
+        Transport::Reach(server, reach::Carrier::WebSocket, _) => {
+            ("reach-websocket", Some(server.host_key().to_owned()))
+        }
+    };
     output.line(
         &json!({
             "event": "listening",
             "instance": config.instance,
             "address": address,
             "content": content_hex,
+            "transport": transport_name,
+            "host": host_key,
             "enrollments": config.enrollments.len(),
             "durable": config.state_dir.is_some(),
         }),
-        |v| {
-            format!(
+        |v| match v["host"].as_str() {
+            Some(host) => format!(
+                "Chamber {} listening on {} over REACH as host {host} (content {}); devices with the `world` right join",
+                v["instance"],
+                v["address"],
+                v["content"].as_str().unwrap_or(""),
+            ),
+            None => format!(
                 "Chamber {} listening on {} (content {}, {} enrolled keys)",
                 v["instance"],
                 v["address"],
                 v["content"].as_str().unwrap_or(""),
                 v["enrollments"]
-            )
+            ),
         },
     );
     let shutdown = async {
         let _ = tokio::signal::ctrl_c().await;
     };
-    let exit = match store {
-        Some(store) => net::serve_durable(listener, Arc::new(tls), gateway, store, shutdown).await,
-        None => net::serve(listener, Arc::new(tls), gateway, shutdown).await,
+    let exit = match transport {
+        Transport::Tls(tls) => match store {
+            Some(store) => net::serve_durable(listener, tls, gateway, store, shutdown).await,
+            None => net::serve(listener, tls, gateway, shutdown).await,
+        },
+        Transport::Reach(server, _, owner) => {
+            let host = server.host_key().to_owned();
+            let serving = async {
+                match store {
+                    Some(store) => {
+                        reach::serve_durable(listener, *server, gateway, store, shutdown).await
+                    }
+                    None => reach::serve(listener, *server, gateway, shutdown).await,
+                }
+            };
+            let world = coder_reach::directory::WorldInstance {
+                instance: config.instance,
+                label: access
+                    .label
+                    .clone()
+                    .unwrap_or_else(|| format!("Chamber {}", config.instance)),
+                wire: verse_world::service::wire::VERSION,
+                content: Some(content_hex.clone()),
+            };
+            let listing = list_in_directory(output, &access, owner, &host, world);
+            tokio::join!(serving, listing).0
+        }
     };
     output.line(
         &json!({
@@ -1067,6 +1330,113 @@ async fn serve(output: &Output, config: host::Config) -> Result<(), String> {
         Some(error) => Err(error),
         None => Ok(()),
     }
+}
+
+/// How the chamber admits connections.
+enum Transport {
+    Tls(Arc<rustls::ServerConfig>),
+    Reach(
+        Box<reach::Server<coder_host::authority::WorldGrants>>,
+        reach::Carrier,
+        Option<secp256k1::SecretKey>,
+    ),
+}
+
+/// How long the chamber waits for the owner directory before it gives up
+/// listing its instance; the chamber serves either way.
+const DIRECTORY_WAIT: Duration = Duration::from_secs(20);
+
+/// Name the instance in the host's owner-directory entry when this host
+/// holds the owner key and the directory already lists it. Only the owner
+/// edits the directory, so a host without the owner key reports why and
+/// serves unlisted.
+async fn list_in_directory(
+    output: Output,
+    access: &WorldAccess,
+    owner: Option<secp256k1::SecretKey>,
+    host: &str,
+    world: coder_reach::directory::WorldInstance,
+) {
+    use coder_host::client::WorldListing;
+    let report = |listed: bool, revision: Option<u64>, reason: &str| {
+        output.line(
+            &json!({
+                "event": "directory",
+                "listed": listed,
+                "revision": revision,
+                "reason": reason,
+            }),
+            |v| {
+                if listed {
+                    format!(
+                        "Listed in the owner directory (revision {}).",
+                        v["revision"]
+                    )
+                } else {
+                    format!("Not listed in the owner directory: {reason}.")
+                }
+            },
+        );
+    };
+    let Some(owner) = owner else {
+        report(false, None, "this host does not hold the owner key");
+        return;
+    };
+    let relays = match coder_host::settings::ServeSettings::load(&access.root) {
+        Ok(settings) => settings.relays,
+        Err(error) => {
+            report(false, None, &error.to_string());
+            return;
+        }
+    };
+    let Some(relay) = relays.first() else {
+        report(false, None, "the host root records no relay");
+        return;
+    };
+    let listing = tokio::time::timeout(
+        DIRECTORY_WAIT,
+        coder_host::client::list_world(relay, &owner, host, world, access.policy),
+    )
+    .await;
+    match listing {
+        Ok(Ok(WorldListing::Listed { revision, .. })) => report(true, Some(revision), "listed"),
+        Ok(Ok(WorldListing::HostNotListed)) => {
+            report(false, None, "the owner directory does not list this host");
+        }
+        Ok(Ok(WorldListing::NoDirectory)) => {
+            report(false, None, "the owner published no directory");
+        }
+        Ok(Err(error)) => report(false, None, &error.to_string()),
+        Err(_) => report(false, None, "the relay did not answer in time"),
+    }
+}
+
+fn tls_server(config: &host::Config) -> Result<rustls::ServerConfig, String> {
+    let certificate =
+        rustls::pki_types::CertificateDer::from(bounded(&config.certificate_der, 1024 * 1024)?);
+    let key_bytes = bounded(&config.private_key_der, 64 * 1024)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&config.private_key_der)
+            .map_err(|e| format!("{}: {e}", config.private_key_der.display()))?
+            .permissions()
+            .mode();
+        if mode & 0o077 != 0 {
+            return Err(format!(
+                "{}: the TLS private key must be readable by its owner only",
+                config.private_key_der.display()
+            ));
+        }
+    }
+    let key = rustls::pki_types::PrivateKeyDer::try_from(key_bytes)
+        .map_err(|_| "Invalid configured DER private key")?;
+    rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .map_err(|_| "Cannot configure TLS protocol versions")?
+        .with_no_client_auth()
+        .with_single_cert(vec![certificate], key)
+        .map_err(|_| "Configured TLS certificate or private key refused".into())
 }
 
 #[cfg(test)]

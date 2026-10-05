@@ -566,8 +566,42 @@ local caster). A spectator enrollment reads `status`, `snapshot`, `events`,
 and `watch` and holds no adventurer. `events` pages the committed authority
 log (dialogue, camera handoff, damage, death, respawn) by serial, and
 `watch` prints snapshots and new events as NDJSON until the wait ends.
-Host discovery, NIP-HOST grants, and Nostr identity binding for the
-chamber are the convergence work tracked in #10552.
+### A chamber over REACH
+
+A chamber can instead run beside a Coder host and admit devices by their
+NIP-HOST grants, with no certificate or enrollment list. Set
+`"transport": {"type": "reach"}` in `host.json` (add `"websocket": true` for
+a WebSocket listener) and drop `certificate_der` and `private_key_der`.
+`enrollments` becomes only the role table: a listed key gets its role, and
+any other device whose grant holds the `world` right joins as a spectator.
+Grant `world` explicitly; no rights preset includes it:
+
+```sh
+openagents host invite --rights observe,world        # or: computer invite HOST --rights observe,world
+openagents chamber host ~/chamber/host.json          # the host's own store and key
+openagents chamber host ~/chamber/host.json --keys "$HOME/.openagents/connect" --label "Ritual"
+```
+
+The chamber opens the same access store and host key as `openagents host
+serve`, with the same `--state DIR`, `--root DIR`, and `--keys DIR` or
+`--keychain` options, and refuses a store the Coder host never initialized.
+The channel names the instance number as its generation. When the key
+source also holds the owner key, as the desktop app's does, the chamber adds
+the instance to this host's existing entry in the owner directory on the
+first relay the host root records, and prints a `directory` line either
+way. It never adds the host itself.
+
+A device joins with its own key and grant from the computers store
+(`--store DIR`, default `~/.openagents/coder-computers`):
+
+```sh
+openagents chamber status --to 192.0.2.10:7400 --instance 170 --reach HOST
+openagents chamber move 0,1 --to 192.0.2.10:7400 --instance 170 --reach HOST --websocket
+```
+
+`HOST` is the Coder host's key, alias, or label. A grant without `world`,
+a revoked grant, or an old epoch is refused at the handshake, and a
+revocation closes an open connection within seconds.
 
 ## Zone (Lagrange construction)
 

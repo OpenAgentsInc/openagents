@@ -179,6 +179,11 @@ fn run() -> Result<(), String> {
         return Err("Usage: verse_host CONFIG.json".into());
     }
     let config = Config::from_json(&bounded(Path::new(&path), 64 * 1024, false)?)?;
+    if config.reach().is_some() {
+        return Err(
+            "verse_host serves TLS only; run `openagents chamber host` for a REACH chamber".into(),
+        );
+    }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

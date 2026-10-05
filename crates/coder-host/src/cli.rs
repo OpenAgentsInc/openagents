@@ -61,7 +61,8 @@ OPENAGENTS_RELAY, then wss://relay.openagents.com/.
 Every command also takes --state DIR (the access store, default
 ~/.openagents/coder-access), --root DIR (default ~/.openagents/host), and
 --loopback-test (allow ws:// to a numeric loopback relay, for fixtures only).
-LIST is standard, admin, all, or comma-separated rights.";
+LIST is standard, admin, all, or comma-separated rights (observe, operate,
+terminal, review, access_read, access_admin, world); only all includes world.";
 
 const DEFAULT_GRANT_SECS: u64 = 7 * 24 * 60 * 60;
 /// Opens the task owner for a task store directory and the workspace labels
@@ -1324,14 +1325,22 @@ fn connect_options(options: &mut Options, root: &Path) -> Result<Connect> {
 }
 
 #[cfg(target_os = "macos")]
-fn keychain_keys() -> Result<crate::serve::keys::Keys> {
+/// The platform keychain `serve --keychain` keeps the host's keys in.
+///
+/// # Errors
+/// Refuses a platform without a keychain this host reads.
+pub fn keychain_keys() -> Result<crate::serve::keys::Keys> {
     Ok(crate::serve::keys::Keys(Arc::new(
         crate::serve::keys::Keychain::default(),
     )))
 }
 
 #[cfg(target_os = "linux")]
-fn keychain_keys() -> Result<crate::serve::keys::Keys> {
+/// The platform keychain `serve --keychain` keeps the host's keys in.
+///
+/// # Errors
+/// Refuses a platform without a keychain this host reads.
+pub fn keychain_keys() -> Result<crate::serve::keys::Keys> {
     Ok(crate::serve::keys::Keys(Arc::new(
         crate::serve::keys::SecretService,
     )))
@@ -1339,14 +1348,22 @@ fn keychain_keys() -> Result<crate::serve::keys::Keys> {
 
 #[cfg(windows)]
 #[allow(clippy::unnecessary_wraps)]
-fn keychain_keys() -> Result<crate::serve::keys::Keys> {
+/// The platform keychain `serve --keychain` keeps the host's keys in.
+///
+/// # Errors
+/// Refuses a platform without a keychain this host reads.
+pub fn keychain_keys() -> Result<crate::serve::keys::Keys> {
     Ok(crate::serve::keys::Keys(Arc::new(
         crate::serve::keys::CredentialManager::default(),
     )))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
-fn keychain_keys() -> Result<crate::serve::keys::Keys> {
+/// The platform keychain `serve --keychain` keeps the host's keys in.
+///
+/// # Errors
+/// Refuses a platform without a keychain this host reads.
+pub fn keychain_keys() -> Result<crate::serve::keys::Keys> {
     Err(Error::Config(
         "--keychain is macOS, Linux, and Windows only here; pass --keys DIR".into(),
     ))
