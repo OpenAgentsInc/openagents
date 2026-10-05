@@ -85,7 +85,7 @@ pub(crate) struct Profile {
     pub render_submission_ms: Samples,
     pub frame_interval_ms: Samples,
     pub renderer_phases: std::collections::BTreeMap<&'static str, Samples>,
-    pub gpu_health: Option<super::gpu_timing::Health>,
+    pub gpu_health: Option<verse_pbr::imported::GpuSampleHealth>,
     pub renderer_counts: std::collections::BTreeMap<&'static str, Samples>,
     pub correction_meters: Samples,
     pub discontinuity_meters: Samples,
@@ -544,7 +544,7 @@ mod tests {
     #[test]
     fn all_completed_gpu_samples_are_retained_in_one_render_update() {
         let mut profile = Profile::default();
-        let sample = |frame, total_ms| super::super::gpu_timing::Sample {
+        let sample = |frame, total_ms| verse_pbr::imported::GpuSample {
             frame,
             shadow_ms: total_ms / 4.,
             world_ms: total_ms / 2.,

@@ -11,6 +11,7 @@ mod admission;
 mod culling;
 pub mod flat;
 mod gpu_timing;
+pub use gpu_timing::{Health as GpuSampleHealth, Sample as GpuSample};
 mod instancing;
 pub mod lighting;
 mod material_gpu;
