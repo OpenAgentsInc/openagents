@@ -1,0 +1,26 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "published_revision": "cbed11fd6be9cab314410e67b91c52fedeed1a10",
+  "tested_base_revision": "aad0643554",
+  "source_patch_sha256": "a755602bee4869c7725868e51f78e7542fd86a342163fbeeab51751ab83752b3",
+  "target": "Linux x86_64",
+  "checks": {
+    "command": "cargo test -p verse-world --features service-net --lib -- service::worker:: service::net:: service::client::tests::context_and_control",
+    "passed": 39,
+    "failed": 0,
+    "runtime_seconds": 5.18
+  },
+  "regression": "Withheld TLS replies leave capacity for a sixth movement frame after five movement frames and periodic polling. All six bindings succeed without any delivered outcome.",
+  "bounds": {
+    "pipeline_capacity": 8,
+    "periodic_read_maximum_pending_before_send": 6,
+    "movement_send_steps": 6,
+    "movement_max_lag_steps": 32
+  },
+  "limitations": [
+    "Focused checks do not prove crowded performance acceptance.",
+    "The synthetic peer checks transmission and queue ordering, not authoritative acceptance of all proposed movement frames.",
+    "Matching native and headless clients are still compiling."
+  ]
+}
