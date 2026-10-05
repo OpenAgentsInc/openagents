@@ -2466,7 +2466,7 @@ pub(crate) fn ui_pipeline(
     });
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("verse ui"),
-        source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+        source: wgpu::ShaderSource::Wgsl(crate::ui::SHADER.into()),
     });
     let pipeline = |samples: u32, depth: bool| {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

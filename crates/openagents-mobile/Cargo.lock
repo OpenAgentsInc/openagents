@@ -9138,6 +9138,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "verse-engine",
+ "verse-gfx",
  "verse-lagrange",
  "verse-ruins",
  "verse-world",
@@ -9158,6 +9159,20 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "verse-gfx"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "coder-ui",
+ "glam",
+ "serde_json",
+ "swash",
+ "verse-engine",
+ "verse-world",
+ "wgpu",
 ]
 
 [[package]]

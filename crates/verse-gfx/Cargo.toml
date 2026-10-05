@@ -1,0 +1,20 @@
+[package]
+name = "verse-gfx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's drawing foundations: the amber palette, the glyph atlas and UI batch, the overlay panel, GLES shader variants, and the follow camera."
+
+[dependencies]
+bytemuck = { version = "1.25", features = ["derive"] }
+coder-ui = { path = "../coder-ui" }
+glam = "0.30.10"
+serde_json = "1"
+swash = "0.2.10"
+verse-engine = { path = "../verse-engine" }
+verse-world = { path = "../verse-world" }
+wgpu = "29.0.4"
+
+[lints]
+workspace = true

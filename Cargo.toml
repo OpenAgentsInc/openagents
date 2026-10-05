@@ -59,6 +59,8 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.verse-engine]
 opt-level = 3
+[profile.dev.package.verse-gfx]
+opt-level = 3
 [profile.dev.package.verse-world]
 opt-level = 3
 [profile.dev.package.physics]

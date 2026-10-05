@@ -17,7 +17,7 @@ pub mod ball;
 pub mod blocks;
 #[cfg(feature = "model-host")]
 pub mod brain;
-pub mod camera;
+pub use verse_gfx::camera;
 pub mod chat;
 pub mod controller;
 pub mod crowd;
@@ -25,8 +25,10 @@ pub mod doors;
 #[cfg(all(target_os = "macos", feature = "desktop"))]
 pub mod edr;
 pub mod feed;
-pub(crate) mod gles;
-mod gpu_lifecycle;
+pub use verse_gfx::gles;
+#[cfg(test)]
+mod gles_tests;
+pub use verse_gfx::gpu_lifecycle;
 #[cfg(feature = "imported-surface")]
 pub mod grid_engine;
 pub mod grid_frame;
@@ -51,13 +53,13 @@ pub mod minimap;
 pub mod mv;
 pub mod nav;
 pub mod net;
-pub mod overlay;
-pub mod palette;
+pub use verse_gfx::overlay;
+pub use verse_gfx::palette;
 #[cfg(feature = "panels")]
 pub mod panels;
 pub mod pbr;
 pub mod pillar;
-pub mod profiling;
+pub use verse_gfx::profiling;
 pub mod render;
 pub mod replay;
 pub mod ritual;
@@ -68,7 +70,7 @@ pub mod spectator;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod streaming;
 pub mod tooltip;
-pub mod ui;
+pub use verse_gfx::ui;
 pub mod world;
 #[cfg(feature = "xp-host")]
 pub mod xp;

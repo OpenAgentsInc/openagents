@@ -35,7 +35,7 @@ pub const FOV_Y: f32 = 1.0;
 pub const FIRST_PERSON_PUSH: f32 = 0.15;
 /// Height of the first-person eye above the feet, in meters: just under
 /// the top of the character's head.
-pub const EYE_HEIGHT: f32 = crate::controller::AVATAR_HEIGHT - 0.1;
+pub const EYE_HEIGHT: f32 = verse_world::social::controller::AVATAR_HEIGHT - 0.1;
 /// Seconds the eye takes to glide between the nearest orbit and first
 /// person.
 pub const TRANSITION_SECONDS: f32 = 0.25;
@@ -87,7 +87,7 @@ impl Default for FollowCamera {
 impl FollowCamera {
     /// Left drag: orbit without turning the character.
     pub fn orbit(&mut self, dx: f32, dy: f32) {
-        self.yaw_offset = crate::controller::wrap(self.yaw_offset - dx * SENSITIVITY);
+        self.yaw_offset = verse_world::social::controller::wrap(self.yaw_offset - dx * SENSITIVITY);
         self.tilt(dy);
     }
 
@@ -216,9 +216,9 @@ impl FollowCamera {
     }
 
     /// Orbit position before applying the active world's ground clearance.
-    pub(crate) fn unclamped_eye(&self, feet: Vec3, player_yaw: f32) -> Vec3 {
+    pub fn unclamped_eye(&self, feet: Vec3, player_yaw: f32) -> Vec3 {
         let yaw = player_yaw + self.yaw_offset;
-        let back = -crate::controller::forward(yaw) * self.pitch.cos();
+        let back = -verse_world::social::controller::forward(yaw) * self.pitch.cos();
         let orbit = focus(feet) + (back + Vec3::Y * self.pitch.sin()) * self.distance;
         if self.blend <= 0.0 {
             return orbit;
@@ -234,8 +234,9 @@ impl FollowCamera {
     }
 
     /// Project from an eye whose clearance the active scene has already checked.
-    pub(crate) fn view_proj_from_eye(&self, eye: Vec3, player_yaw: f32, aspect: f32) -> Mat4 {
-        let direction = crate::controller::forward(player_yaw + self.yaw_offset) * self.pitch.cos()
+    pub fn view_proj_from_eye(&self, eye: Vec3, player_yaw: f32, aspect: f32) -> Mat4 {
+        let direction = verse_world::social::controller::forward(player_yaw + self.yaw_offset)
+            * self.pitch.cos()
             - Vec3::Y * self.pitch.sin();
         // Ground clearance changes the eye position, not the look angle.
         // Looking back at the shoulders after clamping the eye would prevent
@@ -425,11 +426,14 @@ mod tests {
         let half_h = (FOV_Y * 0.5).tan() * FIRST_PERSON_NEAR;
         let corner = Vec3::new(half_h * aspect, half_h, FIRST_PERSON_NEAR).length();
         assert!(
-            corner < crate::controller::RADIUS * 0.5,
+            corner < verse_world::social::controller::RADIUS * 0.5,
             "{corner} m reaches toward a wall {} m away",
-            crate::controller::RADIUS
+            verse_world::social::controller::RADIUS
         );
-        assert!(EYE_HEIGHT < crate::controller::AVATAR_HEIGHT && EYE_HEIGHT > FOCUS_HEIGHT);
+        assert!(
+            EYE_HEIGHT < verse_world::social::controller::AVATAR_HEIGHT
+                && EYE_HEIGHT > FOCUS_HEIGHT
+        );
     }
 
     #[test]

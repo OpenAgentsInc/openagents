@@ -646,6 +646,10 @@ uses, and marks which are implemented and which are only specified.
   NIP-C7, NIP-29, and NIP-17 (`docs/verse/chat.md`). Read `docs/verse/`
   before changing the controller, the palette, the world, chat, or the wire
   format.
+- `crates/verse-gfx` — Verse's drawing foundations, split out of `verse`
+  (#10631): the palette, the glyph atlas and UI batch, the overlay panel,
+  GLES shader variants, frame profiling, and the follow camera. `verse`
+  re-exports each module under its old path; no zone code belongs here.
 - `crates/xp-ledger` — the NIP-XP ledger a reader derives
   (`nips/openagents/NIP-XP.md`): trust lists, the per-award re-checks, and
   the knowledge-entry parser the `kb-transfer` rule needs. `knowledge`

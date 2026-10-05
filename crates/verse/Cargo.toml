@@ -37,6 +37,9 @@ cpal = { version = "=0.18.2", optional = true }
 gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names"] }
 verse-engine = { path = "../verse-engine", features = ["asset-io"] }
 verse-world = { path = "../verse-world", features = ["studio"] }
+# The palette, UI batch, overlay, GLES variants, and camera; `verse`
+# re-exports each module under its old path.
+verse-gfx = { path = "../verse-gfx" }
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
 coder-delegate = { path = "../coder-delegate", optional = true }

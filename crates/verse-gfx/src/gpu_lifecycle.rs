@@ -1,6 +1,6 @@
 //! Bounded device-loss observation shared by native render owners.
 #[derive(Clone, Default)]
-pub(crate) struct Health(std::sync::Arc<std::sync::Mutex<Option<String>>>);
+pub struct Health(std::sync::Arc<std::sync::Mutex<Option<String>>>);
 impl Health {
     pub fn attach(device: &wgpu::Device) -> Self {
         let value = Self::default();

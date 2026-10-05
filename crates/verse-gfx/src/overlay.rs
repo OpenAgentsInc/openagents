@@ -113,7 +113,7 @@ struct Uploaded {
 
 /// The GPU half: a pipeline in the frame's format, the uploaded image, and
 /// its quad.
-pub(crate) struct Overlay {
+pub struct Overlay {
     pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -124,7 +124,7 @@ pub(crate) struct Overlay {
 }
 
 impl Overlay {
-    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("verse overlay"),
             entries: &[
@@ -231,7 +231,7 @@ impl Overlay {
 
     /// Shows `image` from the next encoded frame, or nothing for `None`.
     /// The pixels upload only when the revision or the extent changed.
-    pub(crate) fn set(
+    pub fn set(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -310,7 +310,7 @@ impl Overlay {
 
     /// Draws the shown image over `output`, a `size` pixel frame that
     /// already holds the world.
-    pub(crate) fn encode(
+    pub fn encode(
         &self,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,

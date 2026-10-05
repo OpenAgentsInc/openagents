@@ -12,7 +12,11 @@ pub use verse_engine::overlay::Vertex as UiVertex;
 
 use crate::palette;
 
-const FONT: &[u8] = include_bytes!("../assets/FiraMono-Medium.ttf");
+// The font stays in `crates/verse/assets` beside its license, where the
+// imported scenes read it too.
+const FONT: &[u8] = include_bytes!("../../verse/assets/FiraMono-Medium.ttf");
+/// The WGSL shader that draws a [`UiBatch`] and an overlay panel.
+pub const SHADER: &str = include_str!("ui.wgsl");
 const FIRST: u32 = 32;
 const LAST: u32 = 126;
 /// Characters outside printable ASCII that the atlas also carries.
@@ -107,7 +111,7 @@ impl Atlas {
     }
 
     /// Keep high-density glyph bitmaps while expressing layout in logical pixels.
-    pub(crate) fn use_logical_metrics(&mut self, density: f32) {
+    pub fn use_logical_metrics(&mut self, density: f32) {
         assert!(density.is_finite() && (1.0..=8.0).contains(&density));
         for (_, glyph) in &mut self.glyphs {
             glyph.size = glyph.size.map(|v| v / density);

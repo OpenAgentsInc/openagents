@@ -526,7 +526,7 @@ OpenGL ES; its emulator uses OpenGL ES only. The `debug.verse.backend` system
 property (`vulkan` or `gl`) forces one.
 
 wgpu translates WGSL to GLSL ES 3.00 on OpenGL ES, which lacks three things
-the physical path uses. [`src/gles.rs`](../../crates/verse/src/gles.rs) keeps
+the physical path uses. [`verse-gfx/src/gles.rs`](../../crates/verse-gfx/src/gles.rs) keeps
 one side of each `//#if GLES` block in a shader; other backends compile the
 original side, so their output is unchanged:
 
@@ -561,7 +561,7 @@ cargo test -p verse --lib gles
 | [`src/main.rs`](../../crates/verse/src/main.rs) | The binary: window mode or `--capture`. |
 | [`src/app.rs`](../../crates/verse/src/app.rs) | winit event loop, key and button state, cursor capture, the frame step. |
 | [`src/controller.rs`](../../crates/verse/src/controller.rs) | `InputState`, `PlayerController`, footprints, collision. |
-| [`src/camera.rs`](../../crates/verse/src/camera.rs) | `FollowCamera`: orbit, mouselook, zoom, settle, view-projection. |
+| [`verse-gfx/src/camera.rs`](../../crates/verse-gfx/src/camera.rs) | `FollowCamera`: orbit, mouselook, zoom, settle, view-projection. |
 | [`src/world.rs`](../../crates/verse/src/world.rs) | Seeded city, ground grid, pylon, quest board, replay landmarks, horizon. The same city every launch. |
 | [`src/avatar.rs`](../../crates/verse/src/avatar.rs) | The boxy line character and its distance-driven walk cycle. |
 | [`src/agent.rs`](../../crates/verse/src/agent.rs) | The floating spade agent: spring follow, bob, wobble, emotes, scan requests, and geometry. |
@@ -576,14 +576,14 @@ cargo test -p verse --lib gles
 | [`src/xp.rs`](../../crates/verse/src/xp.rs) | NIP-XP reading: the reader thread, the snapshot of quests, XP, and titles, the level curve, and the board and HUD text. `src/xp/fixture.rs` holds throwaway signed fixtures. |
 | [`src/replay.rs`](../../crates/verse/src/replay.rs) | Run replays: events to visits, the shared clock, the `beats-winner` list, the ghost, and the HUD lines. |
 | [`src/feed.rs`](../../crates/verse/src/feed.rs) | The NOSTR tab: public notes from damus and primal, filtering, pacing, and stand-ins. |
-| [`src/ui.rs`](../../crates/verse/src/ui.rs), [`src/ui.wgsl`](../../crates/verse/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
+| [`verse-gfx/src/ui.rs`](../../crates/verse-gfx/src/ui.rs), [`verse-gfx/src/ui.wgsl`](../../crates/verse-gfx/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
 | [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
-| [`src/palette.rs`](../../crates/verse/src/palette.rs) | The amber ladder in linear light. |
+| [`verse-gfx/src/palette.rs`](../../crates/verse-gfx/src/palette.rs) | The amber ladder in linear light. |
 | [`src/zones/`](../../crates/verse/src/zones/mod.rs) | Curated zone identities, portals, manifest admission, lazy Ruins loading, palette/fog, the Ruins hotbar, and the Lagrange 1 scene. |
 | [`verse-ruins`](../../crates/verse-ruins/) | Retained Wizard Woods ECS simulation, exact source terrain, and portable host adapter. |
 | [`verse-lagrange`](../../crates/verse-lagrange/) | Sun–Earth CR3BP orbit and station-keeping, rigid bodies, and the L1 EVA construction sandbox. |
 | [`src/render.rs`](../../crates/verse/src/render.rs), [`src/shader.wgsl`](../../crates/verse/src/shader.wgsl) | Pipelines, fog, the window renderer, backend choice, and PNG capture. |
-| [`src/gles.rs`](../../crates/verse/src/gles.rs), [`src/present.wgsl`](../../crates/verse/src/present.wgsl) | OpenGL ES shader variants, their GLSL ES validation tests, and the sRGB presentation pass. |
+| [`verse-gfx/src/gles.rs`](../../crates/verse-gfx/src/gles.rs), [`src/gles_tests.rs`](../../crates/verse/src/gles_tests.rs), [`src/present.wgsl`](../../crates/verse/src/present.wgsl) | OpenGL ES shader variants, their GLSL ES validation tests, and the sRGB presentation pass. |
 
 Test the crate with `cargo test -p verse`. Tests cover the controller rules,
 the camera limits, the world's determinism and clear spawn, the palette
