@@ -10,14 +10,18 @@ use crate::zones::everglade_pack::ZonePack;
 use glam::Vec3;
 pub use verse_world::social::solids::{Roof, STEP, Solids};
 
-/// The solids of `placements` with the models in `pack`, and the boards,
-/// which are taller than anyone levitates past them.
+/// The solids of `placements` with the models in `pack`, and the boards
+/// and the ponds, which are taller than anyone levitates past them.
 ///
 /// # Errors
 ///
 /// Returns a message when the pack lacks a placed model.
 pub fn build(pack: &ZonePack, placements: &[Placement]) -> Result<Solids, String> {
-    build_with(pack, placements, &layout::board_blockers())
+    // The ponds are walls to walking, like the boards: nothing stands on
+    // their water.
+    let mut walls = layout::board_blockers();
+    walls.extend(layout::pond_blockers());
+    build_with(pack, placements, &walls)
 }
 
 /// The solids of `placements` with the models in `pack`, and `boards`,

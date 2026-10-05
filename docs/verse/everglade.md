@@ -99,7 +99,7 @@ Admission follows the Fantasy Props precedent:
   content-addressed disk cache. Committed files are the pack and the curated
   sources, not the full kits.
 - Budgets: at most 30.5 MB committed for sources and pack together, at most
-  300,000 triangles placed, and at most 64 MB of decoded textures.
+  720,000 triangles placed (300,000 before the town grew), and at most 64 MB of decoded textures.
 
 ## Rendering
 
@@ -162,8 +162,25 @@ ring, with grass and path textures. Its sign reads `EVERGLADE`.
 
 ## Layout
 
-The glade is about 120 m across. The workshop stands at its center on a flat
-pad, with a yard in front and a tree ring around both.
+The glade is about 240 m across, with a flat clearing 136 m across: four
+times the first glade's area. The workshop stands at its center on a flat
+pad, with a yard in front, and a small town grows around it toward the
+[illustrated map](everglade-map.svg), joined by dirt roads, inside a tree
+ring. Every building is the workshop's own kit pieces; no model was added
+to the pack.
+
+| District | Built from | Roads |
+| --- | --- | --- |
+| The Commons | Lantern Pond with reeds and stones, benches, an open bandshell | The commons walk, west of the hall |
+| Main Street | Four shops (bakery, café, bookshop, grocer), market stalls, benches | Main Street |
+| Creative District | The Makers' Hall: workbenches, anvil, crates | Studio Road |
+| The Foundry | The Server Barn with racks of metal crates, a fenced fab yard with bench, anvil, and wagon | Foundry Road |
+| Knowledge District | The Stacks library with bookcases, the Old College, Reed Pond and the long meadow | Library Way |
+| Stoop Lane | Four homes with lanterns and gardens, the cottage | Stoop Lane, Hearth Road |
+| Walden Woods | Two timber cabins among pines | The woods path |
+| Gardens and orchard | Fenced beds, rows of young fruit trees | |
+
+The studio's stations stay where they were:
 
 | Place | Built from | Studio station |
 | --- | --- | --- |

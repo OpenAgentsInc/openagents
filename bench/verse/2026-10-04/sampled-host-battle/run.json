@@ -1,0 +1,47 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "not_established",
+  "compiled_revision": "34b38fadd46cc99b02904419f37f9016566afe05",
+  "sample_taken": true,
+  "sample_status": "complete",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 45,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "native_movement_frames_requested": true,
+    "compiled_revisions": {
+      "host": "34b38fadd46cc99b02904419f37f9016566afe05",
+      "headless_clients": "34b38fadd46cc99b02904419f37f9016566afe05",
+      "native_client": "34b38fadd46cc99b02904419f37f9016566afe05"
+    },
+    "fixture_revision": "34b38fadd46cc99b02904419f37f9016566afe05",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "exits": {
+    "clients": {
+      "primary": 0,
+      "load": 0
+    },
+    "host": 0,
+    "proxy": 0
+  },
+  "findings": [
+    "Host main-thread sample includes 1744 of 3613 stacks in snapshot dispatch_json and 320 in Sender::project parsing JSON values. Counts are inclusive and overlap; they are not isolated wall-clock percentages.",
+    "Allocation, physics sweep, hashing, and JSON processing appear among top-of-stack samples."
+  ],
+  "limits": [
+    "CPU sampling adds observer overhead. Shared hardware and other sessions prevent a causal comparison.",
+    "One native client uses movement intervals; 19 headless clients use legacy movement. Storage and GPU timestamps are disabled.",
+    "Raw native profile v6 calls all control resets intentional discontinuities; that label does not establish intentional movement. Source v7 corrects the name; sampled binaries still emit v6.",
+    "This run does not prove the full roadmap or lag acceptance."
+  ]
+}

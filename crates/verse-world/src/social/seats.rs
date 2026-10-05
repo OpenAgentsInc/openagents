@@ -11,7 +11,7 @@
 //! same place.
 
 use super::controller::Footprint;
-use super::everglade::{HALF_EXTENT, height};
+use super::everglade::{SEAT_EXTENT, height};
 use glam::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 
@@ -160,7 +160,7 @@ impl Walker {
             return;
         }
         let start = [self.pos.x, self.pos.z];
-        let route = super::nav::plan(start, target, blockers, HALF_EXTENT)
+        let route = super::nav::plan(start, target, blockers, SEAT_EXTENT)
             .map(|route| route.waypoints)
             .unwrap_or_else(|_| vec![target]);
         let length = route_length(start, &route);
@@ -180,7 +180,7 @@ impl Walker {
     /// [`MAX_WALK`].
     fn walk_to(&mut self, target: [f32; 2], facing: f32, blockers: &[Footprint]) -> bool {
         let start = [self.pos.x, self.pos.z];
-        let Ok(route) = super::nav::plan(start, target, blockers, HALF_EXTENT) else {
+        let Ok(route) = super::nav::plan(start, target, blockers, SEAT_EXTENT) else {
             return false;
         };
         let length = route_length(start, &route.waypoints);

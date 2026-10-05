@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Record a temporary twenty-player battle with one native primary window through delayed loopback TLS."""
-import argparse, json, os, pathlib, socket, subprocess, tempfile, time
+import argparse, json, os, pathlib, shutil, socket, subprocess, tempfile, time
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--asset-dir',type=pathlib.Path,required=True)
 parser.add_argument('--binaries',type=pathlib.Path,required=True)
@@ -9,11 +9,14 @@ parser.add_argument('--client-compiled-revision',help='Compiled revision of the 
 parser.add_argument('--seconds',type=int,default=60)
 parser.add_argument('--players',type=int,default=20)
 parser.add_argument('--movement-frames',action='store_true',help='Require interval movement for the native recording controller')
+parser.add_argument('--sample-host',action='store_true',help='Take a five-second macOS CPU sample of the owned host during the capture')
 parser.add_argument('--persistent',action='store_true',help='Enable host saves in the isolated scratch directory')
 parser.add_argument('--gpu-timing',action='store_true',default=os.environ.get('VERSE_GPU_TIMING')=='1',help='Request optional native GPU timestamps and record the request in the workload')
 parser.add_argument('--delay-ms',type=int,default=40)
 parser.add_argument('--jitter-ms',type=int,default=20)
 args=parser.parse_args()
+if args.sample_host and shutil.which('sample') is None:
+    parser.error('Host CPU sampling requires the macOS sample command')
 if not (1<=args.seconds<=90 and 2<=args.players<=20 and 0<=args.delay_ms<=250 and 0<=args.jitter_ms<=100):
     parser.error('Duration, delay, or jitter exceeds fixture bounds')
 root=pathlib.Path(tempfile.mkdtemp(prefix='verse-battle-scale-'))
@@ -84,6 +87,9 @@ env['VERSE_GPU_TIMING']='1' if args.gpu_timing else '0'
 env['HOME']=str(root/'home')
 (root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'persistent_storage':args.persistent,'gpu_timestamps_requested':args.gpu_timing,'native_movement_frames_requested':args.movement_frames,'compiled_revisions':{'host':args.compiled_revision,'headless_clients':args.compiled_revision,'native_client':args.client_compiled_revision or args.compiled_revision},'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.']}))
 logs=[];processes=[]
+sample_process=None
+sample_receipt={'requested':args.sample_host,'status':'not_started',
+                'limits':['CPU sampling adds observer overhead and does not establish performance acceptance.']}
 try:
     log=open(root/'host.log','w');logs.append(log)
     hostp=subprocess.Popen([str(binaries/'verse_host'),str(root/'host.json')],stdout=log,stderr=log,env=env);processes.append(hostp)
@@ -122,9 +128,19 @@ try:
     sample_host_cpu(hostp)
     while any(p.poll() is None for _,p in clients):
         if time.monotonic()-started>args.seconds+100:raise RuntimeError('Client deadline exceeded')
+        if args.sample_host and sample_process is None and time.monotonic()-started>=10:
+            samplelog=open(root/'sample.log','w');logs.append(samplelog)
+            sample_process=subprocess.Popen(['sample',str(hostp.pid),'5','1','-file',str(root/'host-cpu-sample.txt')],stdout=samplelog,stderr=samplelog,env=env)
+            processes.append(sample_process)
+            sample_receipt.update({'status':'running','host_pid':hostp.pid,'duration_seconds':5,
+                                   'interval_ms':1,'capture_start_seconds':time.monotonic()-started,
+                                   'compiled_revision':args.compiled_revision})
         sample_host_cpu(hostp)
         time.sleep(1)
     loadp.wait(timeout=50)
+    if sample_process is not None:
+        sample_receipt['exit_code']=sample_process.wait(timeout=30)
+        sample_receipt['status']='complete' if sample_process.returncode==0 else 'failed'
     sample_host_cpu(hostp)
     codes={role:p.returncode for role,p in clients};codes['load']=loadp.returncode
     print('Client exits '+json.dumps(codes),flush=True)
@@ -140,6 +156,9 @@ finally:
             try:p.wait(timeout=10)
             except subprocess.TimeoutExpired:p.kill();p.wait()
     for log in logs:log.close()
+    if sample_process is not None and sample_receipt['status']=='running':
+        sample_receipt.update({'status':'interrupted','exit_code':sample_process.returncode})
+    (root/'sample-receipt.json').write_text(json.dumps(sample_receipt,indent=2)+'\n')
     (root/'host-cpu.json').write_text(json.dumps({
         'schema':'verse.host.cpu-observation.v1','samples':host_cpu_samples,'sample_errors':host_cpu_errors,
         'limits':['External process CPU time includes all host threads, not isolated simulation stages.',

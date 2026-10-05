@@ -1,0 +1,88 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 45,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "native_movement_frames_requested": true,
+    "compiled_revisions": {
+      "host": "34b38fadd46cc99b02904419f37f9016566afe05",
+      "headless_clients": "34b38fadd46cc99b02904419f37f9016566afe05",
+      "native_client": "34b38fadd46cc99b02904419f37f9016566afe05"
+    },
+    "fixture_revision": "34b38fadd46cc99b02904419f37f9016566afe05",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "checks": {
+    "interval_authority_tests": 5,
+    "authenticated_wire_expiry_regression": "passed",
+    "native_example_builds": "passed"
+  },
+  "observation": "All processes complete with the atomic expiry fix, but movement continuity and server/client timing acceptance remain unproven. The exact admission-expiry refusal is not observed in this capture.",
+  "native": {
+    "frame_interval_ms": {
+      "samples": 3493,
+      "omitted": 0,
+      "median": 11.6325,
+      "p95": 20.732,
+      "max": 6836.435916
+    },
+    "prediction_correction_meters": {
+      "samples": 171,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.48103228211402893
+    },
+    "control_discontinuity_meters": {
+      "samples": 30,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 5.227320194244385,
+      "max": 8.158210754394531
+    },
+    "reset_reasons": {
+      "control_epoch": 29,
+      "teleport": 1
+    },
+    "binding_to_outcome_ms": {
+      "samples": 310,
+      "omitted": 0,
+      "median": 168.762458,
+      "p95": 427.470125,
+      "max": 1122.0785
+    },
+    "window_failure": null,
+    "accepted_cast_commands": {
+      "Fire Bolt": 1,
+      "Fireball": 2,
+      "Grease": 2,
+      "Light": 2,
+      "Magic Missile": 1,
+      "Misty Step": 1,
+      "Shield": 1,
+      "Thunderwave": 1,
+      "Web": 2
+    }
+  },
+  "headless_completed": 19,
+  "minimum_headless_battle_hostiles": 40,
+  "observed_admission_expiry_refusals": 0,
+  "limits": [
+    "The raw v6 profile calls all control discontinuities intentional; the normalized run uses control_discontinuity_meters. Displacements include the accepted Misty Step and epoch changes, not just unexpected recovery.",
+    "Aggregate epoch counts include interval entry and other lifecycle transitions; they are not direct expiry counts.",
+    "Persistence and GPU timestamps are disabled; headless clients use legacy movement.",
+    "The delayed proxy sleeps serially per TCP read chunk, not at fixed end-to-end RTT.",
+    "Shared hardware and external builds prevent an isolated performance comparison."
+  ]
+}

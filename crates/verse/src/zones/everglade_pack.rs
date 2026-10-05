@@ -35,7 +35,10 @@ pub const PACK_SHA256: &str = "12b5f3d7b48e655590119e2b55b42567375c553099df28ada
 /// Transfer size of the reviewed Everglade pack.
 pub const PACK_BYTES: u64 = 15003865;
 /// The most triangles the Everglade layout may place, counting each placement.
-pub const PLACED_TRIANGLE_BUDGET: u64 = 300_000;
+/// The town is four times the first glade's area and places about 700,000;
+/// the merged 8 m cells are culled against the view and fog closes it at
+/// 170 m, so a frame draws a fraction of them on a phone or in a browser.
+pub const PLACED_TRIANGLE_BUDGET: u64 = 720_000;
 /// Where packs are committed, relative to the repository root.
 pub const PACK_DIRECTORY: &str = "assets/verse/everglade";
 /// The pack file extension.
