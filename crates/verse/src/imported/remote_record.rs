@@ -182,7 +182,7 @@ impl Profile {
         }
     }
     pub fn summary(&self) -> serde_json::Value {
-        serde_json::json!({"schema":"verse.remote.profile.v6",
+        serde_json::json!({"schema":"verse.remote.profile.v7",
             "client_preparation_ms":self.preparation_ms.summary(),
             "render_submission_cpu_ms":self.render_submission_ms.summary(),
             "frame_interval_ms":self.frame_interval_ms.summary(),
@@ -190,7 +190,7 @@ impl Profile {
             "gpu_sample_health":self.gpu_health,
             "renderer_counts":self.renderer_counts.iter().map(|(key, value)| (*key, value.summary())).collect::<std::collections::BTreeMap<_, _>>(),
             "prediction_correction_meters":self.correction_meters.summary(),
-            "intentional_discontinuity_meters":self.discontinuity_meters.summary(),
+            "control_discontinuity_meters":self.discontinuity_meters.summary(),
             "reset_observations":self.reset_observations,
             "reset_reasons":self.reset_reasons,
             "input_retirement_correction_meters":self.retirement_correction_meters.summary(),
@@ -203,6 +203,7 @@ impl Profile {
             "binding_to_outcome_ms":self.bound_to_outcome_ms.summary(),
             "limits":["Render submission and renderer phases measure CPU elapsed time, including driver and presentation waits; GPU execution is not measured.",
             "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
+            "Control discontinuities include life changes, epoch changes, and teleports; they are not proof of intentional movement.",
             "Samples retain the first 8192 observations per series; omitted observations are counted."]})
     }
 }
@@ -380,7 +381,8 @@ mod tests {
         }
         let summary = profile.summary();
         assert_eq!(summary["prediction_correction_meters"]["max"], 0.2);
-        assert_eq!(summary["intentional_discontinuity_meters"]["max"], 9.);
+        assert_eq!(summary["control_discontinuity_meters"]["max"], 9.);
+        assert!(summary.get("intentional_discontinuity_meters").is_none());
         assert_eq!(summary["correction_trace"].as_array().unwrap().len(), 256);
         assert_eq!(summary["omitted_corrections"], 45);
     }

@@ -1,0 +1,13 @@
+{
+  "requested": true,
+  "status": "complete",
+  "limits": [
+    "CPU sampling adds observer overhead and does not establish performance acceptance."
+  ],
+  "host_pid": 49379,
+  "duration_seconds": 5,
+  "interval_ms": 1,
+  "capture_start_seconds": 10.390271459,
+  "compiled_revision": "34b38fadd46cc99b02904419f37f9016566afe05",
+  "exit_code": 0
+}

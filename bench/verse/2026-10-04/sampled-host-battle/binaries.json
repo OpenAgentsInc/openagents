@@ -1,0 +1,14 @@
+{
+  "verse_host": {
+    "revision": "34b38fadd46cc99b02904419f37f9016566afe05",
+    "sha256": "0a881c402216cd20beace51819f2c611949e4cd1d261293994030d15c306bc74"
+  },
+  "verse_remote": {
+    "revision": "34b38fadd46cc99b02904419f37f9016566afe05",
+    "sha256": "7b0ee8d3b2852ceb07b161ef7727b845298f41f0e7a7ca43fbf3d812533eb309"
+  },
+  "verse_load": {
+    "revision": "34b38fadd46cc99b02904419f37f9016566afe05",
+    "sha256": "76d0503d9e81f1d0d91700514cc0560eb171638e2f7117b8b4d23dba773285cb"
+  }
+}
