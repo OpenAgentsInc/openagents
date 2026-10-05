@@ -8,13 +8,49 @@ import signal
 import time
 
 
+async def scheduled_copy(reader, writer, direction, args, stats):
+    queue = asyncio.Queue(maxsize=32)
+
+    async def read_chunks():
+        count = 0
+        try:
+            while chunk := await reader.read(65536):
+                jitter = (count % 3) * args.jitter_ms / 2
+                due = time.monotonic() + (args.delay_ms + jitter) / 1000
+                await queue.put((due, chunk))
+                stats["delay_queue_peak"] = max(stats["delay_queue_peak"], queue.qsize())
+                count += 1
+        except Exception as error:
+            await queue.put(error)
+            return
+        await queue.put(None)
+
+    reading = asyncio.create_task(read_chunks())
+    try:
+        while (item := await queue.get()) is not None:
+            if isinstance(item, Exception):
+                raise item
+            due, chunk = item
+            await asyncio.sleep(max(0, due - time.monotonic()))
+            writer.write(chunk)
+            await writer.drain()
+            stats[direction + "_bytes"] += len(chunk)
+            stats["forwarded_chunks"] += 1
+    finally:
+        reading.cancel()
+        await asyncio.gather(reading, return_exceptions=True)
+
+
 async def run(args):
-    stats = {"schema": "verse.delayed-route.v1", "delay_ms": args.delay_ms,
-             "jitter_ms": args.jitter_ms, "connections": 0,
+    stats = {"schema": "verse.delayed-route.v2", "delay_ms": args.delay_ms,
+             "jitter_ms": args.jitter_ms, "delay_mode": args.delay_mode,
+             "delay_queue_capacity": 32, "delay_queue_peak": 0, "connections": 0,
              "upstream_bytes": 0, "downstream_bytes": 0,
              "forwarded_chunks": 0, "errors": 0, "refused_connections": 0,
              "error_details": [], "omitted_error_details": 0,
              "limits": ["Delay applies to each TCP read chunk, not decrypted game messages.",
+                        "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+                        "Serial mode adds delay after each read and also limits chunk throughput.",
                         "TCP preserves byte order; this fixture does not simulate packet loss."]}
     stopped = asyncio.Event()
     tasks = set()
@@ -33,6 +69,8 @@ async def run(args):
             stats["omitted_error_details"] += 1
 
     async def copy(reader, writer, direction):
+        if args.delay_mode == "scheduled":
+            return await scheduled_copy(reader, writer, direction, args, stats)
         count = 0
         while chunk := await reader.read(65536):
             jitter = (count % 3) * args.jitter_ms / 2
@@ -99,6 +137,7 @@ if __name__ == "__main__":
     parser.add_argument("--connections", type=int, default=3)
     parser.add_argument("--destination-port", type=int, required=True)
     parser.add_argument("--listen-port", type=int, default=0)
+    parser.add_argument("--delay-mode", choices=["scheduled", "serial"], default="scheduled")
     parser.add_argument("--delay-ms", type=int, default=40)
     parser.add_argument("--jitter-ms", type=int, default=20)
     parser.add_argument("--seconds", type=int, default=180)

@@ -16,6 +16,7 @@ parser.add_argument('--remote-user',default='christopherdavid',help='Linux accou
 parser.add_argument('--sample-host',action='store_true',help='Take a five-second macOS CPU sample of the owned host during the capture')
 parser.add_argument('--persistent',action='store_true',help='Enable host saves in the isolated scratch directory')
 parser.add_argument('--gpu-timing',action='store_true',default=os.environ.get('VERSE_GPU_TIMING')=='1',help='Request optional native GPU timestamps and record the request in the workload')
+parser.add_argument('--delay-mode',choices=['scheduled','serial'],default='scheduled')
 parser.add_argument('--delay-ms',type=int,default=40)
 parser.add_argument('--jitter-ms',type=int,default=20)
 args=parser.parse_args()
@@ -187,7 +188,7 @@ try:
                 time.sleep(.1)
         else:raise RuntimeError('SSH forwarding readiness timed out')
     proxylog=open(root/'proxy.log','w');logs.append(proxylog)
-    proxy=subprocess.Popen(['python3',str(repo/'scripts/bench/verse-delayed-route.py'),'--destination-port',str(port),'--connections',str(args.players),'--delay-ms',str(args.delay_ms),'--jitter-ms',str(args.jitter_ms),'--seconds',str(min(300,args.seconds+100)),'--ready',str(root/'proxy-ready.json'),'--receipt',str(root/'proxy-receipt.json')],stdout=proxylog,stderr=proxylog,env=env)
+    proxy=subprocess.Popen(['python3',str(repo/'scripts/bench/verse-delayed-route.py'),'--destination-port',str(port),'--connections',str(args.players),'--delay-mode',args.delay_mode,'--delay-ms',str(args.delay_ms),'--jitter-ms',str(args.jitter_ms),'--seconds',str(min(300,args.seconds+100)),'--ready',str(root/'proxy-ready.json'),'--receipt',str(root/'proxy-receipt.json')],stdout=proxylog,stderr=proxylog,env=env)
     processes.append(proxy)
     for _ in range(100):
         if proxy.poll() is not None:raise RuntimeError('Proxy failed')
