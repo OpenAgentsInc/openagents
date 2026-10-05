@@ -106,8 +106,20 @@ fn fog_amount(p:vec3<f32>)->f32{
  return min(1.0-exp(-at_start*travel*shape),frame.fog_shape.w);
 }
 @fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{
- // Sampled before any per-instance branch: WebGPU requires uniform control flow here.
+ // Samples and derivatives come before any per-instance branch: WebGPU
+ // requires uniform control flow for them.
  let tex=textureSample(image,tex_sampler,v.uv);
+ let geometric=normalize(select(-v.normal,v.normal,front));let n=surface_normal(v,geometric);
+ var roughness=material.params.z;var metallic=material.params.w;
+ if material.maps.y>0.5 {
+  let orm=textureSample(orm_image,tex_sampler,v.uv);
+  roughness*=orm.g;metallic*=orm.b;
+ }
+ roughness=clamp(roughness,0.07,1.0);metallic=clamp(metallic,0.0,1.0);
+ var ao=1.0;
+ if material.maps.z>0.5 {ao=mix(1.0,textureSample(occlusion_image,tex_sampler,v.uv).r,material.channels.y);}
+ var emission=material.emission.rgb;
+ if material.maps.w>0.5 {emission*=textureSample(emission_image,tex_sampler,v.uv).rgb;}
  if pose.params.x>1.5 {
   let color=tex.rgb*1.6;
   return vec4(color*v.tint,tex.a*pose.params.y);
@@ -127,17 +139,6 @@ fn fog_amount(p:vec3<f32>)->f32{
   let flat_fog=fog_amount(v.pos);
   return vec4(min(mix(flat,frame.fog.rgb,flat_fog)*frame.ambient.w,vec3(60000.0)),select(flat_alpha,1.0,material.params.y==0.0));
  }
- let geometric=normalize(select(-v.normal,v.normal,front));let n=surface_normal(v,geometric);
- var roughness=material.params.z;var metallic=material.params.w;
- if material.maps.y>0.5 {
-  let orm=textureSample(orm_image,tex_sampler,v.uv);
-  roughness*=orm.g;metallic*=orm.b;
- }
- roughness=clamp(roughness,0.07,1.0);metallic=clamp(metallic,0.0,1.0);
- var ao=1.0;
- if material.maps.z>0.5 {ao=mix(1.0,textureSample(occlusion_image,tex_sampler,v.uv).r,material.channels.y);}
- var emission=material.emission.rgb;
- if material.maps.w>0.5 {emission*=textureSample(emission_image,tex_sampler,v.uv).rgb;}
  let alpha=tex.a*material.channels.z;
  if material.params.y==1.0 && alpha<material.channels.w{discard;}
  let albedo=tex.rgb*v.tint;
