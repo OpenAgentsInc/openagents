@@ -14,6 +14,11 @@ inside the `openagents` program, which installs on its own with one command
 [scope](scope.md) records why it is built this way and the decisions taken on
 its open questions. What Coder Terminal has that this lacks, and a roadmap: [gap analysis](2026-10-02-coder-terminal-gap-analysis.md).
 
+OpenAgents Terminal is a chat screen, not a terminal emulator. The
+[smart terminal](smart-terminal.md) proposes a real terminal and multiplexer
+whose input line takes both shell commands and requests, with this chat as
+its thread view.
+
 ## Install
 
 On macOS and Linux:

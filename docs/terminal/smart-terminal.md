@@ -1,0 +1,736 @@
+# Smart terminal: brainstorm, specification, and roadmap
+
+Status: proposal, October 5, 2026. This page implements nothing. It defines
+the smart terminal, decides its shape, and orders the work. Where it records
+a decision, the owner can overturn it; the open questions are
+[at the end](#open-questions-for-the-owner).
+
+The owner's ask (2026-10-05): "That's our terminal UI product and not a real
+terminal. I want us to fix that while combining the ideas: let's define a
+'smart terminal' that can do both regular shell commands and also process
+natural-language requests as threads etc., all the same stuff we'd envisioned
+for our terminal product, and the multiplexer vision spec'd out in
+~/work/coder." A follow-up asked for a close comparison with Superlogical,
+the multiplexer from the Ghostty team, and for that parallel to take
+priority.
+
+Paths are relative to this repository unless they start with `~/work/coder`,
+which is the earlier private Coder repository. That repository is reference
+material only: this page describes its ideas, and anything taken from it is
+reimplemented here, with the commit message saying so. No code, prompt,
+endpoint, or secret is copied.
+
+## Contents
+
+- [Summary](#summary)
+- [Today: three terminals, none smart](#today-three-terminals-none-smart)
+- [Superlogical: the model this follows](#superlogical-the-model-this-follows)
+- [Definition and vocabulary](#definition-and-vocabulary)
+- [Other prior art](#other-prior-art)
+- [Specification](#specification)
+- [Architecture](#architecture)
+- [What exists and what is missing](#what-exists-and-what-is-missing)
+- [Roadmap](#roadmap)
+- [Open questions for the owner](#open-questions-for-the-owner)
+
+## Summary
+
+A *smart terminal* is a real terminal emulator and multiplexer whose input
+line takes both shell commands and natural-language requests. A command runs
+in your shell and becomes a *block*: its command line, output, exit status,
+timing, and working directory as one record you can copy, search, collapse,
+rerun, share, or attach to a thread. A request opens a *thread*: the chat
+router and Coder answer it, propose commands as blocks you approve, run them
+in your shell with visible output, and keep going. Terminals live on a host,
+outlive every window and device, and attach from the desktop app, Verse, the
+phone, the browser, and a plain TTY.
+
+The decisions this page takes:
+
+1. **The session is the unit of work, not the window.** This is
+   Superlogical's thesis, and the smart terminal adopts it whole: a host owns
+   every terminal, closing a pane detaches, and any surface reattaches. NIP-TERM
+   already has these semantics; the smart terminal makes them the default
+   path, not the remote special case.
+2. **Superlogical's terminal half, reimplemented in Rust over NIP-TERM.** The
+   host fans raw PTY bytes out to every client before it parses them, keeps
+   an authoritative `coder-vt` emulator per terminal, owns terminal side
+   effects, and serves a join from a parsed-state snapshot (screen first,
+   history after). The snapshot format follows libghostty's ordering, not its
+   bytes; see [Interop](#interop-and-dependence).
+3. **Smart is the half Superlogical has announced but not shown.** Blocks,
+   threads, typed decisions, and agents attached to panes are structured
+   records in the session, which is what Superlogical says comes after the
+   multiplexer.
+4. **The shell keeps its line editor.** A shell-integration hook hands the
+   finished line to the terminal at Enter; zsh, bash, and fish keybindings,
+   vi mode, and `fzf` keep working. The terminal never replaces the shell's
+   editor.
+5. **Shell or request is decided on this computer, visibly, before Enter.**
+   An explicit mode or prefix wins; otherwise the shell's own command table
+   decides structurally, and only a genuinely ambiguous line asks a local
+   decision model. No shell line leaves the machine to be classified. What a
+   request means stays the chat router's decision, as today.
+6. **A proposed command never runs in your shell without your key.** Coder
+   runs keep the approve-everything rule of
+   [#10104](https://github.com/OpenAgentsInc/openagents/issues/10104),
+   because they work in their own worktree. Commands that land in your live
+   shell are blocks you run with Enter, under the existing `Permit`.
+7. **One engine, many surfaces.** A new portable crate, `terminal-core`, is
+   extracted from `crates/verse/src/terminal`; a new `terminal-gfx` holds the
+   wgpu grid renderer. The standalone window and Verse's overlay run the same
+   code. OpenAgents Terminal's chat becomes the thread view inside it.
+8. **The smallest useful demo comes first:** blocks and a request line in
+   the Verse overlay that already exists, with the thread in a pane running
+   `openagents terminal --thread ID`.
+
+## Today: three terminals, none smart
+
+The repository has three things called a terminal, and none is both a
+terminal and smart.
+
+| Product | What it is | What it lacks |
+| --- | --- | --- |
+| OpenAgents Terminal (`crates/openagents-terminal`, `openagents terminal`) | A full-screen ratatui chat over the shared client `openagents_chat::client`. The router answers each message; when it judges a message is coding work, Coder runs in a worktree on this computer and streams in. Modules: `app` (state and keys), `draw`, `screen` (input loop), `slash` (closed command list), `picker` (thread picker), `rows`, `rail` (Coder runs under the composer), `view` (run and file views), `last`, `prompts`. See [README](README.md), [scope](scope.md), and the [gap analysis](2026-10-02-coder-terminal-gap-analysis.md). | It is not a terminal emulator. It cannot run `vim`, `htop`, or `ssh`, and it has no shell. The scope listed "an embedded PTY/shell pane" as out of v1. |
+| Coder (`crates/coder`, drawn with `crates/coder-terminal`) | The older Coder agent shell: a composer, scrollback, and a turn (`coder::turn::run`) that classifies, generates, and may run a plan of shell commands under a `Permit` (`crates/coder/src/permit.rs`, `crates/coder/src/shell.rs`), with delegation to Claude Code and Codex. | Also not an emulator. Its commands run through `supervise` in a bounded `sh -c`, not in your interactive shell. |
+| The Verse terminal overlay (`crates/verse/src/terminal`, `T` in Verse) | A real terminal: PTYs through an in-process `coder-pty` host, `coder-vt` emulation, split panes and tabs with a `Ctrl+B` prefix, selection, copy mode and search, mouse reporting, OSC 8 links, OSC 52 writes, on-demand glyphs, a per-frame output budget, and a control socket (`crates/verse/src/terminal_control.rs`, `openagents verse terminal`). See the [in-world terminal](../verse/in-world-terminal.md) and its [performance receipt](../verse/verification/2026-10-05-terminal-performance/README.md). | Nothing smart: no blocks, no requests, no threads. Its PTYs are local and die with Verse; it is not yet a NIP-TERM client. It exists only inside Verse. |
+
+Beside them sit the remote pieces: NIP-TERM host PTYs with replay and gaps
+(`nips/openagents/NIP-TERM.md`, `crates/coder-pty`), the resident host's
+binding that rechecks rights per message (`crates/coder-host/src/serve/terminal.rs`),
+the seven host rights (`crates/coder-access/src/rights.rs`, where `Terminal`
+opens and drives terminals and `Observe` reads), the client session
+(`crates/coder-computers/src/terminal/session.rs`), the phone terminal screen
+(`crates/coder-computers/src/terminal/screen.rs` and `project.rs`), and
+`openagents computer shell HOST` (`crates/openagents-cli/src/terminal.rs`).
+
+The smart terminal is these pieces put together, with the missing middle
+built.
+
+## Superlogical: the model this follows
+
+Superlogical is Mitchell Hashimoto's company and product, announced July 29,
+2026, and unreleased as of the reference notes: a terminal multiplexer built
+on libghostty, with web, macOS, and iOS clients. The earlier Coder repository
+recorded what is public about it and compared Coder to it:
+
+- `~/work/coder/docs/os/superlogical.md`: the public architecture as of
+  September 16, 2026, with each claim marked as officially announced,
+  verified in libghostty's source, or attributed to the author's posts.
+- `~/work/coder/docs/os/superlogical-analysis.md`: Coder's position against
+  that model, what Coder adopted (issues #855 through #865 in that
+  repository), and what it declined.
+- `~/work/coder/docs/os/README.md` and the "Superlogical" and "Multiplexer"
+  rows of `~/work/coder/docs/GLOSSARY.md`: the summary and vocabulary.
+- `~/work/coder/docs/game/2026-09-16-terminal-rendering-audit.md`: the
+  measured close condition the comparison set for a host-side emulator per
+  terminal.
+
+Everything below about Superlogical comes from those notes. Superlogical's
+code is not public, its protocol is unpublished, and libghostty's snapshot
+format is marked unstable, so treat each detail as the notes' reading on
+September 16, 2026, not as a specification.
+
+### Its model
+
+| Part | What the notes record | Evidence in the notes |
+| --- | --- | --- |
+| Unit of work | The durable session, not the window. A session holds several terminal blocks, survives a client closing, resumes on another device, and shares live. The stated sequence is: build the multiplexer, make its contents composable, then make it safe to operate in production, with sessions that software can drive while humans watch and control. | Announced |
+| Server and clients | A server (Go, attributed) owns the PTYs; native Apple clients (Swift, attributed) and a web client attach. Low-level parts are Zig over libghostty. | Announced platforms; stack attributed |
+| Output path | The server tees raw PTY bytes to every client before its own parse finishes. The server parses authoritatively; each client parses the same bytes with its own emulator. This is parallel parsing, not a redraw stream like tmux's outer-terminal path (tmux control mode already sends raw pane output to capable clients, as iTerm2 uses). | Attributed |
+| Join | A new client restores a parsed-state snapshot instead of replaying history. libghostty's Snapshot v1 orders records `TERMINAL`, screen and page records, `CONTINUATION`, then `READY`, then history pages newest first, then `FINISH`. `READY` means the client can draw and resume parsing. `CONTINUATION` carries an unfinished escape sequence or partial UTF-8. Each record is `tag: u16`, `payload_len: u32`, `crc32c: u32`, and the payload, little-endian. History metadata arrives early so a scrollbar is sized before pages arrive. The snapshot/live boundary is the outer transport's job. | Verified in libghostty |
+| Rendering | libghostty separates a short locked phase that captures render state from a longer unlocked draw, with frame and per-row dirty state. | Verified in libghostty |
+| Memory | Caller-driven incremental scrollback compression when idle. | Verified in libghostty |
+| Side effects | Query replies, bells, titles, and clipboard requests surface as callbacks the embedder handles; with replicated parsing, not every replica may answer a query. The notes name "which side effects belong to the server" as the question to watch. | Verified API; policy unpublished |
+| Viewer state | Scroll position, selection, and font size are viewer-local; concurrent input and resize policy is unpublished. | Notes' decomposition |
+| Networking | The multiplexer owns SSH, and Tailscale enrollment and discovery are planned. | Attributed |
+| Durability | Client-independent execution and recoverable presentation. A snapshot is not a process checkpoint; nothing establishes host-failure recovery. | Notes' analysis |
+
+### What Coder took from it
+
+The Coder comparison concluded that Coder already had the session half (a
+headless writer every client attaches to, a versioned attach protocol, and
+raw PTY bytes with a sequence number to every client) and lacked the
+terminal half. It then built, in that repository:
+
+- **A writer-side terminal per block** (#855): one authoritative emulator per
+  published terminal, all on one emulation thread, which answers the
+  program's device queries itself, puts a title on the terminal's record, and
+  turns a bell or a refused clipboard write into a notice. Clients answer
+  nothing.
+- **Snapshot on join** (#856) and **history pages** (#857): the `READY`
+  prefix first, then history newest first up to 2,000 rows or 1 MiB, older
+  pages on request, and `next_seq` as the live boundary.
+- **Shells as session members** (#858, #865): a pane is a window on a
+  terminal the writer runs; closing the pane detaches, and closing the shell
+  is a separate verb that asks first while a program runs.
+- **Per-device shares** (#859): each device is granted submit, drive, both,
+  or neither, narrowed live.
+- **One driver per terminal** (#860): the first client to type at an undriven
+  terminal drives; `take` and `release` move the role; other clients' keys
+  and resizes are refused with `not_driver`. The driver's size sets the PTY;
+  viewers draw at that size and pan, anchored to the cursor; a title reads
+  `80×24 · driven by mac`.
+- **An emulator in every client** (#861): desktop, phones, and the browser.
+
+It declined SSH inside the multiplexer, a Go server or Swift clients, a
+vendor relay as the default path, and any promise of process migration.
+Its measurements with ten streaming terminals stayed under 0.6 ms at the
+median and 2.1 ms at the 99th percentile for emulation lag and key-to-PTY
+time on a Mac and on `coderos-4080`.
+
+### What the smart terminal adopts directly
+
+| Superlogical idea | Adopted as | Where it lands here |
+| --- | --- | --- |
+| The session is the unit; closing a client ends nothing | A host-side *session*: a named set of terminals, threads, and a layout, owned by the resident host. Every pane is an attachment. | `coder-pty` already keeps PTYs past detach (until idle expiry); a session record is new, in `coder-host`. |
+| Raw bytes fan out before the parse | Kept as is: NIP-TERM already sends each output frame with a sequence number to every attachment, and each client parses with `coder-vt`. | `crates/coder-pty`, `nips/openagents/NIP-TERM.md` |
+| An authoritative parse on the server | New: the host feeds every terminal's output through a `coder-vt` emulator of its own before or while it fans the bytes out. | `crates/coder-pty` host, behind a feature so the client half stays light |
+| Side effects have one owner | The host's emulator answers device and cursor queries at the PTY's input; clients stop sending `take_replies()` output. Titles and the working directory go on the terminal's record. A bell becomes a notice. OSC 52 reaches only the typist's clipboard. | Today each client answers queries (`crates/verse/src/terminal/pty.rs`, `crates/coder-computers/src/terminal/session.rs`), so two interacting clients answer twice. This is a real bug to fix before sharing. |
+| Snapshot on join, screen first, history after, parser continuation | A NIP-TERM `snapshot` frame from the host's emulator: the visible screen, modes, cursor, and parser continuation first (`ready`), then history pages newest first, with the live sequence boundary. Replaces "replay the ring and hope it covers the screen." | `coder-vt` gains serialize and restore; `coder-pty` serves it. Framing reuses libghostty's record shape (tag, length, CRC32C), reimplemented. |
+| Per-row dirty state; short locked capture | `coder-vt` per-row dirty marks; the renderer rebuilds only changed rows. The Verse overlay's per-frame output budget (3 ms and 256 KiB a pane) stays. | `crates/coder-vt`, `terminal-gfx` |
+| One driver, viewers pan | One *typist* per terminal, enforced by the host, with the same take, release, size, and pan rules. | `coder-pty`, `coder-host`, NIP-TERM extension |
+| Per-device shares | A terminal share grant: one terminal, one grantee, watch or drive, a first readable sequence, an expiry. | Already specified in the [in-world terminal](../verse/in-world-terminal.md#grants); this page adopts it. |
+| Idle scrollback compression | Later, if host memory under many sessions says so. | `coder-vt` |
+| Durability stated, not overpromised | The smart terminal says what survives: a client closing (yes), a reattach (yes, from the snapshot), the host restarting (no; panes show `lost`, as NIP-TERM's generation already does). | Docs and pane chrome |
+
+### Where the smart terminal differs, and why
+
+| Difference | Superlogical (per the notes) | Smart terminal | Why |
+| --- | --- | --- | --- |
+| Natural-language requests | Not described. | One input line takes commands and requests; a request opens a thread through the chat router. | The owner's ask. The router and Coder already exist; the terminal is their missing surface. |
+| Structured session contents | Stated as a later goal ("composable contents", structured data and actions). | Blocks are structured records from day one (OSC 133), and threads, proposals, and Coder runs are typed records beside terminals. | This repository already has typed decisions (Jev), the `Permit`, effect classes on commands (the router's CLI route), and ATIF traces. |
+| Agents | Software can drive a session while humans watch (stated goal). | Agents attach to panes as typists under the same one-typist rule, visibly, and only when you hand them the keys. Coder runs appear as panes. | Same goal, made concrete with this repository's rights and permits. |
+| Transport | Unpublished; Tailscale planned. | NIP-TERM over NIP-REACH direct channels, sealed relay artifacts, loopback, or a tailnet WebSocket; rights from NIP-HOST grants rechecked per message. | This repository's hosts, phones, and Verse already speak it; no vendor relay sees content. |
+| SSH | The multiplexer owns SSH. | `coder-ssh` installs a host at the far end once, after which remote shells are NIP-TERM terminals rather than an `ssh` program nested in a pane. A plain `ssh` in a pane still works as any program does. | Matches the Coder comparison's choice: the host is the endpoint. |
+| Emulator | libghostty (Zig, C API). | `coder-vt` (Rust, `vte`). | AGENTS.md keeps product code in Rust; `coder-vt` already runs on desktop, phones, and the web build path. |
+| Surfaces | Web, macOS, iOS. | The standalone window, Verse's overlay and in-world screens, the phone, the browser, and a plain TTY. | Verse is a product surface here; in-world screens are a terminal surface no one else has. |
+| Look | Unspecified. | The white ladder of `coder_ui::theme::Intensity` on near-black. | One palette across the app, the website, and the terminal. |
+
+### Interop and dependence
+
+- **No wire compatibility is possible today.** Superlogical's protocol is
+  unpublished. The smart terminal does not wait for it and depends on
+  nothing from it.
+- **Shape compatibility is the goal.** Sessions, raw-byte fan-out, a parsed
+  snapshot on join, one typist, and per-device shares match its model, so an
+  adapter is a translation, not a redesign, if a public protocol appears.
+- **libghostty snapshots are an optional later codec.** Decoding
+  libghostty's Snapshot v1 in Rust would mean a second emulator's page and
+  cell model; linking libghostty would add a Zig-built C library. Neither is
+  planned. If Superlogical publishes a protocol that carries libghostty
+  snapshots, revisit with a spike that measures the cost.
+- **Upstream libghostty work is prior art for `coder-vt`.** Its continuation
+  record, history-page ordering, generation tracking that drops inapplicable
+  pages, and two-phase render state are the designs to reimplement.
+
+## Definition and vocabulary
+
+A *smart terminal* is a terminal emulator and multiplexer, over terminals a
+host owns, whose input line takes shell commands and natural-language
+requests, records each command as a block, and answers each request as a
+thread that can propose and run commands in the same terminal.
+
+Words on this page, each with one meaning:
+
+| Word | Means | Not |
+| --- | --- | --- |
+| Terminal | A NIP-TERM terminal: a program on a host PTY, with a sequence-numbered output stream. Superlogical and the earlier Coder repository call this a *terminal block* or *block*. | A window or a pane |
+| Session | A host-side record: a name, its terminals, its threads, and a default layout. It outlives every client. | A chat session |
+| Pane | A rectangle in a client's layout that shows one terminal or one thread. Closing it detaches. | The terminal itself |
+| Block | One command run in a shell, delimited by OSC 133 marks: command line, output range, exit status, start and end time, and working directory. | The earlier repository's "block" (that is a terminal here) |
+| Request | A line the terminal sends to the chat router instead of the shell. | A command |
+| Thread | The existing chat thread (`openagents_chat::client`), opened by a request, persisted in the host's thread store, shown in the desktop app and on the phone. | A terminal |
+| Proposal | A command a thread suggests, shown as a pending block with its reason and effect class, run only by your key. | A command that runs itself |
+| Typist | The one attachment whose keys and size a terminal takes. Earlier called the driver. | A viewer |
+| Share | A grant that lets another device watch or drive one terminal. | A device enrollment |
+| Surface | A client that draws terminals and threads: the window, Verse, phone, web, or TTY. | A session |
+
+## Other prior art
+
+Short comparisons from general knowledge, not from source; details may be
+out of date or wrong.
+
+| Product | Idea | Take or leave |
+| --- | --- | --- |
+| Warp | Commands as blocks; an input editor the terminal owns; an AI mode for natural language, which (as far as known) can detect natural language automatically; a GPU renderer in Rust. | Take blocks and the request line. Leave replacing the shell's line editor, because it breaks zsh widgets, vi mode, and `fzf`. Leave any account requirement for local use. |
+| Fig, now Amazon Q Developer CLI | Completion specs for thousands of commands; natural language to a shell command (`q translate`, as far as known). | Take the idea of command specs for proposals and effect classes later. Leave a separate overlay process. |
+| Wave Terminal | Terminals beside other widgets (files, web, AI chat) in one tiled layout. | Take threads as panes beside terminals. |
+| tmux and Zellij | Sessions that outlive clients, a prefix key or modes, saved layouts (Zellij's are files), and tmux control mode for native clients. | Take sessions, the prefix, and layouts. The Verse overlay already has the tmux-like prefix. |
+| iTerm2 shell integration | OSC 133 prompt marks (from FinalTerm), current directory reporting, marks to jump between commands, command history per host. | Take OSC 133 and OSC 7 as the block mechanism; inject the hook as iTerm2 and Ghostty do. VS Code's terminal uses a similar private family (OSC 633) that also carries the command line. |
+| Ghostty and Kitty | Fast native rendering, automatic shell integration, the Kitty keyboard protocol (progressive enhancement with `CSI u`), and Kitty's graphics protocol and remote control. | Take automatic injection and, later, the Kitty keyboard protocol in `coder-vt`. Graphics are out of scope at first. |
+
+## Specification
+
+### The input line
+
+At a shell prompt, the line you type belongs to your shell. The shell's
+editor, history, completion, and keybindings work as they always have. The
+smart terminal adds three things: a *mode chip* at the start of the line, a
+decision at Enter, and an ask key that works anywhere.
+
+#### How Enter decides
+
+A shell-integration hook (below) replaces the shell's accept-line action.
+At Enter, the hook passes the line to the terminal over an escape sequence
+and waits for one reply: run it, or hand it to a thread. The terminal
+decides in this order and stops at the first rule that applies:
+
+1. **Explicit mode.** If you set the chip with the mode key, the chip
+   decides. The default mode key is `Ctrl+Space`; it cycles **auto**,
+   **shell**, and **ask** for this line only.
+2. **Explicit prefix.** A line that starts with `#` and a space is a
+   request. A shell treats it as a comment and would run nothing, so no
+   command is lost. The `#` is stripped before the router sees it.
+3. **Shell structure.** The terminal tokenizes the line as POSIX shell
+   (without running it) and resolves the first word against the shell's own
+   table: aliases, functions, and builtins the hook reports at each prompt,
+   and executables on the shell's `PATH`. Then:
+   - The first word resolves, and the line parses: **shell**, unless rule 4
+     applies.
+   - The first word does not resolve: **request**. The shell would only
+     have printed `command not found`. If the word is one edit from a
+     resolved command (`gti status`), the chip offers the corrected command
+     instead and never runs it unasked.
+   - The line does not parse, for example an unbalanced quote from an
+     apostrophe in "what's failing here": **request**.
+4. **Ambiguous lines.** The first word resolves, but the line could be prose
+   (`find the largest files here`, `make it faster`, `time to ship?`). Only
+   these lines go to a local decision model with one typed question
+   (`shell`, `request`, or `none`, with probabilities). The model runs on
+   this computer: Lev (`crates/lev`, Apple's on-device model) on macOS, or a
+   local Laya or Kev door where one is installed. If no local model is
+   available, or its confidence is below the threshold, the chip shows both
+   choices and Enter does what the chip shows, which defaults to **shell**
+   for a resolving first word. Jev is used for this question only if you opt
+   in, because it would send shell lines off the machine.
+
+The chip updates as you type, from rules 1 through 3, which are local and
+take microseconds. Rule 4 runs after a short pause in typing, so the chip
+already shows its answer when you press Enter. Enter always does what the
+chip shows; the decision is never a surprise.
+
+This is not word matching on intent. The terminal decides only whether a
+line is a command, from the shell's own grammar and command table. What a
+request means stays the chat router's decision (`chat-router-v1`,
+[chat router](../coder/design/2026-09-28-chat-router.md)), as
+[scope](scope.md) requires.
+
+Where routing never happens:
+
+- In a full-screen program (the alternate screen), in a program reading
+  input (no prompt mark is open), and in a shell without the hook, every key
+  goes to the program. The ask key still works.
+- In a pane whose typist is an agent or another device.
+
+#### The ask key
+
+`Ctrl+Space` held, or the prefix then `a`, opens an ask line over the
+focused pane at any time, including inside `vim` or over `ssh` to a computer
+with no hook. What you type there is always a request, with the pane as
+context.
+
+#### Making mistakes cheap
+
+- **A request that should have been a command.** The thread's first line
+  offers **Run as a command** (one key). It puts the line back at the prompt
+  in shell mode. A request runs nothing by itself, so the cost of this
+  mistake is one reply.
+- **A command that should have been a request.** The structural rules make
+  this rare, because a line only runs as a command if its first word is a
+  real command. When it happens, the block shows **Ask about this
+  instead**, which opens a thread with the line and the block's output.
+- **Bias toward asking.** When the rules and the model disagree, the safe
+  side is the request, because a request runs nothing. Rule 4's default of
+  shell for an ambiguous line is the one exception, and only when the chip
+  showed it.
+- **Undo is honest.** The terminal can undo a routing decision, never a
+  shell command's effect. Coder's changes are undoable because they live in
+  a worktree; `coder-boundary` snapshots can cover proposals later, but the
+  terminal never claims to undo `rm`.
+
+### Blocks
+
+#### Shell integration
+
+The terminal injects a small hook into zsh, bash, and fish when it starts a
+shell, the way Ghostty and iTerm2 do (for zsh, a `ZDOTDIR` that sources your
+own files first). The host injects it for NIP-TERM shells too, since
+`coder-pty` starts them. The hook emits:
+
+- OSC 133 `A` (prompt start), `B` (prompt end, input start), `C` (command
+  start, output follows), and `D;N` (command finished with exit status `N`).
+- OSC 7 with the working directory at each prompt.
+- A private OSC with the command line as the shell received it (bounded,
+  escaped), the command table at each prompt (alias, function, and builtin
+  names, bounded), and the accept-line request and reply described above.
+
+`coder-vt` parses these today as unknown operating-system commands and
+ignores them (`osc_dispatch` in `crates/coder-vt/src/lib.rs` handles only
+OSC 0, 2, 8, and 52). It gains them as marks on absolute line numbers, the
+same line addressing `crates/verse/src/terminal/select.rs` uses, so a mark
+follows its text into the scrollback.
+
+A program can print OSC 133 itself. Marks are therefore advisory: they shape
+how the pane draws, never what is allowed. A forged mark cannot run anything
+or attach anything to a thread.
+
+#### The block record
+
+| Field | Source |
+| --- | --- |
+| Terminal and session | The pane |
+| Command line | The hook's private OSC, else the text between `B` and `C` |
+| Working directory | OSC 7 at the prompt |
+| Start and end time | When `C` and `D` arrive |
+| Exit status | `D;N` |
+| Output range | Absolute lines from `C` to `D` |
+| Alternate screen used | Whether the command entered it |
+| Origin | Typed by you, a proposal from thread T, or an agent typist |
+
+The host keeps a bounded *block journal* per terminal: the record without
+the output, plus the output's sequence range in the replay ring. Any client,
+including a late joiner and the phone, can list blocks; a block whose output
+has left the ring says so.
+
+#### What you can do with a block
+
+Each block draws with a gutter mark in the white ladder (the exit status as
+intensity and a glyph, never a hue), its duration, and its directory when it
+differs from the previous one.
+
+- **Navigate.** The prefix, then `Up` or `Down`, jumps between blocks.
+- **Copy** the command, the output, or both.
+- **Search** within blocks, filtered by exit status or directory.
+- **Collapse** long output to its first and last lines.
+- **Rerun** the command in the same directory, as a new block.
+- **Attach to a thread.** Adds the block (command, status, and a bounded
+  head and tail of output) to a new or current thread as context, after you
+  see exactly what will be sent.
+- **Share** the block as a static excerpt, under the same consent rules.
+
+A block from a full-screen program (`vim`, `htop`) has a command, times, and
+a status but no output range.
+
+### Threads
+
+#### A request opens a thread
+
+A request goes to the chat router through `openagents_chat::client`, exactly
+as a message in OpenAgents Terminal does, with `surface: "terminal"` and the
+context the [context strip](#context-and-consent) shows. The reply streams
+into a thread pane beside the terminal (a vertical split by default), or as
+a one-line card in the terminal with the thread a key away, by your setting.
+
+The thread pane is OpenAgents Terminal's transcript: Markdown, Coder runs
+with grouped tool calls, the rail, diffs, and file views, already built in
+`crates/openagents-terminal` and `crates/coder-terminal`. In the first phase
+it is literally a pane running `openagents terminal --thread ID`. Later it
+draws natively; see [Architecture](#architecture).
+
+Threads persist in the host's store, sync with the desktop app and a paired
+phone, and resume with the thread picker, as today. A session records which
+threads belong to it, so reattaching a session restores its thread panes.
+
+#### Proposals: commands a thread suggests
+
+When the answer is a command to run in your shell, the router or Coder
+returns a proposal instead of prose: the plan shape `coder::shell` already
+reads (`{"v":1,"commands":[{"command","why"}]}`), plus an effect class. The
+terminal shows each proposal as a pending block in the pane the request came
+from: the command, why, and its effect class. Nothing runs until you press
+Enter on it, which types it at your prompt as if you had typed it, so it
+lands in your shell history and your shell's own semantics apply. You can
+edit it first.
+
+Its output block attaches back to the thread automatically, because the
+thread proposed it. The thread then judges the outcome (the `outcome`
+question in `crates/coder/src/classify.rs` already does this for Coder's own
+shell rounds) and proposes the next step, answers, or stops. That is the
+loop: request, proposal, your key, visible output, next proposal.
+
+The router needs one new route for this. The `cli` route proposes
+`openagents` commands, descended from a generated command tree with effect
+classes (`crates/coder/src/cli_route.rs`). A `shell` route proposes ordinary
+shell commands, with the effect class from a typed question rather than a
+command tree, and the existing gate table decides what a surface may be
+offered.
+
+#### Permits and approvals
+
+- The `Permit` (`crates/coder/src/permit.rs`) still decides whether a turn
+  may propose commands at all. A turn the router sent to clarification
+  proposes nothing.
+- A proposal into your live shell always waits for your key. An opt-in
+  setting may auto-run proposals whose effect class is `read_only`, matching
+  the router's gate for the desktop and terminal chat.
+- Coder runs are unchanged: they start under the router's dispatch, work in
+  their own worktree, and approve every step (#10104). The difference is
+  where they run: a Coder run touches its worktree, a proposal touches your
+  shell.
+
+#### Agents attached to panes
+
+- **As programs.** Codex, Claude Code, Grok Build, Devin, and `microcoder`
+  are terminal programs; any pane can run one, as the Verse overlay's `o`
+  key already opens OpenAgents Terminal.
+- **Coder runs as panes.** A running Coder task can open as a pane: today's
+  full-screen run view (`Ctrl+R` in OpenAgents Terminal) in a split.
+- **As typists.** An agent can drive a terminal only when you hand it the
+  typist role, for that terminal, with a visible badge in the pane's title
+  (`driven by Codex`). Any key you press takes the role back at once. Every
+  key an agent sends is recorded in the thread. The Verse control socket
+  (`openagents verse terminal send`) is a same-user precedent; under the
+  smart terminal it obeys the typist rule like any client.
+- **As watchers.** An agent can read a pane's blocks only through what a
+  thread attaches, never by reading the screen on its own.
+
+### The real terminal underneath
+
+- Full VT behavior through `coder-vt`: everything the Verse overlay reached
+  in its parity pass (selection, copy mode, mouse reporting, focus events,
+  cursor shapes, OSC 8 links, OSC 52 writes, wide characters, function keys,
+  and keypad modes), plus the Kitty keyboard protocol later.
+- Any program: `vim`, `htop`, `less`, `ssh`, `tmux` (the prefix twice sends
+  the prefix through), and the ratatui programs in this repository.
+- OpenAgents Terminal's chat becomes one view inside the smart terminal, not
+  the whole product. Its `openagents terminal` command keeps working on a
+  TTY.
+
+### The multiplexer
+
+The model is Superlogical's session with the Verse overlay's controls.
+
+- **Sessions outlive windows and devices.** Every pane attaches to a host
+  terminal. Closing a pane detaches; closing a terminal is a separate action
+  that asks first while a program runs. A host restart marks panes `lost`
+  and offers a new shell, never presenting a new process as the old one.
+- **Panes and tabs.** The binary split tree in
+  `crates/verse/src/terminal/layout.rs`, with zoom, tabs, and geometric focus.
+  `crates/coder-wm`'s dwindle tree stays the compositor's.
+- **Panes on several computers.** Each pane names its host; a tab can mix
+  this computer and a remote one, with the host and route (loopback,
+  tailnet, direct, or relay) in the pane's title.
+- **One typist per terminal**, enforced by the host for every attachment,
+  including two devices of the same owner, with the take, release, size, and
+  pan rules adopted from the earlier repository's driver.
+- **Shares** with watch and drive rights, per terminal, as specified in the
+  [in-world terminal](../verse/in-world-terminal.md#sharing-with-others):
+  a share starts at the terminal's head, pausing blanks it for viewers, and
+  revoking it detaches them.
+- **Layouts saved** on the host as part of the session (terminal
+  references, the tree, tab names, and thread panes, never output), so a
+  layout follows you between devices. A surface may keep a local override
+  for its own screen size.
+- **Keys.** The `Ctrl+B` prefix the overlay already uses, and `coder-binds`
+  Super chords on CoderOS. The [prefix table](../verse/in-world-terminal.md#multiplexing)
+  gains `a` (ask), `Up` and `Down` with the prefix for blocks, and `t` (open
+  the thread pane).
+
+### Surfaces
+
+| Surface | How it draws | Transport | Notes |
+| --- | --- | --- | --- |
+| Standalone window | `winit` and wgpu, `terminal-gfx` | Local host or NIP-TERM | The product. Same code as Verse's overlay. |
+| Verse overlay and in-world screens | `terminal-gfx` into the frame or a texture | The same | In-world screens per the [in-world terminal](../verse/in-world-terminal.md#in-world-screens-others-see) plan; the world carries bindings, never bytes. |
+| Phone | Today, the Rust Native terminal view in `coder-computers`; later the grid renderer | NIP-TERM through `coder_computers::live` | Blocks, threads, and proposals fit the phone well: tap a proposal to run it on your computer. |
+| Browser | `terminal-gfx` on WebGPU or WebGL2 (`wasm32`) | A host WebSocket over a tailnet, or relay artifacts at the lower rate | Needs a `wasm32` session transport. |
+| Plain TTY | A degraded mode over SSH: the shell hook gives `#` requests and inline proposals in your normal terminal, and `openagents terminal` stays the thread view | Local | A TTY multiplexer client (a tmux-like redraw of host terminals with `coder-vt` and ratatui) is possible later and not planned. |
+
+### Context and consent
+
+What a request may send is shown before it is sent, in a *context strip*
+above the ask line or the chip: one item per thing, each removable with a
+key.
+
+- Always: the request text and the surface.
+- By default, shown and removable: the working directory, the Git branch,
+  and a change count (not the diff).
+- Only when you attach it or the request is about it (for example, a request
+  typed right after a failed block, which the strip offers): a block's
+  command, exit status, and a bounded head and tail of its output.
+- Never: other panes, unattached blocks, environment variables, the
+  clipboard, files (except through a Coder run, which works in its own
+  worktree), or anything a share viewer typed.
+
+Rules:
+
+- Nothing leaves the machine without consent. A request goes to the chat
+  worker, which is off the machine; the strip is the consent. Shell lines
+  are never sent to classify them (rule 4 runs locally).
+- Attached output is scrubbed for credential shapes before it is shown in
+  the strip, so you see the scrubbed text that would be sent. Scrubbing is a
+  backstop; the strip is the control.
+- Threads record what was attached. ATIF exports and traces contain only
+  attached blocks.
+- Blocks, titles, working directories, and command lines stay out of NIP-MV,
+  presence, world chat, Verse replays, and logs, as the in-world terminal
+  already requires.
+
+### Safety
+
+- **Rights stay the host's.** `terminal`, `observe`, and terminal shares are
+  checked per message by `coder-host`. The smart terminal adds no authority.
+- **Permits and keys.** Proposals need your key; Coder runs follow #10104 in
+  their worktree; the `Permit` narrows both.
+- **Dangerous-command guard.** A proposal whose effect class is
+  destructive (recursive deletes, disk tools, force pushes, piping a
+  download to a shell, `sudo`) shows a warning band and needs a second key.
+  The deny list in `crates/coder/src/shell.rs` refuses the commands that end
+  a machine outright, as it does for Coder's own shell rounds. Commands you
+  type yourself are never second-guessed.
+- **Paste.** A multi-line paste at a prompt shows its line count and asks
+  once, unless the program enabled bracketed paste.
+- **Secrets on screen when sharing.** A share starts at the terminal's head,
+  so earlier output is never sent; pausing blanks the pane for viewers; the
+  pane shows who watches and who types; a password prompt with echo off
+  shows nothing to anyone.
+- **Agent typists** are visible, revocable with any key, and recorded.
+- **Output is untrusted.** Marks are advisory, links open only on a modified
+  click, clipboard reads stay impossible, and a background pane cannot write
+  the clipboard.
+- **Tests stay off the owner's computers**: a scratch host under a temporary
+  `HOME`, as AGENTS.md requires.
+
+## Architecture
+
+```text
+ host (coder host serve)                                    any surface
+ ┌─────────────────────────────────────┐                    ┌──────────────────────────────────┐
+ │ session: terminals, threads, layout │                    │ terminal-core                    │
+ │ coder-pty host                      │   NIP-TERM over    │  session client, panes, layout,  │
+ │  PTY ──tee──► frames (seq) ─────────┼──NIP-REACH, relay,─┼─► coder-vt per pane              │
+ │       └────► coder-vt (authority):  │   or loopback      │  blocks from OSC 133 marks       │
+ │              query replies, title,  │                    │  input line: chip, rules 1 to 4  │
+ │              cwd, block journal,    │◄── snapshot on ────┤  typist, shares, context strip   │
+ │              snapshot on join       │    join, input     │        │                         │
+ │ rights: NIP-HOST grants, shares     │                    │        ▼                         │
+ │ shell hook injection                │                    │ terminal-gfx (wgpu grid)         │
+ └─────────────────────────────────────┘                    │  window │ Verse │ web │ (phone)  │
+                │                                           └────────┬─────────────────────────┘
+                ▼                                                    │ requests, proposals
+   thread store (host) ◄──── openagents_chat::client ◄───────────────┘
+        └─► chat router (NIP-CJ) ─► Coder (coder::task::local) in a worktree
+```
+
+| Layer | Crate | Reuses | New |
+| --- | --- | --- | --- |
+| Emulator | `crates/coder-vt` | Everything it has | OSC 133 and OSC 7 marks, the private hook OSC, per-row dirty marks, serialize and restore for snapshots, later the Kitty keyboard protocol |
+| Host terminals | `crates/coder-pty` (host feature) | PTYs, the replay ring, gaps, idle expiry, per-attachment budgets | An authoritative `coder-vt` per terminal, side-effect ownership, the block journal, snapshot frames, the typist seat, shell-hook injection |
+| Protocol | `nips/openagents/NIP-TERM.md` | Open, attach, input, resize, signal, close, frames | Extensions: `snapshot`, `history`, `typist` (take, release), `share`, block journal reads |
+| Authority | `crates/coder-access`, `crates/coder-host` | Rights, per-message checks | The share grant; the session record and its saved layout |
+| Client engine | **new** `crates/terminal-core` | Extracted from `crates/verse/src/terminal`: `layout.rs`, `select.rs`, `copy.rs`, the encoders in `keys.rs` and `mouse.rs` (with its own key type instead of `winit`'s), `stats.rs`, and the pane/session code in `pty.rs` behind a trait with two backends: in-process `coder-pty` and `coder_computers::terminal::session` | Blocks, the input-line state machine, the context strip, the typist and share client state, session layouts. It absorbs the `coder-mux` crate the in-world terminal page proposed. No renderer, `winit`, or network. |
+| Renderer | **new** `crates/terminal-gfx` | Extracted `draw.rs` and `glyphs.rs`, over `verse-gfx`'s `UiBatch` and `Atlas` | Instanced cells per pane, damage by row, block gutters, chips, render to texture for in-world screens |
+| Thread view | `crates/openagents-terminal`, `crates/coder-terminal` | Today's app state and components | A crossterm-free and Oniguruma-free feature of `coder-terminal`, so the thread view's ratatui `Buffer` draws as a grid in `terminal-gfx` on every surface |
+| Requests and proposals | `crates/openagents-chat`, `crates/coder` | `openagents_chat::client`, the router, `Permit`, the plan shape in `coder::shell`, the `outcome` question, the gate table | The `shell` route, the effect-class question, proposal events on the client stream |
+| Local decisions | `crates/lev`, `crates/laya`, `crates/kev` | Their `POST /v1/systemone` doors | The `line-kind` question set in `questions/`, with a measured baseline before a threshold is set |
+| Window | **new** `crates/terminal-app` | `terminal-core`, `terminal-gfx`, `winit` | The standalone binary, bundled in the Mac `.app` and Linux packages beside `openagents` |
+| Verse | `crates/verse` | Overlay, control socket | Becomes a thin host of `terminal-core` and `terminal-gfx` |
+| Phone and web | `crates/coder-computers`, `crates/everglade-web` | The phone terminal screen and session | Blocks and proposals in the phone view; a `wasm32` transport |
+| Look | `crates/coder-ui` | `theme::Intensity`, the white ladder | Nothing |
+
+Boundaries:
+
+- `terminal-core` decides nothing about authority; the host does.
+- The terminal never interprets a request; the router does.
+- Nothing in `terminal-core` or `terminal-gfx` depends on Verse, so the
+  window does not link the world, and Verse keeps building for the web
+  without the terminal feature until the web phase.
+
+## What exists and what is missing
+
+Estimates are focused engineering days for one agent, including tests.
+
+| Area | Exists | Missing | Estimate |
+| --- | --- | --- | --- |
+| Emulator | `coder-vt` with the Verse parity pass | OSC 133 and OSC 7 marks, hook OSC, per-row dirty marks | 2 to 3 |
+| Shell hook | Nothing | zsh, bash, and fish hooks with injection; the accept-line request and reply; the command table | 4 to 5 |
+| Blocks | Absolute-line selection in Verse | Block index, gutter, navigation, copy, collapse, rerun, attach | 4 to 5 |
+| Input line | The ask key does not exist | Chip, rules 1 to 3, the corrected-command offer | 3 |
+| Local line classifier | Lev, Laya, and Kev doors | The `line-kind` question set, baseline and threshold measurement | 4 to 6 |
+| Thread pane, first form | `openagents terminal --thread ID` in a pane | Open it from a request with the pane's context | 2 |
+| Proposals | `coder::shell` plan shape, `Permit`, the CLI route's gates | The `shell` route, effect-class question, proposal events, pending blocks | 6 to 8 |
+| Context strip | Nothing | Strip, scrubbing, attach rules | 3 |
+| Crate extraction | `crates/verse/src/terminal` | `terminal-core` and `terminal-gfx` split, Verse moved onto them | 5 to 7 |
+| Standalone window | Nothing | `terminal-app`: window, menus, fonts, settings, packaging | 7 to 10 |
+| Native thread view | `coder-terminal` components | Crossterm-free feature; `Buffer` to grid | 5 to 7 |
+| Host authority parse and effects | Client-side replies | Host `coder-vt`, effect ownership, clients stop answering | 4 to 5 |
+| Snapshot on join and history | Ring replay with gaps | `coder-vt` serialize and restore, snapshot and history frames, NIP-TERM text, conformance tests | 8 to 10 |
+| Sessions and saved layouts | Layout tree in Verse | Host session record, layouts on the host, restore | 4 to 5 |
+| Typist | Nothing | Host seat, take and release, pan rule, title badge | 4 |
+| Shares | Specified only | Share grant in NIP-TERM, `coder-access`, `coder-pty`, `coder-host`; pause; viewer list | 8 to 10 |
+| Block journal on host | Nothing | Journal, NIP-TERM reads | 3 |
+| Agents as typists | Verse control socket | Typist handoff to an agent, recording, badge | 3 |
+| Phone | Terminal screen and session | Blocks, proposals, thread link in the phone view | 5 |
+| Web | `everglade-web` | `wasm32` transport, browser keys and clipboard | 10 to 15 |
+| TTY degraded mode | `openagents terminal` | Hook-only requests and inline proposals in a plain terminal | 3 |
+
+## Roadmap
+
+Each phase ends with something the owner can run. Phases 4 and 5 are the
+Superlogical parallel and can start beside phase 2, since they touch the
+host and protocol, not the client.
+
+1. **Blocks and requests in the Verse overlay (about 3 weeks).** The
+   smallest useful demo, in the terminal that already exists. OSC 133 and
+   OSC 7 in `coder-vt`; the shell hook for zsh first, then bash and fish;
+   blocks with the gutter, navigation, copy, collapse, rerun, and attach;
+   the chip with rules 1 to 3 and the ask key; a request opens a split
+   running `openagents terminal --thread ID` with the context strip's
+   items; proposals as pending blocks you run with Enter, starting with the
+   CLI route's proposals and then the new `shell` route. Demo: type `cargo
+   test`, see a failed block, type `# why did that fail`, see the thread
+   beside it propose a command, press Enter, and watch it continue.
+2. **The standalone window (about 3 weeks).** Extract `terminal-core` and
+   `terminal-gfx`, move Verse onto them with no behavior change (the
+   performance receipt's stress run is the check), and ship `terminal-app`
+   with local PTYs. Add rule 4 with the local classifier once its question
+   set has a measured baseline.
+3. **Threads beside panes, natively (about 2 weeks).** The native thread
+   view in `terminal-gfx`; thread panes restored with the session; Coder
+   runs as panes; agents as typists with the badge and handoff.
+4. **The terminal half on the host (about 3 weeks).** The Superlogical
+   core: the host's authoritative `coder-vt`, side-effect ownership (fixing
+   the double reply), snapshot on join and history pages, the block journal,
+   and NIP-TERM text and conformance tests for each. Then the window and
+   Verse open every pane on the resident host instead of in process, so
+   closing the window ends nothing.
+5. **Sessions, typists, and sharing (about 3 weeks).** Host sessions with
+   saved layouts, the one-typist rule, panes on several computers, and the
+   share grant with watch and drive, pause, and the viewer list.
+6. **Phone, web, and TTY (about 4 weeks).** Blocks, proposals, and threads
+   in the phone's terminal view; the browser transport and `terminal-gfx`
+   on the web; the TTY degraded mode.
+7. **In-world screens.** The [in-world terminal](../verse/in-world-terminal.md#phased-plan)
+   plan's phase 6, on the shared renderer.
+
+## Open questions for the owner
+
+1. **Name.** Does the smart terminal take the name OpenAgents Terminal, with
+   today's chat screen renamed the thread view, or does it get a name of its
+   own?
+2. **Packaging.** A separate `terminal-app` binary bundled beside
+   `openagents`, a window the desktop app opens, or both? Should `openagents
+   terminal` on a machine with a display open the window?
+3. **Default routing.** Is the rule order above right, especially that an
+   ambiguous line with a resolving first word runs as a command when no
+   local model is confident? Should `#` or another prefix be the request
+   prefix?
+4. **Jev for the line question.** Lev covers macOS on-device; is opting in to
+   Jev acceptable on other systems, or should those use a local Laya or Kev
+   door only?
+5. **Auto-run of read-only proposals.** Off by default, as proposed, or on
+   for your own computers?
+6. **Shell route.** Should general shell proposals come from the router's
+   new `shell` route, from Coder's turn, or both?
+7. **Typist across your own devices.** Host-enforced one typist for all
+   attachments, including your phone and laptop together, as proposed?
+8. **Layouts on the host.** This page decides that layouts live in the
+   host's session record so they follow you. Is a local-only option needed?
+9. **libghostty.** Is a Zig-built C library ever acceptable as an optional
+   codec for Superlogical interop, or does the terminal stay pure Rust?
+10. **Superlogical itself.** If Superlogical publishes its protocol, is a
+    client adapter (our surfaces attaching to its sessions) or a server
+    adapter (its clients attaching to our hosts) more valuable?
+11. **Windows.** The `coder-pty` host supports ConPTY. Is Windows a target
+    for the window in phase 2, or later?

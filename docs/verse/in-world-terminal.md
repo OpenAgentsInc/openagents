@@ -15,6 +15,9 @@ performance, and security design, lists what exists and what is missing with
 effort estimates, and orders the work from a one-terminal demo to shared
 terminals on in-world screens.
 
+The [smart terminal](../terminal/smart-terminal.md) builds on this overlay:
+blocks, natural-language requests as threads, and host-owned sessions.
+
 **Correction, October 5, 2026.** The owner's starting point is OpenAgents
 Terminal (`crates/openagents-terminal`, launched as `openagents terminal`),
 not the Coder terminal app, and the look is the white ladder of
