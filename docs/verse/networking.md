@@ -209,3 +209,25 @@ The chamber's own roadmap items (subscribed deltas instead of polled full
 snapshots, client prediction, instance management) remain in
 [the engine roadmap](engine/roadmap.md) and are prerequisites for
 step 3 at more than a handful of players.
+
+
+## Hosted social profile implementation
+
+The optional `host::Config::social_profile` selects the closed v1 Plaza or
+Everglade profile implemented by `verse_world::play::social`. These hosted
+variants use the authenticated gateway's movement, seat/switch interactions,
+scoped snapshots, and realm transfer. Profile geometry is included in content
+identity and shared with native presentation. Local-only profiles keep their
+existing rules; unsupported hosted profile names are refused.
+
+`verse::hosted::Client` projects admitted snapshots into `WorldRuntime` after
+explicit instance/profile admission. During this mode, `Session::tick_world`
+retains discovery and suppresses NIP-MV crowd geometry. The runtime refuses local
+placement, zone changes, and Studio operations. Public Studio poses come only
+from the separately authorized host through the realm's local control channel.
+Existing apps remain on their local flows until they explicitly attach this SDK;
+this does not add join screens or convert imported artwork.
+
+The [V07 audit update](../audits/2026-10-04-verse-engine-audit.md#v07-hosted-social-authority-is-implemented)
+and [acceptance receipt](../../bench/verse/2026-10-04/social-authority/run.json)
+record the supported bounds and remaining platform/performance work.

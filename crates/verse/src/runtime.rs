@@ -110,6 +110,8 @@ pub enum InteractHint {
 }
 
 pub struct WorldRuntime {
+    #[cfg(feature = "hosted-social")]
+    pub(crate) hosted: Option<crate::hosted::Projection>,
     pub world: World,
     pub player: PlayerController,
     pub camera: FollowCamera,
@@ -153,6 +155,8 @@ impl WorldRuntime {
         let player = PlayerController::new(world::SPAWN, 0.0);
         let agent = Agent::new(&player);
         Self {
+            #[cfg(feature = "hosted-social")]
+            hosted: None,
             world,
             player,
             camera: FollowCamera::default(),
@@ -169,6 +173,17 @@ impl WorldRuntime {
             ball: None,
             avatars: Vec::new(),
             trace_ghost: None,
+        }
+    }
+
+    pub fn is_hosted(&self) -> bool {
+        #[cfg(feature = "hosted-social")]
+        {
+            self.hosted.is_some()
+        }
+        #[cfg(not(feature = "hosted-social"))]
+        {
+            false
         }
     }
 
@@ -281,6 +296,9 @@ impl WorldRuntime {
     /// Start ordinary walking to an exact clear ground position.
     /// A refused destination stops any earlier route.
     pub fn navigate_to(&mut self, destination: [f32; 2]) -> Result<(), NavError> {
+        if self.is_hosted() {
+            return Err(NavError::WorldBounds);
+        }
         self.doors.route_owner = None;
         // In Lagrange 1 a map point becomes an EVA pack autopilot target.
         if let Some(result) = self.lagrange_fly_to(destination) {
@@ -371,6 +389,11 @@ impl WorldRuntime {
         };
         if dt == 0.0 {
             return 0.0;
+        }
+        #[cfg(feature = "hosted-social")]
+        if self.is_hosted() {
+            self.restore_hosted_player();
+            return dt;
         }
         let previous = self.player;
         if self.camera.first_person && !self.first_person_allowed() {
@@ -1029,6 +1052,10 @@ impl WorldRuntime {
         results: bool,
         evals: bool,
     ) -> Mesh {
+        #[cfg(feature = "hosted-social")]
+        if self.is_hosted() {
+            return self.hosted_mesh();
+        }
         if self.bare && self.is_plaza() {
             // The player, the ball and blocks, and the walk-in portals (to
             // Everglade, and to Lagrange 1, which is hidden for now; see
@@ -1109,6 +1136,9 @@ impl WorldRuntime {
     /// Stands the player at a finite position inside the world, leaving the
     /// ball and blocks where they are.
     pub fn place_player(&mut self, position: Vec3, yaw: f32) -> Result<(), String> {
+        if self.is_hosted() {
+            return Err("Hosted placement requires an authoritative snapshot".into());
+        }
         if !position.is_finite()
             || !yaw.is_finite()
             || position.x.abs() >= self.zone_half()

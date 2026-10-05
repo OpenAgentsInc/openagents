@@ -739,3 +739,35 @@ failover, seamless world simulation, history garbage collection, and storage
 throughput acceptance remain. The [realm transfer receipt](../../bench/verse/2026-10-04/realm-transfer/run.json)
 records two actual TLS instances, five process-death boundaries, and the tested
 limits.
+
+
+## Hosted social profiles
+
+`play::Game::social_in` creates a closed social profile without hostile actors.
+`play::social::Profile` revision 1 admits Plaza and Everglade variants with
+bounded static boxes/terrain and seat/switch objects. Combat requests are refused.
+Movement, social interactions, and replication use the same authenticated game
+and control fences. `host::Config::social_profile` selects this profile;
+`bind_content` includes its digest in the scene/asset identity. Startup recovery
+refuses changed profiles. Host, CLI, and offline migration preparation use this
+binding. Supported older combat checkpoints remain readable under rules v21;
+wire clients use version 24.
+
+Seats are exclusive and tied to a character life. Accepted interactions stop
+queued movement and advance its control epoch. Movement and control retirement
+release claims. Only a trusted host can publish typed public Studio poses,
+including through the realm's lease-checked local control channel. Those values
+contain no task text or work permissions; no world request controls Studio work.
+
+With Verse's `remote-chamber` feature, `verse::hosted::Client::attach` connects
+an already authenticated client and verified profile to `WorldRuntime`.
+Destination admission pins the instance and profile digest. Render poses and
+interaction state come from admitted snapshots; local movement and zone/Studio
+operations are refused. Presence owners use `Session::tick_world` to retain
+relay discovery while suppressing publisher poses during hosted play.
+
+These are opt-in hosted variants with neutral shared geometry and generic figures.
+Local asset packs keep their existing rules; Ruins, Lagrange, and Lab are refused
+as hosted profiles. Existing realm capacity and primary-character transfer
+limits remain. The [social authority receipt](../../bench/verse/2026-10-04/social-authority/run.json)
+records two-viewer convergence, transfer, recovery, and native projection checks.

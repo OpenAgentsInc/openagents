@@ -110,6 +110,7 @@ impl Game {
                 .map_err(|e| format!("Movement interval refused: {e:?}"))?;
             player.frame_clock = Some(next);
         }
+        self.clear_social_seat(frame.life);
         Ok(())
     }
     pub(super) fn expire_primary_frames(&mut self) -> Result<(), String> {

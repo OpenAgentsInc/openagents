@@ -80,6 +80,15 @@ impl Buffer {
         }
         let mut reset = false;
         if let Some(old) = &self.current {
+            match (&old.state.social, &state.social) {
+                (Some(before), Some(after))
+                    if before.profile != after.profile || after.revision < before.revision =>
+                {
+                    return Err("Replica social profile changed or revision regressed".into());
+                }
+                (None, None) | (Some(_), Some(_)) => {}
+                _ => return Err("Replica changed world rules without destination admission".into()),
+            }
             if response.tick < old.tick {
                 return Err("Replica authority tick regressed".into());
             }
@@ -374,6 +383,7 @@ pub(super) mod tests {
             control: None,
             body: Reply::Snapshot {
                 state: State {
+                    social: None,
                     scope: None,
                     collision: None,
                     movement: None,

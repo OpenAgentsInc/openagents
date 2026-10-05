@@ -23,6 +23,9 @@ const CLIMB_RATE: f32 = 3.0;
 
 impl WorldRuntime {
     pub(crate) fn update_player(&mut self, input: &InputState, dt: f32) {
+        if self.is_hosted() {
+            return;
+        }
         if let Some(ruins) = &mut self.zone_state.ruins {
             ruins.move_player(&mut self.player, input, dt);
         } else if let Some(lagrange) = &mut self.zone_state.lagrange {
@@ -66,6 +69,9 @@ impl WorldRuntime {
     /// Poll only while the native surface is active, before its presence tick.
     /// A true result invalidates the old world GPU buffers and pointer capture.
     pub fn zone_tick(&mut self) -> bool {
+        if self.is_hosted() {
+            return false;
+        }
         let ruins = self
             .zone_state
             .loader
@@ -117,7 +123,7 @@ impl WorldRuntime {
     /// Install already verified artwork. Offline tools use the same decoder.
     pub fn install_ruins(&mut self, assets: assets::LoadedAssets) {
         // A repeated completion cannot replace the saved plaza return pose.
-        if !self.is_plaza() {
+        if self.is_hosted() || !self.is_plaza() {
             return;
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
@@ -151,7 +157,7 @@ impl WorldRuntime {
     }
 
     pub fn install_lagrange(&mut self) {
-        if !self.is_plaza() {
+        if self.is_hosted() || !self.is_plaza() {
             return;
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
@@ -174,7 +180,7 @@ impl WorldRuntime {
     }
     /// Enter the generated Physics Lab. Nothing is downloaded.
     pub fn install_lab(&mut self) {
-        if !self.is_plaza() {
+        if self.is_hosted() || !self.is_plaza() {
             return;
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
@@ -191,7 +197,7 @@ impl WorldRuntime {
     /// decoder ([`everglade_pack::ZonePack::load_local`]).
     pub fn install_everglade(&mut self, pack: &everglade_pack::ZonePack) {
         // A repeated completion cannot replace the saved plaza return pose.
-        if !self.is_plaza() {
+        if self.is_hosted() || !self.is_plaza() {
             return;
         }
         let world = match Everglade::world(pack) {
@@ -264,6 +270,9 @@ impl WorldRuntime {
             && (offset.y.abs() < 3.0 || self.is_plaza() && offset.y < 3.0)
     }
     pub fn zone_intent(&mut self, intent: Intent) -> Result<(), String> {
+        if self.is_hosted() {
+            return Err("Hosted transitions require destination admission".into());
+        }
         let result = self.apply_zone_intent(intent);
         if let Err(error) = &result {
             self.zone_state.error = Some(error.chars().take(180).collect());
@@ -1152,11 +1161,17 @@ impl WorldRuntime {
         }
     }
 
-    /// The host supplies whether its surface is active, once a frame, with
-    /// the frame's seconds. The studio observes only while that holds and
-    /// the player is in Everglade, as the Gym's boards load only inside;
-    /// otherwise it stops its source and drops what it drew.
+    /// Stops local observation before entering an authoritative social world.
+    #[cfg(feature = "hosted-social")]
+    pub(crate) fn stop_local_studio(&mut self) {
+        self.zone_state.studio.set_active(false);
+    }
+
+    /// Polls the Studio source only while the local Everglade surface is active.
     pub fn update_studio(&mut self, surface_active: bool, dt: f32) {
+        if self.is_hosted() {
+            return;
+        }
         let active = surface_active && self.zone_state.everglade.is_some();
         let studio = &mut self.zone_state.studio;
         studio.set_active(active);
@@ -1189,6 +1204,12 @@ impl WorldRuntime {
         &mut self,
         operation: coder_access::Operation,
     ) -> Result<u64, coder_access::Error> {
+        if self.is_hosted() {
+            return Err(coder_access::Error::new(
+                coder_access::Code::Forbidden,
+                "World admission grants no Studio execution authority",
+            ));
+        }
         self.zone_state.studio.send(operation)
     }
 

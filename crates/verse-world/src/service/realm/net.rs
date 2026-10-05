@@ -19,6 +19,11 @@ use tokio_rustls::TlsAcceptor;
 const QUEUE: usize = 128;
 const CONNECTIONS: usize = 128;
 enum Operation {
+    Studio {
+        instance: u64,
+        actors: Vec<crate::play::social::SeatActor>,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
     Route {
         character: u64,
         reply: oneshot::Sender<Result<Route, String>>,
@@ -56,6 +61,20 @@ impl Control {
             .send(operation)
             .await
             .map_err(|_| "Realm operator stopped".into())
+    }
+    pub async fn publish_social_studio(
+        &self,
+        instance: u64,
+        actors: Vec<crate::play::social::SeatActor>,
+    ) -> Result<(), String> {
+        let (reply, receive) = oneshot::channel();
+        self.send(Operation::Studio {
+            instance,
+            actors,
+            reply,
+        })
+        .await?;
+        receive.await.map_err(|_| "Realm operator stopped")?
     }
     pub async fn route(&self, character: u64) -> Result<Route, String> {
         let (reply, receive) = oneshot::channel();
@@ -206,6 +225,18 @@ fn coordinator(
                 }
             }
             Work::Operator(operation) => match operation {
+                Operation::Studio {
+                    instance,
+                    actors,
+                    reply,
+                } => {
+                    let _ = reply.send(
+                        leases
+                            .get(&instance)
+                            .ok_or_else(|| "Realm instance has no listener".into())
+                            .and_then(|lease| realm.publish_social_studio(lease, actors, clock)),
+                    );
+                }
                 Operation::Route { character, reply } => {
                     let _ = reply.send(realm.route(character, clock));
                 }

@@ -784,3 +784,239 @@ fn version_nine_uses_its_original_schema_and_refuses_new_realm_books() {
         .is_err()
     );
 }
+
+#[tokio::test]
+async fn real_tls_social_profiles_share_interactions_and_fence_zone_transfers() {
+    use crate::{
+        play::social::{Action, SeatActor, Zone, tests::game},
+        service::{
+            client::Client,
+            net::tests::tls,
+            wire::{Body, Input},
+        },
+    };
+    use rustls::pki_types::ServerName;
+    use tokio::{net::TcpListener, sync::oneshot};
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("realm");
+    let mut realm = Realm::open(&root).unwrap();
+    for (instance, zone, n) in [(2001, Zone::Plaza, 11), (2002, Zone::Everglade, 12)] {
+        let mut g = Gateway::new(Chamber::new(game(instance, zone)).unwrap())
+            .unwrap()
+            .with_content([8; 32])
+            .unwrap();
+        g.enroll_primary(key(n).x_only_public_key().0.serialize())
+            .unwrap();
+        g.enroll_spectator(key(15).x_only_public_key().0.serialize())
+            .unwrap();
+        realm
+            .create(g, "127.0.0.1:1".parse().unwrap(), 8, 0)
+            .unwrap();
+    }
+    let initial = realm.acquire(2001, [3; 32], 1).unwrap();
+    let (character, original_life) = realm
+        .admit(
+            &initial,
+            key(14).x_only_public_key().0.serialize(),
+            [0., 0., 1.],
+            1,
+        )
+        .unwrap();
+    realm.release(&initial, 1).unwrap();
+    let left = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let right = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let left_address = left.local_addr().unwrap();
+    let right_address = right.local_addr().unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let a = realm.acquire(2001, [1; 32], now).unwrap();
+    let b = realm.acquire(2002, [2; 32], now).unwrap();
+    realm.set_endpoint(&a, left_address, now).unwrap();
+    realm.set_endpoint(&b, right_address, now).unwrap();
+    let (tls, connector) = tls();
+    let (stop, shutdown) = oneshot::channel();
+    let (control, commands) = net::channel();
+    let server = tokio::spawn(net::serve(
+        realm,
+        vec![(a, left), (b, right)],
+        tls,
+        commands,
+        async {
+            let _ = shutdown.await;
+        },
+    ));
+    let mut player = Client::connect_with_content(
+        left_address,
+        ServerName::try_from("localhost").unwrap(),
+        connector.config().clone(),
+        2001,
+        Some([8; 32]),
+        &key(14),
+    )
+    .await
+    .unwrap();
+    let mut viewer = Client::connect_with_content(
+        left_address,
+        ServerName::try_from("localhost").unwrap(),
+        connector.config().clone(),
+        2001,
+        Some([8; 32]),
+        &key(15),
+    )
+    .await
+    .unwrap();
+    player.snapshot().await.unwrap();
+    assert!(matches!(
+        player.social(Action::Sit { object: 1 }).await.unwrap().body,
+        Reply::Accepted
+    ));
+    let first = player.snapshot().await.unwrap();
+    let other = viewer.snapshot().await.unwrap();
+    assert_eq!(first.social, other.social);
+    assert_eq!(
+        first.social.as_ref().unwrap().occupant(1),
+        Some(original_life)
+    );
+    let foreign = Body::Social {
+        input: crate::play::social::Input {
+            life: original_life,
+            epoch: player.control().unwrap().epoch,
+            sequence: 1,
+            tick: player.tick(),
+            action: Action::Stand {},
+        },
+    };
+    assert!(matches!(
+        viewer.request(foreign).await.unwrap().body,
+        Reply::Refused { .. }
+    ));
+    assert!(matches!(
+        player
+            .social(Action::Toggle { object: 2 })
+            .await
+            .unwrap()
+            .body,
+        Reply::Accepted
+    ));
+    control
+        .publish_social_studio(
+            2001,
+            vec![SeatActor {
+                seat: 3,
+                feet: [-1., 0., 0.],
+                yaw: 1.,
+            }],
+        )
+        .await
+        .unwrap();
+    let current = player.snapshot().await.unwrap();
+    let other = viewer.snapshot().await.unwrap();
+    assert_eq!(current.social, other.social);
+    assert!(current.social.as_ref().unwrap().switch_on(2));
+    assert_eq!(current.social.as_ref().unwrap().studio.len(), 1);
+    let old_input = Input {
+        actor: player.control().unwrap().life,
+        epoch: player.control().unwrap().epoch,
+        sequence: player.control().unwrap().accepted_sequence + 1,
+        tick: player.tick(),
+        intent: crate::service::wire::Action::Move {
+            axes: [1., 0.],
+            yaw: 0.,
+        },
+    };
+    let transfer = control
+        .transfer(2001, 2002, character, [42; 16], [0., 0., 1.])
+        .await
+        .unwrap();
+    assert!(player.snapshot().await.is_err());
+    assert!(viewer.snapshot().await.is_err());
+    let mut destination = Client::connect_with_content(
+        right_address,
+        ServerName::try_from("localhost").unwrap(),
+        connector.config().clone(),
+        2002,
+        Some([8; 32]),
+        &key(14),
+    )
+    .await
+    .unwrap();
+    let mut destination_viewer = Client::connect_with_content(
+        right_address,
+        ServerName::try_from("localhost").unwrap(),
+        connector.config().clone(),
+        2002,
+        Some([8; 32]),
+        &key(15),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        destination
+            .request(Body::Command { command: old_input })
+            .await
+            .unwrap()
+            .body,
+        Reply::Refused { .. }
+    ));
+    let state = destination.snapshot().await.unwrap();
+    let other = destination_viewer.snapshot().await.unwrap();
+    assert_eq!(state.social, other.social);
+    assert_eq!(state.social.as_ref().unwrap().profile.zone, Zone::Everglade);
+    assert_eq!(
+        LifeId::from(destination.control().unwrap().life),
+        transfer.destination
+    );
+    assert_eq!(
+        control.route(character).await.unwrap().endpoint,
+        right_address
+    );
+    assert!(matches!(
+        destination
+            .social(Action::Sit { object: 1 })
+            .await
+            .unwrap()
+            .body,
+        Reply::Accepted
+    ));
+    assert_eq!(
+        destination.snapshot().await.unwrap().social,
+        destination_viewer.snapshot().await.unwrap().social
+    );
+    destination.close().await.unwrap();
+    destination_viewer.close().await.unwrap();
+    stop.send(()).unwrap();
+    let exit = server.await.unwrap().unwrap();
+    assert!(exit.failure.is_none(), "{:?}", exit.failure);
+    println!(
+        "social TLS acceptance: two profiles/viewers, seat/switch/Studio convergence, spectator refusal, stable character {character}, transfer fencing; {:?}",
+        exit.stats
+    );
+    drop(exit);
+    let recovered = Realm::open(&root).unwrap();
+    assert_eq!(
+        recovered
+            .characters()
+            .find(|(id, _, _)| *id == character)
+            .unwrap()
+            .2,
+        transfer.destination
+    );
+    assert_eq!(
+        recovered.games[&2001]
+            .game()
+            .social_state()
+            .unwrap()
+            .studio
+            .len(),
+        1
+    );
+    assert!(
+        recovered.games[&2001]
+            .game()
+            .social_state()
+            .unwrap()
+            .switch_on(2)
+    );
+}

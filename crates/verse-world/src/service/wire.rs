@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 23;
+pub const VERSION: u16 = 24;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -122,6 +122,9 @@ pub enum Body {
     },
     Command {
         command: Input,
+    },
+    Social {
+        input: crate::play::social::Input,
     },
     BeginMovementFrames {
         life: Life,
@@ -267,6 +270,18 @@ impl State {
     }
     /// Admits the shared snapshot and its complete presentation life bindings.
     pub fn validate(&self, instance: u64) -> Result<(), String> {
+        if let Some(social) = &self.social {
+            social.validate(instance)?;
+            if self
+                .presentation
+                .actors
+                .iter()
+                .any(|a| a.actor.nameplate && !a.actor.friendly)
+                || !self.snapshot.projectiles.is_empty()
+            {
+                return Err("Social snapshot contains combat actors or projectiles".into());
+            }
+        }
         if let Some(scope) = &self.scope {
             scope.validate()?;
         }
@@ -368,6 +383,8 @@ pub struct ActorBinding {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub social: Option<crate::play::social::State>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<super::replication::Scope>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -590,6 +607,7 @@ impl Gateway {
             }
         }
         Ok(State {
+            social: self.game().social_state().cloned(),
             scope: None,
             collision: Some(
                 self.game()
@@ -687,6 +705,21 @@ impl Gateway {
                 }
                 self.submit(id, command.into())
                     .map_err(|e| ("command", e))?;
+                Ok(Reply::Accepted)
+            }
+            Body::Social { input } => {
+                let admission = self.admission(id).map_err(|e| ("social", e))?;
+                if admission.actor() == input.life
+                    && admission.epoch() == input.epoch
+                    && input.sequence > admission.accepted_sequence()
+                    && self.game().authority_tick.saturating_sub(input.tick) > crate::COMMAND_AGE
+                {
+                    return Err((
+                        "stale_tick",
+                        "Social control snapshot expired before admission".into(),
+                    ));
+                }
+                self.submit_social(id, input).map_err(|e| ("social", e))?;
                 Ok(Reply::Accepted)
             }
             Body::BeginMovementFrames { life, epoch } => {

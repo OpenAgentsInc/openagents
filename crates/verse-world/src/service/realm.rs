@@ -516,6 +516,20 @@ impl Realm {
         self.publish(&[lease.instance])?;
         Ok(receipt)
     }
+    /// A local host may publish public seat poses under its current instance lease.
+    pub fn publish_social_studio(
+        &mut self,
+        lease: &Lease,
+        actors: Vec<crate::play::social::SeatActor>,
+        now: u64,
+    ) -> Result<(), String> {
+        self.check(lease, now)?;
+        self.games
+            .get_mut(&lease.instance)
+            .unwrap()
+            .publish_social_studio(actors)?;
+        self.publish(&[lease.instance])
+    }
     pub fn checkpoint(&mut self, lease: &Lease, now: u64) -> Result<(), String> {
         self.check(lease, now)?;
         self.publish(&[lease.instance])

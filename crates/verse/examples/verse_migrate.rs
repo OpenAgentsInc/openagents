@@ -43,6 +43,7 @@ fn prepare(config: &Config) -> Result<(Game, [u8; 32]), String> {
         &scene,
         config.pack.parent().unwrap_or(Path::new(".")),
     )?;
+    let content = config.bind_content(content)?;
     let mut game = config.prepare_game(scene)?;
     verse::imported::props::admit_collision(&pack, &mut game)?;
     Ok((game, content))

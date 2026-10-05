@@ -35,6 +35,7 @@ fn config(root: &Path) -> Config {
         private_key_der: "key.der".into(),
         state_dir: Some(root.into()),
         authored_combat_health: false,
+        social_profile: None,
         enrollments: vec![
             enrollment(91, Role::Primary {}),
             enrollment(

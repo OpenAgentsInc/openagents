@@ -27,6 +27,9 @@ pub struct Config {
     pub enrollments: Vec<Enrollment>,
     #[serde(default)]
     pub authored_combat_health: bool,
+    /// Explicit hosted social rules. Omission retains the combat profile.
+    #[serde(default)]
+    pub social_profile: Option<crate::play::social::Profile>,
     #[serde(default)]
     pub state_dir: Option<PathBuf>,
     #[serde(default)]
@@ -84,11 +87,25 @@ impl Config {
     /// Prepares combat using only the operator's configured health policy.
     pub fn prepare_game(&self, scene: verse_engine::director::Scene) -> Result<Game, String> {
         self.validate()?;
-        if self.authored_combat_health {
+        if let Some(profile) = &self.social_profile {
+            Game::social_in(scene, self.instance, profile.clone())
+        } else if self.authored_combat_health {
             Game::combat_authored_in(scene, false, self.instance)
         } else {
             Game::combat_in(scene, false, self.instance)
         }
+    }
+    /// Includes social geometry and rules in the scene/asset content identity.
+    pub fn bind_content(&self, content: [u8; 32]) -> Result<[u8; 32], String> {
+        let Some(profile) = &self.social_profile else {
+            return Ok(content);
+        };
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(b"verse.hosted.social.content.v1\0");
+        hash.update(content);
+        hash.update(profile.digest()?);
+        Ok(hash.finalize().into())
     }
     pub fn from_json(bytes: &[u8]) -> Result<Self, String> {
         if bytes.is_empty() || bytes.len() > 64 * 1024 {
@@ -100,6 +117,12 @@ impl Config {
         Ok(config)
     }
     pub fn validate(&self) -> Result<(), String> {
+        if let Some(profile) = &self.social_profile {
+            profile.validate()?;
+            if self.authored_combat_health || !self.rewards.is_empty() {
+                return Err("Social profiles cannot enable combat health or kill rewards".into());
+            }
+        }
         let tls = self.transport == Transport::Tls {};
         if self.instance == 0
             || (tls && self.enrollments.is_empty())
@@ -163,7 +186,9 @@ impl Config {
     /// Enrolls a prepared authority; callers load scene assets and collision first.
     pub fn gateway(&self, game: Game) -> Result<Gateway, String> {
         self.validate()?;
-        if game.player_life().instance != self.instance {
+        if game.player_life().instance != self.instance
+            || game.social_state().map(|s| &s.profile) != self.social_profile.as_ref()
+        {
             return Err("Host game instance mismatch".into());
         }
         let mut gateway = Gateway::new(Chamber::new(game)?)?;
@@ -195,7 +220,8 @@ impl Config {
             }) && !(self.transport != Transport::Tls {}
                 && matches!(rights, super::Rights::Spectator))
         });
-        if gateway.game().player_life().instance != self.instance
+        if gateway.game().social_state().map(|s| &s.profile) != self.social_profile.as_ref()
+            || gateway.game().player_life().instance != self.instance
             || granted.count() != 0
             || gateway.reward_policy() != self.rewards
             || gateway.progression() != &self.progression
@@ -293,6 +319,7 @@ mod tests {
                 role: Role::Primary {},
             }],
             authored_combat_health: false,
+            social_profile: None,
             state_dir: None,
             rewards: Vec::new(),
             progression: Default::default(),
@@ -307,6 +334,31 @@ mod tests {
         ))
         .unwrap();
         Game::combat_in(scene, false, instance).unwrap()
+    }
+    #[test]
+    fn social_host_configuration_binds_rules_and_refuses_changed_recovery() {
+        use crate::play::social::{Zone, tests::game};
+        let mut config = config();
+        let authored = game(config.instance, Zone::Plaza);
+        config.social_profile = Some(authored.social_state().unwrap().profile.clone());
+        let scene = authored.scene.clone();
+        let prepared = config.prepare_game(scene).unwrap();
+        let bound = config.bind_content([7; 32]).unwrap();
+        assert_ne!(bound, [7; 32]);
+        let gateway = config
+            .gateway(prepared)
+            .unwrap()
+            .with_content(bound)
+            .unwrap();
+        config.validate_recovered(&gateway).unwrap();
+        let recovered =
+            Gateway::restore(&gateway.checkpoint().unwrap(), bound, config.instance).unwrap();
+        config.validate_recovered(&recovered).unwrap();
+        config.social_profile.as_mut().unwrap().zone = Zone::Everglade;
+        assert_ne!(config.bind_content([7; 32]).unwrap(), bound);
+        assert!(config.validate_recovered(&recovered).is_err());
+        config.authored_combat_health = true;
+        assert!(config.validate().is_err());
     }
     #[test]
     fn authored_health_survives_reset_and_recovery_fences() {

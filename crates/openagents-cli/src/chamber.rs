@@ -1209,6 +1209,7 @@ async fn serve(output: Output, config: host::Config, access: WorldAccess) -> Res
         &scene,
         config.pack.parent().unwrap_or(Path::new(".")),
     )?;
+    let content = config.bind_content(content)?;
     let mut game = config.prepare_game(scene)?;
     verse::imported::props::admit_collision(&pack, &mut game)?;
     let mut store = config

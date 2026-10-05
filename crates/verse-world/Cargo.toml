@@ -8,7 +8,7 @@ description = "Portable command admission and owned world authority for Verse"
 
 [features]
 service-net = ["service-auth", "dep:tokio", "dep:rustls", "dep:tokio-rustls"]
-service-auth = ["dep:secp256k1", "dep:sha2", "dep:getrandom"]
+service-auth = ["dep:secp256k1", "dep:getrandom"]
 service-reach = ["service-net", "dep:coder-reach"]
 
 [dependencies]
@@ -16,7 +16,7 @@ tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "sync", "
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
 tokio-rustls = { version = "0.26", default-features = false, optional = true }
 secp256k1 = { version = "0.31.1", optional = true }
-sha2 = { version = "0.10", optional = true }
+sha2 = "0.10"
 getrandom = { version = "0.3", optional = true }
 verse-engine = { path = "../verse-engine" }
 serde = { version = "1", features = ["derive"] }

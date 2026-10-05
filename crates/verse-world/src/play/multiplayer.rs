@@ -165,6 +165,7 @@ impl Game {
         for p in self.additional_players.values_mut() {
             p.controls.forget_actor(source);
         }
+        self.clear_social_seat(life);
         self.additional_players.remove(&actor);
         self.observed_health.remove(&source);
         self.scene.actors.retain(|a| a.id != actor);
@@ -475,6 +476,7 @@ impl Game {
             p.pending_jump = false;
             p.frame_clock = None;
         }
+        self.clear_social_seat(life);
         Ok(())
     }
     pub(super) fn submit_additional(
@@ -1051,6 +1053,7 @@ impl Game {
         }
         self.simulation
             .revive_player(source, spawn.to_array(), std::f32::consts::PI)?;
+        self.clear_social_seat(life);
         self.bodies.remove(physical);
         self.spells.end_concentration(life.actor)?;
         let next = admission.actor();

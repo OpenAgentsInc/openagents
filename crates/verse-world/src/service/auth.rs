@@ -151,6 +151,15 @@ impl Gateway {
     pub fn restore(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<Self, String> {
         super::save::decode(bytes, content, instance)
     }
+    /// Publishes a trusted host projection; no wire request grants this operation.
+    pub fn publish_social_studio(
+        &mut self,
+        actors: Vec<crate::play::social::SeatActor>,
+    ) -> Result<(), String> {
+        self.chamber.game.set_social_studio(actors)?;
+        self.view_cache = None;
+        Ok(())
+    }
     pub fn enroll_primary(&mut self, key: [u8; 32]) -> Result<(), String> {
         self.view_cache = None;
         self.chamber.enroll_primary(valid_principal(key)?)
@@ -415,6 +424,15 @@ impl Gateway {
         self.view_cache = None;
         let b = self.binding(id)?;
         self.chamber.submit(b.principal, b.session, command)
+    }
+    pub fn submit_social(
+        &mut self,
+        id: ConnectionId,
+        input: crate::play::social::Input,
+    ) -> Result<(), String> {
+        self.view_cache = None;
+        let b = self.binding(id)?;
+        self.chamber.submit_social(b.principal, b.session, input)
     }
     pub fn begin_movement_frames(
         &mut self,

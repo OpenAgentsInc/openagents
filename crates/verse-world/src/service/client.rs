@@ -296,6 +296,20 @@ impl Client {
         frame.tick = command.tick;
         self.request_ready(Body::MovementFrame { frame }).await
     }
+    pub async fn social(
+        &mut self,
+        action: crate::play::social::Action,
+    ) -> Result<Response, String> {
+        timeout(DEADLINE, async {
+            for attempt in 0..3 {
+                let command = self.prepare_command(Intent::Jump)?;
+                let response = self.request_ready(Body::Social { input: crate::play::social::Input { life: command.actor, epoch: command.epoch, sequence: command.sequence, tick: command.tick, action } }).await?;
+                let unadmitted = matches!(&response.body, Reply::Refused { code, .. } if code == "stale_tick") && response.control.as_ref().is_some_and(|c| c.life == command.actor.into() && c.epoch == command.epoch && c.accepted_sequence < command.sequence);
+                if !unadmitted || attempt == 2 { return Ok(response); }
+            }
+            unreachable!("Social command attempts are bounded")
+        }).await.map_err(|_| "Social command timed out".to_string())?
+    }
     pub async fn command(&mut self, intent: Intent<Ability>) -> Result<Response, String> {
         timeout(DEADLINE,async {
             for attempt in 0..3 {
@@ -308,11 +322,15 @@ impl Client {
             unreachable!("Command attempts are bounded")
         }).await.map_err(|_|"Chamber command timed out".to_string())?
     }
-    pub async fn snapshot(&mut self) -> Result<State, String> {
-        let body = Body::Replicate {
+    /// Reconstructs a validated replication packet and retains its response context.
+    pub async fn replicated_snapshot(&mut self) -> Result<Response, String> {
+        self.request_ready(Body::Replicate {
             ack: self.replication.ack(),
-        };
-        match self.request_ready(body).await?.body {
+        })
+        .await
+    }
+    pub async fn snapshot(&mut self) -> Result<State, String> {
+        match self.replicated_snapshot().await?.body {
             Reply::Snapshot { state } => Ok(state),
             Reply::Refused { message, .. } => Err(message),
             _ => Err("Unexpected chamber snapshot outcome".into()),
@@ -425,6 +443,16 @@ impl Client {
                     c.life != command.actor || !(normal || teleport)
                 }) {
                     return Err("Accepted chamber command has no matching acknowledgment".into());
+                }
+                Ok(())
+            }
+            (Reply::Accepted, Body::Social { input }) => {
+                if r.control.as_ref().is_none_or(|c| {
+                    c.life != input.life.into()
+                        || input.epoch.checked_add(1) != Some(c.epoch)
+                        || c.accepted_sequence != 0
+                }) {
+                    return Err("Accepted social command has no matching control fence".into());
                 }
                 Ok(())
             }

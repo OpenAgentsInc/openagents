@@ -31,7 +31,7 @@ pub use format::{
 use pinned::PinnedFile;
 
 /// Exact content identity of the reviewed Everglade pack.
-pub const PACK_SHA256: &str = "4bbd3b18ae0f698a37da40e738176b180e3d7b2a4e72944102424a16ce0b598c";
+pub const PACK_SHA256: &str = "12b5f3d7b48e655590119e2b55b42567375c553099df28ada93715be076226f4";
 /// Transfer size of the reviewed Everglade pack.
 pub const PACK_BYTES: u64 = 15003865;
 /// The most triangles the Everglade layout may place, counting each placement.
@@ -44,6 +44,7 @@ pub const PACK_EXTENSION: &str = "vtp";
 // zones share the cache directory; arbitrary digest names are not ours.
 const EVERGLADE_PACK_HISTORY: &[&str] = &[
     PACK_SHA256,
+    "4bbd3b18ae0f698a37da40e738176b180e3d7b2a4e72944102424a16ce0b598c",
     "b57e33f733865ff639c87e6c0314f7e8f55c59d6ef313271880459ffb64bc49c",
 ];
 

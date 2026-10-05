@@ -81,6 +81,7 @@ pub struct Shown {
 /// Every remote entity in one world.
 #[derive(Debug)]
 pub struct Crowd {
+    hosted: bool,
     me: String,
     entities: HashMap<(String, String), Remote>,
     sessions: HashMap<String, SessionOrder>,
@@ -96,6 +97,7 @@ impl Crowd {
     pub fn new(me: &str) -> Self {
         Self {
             me: me.to_owned(),
+            hosted: false,
             entities: HashMap::new(),
             sessions: HashMap::new(),
             delay: DELAY,
@@ -103,8 +105,12 @@ impl Crowd {
         }
     }
 
-    /// Hides offline entities instead of drawing them dim where their owners
-    /// left them. A world with presence alone shows only who is there now.
+    /// Keeps relay discovery while authoritative social actors supply spatial presentation.
+    pub fn set_hosted(&mut self, hosted: bool) {
+        self.hosted = hosted;
+    }
+
+    /// Hides offline entities instead of drawing them dim where their owners left them.
     pub fn set_live_only(&mut self, live_only: bool) {
         self.live_only = live_only;
     }
@@ -243,6 +249,9 @@ impl Crowd {
     /// Where every entity is drawn at local time `now`.
     #[must_use]
     pub fn shown(&self, now: Instant) -> Vec<Shown> {
+        if self.hosted {
+            return vec![];
+        }
         let mut out: Vec<Shown> = self
             .entities
             .iter()
@@ -280,6 +289,9 @@ impl Crowd {
 
     /// Advances walk cycles and builds every remote entity's geometry.
     pub fn mesh(&mut self, now: Instant, dt: f32) -> Mesh {
+        if self.hosted {
+            return Mesh::default();
+        }
         let mut mesh = Mesh::default();
         for remote in self.entities.values_mut() {
             let Some((pos, rot, online)) = remote.at(now, self.delay) else {
@@ -388,6 +400,24 @@ mod tests {
                 )],
             },
         }
+    }
+
+    #[test]
+    fn hosted_presence_retains_discovery_without_spatial_authority() {
+        let mut crowd = Crowd::new("me");
+        let now = Instant::now();
+        crowd.apply(frame(1, "session", 500.), now);
+        assert_eq!(crowd.len(), 1);
+        crowd.set_hosted(true);
+        for n in [2, 1, 3] {
+            crowd.apply(frame(n, "session", 800.), now);
+        }
+        assert_eq!(crowd.len(), 1);
+        assert!(crowd.shown(now).is_empty());
+        assert!(crowd.nearby(Vec3::ZERO, 1000., now).is_empty());
+        assert!(crowd.mesh(now, 0.1).faces.is_empty());
+        crowd.set_hosted(false);
+        assert_eq!(crowd.shown(now).len(), 1);
     }
 
     #[test]

@@ -34,7 +34,9 @@ bounded deterministic delayed-movement profile. V05 remediation in
 [#10591](https://github.com/OpenAgentsInc/openagents/issues/10591) adds conservative
 spatial relevance, acknowledged deltas, and bounded snapshot scheduling. V06
 remediation in [#10593](https://github.com/OpenAgentsInc/openagents/issues/10593)
-adds independent instances, exclusive leases, and atomic character transfer. Two
+adds independent instances, exclusive leases, and atomic character transfer. V07
+remediation in [#10596](https://github.com/OpenAgentsInc/openagents/issues/10596)
+adds explicit hosted social profiles and a shared native projection. Two
 findings still deserve
 immediate engineering attention:
 
@@ -144,7 +146,7 @@ Evidence labels:
 | V04 | P1 | Confirmed movement intervals pass a bounded delayed profile. | Recorded, code | Movement and client replication | Complete ([#10580](https://github.com/OpenAgentsInc/openagents/issues/10580)) |
 | V05 | P1 | Spatial replication bounds steady traffic in retained fixtures. | Recorded, code | World service replication | Complete ([#10591](https://github.com/OpenAgentsInc/openagents/issues/10591)) |
 | V06 | P1 | Independent realm instances have durable placement, leases, lifecycle, and transfer. | Code | World hosting | Complete ([#10593](https://github.com/OpenAgentsInc/openagents/issues/10593)) |
-| V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters | Open |
+| V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters | Complete: [#10596](https://github.com/OpenAgentsInc/openagents/issues/10596), bounded hosted profiles |
 | V08 | P1 | Admission needs production enrollment and overload policy. | Code, gap | World access and transport | Open |
 | V09 | P1 | Character identity and rewards remain chamber-scoped. | Code, gap | Persistent character domain | Open |
 | V10 | P1 | CPU submission measurements do not isolate GPU or input latency. | Code, recorded | Profiling and acceptance | Open |
@@ -538,6 +540,8 @@ loss, remote host failover, WAN delivery, GPU rendering, or mobile transfer UI.
 
 ### V07: Local worlds and presence use different authority models
 
+Original finding at the audit baseline:
+
 [`WorldRuntime`](../../crates/verse/src/runtime.rs) and
 [`zones::runtime`](../../crates/verse/src/zones/runtime.rs) own local plaza,
 Everglade, Lagrange, Lab, and Ruins behavior. [`session`](../../crates/verse/src/session.rs)
@@ -561,6 +565,72 @@ existing [networking convergence plan](../verse/networking.md).
 entry/exit. Late presence events cannot overwrite authority poses. Transitions
 fence old commands and preserve character identity without transferring unrelated
 host or studio permissions.
+
+#### V07: Hosted social authority is implemented
+
+[#10596](https://github.com/OpenAgentsInc/openagents/issues/10596) adds
+[`play::social`](../../crates/verse-world/src/play/social.rs) to the existing
+owned game, authenticated gateway, scoped replication, checkpoints, and realm
+transfer. Profile revision 1 explicitly admits Plaza and Everglade social
+variants with static boxes or terrain triangles and bounded interaction objects.
+These worlds require no hostile actor or combat encounter. Client combat is
+refused; movement uses the same authoritative capsule motor and collision
+geometry that native presentation receives.
+
+Seats have exclusive life-bound occupancy; switches have authoritative state.
+Interactions require the session's character, current control epoch, fresh tick,
+monotonic sequence, and proximity. Accepted interactions fence and stop queued
+movement. Invalid interactions leave the world unchanged. Movement, disconnect,
+revocation, respawn, and transfer release seat claims. A trusted host publishes
+only typed public seat poses through the lease-checked realm control channel.
+There is no wire operation for publishing those poses or accessing Studio tasks.
+
+[`host::Config`](../../crates/verse-world/src/service/host.rs) accepts an optional
+`social_profile`; host preparation and the CLI, host example, and offline
+migration example bind its digest into content identity. Recovery refuses a
+changed profile. Checkpoint rules advance to v21 and wire messages to version
+24; earlier supported combat checkpoints remain readable, and older rule labels
+cannot carry social state.
+
+[`verse::hosted`](../../crates/verse/src/hosted.rs) connects the authenticated SDK
+and validated replica to `WorldRuntime`. Explicit destination admission pins
+instance and profile digest before replacement. The runtime draws authoritative
+actors, public seat poses, occupancy, and switches; it disables local placement,
+movement, navigation, zone installation, and Studio operations while attached.
+`Session::tick_world` keeps relay discovery metadata while suppressing its
+spatial crowd projection in hosted play. Local presence cannot replace the
+admitted poses. A destination rejects the old source replica, and an explicit
+exit drops the hosted projection before restoring the local runtime mode. A local
+attachment revision fences retired clients before they send requests, including
+replacement by another connection to the same instance.
+
+The [social authority receipt](../../bench/verse/2026-10-04/social-authority/run.json)
+retains focused TLS convergence/transfer and framed SDK/native viewer evidence,
+source digests, and verification results. The TLS fixture covers two profiles,
+a player and spectator, shared seat/switch/Studio state, spectator refusal,
+reconnection after transfer, an unchanged realm character ID, old command
+refusal, and durable recovery. Native viewers produce equal meshes and refuse
+local movement, placement, transitions, Studio operations, and old destination
+updates. Presence tests retain discovery without allowing late or replayed
+publisher poses into hosted geometry. Final checks pass 446 world tests (two
+crash child hooks are intentionally ignored), 511 Verse unit tests (11 ignored),
+seven Verse integration tests, two final native authority/presence tests, three
+CLI chamber tests, and the CLI REACH grant test. Host and migration examples
+compile. The broader Verse check requested regeneration of the checked-in
+Everglade pack; the previous content-addressed download remains available.
+
+**Limits:** This is an explicit opt-in SDK and shared runtime profile. Existing
+local plaza and imported Everglade artwork and rules are retained; the hosted
+v1 renderer uses neutral geometry and generic figures. It does not automatically
+convert those local asset packs or provide a desktop/mobile join screen. Ruins,
+Lagrange, and Lab remain local-only and are refused as hosted social profiles.
+Profiles permit at most 64 static shapes, 512 terrain triangles, 64 interaction
+objects, and 64 public Studio poses; host JSON is also bounded to 64 KiB.
+The existing 64-player/primary-anchor limits and realm reconnect-on-transfer
+behavior remain for V09. Hosts must already own or separately obtain observation
+authority before producing public Studio poses; this change grants none.
+The fixtures establish functional agreement, not crowded throughput, WAN latency,
+GPU quality, or a browser/phone multiplayer acceptance result.
 
 ### V08: Production admission needs enrollment and overload controls
 

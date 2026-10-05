@@ -1,6 +1,7 @@
 //! Owned chamber authority and read-only cinematic presentation.
 mod framed_movement;
 mod multiplayer;
+pub mod social;
 use crate::rules::{Simulation, Snapshot, Spell};
 use crate::utilities::{Controls, Utility};
 use glam::Vec3;
@@ -8,8 +9,8 @@ use std::collections::BTreeMap;
 use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
-/// Checkpoint revision. v20 retains bounded movement interval clocks.
-pub const RULES_REVISION: &str = "verse-chamber-owned-v20";
+/// Checkpoint revision. v21 adds closed hosted social profiles.
+pub const RULES_REVISION: &str = "verse-chamber-owned-v21";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
@@ -179,6 +180,8 @@ struct Route {
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Game {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    social: Option<social::State>,
     additional_players: BTreeMap<u64, multiplayer::Player>,
     next_player_actor: u64,
     #[serde(default)]
@@ -391,6 +394,7 @@ impl Game {
     }
     /// Saves pending combat, controller fences, timers, and presentation clocks.
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
+        self.validate_social()?;
         self.validate_roles()?;
         self.simulation.validate()?;
         self.validate_players()?;
@@ -423,6 +427,7 @@ impl Game {
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         if saved.version != 1
             || (saved.rules_revision != RULES_REVISION
+                && saved.rules_revision != "verse-chamber-owned-v20"
                 && saved.rules_revision != "verse-chamber-owned-v19"
                 && saved.rules_revision != "verse-chamber-owned-v18"
                 && !(saved.rules_revision == "verse-chamber-owned-v16"
@@ -430,7 +435,11 @@ impl Game {
         {
             return Err("Unsupported world checkpoint".into());
         }
+        if saved.rules_revision != RULES_REVISION && saved.world.social.is_some() {
+            return Err("Legacy rules cannot contain hosted social state".into());
+        }
         let mut world = saved.world;
+        world.validate_social()?;
         world.validate_clock()?;
         world.held_movement.validate(world.physics_steps)?;
         world.bodies.validate()?;
@@ -476,7 +485,8 @@ impl Game {
             || !world.yaw.is_finite()
             || world.ids.len() > 256
             || world.ids.len() != world.lives.len()
-            || (!world.ids.contains_key(&world.selected)
+            || (world.social.is_none()
+                && !world.ids.contains_key(&world.selected)
                 && !world
                     .spells
                     .props
@@ -525,14 +535,11 @@ impl Game {
         {
             return Err("Invalid world checkpoint state".into());
         }
-        world.colliders = crate::room::profile_colliders(world.scene.collision_profile.as_deref())?;
+        world.colliders = world.static_bounds()?;
         world.query_scene = if world.colliders.is_empty() {
             Default::default()
         } else {
-            crate::room::profile_query_scene(
-                world.scene.collision_profile.as_deref(),
-                world.admission.actor().instance,
-            )?
+            world.static_queries()?
         };
         world.spells.validate(world.admission.actor().instance)?;
         if !world.character.feet.is_finite()
@@ -982,9 +989,8 @@ impl Game {
         if self.navigation.is_none() {
             return Err("World profile has no compiled navigation".into());
         }
-        let profile = self.scene.collision_profile.as_deref();
-        let mut scene = crate::room::profile_query_scene(profile, self.admission.actor().instance)?;
-        let mut bounds = crate::room::profile_colliders(profile)?;
+        let mut scene = self.static_queries()?;
+        let mut bounds = self.static_bounds()?;
         for collider in next.colliders()? {
             bounds.push(physics::kinematic::Aabb {
                 min: collider
@@ -1233,7 +1239,14 @@ impl Game {
     }
 
     /// Creates a chamber in the instance selected by its trusted host.
-    pub fn new_in(mut scene: Scene, instance: u64) -> Result<Self, String> {
+    pub fn new_in(scene: Scene, instance: u64) -> Result<Self, String> {
+        Self::new_owned(scene, instance, None)
+    }
+    fn new_owned(
+        mut scene: Scene,
+        instance: u64,
+        social: Option<social::State>,
+    ) -> Result<Self, String> {
         if scene
             .actors
             .iter()
@@ -1264,13 +1277,15 @@ impl Game {
         for actor in actors.iter().filter(|a| a.friendly) {
             simulation.mark_friendly(ids[&actor.id])?;
         }
-        let selected = *ids
+        let selected = ids
             .keys()
             .find(|id| **id != 1 && actors.iter().any(|a| a.id == **id && !a.friendly))
             .or_else(|| {
                 ids.keys()
                     .find(|id| actors.iter().any(|a| a.id == **id && !a.friendly))
             })
+            .copied()
+            .or_else(|| social.as_ref().map(|_| 0))
             .ok_or("Missing hostile actors")?;
         let observed_health = simulation
             .snapshot()
@@ -1278,12 +1293,18 @@ impl Game {
             .iter()
             .map(|a| (a.id, a.hp.max(0)))
             .collect();
-        let colliders = crate::room::profile_colliders(scene.collision_profile.as_deref())?;
+        let colliders = social.as_ref().map_or_else(
+            || crate::room::profile_colliders(scene.collision_profile.as_deref()),
+            |s| s.profile.bounds(),
+        )?;
         simulation.set_colliders(colliders.clone());
         let query_scene = if colliders.is_empty() {
             Default::default()
         } else {
-            crate::room::profile_query_scene(scene.collision_profile.as_deref(), instance)?
+            social.as_ref().map_or_else(
+                || crate::room::profile_query_scene(scene.collision_profile.as_deref(), instance),
+                |s| s.profile.geometry_in(instance)?.compile(instance),
+            )?
         };
         let spells = crate::spells::SpellWorld::new(&colliders, SPELL_SEED);
         let next_player_actor = scene
@@ -1296,6 +1317,7 @@ impl Game {
             .checked_add(1)
             .ok_or("Player actor IDs exhausted")?;
         let mut world = Self {
+            social,
             additional_players: BTreeMap::new(),
             next_player_actor,
             migration_generation: 0,
@@ -2968,6 +2990,7 @@ impl Game {
             self.replace_blockers(blockers)?;
         }
         self.simulation.respawn_player(spawn.to_array(), yaw)?;
+        self.clear_social_seat(old);
         self.bodies.remove(physical);
         self.admission = admission;
         self.frame_clock = None;
@@ -3006,6 +3029,7 @@ impl Game {
         self.admission
             .handoff(crate::Controller(if agent { 2 } else { 1 }))
             .map_err(|e| format!("Control handoff refused: {e:?}"))?;
+        self.clear_social_seat(self.player_life());
         self.agent_controlled = agent;
         self.frame_clock = None;
         self.pending_movement = None;
@@ -3019,6 +3043,21 @@ impl Game {
         controller: crate::Controller,
         command: crate::Command<Ability>,
     ) -> Result<(), String> {
+        let life = command.actor;
+        let result = self.submit_owned(controller, command);
+        if result.is_ok() {
+            self.clear_social_seat(life);
+        }
+        result
+    }
+    fn submit_owned(
+        &mut self,
+        controller: crate::Controller,
+        command: crate::Command<Ability>,
+    ) -> Result<(), String> {
+        if self.social.is_some() && matches!(command.intent, crate::Intent::Cast { .. }) {
+            return Err("Combat is unavailable in social worlds".into());
+        }
         if command.actor.actor != self.player_actor() {
             return self.submit_additional(controller, command);
         }
@@ -3076,6 +3115,9 @@ impl Game {
         self.activate_admitted(ability)
     }
     fn activate_admitted(&mut self, ability: Ability) -> Result<(), String> {
+        if self.social.is_some() {
+            return Err("Combat is unavailable in social worlds".into());
+        }
         if !self.unlocked() {
             return Err("Wait for the cinematic camera handoff".into());
         }

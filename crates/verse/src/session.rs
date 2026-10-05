@@ -668,6 +668,7 @@ impl Session {
     /// As [`Session::tick`] for a whole world: in the bare world it also
     /// exchanges the shared bodies.
     pub fn tick_world(&mut self, now: Instant, world: &mut crate::runtime::WorldRuntime) {
+        self.crowd.set_hosted(world.is_hosted());
         let crate::runtime::WorldRuntime {
             player,
             agent,

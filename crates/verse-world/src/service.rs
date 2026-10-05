@@ -622,6 +622,19 @@ impl Chamber {
         self.game.submit(controller, command)
     }
 
+    pub fn submit_social(
+        &mut self,
+        principal: Principal,
+        session: Session,
+        input: crate::play::social::Input,
+    ) -> Result<(), String> {
+        let (controller, life) = self.player(principal, session)?;
+        if life != input.life {
+            return Err("Social command does not name the current character".into());
+        }
+        self.game.submit_social(controller, input)
+    }
+
     pub fn begin_movement_frames(
         &mut self,
         principal: Principal,

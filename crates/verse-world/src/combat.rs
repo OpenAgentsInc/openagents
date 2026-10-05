@@ -44,6 +44,9 @@ pub struct Encounter {
 impl Game {
     /// Resets this local encounter while preserving command and event fences.
     pub fn restart_combat(&mut self, agent: bool) -> Result<(), String> {
+        if self.social_state().is_some() {
+            return self.restart_social(agent);
+        }
         let mut fresh =
             Self::combat_authored_in(self.scene.clone(), agent, self.player_life().instance)?;
         fresh.adopt_restart_fences(self)?;

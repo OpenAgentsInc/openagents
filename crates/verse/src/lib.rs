@@ -34,6 +34,8 @@ pub mod gym_notes;
 pub mod gym_replay;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod gym_results;
+#[cfg(feature = "hosted-social")]
+pub mod hosted;
 pub mod hud;
 pub mod identity;
 pub mod imported;

@@ -1,0 +1,11 @@
+running 5 tests
+social seats: exclusive occupancy, replay/foreign refusal, shared epoch fence, public Studio pose
+test play::social::tests::social_seats_share_control_fences_and_refusals_do_not_mutate ... ok
+test play::social::tests::social_profiles_and_checkpoint_rules_are_closed ... ok
+test service::host::tests::social_host_configuration_binds_rules_and_refuses_changed_recovery ... ok
+social movement: owned motor, no required enemies, combat refused, exact collision/checkpoint recovery
+test play::social::tests::social_movement_uses_authored_collision_and_disables_combat ... ok
+social TLS acceptance: two profiles/viewers, seat/switch/Studio convergence, spectator refusal, stable character 3, transfer fencing; Stats { ticks: 30, requests: 20, queue_peak: 2, skipped_seconds: 0.0, work_peak_seconds: 0.048381428 }
+test service::realm::tests::real_tls_social_profiles_share_interactions_and_fence_zone_transfers ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 442 filtered out; finished in 0.77s

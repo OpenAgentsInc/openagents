@@ -454,7 +454,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                                 continue;
                             }
                             let mutating = Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
-                                Body::Authenticate {..} | Body::BeginMovementFrames {..} | Body::MovementFrame {..} | Body::Command {..} | Body::Respawn {..} | Body::ClaimQuest {..}
+                                Body::Authenticate {..} | Body::Social {..} | Body::BeginMovementFrames {..} | Body::MovementFrame {..} | Body::Command {..} | Body::Respawn {..} | Body::ClaimQuest {..}
                                 | Body::AcceptQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..} | Body::EquipGear {..}));
                             if !mutating && !dirty {
                                 if let Some(mut entry) = fences.last_entry() {
