@@ -74,16 +74,19 @@ The exact rights are:
 | `review` | Write reviews and diffs. |
 | `access_read` | List enrolled devices and their states. |
 | `access_admin` | Issue invitations, approve or deny enrollment requests, cancel invitations, and revoke devices, within the rights the administrator holds. |
+| `world` | Join the host's world instances over a [REACH](NIP-REACH.md) direct channel. The world host checks the grant at the handshake, before every world request, and on a timer. |
 
 A grant carries a nonempty, duplicate-free list in the order shown above.
 Any other order is malformed. No right implies another: `access_admin` does
 not include `access_read`, and `operate` does not include `observe`. A
 **standard device grant** is `observe`, `operate`, `terminal`, and `review`;
-it excludes both access rights. The **pairing grant** is every right:
+it excludes both access rights. The **pairing grant** is every right except `world`:
 `observe`, `operate`, `terminal`, `review`, `access_read`, and
 `access_admin`. It is what a connect code and a nearby approval carry,
 because the device paired that way is the owner's own phone and does what
-the owner does at the computer.
+the owner does at the computer. It leaves out `world` because clients built
+before that right existed refuse a grant that names it; an administrator
+grants `world` explicitly.
 
 A right is necessary, never sufficient. The profile that defines an effect
 still applies its own checks. For example, a terminal stream needs a

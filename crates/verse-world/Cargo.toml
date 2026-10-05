@@ -9,6 +9,7 @@ description = "Portable command admission and owned world authority for Verse"
 [features]
 service-net = ["service-auth", "dep:tokio", "dep:rustls", "dep:tokio-rustls"]
 service-auth = ["dep:secp256k1", "dep:sha2", "dep:getrandom"]
+service-reach = ["service-net", "dep:coder-reach"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "sync", "time"], optional = true }
@@ -22,6 +23,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 glam = { version = "0.30.10", features = ["serde"] }
 physics = { path = "../physics" }
+coder-reach = { path = "../coder-reach", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

@@ -1,10 +1,10 @@
 # Verse networking, the Agent Studio, and NIPs
 
-Status: proposed specification, October 4, 2026. The owner asked how the
-Agent Studio, Everglade, and the authoritative multiplayer chamber added on
-October 4 fit together; whether Verse can run on Nostr alone; and which NIPs
-under `nips/openagents/` and `nips/block/` the studio should use. This page
-answers all three and sets the plan. Nothing here changes code yet.
+Status: specification, October 4, 2026; the plan marks what is implemented. The
+owner asked how the Agent Studio, Everglade, and the authoritative
+multiplayer chamber added on October 4 fit together; whether Verse can run on
+Nostr alone; and which NIPs under `nips/openagents/` and `nips/block/` the
+studio should use. This page answers all three and sets the plan.
 
 ## The answer
 
@@ -185,7 +185,12 @@ execution".
 2. **One direct channel.** Run the chamber wire over a REACH channel,
    admitted by NIP-HOST grants; advertise instances in REACH directories;
    drop the out-of-band certificate. Browsers then connect over the WebSocket
-   fallback.
+   fallback. Implemented (#10552): `verse_world::service::reach` carries the
+   unchanged chamber frames over a REACH channel (TCP or WebSocket), admitted
+   by the new NIP-HOST `world` right (`coder_host::authority::WorldGrants`)
+   and rechecked before every request and on a timer, and directory entries
+   carry `worlds`. The chamber host binaries still start TLS, and NIP-MV
+   `33300` world events remain.
 3. **Shared Everglade.** A social rules profile in `verse-world`; the shared
    content digest; authority-owned seat actors fed by the studio snapshot;
    panel access checked against studio rights.

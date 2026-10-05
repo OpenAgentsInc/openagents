@@ -322,7 +322,7 @@ uses, and marks which are implemented and which are only specified.
   `docs/coder/runtime/chat-load-benchmark.md`.
 - `crates/coder-access` — NIP-HOST host-wide device enrollment: single-use
   `coder-host:` invitations, reverse enrollment approved by code, host-signed
-  device grants with six closed rights and revocation epochs, and delegation
+  device grants with seven closed rights and revocation epochs, and delegation
   that can only narrow. The client feature builds without host code. Read its
   README and `nips/openagents/NIP-HOST.md` before changing rights or admission.
 - `crates/coder-reach` — NIP-REACH: the owner host directory, host presence,

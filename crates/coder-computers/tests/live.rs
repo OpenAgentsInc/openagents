@@ -314,6 +314,7 @@ fn directory_hosts_show_owner_labels_weights_and_revisions() {
         relays: vec![relay.clone()],
         weight: 0,
         added_at: second.issued_at,
+        worlds: Vec::new(),
     });
     runtime
         .block_on(publish_directory(

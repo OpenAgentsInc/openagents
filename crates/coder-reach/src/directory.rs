@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    Error, Refusal, Result, artifact, fail, label, parse_pubkey, pubkey, relay_url, requires,
+    Error, Refusal, Result, artifact, fail, label, parse_pubkey, pubkey, random_id, relay_url,
+    requires,
 };
 
 /// Schema of a directory body.
@@ -22,6 +23,25 @@ pub const MAX_RELAYS: usize = 8;
 pub const MAX_WEIGHT: u32 = 1000;
 /// Largest label, in UTF-8 bytes.
 pub const MAX_LABEL_BYTES: usize = 64;
+/// Most world instances one entry advertises.
+pub const MAX_WORLDS: usize = 16;
+
+/// A world instance a host serves over its direct channel. Joining it takes
+/// a NIP-HOST grant with the `world` right; the entry grants nothing.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorldInstance {
+    /// The instance number the world's opening challenge names; never zero.
+    pub instance: u64,
+    /// Owner-chosen display text. Never an identity.
+    pub label: String,
+    /// The chamber wire version the instance speaks.
+    pub wire: u16,
+    /// Lowercase hex SHA-256 of the zone content the instance binds, when it
+    /// binds one. A client refuses an instance whose challenge differs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+}
 
 /// One host the owner admitted to the directory.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +57,9 @@ pub struct HostEntry {
     pub weight: u32,
     /// When the owner added this host.
     pub added_at: u64,
+    /// World instances the host serves, unique by instance number.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub worlds: Vec<WorldInstance>,
 }
 
 /// The directory body.
@@ -106,6 +129,24 @@ impl Directory {
             }
             if entry.weight > MAX_WEIGHT {
                 return fail(Refusal::LimitExceeded, "weight exceeds its bound");
+            }
+            if entry.worlds.len() > MAX_WORLDS {
+                return fail(Refusal::LimitExceeded, "too many world instances");
+            }
+            for (i, world) in entry.worlds.iter().enumerate() {
+                if world.instance == 0 {
+                    return fail(Refusal::Malformed, "world instance must be nonzero");
+                }
+                if entry.worlds[..i]
+                    .iter()
+                    .any(|old| old.instance == world.instance)
+                {
+                    return fail(Refusal::Conflict, "duplicate world instance");
+                }
+                label(&world.label, MAX_LABEL_BYTES)?;
+                if let Some(content) = &world.content {
+                    random_id(content)?;
+                }
             }
             if entry.added_at > self.issued_at {
                 return fail(
@@ -283,6 +324,58 @@ mod tests {
             relays: vec!["wss://relay.example".into()],
             weight: 10,
             added_at: 100,
+            worlds: Vec::new(),
+        }
+    }
+
+    fn world(instance: u64) -> WorldInstance {
+        WorldInstance {
+            instance,
+            label: "Everglade".into(),
+            wire: 22,
+            content: Some("ab".repeat(32)),
+        }
+    }
+
+    #[test]
+    fn an_entry_advertises_world_instances() {
+        let owner = key(1);
+        let dir = Directory::empty(&pubkey(&owner), 100)
+            .with_host(
+                HostEntry {
+                    worlds: vec![world(7)],
+                    ..entry(2)
+                },
+                110,
+            )
+            .unwrap();
+        let event = dir.seal(&owner, &new_id(), 10_000).unwrap();
+        let opened = Directory::open(&event, &owner).unwrap();
+        assert_eq!(opened.entry(&entry(2).host).unwrap().worlds, vec![world(7)]);
+        // An entry without worlds keeps the original wire form.
+        let plain = serde_json::to_value(entry(3)).unwrap();
+        assert!(plain.get("worlds").is_none());
+        let parsed: HostEntry = serde_json::from_value(plain).unwrap();
+        assert!(parsed.worlds.is_empty());
+        for bad in [
+            vec![world(0)],
+            vec![world(7), world(7)],
+            vec![WorldInstance {
+                label: String::new(),
+                ..world(7)
+            }],
+            vec![WorldInstance {
+                content: Some("AB".repeat(32)),
+                ..world(7)
+            }],
+            (1..=MAX_WORLDS as u64 + 1).map(world).collect(),
+        ] {
+            let mut dir = Directory::empty(&pubkey(&owner), 100);
+            dir.hosts.push(HostEntry {
+                worlds: bad,
+                ..entry(2)
+            });
+            assert!(dir.validate().is_err());
         }
     }
 

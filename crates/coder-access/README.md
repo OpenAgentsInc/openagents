@@ -23,10 +23,13 @@ operation, and every operation checks it again.
 | `review` | Write reviews and diffs. |
 | `access_read` | List enrolled devices. |
 | `access_admin` | Invite, approve, deny, cancel, and revoke, within held rights. |
+| `world` | Join the host's world instances over a direct channel. |
 
 No right implies another. The `standard` preset is `observe`, `operate`,
 `terminal`, and `review`. The `admin` preset is `access_read` and
-`access_admin`. A refusal for a missing right names that right.
+`access_admin`. The pairing grant holds every right except `world`, which
+clients built before it existed cannot parse; grant `world` explicitly. A
+refusal for a missing right names that right.
 
 ## Set up a host
 

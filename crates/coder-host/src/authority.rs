@@ -362,6 +362,24 @@ impl GrantCheck for Grants {
     }
 }
 
+/// The authority seen through a world's direct channel: the grant must
+/// admit the channel and hold the `world` right. A world host rechecks it
+/// before every message, so a revoked or narrowed grant drops the device at
+/// its next message.
+#[derive(Clone)]
+pub struct WorldGrants(pub Arc<Authority>);
+
+impl GrantCheck for WorldGrants {
+    fn check(&self, device: &str, grant: &str, epoch: u64, now: u64) -> Result<(), GrantRefusal> {
+        let rights = self.0.check(device, grant, epoch, now)?;
+        if rights.contains(Right::World) {
+            Ok(())
+        } else {
+            Err(GrantRefusal::Unknown)
+        }
+    }
+}
+
 impl coder_pty::host::Rights for Grants {
     fn holds(&self, principal: &str, right: coder_pty::host::Right) -> bool {
         let right = match right {
@@ -420,7 +438,11 @@ mod tests {
 
     /// Pair `device` on the store `host` names, as a redemption does.
     fn pair(host: &Host, device: &SecretKey, now: u64) {
-        let rights = Rights::parse_list("observe").unwrap();
+        pair_with(host, device, "observe", now);
+    }
+
+    fn pair_with(host: &Host, device: &SecretKey, rights: &str, now: u64) {
+        let rights = Rights::parse_list(rights).unwrap();
         let code = host.invite(RELAY, rights, now, now + 3600).unwrap().code;
         let invitation = HostInvitation::parse(&code, now, POLICY).unwrap();
         let pending = prepare_redeem(&invitation, device, now, POLICY).unwrap();
@@ -462,6 +484,54 @@ mod tests {
         let _ = checked.send(());
         writer.join().unwrap();
         assert!(matches!(seen, Standing::Active(_)), "{seen:?}");
+    }
+
+    /// A world channel needs the `world` right; a channel grant without it
+    /// opens host channels but never a world.
+    #[test]
+    fn world_grants_admit_only_grants_with_the_world_right() {
+        let temp = tempfile::tempdir().unwrap();
+        let access = temp.path().join("access");
+        Host::new(&access, POLICY).init(&pubkey(&key())).unwrap();
+        let authority = Arc::new(Authority::open(Host::new(&access, POLICY)).unwrap());
+        let (plain, world) = (key(), key());
+        authority
+            .local(|host, now| {
+                pair_with(host, &plain, "observe", now);
+                pair_with(host, &world, "observe,world", now);
+                Ok(())
+            })
+            .unwrap();
+        let now = coder_access::unix_time().unwrap();
+        let entry = |device: &SecretKey| {
+            authority
+                .devices()
+                .unwrap()
+                .into_iter()
+                .find(|entry| entry.device == pubkey(device))
+                .unwrap()
+        };
+        let (plain, world) = (entry(&plain), entry(&world));
+        let channels = Grants(authority.clone());
+        let worlds = WorldGrants(authority.clone());
+        for entry in [&plain, &world] {
+            assert_eq!(
+                channels.check(&entry.device, &entry.grant, entry.epoch, now),
+                Ok(())
+            );
+        }
+        assert_eq!(
+            worlds.check(&world.device, &world.grant, world.epoch, now),
+            Ok(())
+        );
+        assert_eq!(
+            worlds.check(&plain.device, &plain.grant, plain.epoch, now),
+            Err(GrantRefusal::Unknown)
+        );
+        assert_eq!(
+            worlds.check(&world.device, &world.grant, world.epoch + 1, now),
+            Err(GrantRefusal::EpochMismatch)
+        );
     }
 
     /// A host starts while something else briefly holds its store: a child

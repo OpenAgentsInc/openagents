@@ -338,6 +338,7 @@ pub async fn run(build: impl FnOnce(&Paths) -> (Arc<dyn Tasks>, Inspect)) {
                 relays: vec![relay.clone()],
                 weight: 100,
                 added_at: now(),
+                worlds: Vec::new(),
             },
             now(),
         )

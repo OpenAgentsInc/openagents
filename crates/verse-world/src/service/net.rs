@@ -1,4 +1,5 @@
-//! TLS-only framed chamber IO with one host-owned world loop.
+//! Framed chamber IO with one host-owned world loop, over TLS or, with the
+//! `service-reach` feature, a NIP-REACH direct channel. Plaintext is refused.
 use std::{
     future::Future,
     sync::Arc,
@@ -137,8 +138,32 @@ fn finish(
     }
     Ok(())
 }
-enum Event {
-    Open(oneshot::Sender<OpenReply>),
+/// An ordered, authenticated byte stream that carries chamber frames.
+pub trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> Transport for T {}
+
+/// How accepted sockets become authenticated chamber transports.
+pub(super) enum Listen {
+    Tls(TlsAcceptor),
+    #[cfg(feature = "service-reach")]
+    Reach(Arc<dyn super::reach::Admit>),
+}
+
+/// Checks one connection's standing before each request it sends.
+pub(super) trait Guard: Send + Sync {
+    /// Refuses a request the connection's admission no longer allows.
+    fn admit(&self, request: &[u8]) -> Result<(), String>;
+    /// The identity key the transport authenticated, when it binds one.
+    fn device(&self) -> Option<[u8; 32]>;
+}
+
+pub(super) enum Event {
+    Open {
+        /// A transport-admitted key the chamber does not yet know joins as a
+        /// spectator before its challenge is issued.
+        spectate: Option<[u8; 32]>,
+        reply: oneshot::Sender<OpenReply>,
+    },
     Request {
         id: ConnectionId,
         bytes: Vec<u8>,
@@ -199,7 +224,8 @@ pub async fn serve<F: Future<Output = ()>>(
     gateway: Gateway,
     shutdown: F,
 ) -> Exit {
-    serve_with_store(listener, tls, gateway, None, shutdown).await
+    let listen = Listen::Tls(TlsAcceptor::from(tls));
+    serve_with_store(listener, listen, gateway, None, shutdown).await
 }
 /// Commits world mutations before replies and stops on any durability failure.
 pub async fn serve_durable<F: Future<Output = ()>>(
@@ -209,11 +235,12 @@ pub async fn serve_durable<F: Future<Output = ()>>(
     store: Store,
     shutdown: F,
 ) -> Exit {
-    serve_with_store(listener, tls, gateway, Some(store), shutdown).await
+    let listen = Listen::Tls(TlsAcceptor::from(tls));
+    serve_with_store(listener, listen, gateway, Some(store), shutdown).await
 }
-async fn serve_with_store<F: Future<Output = ()>>(
+pub(super) async fn serve_with_store<F: Future<Output = ()>>(
     listener: TcpListener,
-    tls: Arc<ServerConfig>,
+    listen: Listen,
     mut gateway: Gateway,
     store: Option<Store>,
     shutdown: F,
@@ -289,7 +316,6 @@ async fn serve_with_store<F: Future<Output = ()>>(
         }
         None
     };
-    let acceptor = TlsAcceptor::from(tls);
     let capacity = Arc::new(Semaphore::new(CONNECTIONS));
     let (send, mut receive) = mpsc::channel(QUEUE);
     let mut workers = JoinSet::new();
@@ -320,11 +346,24 @@ async fn serve_with_store<F: Future<Output = ()>>(
                             continue;
                         };
                         stats.accepted_connections += 1;
-                        let acceptor = acceptor.clone(); let send = send.clone();
-                        workers.spawn(async move {
-                            let _permit = permit;
-                            let _ = connection(socket, acceptor, send).await;
-                        });
+                        let send = send.clone();
+                        match &listen {
+                            Listen::Tls(acceptor) => {
+                                let acceptor = acceptor.clone();
+                                workers.spawn(async move {
+                                    let _permit = permit;
+                                    let _ = connection(socket, acceptor, send).await;
+                                });
+                            }
+                            #[cfg(feature = "service-reach")]
+                            Listen::Reach(admit) => {
+                                let admit = admit.clone();
+                                workers.spawn(async move {
+                                    let _permit = permit;
+                                    let _ = super::reach::connection(socket, admit, send).await;
+                                });
+                            }
+                        }
                     }
                     Err(_) => {failure = Some("Chamber listener failed".into()); break;}
                 }
@@ -395,8 +434,13 @@ async fn serve_with_store<F: Future<Output = ()>>(
             event = receive.recv() => {
                 let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                 match event {
-                    Some(Event::Open(reply)) => {
-                        let result = gateway.open_json(now);
+                    Some(Event::Open {spectate, reply}) => {
+                        let joined = match spectate {
+                            Some(key) => gateway.admit_spectator(key),
+                            None => Ok(false),
+                        };
+                        dirty |= joined.as_ref().is_ok_and(|joined| *joined);
+                        let result = joined.and_then(|_| gateway.open_json(now));
                         if let Err(Ok((id, _))) = reply.send(result) {let _ = gateway.close(id);}
                     }
                     Some(Event::Request {id, bytes, reply}) => {
@@ -538,12 +582,22 @@ async fn connection(
     socket
         .set_nodelay(true)
         .map_err(|_| "Cannot configure chamber socket")?;
-    let mut stream = timeout(HANDSHAKE, acceptor.accept(socket))
+    let stream = timeout(HANDSHAKE, acceptor.accept(socket))
         .await
         .map_err(|_| "Chamber TLS handshake timed out")?
         .map_err(|_| "Chamber TLS handshake refused")?;
+    session(stream, None, send).await
+}
+
+/// Serves chamber frames on one authenticated transport until it closes.
+pub(super) async fn session<S: Transport>(
+    mut stream: S,
+    guard: Option<Box<dyn Guard>>,
+    send: mpsc::Sender<Event>,
+) -> Result<(), String> {
     let (reply, receive) = oneshot::channel();
-    send.send(Event::Open(reply))
+    let spectate = guard.as_ref().and_then(|guard| guard.device());
+    send.send(Event::Open { spectate, reply })
         .await
         .map_err(|_| "Chamber host stopped")?;
     let (id, hello) = receive.await.map_err(|_| "Chamber host stopped")??;
@@ -566,6 +620,9 @@ async fn connection(
             count += 1;
             if count > REQUESTS_PER_SECOND {
                 return Err("Chamber request rate exceeded".into());
+            }
+            if let Some(guard) = &guard {
+                guard.admit(&bytes)?;
             }
             let (reply, receive) = oneshot::channel();
             send.send(Event::Request { id, bytes, reply })

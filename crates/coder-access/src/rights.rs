@@ -17,15 +17,18 @@ pub enum Right {
     AccessRead,
     /// Invite, approve, and revoke devices, only within held rights.
     AccessAdmin,
+    /// Join the host's world instances over a direct channel.
+    World,
 }
 impl Right {
-    pub const ALL: [Right; 6] = [
+    pub const ALL: [Right; 7] = [
         Right::Observe,
         Right::Operate,
         Right::Terminal,
         Right::Review,
         Right::AccessRead,
         Right::AccessAdmin,
+        Right::World,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -35,6 +38,7 @@ impl Right {
             Self::Review => "review",
             Self::AccessRead => "access_read",
             Self::AccessAdmin => "access_admin",
+            Self::World => "world",
         }
     }
     pub fn parse(text: &str) -> Result<Self> {
@@ -90,12 +94,14 @@ impl Rights {
     }
     /// What every pairing grants the owner's phone: a connect code (QR or
     /// copied), a nearby approval, and `openagents connect invite`. It is
-    /// every right, because the phone is the owner's and does everything
-    /// the owner does on the computer: watch, run, open terminals, review,
-    /// and see and manage who has access. Nothing on either screen narrows
-    /// it; the owner narrows a phone by revoking it.
+    /// every host right, because the phone is the owner's and does
+    /// everything the owner does on the computer: watch, run, open
+    /// terminals, review, and see and manage who has access. Nothing on
+    /// either screen narrows it; the owner narrows a phone by revoking it.
+    /// It leaves out `world`, which clients built before that right existed
+    /// cannot parse; the owner grants `world` explicitly.
     pub fn pairing() -> Self {
-        Self::all()
+        Self(Right::ALL[..6].to_vec())
     }
     /// Parse `standard`, `admin`, `all`, or a comma-separated list of rights.
     pub fn parse_list(text: &str) -> Result<Self> {
@@ -147,6 +153,12 @@ mod tests {
         assert_eq!(
             admin.require(Right::Operate).unwrap_err().missing,
             Some(Right::Operate)
+        );
+        assert!(!Rights::pairing().contains(Right::World));
+        assert!(Rights::all().contains(Right::World));
+        assert_eq!(
+            Rights::parse_list("world,observe").unwrap().to_list(),
+            "observe,world"
         );
         assert_eq!(
             Rights::parse_list("operate,observe").unwrap().to_list(),

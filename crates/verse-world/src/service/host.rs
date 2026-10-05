@@ -12,8 +12,18 @@ pub struct Config {
     pub instance: u64,
     pub scene: PathBuf,
     pub pack: PathBuf,
+    /// How clients reach the chamber. TLS remains for offline test hosts.
+    #[serde(default)]
+    pub transport: Transport,
+    /// TLS only: the certificate and key a client trusts out of band.
+    #[serde(default)]
     pub certificate_der: PathBuf,
+    #[serde(default)]
     pub private_key_der: PathBuf,
+    /// The role table. Over TLS it is also the admission list; over a REACH
+    /// channel a NIP-HOST `world` grant admits, and a granted key that is not
+    /// listed joins as a spectator.
+    #[serde(default)]
     pub enrollments: Vec<Enrollment>,
     #[serde(default)]
     pub authored_combat_health: bool,
@@ -30,6 +40,24 @@ pub struct Config {
     #[serde(default)]
     pub equipment: super::equipment::Catalog,
 }
+/// The transport that carries the chamber's frames.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Transport {
+    /// TLS with a configured certificate and a static enrollment list.
+    Tls {},
+    /// A NIP-REACH direct channel admitted by NIP-HOST `world` grants, over
+    /// TCP or, with `websocket`, a WebSocket upgrade browsers can open.
+    Reach {
+        #[serde(default)]
+        websocket: bool,
+    },
+}
+impl Default for Transport {
+    fn default() -> Self {
+        Self::Tls {}
+    }
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Enrollment {
@@ -44,6 +72,15 @@ pub enum Role {
     Spectator {},
 }
 impl Config {
+    /// The channel carrier when the chamber runs over a REACH channel.
+    #[cfg(feature = "service-reach")]
+    pub fn reach(&self) -> Option<super::reach::Carrier> {
+        match self.transport {
+            Transport::Tls {} => None,
+            Transport::Reach { websocket: false } => Some(super::reach::Carrier::Tcp),
+            Transport::Reach { websocket: true } => Some(super::reach::Carrier::WebSocket),
+        }
+    }
     /// Prepares combat using only the operator's configured health policy.
     pub fn prepare_game(&self, scene: verse_engine::director::Scene) -> Result<Game, String> {
         self.validate()?;
@@ -63,17 +100,26 @@ impl Config {
         Ok(config)
     }
     pub fn validate(&self) -> Result<(), String> {
-        if self.instance == 0 || self.enrollments.is_empty() || self.enrollments.len() > 128 {
+        let tls = self.transport == Transport::Tls {};
+        if self.instance == 0
+            || (tls && self.enrollments.is_empty())
+            || self.enrollments.len() > 128
+        {
             return Err("Invalid chamber instance or enrollment budget".into());
         }
-        for path in [
-            &self.scene,
-            &self.pack,
-            &self.certificate_der,
-            &self.private_key_der,
-        ] {
+        for path in [&self.scene, &self.pack] {
             if path.as_os_str().is_empty() {
                 return Err("Host configuration requires explicit file paths".into());
+            }
+        }
+        for path in [&self.certificate_der, &self.private_key_der] {
+            if path.as_os_str().is_empty() == tls {
+                return Err(if tls {
+                    "Host configuration requires explicit file paths"
+                } else {
+                    "A REACH chamber proves the host key and takes no TLS certificate"
+                }
+                .into());
             }
         }
         if self
@@ -141,8 +187,16 @@ impl Config {
     /// Refuses changed startup rights instead of silently replacing saved character ownership.
     pub fn validate_recovered(&self, gateway: &Gateway) -> Result<(), String> {
         self.validate()?;
+        // Over a REACH channel, granted keys outside the role table were
+        // enrolled as spectators; nothing else may differ.
+        let granted = gateway.chamber.grants.iter().filter(|(principal, rights)| {
+            !self.enrollments.iter().any(|enrollment| {
+                public_key(&enrollment.public_key).is_ok_and(|key| key == principal.0)
+            }) && !(self.transport != Transport::Tls {}
+                && matches!(rights, super::Rights::Spectator))
+        });
         if gateway.game().player_life().instance != self.instance
-            || gateway.chamber.grants.len() != self.enrollments.len()
+            || granted.count() != 0
             || gateway.reward_policy() != self.rewards
             || gateway.progression() != &self.progression
             || gateway.items() != &self.items
@@ -231,6 +285,7 @@ mod tests {
             instance: 170,
             scene: "scene.json".into(),
             pack: "pack.json".into(),
+            transport: Transport::default(),
             certificate_der: "cert.der".into(),
             private_key_der: "key.der".into(),
             enrollments: vec![Enrollment {
@@ -397,6 +452,46 @@ mod tests {
         }
         config.rewards.push(config.rewards[0].clone());
         assert!(config.validate().is_err());
+    }
+    #[test]
+    fn reach_configuration_drops_the_certificate_and_keeps_granted_spectators() {
+        let json = br#"{"listen":"127.0.0.1:0","instance":170,"scene":"s","pack":"p","transport":{"type":"reach","websocket":true}}"#;
+        let parsed = Config::from_json(json).unwrap();
+        assert_eq!(parsed.transport, Transport::Reach { websocket: true });
+        assert!(parsed.enrollments.is_empty());
+        let reach = Config {
+            transport: Transport::Reach { websocket: false },
+            certificate_der: PathBuf::new(),
+            private_key_der: PathBuf::new(),
+            ..config()
+        };
+        reach.validate().unwrap();
+        assert!(
+            Config {
+                certificate_der: "cert.der".into(),
+                ..reach.clone()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            Config {
+                enrollments: Vec::new(),
+                ..config()
+            }
+            .validate()
+            .is_err()
+        );
+        let mut gateway = reach.gateway(game(170)).unwrap();
+        let granted = super::super::net::tests::key(9)
+            .x_only_public_key()
+            .0
+            .serialize();
+        assert!(gateway.admit_spectator(granted).unwrap());
+        assert!(!gateway.admit_spectator(granted).unwrap());
+        reach.validate_recovered(&gateway).unwrap();
+        // Over TLS the role table is the whole admission list.
+        assert!(config().validate_recovered(&gateway).is_err());
     }
     #[test]
     fn strict_configuration_refuses_duplicate_keys_roles_and_spawn_budgets() {

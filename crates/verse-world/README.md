@@ -98,7 +98,10 @@ reads, 10-second writes, and 120 requests per second per socket. Catch-up is
 bounded to 100 ms; transport statistics retain skipped elapsed time. Shutdown
 drains workers, parks controllers, and returns authority plus failure diagnostics.
 Temporary loopback TLS tests use generated certificates and synthetic identity
-keys. Client prediction, subscribed replication, durable deployment configuration,
+keys. The optional `service-reach` feature adds `service::reach`: the same frames
+over a NIP-REACH direct channel (TCP or WebSocket) with no certificate, admitted
+by a NIP-HOST grant with the `world` right, rechecked before every request and on
+a timer; a granted key outside the role table joins as a spectator. Client prediction, subscribed replication, durable deployment configuration,
 and native service integration remain.
 `service::client::Client` connects with caller-configured Rustls trust and server
 name, verifies the opening instance/version, and signs with a caller-provided

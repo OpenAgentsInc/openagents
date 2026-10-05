@@ -100,6 +100,7 @@ pub(super) fn publish(shared: &Shared, runtime: &Handle, edit: &Edit<'_>) -> Res
                         relays: vec![relay],
                         weight: LOCAL_WEIGHT,
                         added_at: now,
+                        worlds: Vec::new(),
                     },
                     issued_at,
                 )

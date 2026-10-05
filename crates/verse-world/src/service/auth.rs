@@ -163,6 +163,15 @@ impl Gateway {
         self.view_cache = None;
         self.chamber.enroll_spectator(valid_principal(key)?)
     }
+    /// Enrolls a key its transport already admitted as a spectator, unless the
+    /// chamber knows it. Returns whether it enrolled the key.
+    pub fn admit_spectator(&mut self, key: [u8; 32]) -> Result<bool, String> {
+        let principal = valid_principal(key)?;
+        if self.chamber.grants.contains_key(&principal) {
+            return Ok(false);
+        }
+        self.chamber.enroll_spectator(principal).map(|()| true)
+    }
     /// Trusted host operation, excluded from client request payloads.
     pub fn grant_reward(
         &mut self,

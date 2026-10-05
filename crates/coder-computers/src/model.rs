@@ -603,6 +603,7 @@ pub fn right_label(right: Right) -> &'static str {
         Right::Review => "Write reviews",
         Right::AccessRead => "See who has access",
         Right::AccessAdmin => "Manage access",
+        Right::World => "Join worlds",
     }
 }
 

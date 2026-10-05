@@ -1,13 +1,13 @@
-//! Sequential TLS client with committed control and no uncertain command replay.
+//! Sequential chamber client with committed control and no uncertain command replay.
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use rustls::{ClientConfig, pki_types::ServerName};
 use secp256k1::{Keypair, Secp256k1};
 use tokio::{io::AsyncWriteExt, net::TcpStream, time::timeout};
-use tokio_rustls::{TlsConnector, client::TlsStream};
+use tokio_rustls::TlsConnector;
 
 use super::{
-    net::{read_frame, write_frame},
+    net::{Transport, read_frame, write_frame},
     wire::{
         Body, Control, EventPage, Hello, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Reply, Request,
         Response, State, VERSION,
@@ -23,7 +23,7 @@ const DEADLINE: Duration = Duration::from_secs(10);
 /// Convenience methods retry explicit storage refusals for up to ten seconds;
 /// `request` exposes each refusal directly.
 pub struct Client {
-    stream: Option<TlsStream<TcpStream>>,
+    stream: Option<Box<dyn Transport>>,
     instance: u64,
     tick: u64,
     control: Option<Control>,
@@ -53,17 +53,30 @@ impl Client {
         content: Option<[u8; 32]>,
         key: &Keypair,
     ) -> Result<Self, String> {
-        let (stream, hello) = timeout(DEADLINE, async {
+        let stream = timeout(DEADLINE, async {
             let socket = TcpStream::connect(address)
                 .await
                 .map_err(|_| "Cannot connect to chamber")?;
             socket
                 .set_nodelay(true)
                 .map_err(|_| "Cannot configure chamber client socket")?;
-            let mut stream = TlsConnector::from(tls)
+            TlsConnector::from(tls)
                 .connect(server_name, socket)
                 .await
-                .map_err(|_| "Chamber TLS identity refused")?;
+                .map_err(|_| "Chamber TLS identity refused".to_string())
+        })
+        .await
+        .map_err(|_| "Chamber connection timed out")??;
+        Self::connect_stream(Box::new(stream), instance, content, key).await
+    }
+    /// Authenticates over a transport that already proved the host's identity.
+    pub async fn connect_stream(
+        mut stream: Box<dyn Transport>,
+        instance: u64,
+        content: Option<[u8; 32]>,
+        key: &Keypair,
+    ) -> Result<Self, String> {
+        let hello = timeout(DEADLINE, async {
             let bytes = read_frame(&mut stream, MAX_RESPONSE_BYTES).await?;
             let hello: Hello = serde_json::from_slice(&bytes)
                 .map_err(|_| "Malformed chamber opening challenge")?;
@@ -73,7 +86,7 @@ impl Client {
             if hello.challenge.content() != content {
                 return Err("Chamber scene or asset content mismatch".into());
             }
-            Ok::<_, String>((stream, hello))
+            Ok::<_, String>(hello)
         })
         .await
         .map_err(|_| "Chamber connection timed out")??;

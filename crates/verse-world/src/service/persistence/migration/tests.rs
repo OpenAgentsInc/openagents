@@ -30,6 +30,7 @@ fn config(root: &Path) -> Config {
         instance: 120,
         scene: "scene.json".into(),
         pack: "pack.json".into(),
+        transport: Default::default(),
         certificate_der: "cert.der".into(),
         private_key_der: "key.der".into(),
         state_dir: Some(root.into()),

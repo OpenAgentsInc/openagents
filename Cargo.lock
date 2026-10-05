@@ -15007,6 +15007,7 @@ dependencies = [
 name = "verse-world"
 version = "0.1.0"
 dependencies = [
+ "coder-reach",
  "getrandom 0.3.4",
  "glam",
  "physics",

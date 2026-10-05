@@ -59,7 +59,8 @@ schema is `openagents.host-directory.v1`:
 | `issued_at` | When the owner issued this revision. |
 | `hosts` | Up to 256 entries, unique by host key. |
 
-Each entry is `{host, label, relays, weight, added_at}`:
+Each entry is `{host, label, relays, weight, added_at}`, with an optional
+`worlds` list:
 
 - `host` is the host key. It differs from the owner key.
 - `label` is 1 to 64 bytes of display text without control characters. It is
@@ -70,6 +71,13 @@ Each entry is `{host, label, relays, weight, added_at}`:
 - `weight` is the owner's placement weight, 0 to 1,000. Zero keeps the host
   listed but excludes it from placement.
 - `added_at` is no later than `issued_at`.
+- `worlds` lists up to 16 world instances the host serves over its direct
+  channel, unique by `instance`. Each is `{instance, label, wire, content?}`:
+  a nonzero instance number the world's opening challenge names, display text
+  under the `label` rules, the chamber wire version, and an optional
+  lowercase-hex SHA-256 of the zone content the instance binds. An entry
+  without worlds omits the field. A listed world grants nothing: joining it
+  takes a NIP-HOST grant with the `world` right.
 
 Adding or removing a host, or changing its label or weight, is an owner action
 that produces the next revision.
