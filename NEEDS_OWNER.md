@@ -229,3 +229,18 @@ To finish checking:
    the name over the first phone's avatar.
 3. Run `openagents verse walkers 20` and check that `walker-0` to
    `walker-19` are readable over heads at a steady frame rate.
+
+## Two players meet in Everglade (#10584)
+
+#10604 re-keys presence to a zone's shared NIP-MV world
+(`verse-everglade`, `verse-lagrange-1`) through the arch. Loopback tests
+cover the mobile and desktop world switch; no two-device run happened
+here. To finish checking:
+
+1. On two phones (or a phone and the desktop), walk through the Everglade
+   arch from the Grid and confirm both see each other's avatar, name tag,
+   and collide in the glade; walk back and confirm both reappear on the
+   Grid.
+2. Standing in Everglade, run `openagents verse walkers 5 --world everglade`
+   and `openagents --json verse who --world everglade`; the walkers must be
+   visible in the glade and absent from the Grid.
