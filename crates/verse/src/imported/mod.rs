@@ -9,6 +9,7 @@ use crate::{
 };
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
+mod admission;
 pub mod chamber;
 #[cfg(feature = "remote-chamber")]
 pub mod character_panel;
@@ -175,6 +176,13 @@ pub struct FrameTimings {
     pub readback_copy_ms: f64,
     pub total_ms: f64,
     pub instances: usize,
+    pub actor_roots: usize,
+    pub mounts: usize,
+    pub optional_effects: usize,
+    pub dropped_effects: usize,
+    pub surface_batches: usize,
+    pub shadow_views: usize,
+    pub upload_bytes: u64,
     pub grounded_vertices: usize,
     pub readback: bool,
     pub shadow_draws: usize,
@@ -202,6 +210,8 @@ struct GpuContext {
     queue: wgpu::Queue,
     name: String,
     details: serde_json::Value,
+    admission: admission::Admission,
+    health: crate::gpu_lifecycle::Health,
     id: verse_engine::residency::CatalogId,
 }
 /// A worker-safe snapshot of the GPU and the catalog a replacement must supersede.
@@ -370,13 +380,15 @@ pub struct Renderer {
     pack: std::sync::Arc<Pack>,
     gpu_id: verse_engine::residency::CatalogId,
     pub pack_receipt: verse_engine::loading::Receipt,
+    prepared: verse_engine::loading::Prepared,
+    static_instances: Vec<Instance>,
     width: u32,
     height: u32,
     /// The display-referred frame: the output pass, then the overlay, write
     /// it; captures and the window read it.
     target: wgpu::Texture,
     target_view: wgpu::TextureView,
-    /// Four-sample world color in [`SCENE_FORMAT`], resolved into `scene_view`.
+    /// Admitted world samples, resolved into `scene_view` when multisampled.
     multisample_view: wgpu::TextureView,
     scene_view: wgpu::TextureView,
     /// The adapted-luminance pair the output pass meters into.
@@ -423,15 +435,17 @@ pub struct Renderer {
     ui_buffer: wgpu::Buffer,
     pub adapter_name: String,
     pub device_profile: serde_json::Value,
+    admission: admission::Admission,
+    pub resources: verse_engine::quality::Resources,
+    health: crate::gpu_lifecycle::Health,
+    pub device_recoveries: u64,
+    pub last_device_loss: Option<String>,
     pub last_timings: FrameTimings,
     gpu_timer: Option<gpu_timing::Timer>,
     submitted_frames: u64,
     /// The lights that held the cube shadow maps last frame, in map order.
     shadowed_lights: Vec<usize>,
 }
-/// The world pass's floating-point scene format. Every backend the chamber
-/// runs on renders, blends, filters, and multisamples it.
-const SCENE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 /// Fraction of bloom energy the output pass mixes in, as on the Everglade stage.
 const CHAMBER_BLOOM: f32 = 0.04;
 
@@ -589,11 +603,11 @@ impl PendingCapture {
         self.device
             .poll(wgpu::PollType::Wait {
                 submission_index: Some(self.submission),
-                timeout: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
             })
             .map_err(|e| e.to_string())?;
         receiver
-            .recv()
+            .recv_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?;
         self.timing.fence_wait_cpu_ms = wait_started.elapsed().as_secs_f64() * 1000.;
@@ -701,6 +715,8 @@ impl Renderer {
         let context = GpuContext {
             name: gpu.adapter_name(),
             details: adapter_details(&gpu.adapter),
+            admission: admission::Admission::probe(&gpu.adapter)?,
+            health: crate::gpu_lifecycle::Health::attach(&gpu.device),
             instance: gpu.instance,
             adapter: gpu.adapter,
             device: gpu.device,
@@ -724,7 +740,8 @@ impl Renderer {
         static_instances: &[Instance],
         context: Option<GpuContext>,
     ) -> Result<Self, String> {
-        let (pack, decoded, pack_receipt) = prepared.into_parts();
+        let retained_prepared = prepared.clone();
+        let (pack, decoded, pack_receipt) = prepared.into_shared_parts();
         let catalog = verse_engine::residency::Catalog::new(&pack)?;
         let graphs = pack
             .models
@@ -757,6 +774,9 @@ impl Renderer {
                 let (device, queue) = pollster::block_on(request_device(&adapter))?;
                 let name = adapter.get_info().name;
                 let details = adapter_details(&adapter);
+                let details = adapter_details(&adapter);
+                let admission = admission::Admission::probe(&adapter)?;
+                let health = crate::gpu_lifecycle::Health::attach(&device);
                 GpuContext {
                     #[cfg(feature = "imported-surface")]
                     instance,
@@ -766,6 +786,8 @@ impl Renderer {
                     device,
                     queue,
                     details,
+                    admission,
+                    health,
                     id: catalog.id(),
                 }
             }
@@ -779,8 +801,63 @@ impl Renderer {
             queue,
             name: adapter_name,
             details,
+            admission,
+            health,
             id: gpu_id,
         } = context;
+        if width > device.limits().max_texture_dimension_2d
+            || height > device.limits().max_texture_dimension_2d
+        {
+            return Err("Viewport exceeds the admitted device extent".into());
+        }
+        let samples = admission.samples;
+        let shadow_layer_count = admission.quality.local_shadow_views();
+        let shadow_size = admission.quality.local_shadow_size();
+        let geometry_bytes = pack_receipt.vertices * std::mem::size_of::<GpuVertex>() as u64
+            + pack_receipt.indices * 4
+            + static_instances
+                .iter()
+                .map(|instance| {
+                    pack.models[&instance.model]
+                        .surfaces
+                        .iter()
+                        .map(|surface| {
+                            surface.vertices.len() as u64 * std::mem::size_of::<GpuVertex>() as u64
+                                + surface.indices.len() as u64 * 4
+                        })
+                        .sum::<u64>()
+                })
+                .sum::<u64>();
+        let resources = verse_engine::quality::Resources {
+            target_bytes: admission.target_bytes(width, height),
+            geometry_bytes,
+            // Reserve actor uniforms and the shared instancing palettes at the full admitted capacity.
+            buffer_bytes: (2 * 1024 + 1) * std::mem::size_of::<Pose>() as u64
+                + u64::from(instancing::INDEX_CAPACITY) * 4
+                + 4 * 1024 * 1024
+                + 25 * std::mem::size_of::<lighting::Frame>() as u64,
+            texture_bytes: pack_receipt
+                .textures
+                .iter()
+                .map(|texture| {
+                    let mut w = texture.width;
+                    let mut h = texture.height;
+                    let mut total = 0;
+                    loop {
+                        total += u64::from(w) * u64::from(h) * 4;
+                        if w == 1 && h == 1 {
+                            break;
+                        }
+                        w = (w / 2).max(1);
+                        h = (h / 2).max(1);
+                    }
+                    total
+                })
+                .sum::<u64>()
+                + u64::from(atlas.width) * u64::from(atlas.height) * 4,
+            retained_source_bytes: pack_receipt.manifest_bytes + pack_receipt.rgba_bytes,
+        };
+        admission.quality.budget().admit(resources)?;
         let uniform = |binding| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
@@ -861,9 +938,9 @@ impl Renderer {
         let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Verse local cube shadows"),
             size: wgpu::Extent3d {
-                width: 512,
-                height: 512,
-                depth_or_array_layers: 24,
+                width: shadow_size,
+                height: shadow_size,
+                depth_or_array_layers: shadow_layer_count,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -877,9 +954,9 @@ impl Renderer {
         let static_shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Verse immutable static shadow cache"),
             size: wgpu::Extent3d {
-                width: 512,
-                height: 512,
-                depth_or_array_layers: 24,
+                width: shadow_size,
+                height: shadow_size,
+                depth_or_array_layers: shadow_layer_count,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -888,7 +965,7 @@ impl Renderer {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        let static_shadow_views = (0..24)
+        let static_shadow_views = (0..shadow_layer_count)
             .map(|layer| {
                 static_shadow_texture.create_view(&wgpu::TextureViewDescriptor {
                     dimension: Some(wgpu::TextureViewDimension::D2),
@@ -933,7 +1010,7 @@ impl Renderer {
         let mut shadow_views = Vec::new();
         let mut shadow_groups = Vec::new();
         let mut shadow_buffers = Vec::new();
-        for layer in 0..24 {
+        for layer in 0..shadow_layer_count {
             shadow_views.push(shadow_texture.create_view(&wgpu::TextureViewDescriptor {
                 dimension: Some(wgpu::TextureViewDimension::D2),
                 base_array_layer: layer,
@@ -1097,7 +1174,7 @@ impl Renderer {
             );
         }
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
-        let scene_format = SCENE_FORMAT;
+        let scene_format = admission.scene;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Verse imported WGSL"),
             source: wgpu::ShaderSource::Wgsl(include_str!("scene.wgsl").into()),
@@ -1124,7 +1201,7 @@ impl Renderer {
             } else {
                 Default::default()
             };
-            pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,topology:if lines{wgpu::PrimitiveTopology::LineList}else{wgpu::PrimitiveTopology::TriangleList},..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias}),multisample:wgpu::MultisampleState{count:4,..Default::default()},fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format:scene_format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
+            pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,topology:if lines{wgpu::PrimitiveTopology::LineList}else{wgpu::PrimitiveTopology::TriangleList},..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias}),multisample:wgpu::MultisampleState{count:samples,..Default::default()},fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format:scene_format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
         }
         let shadow_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1144,6 +1221,7 @@ impl Renderer {
             &frame_layout,
             &texture_layout,
             scene_format,
+            samples,
         );
         let static_batches = upload(&device, merge(&pack, static_instances));
         let mut models = HashMap::new();
@@ -1178,10 +1256,10 @@ impl Renderer {
         let target_view = target.create_view(&Default::default());
         let multisample_view = device
             .create_texture(&wgpu::TextureDescriptor {
-                label: Some("Verse four-sample color"),
+                label: Some("Verse admitted world color"),
                 size: extent(width, height),
                 mip_level_count: 1,
-                sample_count: 4,
+                sample_count: samples,
                 dimension: wgpu::TextureDimension::D2,
                 format: scene_format,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -1209,7 +1287,7 @@ impl Renderer {
                 label: None,
                 size: extent(width, height),
                 mip_level_count: 1,
-                sample_count: 4,
+                sample_count: samples,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Depth32Float,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -1224,7 +1302,7 @@ impl Renderer {
             mapped_at_creation: false,
         });
         let (_, ui_pipeline, ui_group, ui_screen) =
-            crate::render::ui_pipeline(&device, &queue, format, 4, atlas);
+            crate::render::ui_pipeline(&device, &queue, format, samples, atlas);
         queue.write_buffer(
             &ui_screen,
             0,
@@ -1246,7 +1324,13 @@ impl Renderer {
         device_profile["timestamp_query_enabled"] =
             device.features().contains(gpu_timing::FEATURES).into();
         device_profile["timestamp_period_ns"] = f64::from(queue.get_timestamp_period()).into();
-        device_profile["multisample_count"] = 4.into();
+        device_profile["multisample_count"] = samples.into();
+        device_profile["quality"] = admission.quality.tier.name().into();
+        device_profile["scene_format"] = format!("{:?}", admission.scene).into();
+        device_profile["shadow_views"] = shadow_layer_count.into();
+        device_profile["shadow_size"] = shadow_size.into();
+        device_profile["budget"] =
+            serde_json::to_value(admission.quality.budget()).map_err(|e| e.to_string())?;
         Ok(Self {
             #[cfg(feature = "imported-surface")]
             instance,
@@ -1254,7 +1338,9 @@ impl Renderer {
             adapter,
             device,
             queue,
-            pack: std::sync::Arc::new(pack),
+            pack,
+            prepared: retained_prepared,
+            static_instances: static_instances.to_vec(),
             gpu_id,
             pack_receipt,
             width,
@@ -1276,7 +1362,7 @@ impl Renderer {
             shadow_texture,
             static_shadow_texture,
             static_shadow_views,
-            static_shadow_keys: vec![None; 24],
+            static_shadow_keys: vec![None; shadow_layer_count as usize],
             shadow_groups,
             shadow_buffers,
             shadow_pipeline,
@@ -1304,6 +1390,11 @@ impl Renderer {
             bounds,
             adapter_name,
             device_profile,
+            admission,
+            resources,
+            health,
+            device_recoveries: 0,
+            last_device_loss: None,
             last_timings: FrameTimings::default(),
             gpu_timer,
             submitted_frames: 0,
@@ -1321,6 +1412,17 @@ impl Renderer {
         if (width, height) == (self.width, self.height) {
             return Ok(());
         }
+        if width > self.device.limits().max_texture_dimension_2d
+            || height > self.device.limits().max_texture_dimension_2d
+        {
+            return Err("Viewport exceeds the admitted device extent".into());
+        }
+        let resources = verse_engine::quality::Resources {
+            target_bytes: self.admission.target_bytes(width, height),
+            ..self.resources
+        };
+        self.admission.quality.budget().admit(resources)?;
+        self.resources = resources;
         let texture = |label, format, samples, usage| {
             self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
@@ -1343,15 +1445,15 @@ impl Renderer {
         );
         self.target_view = self.target.create_view(&Default::default());
         self.multisample_view = texture(
-            "Verse four-sample color",
-            SCENE_FORMAT,
-            4,
+            "Verse admitted world color",
+            self.admission.scene,
+            self.admission.samples,
             wgpu::TextureUsages::RENDER_ATTACHMENT,
         )
         .create_view(&Default::default());
         self.scene_view = texture(
             "Verse resolved scene",
-            SCENE_FORMAT,
+            self.admission.scene,
             1,
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         )
@@ -1360,9 +1462,9 @@ impl Renderer {
             self.output
                 .targets(&self.device, &self.scene_view, &self.adapt, width, height);
         self.depth = texture(
-            "Verse four-sample depth",
+            "Verse admitted world depth",
             wgpu::TextureFormat::Depth32Float,
-            4,
+            self.admission.samples,
             wgpu::TextureUsages::RENDER_ATTACHMENT,
         )
         .create_view(&Default::default());
@@ -1396,6 +1498,35 @@ impl Renderer {
     pub fn dimensions(&self) -> [u32; 2] {
         [self.width, self.height]
     }
+    /// Recreate admitted resources from immutable source after device loss, between frames.
+    /// Presentation adapters must attach a new presenter when this returns true.
+    pub fn recover_if_lost(&mut self, atlas: &Atlas) -> Result<bool, String> {
+        let Some(reason) = self.health.reason(&self.device) else {
+            return Ok(false);
+        };
+        if self.device_recoveries >= 3 {
+            return Err("Renderer device recovery budget exhausted".into());
+        }
+        let renderer = Self::build(
+            self.prepared.clone(),
+            self.width,
+            self.height,
+            atlas,
+            &self.static_instances,
+            None,
+        )?;
+        let candidate = ReloadCandidate {
+            base: self.catalog.id(),
+            renderer,
+            keep_playback: self.pack.models.keys().cloned().collect(),
+        };
+        let recoveries = self.device_recoveries + 1;
+        let retired = self.commit_reload(candidate)?;
+        self.device_recoveries = recoveries;
+        self.last_device_loss = Some(reason);
+        drop(retired);
+        Ok(true)
+    }
     pub fn reload_source(&self) -> ReloadSource {
         ReloadSource {
             context: GpuContext {
@@ -1407,6 +1538,8 @@ impl Renderer {
                 queue: self.queue.clone(),
                 name: self.adapter_name.clone(),
                 details: self.device_profile.clone(),
+                admission: self.admission,
+                health: self.health.clone(),
                 id: self.gpu_id,
             },
             base: self.catalog.id(),
@@ -1418,6 +1551,13 @@ impl Renderer {
     /// Call between frames. The caller can dispose of retired resources on a worker.
     pub fn commit_reload(&mut self, mut candidate: ReloadCandidate) -> Result<Self, String> {
         self.catalog.check(candidate.base)?;
+        candidate.renderer.submitted_frames = self.submitted_frames;
+        if let Some(timer) = &mut candidate.renderer.gpu_timer {
+            timer.resume_after(self.submitted_frames);
+        }
+        candidate.renderer.device_recoveries = self.device_recoveries;
+        candidate.renderer.last_device_loss = self.last_device_loss.clone();
+        candidate.renderer.resize(self.width, self.height)?;
         let mut playback = std::mem::take(&mut self.playback);
         playback.retain(|(_, model), _| candidate.keep_playback.contains(model));
         candidate.renderer.playback = playback;
@@ -1432,7 +1572,6 @@ impl Renderer {
         let mut graphs = std::mem::take(&mut self.graph_playback);
         graphs.retain(|(_, model), _| candidate.renderer.graphs.contains_key(model));
         candidate.renderer.graph_playback = graphs;
-        candidate.renderer.resize(self.width, self.height)?;
         Ok(std::mem::replace(self, candidate.renderer))
     }
     pub fn draw(
@@ -1442,8 +1581,12 @@ impl Renderer {
         ui: &UiBatch,
         lighting: &Lighting,
     ) -> Result<Vec<u8>, String> {
-        let resolved = self.resolve_instances(instances)?;
-        self.draw_resolved(view, &resolved, ui, lighting)
+        let selected = self.select_optional(instances)?;
+        let dropped = selected.as_ref().map_or(0, |v| instances.len() - v.len());
+        let resolved = self.resolve_instances(selected.as_deref().unwrap_or(instances))?;
+        let result = self.draw_resolved(view, &resolved, ui, lighting);
+        self.last_timings.dropped_effects += dropped;
+        result
     }
     /// Keeps interactive frames on the GPU; captures explicitly request readback.
     pub fn draw_live(
@@ -1453,8 +1596,49 @@ impl Renderer {
         ui: &UiBatch,
         lighting: &Lighting,
     ) -> Result<(), String> {
-        let resolved = self.resolve_instances(instances)?;
-        self.draw_live_resolved(view, &resolved, ui, lighting)
+        let selected = self.select_optional(instances)?;
+        let dropped = selected.as_ref().map_or(0, |v| instances.len() - v.len());
+        let resolved = self.resolve_instances(selected.as_deref().unwrap_or(instances))?;
+        let result = self.draw_live_resolved(view, &resolved, ui, lighting);
+        self.last_timings.dropped_effects += dropped;
+        result
+    }
+    fn optional_priority(instance: &Instance) -> Option<u8> {
+        if instance.actor.is_some() || instance.mount.is_some() {
+            return None;
+        }
+        match instance.model.as_str() {
+            "effect-fire" | "effect-force" | "effect-wave" | "effect-rune" | "effect-shield" => {
+                Some(0)
+            }
+            "effect-impact" | "effect-shadow" | "effect-light" => Some(1),
+            "effect-mist" | "effect-ribbon" | "particle-smoke" | "particle-fire"
+            | "particle-spark" => Some(2),
+            name if name.starts_with("effect-") || name.starts_with("particle-") => Some(3),
+            _ => None,
+        }
+    }
+    fn select_optional(&self, instances: &[Instance]) -> Result<Option<Vec<Instance>>, String> {
+        if instances.len() > verse_engine::presentation::VisualSelection::MAX_SOURCE_INSTANCES {
+            return Err("Visual source exceeds 8192 instances".into());
+        }
+        let budget = self.admission.quality.budget();
+        if instances.len() <= budget.instances
+            && instances
+                .iter()
+                .filter(|i| Self::optional_priority(i).is_some())
+                .count()
+                <= budget.optional_effects
+        {
+            return Ok(None);
+        }
+        let selected = verse_engine::presentation::VisualSelection::admit(
+            &self.catalog,
+            instances,
+            budget,
+            Self::optional_priority,
+        )?;
+        Ok(Some(selected.retained()))
     }
     pub fn resolve_instances<'a>(
         &self,
@@ -1516,9 +1700,36 @@ impl Renderer {
         world.validate(&self.catalog)?;
         self.marker_events.clear();
         let view = world.view();
-        let lighting = world.lighting();
-        let resolved = world.instances();
+        let mut lighting = world.lighting().clone();
+        lighting.shadowed = lighting
+            .shadowed
+            .min(self.admission.quality.local_shadow_views() as usize / 6);
+        let lighting = &lighting;
+        let selected = self.select_optional(world.instances().instances())?;
+        let dropped_effects = selected
+            .as_ref()
+            .map_or(0, |v| world.instances().instances().len() - v.len());
+        let filtered = selected
+            .as_ref()
+            .map(|v| ResolvedInstances::extract(&self.catalog, v))
+            .transpose()?;
+        let resolved = filtered.as_ref().unwrap_or(world.instances());
         let instances = resolved.instances();
+        let actor_roots = instances.iter().filter(|i| i.actor.is_some()).count();
+        let mounts = instances.iter().filter(|i| i.mount.is_some()).count();
+        let optional_effects = instances
+            .iter()
+            .filter(|i| Self::optional_priority(i).is_some())
+            .count();
+        let surface_batches = self.static_batches.len()
+            + resolved
+                .models()
+                .iter()
+                .map(|model| self.models[model].len())
+                .sum::<usize>();
+        if surface_batches > self.admission.quality.budget().surfaces {
+            return Err("Frame surfaces exceed the admitted quality budget".into());
+        }
         let mut grounded_vertices = 0;
         let ui_bytes = bytemuck::cast_slice(world.overlay().vertices());
         // The four cube shadow maps go to the lights that add the most to
@@ -1550,7 +1761,7 @@ impl Renderer {
                 buffer,
                 group,
                 shadow_model: None,
-                shadow_bundles: (0..24).map(|_| None).collect(),
+                shadow_bundles: (0..self.shadow_views.len()).map(|_| None).collect(),
                 shadow_count: 0,
                 frozen: Default::default(),
                 world_bundles: (0..SLOTS).map(|_| None).collect(),
@@ -1775,7 +1986,7 @@ impl Renderer {
         }
         for (i, model) in resolved.models().iter().enumerate() {
             for slot in 0..SLOTS {
-                if (slot >= 2 || self.instanced_shadows.is_none())
+                if (!matches!(slot, 0 | 1 | 3) || self.instanced_shadows.is_none())
                     && self.actors[i + 1].world_counts[slot] > 0
                     && self.actors[i + 1].world_bundles[slot].is_none()
                 {
@@ -1808,6 +2019,11 @@ impl Renderer {
             .map(|(layer, key)| self.static_shadow_keys[layer].as_ref() != Some(key))
             .collect();
         let plan = verse_engine::render_graph::ChamberPlan::build(&refresh, capture)?;
+        let shadow_views = lighting.shadow_count() * 6;
+        let mut upload_bytes = (1 + shadow_views as u64) * std::mem::size_of::<Frame>() as u64
+            + ui_bytes.len() as u64
+            + std::mem::size_of::<Pose>() as u64
+            + 16;
         self.queue
             .write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
         for layer in 0..lighting.lights.len().min(lighting.shadowed).min(4) * 6 {
@@ -1830,14 +2046,20 @@ impl Renderer {
             // Frozen shadow-cache draws and transparent effects retain uniform palettes.
             if self.instanced_shadows.is_none()
                 || (frozen[i].is_some() && actor.shadow_count > 0)
-                || actor.world_counts[2..].iter().any(|count| *count > 0)
+                || actor
+                    .world_counts
+                    .iter()
+                    .enumerate()
+                    .any(|(slot, count)| *count > 0 && !matches!(slot, 0 | 1 | 3))
             {
+                upload_bytes += std::mem::size_of::<Pose>() as u64;
                 self.queue
                     .write_buffer(&actor.buffer, 0, bytemuck::bytes_of(palette));
             }
         }
         if let Some(instancing) = &self.instanced_shadows {
             if !palettes.is_empty() {
+                upload_bytes += (palettes.len() * std::mem::size_of::<Pose>()) as u64;
                 self.queue
                     .write_buffer(&instancing.poses, 0, bytemuck::cast_slice(&palettes));
             }
@@ -1928,7 +2150,10 @@ impl Renderer {
                             origin,
                             aspect: wgpu::TextureAspect::All,
                         },
-                        extent(512, 512),
+                        extent(
+                            self.admission.quality.local_shadow_size(),
+                            self.admission.quality.local_shadow_size(),
+                        ),
                     );
                 }
                 ChamberPass::DrawShadow { layer } => {
@@ -1985,6 +2210,7 @@ impl Renderer {
                             }
                             let indices: Vec<u32> =
                                 actors.iter().map(|actor| (*actor - 1) as u32).collect();
+                            upload_bytes += (indices.len() * 4) as u64;
                             self.queue.write_buffer(
                                 &instancing.indices,
                                 u64::from(start) * 4,
@@ -2027,12 +2253,21 @@ impl Renderer {
                             .and_then(|timer| timer.boundary(gpu_slot, Some(1), None)),
                         label: Some("Verse imported world"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &self.multisample_view,
+                            view: if self.admission.samples > 1 {
+                                &self.multisample_view
+                            } else {
+                                &self.scene_view
+                            },
                             depth_slice: None,
-                            resolve_target: Some(&self.scene_view),
+                            resolve_target: (self.admission.samples > 1)
+                                .then_some(&self.scene_view),
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                                store: wgpu::StoreOp::Discard,
+                                store: if self.admission.samples > 1 {
+                                    wgpu::StoreOp::Discard
+                                } else {
+                                    wgpu::StoreOp::Store
+                                },
                             },
                         })],
                         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
@@ -2062,7 +2297,7 @@ impl Renderer {
                                         &self.static_world_bundles[index]
                                     })
                                 });
-                        if slot < 2
+                        if matches!(slot, 0 | 1 | 3)
                             && let Some(instancing) = &self.instanced_shadows
                         {
                             pass.execute_bundles(static_bundles);
@@ -2083,7 +2318,11 @@ impl Renderer {
                                     groups.push((*model, vec![i as u32]));
                                 }
                             }
-                            pass.set_pipeline(&instancing.world_pipeline);
+                            pass.set_pipeline(if slot == 3 {
+                                &instancing.additive_pipeline
+                            } else {
+                                &instancing.world_pipeline
+                            });
                             pass.set_bind_group(0, &self.frame_group, &[]);
                             pass.set_bind_group(2, &instancing.group, &[]);
                             for (model, actors) in groups {
@@ -2094,6 +2333,7 @@ impl Renderer {
                                         "World instance indices exceed the frame budget".into()
                                     );
                                 }
+                                upload_bytes += (actors.len() * 4) as u64;
                                 self.queue.write_buffer(
                                     &instancing.indices,
                                     u64::from(start) * 4,
@@ -2236,7 +2476,7 @@ impl Renderer {
             }
         }
         if let Some(timer) = &self.gpu_timer {
-            timer.resolve(&mut encoder, gpu_slot);
+            timer.resolve(&mut encoder, gpu_slot, gpu_shadow_started);
         }
         let finish_started = Instant::now();
         let commands = encoder.finish();
@@ -2268,6 +2508,13 @@ impl Renderer {
                 queue_submit_ms: submitted.duration_since(encoded).as_secs_f64() * 1000.,
                 total_ms: started.elapsed().as_secs_f64() * 1000.,
                 instances: instances.len(),
+                actor_roots,
+                mounts,
+                optional_effects,
+                dropped_effects,
+                surface_batches,
+                shadow_views,
+                upload_bytes,
                 grounded_vertices,
                 readback: false,
                 shadow_draws,
@@ -2281,12 +2528,19 @@ impl Renderer {
             return Ok(vec![]);
         }
         let slice = self.readback.slice(..);
-        slice.map_async(wgpu::MapMode::Read, |_| {});
+        let (mapped_result, result) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |value| {
+            let _ = mapped_result.send(value);
+        });
         self.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
-                timeout: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
             })
+            .map_err(|e| e.to_string())?;
+        result
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?;
         let waited = Instant::now();
         let mapped = slice.get_mapped_range();
@@ -2319,6 +2573,13 @@ impl Renderer {
             readback_copy_ms: waited.elapsed().as_secs_f64() * 1000.,
             total_ms: started.elapsed().as_secs_f64() * 1000.,
             instances: instances.len(),
+            actor_roots,
+            mounts,
+            optional_effects,
+            dropped_effects,
+            surface_batches,
+            shadow_views,
+            upload_bytes,
             grounded_vertices,
             readback: true,
             shadow_draws,
@@ -2340,13 +2601,13 @@ impl Renderer {
             self.device
                 .create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
                     label: Some("Verse reusable world commands"),
-                    color_formats: &[Some(SCENE_FORMAT)],
+                    color_formats: &[Some(self.admission.scene)],
                     depth_stencil: Some(wgpu::RenderBundleDepthStencil {
                         format: wgpu::TextureFormat::Depth32Float,
                         depth_read_only: false,
                         stencil_read_only: true,
                     }),
-                    sample_count: 4,
+                    sample_count: self.admission.samples,
                     multiview: None,
                 });
         bundle.set_pipeline(&self.pipelines[slot]);
@@ -2372,6 +2633,227 @@ impl Renderer {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(feature = "imported-desktop", target_os = "linux"))]
+    #[test]
+    #[ignore = "requires a scratch X11 display and native GPU"]
+    #[allow(deprecated)]
+    fn device_loss_recreates_resources_and_presenter_without_reopening_assets() {
+        use super::*;
+        use winit::platform::x11::EventLoopBuilderExtX11;
+        let event_loop = winit::event_loop::EventLoop::builder()
+            .with_x11()
+            .with_any_thread(true)
+            .build()
+            .unwrap();
+        let window = std::sync::Arc::new(
+            event_loop
+                .create_window(
+                    winit::window::Window::default_attributes()
+                        .with_inner_size(winit::dpi::PhysicalSize::new(320, 180)),
+                )
+                .unwrap(),
+        );
+        let assets = tempfile::tempdir().unwrap();
+        let pack = original::generate(assets.path()).unwrap();
+        let atlas = original::atlas().unwrap();
+        let instances = chamber::static_instances(&pack, Vec3::ZERO);
+        let mut renderer =
+            Renderer::new(pack, assets.path(), 320, 180, &atlas, &instances).unwrap();
+        let mut presenter = renderer.attach_window(window.clone()).unwrap();
+        let source: Vec<Instance> = Vec::new();
+        let old = renderer.resolve_instances(&source).unwrap();
+        let view = View {
+            view_proj: Mat4::IDENTITY,
+            eye: Vec3::ZERO,
+        };
+        let ui = UiBatch::default();
+        let lighting = Lighting::default();
+        renderer.draw_live(view, &source, &ui, &lighting).unwrap();
+        renderer.present_window(&mut presenter, [320, 180]).unwrap();
+        assert!(presenter.last_timings.submitted);
+        let frame = renderer.last_timings.frame;
+        renderer
+            .device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
+            })
+            .unwrap();
+        eprintln!("Recovery stage: destroying drained device");
+        assets.close().unwrap();
+        renderer.device.destroy();
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while !renderer.recover_if_lost(&atlas).unwrap() {
+            assert!(
+                Instant::now() < deadline,
+                "Device destruction did not reach its loss callback"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(renderer.device_recoveries, 1);
+        assert!(renderer.last_device_loss.is_some());
+        assert!(
+            renderer
+                .draw_live_resolved(view, &old, &ui, &lighting)
+                .is_err()
+        );
+        assert!(renderer.present_window(&mut presenter, [320, 180]).is_err());
+        presenter = renderer.attach_window(window).unwrap();
+        let bytes = renderer.draw(view, &source, &ui, &lighting).unwrap();
+        assert_eq!(bytes.len(), 320 * 180 * 4);
+        assert_eq!(renderer.last_timings.frame, frame + 1);
+        renderer.present_window(&mut presenter, [320, 180]).unwrap();
+        assert!(presenter.last_timings.submitted);
+        assert!(presenter.current_frame_presented(&renderer));
+        assert!(!renderer.recover_if_lost(&atlas).unwrap());
+        println!(
+            "Recovered GPU and X11 presentation: {}",
+            serde_json::json!({"device":renderer.device_profile,"resources":renderer.resources,"loss":renderer.last_device_loss,"recoveries":renderer.device_recoveries,"presentation":presenter.last_timings,"frame":renderer.last_timings.frame,"source_files_removed":true,"old_catalog_and_presenter_refused":true})
+        );
+    }
+    #[test]
+    #[ignore = "requires a Vulkan adapter; device recovery uses only scratch assets"]
+    fn device_loss_preserves_actor_playback_without_surface_or_source_files() {
+        use super::*;
+        eprintln!("Recovery stage: source preparation");
+        let assets = tempfile::tempdir().unwrap();
+        let pack = original::generate(assets.path()).unwrap();
+        let atlas = original::atlas().unwrap();
+        eprintln!("Recovery stage: GPU creation");
+        let mut renderer = Renderer::new(pack, assets.path(), 1280, 720, &atlas, &[]).unwrap();
+        eprintln!("Recovery stage: initial draw");
+        let life = verse_engine::core::LifeId {
+            instance: 9300,
+            actor: 1,
+            generation: 0,
+        };
+        let mut source = vec![
+            Instance {
+                actor: Some(life),
+                mount: None,
+                model: "adventurer".into(),
+                transform: chamber::basis(),
+                animation: verse_engine::motion::State::Walk.into(),
+                time: 0.25,
+                emission: Vec3::ONE,
+            },
+            Instance {
+                actor: None,
+                mount: Some(verse_engine::presentation::Mount {
+                    parent: life,
+                    parent_model: "adventurer".into(),
+                    socket: 2,
+                    local: Mat4::IDENTITY,
+                }),
+                model: "bow".into(),
+                transform: Mat4::IDENTITY,
+                animation: 0.into(),
+                time: 0.25,
+                emission: Vec3::ONE,
+            },
+        ];
+        let eye = Vec3::new(4., 3., 5.);
+        let view = View {
+            eye,
+            view_proj: Mat4::perspective_rh(60f32.to_radians(), 16. / 9., 0.1, 100.)
+                * Mat4::look_at_rh(eye, Vec3::Y, Vec3::Y),
+        };
+        let lighting = Lighting::default();
+        let ui = UiBatch::default();
+        renderer.draw_live(view, &source, &ui, &lighting).unwrap();
+        let playback = renderer.playback.len() + renderer.graph_playback.len();
+        assert!(playback > 0);
+        let frame = renderer.last_timings.frame;
+        renderer
+            .device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
+            })
+            .unwrap();
+        eprintln!("Recovery stage: destroying drained device");
+        assets.close().unwrap();
+        renderer.device.destroy();
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while !renderer.recover_if_lost(&atlas).unwrap() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(
+            renderer.playback.len() + renderer.graph_playback.len(),
+            playback
+        );
+        for instance in &mut source {
+            instance.time = 0.5;
+        }
+        renderer.draw_live(view, &source, &ui, &lighting).unwrap();
+        renderer
+            .device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
+            })
+            .unwrap();
+        assert_eq!(renderer.last_timings.frame, frame + 1);
+        assert_eq!(renderer.last_timings.actor_roots, 1);
+        assert_eq!(renderer.last_timings.mounts, 1);
+        println!(
+            "Recovered retained actor: {}",
+            serde_json::json!({"device":renderer.device_profile,"resources":renderer.resources,"recoveries":renderer.device_recoveries,"loss":renderer.last_device_loss,"retained_playback_entries":playback,"frame":renderer.last_timings.frame,"actor_roots":renderer.last_timings.actor_roots,"mounts":renderer.last_timings.mounts,"source_files_removed":true})
+        );
+    }
+    #[test]
+    #[ignore = "requires a GPU; compares additive batching with the uniform fallback"]
+    fn additive_instances_match_uniform_pixels_and_reduce_draws() {
+        use super::*;
+        let assets = tempfile::tempdir().unwrap();
+        let pack = original::generate(assets.path()).unwrap();
+        let atlas = original::atlas().unwrap();
+        let mut renderer = Renderer::new(pack, assets.path(), 320, 180, &atlas, &[]).unwrap();
+        assert!(renderer.instanced_shadows.is_some());
+        let source: Vec<_> = (0..32)
+            .map(|i| Instance {
+                actor: None,
+                mount: None,
+                model: "particle-spark".into(),
+                transform: Mat4::from_translation(Vec3::new((i % 8) as f32 * 0.1 - 0.4, 0., 0.))
+                    * Mat4::from_scale(Vec3::splat(0.5)),
+                animation: 0.into(),
+                time: 0.5,
+                emission: Vec3::ONE,
+            })
+            .collect();
+        let eye = Vec3::new(0., 1., 5.);
+        let view = View {
+            eye,
+            view_proj: Mat4::perspective_rh(60f32.to_radians(), 16. / 9., 0.1, 100.)
+                * Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y),
+        };
+        let lighting = Lighting::default();
+        let ui = UiBatch::default();
+        let batched = renderer.draw(view, &source, &ui, &lighting).unwrap();
+        let draws = renderer.last_timings.world_draws;
+        let instancing = renderer.instanced_shadows.take().unwrap();
+        let fallback = renderer.draw(view, &source, &ui, &lighting).unwrap();
+        assert!(draws < renderer.last_timings.world_draws);
+        assert!(
+            batched
+                .chunks_exact(4)
+                .any(|p| p[0] > 5 || p[1] > 5 || p[2] > 5)
+        );
+        let maximum = batched
+            .iter()
+            .zip(&fallback)
+            .map(|(a, b)| a.abs_diff(*b))
+            .max()
+            .unwrap();
+        assert!(maximum <= 1, "Additive pixels changed by {maximum}");
+        println!(
+            "Additive batching: {}",
+            serde_json::json!({"device":renderer.device_profile,"batched_world_draws":draws,"uniform_world_draws":renderer.last_timings.world_draws,"maximum_channel_difference":maximum})
+        );
+        renderer.instanced_shadows = Some(instancing);
+    }
     #[test]
     fn reload_motion_identity_ignores_source_paths_and_tracks_animation_changes() {
         use verse_engine::assets::{Clip, Model};

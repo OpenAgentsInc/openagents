@@ -1,0 +1,63 @@
+{
+  "schema": "verse.renderer-budget.acceptance.v1",
+  "date": "2026-10-05",
+  "source": "Local changes on b43ed8c4555d850a5b61b8e4fc02cd1489ea96a4; source-fingerprints.json records the final source before integration. Measurement binary is independently pinned in measurement-receipt.json.",
+  "workloads": [
+    {
+      "path": "sparks-high-final.json",
+      "quality": "high",
+      "accepted": true,
+      "cpu_p95_ms": 6.350195,
+      "gpu_p95_ms": 2.558976,
+      "steady_cpu_samples": 180,
+      "steady_gpu_samples": 179
+    },
+    {
+      "path": "sparks-low-final.json",
+      "quality": "low",
+      "accepted": true,
+      "cpu_p95_ms": 4.889044999999999,
+      "gpu_p95_ms": 0.969728,
+      "steady_cpu_samples": 180,
+      "steady_gpu_samples": 179
+    }
+  ],
+  "earlier_exploration": [
+    "high.json",
+    "low.json",
+    "high-batched.json",
+    "sparks-high.json",
+    "sparks-low.json"
+  ],
+  "comparability": "Earlier mist and spark workloads use different blend contracts; no cross-workload speedup claim. GPU hardware and CPU scheduling are not exclusive. Debug builds; no physical scanout or network workload.",
+  "checks": {
+    "engine": "123 passed",
+    "verse": "578 passed, 17 ignored before the final zero-shadow and glow regression additions",
+    "imported": "76 passed, 9 ignored before zero-shadow query fix; focused GPU regressions separately",
+    "desktop_consumers": "desktop library and verse_play, verse_remote, universal_characters compile",
+    "hardware_zero_shadow": "zero-shadow-hardware.log",
+    "hardware_recovery": "actor-recovery-hardware.log",
+    "virtual_surface_recovery": [
+      "chamber-presenter-recovery.log",
+      "physical-recovery-final.log",
+      "physical-low-recovery.log"
+    ],
+    "software_actor_recovery": "actor-recovery-software.log",
+    "additive_pixel_equivalence": "additive-pixels.log",
+    "render": "8 passed, 1 ignored after final glow admission regression",
+    "timestamp_gpu": "Written-query-only zero-shadow hardware regression passes; CPU timestamp tests retained in full crate check.",
+    "rebased_desktop_consumers": "Desktop library, verse_play, verse_remote, and universal_characters compile after integration on a0d957d4b1; targeted formatting, paths, retained JSON, and whitespace checks pass."
+  },
+  "failures": {
+    "hardware-zero-shadow-timeout.log": "Timestamp resolve included unwritten shadow query; fixed by resolving only written queries and copying to the appropriate aligned readback offset. Hardware regressions pass.",
+    "hardware-recovery-before-fix.log": "Before-fix harness timeout; superseded by passing retained hardware tests."
+  },
+  "limits": [
+    "Resource numbers exclude driver-private storage, swapchain, fixed shader-private resources, transient replacement peaks, and asynchronous capture copies.",
+    "Not an authored mesh/animation LOD implementation. Actor animation is fully evaluated.",
+    "Native surface recovery uses software Vulkan on Xvfb; offscreen hardware device destroy/recreate uses RTX 4080.",
+    "Browser callers must integrate async recovery; externally owned Layer devices require host recreation.",
+    "Spontaneous driver reset and capture-worker interruption are not accepted platform profiles.",
+    "Final pending GPU timing is not drained; the reports retain 179 steady GPU samples and 180 steady CPU samples."
+  ]
+}

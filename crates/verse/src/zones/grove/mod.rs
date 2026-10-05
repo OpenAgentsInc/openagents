@@ -18,7 +18,7 @@
 //! (`docs/verse/combat-model.md`), and the dummies show the outcome:
 //! floating numbers, "Miss", and "Resisted".
 
-mod draw;
+pub(crate) mod draw;
 pub mod dummies;
 pub mod hotbar;
 pub mod kit;

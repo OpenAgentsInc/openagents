@@ -796,6 +796,33 @@ pub fn action_at(x: f32, y: f32, width: f32, height: f32) -> Option<super::play:
     };
     row.get((x / 42.0).floor() as usize).copied()
 }
+/// The slot `ability` sits in on the action bar, as left, top, width, and
+/// height, and its key's label.
+fn action_slot(
+    ability: super::play::Ability,
+    width: f32,
+    height: f32,
+) -> Option<([f32; 4], String)> {
+    let (left, top, s) = bar_geometry(width, height);
+    let (index, y, key) =
+        if let Some(i) = super::play::Ability::ALL.iter().position(|a| *a == ability) {
+            (i, top, format!("Key {}", (i + 1) % 10))
+        } else {
+            let i = super::play::Ability::ROW_TWO
+                .iter()
+                .position(|a| *a == ability)?;
+            (i, top - ROW_TWO_RISE * s, format!("Shift+{}", (i + 1) % 10))
+        };
+    Some((
+        [
+            left + (8.0 + index as f32 * 42.0) * s,
+            y,
+            36.0 * s,
+            36.0 * s,
+        ],
+        key,
+    ))
+}
 /// The second row sits this many reference pixels above the first.
 const ROW_TWO_RISE: f32 = 50.0;
 /// Decorative chrome consumes pointer presses instead of selecting the world behind it.
@@ -1474,20 +1501,26 @@ pub fn action_bar(
                 },
                 |a| a.cost,
             );
-        let text = format!(
-            "{} · {} mana · {}",
-            ability.label(),
-            cost,
-            ability.description()
-        );
-        outlined(
-            ui,
-            atlas,
-            width * 0.5 - atlas.measure(&text) * 0.5,
-            y - 35.0,
-            &text,
-            [1.0, 0.85, 0.55, 1.0],
-        );
+        // The hovered slot's card, as Everglade's and the Grove's hotbars
+        // show theirs (`crate::tooltip`).
+        if let Some((anchor, key)) = action_slot(ability, width, height) {
+            use crate::tooltip::{Card, Tip, palette};
+            let description = ability.description();
+            let sentence = if description.is_empty() || description.ends_with('.') {
+                description.to_string()
+            } else {
+                format!("{description}.")
+            };
+            let mut card = Card {
+                body: sentence,
+                ..Card::of(Tip::new(ability.label(), ""))
+            }
+            .detail(key, palette::KEY);
+            if cost > 0 {
+                card = card.detail(format!("{cost} mana"), palette::MANA);
+            }
+            crate::tooltip::draw(ui, atlas, &card, anchor, [width, height]);
+        }
     }
     if !game.message.is_empty() {
         outlined(

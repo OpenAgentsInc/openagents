@@ -220,7 +220,7 @@ impl Effect {
 
 /// Builds the Grove's lines and faces: the post, the bars, the numbers,
 /// the target ring, and the effects, seen from `eye`.
-pub(super) struct Painter {
+pub(crate) struct Painter {
     pub mesh: Mesh,
     eye: Vec3,
 }

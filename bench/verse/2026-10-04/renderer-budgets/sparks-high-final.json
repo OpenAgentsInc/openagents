@@ -1,0 +1,376 @@
+{
+  "schema": "verse.renderer-budget.v1",
+  "fixture": "20 synthetic player roots, 40 synthetic NPC roots, 20 required bow mounts, 2000 optional spark instances; no network or gameplay simulation",
+  "frames": 300,
+  "resolution": [
+    1280,
+    720
+  ],
+  "device": {
+    "name": "NVIDIA GeForce RTX 4080",
+    "vendor": 4318,
+    "device": 9988,
+    "backend": "Vulkan",
+    "device_type": "DiscreteGpu",
+    "driver": "NVIDIA",
+    "driver_info": "595.71.05",
+    "timestamp_feature_supported": true,
+    "timestamp_query_enabled": true,
+    "timestamp_period_ns": 1.0,
+    "multisample_count": 4,
+    "quality": "high",
+    "scene_format": "Rgba16Float",
+    "shadow_views": 24,
+    "shadow_size": 512,
+    "budget": {
+      "instances": 1024,
+      "optional_effects": 768,
+      "surfaces": 16384,
+      "target_bytes": 1073741824,
+      "geometry_bytes": 1073741824,
+      "texture_bytes": 1073741824,
+      "buffer_bytes": 1073741824,
+      "cpu_frame_ms": 16.666666666666668,
+      "gpu_frame_ms": 16.666666666666668
+    }
+  },
+  "resources": {
+    "target_bytes": 112033008,
+    "geometry_bytes": 858160,
+    "texture_bytes": 33729192,
+    "buffer_bytes": 38107232,
+    "retained_source_bytes": 1701040
+  },
+  "resource_accounting": "Logical payload and conservative buffer reservations; driver padding, swapchain, shader-private resources, and transient capture copies excluded",
+  "measurements": {
+    "schema": "verse.frame.measurements.v1",
+    "warmup_frames": 120,
+    "startup": {
+      "actor_roots": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 60.0,
+        "p95": 60.0,
+        "p99": 60.0,
+        "maximum": 60.0
+      },
+      "construction_cpu_ms": {
+        "samples": 1,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 439.649384,
+        "p95": 439.649384,
+        "p99": 439.649384,
+        "maximum": 439.649384
+      },
+      "draw_cpu_ms": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 4.994167,
+        "p95": 7.820100999999999,
+        "p99": 11.275875,
+        "maximum": 19.418517
+      },
+      "dropped_effects": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 1232.0,
+        "p95": 1232.0,
+        "p99": 1232.0,
+        "maximum": 1232.0
+      },
+      "gpu_scene_ms": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.359424,
+        "p95": 0.386048,
+        "p99": 0.396288,
+        "maximum": 0.457728
+      },
+      "instances": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 848.0,
+        "p95": 848.0,
+        "p99": 848.0,
+        "maximum": 848.0
+      },
+      "mounts": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 20.0,
+        "p95": 20.0,
+        "p99": 20.0,
+        "maximum": 20.0
+      },
+      "prepare_cpu_ms": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 4.094711,
+        "p95": 6.224551,
+        "p99": 9.051461,
+        "maximum": 16.704449
+      },
+      "retained_effects": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 768.0,
+        "p95": 768.0,
+        "p99": 768.0,
+        "maximum": 768.0
+      },
+      "shadow_draws": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 26.0,
+        "p95": 26.0,
+        "p99": 26.0,
+        "maximum": 50.0
+      },
+      "shadow_encode_cpu_ms": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.13584,
+        "p95": 0.210882,
+        "p99": 0.282907,
+        "maximum": 0.355366
+      },
+      "shadow_views": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 24.0,
+        "p95": 24.0,
+        "p99": 24.0,
+        "maximum": 24.0
+      },
+      "surface_batches": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 910.0,
+        "p95": 910.0,
+        "p99": 910.0,
+        "maximum": 910.0
+      },
+      "timestamp_busy_slots": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "maximum": 0.0
+      },
+      "upload_bytes": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 14050512.0,
+        "p95": 14050512.0,
+        "p99": 14050512.0,
+        "maximum": 14050512.0
+      },
+      "world_draws": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 8.0,
+        "p95": 8.0,
+        "p99": 8.0,
+        "maximum": 8.0
+      },
+      "world_encode_cpu_ms": {
+        "samples": 120,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.150927,
+        "p95": 0.23674800000000001,
+        "p99": 0.429215,
+        "maximum": 0.5805549999999999
+      }
+    },
+    "steady": {
+      "actor_roots": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 60.0,
+        "p95": 60.0,
+        "p99": 60.0,
+        "maximum": 60.0
+      },
+      "draw_cpu_ms": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 5.8038050000000005,
+        "p95": 6.350195,
+        "p99": 6.826213999999999,
+        "maximum": 7.854848
+      },
+      "dropped_effects": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 1232.0,
+        "p95": 1232.0,
+        "p99": 1232.0,
+        "maximum": 1232.0
+      },
+      "gpu_scene_ms": {
+        "samples": 179,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 1.472512,
+        "p95": 2.558976,
+        "p99": 2.65728,
+        "maximum": 2.678784
+      },
+      "instances": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 848.0,
+        "p95": 848.0,
+        "p99": 848.0,
+        "maximum": 848.0
+      },
+      "mounts": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 20.0,
+        "p95": 20.0,
+        "p99": 20.0,
+        "maximum": 20.0
+      },
+      "prepare_cpu_ms": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 4.9516100000000005,
+        "p95": 5.434642,
+        "p99": 5.896599,
+        "maximum": 6.526649
+      },
+      "retained_effects": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 768.0,
+        "p95": 768.0,
+        "p99": 768.0,
+        "maximum": 768.0
+      },
+      "shadow_draws": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 26.0,
+        "p95": 26.0,
+        "p99": 26.0,
+        "maximum": 26.0
+      },
+      "shadow_encode_cpu_ms": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.134336,
+        "p95": 0.166432,
+        "p99": 0.23707399999999998,
+        "maximum": 0.247189
+      },
+      "shadow_views": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 24.0,
+        "p95": 24.0,
+        "p99": 24.0,
+        "maximum": 24.0
+      },
+      "surface_batches": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 910.0,
+        "p95": 910.0,
+        "p99": 910.0,
+        "maximum": 910.0
+      },
+      "timestamp_busy_slots": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "maximum": 0.0
+      },
+      "upload_bytes": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 14050512.0,
+        "p95": 14050512.0,
+        "p99": 14050512.0,
+        "maximum": 14050512.0
+      },
+      "world_draws": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 8.0,
+        "p95": 8.0,
+        "p99": 8.0,
+        "maximum": 8.0
+      },
+      "world_encode_cpu_ms": {
+        "samples": 180,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.151221,
+        "p95": 0.172513,
+        "p99": 0.237487,
+        "maximum": 0.258976
+      }
+    },
+    "omitted_series": 0,
+    "limits": {
+      "series_per_phase": 48,
+      "samples_per_series": 8192
+    },
+    "sampling": "First bounded observations in each phase; omissions are counted."
+  },
+  "wall_seconds": 5.025176803,
+  "profile": "debug",
+  "actual_input_to_display_ms": null,
+  "all_required_visuals_preserved": true,
+  "timestamp_health": {
+    "issued": 300,
+    "valid": 299,
+    "zero_duration": 0,
+    "out_of_order": 0,
+    "invalid_period": 0,
+    "map_errors": 0,
+    "busy_frames": 0,
+    "batched_completions": 0,
+    "invalid_examples": [
+      null,
+      null,
+      null,
+      null
+    ]
+  }
+}

@@ -146,6 +146,13 @@ impl Profile {
         for (name, value) in [
             ("instances", timing.instances),
             ("graph_instances", timing.graph_instances),
+            ("actor_roots", timing.actor_roots),
+            ("mounts", timing.mounts),
+            ("optional_effects", timing.optional_effects),
+            ("dropped_effects", timing.dropped_effects),
+            ("surface_batches", timing.surface_batches),
+            ("shadow_views", timing.shadow_views),
+            ("upload_bytes", timing.upload_bytes as usize),
             ("shadow_draws", timing.shadow_draws),
             ("world_draws", timing.world_draws),
             ("static_shadow_refreshes", timing.static_shadow_refreshes),

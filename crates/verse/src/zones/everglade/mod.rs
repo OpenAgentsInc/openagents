@@ -154,6 +154,12 @@ impl Everglade {
     /// Returns a message when the pack lacks a kit model.
     pub fn start_demolition(&mut self, pack: &ZonePack) -> Result<(), String> {
         let mut yard = demolition::Demolition::new(pack)?;
+        yard.set_track(
+            self.cast
+                .as_ref()
+                .and_then(player::Cast::swing_track)
+                .cloned(),
+        );
         self.solids = demolition::solids();
         let blocks = yard.take_blocks().unwrap_or_default();
         self.demolition = Some(Box::new(yard));
@@ -455,7 +461,8 @@ impl Everglade {
     pub fn spell_mesh_from(&self, player: &PlayerController, eye: Vec3) -> Mesh {
         let mut mesh = self.spells.mesh(player, eye);
         if let Some(yard) = &self.demolition {
-            mesh.extend(&yard.mesh(player));
+            let hold = self.cast.as_ref().and_then(player::Cast::hold);
+            mesh.extend(&yard.mesh(player, eye, hold));
         }
         mesh
     }
@@ -488,6 +495,7 @@ impl Everglade {
             self.refresh_blocks();
         }
         if let Some(cast) = &mut self.cast {
+            cast.set_swing(self.demolition.as_ref().and_then(|yard| yard.chop()));
             cast.advance(at, seats, dt);
         }
         let blocks = self.demolition.as_mut().and_then(|yard| {

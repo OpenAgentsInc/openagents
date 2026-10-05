@@ -301,6 +301,20 @@ impl App {
     }
     fn draw_frame(&mut self) -> Result<Vec<u8>, String> {
         let started = Instant::now();
+        if self
+            .renderer
+            .as_mut()
+            .unwrap()
+            .recover_if_lost(&self.atlas)?
+            && self.window.is_some()
+        {
+            self.presenter = Some(
+                self.renderer
+                    .as_ref()
+                    .unwrap()
+                    .attach_window(self.window.as_ref().unwrap().clone())?,
+            );
+        }
         let [width, height] = self.overlay_size();
         if self.presenter.is_some() {
             let size = self.window.as_ref().unwrap().inner_size();

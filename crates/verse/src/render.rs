@@ -10,7 +10,6 @@
 
 #[cfg(feature = "capture")]
 use std::path::Path;
-#[cfg(feature = "desktop")]
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
@@ -168,7 +167,17 @@ pub enum DrawStatus {
 
 /// GPU state for one surface lifetime. The platform owns scheduling and input.
 pub struct Renderer {
-    surface: wgpu::Surface<'static>,
+    surface: Arc<wgpu::Surface<'static>>,
+    instance: wgpu::Instance,
+    source_world: Mesh,
+    source_atlas: Atlas,
+    options: RenderOptions,
+    health: crate::gpu_lifecycle::Health,
+    pub resources: verse_engine::quality::Resources,
+    pub dropped_glow_triangles: usize,
+    pub device_recoveries: u64,
+    pub last_device_loss: Option<String>,
+    overlay_source: Option<crate::overlay::OverlayImage>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
@@ -474,7 +483,16 @@ impl Renderer {
         let options = options.validate()?;
         validate_extent(width, height, options.max_extent)?;
         let opened = open(&instance, Some(&surface))?;
-        Self::assemble(surface, opened, width, height, world, atlas, options)
+        Self::assemble(
+            instance,
+            Arc::new(surface),
+            opened,
+            width,
+            height,
+            world,
+            atlas,
+            options,
+        )
     }
 
     /// [`Self::from_surface`] without blocking: a browser cannot wait for its
@@ -492,7 +510,16 @@ impl Renderer {
         let options = options.validate()?;
         validate_extent(width, height, options.max_extent)?;
         let opened = open_async(&instance, Some(&surface)).await?;
-        let mut renderer = Self::assemble(surface, opened, width, height, world, atlas, options)?;
+        let mut renderer = Self::assemble(
+            instance,
+            Arc::new(surface),
+            opened,
+            width,
+            height,
+            world,
+            atlas,
+            options,
+        )?;
         renderer.physical_error = renderer
             .scene
             .prepare_photo_async(&renderer.device, &renderer.queue)
@@ -509,7 +536,8 @@ impl Renderer {
 
     /// Configures `surface` on an opened device and uploads the world.
     fn assemble(
-        surface: wgpu::Surface<'static>,
+        instance: wgpu::Instance,
+        surface: Arc<wgpu::Surface<'static>>,
         (adapter, device, queue): (wgpu::Adapter, wgpu::Device, wgpu::Queue),
         width: u32,
         height: u32,
@@ -566,6 +594,25 @@ impl Renderer {
             },
             view_formats: vec![],
         };
+        let drawn = if encode && !hdr {
+            Present::FORMAT
+        } else {
+            format
+        };
+        let capability = Capability::probe(&adapter, &device, drawn, options.sample_count);
+        let mut resources = mesh_resources(world)?;
+        resources.texture_bytes += u64::from(atlas.width) * u64::from(atlas.height) * 4;
+        resources.retained_source_bytes += atlas.pixels.len() as u64;
+        resources.target_bytes = capability.target_reservation(
+            width,
+            height,
+            u64::from(drawn.block_copy_size(None).unwrap_or(8)),
+        ) + if encode && !hdr {
+            u64::from(width) * u64::from(height) * 4
+        } else {
+            0
+        };
+        capability.quality.budget().admit(resources)?;
         surface.configure(&device, &config);
         let present = (encode && !hdr).then(|| Present::new(&device, format, width, height));
         let drawn = present.as_ref().map_or(format, |_| Present::FORMAT);
@@ -579,8 +626,19 @@ impl Renderer {
             options.sample_count,
         );
         let targets = Targets::new(&device, drawn, width, height, scene.samples);
+        let health = crate::gpu_lifecycle::Health::attach(&device);
         Ok(Self {
             surface,
+            instance,
+            source_world: world.clone(),
+            source_atlas: atlas.clone(),
+            options,
+            health,
+            resources,
+            dropped_glow_triangles: 0,
+            device_recoveries: 0,
+            last_device_loss: None,
+            overlay_source: None,
             device,
             queue,
             config,
@@ -595,6 +653,64 @@ impl Renderer {
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn recover_if_lost(&mut self) -> Result<bool, String> {
+        if self.health.reason(&self.device).is_none() {
+            return Ok(false);
+        }
+        self.check_recovery_budget()?;
+        let opened = open(&self.instance, Some(&self.surface))?;
+        self.recover_opened(opened)
+    }
+    /// Browser callers await resource recreation before scheduling another frame.
+    pub async fn recover_if_lost_async(&mut self) -> Result<bool, String> {
+        if self.health.reason(&self.device).is_none() {
+            return Ok(false);
+        }
+        self.check_recovery_budget()?;
+        let opened = open_async(&self.instance, Some(&self.surface)).await?;
+        self.recover_opened(opened)
+    }
+    fn check_recovery_budget(&self) -> Result<(), String> {
+        if self.device_recoveries >= 3 {
+            return Err("Renderer device recovery budget exhausted".into());
+        }
+        Ok(())
+    }
+    fn ensure_device(&mut self) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        self.recover_if_lost()?;
+        #[cfg(target_arch = "wasm32")]
+        if self.health.reason(&self.device).is_some() {
+            return Err("Device lost; await recover_if_lost_async".into());
+        }
+        Ok(())
+    }
+    fn recover_opened(
+        &mut self,
+        opened: (wgpu::Adapter, wgpu::Device, wgpu::Queue),
+    ) -> Result<bool, String> {
+        if self.device_recoveries >= 3 {
+            return Err("Renderer device recovery budget exhausted".into());
+        }
+        let mut next = Self::assemble(
+            self.instance.clone(),
+            self.surface.clone(),
+            opened,
+            self.config.width,
+            self.config.height,
+            &self.source_world,
+            &self.source_atlas,
+            self.options,
+        )?;
+        next.scene.atmosphere = self.scene.atmosphere;
+        next.drawable = self.drawable;
+        next.device_recoveries = self.device_recoveries + 1;
+        next.last_device_loss = self.health.reason(&self.device);
+        next.set_overlay(self.overlay_source.as_ref())?;
+        *self = next;
+        Ok(true)
+    }
     #[must_use]
     pub fn size(&self) -> [f32; 2] {
         if self.drawable {
@@ -610,6 +726,10 @@ impl Renderer {
     }
 
     #[must_use]
+    pub fn quality(&self) -> verse_engine::quality::Quality {
+        self.scene.capability.quality
+    }
+
     pub fn sample_count(&self) -> u32 {
         self.scene.samples
     }
@@ -638,7 +758,20 @@ impl Renderer {
             self.drawable = false;
             return Ok(());
         }
+        self.ensure_device()?;
         validate_extent(width, height, self.max_extent)?;
+        let mut resources = self.resources;
+        resources.target_bytes = self.scene.capability.target_reservation(
+            width,
+            height,
+            u64::from(self.scene.format.block_copy_size(None).unwrap_or(8)),
+        ) + if self.present.is_some() {
+            u64::from(width) * u64::from(height) * 4
+        } else {
+            0
+        };
+        self.scene.capability.quality.budget().admit(resources)?;
+        self.resources = resources;
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
@@ -659,6 +792,13 @@ impl Renderer {
     /// Replace zone-owned geometry only after the loader has verified its pack.
     /// Replacing these buffers releases the previous zone's GPU allocations.
     pub fn replace_world(&mut self, world: &Mesh) -> Result<(), String> {
+        self.ensure_device()?;
+        let mut resources = mesh_resources(world)?;
+        resources.target_bytes = self.resources.target_bytes;
+        resources.texture_bytes +=
+            u64::from(self.source_atlas.width) * u64::from(self.source_atlas.height) * 4;
+        resources.retained_source_bytes += self.source_atlas.pixels.len() as u64;
+        self.scene.capability.quality.budget().admit(resources)?;
         const LIMIT: usize = 96 * 1024 * 1024;
         for vertices in [&world.faces, &world.lines] {
             if vertices
@@ -704,6 +844,8 @@ impl Renderer {
         // releases their buffer capacity instead of retaining the largest zone.
         self.scene.dynamic_faces = dynamic_batch(&self.device, "verse dynamic faces");
         self.scene.dynamic_lines = dynamic_batch(&self.device, "verse dynamic lines");
+        self.source_world = world.clone();
+        self.resources = resources;
         Ok(())
     }
 
@@ -721,24 +863,45 @@ impl Renderer {
         &mut self,
         image: Option<&crate::overlay::OverlayImage>,
     ) -> Result<(), String> {
+        self.ensure_device()?;
         if image.is_none() && self.overlay.is_none() {
             return Ok(());
         }
         let format = self.scene.format;
         self.overlay
             .get_or_insert_with(|| crate::overlay::Overlay::new(&self.device, format))
-            .set(&self.device, &self.queue, image)
+            .set(&self.device, &self.queue, image)?;
+        self.overlay_source = image.cloned();
+        Ok(())
     }
 
     /// Draws one frame. Lost surfaces require a fresh native attachment;
     /// skipped frames never report that they were presented.
     pub fn draw(&mut self, view: View, dynamic: &Mesh, ui: &UiBatch) -> DrawStatus {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Err(error) = self.recover_if_lost() {
+            return DrawStatus::Error(error);
+        }
+        #[cfg(target_arch = "wasm32")]
+        if self.health.reason(&self.device).is_some() {
+            return DrawStatus::Error(
+                "Device lost; await recover_if_lost_async before drawing".into(),
+            );
+        }
         if !self.drawable {
             return DrawStatus::Skipped("surface has no drawable extent");
         }
         if let Err(error) = validate_frame(view, dynamic, ui) {
             return DrawStatus::Error(error);
         }
+        if let Err(error) = admit_dynamic(self.resources, self.scene.capability, dynamic) {
+            return DrawStatus::Error(error);
+        }
+        self.dropped_glow_triangles = dynamic
+            .glow
+            .len()
+            .div_ceil(3)
+            .saturating_sub(self.scene.capability.quality.budget().optional_effects);
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame)
             | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
@@ -799,6 +962,7 @@ pub struct Layer {
     targets: Targets,
     format: wgpu::TextureFormat,
     size: (u32, u32),
+    pub resources: verse_engine::quality::Resources,
 }
 
 impl Layer {
@@ -824,6 +988,15 @@ impl Layer {
         let limit = device.limits().max_texture_dimension_2d.min(8192);
         validate_extent(width, height, limit)?;
         scene_limits(device.limits())?;
+        let capability = Capability::probe(adapter, device, format, samples);
+        let mut resources = mesh_resources(world)?;
+        resources.texture_bytes += u64::from(atlas.width) * u64::from(atlas.height) * 4;
+        resources.target_bytes = capability.target_reservation(
+            width,
+            height,
+            u64::from(format.block_copy_size(None).unwrap_or(8)),
+        );
+        capability.quality.budget().admit(resources)?;
         let mut scene = Scene::new(device, queue, adapter, format, world, atlas, samples);
         scene.atmosphere = atmosphere.validate()?;
         let targets = Targets::new(device, format, width, height, scene.samples);
@@ -832,6 +1005,7 @@ impl Layer {
             targets,
             format,
             size: (width, height),
+            resources,
         })
     }
 
@@ -855,6 +1029,14 @@ impl Layer {
             height,
             device.limits().max_texture_dimension_2d.min(8192),
         )?;
+        let mut resources = self.resources;
+        resources.target_bytes = self.scene.capability.target_reservation(
+            width,
+            height,
+            u64::from(self.format.block_copy_size(None).unwrap_or(8)),
+        );
+        self.scene.capability.quality.budget().admit(resources)?;
+        self.resources = resources;
         self.targets = Targets::new(device, self.format, width, height, self.scene.samples);
         self.size = (width, height);
         Ok(())
@@ -878,6 +1060,7 @@ impl Layer {
         ui: &UiBatch,
     ) -> Result<(), String> {
         validate_frame(view, dynamic, ui)?;
+        admit_dynamic(self.resources, self.scene.capability, dynamic)?;
         self.scene.encode(
             device,
             queue,
@@ -976,6 +1159,88 @@ fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String
         figure.validate()?;
     }
     Ok(())
+}
+
+/// Logical payload reservations; driver padding, swapchain images, and fixed shader resources are excluded.
+fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resources, String> {
+    use verse_engine::quality::Resources;
+    if mesh
+        .faces
+        .iter()
+        .chain(&mesh.lines)
+        .any(|v| v.pos.iter().chain(&v.color).any(|n| !n.is_finite()))
+        || !lit_finite(&mesh.lit)
+    {
+        return Err("World geometry contains nonfinite values".into());
+    }
+    let mut result = Resources {
+        geometry_bytes: ((mesh.faces.len() + mesh.lines.len()) * std::mem::size_of::<Vertex>()
+            + mesh.lit.len() * std::mem::size_of::<LitVertex>()
+            + mesh.glow.len() * std::mem::size_of::<crate::pbr::GlowVertex>())
+            as u64,
+        // Dynamic amber buffers retain power-of-two capacity. Reserve their maximum and the UI buffer.
+        buffer_bytes: 2 * MAX_DYNAMIC_BYTES + UI_BYTES,
+        ..Resources::default()
+    };
+    for scene in mesh
+        .textured
+        .iter()
+        .chain(mesh.figure.iter().map(|figure| &figure.scene))
+    {
+        scene.validate()?;
+        let primitive_bytes = |primitive: &crate::pbr::textured::Primitive| {
+            (primitive.vertices.len() * std::mem::size_of::<crate::pbr::textured::TexturedVertex>()
+                + primitive.indices.len() * 4) as u64
+        };
+        if scene.placements.is_empty() {
+            result.geometry_bytes += scene
+                .meshes
+                .iter()
+                .flat_map(|mesh| &mesh.primitives)
+                .map(primitive_bytes)
+                .sum::<u64>();
+        } else {
+            result.geometry_bytes += scene
+                .placements
+                .iter()
+                .flat_map(|place| &scene.meshes[place.mesh].primitives)
+                .map(primitive_bytes)
+                .sum::<u64>();
+        }
+        for image in &scene.images {
+            let (mut width, mut height) = (image.width, image.height);
+            loop {
+                result.texture_bytes += u64::from(width) * u64::from(height) * 4;
+                if width == 1 && height == 1 {
+                    break;
+                }
+                width = (width / 2).max(1);
+                height = (height / 2).max(1);
+            }
+        }
+    }
+    result.retained_source_bytes = result.geometry_bytes + result.texture_bytes;
+    Ok(result)
+}
+fn admit_dynamic(
+    base: verse_engine::quality::Resources,
+    capability: Capability,
+    mesh: &Mesh,
+) -> Result<(), String> {
+    let mut dynamic = mesh_resources(mesh)?;
+    let omitted = mesh
+        .glow
+        .len()
+        .saturating_sub(capability.quality.budget().optional_effects * 3);
+    dynamic.geometry_bytes -= (omitted * std::mem::size_of::<crate::pbr::GlowVertex>()) as u64;
+    capability
+        .quality
+        .budget()
+        .admit(verse_engine::quality::Resources {
+            geometry_bytes: base.geometry_bytes + dynamic.geometry_bytes,
+            texture_bytes: base.texture_bytes + dynamic.texture_bytes,
+            ..base
+        })
 }
 
 fn lit_bytes(vertices: &[LitVertex]) -> Option<usize> {
@@ -1404,16 +1669,8 @@ impl Scene {
         atlas: &Atlas,
         requested_samples: u32,
     ) -> Self {
-        let samples = if requested_samples == 4
-            && adapter
-                .get_texture_format_features(format)
-                .flags
-                .sample_count_supported(4)
-        {
-            4
-        } else {
-            1
-        };
+        let capability = Capability::probe(adapter, device, format, requested_samples);
+        let samples = capability.samples;
 
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse globals"),
@@ -1801,7 +2058,12 @@ impl Scene {
         write(device, queue, &mut self.dynamic_faces, &dynamic.faces);
         write(device, queue, &mut self.dynamic_lines, &dynamic.lines);
         photo.dynamic_lit.write(device, queue, &dynamic.lit);
-        photo.glow.write(device, queue, &dynamic.glow);
+        let glow_limit = self.capability.quality.budget().optional_effects * 3;
+        photo.glow.write(
+            device,
+            queue,
+            &dynamic.glow[..dynamic.glow.len().min(glow_limit)],
+        );
         let batches = Batches {
             lit: (&self.world_lit.0, self.world_lit.1),
             faces: [
@@ -2086,7 +2348,146 @@ fn write(device: &wgpu::Device, queue: &wgpu::Queue, batch: &mut Batch, vertices
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(all(feature = "imported-desktop", target_os = "linux"))]
+    #[test]
+    #[ignore = "requires a scratch X11 display; run separately from other window tests"]
+    #[allow(deprecated)]
+    fn physical_surface_device_loss_recreates_world_and_overlay() {
+        use winit::platform::x11::EventLoopBuilderExtX11;
+        let event_loop = winit::event_loop::EventLoop::builder()
+            .with_x11()
+            .with_any_thread(true)
+            .build()
+            .unwrap();
+        let window = Arc::new(
+            event_loop
+                .create_window(
+                    winit::window::Window::default_attributes()
+                        .with_inner_size(winit::dpi::PhysicalSize::new(320, 180)),
+                )
+                .unwrap(),
+        );
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let surface = instance.create_surface(window).unwrap();
+        let mut world = Mesh::default();
+        world.faces = [[-0.5, -0.5, 0.], [0.5, -0.5, 0.], [0., 0.5, 0.]]
+            .map(|pos| Vertex {
+                pos,
+                color: [0.4; 3],
+                fog: 0.,
+            })
+            .to_vec();
+        let atlas = crate::imported::original::atlas().unwrap();
+        let mut renderer = Renderer::from_surface(
+            instance,
+            surface,
+            320,
+            180,
+            &world,
+            &atlas,
+            RenderOptions::default(),
+        )
+        .unwrap();
+        let image = crate::overlay::OverlayImage {
+            revision: 1,
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            rgba: vec![255; 4],
+        };
+        renderer.set_overlay(Some(&image)).unwrap();
+        let mut dynamic = Mesh::default();
+        dynamic.neon = Some(crate::pbr::Neon::plaza(0.));
+        let view = View {
+            view_proj: Mat4::IDENTITY,
+            eye: Vec3::ZERO,
+        };
+        assert_eq!(
+            renderer.draw(view, &dynamic, &UiBatch::default()),
+            DrawStatus::Presented
+        );
+        assert!(renderer.scene.photo.is_some() && !renderer.scene.photo_failed);
+        renderer
+            .device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
+            })
+            .unwrap();
+        renderer.device.destroy();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !renderer.recover_if_lost().unwrap() {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(renderer.device_recoveries, 1);
+        assert!(renderer.overlay.is_some());
+        assert_eq!(renderer.overlay_source, Some(image));
+        assert_eq!(renderer.scene.world_faces.count, 3);
+        let size = renderer.size();
+        let resources = serde_json::to_value(renderer.resources).unwrap();
+        assert!(renderer.resize(8192, 8192).is_err());
+        assert_eq!(renderer.size(), size);
+        assert_eq!(serde_json::to_value(renderer.resources).unwrap(), resources);
 
+        assert_eq!(
+            renderer.draw(view, &dynamic, &UiBatch::default()),
+            DrawStatus::Presented
+        );
+        assert!(renderer.scene.photo.is_some() && !renderer.scene.photo_failed);
+        assert!(!renderer.recover_if_lost().unwrap());
+        println!(
+            "Recovered physical surface: {}",
+            serde_json::json!({"quality":renderer.scene.capability.quality.tier.name(),"samples":renderer.scene.capability.samples,"budget":renderer.scene.capability.quality.budget(),"resources":renderer.resources,"device_recoveries":renderer.device_recoveries,"device_loss":renderer.last_device_loss,"physical_path_recreated":true,"world_vertices":renderer.scene.world_faces.count,"overlay_preserved":renderer.overlay.is_some()})
+        );
+    }
+
+    #[test]
+    fn excess_glow_does_not_consume_required_geometry_admission() {
+        let quality = verse_engine::quality::Tier::Low.quality();
+        let capability = Capability {
+            quality,
+            hdr: Some(wgpu::TextureFormat::Rgba16Float),
+            samples: 1,
+            gles: false,
+        };
+        let count = quality.budget().optional_effects * 3;
+        let mesh = Mesh {
+            glow: vec![
+                crate::pbr::GlowVertex {
+                    pos: [0.; 3],
+                    radiance: [1.; 3],
+                    uv: [0.; 2]
+                };
+                count + 3
+            ],
+            ..Mesh::default()
+        };
+        let base = verse_engine::quality::Resources {
+            geometry_bytes: quality.budget().geometry_bytes
+                - (count * std::mem::size_of::<crate::pbr::GlowVertex>()) as u64,
+            ..Default::default()
+        };
+        assert!(admit_dynamic(base, capability, &mesh).is_ok());
+        let required = Mesh {
+            faces: vec![
+                Vertex {
+                    pos: [0.; 3],
+                    color: [1.; 3],
+                    fog: 0.
+                };
+                count + 3
+            ],
+            ..Mesh::default()
+        };
+        let full = verse_engine::quality::Resources {
+            geometry_bytes: quality.budget().geometry_bytes,
+            ..Default::default()
+        };
+        assert!(admit_dynamic(full, capability, &required).is_err());
+    }
     #[test]
     fn scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits() {
         // An OpenGL ES 3.0 device: no storage buffers or compute.

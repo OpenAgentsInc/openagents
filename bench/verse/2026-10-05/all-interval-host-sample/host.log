@@ -1,0 +1,10 @@
+Chamber 220 listening on 127.0.0.1:50639
+Chamber stopped: 2474 ticks, 27267 requests, 20 completed connections, 0.322222 dropped seconds
+Admission: {"capacity_refusals":0,"pre_auth_refusals":0,"ip_refusals":0,"handshake_rate_refusals":0,"principal_capacity_refusals":0,"principal_work_refusals":0,"aggregate_work_refusals":0,"projections":15785,"commands":11462,"pending_peak":1,"active_peak":20,"pending":0,"active":0,"principal_records":20,"completed":20,"handshake_timeouts":0,"handshake_refusals":0,"authentication_timeouts":0,"authentication_refusals":0,"grant_refusals":0,"retired_connections":0,"frame_failures":0,"read_timeouts":0,"write_failures":0,"request_rate_failures":0,"host_failures":0,"transport_closures":20,"cancelled_workers":0}
+Collision queries: {"ray":{"calls":28838,"errors":0,"truncated":2,"nodes":1241091,"triangles":346056,"capsule_tests":0,"wall_seconds":0.1050685229999957,"maximum_wall_seconds":0.002634208},"overlap":{"calls":447052,"errors":0,"truncated":0,"nodes":45530422,"triangles":5353176,"capsule_tests":246641,"wall_seconds":5.341041177998054,"maximum_wall_seconds":0.019381792},"sweep":{"calls":1218653,"errors":0,"truncated":15089,"nodes":124028014,"triangles":13641096,"capsule_tests":933145,"wall_seconds":8.747816004005037,"maximum_wall_seconds":0.06217}}
+Motor recovery: 0 blocked advances, last diagnostic None
+Checkpoint storage: 0 commits, 0 bytes, 0.000000 seconds
+Storage backlog: 0 peak copies, 0 refused requests, 0 paused ticks, 0.000000 paused seconds
+Simulation: 2474 observations, p50/p95/p99 upper bounds 0.008000/0.016000/0.033333 seconds, maximum 0.096429 seconds
+Persistence capture: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds
+Storage commit: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds

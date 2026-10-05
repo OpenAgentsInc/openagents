@@ -1,0 +1,27 @@
+{
+  "schema": "verse.renderer-budget.receipt.v1",
+  "date": "2026-10-05",
+  "base_revision": "b43ed8c4555d850a5b61b8e4fc02cd1489ea96a4",
+  "binary_sha256": "b95e1122e08e3844d2708d72a26a828bb6ebefc2e4e45cd5ad50e784c10cbd0d",
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "workloads": [
+    {
+      "path": "sparks-high-final.json",
+      "quality": "high",
+      "accepted": true,
+      "cpu_p95_ms": 6.350195,
+      "gpu_p95_ms": 2.558976,
+      "steady_cpu_samples": 180,
+      "steady_gpu_samples": 179
+    },
+    {
+      "path": "sparks-low-final.json",
+      "quality": "low",
+      "accepted": true,
+      "cpu_p95_ms": 4.889044999999999,
+      "gpu_p95_ms": 0.969728,
+      "steady_cpu_samples": 180,
+      "steady_gpu_samples": 179
+    }
+  ]
+}

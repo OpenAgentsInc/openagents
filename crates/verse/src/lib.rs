@@ -26,6 +26,7 @@ pub mod doors;
 pub mod edr;
 pub mod feed;
 pub(crate) mod gles;
+mod gpu_lifecycle;
 #[cfg(feature = "imported-surface")]
 pub mod grid_engine;
 pub mod grid_frame;
@@ -64,6 +65,7 @@ pub mod runtime;
 pub mod session;
 pub mod shared;
 pub mod spectator;
+pub mod tooltip;
 pub mod ui;
 pub mod world;
 #[cfg(feature = "xp-host")]

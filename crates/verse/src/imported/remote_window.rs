@@ -863,6 +863,9 @@ impl App {
             self.profile.preparation_ms.add(preparation_ms);
         }
         let renderer = self.renderer.as_mut().unwrap();
+        if renderer.recover_if_lost(&self.atlas)? {
+            self.presenter = Some(renderer.attach_window(self.window.as_ref().unwrap().clone())?);
+        }
         renderer.resize(size.width, size.height)?;
         renderer.set_overlay_size(width, 720.);
         renderer.draw_live(

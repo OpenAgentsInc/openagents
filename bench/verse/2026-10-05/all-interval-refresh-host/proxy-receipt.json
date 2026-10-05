@@ -1,0 +1,25 @@
+{
+  "schema": "verse.delayed-route.v1",
+  "delay_ms": 40,
+  "jitter_ms": 20,
+  "connections": 20,
+  "upstream_bytes": 5324734,
+  "downstream_bytes": 312675971,
+  "forwarded_chunks": 35599,
+  "errors": 1,
+  "refused_connections": 0,
+  "error_details": [
+    {
+      "elapsed_seconds": 82.97718629100001,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    }
+  ],
+  "omitted_error_details": 0,
+  "limits": [
+    "Delay applies to each TCP read chunk, not decrypted game messages.",
+    "TCP preserves byte order; this fixture does not simulate packet loss."
+  ],
+  "wall_seconds": 83.009084083
+}

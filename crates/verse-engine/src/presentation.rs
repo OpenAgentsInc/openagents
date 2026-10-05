@@ -41,6 +41,74 @@ pub struct Instance {
     pub emission: Vec3,
 }
 
+/// Stable optional-visual selection. Actor roots and mounts cannot be omitted.
+#[derive(Clone, Debug)]
+pub struct VisualSelection<'a> {
+    instances: &'a [Instance],
+    indices: Vec<usize>,
+    pub dropped_effects: usize,
+}
+impl<'a> VisualSelection<'a> {
+    pub const MAX_SOURCE_INSTANCES: usize = 8192;
+    /// Smaller priorities retain earlier optional effects; equal priorities keep source order.
+    pub fn admit(
+        catalog: &Catalog,
+        instances: &'a [Instance],
+        budget: crate::quality::Budget,
+        optional: impl Fn(&Instance) -> Option<u8>,
+    ) -> Result<Self, String> {
+        if instances.len() > Self::MAX_SOURCE_INSTANCES {
+            return Err("Visual source exceeds 8192 instances".into());
+        }
+        let mut required = Vec::new();
+        let mut effects = Vec::new();
+        for (index, instance) in instances.iter().enumerate() {
+            if !instance.transform.is_finite()
+                || !instance.time.is_finite()
+                || instance.time < 0.
+                || !instance.emission.is_finite()
+            {
+                return Err("Visual source contains invalid instance values".into());
+            }
+            let model = catalog.model(&instance.model)?;
+            catalog.check_animation(model, instance.animation)?;
+            if let Some(priority) = optional(instance) {
+                if instance.actor.is_some() || instance.mount.is_some() {
+                    return Err("Actor roots and mounts cannot be optional effects".into());
+                }
+                effects.push((priority, index));
+            } else {
+                required.push(index);
+            }
+        }
+        if required.len() > budget.instances {
+            return Err("Required visuals exceed the admitted instance budget".into());
+        }
+        effects.sort_unstable();
+        let count = effects
+            .len()
+            .min(budget.optional_effects)
+            .min(budget.instances - required.len());
+        let dropped_effects = effects.len() - count;
+        required.extend(effects.into_iter().take(count).map(|(_, index)| index));
+        required.sort_unstable();
+        Ok(Self {
+            instances,
+            indices: required,
+            dropped_effects,
+        })
+    }
+    pub fn indices(&self) -> &[usize] {
+        &self.indices
+    }
+    pub fn retained(&self) -> Vec<Instance> {
+        self.indices
+            .iter()
+            .map(|index| self.instances[*index].clone())
+            .collect()
+    }
+}
+
 /// A frame borrows its source values and retains handles from one asset catalog.
 #[derive(Clone, Debug)]
 pub struct ResolvedInstances<'a> {
@@ -155,6 +223,70 @@ mod tests {
             time: 0.,
             emission: Vec3::ZERO,
         }
+    }
+    #[test]
+    fn optional_overflow_preserves_actor_roots_and_mounts_in_source_order() {
+        let catalog = catalog();
+        let life = LifeId {
+            instance: 1,
+            actor: 1,
+            generation: 1,
+        };
+        let mut actor = instance();
+        actor.actor = Some(life);
+        let mut mount = instance();
+        mount.mount = Some(Mount {
+            parent: life,
+            parent_model: "room".into(),
+            socket: 1,
+            local: Mat4::IDENTITY,
+        });
+        let mut values = vec![actor, mount];
+        for priority in 0..1500 {
+            let mut effect = instance();
+            effect.time = (priority % 3) as f32;
+            values.push(effect);
+        }
+        let budget = crate::quality::Tier::Low.quality().budget();
+        let selected = VisualSelection::admit(&catalog, &values, budget, |value| {
+            (value.actor.is_none() && value.mount.is_none()).then_some(value.time as u8)
+        })
+        .unwrap();
+        assert_eq!(selected.indices().len(), budget.optional_effects + 2);
+        assert_eq!(selected.dropped_effects, 1500 - budget.optional_effects);
+        assert_eq!(&selected.indices()[..2], &[0, 1]);
+        assert!(
+            selected.indices()[2..]
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+        );
+        assert!(
+            selected.retained()[2..]
+                .iter()
+                .all(|value| value.time == 0.)
+        );
+        assert!(VisualSelection::admit(&catalog, &values, budget, |_| Some(0)).is_err());
+    }
+    #[test]
+    fn omitted_visuals_still_require_valid_models_and_values() {
+        let catalog = catalog();
+        let mut budget = crate::quality::Tier::Low.quality().budget();
+        budget.optional_effects = 0;
+        let mut invalid = instance();
+        invalid.model = "missing".into();
+        assert!(VisualSelection::admit(&catalog, &[invalid], budget, |_| Some(0)).is_err());
+        let mut invalid = instance();
+        invalid.time = f32::NAN;
+        assert!(VisualSelection::admit(&catalog, &[invalid], budget, |_| Some(0)).is_err());
+        assert!(
+            VisualSelection::admit(
+                &catalog,
+                &vec![instance(); VisualSelection::MAX_SOURCE_INSTANCES + 1],
+                budget,
+                |_| Some(0)
+            )
+            .is_err()
+        );
     }
     #[test]
     fn modular_battle_frames_remain_bounded_above_the_previous_limit() {

@@ -1,0 +1,7 @@
+
+running 1 test
+Additive batching: {"device":{"name":"llvmpipe (LLVM 21.1.8, 256 bits)","vendor":65541,"device":0,"backend":"Vulkan","device_type":"Cpu","driver":"llvmpipe","driver_info":"Mesa 26.1.8 (LLVM 21.1.8)","timestamp_feature_supported":true,"timestamp_query_enabled":true,"timestamp_period_ns":1.0,"multisample_count":4,"quality":"high","scene_format":"Rgba16Float","shadow_views":24,"shadow_size":512,"budget":{"instances":1024,"optional_effects":768,"surfaces":16384,"target_bytes":1073741824,"geometry_bytes":1073741824,"texture_bytes":1073741824,"buffer_bytes":1073741824,"cpu_frame_ms":16.666666666666668,"gpu_frame_ms":16.666666666666668}},"batched_world_draws":1,"uniform_world_draws":32,"maximum_channel_difference":0}
+test imported::tests::additive_instances_match_uniform_pixels_and_reduce_draws ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 594 filtered out; finished in 0.71s
+

@@ -808,6 +808,10 @@ pub(crate) struct Scene {
     insets: [f32; 4],
     /// The touch holding Everglade's Up (1) or Down (-1), while it is down.
     climb: Option<(u64, f32)>,
+    /// A touch holding an Everglade hotbar slot: the touch, the slot, its
+    /// intent, and when it went down on `pointer_clock`, s. A long press
+    /// shows the slot's card instead of using it.
+    slot_touch: Option<(u64, usize, ZoneIntent, f64)>,
     pointer_clock: Instant,
     last_world_tap: Option<WorldTap>,
     jump: bool,
@@ -1012,6 +1016,7 @@ impl Scene {
             touches: BTreeMap::new(),
             insets: [0.0; 4],
             climb: None,
+            slot_touch: None,
             pointer_clock: Instant::now(),
             last_world_tap: None,
             jump: false,
@@ -1245,6 +1250,28 @@ impl Scene {
             }
             return Ok(());
         }
+        // A touch on a hotbar slot other than Up or Down acts when it lifts
+        // after a tap; a long press shows the slot's card instead.
+        if let Some((held, _, intent, at)) = self.slot_touch
+            && held == id
+        {
+            if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) {
+                self.slot_touch = None;
+                if self.climb.is_some_and(|(climbing, _)| climbing == id) {
+                    self.climb = None;
+                }
+                let long = verse::tooltip::long_press(
+                    (self.pointer_clock.elapsed().as_secs_f64() - at) as f32,
+                );
+                if matches!(phase, PointerPhase::Up)
+                    && !long
+                    && !matches!(intent, ZoneIntent::Rise | ZoneIntent::Lower)
+                {
+                    self.zone_intent(intent)?;
+                }
+            }
+            return Ok(());
+        }
         // A held Up or Down climbs until that touch lifts.
         if let Some((held, _)) = self.climb
             && held == id
@@ -1304,13 +1331,20 @@ impl Scene {
         // to.
         if matches!(phase, PointerPhase::Down)
             && self.everglade_hotbar_shown()
-            && let Some(intent) = verse::zones::everglade::hotbar::hit(
+            && let Some(index) = verse::zones::everglade::hotbar::slot_under(
                 point,
                 self.lifecycle.viewport().logical_size(),
                 self.hotbar_bottom(),
             )
         {
             self.cancel_taps();
+            let intent = verse::zones::everglade::hotbar::SLOTS[index].0;
+            self.slot_touch = Some((
+                id,
+                index,
+                intent,
+                self.pointer_clock.elapsed().as_secs_f64(),
+            ));
             match intent {
                 ZoneIntent::Rise if self.world.everglade_levitating() => {
                     self.climb = Some((id, 1.0))
@@ -1318,7 +1352,7 @@ impl Scene {
                 ZoneIntent::Lower if self.world.everglade_levitating() => {
                     self.climb = Some((id, -1.0));
                 }
-                intent => self.zone_intent(intent)?,
+                _ => {}
             }
             return Ok(());
         }
@@ -2659,6 +2693,15 @@ impl Scene {
                         self.hotbar_bottom(),
                         &slots,
                     );
+                    if let Some(index) = self.held_slot_tip() {
+                        verse::zones::everglade::hotbar::draw_tip(
+                            &mut bar,
+                            &layout,
+                            self.lifecycle.viewport().logical_size(),
+                            self.hotbar_bottom(),
+                            index,
+                        );
+                    }
                     for vertex in &mut bar.vertices {
                         vertex.pos = vertex.pos.map(|v| v * scale);
                     }
@@ -2726,6 +2769,13 @@ impl Scene {
     /// it draws none (owner, 2026-10-04); Everglade draws its hotbar.
     fn bare_zone_panel(&self) -> bool {
         self.world.is_bare() && self.world.zone_load_state() != verse::zones::LoadState::Idle
+    }
+
+    /// The hotbar slot a touch has held past a long press, whose card shows.
+    fn held_slot_tip(&self) -> Option<usize> {
+        let (_, index, _, at) = self.slot_touch?;
+        let held = self.pointer_clock.elapsed().as_secs_f64() - at;
+        verse::tooltip::long_press(held as f32).then_some(index)
     }
 
     /// Whether the bare world draws Everglade's movement hotbar.

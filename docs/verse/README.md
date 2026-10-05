@@ -21,7 +21,8 @@ where that studio lives, built from CC0 Quaternius kits. [The Apprentice's Road]
 proposed quest line that eases new players from a first walk in the glade to
 a team of agents on their own repository.
 [Destructible buildings](destructible-buildings.md) specifies what the engine needs for a player to smash Everglade's buildings with a sledgehammer, and orders the work.
-[In-world terminal](in-world-terminal.md) specifies a multiplexed, shareable terminal overlay and in-world screens over NIP-TERM and `coder-vt`, and plans a first demo in Everglade.
+[In-world terminal](in-world-terminal.md) specifies a multiplexed, shareable terminal overlay and in-world screens over NIP-TERM and `coder-vt`, and plans a first demo in Everglade. [Generated models with Blender](blender-pipeline.md) is how
+scripts build and convert models for zone packs.
 
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 
@@ -608,3 +609,18 @@ These build on the direction in [`docs/game/README.md`](../game/README.md):
 - A per-second lane on the production relay for NIP-MV frames, and
   cell-scoped subscriptions as the world grows.
 - A web build over WebGPU, following Ruins of Atlantis.
+
+## Renderer budgets and device recovery
+
+`VERSE_QUALITY=low|medium|high` selects at most the adapter's supported tier.
+Both native rendering paths use shared resource admission. Low quality reduces
+multisampling, shadow work, and optional effects while preserving required actor
+roots and mounts. Renderer counters expose retained and omitted visuals and
+logical payload reservations; these are not total driver memory.
+
+Native adapters recreate lost devices from retained world and asset values,
+with a three-recovery bound. Physical browser callers await
+`recover_if_lost_async` before drawing again. Hosts that supply a device to
+`render::Layer` own its recreation. See the
+[V11 audit and retained measurements](../audits/2026-10-04-verse-engine-audit.md#v11-shared-renderer-budgets-and-bounded-device-recovery-are-implemented)
+for the tested quality profiles and platform limits.

@@ -1,0 +1,49 @@
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1270:9
+     |
+1270 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated function `move_player` is never used
+   --> crates/verse/src/zones/everglade/mod.rs:319:12
+    |
+ 91 | impl Everglade {
+    | -------------- associated function in this implementation
+...
+319 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse` (lib test) generated 2 warnings (run `cargo fix --lib -p verse --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 17.32s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-71a9dca49338e764)
+
+running 9 tests
+test render::tests::physical_surface_device_loss_recreates_world_and_overlay ... ignored, requires a scratch X11 display; run separately from other window tests
+test render::tests::excess_glow_does_not_consume_required_geometry_admission ... ok
+test render::tests::scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits ... ok
+test render::tests::renderer_options_and_extents_are_bounded_before_gpu_work ... ok
+test render::tests::dynamic_buffers_grow_to_hold_the_full_bounded_crowd ... ok
+test render::tests::over_capacity_frames_fail_instead_of_silently_clipping ... ok
+test render::tests::textured_frames::only_double_sided_materials_show_their_back_faces ... ok
+test render::tests::textured_frames::nearer_glass_composites_over_farther_glass ... ok
+test render::tests::textured_frames::masked_texels_below_the_cutoff_are_not_drawn ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 588 filtered out; finished in 1.30s
+
