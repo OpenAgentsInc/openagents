@@ -1681,9 +1681,7 @@ impl Renderer {
         let mut instance_cursor = 0u32;
         let mut shadow_draws = 0;
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        if let Some(timer) = &self.gpu_timer {
-            timer.mark(&mut encoder, gpu_slot, 0);
-        }
+        let mut gpu_shadow_started = false;
         use verse_engine::render_graph::ChamberPass;
         let mut shadows_encoded = prepared;
         let mut world_encoded = prepared;
@@ -1693,6 +1691,14 @@ impl Renderer {
                 ChamberPass::RefreshShadow { layer } => {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("Verse static shadow cache refresh"),
+                        timestamp_writes: if !gpu_shadow_started {
+                            gpu_shadow_started = true;
+                            self.gpu_timer
+                                .as_ref()
+                                .and_then(|timer| timer.boundary(gpu_slot, Some(0), None))
+                        } else {
+                            None
+                        },
                         color_attachments: &[],
                         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                             view: &self.static_shadow_views[layer],
@@ -1753,6 +1759,14 @@ impl Renderer {
                 ChamberPass::DrawShadow { layer } => {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("Verse dynamic shadow face"),
+                        timestamp_writes: if !gpu_shadow_started {
+                            gpu_shadow_started = true;
+                            self.gpu_timer
+                                .as_ref()
+                                .and_then(|timer| timer.boundary(gpu_slot, Some(0), None))
+                        } else {
+                            None
+                        },
                         color_attachments: &[],
                         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                             view: &self.shadow_views[layer],
@@ -1829,12 +1843,13 @@ impl Renderer {
                     }
                 }
                 ChamberPass::WorldResolve => {
-                    if let Some(timer) = &self.gpu_timer {
-                        timer.mark(&mut encoder, gpu_slot, 1);
-                    }
                     shadows_encoded = Instant::now();
 
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        timestamp_writes: self
+                            .gpu_timer
+                            .as_ref()
+                            .and_then(|timer| timer.boundary(gpu_slot, Some(1), None)),
                         label: Some("Verse imported world"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &self.multisample_view,
@@ -1969,14 +1984,15 @@ impl Renderer {
                         &mut self.output_targets,
                         &look,
                     );
-                    if let Some(timer) = &self.gpu_timer {
-                        timer.mark(&mut encoder, gpu_slot, 2);
-                    }
                     world_encoded = Instant::now();
                 }
                 ChamberPass::Overlay => {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("Verse imported names and dialogue"),
+                        timestamp_writes: self
+                            .gpu_timer
+                            .as_ref()
+                            .and_then(|timer| timer.boundary(gpu_slot, Some(2), Some(3))),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &self.target_view,
                             depth_slice: None,
@@ -1994,9 +2010,6 @@ impl Renderer {
                     pass.draw(0..world.overlay().vertices().len() as u32, 0..1);
 
                     drop(pass);
-                    if let Some(timer) = &self.gpu_timer {
-                        timer.mark(&mut encoder, gpu_slot, 3);
-                    }
                     overlay_encoded = Instant::now();
                 }
                 ChamberPass::Readback => {
@@ -2028,7 +2041,7 @@ impl Renderer {
         let encoded = Instant::now();
         self.queue.submit([commands]);
         if let Some(timer) = &mut self.gpu_timer {
-            timer.submitted(gpu_slot);
+            timer.submitted(gpu_slot, gpu_shadow_started);
         }
         let submitted = Instant::now();
         if !capture {

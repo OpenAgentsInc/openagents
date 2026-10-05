@@ -1,7 +1,6 @@
 //! Optional GPU spans with bounded, nonblocking delayed readback.
 use std::sync::mpsc::{self, Receiver};
-pub(super) const FEATURES: wgpu::Features =
-    wgpu::Features::TIMESTAMP_QUERY.union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS);
+pub(super) const FEATURES: wgpu::Features = wgpu::Features::TIMESTAMP_QUERY;
 #[derive(Clone, Copy, Debug, serde::Serialize)]
 pub struct Sample {
     pub frame: u64,
@@ -14,7 +13,7 @@ struct Slot {
     query: wgpu::QuerySet,
     resolve: wgpu::Buffer,
     readback: wgpu::Buffer,
-    pending: Option<(u64, Receiver<Result<(), wgpu::BufferAsyncError>>)>,
+    pending: Option<(u64, bool, Receiver<Result<(), wgpu::BufferAsyncError>>)>,
 }
 pub(super) struct Timer {
     slots: Vec<Slot>,
@@ -75,16 +74,19 @@ impl Timer {
         let _ = device.poll(wgpu::PollType::Poll);
         let mut latest: Option<Sample> = None;
         for slot in &mut self.slots {
-            let Some((frame, receiver)) = &slot.pending else {
+            let Some((frame, has_shadow, receiver)) = &slot.pending else {
                 continue;
             };
             match receiver.try_recv() {
                 Ok(result) => {
                     if result.is_ok() {
                         let bytes = slot.readback.slice(..).get_mapped_range();
-                        let ticks = std::array::from_fn(|i| {
+                        let mut ticks = std::array::from_fn(|i| {
                             u64::from_ne_bytes(bytes[i * 8..i * 8 + 8].try_into().unwrap())
                         });
+                        if !has_shadow {
+                            ticks[0] = ticks[1];
+                        }
                         if let Some(value) = sample(*frame, ticks, self.period)
                             && latest.is_none_or(|previous| previous.frame < value.frame)
                         {
@@ -108,10 +110,17 @@ impl Timer {
             latest,
         )
     }
-    pub fn mark(&self, encoder: &mut wgpu::CommandEncoder, slot: Option<usize>, index: u32) {
-        if let Some(slot) = slot {
-            encoder.write_timestamp(&self.slots[slot].query, index);
-        }
+    pub fn boundary(
+        &self,
+        slot: Option<usize>,
+        begin: Option<u32>,
+        end: Option<u32>,
+    ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
+        slot.map(|slot| wgpu::RenderPassTimestampWrites {
+            query_set: &self.slots[slot].query,
+            beginning_of_pass_write_index: begin,
+            end_of_pass_write_index: end,
+        })
     }
     pub fn resolve(&self, encoder: &mut wgpu::CommandEncoder, slot: Option<usize>) {
         if let Some(slot) = slot {
@@ -120,11 +129,11 @@ impl Timer {
             encoder.copy_buffer_to_buffer(&slot.resolve, 0, &slot.readback, 0, 32);
         }
     }
-    pub fn submitted(&mut self, slot: Option<usize>) {
+    pub fn submitted(&mut self, slot: Option<usize>, has_shadow: bool) {
         if let Some(index) = slot {
             let slot = &mut self.slots[index];
             let (tx, rx) = mpsc::channel();
-            slot.pending = Some((self.frame, rx));
+            slot.pending = Some((self.frame, has_shadow, rx));
             slot.readback
                 .slice(..)
                 .map_async(wgpu::MapMode::Read, move |result| {
@@ -193,7 +202,7 @@ mod tests {
         timer.resolve(&mut encoder, slot);
         eprintln!("Timestamp probe: submitting");
         let submission = queue.submit([encoder.finish()]);
-        timer.submitted(slot);
+        timer.submitted(slot, true);
         eprintln!("Timestamp probe: polling completion");
         device
             .poll(wgpu::PollType::Wait {
