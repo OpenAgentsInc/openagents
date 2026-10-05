@@ -1,0 +1,77 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "published_revision": "4a4a128cf8bd78fdfa014c88d6049e91686058f0",
+  "tested_base_revision": "6e1035c17c",
+  "source_patch_sha256": "6444c1911218aa76801513c268ca58501f457abcd2054b5cd69fc492eeed31b2",
+  "wire_version": 28,
+  "checks": {
+    "owning_crate": {
+      "target": "Linux x86_64",
+      "command": "cargo test -p verse-world --features service-net --lib",
+      "passed": 516,
+      "failed": 0,
+      "ignored": 2,
+      "runtime_seconds": 71.08
+    },
+    "native_consumer": {
+      "target": "macOS arm64",
+      "command": "cargo test -p verse --no-default-features --features imported-desktop,remote-chamber --lib -- imported::chamber_session::tests:: imported::character_panel::tests:: --quiet",
+      "passed": 12,
+      "failed": 0,
+      "ignored": 1,
+      "runtime_seconds": 0.84
+    }
+  },
+  "contract": "Historical response body and world_step remain unchanged. Exact-context checkpoint credit_step is independent, mandatory, and nondecreasing. Ordered replies retain their sequence, epoch, and admission tick.",
+  "regressions": [
+    "Raw serialized snapshot body remains byte-identical after attaching credit.",
+    "Ordered replies on two connections receive their own checkpoint credit without capping earlier acknowledgments to a later historical snapshot.",
+    "A historical snapshot validates with current credit; regressing or missing credit is refused.",
+    "Existing delayed TLS, storage-stall, reconciliation, durability, and replication checks pass."
+  ],
+  "bounds": {
+    "movement_send_steps": 6,
+    "movement_max_steps": 12,
+    "movement_max_lag_steps": 32,
+    "movement_bootstrap_lag_steps": 48,
+    "movement_queue_capacity": 16,
+    "pipeline_capacity": 8
+  },
+  "limitations": [
+    "Host and clients require coordinated upgrade to protocol version 28.",
+    "Crowded delayed performance acceptance remains unproven for this revision."
+  ],
+  "host_build": {
+    "status": "complete",
+    "compiled_revision": "4a4a128cf8bd78fdfa014c88d6049e91686058f0",
+    "target": "Linux x86_64",
+    "sha256": "f47bee229d8ddeb56cf8bc6b3c80c4b3e83bd2f38a70dfdaee5042e02bd9de9f",
+    "command": "cargo build -p verse --no-default-features --features remote-chamber --example verse_host",
+    "wall_seconds": 231
+  },
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "4a4a128cf8bd78fdfa014c88d6049e91686058f0",
+      "verse_load": "4a4a128cf8bd78fdfa014c88d6049e91686058f0"
+    },
+    "wire_version": 28,
+    "sha256": {
+      "verse_remote": "ae7da44ae3c617e0eb6bf7e52a78c33c413e50faf87c7675dd862596b434f395",
+      "verse_load": "445ca348c992a3044b3bb6e2bafd335c72c4a9293a5436cbb559a40a87b03775"
+    },
+    "client_platform": "macOS arm64",
+    "client_features": [
+      "imported-desktop",
+      "remote-chamber"
+    ],
+    "movement_send_steps": 6,
+    "authority_credit_source": "verified control.credit_step, separate from historical snapshot time",
+    "periodic_reads_reserve_gameplay_slot": true,
+    "tracked_teleport_barrier": true,
+    "obsolete_inputs_retire_without_reads": true,
+    "independent_checkpoint_credit": true,
+    "status": "complete",
+    "wall_seconds": 146
+  }
+}
