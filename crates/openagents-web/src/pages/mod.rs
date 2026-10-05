@@ -21,7 +21,7 @@ pub(crate) use content::DOCS;
 #[cfg(test)]
 pub(crate) use download::{MAC_DMG, SOURCE, TERMINAL_PS1, TERMINAL_SH};
 #[cfg(test)]
-pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
+pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, GRID_POLICY, WASM};
 #[cfg(test)]
 pub(crate) use stats::utc;
 

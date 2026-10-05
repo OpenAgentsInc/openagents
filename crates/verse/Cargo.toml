@@ -100,6 +100,11 @@ wgpu = "29.0.4"
 # `wayland-csd-adwaita` is off: it pulls BSD-2-Clause `arrayref`, which deny.toml refuses.
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
 
+# `Instant` and `SystemTime` from `performance.now()` and `Date.now()` in a
+# browser, where the standard types have no clock; the standard types
+# elsewhere.
+web-time = "1.1.0"
+
 # Network, TLS, threads, and the disk caches: native only.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 gym-bridge = { path = "../gym-bridge", default-features = false }
@@ -114,8 +119,6 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 webpki-roots = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-# `Instant` from `performance.now()`; `std::time::Instant` has no clock in a browser.
-web-time = "1.1.0"
 # The browser's `crypto.getRandomValues` for key generation; the
 # `getrandom_backend` flag is set in `.cargo/config.toml`.
 getrandom = { version = "0.3", features = ["wasm_js"] }

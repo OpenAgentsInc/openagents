@@ -14,7 +14,8 @@
 //! ball, the blocks, and the Gym. With nobody online the Grid is empty;
 //! nothing is invented.
 
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+use web_time::{Instant, SystemTime, UNIX_EPOCH};
 
 use glam::{Mat4, Vec3};
 use nostr::domain::{RelaySigner, Tag};

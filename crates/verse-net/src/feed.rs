@@ -15,7 +15,8 @@
 //! such. Nothing is ever published to these relays; the feed only reads.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use glam::Vec3;
 use serde_json::json;

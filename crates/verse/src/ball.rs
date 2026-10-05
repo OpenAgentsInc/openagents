@@ -363,7 +363,7 @@ impl Ball {
     /// that path and pushes the ball, and the player is then kept out of the
     /// ball, which is heavier than a step can walk through.
     pub fn advance(&mut self, from: Vec3, player: &mut PlayerController, dt: f32) {
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         let dt = f64::from(dt);
         let start = capsule_center(from);
         let end = capsule_center(player.pos);
@@ -400,7 +400,7 @@ impl Ball {
     /// player's capsule waits far under the ground, so it strikes nothing,
     /// claims nothing, and never presses the reset.
     pub fn advance_unoccupied(&mut self, dt: f32) {
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         let body = &mut self.world[self.player];
         body.pos = UNOCCUPIED;
         body.prev_pos = UNOCCUPIED;

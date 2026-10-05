@@ -4834,13 +4834,16 @@ name = "everglade-web"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "glam",
  "js-sys",
  "log",
  "raw-window-handle",
+ "serde_json",
  "verse",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "web-time",
  "wgpu",
 ]
 
@@ -15070,6 +15073,9 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "verse-gfx",
+ "wasm-bindgen",
+ "web-sys",
+ "web-time",
  "webpki-roots 1.0.9",
  "xp-ledger",
 ]

@@ -9225,6 +9225,9 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "verse-gfx",
+ "wasm-bindgen",
+ "web-sys",
+ "web-time",
  "webpki-roots 1.0.9",
  "xp-ledger",
 ]

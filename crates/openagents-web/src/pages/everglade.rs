@@ -22,6 +22,10 @@
 //! (`docs/verse/druid-demo.md`): the module starts in the Grove when the
 //! page's path is `/druid`, so the page needs no query and loads the same
 //! files from `/everglade/`.
+//!
+//! `/grid` (#10587) is the same build again: on this path the module opens
+//! the shared Grid and joins the other players over a WebSocket to the
+//! public relay, so its policy also admits that one connection.
 
 use std::path::{Path, PathBuf};
 
@@ -58,6 +62,16 @@ pub(crate) const EVERGLADE_POLICY: &str = "default-src 'none'; style-src 'self';
 img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; \
 base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
+/// The relay the Grid page's module joins: the public Verse relay
+/// (`verse::session::PUBLIC_RELAY`).
+pub(crate) const GRID_RELAY: &str = "wss://relay.openagents.com";
+
+/// The Grid page's policy: the build's, plus a WebSocket to [`GRID_RELAY`].
+pub(crate) const GRID_POLICY: &str = "default-src 'none'; style-src 'self'; \
+img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
+connect-src 'self' wss://relay.openagents.com; \
+base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
 /// How long a build file may be cached. Its name carries no digest, so a
 /// new build replaces it under the same name.
 const BUILD_CACHE: &str = "public, max-age=300";
@@ -69,6 +83,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/everglade", get(everglade))
         .route("/druid", get(druid))
+        .route("/grid", get(grid))
         .route("/everglade/{file}", get(build_file))
         .route("/everglade/pack/{file}", get(pack_file))
 }
@@ -79,24 +94,34 @@ fn build(app: &App) -> Option<&Path> {
     (directory.join(GLUE).is_file() && directory.join(WASM).is_file()).then_some(directory)
 }
 
-/// What a page of the build shows: its heading, its canvas's label, and the
-/// name its status line loads.
+/// What a page of the build shows: its heading, its canvas's label, the
+/// name its status line loads, and its content security policy.
 struct Stage {
     title: &'static str,
     label: &'static str,
     loading: &'static str,
+    policy: &'static str,
 }
 
 const EVERGLADE: Stage = Stage {
     title: "Everglade",
     label: "The Everglade zone",
     loading: "Everglade",
+    policy: EVERGLADE_POLICY,
 };
 
 const DRUID: Stage = Stage {
     title: "Druid",
     label: "The Grove, a druid training field",
     loading: "the Grove",
+    policy: EVERGLADE_POLICY,
+};
+
+const GRID: Stage = Stage {
+    title: "Grid",
+    label: "The Grid, where players meet",
+    loading: "the Grid",
+    policy: GRID_POLICY,
 };
 
 /// The page is the canvas, filling the window, with the status line over its
@@ -106,6 +131,7 @@ fn body(stage: &Stage, wasm_bytes: u64) -> String {
         title,
         label,
         loading,
+        ..
     } = stage;
     format!(
         "<h1 class=\"unseen\">{title}</h1>\
@@ -134,6 +160,11 @@ async fn druid(State(app): State<App>) -> Response {
     stage(&app, &DRUID).await
 }
 
+/// `/grid`: the same build, which opens the shared Grid on this path.
+async fn grid(State(app): State<App>) -> Response {
+    stage(&app, &GRID).await
+}
+
 async fn stage(app: &App, stage: &Stage) -> Response {
     if build(app).is_none() {
         return page(stage.title, None, UNAVAILABLE);
@@ -149,7 +180,7 @@ async fn stage(app: &App, stage: &Stage) -> Response {
     let mut response = fullscreen(stage.title, &body(stage, wasm_bytes));
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(EVERGLADE_POLICY),
+        HeaderValue::from_static(stage.policy),
     );
     response
 }
@@ -345,5 +376,14 @@ mod tests {
         assert!(!EVERGLADE_POLICY.contains("unsafe-inline"));
         assert!(!EVERGLADE_POLICY.contains("'unsafe-eval'"));
         assert!(!EVERGLADE_POLICY.contains("http"));
+    }
+
+    #[test]
+    fn the_grid_policy_adds_only_the_public_relay() {
+        assert_eq!(
+            GRID_POLICY.replace(&format!(" {GRID_RELAY}"), ""),
+            EVERGLADE_POLICY
+        );
+        assert!(GRID_POLICY.contains(&format!("connect-src 'self' {GRID_RELAY};")));
     }
 }

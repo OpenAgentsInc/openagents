@@ -8,7 +8,8 @@
 //! its durable state and is drawn dim: offline, where its owner left it.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use coder_ui::theme::Intensity;
 use glam::{Mat4, Quat, Vec3};

@@ -5,7 +5,8 @@
 //! [`crate::imported::Renderer`], which draws it through
 //! [`verse_engine::render_world::RenderWorld`].
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use glam::{Mat4, Quat, Vec3};
 use verse_engine::lighting::{HeightFog, Lighting};

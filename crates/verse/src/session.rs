@@ -18,7 +18,8 @@
 //!   [`EVENT_BUDGET`] events a minute.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+use web_time::{Instant, SystemTime, UNIX_EPOCH};
 
 use glam::{Quat, Vec3};
 use serde_json::json;

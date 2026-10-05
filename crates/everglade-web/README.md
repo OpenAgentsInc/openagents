@@ -4,7 +4,9 @@ Everglade in a browser. This crate is a `cdylib` over Verse's `web` feature:
 it fetches the pinned Everglade pack from the page's own origin, checks its
 length and SHA-256, installs Everglade directly (no plaza, relay, or studio
 host), and draws it with WebGPU, or with WebGL2 where the browser has no
-WebGPU adapter. A native build of the crate is empty.
+WebGPU adapter. The same module draws the shared Grid ([Grid
+mode](#grid-mode)). A native build of the crate holds only the plain data
+its tests cover.
 
 ## Build
 
@@ -62,6 +64,26 @@ The same module starts in the Grove, the druid training field
 openagents.com's `/druid` does, or when its URL has the query parameter
 `zone=grove`, for example `/?gl&zone=grove`. The Grove is built on the same
 pinned pack, so the page serves the same files and nothing else changes.
+
+### Grid mode
+
+The module opens the shared Grid instead when the page's path ends in
+`/grid`, as openagents.com's `/grid` does, or with the query parameter
+`zone=grid`. The Grid's pack is built into the module, so nothing
+downloads. The player joins `verse-bare` over the browser's WebSocket with
+the phone's presence session, sees the other players with their names, and
+can click a name tag to block or mute that player. The page keeps the
+player's key, display name, and block and mute lists in its local storage.
+Query parameters:
+
+- `relay=URL` joins another relay (the public relay by default); the
+  page's content security policy must admit it.
+- `name=NAME` sets and keeps the display name.
+- `offline` opens the Grid without joining.
+
+Once a second the module logs `Grid frames {...}` to the console: frame
+times, the players drawn, and the session's status and refusals. The
+receipt is `docs/verse/verification/2026-10-05-grid-browser/`.
 
 Download progress and errors appear in an element with the ID
 `everglade-status`. The module creates one at the bottom left when the page

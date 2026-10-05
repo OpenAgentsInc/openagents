@@ -54,8 +54,19 @@ impl Blocklist {
             }
             Err(error) => return Err(format!("couldn't read {}: {error}", path.display())),
         };
-        let mut list: Self = serde_json::from_str(&text)
-            .map_err(|error| format!("couldn't parse {}: {error}", path.display()))?;
+        Self::from_json(&text)
+            .map_err(|error| format!("couldn't parse {}: {error}", path.display()))
+    }
+
+    /// Reads the lists from the JSON [`Self::to_json`] writes, as a browser
+    /// keeps them in its local storage. An entry that isn't a hex public key
+    /// is dropped, and each list keeps its first [`MAX`] keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns the parser's message when `text` isn't the lists' JSON.
+    pub fn from_json(text: &str) -> Result<Self, String> {
+        let mut list: Self = serde_json::from_str(text).map_err(|error| error.to_string())?;
         list.blocked.retain(|key| is_pubkey(key));
         list.muted.retain(|key| is_pubkey(key));
         while list.blocked.len() > MAX {
@@ -65,6 +76,12 @@ impl Blocklist {
             list.muted.pop_last();
         }
         Ok(list)
+    }
+
+    /// The lists as the JSON the file holds.
+    #[must_use]
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
     }
 
     /// Writes the lists to `dir`, replacing the file in one rename.
@@ -77,8 +94,7 @@ impl Blocklist {
             .map_err(|error| format!("couldn't create {}: {error}", dir.display()))?;
         let path = Self::path(dir);
         let temporary = dir.join(format!(".{FILE}.tmp"));
-        let text = serde_json::to_string_pretty(self).map_err(|error| error.to_string())?;
-        std::fs::write(&temporary, text)
+        std::fs::write(&temporary, self.to_json())
             .map_err(|error| format!("couldn't write {}: {error}", temporary.display()))?;
         std::fs::rename(&temporary, &path)
             .map_err(|error| format!("couldn't replace {}: {error}", path.display()))
@@ -186,5 +202,16 @@ mod tests {
         assert_eq!(list.blocked.len(), 1);
         assert!(list.is_blocked(&walker));
         assert!(list.muted.is_empty());
+    }
+
+    #[test]
+    fn lists_round_trip_through_json_for_a_browser() {
+        let mut list = Blocklist::default();
+        list.block(&"d".repeat(64)).unwrap();
+        list.mute(&"e".repeat(64)).unwrap();
+        assert_eq!(Blocklist::from_json(&list.to_json()).unwrap(), list);
+        let edited = format!(r#"{{"muted": ["{}", "x"]}}"#, "f".repeat(64));
+        assert_eq!(Blocklist::from_json(&edited).unwrap().muted.len(), 1);
+        assert!(Blocklist::from_json("not json").is_err());
     }
 }

@@ -1,10 +1,11 @@
 //! The native relay worker: a WebSocket over rustls on its own thread's
 //! Tokio runtime.
+use super::wire::{QUEUE_FULL, Subscriptions, batch_fits, req, retain_offline};
 use super::{INBOX, In, MAX_WIRE, Out, QUEUE, parse};
 use futures_util::{SinkExt, StreamExt};
 use nostr::domain::Event;
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::time::Duration;
 use tokio::sync::{mpsc as async_mpsc, watch};
@@ -83,25 +84,7 @@ impl Link {
     /// Reserve queue capacity for every operation before queuing any of them.
     /// This is local backpressure handling, not a delivery acknowledgment.
     pub fn send_batch(&self, commands: Vec<Out>) -> bool {
-        if commands.is_empty()
-            || commands.len() > QUEUE
-            || commands.iter().any(|out| {
-                let size = match out {
-                    Out::Publish(e) | Out::Auth(e) => {
-                        serde_json::to_vec(e).map_or(usize::MAX, |b| b.len())
-                    }
-                    Out::Subscribe { id, filters, .. } => {
-                        if id.len() > 128 || filters.len() > 16 {
-                            usize::MAX
-                        } else {
-                            req(id, filters).to_string().len()
-                        }
-                    }
-                    Out::Close(id) => id.len(),
-                };
-                size > MAX_WIRE
-            })
-        {
+        if !batch_fits(&commands) {
             return false;
         }
         let Ok(permits) = self.tx.try_reserve_many(commands.len()) else {
@@ -139,7 +122,6 @@ impl Drop for Link {
     }
 }
 type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
-pub(super) type Subscriptions = BTreeMap<String, (Vec<Value>, bool)>;
 pub(super) fn connector() -> Result<Connector, String> {
     let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     let config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
@@ -192,7 +174,7 @@ async fn run(url: &str, out: &mut async_mpsc::Receiver<Out>, inbox: &SyncSender<
                 command = out.recv() => {
                     let Some(command) = command else { return; };
                     if !retain_offline(command, &mut subscriptions, &mut backlog) {
-                        let _ = inbox.try_send(In::Notice("Relay queue is full; an unsent operation was refused.".into()));
+                        let _ = inbox.try_send(In::Notice(QUEUE_FULL.into()));
                     }
                 }
             }
@@ -256,48 +238,6 @@ async fn connected(
             }
         }
     }
-}
-pub(super) fn retain_offline(
-    command: Out,
-    subscriptions: &mut Subscriptions,
-    backlog: &mut VecDeque<Event>,
-) -> bool {
-    match command {
-        Out::Subscribe { id, filters, live } => {
-            if subscriptions.len() >= QUEUE && !subscriptions.contains_key(&id) {
-                return false;
-            }
-            subscriptions.insert(id, (filters, live));
-        }
-        Out::Close(id) => {
-            subscriptions.remove(&id);
-        }
-        Out::Publish(event) if !(20_000..30_000).contains(&event.kind) => {
-            backlog.retain(|old| old.id != event.id && !same_address(old, &event));
-            if backlog.len() >= QUEUE {
-                return false;
-            }
-            backlog.push_back(event);
-        }
-        // Motion and authentication from a previous connection must not replay.
-        _ => {}
-    }
-    true
-}
-fn same_address(a: &Event, b: &Event) -> bool {
-    if a.kind != b.kind || a.pubkey != b.pubkey {
-        return false;
-    }
-    match a.kind {
-        0 | 3 | 10_000..20_000 => true,
-        30_000..40_000 => a.tag_values("d").next() == b.tag_values("d").next(),
-        _ => false,
-    }
-}
-pub(super) fn req(id: &str, filters: &[Value]) -> Value {
-    let mut message = vec![json!("REQ"), json!(id)];
-    message.extend(filters.iter().cloned());
-    Value::Array(message)
 }
 async fn write(socket: &mut Socket, value: &Value) -> Result<(), ()> {
     let text = value.to_string();

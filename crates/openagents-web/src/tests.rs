@@ -65,11 +65,12 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 41] = [
+const PAGES: [&str; 42] = [
     "/",
     "/live",
     "/everglade",
     "/druid",
+    "/grid",
     "/stats",
     "/efficiency",
     "/download",
@@ -421,6 +422,24 @@ async fn the_druid_page_serves_the_same_build_for_the_grove() {
     absent.everglade = None;
     let (status, _, html) = get_with(router(absent), "/druid", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("Everglade is unavailable on this server"));
+}
+
+/// `/grid` (#10587): the same build, which opens the shared Grid on this
+/// path, under the build's policy plus the public relay's WebSocket.
+#[tokio::test]
+async fn the_grid_page_serves_the_same_build_and_admits_the_relay() {
+    let root = tempfile::tempdir().unwrap();
+    let (config, _) = with_everglade(root.path());
+    let (status, headers, html) = get_with(router(config.clone()), "/grid", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<title>Grid"), "{html}");
+    assert!(html.contains("Loading the Grid"));
+    assert!(html.contains(&format!("data-wasm=\"/everglade/{}\"", pages::WASM)));
+    assert_eq!(headers[header::CONTENT_SECURITY_POLICY], pages::GRID_POLICY);
+    let mut absent = config;
+    absent.everglade = None;
+    let (_, _, html) = get_with(router(absent), "/grid", LOCAL).await;
     assert!(html.contains("Everglade is unavailable on this server"));
 }
 

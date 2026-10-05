@@ -18,6 +18,7 @@ use web_sys::{
     RequestInit, RequestRedirect, Response, WheelEvent, Window,
 };
 
+use crate::grid::{self, Presence};
 use crate::input::Input;
 
 /// The page's canvas.
@@ -208,6 +209,8 @@ struct Page {
     grove_keys: Vec<(String, zones::Intent)>,
     /// The row a compact Grove bar shows.
     grove_row: usize,
+    /// The Grid's presence session, when the page opened the Grid online.
+    presence: Option<Presence>,
 }
 
 async fn run() -> Result<(), String> {
@@ -232,14 +235,18 @@ async fn run() -> Result<(), String> {
         .location()
         .pathname()
         .is_ok_and(|path| path.trim_end_matches('/').ends_with("/druid"));
-    // `?zone=grid` opens the shared Grid, the spawn plaza, on the engine
-    // renderer with the pack built into this module; nothing downloads.
+    // `?zone=grid`, or the `/grid` page, opens the shared Grid, the spawn
+    // plaza, on the engine renderer with the pack built into this module;
+    // nothing downloads.
     let grid = window.location().search().is_ok_and(|query| {
         query
             .trim_start_matches('?')
             .split('&')
             .any(|part| part.eq_ignore_ascii_case("zone=grid"))
-    });
+    }) || window
+        .location()
+        .pathname()
+        .is_ok_and(|path| path.trim_end_matches('/').ends_with("/grid"));
     if grid {
         return run_grid(window, document, canvas).await;
     }
@@ -347,6 +354,7 @@ async fn run() -> Result<(), String> {
         now: 0.0,
         grove_keys: Vec::new(),
         grove_row: 0,
+        presence: None,
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -387,6 +395,15 @@ async fn run_grid(
         engine.device_profile()
     )));
     hide_status(&document);
+    // Presence over the browser's WebSocket; a page that cannot join still
+    // shows the Grid.
+    let options = grid::Options::parse(&window.location().search().unwrap_or_default());
+    let presence = Presence::open(&window, &options).unwrap_or_else(|error| {
+        web_sys::console::error_1(&JsValue::from_str(&format!(
+            "Grid: presence is off: {error}"
+        )));
+        None
+    });
     let page = Rc::new(RefCell::new(Page {
         canvas,
         rendered_revision: runtime.zone_revision,
@@ -406,6 +423,7 @@ async fn run_grid(
         now: 0.0,
         grove_keys: Vec::new(),
         grove_row: 0,
+        presence,
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -542,12 +560,30 @@ impl Page {
 
         let aspect = self.renderer.aspect();
         let view = self.runtime.view(aspect);
+        let css = self.css_size();
         if let Draw::Grid(engine) = &mut self.renderer {
-            let dynamic = grid_frame::dynamic(&self.runtime, &[], &[]);
+            let peers = self
+                .presence
+                .as_mut()
+                .map_or_else(Vec::new, |presence| presence.tick(&mut self.runtime, dt));
+            let dynamic = grid_frame::dynamic(&self.runtime, &peers, &[]);
             let lighting = grid_frame::lighting(&self.runtime.atmosphere());
-            let ui = verse::ui::UiBatch::default();
-            if let Err(error) = engine.draw(view, &dynamic, &ui, &lighting) {
-                self.fail(&error);
+            // Name tags, the connection line, and a player's card, laid
+            // out in CSS pixels and drawn in device pixels.
+            let mut ui = verse::ui::UiBatch::default();
+            if let (Some(presence), Some(layout)) = (&self.presence, &self.layout) {
+                presence.draw(&mut ui, layout, css, &self.runtime, view.view_proj);
+            }
+            for vertex in &mut ui.vertices {
+                vertex.pos = vertex.pos.map(|v| v * self.scale);
+            }
+            match engine.draw(view, &dynamic, &ui, &lighting) {
+                Ok(render_ms) => {
+                    if let Some(presence) = &mut self.presence {
+                        presence.frame_times(dt, dynamic.len(), render_ms, peers.len());
+                    }
+                }
+                Err(error) => self.fail(&error),
             }
             return;
         }
@@ -604,6 +640,19 @@ impl Page {
         {
             self.fail(&error);
         }
+    }
+
+    /// A press at `at` (CSS pixels) on the Grid's name tags or open card.
+    /// Returns whether the Grid used it.
+    fn press_grid(&mut self, at: [f32; 2]) -> bool {
+        let size = self.css_size();
+        let aspect = self.renderer.aspect();
+        let view_proj = self.runtime.view(aspect).view_proj;
+        let line = self.layout.as_ref().map_or(14.0, |layout| layout.line);
+        let Some(presence) = &mut self.presence else {
+            return false;
+        };
+        presence.press(at, size, line, &self.runtime, view_proj)
     }
 
     /// Puts Meteor Swarm's circle on the ground under `at` (CSS pixels)
@@ -916,6 +965,9 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             let on_canvas = [event.offset_x() as f32, event.offset_y() as f32];
             let touch = event.pointer_type() == "touch";
             let now = event.time_stamp();
+            if event.is_primary() && event.button() == 0 && page.press_grid(on_canvas) {
+                return;
+            }
             if page.press_hotbar(on_canvas, Some(event.pointer_id()), touch, now) {
                 return;
             }

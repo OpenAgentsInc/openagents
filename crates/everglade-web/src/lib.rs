@@ -7,9 +7,16 @@
 //! the browser has no WebGPU. Read `README.md` for the build and the page
 //! contract.
 //!
-//! A native build of this crate is empty.
+//! The same module draws the shared Grid with `?zone=grid`, where the
+//! player joins the other players over the browser's WebSocket (`grid`).
+//!
+//! A native build of this crate holds only the plain data its tests cover.
 
 #[cfg(target_arch = "wasm32")]
+mod grid;
+#[cfg(target_arch = "wasm32")]
 mod input;
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+mod presence_ui;
 #[cfg(target_arch = "wasm32")]
 mod web;

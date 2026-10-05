@@ -340,3 +340,25 @@ loopback test drives the scene; no phone ran it. On an iPhone and an
 Android phone built from `main`, start `openagents verse walkers 3`, tap
 a walker's tag, and tap **Block**: the walker disappears and stays gone
 after the app is relaunched.
+
+## The Grid in the browser at `/grid` (#10587, #10626)
+
+The browser Grid joins the other players over the browser's WebSocket and
+draws on WebGL2 as well as WebGPU; headless Chrome on a scratch relay saw
+20 walkers with names on both (`docs/verse/verification/2026-10-05-grid-browser/`).
+openagents.com was not redeployed. To finish:
+
+1. Deploy `openagents-web` from `main` as the `/druid` deploy did
+   (`docs/deployment/openagents-web.md`). On the `new` tag, `/grid` must
+   answer 200 with `connect-src 'self' wss://relay.openagents.com` in its
+   policy.
+2. Open `/grid?name=YOURNAME` in Chrome, in Chrome with WebGPU off
+   (`chrome://flags`, or `/grid?gl`), and in Safari. Each must draw the
+   Grid with `ONLINE · N HERE` at the top left and your name over your
+   head; walk with `W`.
+3. With the OpenAgents app on a phone in the Grid, the phone and the
+   browser must each see the other move, with names.
+4. Click another player's name tag and **Block**: they disappear, and stay
+   gone after a reload.
+5. Optional: on the Android emulator with `-gpu swiftshader_indirect`, the
+   OpenAgents app's Grid must draw instead of the renderer's error card.

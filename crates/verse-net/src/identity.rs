@@ -35,6 +35,27 @@ impl Identity {
             created: false,
         })
     }
+
+    /// As [`Self::from_secret`], from 64 hex characters, as a browser keeps
+    /// the key in its local storage.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when `hex` is not a secret key or `profile` is not
+    /// a profile name.
+    pub fn from_secret_hex(profile: &str, hex: &str) -> Result<Self, String> {
+        let secret: secp256k1::SecretKey = hex
+            .trim()
+            .parse()
+            .map_err(|_| "invalid player identity".to_owned())?;
+        Self::from_secret(profile, secret)
+    }
+
+    /// The secret key as 64 lowercase hex characters.
+    #[must_use]
+    pub fn secret_hex(&self) -> String {
+        self.secret.display_secret().to_string()
+    }
 }
 
 fn check_profile(profile: &str) -> Result<(), String> {
@@ -185,6 +206,15 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("verse-id-{name}-{}", random_hex(6)));
         let _ = std::fs::remove_dir_all(&dir);
         dir
+    }
+
+    #[test]
+    fn a_stored_hex_secret_restores_the_same_key() {
+        let first = Identity::from_secret("browser", random_secret()).unwrap();
+        let again = Identity::from_secret_hex("browser", &first.secret_hex()).unwrap();
+        assert_eq!(again.signer.pubkey(), first.signer.pubkey());
+        assert_eq!(first.secret_hex().len(), 64);
+        assert!(Identity::from_secret_hex("browser", "not hex").is_err());
     }
 
     #[test]

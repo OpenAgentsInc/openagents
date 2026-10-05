@@ -94,13 +94,31 @@ Gotchas met on this slice:
 - Disk on the shared Mac runs out under parallel builds; check `df -h`
   before an Android release build (it needs well over 10 GB).
 
+## Done: #10626 and #10587, the Grid in a real browser
+
+Finished by a Claude Code session and pushed to `main`.
+
+- #10626: engine admission picks a downlevel layout on GLES and WebGL2
+  instead of refusing: a 254-bone uniform pose block (16 KiB), shadow
+  textures kept as 2D arrays (one extra layer, so wgpu makes no cube map),
+  and no local shadows where depth can't be copied; `device_profile` shows
+  the choice. Receipt: `docs/verse/verification/2026-10-05-grid-webgl2/`.
+- #10587: `verse-net`'s browser `Link` is the browser's WebSocket over the
+  shared protocol state in `net/wire.rs`; the session's clock is
+  `web-time`. `everglade-web/src/grid.rs` runs the phone's presence session,
+  name tags, the block and mute card, and a once-a-second `Grid frames`
+  console line; `openagents-web` serves `/grid`. Receipt, with 20 walkers
+  on WebGL2 and WebGPU, a blocked walker, and the population cap:
+  `docs/verse/verification/2026-10-05-grid-browser/`.
+- Gotchas: a local relay allows 20 connections an address
+  (`NOSTR_RELAY_MAX_CONNECTIONS_PER_IP`), so 20 walkers and a browser on
+  one machine need it raised. Anything on the session's path that calls
+  `std::time::Instant::now()` panics in the browser; use `web_time`.
+- Left: the deploy and the phone-with-browser check (`NEEDS_OWNER.md`), the
+  arches in the browser, and the chamber transport hook (#10552).
+
 ## Not started
 
-- #10587 Grid in the browser (slice 7): the browser Grid already draws
-  through the engine (#10624) but has no NIP-MV presence session; wire
-  `verse::session` into the web client and add a `verse walkers` receipt
-  viewed from the browser. #10626 (GLES 3.0 / WebGL pose block, texture
-  arrays, shadow views) blocks a real-browser run; software WebGPU works.
 - #10588 population cap, block and mute, world population reporting
   (slice 8): relay-side cap per world, client-side block/mute list in
   `verse::session`, `openagents verse who --count`.
