@@ -377,10 +377,13 @@ fn committed_manifests_admit_only_base_color_sources_with_licenses() {
         assert!(license.contains("CC0"), "{set} license text");
         assert!(directory.join("README.md").is_file(), "{set} README");
         // Only images change in the kits' sets; the generated set records
-        // each model's conversion from its committed glb.
+        // each model's conversion from its committed glb, and the lod set
+        // each far level's recipe.
         for (name, transform) in &manifest.transforms {
             if set == "generated" {
                 assert!(transform.contains("everglade_admit.py"), "{set}/{name}");
+            } else if set == "lod" {
+                assert!(transform.contains("everglade_lod.py"), "{set}/{name}");
             } else if compile::FORM_SETS.contains(&set) {
                 assert!(transform.contains("beasts_admit.py"), "{set}/{name}");
             } else {

@@ -33,21 +33,31 @@ pub use format::{
 use pinned::PinnedFile;
 
 /// Exact content identity of the reviewed Everglade pack.
-pub const PACK_SHA256: &str = "e7c14a2626117be6723832ba6519edc14daad7a06da9de834def7ee633e3aa25";
+pub const PACK_SHA256: &str = "8ec5ae4fd86ac68a72894ddb24137cbc377a1445ae64277471037a8075d701d4";
 /// Transfer size of the reviewed Everglade pack.
-pub const PACK_BYTES: u64 = 8660942;
-/// The most triangles the Everglade layout may place, counting each placement.
-/// The city is sixteen times the first glade's area and places about 1.8
-/// million with the ground, which merges to about 111 MiB, under the
-/// renderer's 128 MiB bound (`pbr::textured::MAX_BYTES`). Trees and roofs
+pub const PACK_BYTES: u64 = 9682339;
+/// The most triangles the Everglade city may place where they draw: from
+/// any point in the clearing, every merged 8 m cell at the level of detail
+/// it draws at from there, in every direction and at every distance
+/// (`zones::everglade::detail`). A building, kit piece, or tree draws its own
+/// model within 60 m and a far level of 8 to 45 percent of its triangles
+/// beyond, and grass, flowers, and furniture draw only within 52 m. A frame
+/// draws less again: only the cells in view, nearer than the fog's close at
+/// 180 m, and large enough to see at their distance
+/// ([`DRAWN_TRIANGLE_BUDGET`]); a shadow cascade draws only the cells within
+/// its sides, at the same levels.
+pub const PLACED_TRIANGLE_BUDGET: u64 = 1_250_000;
+/// The most triangles a street-level frame of the city may draw, from the
+/// views `tests::a_frame_draws_a_fraction_of_the_city` measures: the frame
+/// cost the levels of detail bound.
+pub const DRAWN_TRIANGLE_BUDGET: u64 = 600_000;
+/// The most triangles the city may merge and upload, every level of detail
+/// and the ground counted: the zone's geometry memory, under the
+/// renderer's 160 MiB bound (`pbr::textured::MAX_BYTES`). Trees and roofs
 /// are the largest shares: a kit tree is 3,000 to 6,000 triangles, a house
 /// roof 2,464 (the kit's thinned by `scripts/blender/kit_lod.py`), and a
-/// generated building 7,800 to 17,800. A frame draws only the merged
-/// 8 m cells in view, nearer than the fog's close at 180 m, and large
-/// enough to see at their distance, so a street-level view draws a third
-/// to a half of them (`tests::a_frame_draws_a_fraction_of_the_city`), and a
-/// shadow cascade draws only the cells within its sides.
-pub const PLACED_TRIANGLE_BUDGET: u64 = 1_850_000;
+/// generated building 7,800 to 19,200.
+pub const MERGED_TRIANGLE_BUDGET: u64 = 2_350_000;
 /// Where packs are committed, relative to the repository root.
 pub const PACK_DIRECTORY: &str = "assets/verse/everglade";
 /// The pack file extension.
@@ -56,6 +66,7 @@ pub const PACK_EXTENSION: &str = "vtp";
 // zones share the cache directory; arbitrary digest names are not ours.
 const EVERGLADE_PACK_HISTORY: &[&str] = &[
     PACK_SHA256,
+    "e7c14a2626117be6723832ba6519edc14daad7a06da9de834def7ee633e3aa25",
     "0f05290ed5632d488337d115609aa7dd2d3df8b2765fd6e030a3657c60395ee3",
     "baa1a9ef9837d2a21b705cf5ef9657b07216ce47f889e511523caadd0be7f78b",
     "136a938924805db23211d5c98ac9a072b2b62ec7373b9ffa12f8eba59917912b",

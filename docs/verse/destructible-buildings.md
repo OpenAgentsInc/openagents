@@ -137,7 +137,7 @@ plaster and timber, and the remesh would have to rebuild textured surfaces.
 | Placement | `Placement` | Model name, ground position, lift, yaw, scale, and a `Collision` kind (`None`, `Bounds`, `Core`, `Opening`). Roofs, corners, and gables have `Collision::None`. |
 | Solids | [`solids.rs`](../../crates/verse/src/zones/everglade/solids.rs), [`social/solids.rs`](../../crates/verse-world/src/social/solids.rs) | Each colliding placement becomes an axis-aligned `Footprint` with a top height; round-tile roofs become analytic gabled `Roof` surfaces. `Solids::set_spell_blocks` already replaces a set of spell-raised blocks at runtime. |
 | Controller | [`social/controller.rs`](../../crates/verse-world/src/social/controller.rs) | A 0.45 m circle pushed out of each footprint along the shallowest axis; `STEP` 0.35 m step-up. Everglade's Wall of Stone draws a turned panel as "a close row of small" posts because "the controller collides with axis-aligned boxes" ([`everglade/spells.rs`](../../crates/verse/src/zones/everglade/spells.rs)). |
-| Pack | [`everglade_pack/`](../../crates/verse/src/zones/everglade_pack/format.rs) | Custom `VTP3` binary: base-color PNGs, then a deflated body of materials, static models with node transforms applied and quantized vertices, one skinned character, and its forms. 420,000-triangle and 12 MiB limits. Pinned by `PACK_SHA256`; `content_digest()` is a hosted instance's content identity. Compiled by `compile.rs` from glTF under `assets/verse/everglade/`. |
+| Pack | [`everglade_pack/`](../../crates/verse/src/zones/everglade_pack/format.rs) | Custom `VTP3` binary: base-color PNGs, then a deflated body of materials, static models with node transforms applied and quantized vertices, one skinned character, and its forms. 480,000-triangle and 12 MiB limits. Pinned by `PACK_SHA256`; `content_digest()` is a hosted instance's content identity. Compiled by `compile.rs` from glTF under `assets/verse/everglade/`. |
 | Render | [`pbr/textured.rs`](../../crates/verse-pbr/src/pbr/textured.rs) | `merge()` groups placements into `CELL` (8 m) cells per material: one indexed draw per cell, no instancing, uploaded once. |
 | Light | [`pbr/textured_bake.rs`](../../crates/verse-pbr/src/pbr/textured_bake.rs), `Everglade::bake_light` | At load, each static vertex stores sky visibility and one sun bounce; an L1 probe grid with 3 m cells shades characters. Keyed by pack digest; a browser bakes 192 items per frame. |
 | Shadows | `pbr/gpu.rs`, `Everglade` key | Two cascades on Low and Medium, three on High, 2048². With `cache_far_shadows: true`, cascades after the first redraw only when the static caster identity changes. |
@@ -622,8 +622,9 @@ and [`site.rs`](../../crates/verse/src/zones/everglade/demolition/site.rs).
 - **Laziness.** A building stays in the merged static cells until a swing or
   a blast reaches it. It is then raised into the rules as static bodies, and
   only its damaged, loose, or broken pieces leave the static cells, by
-  rewriting their placements' index ranges to degenerate triangles
-  (`TexturedScene::edits`); their chunks draw in the frame's figure. The
+  rewriting their placements' index ranges, and those of their far levels
+  of detail, to degenerate triangles (`TexturedScene::edits`); their chunks
+  draw in the frame's figure. The
   blockers and roof surfaces of a raised building come from its standing
   pieces.
 - **Budgets.** At most four raised buildings and 220 chunks on desktop, and

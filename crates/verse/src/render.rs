@@ -2322,6 +2322,10 @@ impl Scene {
             &mut sprites,
         );
         photo.sprites.write(device, queue, &sprites);
+        // Each cell's level of detail for this frame's eye.
+        if let Some(gpu) = &mut self.textured {
+            gpu.update_levels(view.eye);
+        }
         let batches = Batches {
             #[cfg(not(target_arch = "wasm32"))]
             streamed: self

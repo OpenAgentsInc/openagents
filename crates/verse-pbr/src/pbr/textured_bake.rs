@@ -15,6 +15,11 @@
 //! keeps the fraction of light the card's sampled texels let through, so a
 //! canopy dims the ground under it without turning its own leaves black.
 //!
+//! A far level of detail ([`super::textured::Detail::Far`]) stands where its
+//! near level does, so it is baked but never occludes: rays meet the near
+//! level's surfaces instead. Its vertices, which lie on or just inside the
+//! near surface, start their rays [`FAR_BIAS`] off it so they escape it.
+//!
 //! The probe grid gathers the same radiance over the whole sphere into
 //! order-one spherical harmonics, as [`super::bake::bake_probes`] does for
 //! Lagrange. [`AmbientProbes::shade`] fills a posed figure's light channel
@@ -37,13 +42,14 @@ use glam::Vec3;
 
 use super::bake::{self, Bvh, Occluder, SOLID, Trace};
 use super::textured::{
-    AlphaMode, BakedVertices, TexturedMaterial, TexturedScene, TexturedVertex, srgb_to_linear,
+    AlphaMode, BakedVertices, Level, TexturedMaterial, TexturedScene, TexturedVertex,
+    srgb_to_linear,
 };
 use super::{Key, ProbeGrid};
 
 /// Changes whenever the bake's rules do, so a cached result keyed by
 /// [`bake_key`] stops matching.
-pub const BAKE_VERSION: u32 = 1;
+pub const BAKE_VERSION: u32 = 2;
 /// The largest diffuse multiplier the light channel encodes.
 pub const MAX_AMBIENT: f32 = 4.0;
 /// The share of its open-sky ambient a hit surface is assumed to receive
@@ -58,6 +64,9 @@ const MASK_MAX_OPACITY: f32 = 0.8;
 const FOLIAGE_FLOOR: f32 = 0.3;
 /// How far ray origins sit off their surface, m.
 const BIAS: f32 = 0.02;
+/// How far ray origins sit off a far level of detail's surface, m: past
+/// where simplifying moved it from the near level's.
+const FAR_BIAS: f32 = 0.25;
 /// How far a ray toward the sun looks for an occluder, m.
 const SUN_REACH: f32 = 1.0e3;
 /// Vertices or probes one [`BakeJob::poll`] advances on a thread-less
@@ -220,7 +229,9 @@ pub fn bake_key(
     for placement in &scene.placements {
         eat(&(placement.mesh as u64).to_le_bytes());
         eat(&floats(&placement.transform.to_cols_array()));
+        eat(format!("{:?}", placement.detail).as_bytes());
     }
+    eat(&floats(&scene.switches));
     hash
 }
 
@@ -354,6 +365,8 @@ pub struct SceneBaker {
     vertices: Vec<TexturedVertex>,
     /// Whether each vertex belongs to an alpha-tested material.
     foliage: Vec<bool>,
+    /// Whether each vertex belongs to a far level of detail.
+    far: Vec<bool>,
     hemisphere: Vec<Vec3>,
     sphere: Vec<Vec3>,
     dims: [u32; 3],
@@ -377,10 +390,12 @@ impl SceneBaker {
     ) -> Result<Self, String> {
         let merged = scene.merge()?;
         let mut foliage = vec![false; merged.vertices.len()];
+        let mut far = vec![false; merged.vertices.len()];
         let mut occluders = Vec::with_capacity(merged.indices.len() / 3);
         for batch in &merged.batches {
             let material = &scene.materials[batch.material];
             let masked = matches!(material.alpha, AlphaMode::Mask { .. });
+            let distant = matches!(batch.level, Level::Far { .. });
             let range = batch.first as usize..(batch.first + batch.count) as usize;
             for triangle in merged.indices[range].chunks_exact(3) {
                 let corners =
@@ -389,6 +404,12 @@ impl SceneBaker {
                     for &i in triangle {
                         foliage[i as usize] = true;
                     }
+                }
+                if distant {
+                    for &i in triangle {
+                        far[i as usize] = true;
+                    }
+                    continue;
                 }
                 let (albedo, opacity) = surface(scene, material, corners);
                 occluders.push(Occluder {
@@ -413,6 +434,7 @@ impl SceneBaker {
             bvh: Bvh::from_occluders(occluders),
             vertices: merged.vertices,
             foliage,
+            far,
             // About half of a sphere's directions face any one normal.
             hemisphere: bake::sphere_directions(rays * 2),
             sphere: bake::sphere_directions(probe_rays),
@@ -550,10 +572,15 @@ impl SceneBaker {
     /// facing `n`.
     #[must_use]
     pub fn ambient_at(&self, p: Vec3, n: Vec3) -> (Vec3, f32) {
+        self.ambient_off(p, n, BIAS)
+    }
+
+    /// [`Self::ambient_at`] with rays starting `bias` off the surface.
+    fn ambient_off(&self, p: Vec3, n: Vec3, bias: f32) -> (Vec3, f32) {
         let Some(n) = n.try_normalize() else {
             return (Vec3::ONE, 1.0);
         };
-        let origin = p + n * BIAS;
+        let origin = p + n * bias;
         let (mut lit, mut reference) = (Vec3::ZERO, 0.0f32);
         let (mut open, mut total) = (0.0f32, 0.0f32);
         for &d in &self.hemisphere {
@@ -578,15 +605,16 @@ impl SceneBaker {
         let v = &self.vertices[i];
         let p = Vec3::from(v.pos);
         let n = Vec3::from(v.normal);
+        let bias = if self.far[i] { FAR_BIAS } else { BIAS };
         if self.foliage[i] {
             // Leaf cards show both faces and pass light through: average the
             // two sides and keep a floor.
-            let (front, front_open) = self.ambient_at(p, n);
-            let (back, back_open) = self.ambient_at(p, -n);
+            let (front, front_open) = self.ambient_off(p, n, bias);
+            let (back, back_open) = self.ambient_off(p, -n, bias);
             let m = ((front + back) * 0.5).max(Vec3::splat(FOLIAGE_FLOOR));
             encode(m, (front_open + back_open) * 0.5)
         } else {
-            let (m, open) = self.ambient_at(p, n);
+            let (m, open) = self.ambient_off(p, n, bias);
             encode(m, open)
         }
     }

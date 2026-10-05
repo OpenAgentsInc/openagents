@@ -1,0 +1,11 @@
+Everglade far levels of detail
+
+Lighter copies of models admitted into the Everglade pack, made by
+scripts/blender/everglade_lod.py: pieces of the Medieval Village MegaKit and
+trees of the Stylized Nature MegaKit by Quaternius (https://quaternius.com),
+and models OpenAgents generated from them with scripts/blender.
+
+License:
+CC0 1.0 Universal (CC0 1.0)
+Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/

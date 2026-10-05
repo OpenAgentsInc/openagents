@@ -486,9 +486,10 @@ pub struct Town {
     looks: Vec<Look>,
     pool: Pool,
     /// The zone's static scene, its edits, and where each building
-    /// placement's triangles are in it.
+    /// placement's triangles are in it: the scene placements that draw it,
+    /// its own and its far level of detail's, with their ranges.
     world: Arc<TexturedScene>,
-    ranges: BTreeMap<usize, Vec<IndexRange>>,
+    ranges: BTreeMap<usize, Vec<(usize, IndexRange)>>,
     /// The pieces whose placements are hidden, by building and piece.
     hidden: BTreeSet<(usize, usize)>,
     /// The solids without any building, and whether they changed.
@@ -628,11 +629,19 @@ impl Town {
                 )
             })
             .collect();
+        let fars = crate::zones::everglade::detail::far_placements(pack, placements);
         let ranges = buildings
             .iter()
             .filter(|b| b.destructible())
             .flat_map(|b| b.pieces.iter().flat_map(|p| p.placements.iter().copied()))
-            .filter_map(|p| Some((p, all.get(p)?.clone())))
+            .filter_map(|p| {
+                let drawn = std::iter::once(p).chain(fars.get(p).copied().flatten().map(|f| f.1));
+                let ranges: Vec<(usize, IndexRange)> = drawn
+                    .filter_map(|q| Some(all.get(q)?.iter().map(move |r| (q, *r))))
+                    .flatten()
+                    .collect();
+                Some((p, ranges))
+            })
             .collect();
         let mut town = Self {
             wreck: Wreck {
@@ -903,11 +912,11 @@ impl Town {
             for &(b, k) in self.hidden.symmetric_difference(&hidden) {
                 let hide = hidden.contains(&(b, k));
                 for &placement in &self.wreck.buildings[b].pieces[k].placements {
-                    for range in self.ranges.get(&placement).into_iter().flatten() {
+                    for (drawn, range) in self.ranges.get(&placement).into_iter().flatten() {
                         let indices = if hide {
                             vec![range.base; range.count as usize]
                         } else {
-                            self.world.range_indices(placement, range)
+                            self.world.range_indices(*drawn, range)
                         };
                         edits.write(range.first, indices);
                     }

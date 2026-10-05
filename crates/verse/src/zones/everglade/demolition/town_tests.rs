@@ -145,7 +145,8 @@ fn untouched_buildings_stay_in_the_static_cells() {
 
 #[test]
 fn a_meteor_strike_breaks_the_pieces_near_its_center() {
-    let mut town = town();
+    let scene = scene();
+    let mut town = town_over(scene.clone());
     let cottage = building(&town, COTTAGE);
     let at = south_front(&town.buildings()[cottage]);
     let player = caster(at, 16.0);
@@ -158,8 +159,19 @@ fn a_meteor_strike_breaks_the_pieces_near_its_center() {
         })
         .count();
     assert!(broken >= 3, "{broken} pieces broke near the center");
-    // The broken pieces left the static cells and draw as chunks.
+    // The broken pieces left the static cells and draw as chunks, their
+    // far levels of detail with them.
     assert!(town.hidden() >= broken);
+    let ranges = scene.index_ranges();
+    let fars = crate::zones::everglade::detail::far_placements(pack(), &layout::placements());
+    let (edits, _) = scene.edits.since(0);
+    let written: std::collections::BTreeSet<u32> = edits.iter().map(|(first, _)| *first).collect();
+    assert!(
+        fars.iter()
+            .flatten()
+            .any(|(_, at)| ranges[*at].iter().any(|r| written.contains(&r.first))),
+        "a far level hides with its piece"
+    );
     let figure = town.own_figure().expect("the chunks draw");
     figure.validate().expect("a valid figure");
     assert!(

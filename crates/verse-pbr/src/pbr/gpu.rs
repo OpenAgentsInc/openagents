@@ -369,9 +369,39 @@ pub struct TexturedGpu {
     /// ([`textured::IndexEdits::revision`]); part of the static casters'
     /// identity, so a cached shadow redraws after an edit.
     pub edits: u64,
+    /// Whether each cell counted as near last frame ([`textured::Level`]).
+    near: Vec<bool>,
+    /// Whether `near` has been set from an eye yet.
+    placed: bool,
+    /// How many times a cell has changed level; part of the static casters'
+    /// identity, so a cached shadow redraws with the cells' new levels.
+    pub levels: u64,
 }
 
 impl TexturedGpu {
+    /// Sets each cell's level of detail for a frame seen from `eye`. A cell
+    /// keeps its level until the eye crosses [`textured::HYSTERESIS`] past
+    /// its switch distance.
+    pub fn update_levels(&mut self, eye: Vec3) {
+        let placed = self.placed;
+        let mut changed = false;
+        for (batch, near) in self.batches.iter().zip(&mut self.near) {
+            let now = batch.level.near(eye, placed.then_some(*near));
+            changed |= now != *near;
+            *near = now;
+        }
+        if changed || !placed {
+            self.levels += 1;
+        }
+        self.placed = true;
+    }
+
+    /// Whether cell `i` draws at its current level.
+    fn shown(&self, i: usize) -> bool {
+        let batch = &self.batches[i];
+        batch.level.drawn(self.near.get(i).copied().unwrap_or(true))
+    }
+
     /// Rewrites the merged indices from `first` on, within the buffer.
     pub fn write_indices(&self, queue: &wgpu::Queue, first: u32, indices: &[u32]) {
         let bytes: &[u8] = bytemuck::cast_slice(indices);
@@ -1506,6 +1536,9 @@ impl Photo {
             materials: scene.materials.clone(),
             groups,
             edits: 0,
+            near: vec![true; merged.batches.len()],
+            placed: false,
+            levels: 0,
         }
     }
 
@@ -1515,21 +1548,22 @@ impl Photo {
         view: verse_engine::presentation::View,
     ) -> Vec<usize> {
         figure.map_or_else(Vec::new, |gpu| {
-            textured::draw_order(&gpu.batches, &gpu.materials, view.eye, |_| true)
+            textured::draw_order(&gpu.batches, &gpu.materials, view.eye, |_, _| true)
         })
     }
 
-    /// The textured cells this frame draws, in drawing order: those in view,
-    /// and, when fog is total at `far` meters, those nearer than the fog and
-    /// large enough to see ([`textured::drawn`]).
+    /// The textured cells this frame draws, in drawing order: those at their
+    /// current level of detail and in view, and, when fog is total at `far`
+    /// meters, those nearer than the fog and large enough to see
+    /// ([`textured::drawn`]).
     fn textured_order(
         textured: Option<&TexturedGpu>,
         view: verse_engine::presentation::View,
         far: f32,
     ) -> Vec<usize> {
         textured.map_or_else(Vec::new, |gpu| {
-            textured::draw_order(&gpu.batches, &gpu.materials, view.eye, |b| {
-                textured::drawn(b.min, b.max, view.view_proj, view.eye, far)
+            textured::draw_order(&gpu.batches, &gpu.materials, view.eye, |i, b| {
+                gpu.shown(i) && textured::drawn(b.min, b.max, view.view_proj, view.eye, far)
             })
         })
     }
@@ -2061,9 +2095,10 @@ impl Photo {
                 } else {
                     pass.set_pipeline(opaque_pipeline);
                 }
-                for batch in &gpu.batches {
+                for (i, batch) in gpu.batches.iter().enumerate() {
                     let cell_pass = gpu.materials[batch.material].alpha.pass();
                     if textured::raster(cell_pass, false).shadow != Some(masked)
+                        || !gpu.shown(i)
                         || (k == 0 && !keep(batch))
                     {
                         continue;
@@ -2434,6 +2469,7 @@ fn static_identity(world: &Batches<'_>) -> u64 {
         gpu.indices.hash(&mut hasher);
         gpu.batches.len().hash(&mut hasher);
         gpu.edits.hash(&mut hasher);
+        gpu.levels.hash(&mut hasher);
     }
     hasher.finish()
 }

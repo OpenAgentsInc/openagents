@@ -134,7 +134,7 @@ impl Limits {
         pack_bytes: 12 * 1024 * 1024,
         decoded_texture_bytes: 48 * 1024 * 1024,
         texture_edge: 1024,
-        triangles: 420_000,
+        triangles: 480_000,
         model_triangles: 20_000,
         committed_bytes: 36_000_000,
         character_triangles: 40_000,
@@ -549,7 +549,10 @@ pub fn validate(contents: &Contents, limits: &Limits) -> Result<(), String> {
         triangles += form.triangles();
     }
     if triangles > limits.triangles {
-        return Err("Zone pack exceeds the triangle budget".into());
+        return Err(format!(
+            "Zone pack exceeds the triangle budget: {triangles} of {}",
+            limits.triangles
+        ));
     }
     Ok(())
 }

@@ -120,10 +120,16 @@ Admission follows the Fantasy Props precedent:
 - Budgets: at most 36 MB committed for sources and pack together, a pack of
   at most 12 MiB, and at most 48 MiB of decoded textures (56 MB, 28 MiB,
   and 64 MiB before the third round shrank the pack from 28.0 MB to 8.5 MB
-  and the committed total from 53.3 MB to 28.1 MB), at most 420,000
-  triangles in the pack's models with at most 20,000 in any one, and at most
-  1,850,000 triangles placed with the ground
-  (`everglade_pack::PLACED_TRIANGLE_BUDGET`).
+  and the committed total from 53.3 MB to 28.1 MB), and at most 480,000
+  triangles in the pack's models with at most 20,000 in any one (420,000
+  before the far levels of detail). The city may place at most 1,250,000
+  triangles where they draw, each cell at its level of detail from
+  anywhere in the clearing (`everglade_pack::PLACED_TRIANGLE_BUDGET`), and a
+  street-level frame may draw at most 600,000
+  (`everglade_pack::DRAWN_TRIANGLE_BUDGET`); every level together, which
+  the renderer merges and uploads, stays under 2,350,000
+  (`everglade_pack::MERGED_TRIANGLE_BUDGET`) and its 160 MiB geometry
+  bound.
 
 ## Rendering
 
@@ -143,6 +149,24 @@ The zone renderer gains textured static meshes:
   colors, so materials that differ only in color share one white material
   and merge into one batch per cell: the city draws in 2,845 batches rather
   than 5,040.
+- The heaviest models have a far level of detail
+  ([`detail`](../../crates/verse/src/zones/everglade/detail.rs)): the
+  generated buildings and landmarks, the kit pieces that kit-built houses
+  repeat, and the nature kit's trees and bushes. `scripts/blender/everglade_lod.py`
+  makes each from the admitted model, at 8 to 45 percent of its triangles
+  ([Generated models with Blender](blender-pipeline.md#levels-of-detail)),
+  and the pack carries it as `lod/<set>.<name>`. A cell draws a model while
+  it is nearer than 60 m across the ground and its far level beyond, and
+  grass, flowers, mushrooms, stepping stones, and the station furniture
+  only nearer than 52 m. Each level merges into cells of its own, and the
+  renderer keeps a cell at its level until the eye moves 2.5 m past the
+  switch, so a cell at the switch doesn't flicker; shadows and the depth
+  prepass draw the same levels. The light bake skips the far levels as
+  occluders, since their near levels stand in the same place. A street
+  view draws 190,000 to 360,000 triangles rather than 240,000 to 1,040,000
+  (`tests::a_frame_draws_a_fraction_of_the_city`): from the Lantern Quarter,
+  305,000 rather than 808,000. Captures at walking distances show no
+  change.
 - Everglade's atmosphere has its own colors: an afternoon daylight sky
   (`pbr::Daylight`) from warm horizon haze to a blue zenith, with a low,
   warm sun that draws long shadows across the streets, a Sun in the key

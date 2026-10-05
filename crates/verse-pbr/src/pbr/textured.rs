@@ -16,6 +16,13 @@
 //! flag. Normal, occlusion, metallic-roughness, and emissive images are not
 //! read.
 //!
+//! A placement may draw only at some distances ([`Detail`]): a model's near
+//! level of detail within one of the scene's switch distances and a lighter
+//! far level beyond it, or small ground cover only near. Each level merges
+//! into cells of its own; the renderer picks each cell's level from the
+//! eye every frame, with [`HYSTERESIS`], and its shadows and depth prepass
+//! draw the same levels.
+//!
 //! Textured meshes draw only in physical frames: a frame with a
 //! [`super::Sky`], or a [`super::Neon`] stage with a studio [`super::Key`].
 //! Opaque cells draw first, then masked cells, then blended cells from the
@@ -44,10 +51,19 @@ pub const MAX_MATERIALS: usize = 1024;
 /// Most placements in one scene.
 pub const MAX_PLACEMENTS: usize = 1 << 16;
 /// Most bytes of merged vertices and indices, the zone geometry bound.
-/// Everglade's city, about 1.8 million triangles, merges to about 110 MiB;
-/// half of wgpu's default 256 MiB buffer limit keeps headroom on phones and
-/// in browsers.
-pub const MAX_BYTES: usize = 128 * 1024 * 1024;
+/// Everglade's city, about 2 million triangles with its far levels of
+/// detail, merges to about 130 MiB. The vertices and the indices are
+/// separate buffers, each well under wgpu's default 256 MiB buffer limit,
+/// which phones and browsers keep.
+pub const MAX_BYTES: usize = 160 * 1024 * 1024;
+/// Most switch distances in one scene ([`TexturedScene::switches`]).
+pub const MAX_SWITCHES: usize = 8;
+/// How far past its switch distance a cell must move before it changes
+/// level, m: a cell drawn near stays near until it is this much farther than
+/// the switch, and a far one stays far until it is this much nearer, so a
+/// cell at the switch does not flicker between its levels
+/// ([`Level::near`]).
+pub const HYSTERESIS: f32 = 2.5;
 
 /// One vertex of a textured mesh.
 #[repr(C)]
@@ -285,6 +301,81 @@ pub struct Placement {
     pub mesh: usize,
     /// Mesh space to world space. Its translation picks the cell.
     pub transform: Mat4,
+    /// The distances it draws at.
+    pub detail: Detail,
+}
+
+/// The distances a placement draws at, by its cell's distance from the eye
+/// against one of the scene's [`TexturedScene::switches`]: a model's near
+/// level of detail is `Near(i)` and its lighter far level `Far(i)`, so each
+/// cell draws exactly one of them; small ground cover that is not worth
+/// drawing far off is `Near(i)` alone.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Detail {
+    /// At every distance.
+    #[default]
+    Always,
+    /// While its cell is nearer than switch `i`.
+    Near(u8),
+    /// While its cell is at or beyond switch `i`.
+    Far(u8),
+}
+
+impl Detail {
+    /// The index of its switch distance, if it has one.
+    #[must_use]
+    pub fn switch(self) -> Option<usize> {
+        match self {
+            Self::Always => None,
+            Self::Near(i) | Self::Far(i) => Some(usize::from(i)),
+        }
+    }
+}
+
+/// A merged cell's level of detail: [`Detail`] with its switch distance and
+/// the center of its cell, which every level of that cell measures from, so
+/// a cell's near and far levels always change together.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Level {
+    Always,
+    Near { anchor: [f32; 2], switch: f32 },
+    Far { anchor: [f32; 2], switch: f32 },
+}
+
+impl Level {
+    /// Whether this level's cell counts as near from `eye`: within the switch
+    /// distance across the ground. `was` is the answer the last frame gave,
+    /// which holds until the eye crosses [`HYSTERESIS`] past the switch; `None`
+    /// decides by the switch alone.
+    #[must_use]
+    pub fn near(self, eye: Vec3, was: Option<bool>) -> bool {
+        let (anchor, switch) = match self {
+            Self::Always => return true,
+            Self::Near { anchor, switch } | Self::Far { anchor, switch } => (anchor, switch),
+        };
+        let distance = (eye.x - anchor[0]).hypot(eye.z - anchor[1]);
+        match was {
+            None => distance < switch,
+            Some(true) => distance < switch + HYSTERESIS,
+            Some(false) => distance < switch - HYSTERESIS,
+        }
+    }
+
+    /// Whether a cell of this level draws when its cell is `near`.
+    #[must_use]
+    pub fn drawn(self, near: bool) -> bool {
+        match self {
+            Self::Always => true,
+            Self::Near { .. } => near,
+            Self::Far { .. } => !near,
+        }
+    }
+
+    /// Whether the cell draws from `eye`, with no earlier frame to hold it.
+    #[must_use]
+    pub fn drawn_from(self, eye: Vec3) -> bool {
+        self.drawn(self.near(eye, None))
+    }
 }
 
 /// Everything a zone's textured static geometry needs, in one value.
@@ -294,6 +385,9 @@ pub struct TexturedScene {
     pub materials: Vec<TexturedMaterial>,
     pub meshes: Vec<TexturedMesh>,
     pub placements: Vec<Placement>,
+    /// The distances, in meters across the ground, at which placements
+    /// change level ([`Detail`]), at most [`MAX_SWITCHES`].
+    pub switches: Vec<f32>,
     /// Where a background light bake delivers this scene's merged vertices
     /// with their light channel filled
     /// ([`crate::pbr::textured_bake::SceneBaker`]); the renderer writes them
@@ -456,7 +550,32 @@ impl TexturedScene {
 
     /// Places a copy of mesh `mesh` in the world.
     pub fn place(&mut self, mesh: usize, transform: Mat4) {
-        self.placements.push(Placement { mesh, transform });
+        self.place_detail(mesh, transform, Detail::Always);
+    }
+
+    /// Places a copy of mesh `mesh` that draws only at `detail`'s distances.
+    pub fn place_detail(&mut self, mesh: usize, transform: Mat4, detail: Detail) {
+        self.placements.push(Placement {
+            mesh,
+            transform,
+            detail,
+        });
+    }
+
+    /// The level a cell of `detail` at `cell` draws at.
+    fn level(&self, detail: Detail, cell: (i32, i32)) -> Level {
+        let anchor = [(cell.0 as f32 + 0.5) * CELL, (cell.1 as f32 + 0.5) * CELL];
+        match detail {
+            Detail::Always => Level::Always,
+            Detail::Near(i) => Level::Near {
+                anchor,
+                switch: self.switches[usize::from(i)],
+            },
+            Detail::Far(i) => Level::Far {
+                anchor,
+                switch: self.switches[usize::from(i)],
+            },
+        }
     }
 
     /// Checks every index, factor, and bound.
@@ -468,8 +587,12 @@ impl TexturedScene {
         if self.images.len() > MAX_IMAGES
             || self.materials.len() > MAX_MATERIALS
             || self.placements.len() > MAX_PLACEMENTS
+            || self.switches.len() > MAX_SWITCHES
         {
             return Err("textured scene exceeds its image, material, or placement bound".into());
+        }
+        if !self.switches.iter().all(|s| s.is_finite() && *s > 0.0) {
+            return Err("textured scene has an invalid switch distance".into());
         }
         for image in &self.images {
             image.validate()?;
@@ -484,6 +607,10 @@ impl TexturedScene {
             if placement.mesh >= self.meshes.len()
                 || !placement.transform.is_finite()
                 || placement.transform.determinant().abs() < 1e-12
+                || placement
+                    .detail
+                    .switch()
+                    .is_some_and(|i| i >= self.switches.len())
             {
                 return Err("textured placement has an invalid mesh or transform".into());
             }
@@ -532,8 +659,8 @@ impl TexturedScene {
     }
 
     /// Merges every placement into world-space cells, one per pass,
-    /// material, and [`CELL`]. A mirroring transform reverses its triangles'
-    /// winding so front faces stay counterclockwise.
+    /// material, [`CELL`], and [`Detail`]. A mirroring transform reverses its
+    /// triangles' winding so front faces stay counterclockwise.
     ///
     /// # Errors
     ///
@@ -541,7 +668,7 @@ impl TexturedScene {
     pub fn merge(&self) -> Result<Merged, String> {
         self.validate()?;
         type Cell = (Vec<TexturedVertex>, Vec<u32>);
-        let mut cells: BTreeMap<(Pass, usize, i32, i32), Cell> = BTreeMap::new();
+        let mut cells: BTreeMap<(Pass, usize, i32, i32, Detail), Cell> = BTreeMap::new();
         for placement in &self.placements {
             let t = placement.transform;
             let normals = Mat3::from_mat4(t).inverse().transpose();
@@ -552,8 +679,9 @@ impl TexturedScene {
             );
             for p in &self.meshes[placement.mesh].primitives {
                 let pass = self.materials[p.material].alpha.pass();
-                let (vertices, indices) =
-                    cells.entry((pass, p.material, cell.0, cell.1)).or_default();
+                let (vertices, indices) = cells
+                    .entry((pass, p.material, cell.0, cell.1, placement.detail))
+                    .or_default();
                 let offset = vertices.len() as u32;
                 vertices.extend(p.vertices.iter().map(|v| {
                     TexturedVertex {
@@ -571,7 +699,7 @@ impl TexturedScene {
             }
         }
         let mut merged = Merged::default();
-        for ((_, material, _, _), (vertices, indices)) in cells {
+        for ((_, material, x, z, detail), (vertices, indices)) in cells {
             if indices.is_empty() {
                 continue;
             }
@@ -589,6 +717,7 @@ impl TexturedScene {
                 count: merged.indices.len() as u32 - first,
                 min,
                 max,
+                level: self.level(detail, (x, z)),
             });
         }
         Ok(merged)
@@ -599,7 +728,7 @@ impl TexturedScene {
     /// counts are taken, so this is cheap beside a merge.
     #[must_use]
     pub fn index_ranges(&self) -> Vec<Vec<IndexRange>> {
-        type Key = (Pass, usize, i32, i32);
+        type Key = (Pass, usize, i32, i32, Detail);
         // Each cell's index and vertex counts so far.
         let mut counts: BTreeMap<Key, (u32, u32)> = BTreeMap::new();
         let mut local: Vec<Vec<(Key, u32, u32, u32, usize)>> =
@@ -619,7 +748,13 @@ impl TexturedScene {
                 let Some(material) = self.materials.get(p.material) else {
                     continue;
                 };
-                let key = (material.alpha.pass(), p.material, cell.0, cell.1);
+                let key = (
+                    material.alpha.pass(),
+                    p.material,
+                    cell.0,
+                    cell.1,
+                    placement.detail,
+                );
                 let count = (p.indices.len() / 3 * 3) as u32;
                 let (indices, vertices) = counts.entry(key).or_default();
                 if count > 0 {
@@ -969,6 +1104,7 @@ impl Figure {
                     count: p.indices.len() as u32,
                     min: Vec3::splat(f32::NEG_INFINITY),
                     max: Vec3::splat(f32::INFINITY),
+                    level: Level::Always,
                 });
             }
         }
@@ -993,22 +1129,24 @@ pub struct Batch {
     pub count: u32,
     pub min: Vec3,
     pub max: Vec3,
+    /// The distances it draws at.
+    pub level: Level,
 }
 
 /// The order cells draw in: opaque, then masked, each in merge order so
 /// cells of one material draw together, then blended cells from the
 /// farthest center to the nearest, so nearer glass composites over farther
-/// glass. `visible` drops culled cells.
+/// glass. `visible`, given each cell's index, drops culled cells.
 pub fn draw_order(
     batches: &[Batch],
     materials: &[TexturedMaterial],
     eye: Vec3,
-    visible: impl Fn(&Batch) -> bool,
+    visible: impl Fn(usize, &Batch) -> bool,
 ) -> Vec<usize> {
     let pass = |i: usize| materials[batches[i].material].alpha.pass();
     let distance = |i: usize| ((batches[i].min + batches[i].max) * 0.5).distance_squared(eye);
     let mut order: Vec<usize> = (0..batches.len())
-        .filter(|&i| visible(&batches[i]))
+        .filter(|&i| visible(i, &batches[i]))
         .collect();
     order.sort_by(|&a, &b| {
         pass(a)
@@ -1253,6 +1391,49 @@ mod tests {
         scene
     }
 
+    #[test]
+    fn a_cells_near_and_far_levels_draw_in_turn_with_hysteresis() {
+        let mut scene = scene(&[AlphaMode::Opaque, AlphaMode::Opaque]);
+        scene.switches = vec![40.0];
+        let at = Mat4::from_translation(Vec3::new(1.0, 0.0, 1.0));
+        scene.place_detail(0, at, Detail::Near(0));
+        scene.place_detail(1, at, Detail::Far(0));
+        scene.place(0, Mat4::from_translation(Vec3::new(9.0, 0.0, 1.0)));
+        let merged = scene.merge().unwrap();
+        assert_eq!(merged.batches.len(), 3);
+        let anchor = [CELL * 0.5, CELL * 0.5];
+        assert!(merged.batches.iter().any(|b| b.level
+            == Level::Near {
+                anchor,
+                switch: 40.0
+            }));
+        let drawn = |eye: Vec3, near: Option<bool>| -> Vec<usize> {
+            merged
+                .batches
+                .iter()
+                .filter(|b| b.level.drawn(b.level.near(eye, near)))
+                .map(|b| b.material)
+                .collect()
+        };
+        // One level of the cell draws at a time; the other cell always.
+        let close = Vec3::new(anchor[0], 2.0, anchor[1] + 30.0);
+        let far = Vec3::new(anchor[0], 2.0, anchor[1] + 50.0);
+        assert_eq!(drawn(close, None), [0, 0]);
+        assert_eq!(drawn(far, None), [0, 1]);
+        // Just past the switch, a cell keeps the level it had.
+        let past = Vec3::new(anchor[0], 2.0, anchor[1] + 40.0 + HYSTERESIS * 0.5);
+        let short = Vec3::new(anchor[0], 2.0, anchor[1] + 40.0 - HYSTERESIS * 0.5);
+        assert_eq!(drawn(past, Some(true)), [0, 0]);
+        assert_eq!(drawn(short, Some(false)), [0, 1]);
+        assert_eq!(drawn(past, None), [0, 1]);
+        // Height doesn't count: distance is across the ground.
+        let above = Vec3::new(anchor[0], 500.0, anchor[1] + 30.0);
+        assert_eq!(drawn(above, None), [0, 0]);
+        // A detail must name one of the scene's switches.
+        scene.place_detail(0, at, Detail::Far(1));
+        assert!(scene.validate().is_err());
+    }
+
     fn quaternius(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../assets/verse/props/quaternius")
@@ -1423,7 +1604,7 @@ mod tests {
         scene.place(2, Mat4::from_translation(Vec3::new(0.0, 0.0, -3.0)));
         let merged = scene.merge().unwrap();
         let eye = Vec3::new(0.0, 0.0, -40.0);
-        let order = draw_order(&merged.batches, &scene.materials, eye, |_| true);
+        let order = draw_order(&merged.batches, &scene.materials, eye, |_, _| true);
         let passes: Vec<Pass> = order
             .iter()
             .map(|&i| scene.materials[merged.batches[i].material].alpha.pass())
@@ -1444,7 +1625,9 @@ mod tests {
             .collect();
         assert_eq!(depths, [-4.0, -12.0, -20.0]);
         // Culled cells are left out.
-        let near = draw_order(&merged.batches, &scene.materials, eye, |b| b.min.z > -10.0);
+        let near = draw_order(&merged.batches, &scene.materials, eye, |_, b| {
+            b.min.z > -10.0
+        });
         assert_eq!(near.len(), 2);
     }
 

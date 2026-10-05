@@ -40,8 +40,10 @@ pub const SCHEMA: &str = "openagents.verse.source-manifest.v1";
 /// The admitted source sets, in pack order. `generated` holds the models
 /// `scripts/blender` builds, converted by `scripts/blender/everglade_admit.py`;
 /// they sample the village set's images (`../village/<file>.png`) rather
-/// than carrying their own.
-pub const SETS: [&str; 5] = ["nature", "village", "props", "generated", "beasts"];
+/// than carrying their own. `lod` holds the far levels of detail
+/// `scripts/blender/everglade_lod.py` makes from admitted models, named
+/// `lod/<set>.<name>` after the model each stands in for.
+pub const SETS: [&str; 6] = ["nature", "village", "props", "generated", "lod", "beasts"];
 /// The sets whose models are skinned forms rather than static models: the
 /// Wild Shape beasts, split from their committed glb by
 /// `scripts/blender/beasts_admit.py`.

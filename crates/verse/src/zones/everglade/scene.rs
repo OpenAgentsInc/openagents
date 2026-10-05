@@ -12,7 +12,7 @@
 //! tinted by the paint's colors, so kit-built houses vary in color without
 //! another model or image.
 
-use super::layout::Placement;
+use super::{detail, layout::Placement};
 use crate::controller::Footprint;
 use crate::pbr::textured::{
     AlphaMode, BaseColorImage, Primitive, TexturedMaterial, TexturedMesh, TexturedScene,
@@ -103,28 +103,52 @@ pub(crate) fn build_painted(
     placements: &[Placement],
     paint: impl Fn(&Placement) -> Paint,
 ) -> Result<(TexturedScene, Vec<Footprint>), String> {
-    let mut scene = TexturedScene::default();
+    let mut scene = TexturedScene {
+        switches: detail::SWITCHES.to_vec(),
+        ..TexturedScene::default()
+    };
     let mut copied = Copied::default();
     let mut blockers = Vec::new();
     for placement in placements {
         let colors = paint(placement);
-        let (mesh, bounds) = match copied.meshes.get(&(placement.model, colors.key())) {
-            Some(entry) => *entry,
-            None => {
-                let model = pack
-                    .model(placement.model)
-                    .ok_or_else(|| format!("The Everglade pack has no {}", placement.model))?;
-                let mesh = copy_model(pack, model, &mut scene, &mut copied, colors)?;
-                let entry = (mesh, model.bounds());
-                copied.meshes.insert((placement.model, colors.key()), entry);
-                entry
-            }
-        };
-        scene.place(mesh, placement.transform());
+        let (mesh, bounds) = mesh(pack, placement.model, colors, &mut scene, &mut copied)?;
+        let (level, _) = detail::plan(pack, placement.model);
+        scene.place_detail(mesh, placement.transform(), level);
         blockers.extend(placement.footprints(bounds));
+    }
+    // Far levels of detail follow, in layout order (`detail::far_placements`).
+    for (placement, far) in placements
+        .iter()
+        .zip(detail::far_placements(pack, placements))
+    {
+        if let Some((far, _)) = far {
+            let (mesh, _) = mesh(pack, far, paint(placement), &mut scene, &mut copied)?;
+            scene.place_detail(mesh, placement.transform(), detail::FAR_DETAIL);
+        }
     }
     scene.validate()?;
     Ok((scene, blockers))
+}
+
+/// The scene mesh of pack model `name` in `colors`, copied once, and the
+/// model's bounds.
+fn mesh<'a>(
+    pack: &'a ZonePack,
+    name: &'a str,
+    colors: Paint,
+    scene: &mut TexturedScene,
+    copied: &mut Copied<'a>,
+) -> Result<(usize, ([f32; 3], [f32; 3])), String> {
+    if let Some(entry) = copied.meshes.get(&(name, colors.key())) {
+        return Ok(*entry);
+    }
+    let model = pack
+        .model(name)
+        .ok_or_else(|| format!("The Everglade pack has no {name}"))?;
+    let mesh = copy_model(pack, model, scene, copied, colors)?;
+    let entry = (mesh, model.bounds());
+    copied.meshes.insert((name, colors.key()), entry);
+    Ok(entry)
 }
 
 /// Copies a placed model. Each primitive's base color, after its paint, is

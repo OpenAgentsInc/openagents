@@ -17,6 +17,7 @@
 
 mod boards;
 pub mod demolition;
+pub(crate) mod detail;
 pub(crate) mod draw;
 pub mod hotbar;
 pub mod layout;

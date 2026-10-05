@@ -222,6 +222,28 @@ skinned and animated, and the pack holds static models and the one player
 character; ambient wildlife needs skinned props in the pack format first.
 The Grove's dummies are its own concern.
 
+### Levels of detail
+
+`everglade_lod.py` makes the far levels of detail Everglade draws beyond
+60 m ([Everglade](everglade.md#rendering)). It reads each model in its
+`RECIPES` from the admitted glTF and writes a lighter copy to
+`assets/verse/everglade/lod/<set>.<name>.gltf`, with the source's own
+materials and images:
+
+- Buildings, landmarks, and kit pieces: welds the parts, drops loose parts
+  too small to see at 60 m, dissolves nearly flat faces within each texture
+  island, collapses the rest to 15 percent of the triangles for a generated
+  building and 8 to 40 percent for a kit piece, and shades by angle.
+- Trees and bushes: drops twigs, collapses the bark to 45 percent, and
+  keeps half of the leaf cards, each grown about its center so the canopy
+  keeps its cover.
+
+The 53 far levels hold 45,981 triangles. To rebuild them, run:
+
+```sh
+$B -b --factory-startup --python scripts/blender/everglade_lod.py [-- MODEL...]
+```
+
 ## How an agent makes a model
 
 1. Write `scripts/blender/<name>.py` that builds the model from primitives,

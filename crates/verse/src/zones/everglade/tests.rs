@@ -5,7 +5,9 @@ use crate::{
     runtime::WorldRuntime,
     zones::{
         Intent, ZoneId, atmosphere,
-        everglade_pack::{self, PLACED_TRIANGLE_BUDGET},
+        everglade_pack::{
+            self, DRAWN_TRIANGLE_BUDGET, MERGED_TRIANGLE_BUDGET, PLACED_TRIANGLE_BUDGET,
+        },
     },
 };
 use std::path::{Path, PathBuf};
@@ -265,14 +267,28 @@ fn the_world_is_ground_textured_placements_and_boards() {
     let mut ground = TexturedScene::default();
     super::draw::ground(&mut ground);
     assert!(!ground.placements.is_empty());
-    // Every placement and the ground are in the scene, which validates and
-    // merges into cells, with base-color images within the pack's texture
-    // budget.
+    // Every placement, the far level of each that has one, and the ground
+    // are in the scene, which validates and merges into cells, with
+    // base-color images within the pack's texture budget.
     let scene = world.mesh.textured.as_ref().expect("a textured scene");
+    let placements = layout::placements();
+    let fars = super::detail::far_placements(pack(), &placements);
+    let far_count = fars.iter().flatten().count();
+    assert!(far_count > 1000, "{far_count}");
     assert_eq!(
         scene.placements.len(),
-        layout::placements().len() + ground.placements.len()
+        placements.len() + far_count + ground.placements.len()
     );
+    // A far level stands where its placement does, which draws near.
+    for (i, far) in fars.iter().enumerate() {
+        if let Some((_, at)) = far {
+            let (near, far) = (scene.placements[i], scene.placements[*at]);
+            assert_eq!(near.transform, far.transform);
+            assert_eq!(near.detail.switch(), far.detail.switch());
+            assert!(matches!(near.detail, crate::pbr::textured::Detail::Near(_)));
+            assert!(matches!(far.detail, crate::pbr::textured::Detail::Far(_)));
+        }
+    }
     scene.validate().unwrap();
     let merged = scene.merge().unwrap();
     assert!(!merged.batches.is_empty());
@@ -319,15 +335,50 @@ fn every_placement_names_an_admitted_model_and_stays_in_the_glade() {
     assert!(pack().model("props/Chest_Wood").is_none());
 }
 
+/// Triangles of the merged cells that draw from `eye` at their levels of
+/// detail, in every direction and at every distance.
+fn levelled(merged: &crate::pbr::textured::Merged, eye: Vec3) -> u64 {
+    merged
+        .batches
+        .iter()
+        .filter(|b| b.level.drawn_from(eye))
+        .map(|b| u64::from(b.count / 3))
+        .sum()
+}
+
 #[test]
 fn the_layout_stays_within_the_placed_triangle_budget() {
-    let triangles: u64 = layout::placements()
+    let scene = world().mesh.textured.as_ref().unwrap();
+    let merged = scene.merge().unwrap();
+    // Every level is merged and uploaded: the geometry bound.
+    let all = merged.indices.len() as u64 / 3;
+    let near: u64 = merged
+        .batches
         .iter()
-        .map(|p| pack().model(p.model).unwrap().triangles())
-        .sum::<u64>()
-        + super::draw::triangles();
-    eprintln!("Everglade places {triangles} triangles of {PLACED_TRIANGLE_BUDGET} with the ground");
-    assert!(triangles <= PLACED_TRIANGLE_BUDGET, "{triangles}");
+        .filter(|b| !matches!(b.level, crate::pbr::textured::Level::Far { .. }))
+        .map(|b| u64::from(b.count / 3))
+        .sum();
+    eprintln!(
+        "Everglade merges {all} triangles of {MERGED_TRIANGLE_BUDGET}, {near} at their near levels"
+    );
+    assert!(all <= MERGED_TRIANGLE_BUDGET, "{all}");
+    // What a frame can reach: from anywhere in the clearing, each cell at
+    // the level it draws at from there.
+    let mut most = (0, Vec3::ZERO);
+    for x in (-136..=136).step_by(8) {
+        for z in (-136..=136).step_by(8) {
+            let eye = Vec3::new(x as f32, 2.0, z as f32);
+            let triangles = levelled(&merged, eye);
+            if triangles > most.0 {
+                most = (triangles, eye);
+            }
+        }
+    }
+    eprintln!(
+        "Everglade places at most {} triangles of {PLACED_TRIANGLE_BUDGET} at their levels, from {}",
+        most.0, most.1
+    );
+    assert!(most.0 <= PLACED_TRIANGLE_BUDGET, "{}", most.0);
     // The player is drawn, not placed; it has its own budget in the pack.
     let player = pack().character.as_ref().expect("the player's character");
     assert!(player.triangles() <= everglade_pack::Limits::EVERGLADE.character_triangles);
@@ -1257,9 +1308,11 @@ fn the_city_is_sixteen_times_the_glade_and_every_door_opens_from_the_spawn() {
 }
 
 /// Triangles a frame draws from a camera at `eye` looking along `toward`:
-/// with view culling alone, and with the fog and detail culling the stage
-/// applies (`pbr::textured::drawn`). A frame-cost proxy for the town.
-fn drawn_triangles(eye: Vec3, toward: Vec3) -> (u64, u64) {
+/// with view culling alone, with the fog and detail culling the stage
+/// applies (`pbr::textured::drawn`) but every cell at its near level, as
+/// before the far levels of detail, and with each cell at the level it draws
+/// at. A frame-cost proxy for the town.
+fn drawn_triangles(eye: Vec3, toward: Vec3) -> (u64, u64, u64) {
     use crate::pbr::textured;
     let scene = world().mesh.textured.as_ref().unwrap();
     let merged = scene.merge().unwrap();
@@ -1268,17 +1321,23 @@ fn drawn_triangles(eye: Vec3, toward: Vec3) -> (u64, u64) {
         glam::Mat4::perspective_rh(crate::camera::FOV_Y, 16.0 / 9.0, 0.1, crate::camera::FAR);
     let view_proj = proj * view;
     let far = atmosphere(ZoneId::Everglade).fog_end;
-    let (mut frustum, mut drawn) = (0, 0);
+    let (mut frustum, mut near, mut drawn) = (0, 0, 0);
     for b in &merged.batches {
         let triangles = u64::from(b.count / 3);
-        if textured::in_frustum(b.min, b.max, view_proj) {
+        let far_level = matches!(b.level, textured::Level::Far { .. });
+        if textured::in_frustum(b.min, b.max, view_proj) && !far_level {
             frustum += triangles;
         }
         if textured::drawn(b.min, b.max, view_proj, eye, far) {
-            drawn += triangles;
+            if !far_level {
+                near += triangles;
+            }
+            if b.level.drawn_from(eye) {
+                drawn += triangles;
+            }
         }
     }
-    (frustum, drawn)
+    (frustum, near, drawn)
 }
 
 #[test]
@@ -1315,11 +1374,35 @@ fn a_frame_draws_a_fraction_of_the_city() {
             Vec3::new(-60.0, 2.6, -8.0),
             Vec3::new(1.0, -0.1, 0.2),
         ),
+        (
+            "brownstone",
+            Vec3::new(-30.0, 2.6, -78.0),
+            Vec3::new(1.0, -0.1, 0.3),
+        ),
+        (
+            "foundry",
+            Vec3::new(64.0, 2.6, 6.0),
+            Vec3::new(-1.0, -0.1, 0.0),
+        ),
+        (
+            "observatory",
+            Vec3::new(64.0, 9.0, -46.0),
+            Vec3::new(-1.0, -0.15, 0.8),
+        ),
+        (
+            "south edge",
+            Vec3::new(0.0, 2.6, -125.0),
+            Vec3::new(0.0, -0.05, 1.0),
+        ),
     ];
     for (name, eye, toward) in views {
-        let (frustum, drawn) = drawn_triangles(eye, toward);
-        eprintln!("from the {name}: {frustum} triangles in view, {drawn} drawn");
-        assert!(drawn <= frustum && drawn < total * 3 / 4, "{name}: {drawn}");
+        let (frustum, near, drawn) = drawn_triangles(eye, toward);
+        eprintln!(
+            "from the {name}: {frustum} triangles in view, {near} drawn at the near levels, \
+             {drawn} at each cell's level"
+        );
+        assert!(drawn <= near && near <= frustum, "{name}: {drawn}");
+        assert!(drawn <= DRAWN_TRIANGLE_BUDGET, "{name}: {drawn}");
     }
 }
 
