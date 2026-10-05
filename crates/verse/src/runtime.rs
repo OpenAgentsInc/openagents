@@ -193,8 +193,14 @@ impl WorldRuntime {
     /// companion, or tapped portals.
     #[must_use]
     pub fn bare() -> Self {
+        let mut world = world::bare();
+        // The Grid is the pinned engine pack: what the player cannot walk
+        // through comes from its placements, not from the line mesh.
+        if let Ok(pack) = crate::grid_pack::embedded() {
+            world.blockers = crate::grid_pack::blockers(&pack);
+        }
         Self {
-            world: world::bare(),
+            world,
             bare: true,
             // The OpenAgents app's Grid opens no studio panel.
             interact_hint: InteractHint::None,

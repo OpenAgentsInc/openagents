@@ -234,6 +234,42 @@ pub fn placements(pack: &Pack) -> Vec<verse_engine::presentation::Instance> {
         .collect()
 }
 
+/// What the pack's placements block: the Gym's low walls under each
+/// placement of [`GYM`], carried through that placement's transform. The
+/// runtime walks the Grid against these, so a moved Gym in the pack moves
+/// its collision with it.
+#[must_use]
+pub fn blockers(pack: &Pack) -> Vec<crate::controller::Footprint> {
+    let snap = |v: f32| (v * 1000.0).round() / 1000.0;
+    pack.placements
+        .iter()
+        .filter(|p| p.model == GYM)
+        .flat_map(|p| {
+            let transform = Mat4::from_scale_rotation_translation(
+                Vec3::splat(p.scale),
+                Quat::from_array(p.rotation),
+                Vec3::from_array(p.position),
+            );
+            crate::world::GymSite::GRID.walls().map(move |wall| {
+                let corners = [
+                    [wall.min[0], wall.min[1]],
+                    [wall.max[0], wall.min[1]],
+                    [wall.max[0], wall.max[1]],
+                    [wall.min[0], wall.max[1]],
+                ]
+                .map(|[x, z]| transform.transform_point3(Vec3::new(x, 0.0, z)));
+                let fold = |f: fn(f32, f32) -> f32, pick: fn(&Vec3) -> f32| {
+                    snap(corners.iter().map(pick).reduce(f).unwrap_or(0.0))
+                };
+                crate::controller::Footprint {
+                    min: [fold(f32::min, |p| p.x), fold(f32::min, |p| p.z)],
+                    max: [fold(f32::max, |p| p.x), fold(f32::max, |p| p.z)],
+                }
+            })
+        })
+        .collect()
+}
+
 /// The arches the runtime currently stands on the Grid, as engine instances.
 #[must_use]
 pub fn gates(runtime: &crate::runtime::WorldRuntime) -> Vec<verse_engine::presentation::Instance> {
@@ -593,6 +629,25 @@ fn figure(white: usize) -> Model {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pinned_pack_blocks_exactly_the_grid_gym_walls() {
+        let pack = embedded().unwrap();
+        assert_eq!(
+            blockers(&pack),
+            crate::world::GymSite::GRID.walls().to_vec()
+        );
+        let mut moved = pack.clone();
+        for p in moved.placements.iter_mut().filter(|p| p.model == GYM) {
+            p.position = [10.0, 0.0, -4.0];
+        }
+        let walls = blockers(&moved);
+        assert_eq!(walls.len(), 5);
+        for (a, b) in walls.iter().zip(crate::world::GymSite::GRID.walls()) {
+            assert!((a.min[0] - b.min[0] - 10.0).abs() < 1e-3);
+            assert!((a.max[1] - b.max[1] + 4.0).abs() < 1e-3);
+        }
+    }
 
     #[test]
     fn the_pinned_pack_is_what_the_sources_compile_to() {
