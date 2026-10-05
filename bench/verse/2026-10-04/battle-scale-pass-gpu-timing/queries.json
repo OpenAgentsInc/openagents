@@ -1,0 +1,32 @@
+{
+  "ray": {
+    "calls": 21615,
+    "errors": 0,
+    "truncated": 1,
+    "nodes": 929687,
+    "triangles": 259380,
+    "capsule_tests": 0,
+    "wall_seconds": 0.04250564399999781,
+    "maximum_wall_seconds": 0.000106
+  },
+  "overlap": {
+    "calls": 586978,
+    "errors": 0,
+    "truncated": 0,
+    "nodes": 59796386,
+    "triangles": 6954696,
+    "capsule_tests": 264762,
+    "wall_seconds": 4.352670887999517,
+    "maximum_wall_seconds": 0.006851833
+  },
+  "sweep": {
+    "calls": 1738586,
+    "errors": 0,
+    "truncated": 77542,
+    "nodes": 177111652,
+    "triangles": 20116584,
+    "capsule_tests": 1115539,
+    "wall_seconds": 7.607019095010061,
+    "maximum_wall_seconds": 0.007297833
+  }
+}

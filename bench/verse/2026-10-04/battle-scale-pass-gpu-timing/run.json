@@ -1,0 +1,38 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": false,
+    "compiled_revisions": {
+      "host": "5e2a43fc04",
+      "clients": "5e2a43fc04"
+    },
+    "fixture_revision": "5e2a43fc048427196e8435c034d33df26947935b",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "gpu_timestamps_requested": true,
+  "stability": "All twenty connections and processes complete; all occupancy samples retain forty live hostile NPCs.",
+  "limits": [
+    "Native frame p95 is 21.118 ms, still above the 16.7 ms target.",
+    "Only 88 valid GPU samples are retained across 3278 rendered-frame measurements. Sparse coverage is not a representative GPU performance distribution.",
+    "Retained GPU span p95 is 9.351 ms; this cannot attribute the complete frame budget.",
+    "CPU command finalization p95 is 14.953 ms.",
+    "GPU boundary spans include inter-pass gaps and world post-processing; they are not isolated shader execution costs.",
+    "Prediction correction p95 is 0.935 m, maximum 1.478 m; acceptable battle movement remains unproved.",
+    "Simulation p99 histogram upper bound is 16 ms, maximum 24.660 ms.",
+    "Persistent storage is disabled; persistent battle acceptance remains failed.",
+    "No blocked motor advances occur; this run does not exercise containment failures.",
+    "Trajectories and contributor-machine load differ between runs; no isolated causal FPS improvement is claimed.",
+    "Input-to-display latency and isolated reference-client metrics remain unmeasured."
+  ]
+}
