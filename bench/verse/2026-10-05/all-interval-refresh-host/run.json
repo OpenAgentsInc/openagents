@@ -1,0 +1,43 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "compiled_revisions": {
+    "host": "dd038e8a46",
+    "headless_clients": "bd516cd46d211a46390df6ed769fc2f6de1da200",
+    "native_client": "8838dd1f4f58f0c54a086a9e06407864d0ae13a8"
+  },
+  "checks": {
+    "host_build": "passed",
+    "all_process_exits": 0
+  },
+  "native": {
+    "frame_interval_ms": {
+      "samples": 3764,
+      "omitted": 0,
+      "median": 11.348125000000001,
+      "p95": 16.745167,
+      "max": 6671.943749999999
+    },
+    "prediction_correction_meters": {
+      "samples": 219,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 1.1520694494247437
+    },
+    "reset_reasons": {
+      "control_epoch": 35,
+      "teleport": 1
+    }
+  },
+  "server_simulation_ms": {
+    "p99_histogram_upper": 66.667,
+    "max": 71.592
+  },
+  "observation": "All players complete and headless minimum live hostile occupancy stays 40; frame, server and correction limits are not all met.",
+  "limits": [
+    "Shared hardware and different trajectories prevent isolated causality claims.",
+    "Persistence and GPU timestamps disabled; subsequent durable run is separate.",
+    "Frame maximum includes startup; full lifecycle/continuous control and input latency remain unproven."
+  ]
+}
