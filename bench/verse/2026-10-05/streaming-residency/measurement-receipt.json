@@ -1,0 +1,45 @@
+{
+  "schema": "verse.streaming-measurement-receipt.v1",
+  "started_utc": "2026-10-05T06:17:07.444408+00:00",
+  "source_sha256": {
+    "Cargo.lock": "e1a2f61f15bf2986b6cb63d86fa10d94c617027c335be0873b95d0345e83332d",
+    "crates/verse-engine/Cargo.toml": "fd9492bee986e8afad885ca10cc656052632ed5309d32a33347534d717a7afbf",
+    "crates/verse-engine/src/streaming/mod.rs": "17ca087529086ab9cfa7e1ebffca25a19af87b6db76d251cb4ae12a76835bd7e",
+    "crates/verse-engine/src/streaming/format.rs": "f856e8434e2bb8f5a5205076ec43b362068c64ae9dbf7897314fce300fa0d8e6",
+    "crates/verse-engine/src/streaming/store.rs": "5071ea0f280029b6b0a045fda73e2d92f8e2f80efe662efaa6e1378a0fb7892b",
+    "crates/verse-engine/src/streaming/tests.rs": "e3babca9d9317192816a314f835ea05e7fce485d245089a4a7188554a5643468",
+    "crates/verse/src/streaming.rs": "d270aed916349c3f781d143eecaa3e32d68667decb189aab8307573e3370264f",
+    "crates/verse/src/streaming.wgsl": "aa49a42c6adacbd8fd4091825447498fe300a88e7816ce1c01ea1404287d3863",
+    "crates/verse/src/render.rs": "a082366b474390e318780fe6679846bf2828573119e37aa3d60c4e4a019b3787",
+    "crates/verse/src/pbr/gpu.rs": "f7a1ea21b3f56d826d874553b2d83770f2fc467a814317154be1d2ff9419d457",
+    "crates/verse/examples/streaming_traversal.rs": "9e0cde60327d6ecf51142ba3882a382dfb0e2140a05a0b9cf1f3184b3e3ded7b",
+    "crates/verse/src/runtime.rs": "5d93f5910d5a6fd815e7f4c41c5b6e3ff17c15b674ee92032e5224a0c6b74ed5",
+    "crates/verse/src/grid_pack.rs": "d7e949729e38af9829dcffcc7cdb6453a0a3d064b91115d90360005e9d127bf9"
+  },
+  "executable_sha256": "668a41f87e9e2a3577784c6c3785f95066a9cdf43a6ffac433161fc1c3936884",
+  "base_commit": "0452abf4dc3b0613f09ec9884e1007125e8d0996",
+  "dirty": true,
+  "isolated": "Temporary HOME and XDG_RUNTIME_DIR; no display or owner host; no other audit GPU workload runs concurrently",
+  "command": [
+    "streaming_traversal",
+    "traversal.json",
+    "1200"
+  ],
+  "exit_code": 0,
+  "gpu_regression_exit_code": 0,
+  "completed_utc": "2026-10-05T06:17:29.332060+00:00",
+  "artifacts_sha256": {
+    "traversal.manifest.json": "3b060727b35116d985210e4a93571ec9b9f8c8b22967fcc3c5c3bb8e39ef4ff9",
+    "traversal.png": "4e9c6689ea532299c436277fec53f32e64a6d736c02b2807d275518fb1ae6bbf",
+    "traversal.json": "9f61b8b2ac2b355572a570412333edc0fe3d25ce4be5036b2b516ec8587d0fdf",
+    "traversal.log": "c49ead0034d7829a88ea46767b29a8a87041d6b6c617ac2bfd308888acb5c6be",
+    "traversal.manifest-before-controller.json": "3b060727b35116d985210e4a93571ec9b9f8c8b22967fcc3c5c3bb8e39ef4ff9"
+  },
+  "source_dirty": false,
+  "dirty_reason": "Retained reports were replaced while the committed source tree remained unchanged.",
+  "public_owner_base_commit": "defa0be9d4f63d6ea67175bf130556f9d8ab61a2",
+  "integration_note": "The measured source tree preceded the later Meteor Swarm merge. Streaming source files retain these hashes; post-rebase focused integration checks are recorded separately.",
+  "retained_source_files": {
+    "crates/verse/examples/streaming_traversal.rs": "sources/streaming_traversal.rs.txt"
+  }
+}

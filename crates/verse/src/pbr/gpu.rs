@@ -1764,6 +1764,12 @@ impl Photo {
                 self.draw_textured(&mut pass, world.textured, &order, which);
                 self.draw_textured(&mut pass, world.figure, &figure_order, which);
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some((source, globals)) = world.streamed {
+                source.draw(&mut pass, globals, true);
+                pass.set_bind_group(0, &self.scene_group, &[]);
+                pass.set_bind_group(1, &targets.guide_groups[targets.parity() ^ 1], &[]);
+            }
             pass.set_pipeline(&self.pipelines.legacy);
             for (buffer, count) in world.faces {
                 if count > 0 {
@@ -2215,6 +2221,12 @@ impl Photo {
                     self.draw_textured(&mut pass, world.figure, &figure_order, which);
                 }
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some((source, globals)) = world.streamed {
+                source.draw(&mut pass, globals, true);
+                pass.set_bind_group(0, &self.scene_group, &[]);
+                pass.set_bind_group(1, &targets.guide_groups[0], &[]);
+            }
             pass.set_pipeline(&self.pipelines.legacy);
             for (buffer, count) in world.faces {
                 if count > 0 {
@@ -2311,6 +2323,8 @@ pub(crate) fn reversed_depth() -> Mat4 {
 
 /// The retained geometry a physical frame draws.
 pub(crate) struct Batches<'a> {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub streamed: Option<(&'a crate::streaming::Source, &'a wgpu::BindGroup)>,
     pub lit: (&'a wgpu::Buffer, u32),
     pub faces: [(&'a wgpu::Buffer, u32); 2],
     pub lines: [(&'a wgpu::Buffer, u32); 2],

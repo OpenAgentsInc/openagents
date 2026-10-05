@@ -155,7 +155,7 @@ Evidence labels:
 | V09 | P1 | Persistent accounts own recoverable resident and dormant characters. | Code | Persistent character domain | Complete ([#10603](https://github.com/OpenAgentsInc/openagents/issues/10603)) |
 | V10 | P1 | CPU, GPU, capture, and transport costs have separate measurement contracts. | Code, recorded | Profiling and acceptance | Complete ([#10619](https://github.com/OpenAgentsInc/openagents/issues/10619)) |
 | V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities | Complete ([#10623](https://github.com/OpenAgentsInc/openagents/issues/10623)) |
-| V12 | P1 | Whole-pack preparation is not large-world asset streaming. | Code, gap | Content loading and residency | Open |
+| V12 | P1 | Cooked static chunks have bounded native streaming residency. | Code, recorded | Content loading and residency | Complete ([#10625](https://github.com/OpenAgentsInc/openagents/issues/10625)), static-content profile |
 | V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload | Open |
 | V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics | Open |
 | V15 | P1 | Navigation needs tiled content and scheduled crowd work. | Code, gap | Navigation and AI | Open |
@@ -956,25 +956,63 @@ capture-worker interruption, browser lifecycle acceptance, and physical display
 latency remain V18/V24 acceptance work. Authored mesh/animation LOD remains a
 content capability gap for V20/V21 and larger future profiles.
 
-### V12: Catalog handles do not implement streaming residency
+### V12: Cooked static chunks stream under independent residency budgets
 
-[`residency::Catalog`](../../crates/verse-engine/src/residency.rs) provides
-generation-safe lookup, not an eviction, streaming, or memory manager.
-[`loading::Prepared`](../../crates/verse-engine/src/loading.rs) prepares a whole
-pack, including decoded textures, before renderer construction. The renderer
-then uploads all textures and geometry. The loader's budgets do not account for
-all GPU mip levels, multisample targets, shadow maps, caches, and temporary
-copies. Zone entry is a useful coarse loading boundary, not a large-world
-streaming system.
+**Status:** Complete in [#10625](https://github.com/OpenAgentsInc/openagents/issues/10625)
+for the first native static-content profile.
 
-**Improve:** Add cooked chunks, dependency-aware residency, prioritized async
-read/decode/upload work, upload time budgets, eviction, and device-loss rebuild
-inputs. Track CPU and GPU high-water memory independently. Compile static
-lighting into content where practical; keep runtime bake caching explicit.
+[`streaming`](../../crates/verse-engine/src/streaming/mod.rs) separates desired
+content, verified CPU data, and complete GPU uploads. SHA-256-bound chunks use a
+versioned binary header and an admitted dependency graph. Root order establishes
+priority; dependencies upload first and stay pinned with the current view.
+Independent CPU/GPU payload budgets and a fixed pending-job count bound source
+work, LRU eviction, and allocation admission. A rejected view preserves the
+previous one. Failures require an explicit retry. Cancelled workers retain their
+reservations until their results arrive; zone generations and exact upload
+tickets prevent stale work from replacing active content.
 
-**Acceptance:** Traverse content larger than the memory budget with bounded
-frame stalls and cache growth. Cancel a load, change zones, exhaust memory, and
-lose the device without admitting stale results or dropping authority state.
+[`streaming::store`](../../crates/verse-engine/src/streaming/store.rs) performs
+regular-file reads and zero-copy payload validation on fixed background workers
+under an explicit source root. Native Unix reads anchor the directory descriptor
+and refuse symlinks and nonregular files. The cooker publishes a verified,
+synced file without replacing an existing digest. Manifest metadata has separate
+chunk, edge, and JSON bounds.
+
+[`Source`](../../crates/verse/src/streaming.rs) integrates with both native
+`render::Renderer` and `render::Layer`. Per-frame bytes limit incremental buffer
+and image writes; a soft CPU deadline stops before the next driver call.
+Evicted GPU handles are released before replacement allocation. Geometry becomes
+visible only after its own upload and dependencies commit. Device recreation
+retains verified CPU data and fences prior uploads. Automatic native renderer
+recovery and the host-owned layer's explicit `rebuild` use that state. The first
+profile stores static triangles or lines, single-level sRGB RGBA images, and an
+optional lighting-recipe digest; vertex colors hold the offline result. It
+performs no runtime bake or hidden bake-cache allocation.
+
+**Recorded acceptance:** The original 48-tile
+[`streaming_traversal`](../../crates/verse/examples/streaming_traversal.rs)
+fixture draws a 42,485,280-byte dataset under 4 MiB CPU and 3 MiB GPU payload
+budgets at 1280×720, paced at 60 Hz. Retained
+[evidence](../../bench/verse/2026-10-05/streaming-residency/README.md) records
+1,200 frames on an RTX 4080/Vulkan, separate high-water counts, bounded uploads,
+eviction, two stale results after zone cancellation, an oversized-view refusal,
+and actual device recreation with world state preserved. A pixel-checked PNG
+proves textured terrain reached the target. The explicit GPU regression uses
+four-byte uploads across partial image rows, verifies both depth conventions,
+deletes the source files, and obtains identical pixels on a replacement device.
+
+**Limits:** These budgets cover managed payloads, not total process RSS or driver
+VRAM. Metadata, render targets, and fixed shader resources have separate bounds. Queue
+staging and in-flight driver resource retirement are excluded; V18 retains GPU
+backlog admission. A driver call or host filesystem syscall already in progress cannot be
+preempted. Device reconstruction is a separate measured interruption. New views
+may show a loading gap until their dependencies commit. Streamed geometry uses
+baked or unlit colors with cutout alpha; it does not enter cascade-shadow or
+screen-space prepasses. Animated packs and full physical materials retain their
+existing loading paths. Authoring, LOD and animation, physical lighting, broader
+fault containment, and phone/browser streaming acceptance remain V20–V22, V18,
+and V24. This fixture does not establish networked population or physical
+scanout performance.
 
 ### V13: Mipmap generation has a concrete color-space defect
 

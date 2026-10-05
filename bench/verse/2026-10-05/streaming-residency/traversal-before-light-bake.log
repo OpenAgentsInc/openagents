@@ -1,0 +1,1 @@
+{"cpu_bytes":2670720,"cpu_high_water":3555488,"gpu_bytes":2670592,"gpu_high_water":2670592,"source_jobs":0,"jobs_high_water":2,"source_starts":52,"source_failures":0,"stale_results":2,"evictions":43,"refused_views":1,"device_rebuilds":1,"committed_chunks":51}

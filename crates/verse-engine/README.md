@@ -51,3 +51,21 @@ and managed resource admission. `presentation::VisualSelection` validates up to
 8,192 source instances and retains required actors and mounts before selecting
 optional effects by priority and source order. Lower quality reduces optional
 work; timing limits are measurement targets.
+
+`streaming` validates versioned, SHA-256-bound static chunks and their dependency
+graph. Its portable scheduler separates desired content, verified CPU payloads,
+and complete GPU uploads. Root order sets priority; independent byte budgets,
+a fixed pending-job limit, explicit failure retries, and dependency pins govern
+eviction. Cancelled workers retain CPU reservations until their results arrive.
+Zone generations and upload tickets reject stale work; device recreation retains
+verified CPU content and invalidates GPU residency.
+
+With `asset-io`, `streaming::store` reads regular digest-named files under an
+explicit root on fixed background workers. Native `verse::render::Renderer` and
+`Layer` expose `configure_streaming`; their source uploads under per-frame byte
+and soft time limits. The first cooked profile holds static triangles or lines,
+single-level sRGB RGBA images, and an optional offline lighting recipe digest.
+Vertex colors hold the baked result; runtime performs no lighting bake. Animated
+packs and full physical materials keep their existing loading paths. Managed
+payload accounting excludes bounded manifest metadata, render targets, platform
+allocation padding, and shader-private storage.

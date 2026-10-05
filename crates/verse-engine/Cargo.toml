@@ -8,7 +8,7 @@ description = "Portable assets, skeletal animation, and scene direction for Vers
 
 [features]
 default = []
-asset-io = ["dep:png", "dep:sha2", "dep:libc"]
+asset-io = ["dep:png", "dep:libc"]
 
 [dependencies]
 bytemuck = { version = "1.25", features = ["derive"] }
@@ -16,10 +16,13 @@ glam = { version = "0.30.10", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = { version = "0.18.1", optional = true }
-sha2 = { version = "0.10", optional = true }
+sha2 = "0.10"
 
 [target.'cfg(unix)'.dependencies]
 libc = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

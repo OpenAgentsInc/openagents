@@ -82,6 +82,9 @@ struct Scene {
     samples: u32,
     globals: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
+    globals_layout: wgpu::BindGroupLayout,
+    #[cfg(not(target_arch = "wasm32"))]
+    streaming: Option<crate::streaming::Source>,
     faces: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
     world_faces: Batch,
@@ -708,8 +711,32 @@ impl Renderer {
         next.device_recoveries = self.device_recoveries + 1;
         next.last_device_loss = self.health.reason(&self.device);
         next.set_overlay(self.overlay_source.as_ref())?;
+        #[cfg(not(target_arch = "wasm32"))]
+        self.scene
+            .move_streaming(&mut next.scene, next.resources, &next.device, &next.queue)?;
         *self = next;
         Ok(true)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn configure_streaming(
+        &mut self,
+        root: &std::path::Path,
+        manifest: verse_engine::streaming::Manifest,
+        budget: verse_engine::streaming::Budget,
+    ) -> Result<(), String> {
+        self.ensure_device()?;
+        self.scene.configure_streaming(
+            root,
+            manifest,
+            budget,
+            self.resources,
+            &self.device,
+            &self.queue,
+        )
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn streaming(&mut self) -> Option<&mut crate::streaming::Source> {
+        self.scene.streaming.as_mut()
     }
     #[must_use]
     pub fn size(&self) -> [f32; 2] {
@@ -799,6 +826,10 @@ impl Renderer {
             u64::from(self.source_atlas.width) * u64::from(self.source_atlas.height) * 4;
         resources.retained_source_bytes += self.source_atlas.pixels.len() as u64;
         self.scene.capability.quality.budget().admit(resources)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(source) = &self.scene.streaming {
+            self.scene.admit_streaming(source.budget(), resources)?;
+        }
         const LIMIT: usize = 96 * 1024 * 1024;
         for vertices in [&world.faces, &world.lines] {
             if vertices
@@ -846,6 +877,11 @@ impl Renderer {
         self.scene.dynamic_lines = dynamic_batch(&self.device, "verse dynamic lines");
         self.source_world = world.clone();
         self.resources = resources;
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(source) = &mut self.scene.streaming {
+            source.cancel_view()?;
+        }
+
         Ok(())
     }
 
@@ -894,7 +930,17 @@ impl Renderer {
         if let Err(error) = validate_frame(view, dynamic, ui) {
             return DrawStatus::Error(error);
         }
-        if let Err(error) = admit_dynamic(self.resources, self.scene.capability, dynamic) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(source) = &mut self.scene.streaming {
+            if let Err(error) = source.pump(&self.device, &self.queue) {
+                return DrawStatus::Error(error);
+            }
+        }
+        if let Err(error) = admit_dynamic(
+            self.scene.frame_resources(self.resources),
+            self.scene.capability,
+            dynamic,
+        ) {
             return DrawStatus::Error(error);
         }
         self.dropped_glow_triangles = dynamic
@@ -963,6 +1009,8 @@ pub struct Layer {
     format: wgpu::TextureFormat,
     size: (u32, u32),
     pub resources: verse_engine::quality::Resources,
+    source_world: Mesh,
+    source_atlas: Atlas,
 }
 
 impl Layer {
@@ -1005,10 +1053,52 @@ impl Layer {
             targets,
             format,
             size: (width, height),
+            source_world: world.clone(),
+            source_atlas: atlas.clone(),
             resources,
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn configure_streaming(
+        &mut self,
+        root: &std::path::Path,
+        manifest: verse_engine::streaming::Manifest,
+        budget: verse_engine::streaming::Budget,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(), String> {
+        self.scene
+            .configure_streaming(root, manifest, budget, self.resources, device, queue)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn streaming(&mut self) -> Option<&mut crate::streaming::Source> {
+        self.scene.streaming.as_mut()
+    }
+    /// Recreates this layer on the host's replacement device while retaining verified chunk data.
+    pub fn rebuild(
+        &mut self,
+        adapter: &wgpu::Adapter,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(), String> {
+        let mut next = Self::new(
+            adapter,
+            device,
+            queue,
+            self.format,
+            self.size,
+            &self.source_world,
+            &self.source_atlas,
+            self.scene.atmosphere,
+            self.scene.samples,
+        )?;
+        #[cfg(not(target_arch = "wasm32"))]
+        self.scene
+            .move_streaming(&mut next.scene, next.resources, device, queue)?;
+        *self = next;
+        Ok(())
+    }
     /// The size the layer draws at, in pixels.
     #[must_use]
     pub fn size(&self) -> (u32, u32) {
@@ -1060,7 +1150,15 @@ impl Layer {
         ui: &UiBatch,
     ) -> Result<(), String> {
         validate_frame(view, dynamic, ui)?;
-        admit_dynamic(self.resources, self.scene.capability, dynamic)?;
+        admit_dynamic(
+            self.scene.frame_resources(self.resources),
+            self.scene.capability,
+            dynamic,
+        )?;
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(source) = &mut self.scene.streaming {
+            source.pump(device, queue)?;
+        }
         self.scene.encode(
             device,
             queue,
@@ -1659,6 +1757,100 @@ fn scene_limits(available: wgpu::Limits) -> Result<wgpu::Limits, String> {
 }
 
 impl Scene {
+    fn frame_resources(
+        &self,
+        base: verse_engine::quality::Resources,
+    ) -> verse_engine::quality::Resources {
+        #[cfg(not(target_arch = "wasm32"))]
+        let extra = self
+            .streaming
+            .as_ref()
+            .map_or(0, |source| source.budget().gpu_bytes);
+        #[cfg(target_arch = "wasm32")]
+        let extra = 0;
+        verse_engine::quality::Resources {
+            geometry_bytes: base.geometry_bytes + extra,
+            texture_bytes: base.texture_bytes + extra,
+            ..base
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn admit_streaming(
+        &self,
+        budget: verse_engine::streaming::Budget,
+        resources: verse_engine::quality::Resources,
+    ) -> Result<(), String> {
+        let limit = self.capability.quality.budget();
+        if budget.gpu_bytes
+            > limit
+                .geometry_bytes
+                .saturating_sub(resources.geometry_bytes)
+            || budget.gpu_bytes > limit.texture_bytes.saturating_sub(resources.texture_bytes)
+        {
+            return Err(
+                "Stream budget exceeds remaining admitted geometry or texture capacity".into(),
+            );
+        }
+        Ok(())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::too_many_arguments)]
+    fn configure_streaming(
+        &mut self,
+        root: &std::path::Path,
+        manifest: verse_engine::streaming::Manifest,
+        budget: verse_engine::streaming::Budget,
+        resources: verse_engine::quality::Resources,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(), String> {
+        let budget = budget.validate()?;
+        self.admit_streaming(budget, resources)?;
+        if let Some(source) = &mut self.streaming {
+            if source.budget() != budget {
+                return Err("Streaming session budgets remain fixed while workers exist".into());
+            }
+            return source.change_zone(root, manifest, device);
+        }
+        let source = crate::streaming::Source::new(
+            root,
+            manifest,
+            budget,
+            device,
+            queue,
+            &self.globals_layout,
+            self.format,
+            self.capability.hdr.unwrap_or(self.format),
+            self.samples,
+        )?;
+        self.streaming = Some(source);
+        Ok(())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn move_streaming(
+        &mut self,
+        next: &mut Self,
+        resources: verse_engine::quality::Resources,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(), String> {
+        if let Some(source) = self.streaming.as_mut() {
+            next.admit_streaming(source.budget(), resources)?;
+            source.rebind(
+                device,
+                queue,
+                &next.globals_layout,
+                next.format,
+                next.capability.hdr.unwrap_or(next.format),
+                next.samples,
+            )?;
+        }
+        next.streaming = self.streaming.take();
+        Ok(())
+    }
+}
+
+impl Scene {
     #[allow(clippy::too_many_arguments)]
     fn new(
         device: &wgpu::Device,
@@ -1816,6 +2008,9 @@ impl Scene {
             samples,
             globals,
             bind_group,
+            globals_layout: layout,
+            #[cfg(not(target_arch = "wasm32"))]
+            streaming: None,
             faces,
             lines,
             world_faces: upload(&world.faces, "verse world faces"),
@@ -1837,6 +2032,18 @@ impl Scene {
         dynamic: &Mesh,
         ui: &UiBatch,
     ) {
+        let field = self.atmosphere.color;
+        let globals = Globals {
+            view_proj: view.view_proj.to_cols_array_2d(),
+            eye: [
+                view.eye.x,
+                view.eye.y,
+                view.eye.z,
+                self.atmosphere.fog_start,
+            ],
+            fog: [field[0], field[1], field[2], self.atmosphere.fog_end],
+        };
+        queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
         let stage = match (&dynamic.sky, &dynamic.neon) {
             (Some(sky), _) => Some(Stage::Space(sky)),
             (None, Some(neon)) => Some(Stage::Neon(neon)),
@@ -1862,13 +2069,6 @@ impl Scene {
             queue.write_buffer(&self.ui.buffer, 0, &ui_bytes[..fit]);
         }
         self.ui.count = (fit / std::mem::size_of::<UiVertex>()) as u32;
-        let eye = view.eye;
-        let globals = Globals {
-            view_proj: view.view_proj.to_cols_array_2d(),
-            eye: [eye.x, eye.y, eye.z, self.atmosphere.fog_start],
-            fog: [field[0], field[1], field[2], self.atmosphere.fog_end],
-        };
-        queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
         write(device, queue, &mut self.dynamic_faces, &dynamic.faces);
         write(device, queue, &mut self.dynamic_lines, &dynamic.lines);
 
@@ -1904,6 +2104,11 @@ impl Scene {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(source) = &self.streaming {
+            source.draw(&mut pass, &self.bind_group, false);
+        }
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_pipeline(&self.faces);
         for batch in [&self.world_faces, &self.dynamic_faces] {
@@ -2065,6 +2270,11 @@ impl Scene {
             &dynamic.glow[..dynamic.glow.len().min(glow_limit)],
         );
         let batches = Batches {
+            #[cfg(not(target_arch = "wasm32"))]
+            streamed: self
+                .streaming
+                .as_ref()
+                .map(|source| (source, &self.bind_group)),
             lit: (&self.world_lit.0, self.world_lit.1),
             faces: [
                 (&self.world_faces.buffer, self.world_faces.count),

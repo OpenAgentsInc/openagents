@@ -104,6 +104,7 @@ pub fn launch(root: &Path, relay: &str, fixture: bool) -> Result<Launch, String>
         presence: Some(BarePresence {
             secret_hex: secret,
             relay: Some(relay.into()),
+            name: None,
         }),
         gym: BareGym {
             code,

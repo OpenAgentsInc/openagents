@@ -116,7 +116,7 @@ impl Write for ManifestDigest {
     }
 }
 #[cfg(unix)]
-fn open_texture(root: &File, name: &str) -> Result<File, String> {
+pub(crate) fn open_texture(root: &File, name: &str) -> Result<File, String> {
     use std::os::fd::{AsRawFd, FromRawFd};
     let name = std::ffi::CString::new(name).map_err(|e| e.to_string())?;
     // The root descriptor stays live. A flat validated name cannot traverse parents;

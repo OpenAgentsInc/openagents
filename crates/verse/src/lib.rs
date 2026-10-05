@@ -65,6 +65,8 @@ pub mod runtime;
 pub mod session;
 pub mod shared;
 pub mod spectator;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod streaming;
 pub mod tooltip;
 pub mod ui;
 pub mod world;

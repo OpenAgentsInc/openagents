@@ -1,0 +1,365 @@
+//! Original cooked terrain traversed under independent CPU/GPU residency budgets.
+//! Usage: streaming_traversal OUTPUT.json [FRAMES]
+use glam::{Mat4, Vec3};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::BTreeMap,
+    path::Path,
+    time::{Duration, Instant},
+};
+use verse::{
+    mesh::Mesh,
+    profiling::FrameProfile,
+    render::{Layer, View},
+    ui::{Atlas, UiBatch},
+};
+use verse_engine::streaming::{
+    Budget, Manifest, Vertex, cook_geometry, cook_image, store::install,
+};
+fn cook(root: &Path) -> Result<(Manifest, Vec<String>), String> {
+    let mut pixels = Vec::new();
+    for y in 0..64 {
+        for x in 0..64 {
+            let value = if (x / 8 + y / 8) % 2 == 0 { 220 } else { 140 };
+            pixels.extend_from_slice(&[value, value, 255, 255]);
+        }
+    }
+    let (image, bytes) = cook_image(64, 64, &pixels)?;
+    install(root, &image, &bytes)?;
+    let image_id = image.sha256.clone();
+    let mut chunks = BTreeMap::from([(image_id.clone(), image)]);
+    let mut roots = Vec::new();
+    let recipe = b"verse.terrain-light.v1: linear albedo=(0.18+(x%8)*0.02,0.35,0.25+(y%8)*0.01); normal=Y; sun=normalize(1,1,0); ambient=0.2; diffuse=0.8";
+    let lighting = format!("{:x}", Sha256::digest(recipe));
+    let irradiance = 0.2 + 0.8 * Vec3::Y.dot(Vec3::new(1., 1., 0.).normalize());
+    for tile in 0..48 {
+        let mut vertices = Vec::new();
+        // Cook repeated tessellation with a deterministic diffuse-light bake in vertex colors.
+        // Runtime performs no light bake or normal-generation allocation.
+        for y in 0..64 {
+            for x in 0..64 {
+                let x0 = tile as f32 * 32. + x as f32 * 0.5;
+                let z0 = y as f32 * 0.5 - 16.;
+                let color = [
+                    0.18 + (x % 8) as f32 * 0.02,
+                    0.35,
+                    0.25 + (y % 8) as f32 * 0.01,
+                ]
+                .map(|albedo| albedo * irradiance);
+                for (dx, dz) in [
+                    (0., 0.),
+                    (0., 0.5),
+                    (0.5, 0.5),
+                    (0., 0.),
+                    (0.5, 0.5),
+                    (0.5, 0.),
+                ] {
+                    vertices.push(Vertex {
+                        pos: [x0 + dx, 0., z0 + dz],
+                        color,
+                        uv: [(x as f32 + dx * 2.) / 8., (y as f32 + dz * 2.) / 8.],
+                        fog: 0.,
+                    });
+                }
+            }
+        }
+        let (d, bytes) = cook_geometry(
+            &vertices,
+            false,
+            vec![image_id.clone()],
+            Some(image_id.clone()),
+            Some(lighting.clone()),
+        )?;
+        install(root, &d, &bytes)?;
+        roots.push(d.sha256.clone());
+        chunks.insert(d.sha256.clone(), d);
+    }
+    let manifest = Manifest { version: 1, chunks };
+    manifest.validate()?;
+    Ok((manifest, roots))
+}
+async fn device(
+    instance: &wgpu::Instance,
+) -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue), String> {
+    let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions::default())
+        .await
+        .map_err(|e| e.to_string())?;
+    let (device, queue) = adapter
+        .request_device(&wgpu::DeviceDescriptor {
+            required_limits: adapter.limits(),
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok((adapter, device, queue))
+}
+fn target(device: &wgpu::Device) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Streaming traversal target"),
+        size: wgpu::Extent3d {
+            width: 1280,
+            height: 720,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    })
+}
+fn capture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    target: &wgpu::Texture,
+    output: &Path,
+) -> Result<usize, String> {
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Streaming evidence readback"),
+        size: 1280 * 720 * 4,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: target,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(1280 * 4),
+                rows_per_image: Some(720),
+            },
+        },
+        wgpu::Extent3d {
+            width: 1280,
+            height: 720,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([encoder.finish()]);
+    let (send, receive) = std::sync::mpsc::channel();
+    buffer
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, move |result| {
+            let _ = send.send(result);
+        });
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: Some(Duration::from_secs(5)),
+        })
+        .map_err(|e| e.to_string())?;
+    receive
+        .recv_timeout(Duration::from_secs(5))
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    let pixels = buffer.slice(..).get_mapped_range();
+    let colored = pixels
+        .chunks_exact(4)
+        .filter(|p| u16::from(p[1]) > u16::from(p[0]) + 8 && u16::from(p[2]) > u16::from(p[0]) + 8)
+        .count();
+    if colored < 10_000 {
+        return Err(format!("Expected textured terrain pixels, found {colored}"));
+    }
+    let file = std::fs::File::create(output.with_extension("png")).map_err(|e| e.to_string())?;
+    let mut png = png::Encoder::new(file, 1280, 720);
+    png.set_color(png::ColorType::Rgba);
+    png.set_depth(png::BitDepth::Eight);
+    png.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
+    png.write_header()
+        .map_err(|e| e.to_string())?
+        .write_image_data(&pixels)
+        .map_err(|e| e.to_string())?;
+    drop(pixels);
+    buffer.unmap();
+    Ok(colored)
+}
+fn run() -> Result<(), String> {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    let output = args.first().ok_or("Expected output JSON")?;
+    let frames: u64 = args
+        .get(1)
+        .map_or(Ok(1200), |v| v.parse().map_err(|_| "Invalid frame count"))?;
+    if !(600..=1800).contains(&frames) {
+        return Err("Expected 600–1800 frames".into());
+    }
+    let assets = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let (manifest, roots) = cook(assets.path())?;
+    let bytes: u64 = manifest.chunks.values().map(|d| d.encoded_bytes).sum();
+    let manifest_id = manifest.identity()?;
+    std::fs::write(
+        Path::new(output).with_extension("manifest.json"),
+        serde_json::to_vec(&manifest).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let instance =
+        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+    let (mut adapter, mut gpu, mut queue) = pollster::block_on(device(&instance))?;
+    let info = adapter.get_info();
+    let atlas = Atlas::new(12.);
+    let world = Mesh::default();
+    let atmosphere = verse::zones::atmosphere(verse::zones::ZoneId::Plaza);
+    let mut layer = Layer::new(
+        &adapter,
+        &gpu,
+        &queue,
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+        (1280, 720),
+        &world,
+        &atlas,
+        atmosphere,
+        1,
+    )?;
+    let budget = Budget {
+        cpu_bytes: 4 * 1024 * 1024,
+        gpu_bytes: 3 * 1024 * 1024,
+        source_jobs: 2,
+        upload_bytes_per_frame: 128 * 1024,
+        upload_ms_per_frame: 2.,
+    };
+    layer.configure_streaming(assets.path(), manifest.clone(), budget, &gpu, &queue)?;
+    let mut render_target = target(&gpu);
+    let mut view_target = render_target.create_view(&Default::default());
+    let mut runtime = verse::runtime::WorldRuntime::bare();
+    let initial_position = runtime.player.pos;
+    let mut profile = FrameProfile::new(120);
+    let mut rendered = 0;
+    let mut recovery_cpu_ms = 0.;
+    let mut changes = 0;
+    let mut cancellations = 0;
+    let mut refusals = 0;
+    let mut recoveries = 0;
+    let ui = UiBatch::default();
+    let started = Instant::now();
+    for frame in 1..=frames {
+        let cycle = Instant::now();
+        let tile = ((frame - 1) / 24).min(47) as usize;
+        if frame == 1 || (frame - 1) % 24 == 0 {
+            layer.streaming().unwrap().request(&[roots[tile].clone()])?;
+            changes += 1;
+        }
+        if frame == 50 {
+            // Cancel a just-requested view, then request another valid region.
+            layer.streaming().unwrap().request(&[roots[47].clone()])?;
+        }
+        if frame == 51 {
+            layer
+                .streaming()
+                .unwrap()
+                .change_zone(assets.path(), manifest.clone(), &gpu)?;
+            layer.streaming().unwrap().request(&[roots[tile].clone()])?;
+            cancellations += 1;
+        }
+        if frame == 150 {
+            if layer.streaming().unwrap().request(&roots).is_ok() {
+                return Err("Oversized view was admitted".into());
+            }
+            refusals += 1;
+        }
+        if frame == 360 {
+            let recovery_start = Instant::now();
+            // Recreate actual GPU state on a replacement device; authority lives outside the layer.
+            gpu.poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(Duration::from_secs(5)),
+            })
+            .map_err(|e| e.to_string())?;
+            gpu.destroy();
+            let opened = pollster::block_on(device(&instance))?;
+            adapter = opened.0;
+            gpu = opened.1;
+            queue = opened.2;
+            layer.rebuild(&adapter, &gpu, &queue)?;
+            render_target = target(&gpu);
+            view_target = render_target.create_view(&Default::default());
+            recoveries += 1;
+            recovery_cpu_ms = recovery_start.elapsed().as_secs_f64() * 1000.;
+        }
+        runtime.tick(&verse::controller::InputState::default(), 1. / 60.);
+        if runtime.player.pos != initial_position {
+            return Err("Streaming changed world authority position".into());
+        }
+        let x = tile as f32 * 32. + 16.;
+        let eye = Vec3::new(x, 18., 22.);
+        let view = View {
+            eye,
+            view_proj: Mat4::perspective_rh(60f32.to_radians(), 16. / 9., 0.1, 100.)
+                * Mat4::look_at_rh(eye, Vec3::new(x, 0., 0.), Vec3::Y),
+        };
+        let dynamic = Mesh::default();
+        let mut encoder = gpu.create_command_encoder(&Default::default());
+        let render_start = Instant::now();
+        layer.encode(
+            &gpu,
+            &queue,
+            &mut encoder,
+            &view_target,
+            view,
+            &dynamic,
+            &ui,
+        )?;
+        queue.submit([encoder.finish()]);
+        let source = layer.streaming().unwrap();
+        let t = source.last_frame;
+        let metrics = source.metrics();
+        if metrics.cpu_bytes > budget.cpu_bytes
+            || metrics.gpu_bytes > budget.gpu_bytes
+            || t.upload_bytes > budget.upload_bytes_per_frame
+        {
+            return Err("Streaming exceeded an admitted resource budget".into());
+        }
+        if t.visible_geometry > 0 {
+            rendered += 1;
+        }
+        for (name, value) in [
+            ("stream_pump_cpu_ms", t.cpu_ms),
+            (
+                "frame_encode_submit_cpu_ms",
+                render_start.elapsed().as_secs_f64() * 1000.,
+            ),
+            ("upload_bytes", t.upload_bytes as f64),
+            ("cpu_residency_bytes", metrics.cpu_bytes as f64),
+            ("gpu_residency_bytes", metrics.gpu_bytes as f64),
+            ("visible_geometry", t.visible_geometry as f64),
+            ("time_budget_overruns", f64::from(t.time_budget_exceeded)),
+            ("frame_total_cpu_ms", cycle.elapsed().as_secs_f64() * 1000.),
+        ] {
+            profile.record(frame, name, value);
+        }
+        if let Some(remaining) = Duration::from_secs_f64(1. / 60.).checked_sub(cycle.elapsed()) {
+            std::thread::sleep(remaining);
+        }
+    }
+    gpu.poll(wgpu::PollType::Wait {
+        submission_index: None,
+        timeout: Some(Duration::from_secs(5)),
+    })
+    .map_err(|e| e.to_string())?;
+    let colored_pixels = capture(&gpu, &queue, &render_target, Path::new(output))?;
+    let metrics = layer.streaming().unwrap().metrics();
+    if metrics.evictions == 0 || rendered == 0 || metrics.device_rebuilds != 1 {
+        return Err("Traversal did not exercise eviction, rendering, and device rebuild".into());
+    }
+    let report = serde_json::json!({"schema":"verse.streaming-traversal.v1","manifest":manifest_id,"dataset_encoded_bytes":bytes,"chunks":manifest.chunks.len(),"budget":budget,"metrics":metrics,"frames":frames,"visible_geometry_frames":rendered,"view_changes":changes,"cancellations":cancellations,"capacity_refusals":refusals,"device_recreations":recoveries,"device_rebuild_cpu_ms":recovery_cpu_ms,"textured_terrain_pixels":colored_pixels,"world_authority_position_preserved":true,"resolution":[1280,720],"device":{"name":info.name,"backend":format!("{:?}",info.backend),"driver":info.driver_info},"wall_seconds":started.elapsed().as_secs_f64(),"profile":"debug","measurements":profile.summary(),"limits":"Static opaque/cutout geometry and single-level sRGB images; managed payload memory, not driver RSS; one call in progress may exceed the soft time limit. No networked population or physical scanout claim."});
+    std::fs::write(
+        output,
+        serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    println!("{}", serde_json::to_string(&metrics).unwrap());
+    Ok(())
+}
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
