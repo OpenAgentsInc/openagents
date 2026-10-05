@@ -1,7 +1,7 @@
 //! Instance-scoped, read-only mesh and capsule queries in double-precision meters.
 use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 mod profiling;
 pub use profiling::{QueryMetrics, QueryProfile};
@@ -115,8 +115,8 @@ struct Node {
 /// Validated source triangles and a deterministic median-split bounding hierarchy.
 #[derive(Clone, Debug)]
 pub struct Mesh {
-    triangles: Vec<Triangle>,
-    nodes: Vec<Node>,
+    triangles: Arc<Vec<Triangle>>,
+    nodes: Arc<Vec<Node>>,
     solid_box: Option<Bounds>,
 }
 impl Mesh {
@@ -175,8 +175,8 @@ impl Mesh {
             }
         }
         let mut mesh = Self {
-            triangles,
-            nodes: vec![],
+            triangles: Arc::new(triangles),
+            nodes: Arc::new(vec![]),
             solid_box: None,
         };
         mesh.build((0..mesh.triangles.len()).collect());
@@ -189,13 +189,13 @@ impl Mesh {
             .reduce(Bounds::union)
             .unwrap();
         let index = self.nodes.len();
-        self.nodes.push(Node {
+        Arc::make_mut(&mut self.nodes).push(Node {
             bounds,
             children: None,
             triangles: vec![],
         });
         if indices.len() <= 8 {
-            self.nodes[index].triangles = indices;
+            Arc::make_mut(&mut self.nodes)[index].triangles = indices;
             return index;
         }
         let extent = bounds.max - bounds.min;
@@ -213,7 +213,7 @@ impl Mesh {
         let right = indices.split_off(indices.len() / 2);
         let left = self.build(indices);
         let right = self.build(right);
-        self.nodes[index].children = Some([left, right]);
+        Arc::make_mut(&mut self.nodes)[index].children = Some([left, right]);
         index
     }
     pub fn triangles(&self) -> &[Triangle] {
@@ -999,6 +999,36 @@ mod tests {
         let hit = scene.overlap(crossing, Filter::blocking(1)).unwrap().hits[0];
         assert!((hit.penetration - 0.05).abs() < 1e-9);
         assert_eq!(hit.normal, DVec3::Y);
+    }
+    #[test]
+    fn scene_clones_share_mesh_buffers_and_keep_collider_membership_independent() {
+        let id = key(1, 1, 0);
+        let mut original = Scene::default();
+        original.insert(wall(1., id, Usage::Blocking, 1)).unwrap();
+        let cloned = original.clone();
+        let before = cloned
+            .ray(DVec3::ZERO, DVec3::X, 5., Filter::blocking(1))
+            .unwrap();
+        let a = &original.colliders[&id].mesh;
+        let b = &cloned.colliders[&id].mesh;
+        assert!(Arc::ptr_eq(&a.triangles, &b.triangles));
+        assert!(Arc::ptr_eq(&a.nodes, &b.nodes));
+        original.remove(id).unwrap();
+        assert!(
+            original
+                .ray(DVec3::ZERO, DVec3::X, 5., Filter::blocking(1))
+                .unwrap()
+                .hits
+                .is_empty()
+        );
+        drop(original);
+        assert_eq!(
+            cloned
+                .ray(DVec3::ZERO, DVec3::X, 5., Filter::blocking(1))
+                .unwrap()
+                .hits,
+            before.hits
+        );
     }
     #[test]
     fn life_instance_layer_and_usage_filters_are_independent() {

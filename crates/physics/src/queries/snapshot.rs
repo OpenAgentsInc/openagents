@@ -139,7 +139,7 @@ impl Scene {
                 }
             } else {
                 GeometrySnapshot::Triangles {
-                    triangles: shape.mesh.triangles.clone(),
+                    triangles: shape.mesh.triangles.to_vec(),
                 }
             };
             colliders.push(ShapeSnapshot {
