@@ -17,7 +17,9 @@ inside Verse while people watch, answer, and approve merges, with panels
 harvested from Zeron. [Verse networking](networking.md) sets how Nostr, direct channels, the
 multiplayer chamber, and the Agent Studio fit together, and which NIPs the
 studio uses. [Everglade](everglade.md) is the proposed forest-glade zone
-where that studio lives, built from CC0 Quaternius kits.
+where that studio lives, built from CC0 Quaternius kits. [The Apprentice's Road](first-agent-quests.md) is a
+proposed quest line that eases new players from a first walk in the glade to
+a team of agents on their own repository.
 
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 
