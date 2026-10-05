@@ -221,30 +221,58 @@ pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, bar: &
     let help = help(swarm);
     ui.text(atlas, centered(&name), y - line - 2.0, &name, NAME);
     ui.text(atlas, centered(help), y - 2.0 * line - 4.0, help, HINT);
-    // The cast bar, well over the tray as an MMO's is.
-    if let Some(k) = swarm.casting {
-        let cast_width = 240.0 * u;
-        let cast_height = 14.0 * u;
-        let cast_left = (size[0] - cast_width) * 0.5;
-        let cast_y = size[1] * 0.68;
-        meter(
-            ui,
-            atlas,
-            [cast_left, cast_y, cast_width, cast_height],
-            k,
-            WELL,
-            CAST,
-            u,
-        );
-        let title = "Meteor Swarm";
-        ui.text(
-            atlas,
-            centered(title),
-            cast_y - line - 2.0,
-            title,
-            CAST_TEXT,
-        );
+    draw_cast(ui, atlas, size, swarm);
+}
+
+/// Draws Meteor Swarm's cast bar into `ui` while a cast runs, well over
+/// the tray as an MMO's is.
+pub fn draw_cast(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], swarm: &meteor::Status) {
+    let Some(k) = swarm.casting else {
+        return;
+    };
+    let u = tray::unit(size);
+    let cast_width = 240.0 * u;
+    let cast_height = 14.0 * u;
+    let cast_left = (size[0] - cast_width) * 0.5;
+    let cast_y = size[1] * 0.68;
+    meter(
+        ui,
+        atlas,
+        [cast_left, cast_y, cast_width, cast_height],
+        k,
+        WELL,
+        CAST,
+        u,
+    );
+    let title = "Meteor Swarm";
+    ui.text(
+        atlas,
+        (size[0] - atlas.measure(title)) * 0.5,
+        cast_y - atlas.line - 2.0,
+        title,
+        CAST_TEXT,
+    );
+}
+
+/// Draws Everglade's Meteor Swarm overlay into `ui`: while the spell aims
+/// or casts, its line of help over a tray of `count` slots raised `bottom`
+/// points, and its cast bar.
+pub fn draw_town(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    size: [f32; 2],
+    bottom: f32,
+    count: usize,
+    swarm: &meteor::Status,
+) {
+    if !swarm.targeting && swarm.casting.is_none() {
+        return;
     }
+    let [_, top, _, _] = tray::frame_of(size, bottom, count);
+    let help = help(swarm);
+    let x = (size[0] - atlas.measure(help)) * 0.5;
+    ui.text(atlas, x, top - atlas.line - 4.0, help, HINT);
+    draw_cast(ui, atlas, size, swarm);
 }
 
 /// A framed bar at `[left, top, width, height]` filled `k` of the way

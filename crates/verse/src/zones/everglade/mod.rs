@@ -105,6 +105,9 @@ pub(crate) struct Everglade {
     extra_blocks: Vec<(crate::controller::Footprint, f32)>,
     /// The demolition yard, when Everglade opened as one (`--demolition`).
     demolition: Option<Box<demolition::Demolition>>,
+    /// The town's destructible buildings, once the zone's static scene is
+    /// in place ([`Self::start_town`]).
+    town: Option<Box<demolition::town::Town>>,
 }
 
 impl Everglade {
@@ -145,7 +148,104 @@ impl Everglade {
             probes: None,
             extra_blocks: Vec::new(),
             demolition: None,
+            town: None,
         })
+    }
+
+    /// Lets the sledgehammer and Meteor Swarm break the town's buildings,
+    /// drawn in `scene`, the static scene [`Self::world`] built from
+    /// `pack` ([`demolition::town`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack lacks a placed model.
+    pub fn start_town(&mut self, pack: &ZonePack, scene: Arc<TexturedScene>) -> Result<(), String> {
+        let mut town = demolition::town::Town::new(pack, &layout::placements(), scene)?;
+        town.set_track(
+            self.cast
+                .as_ref()
+                .and_then(player::Cast::swing_track)
+                .cloned(),
+        );
+        if let Some(solids) = town.take_solids() {
+            self.solids = solids;
+            self.refresh_blocks();
+        }
+        self.town = Some(Box::new(town));
+        Ok(())
+    }
+
+    /// The town's destructible buildings, once started.
+    #[must_use]
+    pub fn town(&self) -> Option<&demolition::town::Town> {
+        self.town.as_deref()
+    }
+
+    /// Meteor Swarm's state, in the demolition yard or the town.
+    #[must_use]
+    pub fn swarm(&self) -> Option<&demolition::meteor::Swarm> {
+        match (&self.demolition, &self.town) {
+            (Some(yard), _) => Some(yard.swarm()),
+            (None, Some(town)) => Some(town.swarm()),
+            _ => None,
+        }
+    }
+
+    /// Enters Meteor Swarm's targeting for `player`, or leaves it.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the spell can't be cast now, or that there is nothing
+    /// here to cast it at.
+    pub fn meteor_swarm(&mut self, player: &PlayerController) -> Result<(), String> {
+        match (&mut self.demolition, &mut self.town) {
+            (Some(yard), _) => yard.meteor_swarm(),
+            (None, Some(town)) => town.meteor_swarm(player),
+            _ => Err("Meteor Swarm needs the town's buildings".into()),
+        }
+    }
+
+    /// Puts Meteor Swarm's circle where the ray from `origin` along
+    /// `direction` meets the ground. Returns whether it moved.
+    pub fn aim_swarm(&mut self, origin: Vec3, direction: Vec3, player: &PlayerController) -> bool {
+        match (&mut self.demolition, &mut self.town) {
+            (Some(yard), _) => yard.aim(origin, direction, player),
+            (None, Some(town)) => town.aim(origin, direction, player),
+            _ => false,
+        }
+    }
+
+    /// Casts Meteor Swarm at its circle. Returns whether the cast began.
+    pub fn confirm_swarm(&mut self, player: &PlayerController) -> bool {
+        match (&mut self.demolition, &mut self.town) {
+            (Some(yard), _) => yard.confirm(player),
+            (None, Some(town)) => town.confirm(player),
+            _ => false,
+        }
+    }
+
+    /// Leaves Meteor Swarm's targeting or stops its cast. Returns whether
+    /// there was either to stop.
+    pub fn cancel_swarm(&mut self) -> bool {
+        let busy = self
+            .swarm()
+            .is_some_and(|swarm| swarm.targeting() || swarm.casting());
+        match (&mut self.demolition, &mut self.town) {
+            (Some(yard), _) => yard.cancel(),
+            (None, Some(town)) => town.cancel(),
+            _ => {}
+        }
+        busy
+    }
+
+    /// How far the meteors' blasts shake the camera this frame.
+    #[must_use]
+    pub fn shake(&self) -> Vec3 {
+        match (&self.demolition, &self.town) {
+            (Some(yard), _) => yard.shake(),
+            (None, Some(town)) => town.shake(),
+            _ => Vec3::ZERO,
+        }
     }
 
     /// Everglade's ground and sky with none of its layout: the demolition
@@ -183,6 +283,7 @@ impl Everglade {
         self.solids = demolition::solids();
         let blocks = yard.take_blocks().unwrap_or_default();
         self.demolition = Some(Box::new(yard));
+        self.town = None;
         self.set_extra_blocks(blocks);
         Ok(())
     }
@@ -193,26 +294,23 @@ impl Everglade {
         self.demolition.as_deref()
     }
 
-    /// The demolition yard to change, when this zone is one.
-    pub fn demolition_mut(&mut self) -> Option<&mut demolition::Demolition> {
-        self.demolition.as_deref_mut()
-    }
-
-    /// Swings the yard's sledgehammer, or rebuilds its cottages with
-    /// `rebuild`.
+    /// Swings the sledgehammer, or with `rebuild` rebuilds the yard's
+    /// cottages or restores the town's buildings.
     ///
     /// # Errors
     ///
-    /// Returns a message outside the demolition yard.
+    /// Returns a message where there is nothing to swing at.
     pub fn demolish(&mut self, rebuild: bool) -> Result<(), String> {
-        let yard = self
-            .demolition
-            .as_mut()
-            .ok_or("Open the demolition yard first")?;
-        if rebuild {
-            yard.reset();
-        } else {
-            yard.swing();
+        match (&mut self.demolition, &mut self.town) {
+            (Some(yard), _) if rebuild => yard.reset(),
+            (Some(yard), _) => {
+                yard.swing();
+            }
+            (None, Some(town)) if rebuild => town.restore(),
+            (None, Some(town)) => {
+                town.swing();
+            }
+            _ => return Err("The sledgehammer needs the town's buildings".into()),
         }
         Ok(())
     }
@@ -532,9 +630,12 @@ impl Everglade {
     #[must_use]
     pub fn spell_mesh_from(&self, player: &PlayerController, eye: Vec3) -> Mesh {
         let mut mesh = self.spells.mesh(player, eye);
+        let hold = self.cast.as_ref().and_then(player::Cast::hold);
         if let Some(yard) = &self.demolition {
-            let hold = self.cast.as_ref().and_then(player::Cast::hold);
             mesh.extend(&yard.mesh(player, eye, hold));
+        }
+        if let Some(town) = &self.town {
+            mesh.extend(&town.mesh(player, eye, hold));
         }
         mesh
     }
@@ -593,8 +694,24 @@ impl Everglade {
             self.refresh_blocks();
         }
         if let Some(cast) = &mut self.cast {
-            cast.set_swing(self.demolition.as_ref().and_then(|yard| yard.chop()));
+            let chop = match (&self.demolition, &self.town) {
+                (Some(yard), _) => yard.chop(),
+                (None, Some(town)) => town.chop(),
+                _ => None,
+            };
+            cast.set_swing(chop);
             cast.advance(at, seats, dt);
+        }
+        let solids = self.town.as_mut().and_then(|town| {
+            town.tick(dt, at);
+            town.take_solids()
+        });
+        if let Some(solids) = solids {
+            self.solids = solids;
+            self.refresh_blocks();
+        }
+        if let Some(town) = &mut self.town {
+            town.prepare(self.cast.as_ref().map(|cast| cast.figure().scene).as_ref());
         }
         let blocks = self.demolition.as_mut().and_then(|yard| {
             yard.tick(dt, at);
@@ -668,6 +785,9 @@ impl Everglade {
                 if let Some(yard) = &self.demolition {
                     figure = yard.figure(Some(figure));
                 }
+                if let Some(town) = &self.town {
+                    figure = town.figure(figure, self.probes.as_deref());
+                }
                 Mesh {
                     figure: Some(figure),
                     ..Mesh::default()
@@ -681,6 +801,9 @@ impl Everglade {
                 };
                 if let Some(yard) = &self.demolition {
                     mesh.figure = Some(yard.figure(None));
+                }
+                if let Some(town) = &self.town {
+                    mesh.figure = town.own_figure();
                 }
                 mesh
             }

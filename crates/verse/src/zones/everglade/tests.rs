@@ -31,7 +31,7 @@ pub(super) fn pack() -> &'static ZonePack {
 }
 
 /// The zone's static world, built once for every test.
-fn world() -> &'static World {
+pub(super) fn world() -> &'static World {
     static WORLD: OnceLock<World> = OnceLock::new();
     WORLD.get_or_init(|| Everglade::world(pack()).expect("the layout builds from the pack"))
 }

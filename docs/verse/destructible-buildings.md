@@ -2,7 +2,9 @@
 
 Status: research and specification, October 4, 2026. Nothing here is
 implemented by this document; a standalone phase D1 demo runs with `verse
---demolition` ([`demolition/`](../../crates/verse/src/zones/everglade/demolition/mod.rs)).
+--demolition` ([`demolition/`](../../crates/verse/src/zones/everglade/demolition/mod.rs)),
+and Everglade's own town breaks under the same rules
+([Everglade's town](#everglades-town)).
 The owner asked: "If I have a huge sledgehammer
 and I wanna start attacking buildings and damaging them, and if they fall
 apart, to start crumbling and leaning or whatever — whatever is needed and
@@ -591,6 +593,43 @@ for 1.6 s past the yard's 10 m/s cap, and the support graph brings down
 what the blast left unsupported. `R` rebuilds the cottages and refills the
 mana. `crates/verse/src/zones/everglade/demolition/meteor.rs` holds the
 tuning.
+
+### Everglade's town
+
+The owner asked: "Add destructibility and Meteor Swarm to the current
+Everglade, same no-cooldown, no-mana." The yard's rules, kit pieces, chunks,
+sledgehammer, and spell now act on Everglade's town
+([`demolition/town.rs`](../../crates/verse/src/zones/everglade/demolition/town.rs)),
+through the shared [`kit.rs`](../../crates/verse/src/zones/everglade/demolition/kit.rs),
+[`hammer.rs`](../../crates/verse/src/zones/everglade/demolition/hammer.rs),
+and [`site.rs`](../../crates/verse/src/zones/everglade/demolition/site.rs).
+
+- **Controls.** Key 6 on Everglade's hotbar aims Meteor Swarm (a click or a
+  tap casts it, right click or `Esc` cancels) and key 7 swings the
+  sledgehammer. Both cost nothing and have no cooldown; the 2.5 s cast bar
+  and the targeting circle stay. `R` restores every building.
+- **Buildings.** Kit wall sections that meet side by side, at a corner, or
+  one over another make one building. Its posts, roof spans, gables,
+  chimney, glass, shutters, door frames, and door leaves map onto the
+  yard's pieces with a story and a roof span, so upper stories need the
+  section under them and a wide roof's inner eaves rest on the south and
+  north walls. Generated whole-model buildings, the open pavilion and
+  bandshell, the arch, the boards, and the furniture are not kit walls and
+  stay whole.
+- **The studio.** A building over the workshop hall, the strongroom, or a
+  station's standing point is protected: a swing there floats "Protected",
+  and a meteor bursts on it without harm.
+- **Laziness.** A building stays in the merged static cells until a swing or
+  a blast reaches it. It is then raised into the rules as static bodies, and
+  only its damaged, loose, or broken pieces leave the static cells, by
+  rewriting their placements' index ranges to degenerate triangles
+  (`TexturedScene::edits`); their chunks draw in the frame's figure. The
+  blockers and roof surfaces of a raised building come from its standing
+  pieces.
+- **Budgets.** At most four raised buildings and 220 chunks on desktop, and
+  two and 96 in a browser or on a phone. A raised building that took no
+  damage goes back after 2 s; a damaged one regrows whole after 60 s of rest
+  with the player 30 m away.
 
 ### D2: Structural collapse and leaning
 

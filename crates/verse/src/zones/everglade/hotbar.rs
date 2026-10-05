@@ -1,7 +1,9 @@
 //! Everglade's hotbar, drawn as the chamber's action bar is: a beveled tray
 //! of game-icons.net art with a number key on each slot. Levitate comes
 //! first, held to rise, then the spells that need no enemy
-//! ([`super::spells`]), none with a cooldown. The icons are sprites in the
+//! ([`super::spells`]), none with a cooldown, and last Meteor Swarm and the
+//! sledgehammer, which break the town's buildings
+//! ([`super::demolition::town`]). The icons are sprites in the
 //! HUD's atlas, added by [`add_sprites`]. Resting the pointer on a slot, or
 //! holding a touch on it, shows its card ([`crate::tooltip`]) with the
 //! name and sentence kept in [`SLOTS`].
@@ -11,10 +13,10 @@ use crate::tooltip::{self, Card, Tip, palette};
 use crate::ui::{Atlas, UiBatch};
 
 /// How many slots the bar has.
-pub const COUNT: usize = 5;
+pub const COUNT: usize = 7;
 
 /// One slot: the intent it sends, its icon sprite, and its card's name and
-/// sentence. Number keys 1 to 5 press them in order.
+/// sentence. Number keys 1 to 7 press them in order.
 pub const SLOTS: [(Intent, &str, Tip); COUNT] = [
     (
         Intent::Levitate,
@@ -56,10 +58,34 @@ pub const SLOTS: [(Intent, &str, Tip); COUNT] = [
             "Raises another pair of granite panels 4 m ahead that block your way for ten minutes.",
         ),
     ),
+    (
+        Intent::MeteorSwarm,
+        "meteor-swarm-icon",
+        Tip::new(
+            "Meteor Swarm",
+            "Calls down six blazing meteors on a circle of ground you choose, blasting apart the town's buildings they reach; R restores the town.",
+        ),
+    ),
+    (
+        Intent::Swing,
+        "sledgehammer-icon",
+        Tip::new(
+            "Sledgehammer",
+            "Swing a two-handed sledgehammer at the building ahead: each blow cracks it, and at zero hit points it breaks and drops what it held up.",
+        ),
+    ),
 ];
 
 /// Each slot's keys, for its card.
-const KEYS: [&str; COUNT] = ["Hold 1 or L", "Key 2", "Key 3", "Key 4", "Key 5"];
+const KEYS: [&str; COUNT] = [
+    "Hold 1 or L",
+    "Key 2",
+    "Key 3",
+    "Key 4",
+    "Key 5",
+    "Key 6",
+    "Key 7",
+];
 
 /// Whether a slot can be used now, whether its toggle or spell is on, and
 /// the fraction of its cooldown left (always 0 in Everglade; the Grove's
@@ -139,6 +165,13 @@ pub fn card(index: usize) -> Option<Card> {
     let mut card = Card::of(*tip).detail(KEYS[index], palette::KEY);
     if super::spells::Spell::of(*intent).is_some() {
         card = card.detail("No cooldown", palette::TIME);
+    }
+    if *intent == Intent::MeteorSwarm {
+        use super::demolition::meteor;
+        card = card
+            .detail("No mana, no cooldown", palette::MANA)
+            .detail(format!("{} s cast", meteor::CAST), palette::TIME)
+            .detail(format!("{:.0} m range", meteor::RANGE), palette::RULE);
     }
     Some(card)
 }

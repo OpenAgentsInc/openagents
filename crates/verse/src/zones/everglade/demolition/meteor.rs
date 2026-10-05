@@ -30,7 +30,7 @@
 //! `meteor_explosion`, `cast_embers`, and `scorch_embers`), run by
 //! [`crate::fx`].
 
-use super::site::{Blow, Site};
+use super::site::{Blow, Target};
 use crate::controller::PlayerController;
 use crate::fx::{Handle, Particles, Spawn};
 use crate::mesh::{Mesh, Vertex};
@@ -262,6 +262,12 @@ impl Swarm {
         self.aim = Some(clamp_to_range(ground, player.pos));
     }
 
+    /// Puts the circle `ahead` meters in front of `player`, where a touch
+    /// screen without a cursor first shows it.
+    pub fn aim_ahead(&mut self, player: &PlayerController, ahead: f32) {
+        self.aim_at(player.pos + player.forward() * ahead, player);
+    }
+
     /// Starts the cast at the circle. Returns whether it started.
     pub fn confirm(&mut self, player: &PlayerController) -> bool {
         let Some(at) = self.aim() else {
@@ -313,7 +319,7 @@ impl Swarm {
 
     /// Advances the cast, the meteors, and their fire for `player`, and
     /// explodes what lands on `site`. Returns each explosion's blows.
-    pub fn tick(&mut self, dt: f32, player: &PlayerController, site: &mut Site) -> Vec<Blow> {
+    pub fn tick(&mut self, dt: f32, player: &PlayerController, site: &mut dyn Target) -> Vec<Blow> {
         self.clock += dt;
         self.cooldown = (self.cooldown - dt).max(0.0);
         self.idle += dt;
@@ -411,7 +417,7 @@ impl Swarm {
     /// The cast completes: the mana and cooldown are spent, the damage is
     /// rolled, and the meteors set out for points through the circle at
     /// `at`, from the side of `from`.
-    fn release(&mut self, at: Vec3, from: Vec3, site: &mut Site) {
+    fn release(&mut self, at: Vec3, from: Vec3, site: &mut dyn Target) {
         self.mana -= COST;
         self.cooldown = COOLDOWN;
         self.idle = 0.0;
@@ -457,7 +463,7 @@ impl Swarm {
 
     /// One meteor detonates at `at`: the site takes the blast, and the
     /// fire, sparks, scorch, and shake begin.
-    fn explode(&mut self, at: Vec3, site: &mut Site) -> Vec<Blow> {
+    fn explode(&mut self, at: Vec3, site: &mut dyn Target) -> Vec<Blow> {
         let ground = height(at.x, at.z);
         let center = Vec3::new(at.x, at.y.max(ground + 0.4), at.z);
         let blows = site.explode(center, BLAST, self.damage.total(), THROW);

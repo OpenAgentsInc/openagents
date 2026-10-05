@@ -54,7 +54,9 @@ fn fall_time(runtime: &mut WorldRuntime, at: Vec3) -> f32 {
 
 #[test]
 fn the_hotbar_holds_levitate_then_four_spells_with_keys_one_to_five() {
-    let intents: Vec<_> = SLOTS.iter().map(|(intent, ..)| *intent).collect();
+    // Meteor Swarm and the sledgehammer follow on 6 and 7
+    // (`demolition::town_tests`).
+    let intents: Vec<_> = SLOTS[..5].iter().map(|(intent, ..)| *intent).collect();
     assert_eq!(
         intents,
         [
@@ -65,7 +67,7 @@ fn the_hotbar_holds_levitate_then_four_spells_with_keys_one_to_five() {
             Intent::WallOfStone,
         ]
     );
-    assert_eq!(COUNT, 5);
+    assert_eq!(COUNT, 7);
     for (index, spell) in Spell::ALL.into_iter().enumerate() {
         assert_eq!(Spell::of(spell.intent()), Some(spell));
         assert_eq!(SLOTS[index + 1].0, spell.intent());

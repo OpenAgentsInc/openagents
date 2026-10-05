@@ -299,6 +299,89 @@ pub struct TexturedScene {
     /// ([`crate::pbr::textured_bake::SceneBaker`]); the renderer writes them
     /// over the uploaded vertices once.
     pub baked: BakedVertices,
+    /// Rewrites of ranges of the merged indices, such as a zone hiding the
+    /// placements of a building it now draws itself
+    /// ([`Self::index_ranges`]); the renderer applies each change once.
+    pub edits: IndexEdits,
+}
+
+/// One placement's primitive in a merged scene: its triangles' indices
+/// from `first`, `count` of them, which address the merged vertices from
+/// `base` on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IndexRange {
+    pub first: u32,
+    pub count: u32,
+    pub base: u32,
+    /// The primitive's index in its mesh.
+    pub primitive: usize,
+}
+
+/// Ranges of a scene's merged indices rewritten after the upload, shared
+/// between a zone and the renderer. Each range keeps its latest contents
+/// and the revision that wrote them, so an upload of the same scene
+/// replays every range and a renderer that has seen revision `n` applies
+/// only the later ones.
+///
+/// Slots always compare equal: they carry changes, not scene content.
+#[derive(Clone, Default)]
+pub struct IndexEdits(std::sync::Arc<std::sync::Mutex<IndexEditState>>);
+
+#[derive(Default)]
+struct IndexEditState {
+    revision: u64,
+    /// The first merged index of each range, its revision, and its indices.
+    ranges: BTreeMap<u32, (u64, Vec<u32>)>,
+}
+
+impl IndexEdits {
+    /// Sets the merged indices from `first` on to `indices`.
+    pub fn write(&self, first: u32, indices: Vec<u32>) {
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.revision += 1;
+        let revision = state.revision;
+        state.ranges.insert(first, (revision, indices));
+    }
+
+    /// The latest revision written.
+    #[must_use]
+    pub fn revision(&self) -> u64 {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .revision
+    }
+
+    /// Every range written after revision `seen`, and the latest revision.
+    #[must_use]
+    pub fn since(&self, seen: u64) -> (Vec<(u32, Vec<u32>)>, u64) {
+        let state = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let changed = state
+            .ranges
+            .iter()
+            .filter(|(_, (revision, _))| *revision > seen)
+            .map(|(first, (_, indices))| (*first, indices.clone()))
+            .collect();
+        (changed, state.revision)
+    }
+}
+
+impl PartialEq for IndexEdits {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for IndexEdits {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("IndexEdits")
+    }
 }
 
 /// A one-shot delivery of baked vertices, shared between a bake and the
@@ -509,6 +592,95 @@ impl TexturedScene {
             });
         }
         Ok(merged)
+    }
+
+    /// Where each placement's triangles land in [`Self::merge`]'s indices:
+    /// for every placement, one range per primitive with triangles. Only
+    /// counts are taken, so this is cheap beside a merge.
+    #[must_use]
+    pub fn index_ranges(&self) -> Vec<Vec<IndexRange>> {
+        type Key = (Pass, usize, i32, i32);
+        // Each cell's index and vertex counts so far.
+        let mut counts: BTreeMap<Key, (u32, u32)> = BTreeMap::new();
+        let mut local: Vec<Vec<(Key, u32, u32, u32, usize)>> =
+            Vec::with_capacity(self.placements.len());
+        for placement in &self.placements {
+            let t = placement.transform;
+            let cell = (
+                (t.w_axis.x / CELL).floor() as i32,
+                (t.w_axis.z / CELL).floor() as i32,
+            );
+            let mut ranges = Vec::new();
+            let primitives = self
+                .meshes
+                .get(placement.mesh)
+                .map_or(&[][..], |m| &m.primitives);
+            for (index, p) in primitives.iter().enumerate() {
+                let Some(material) = self.materials.get(p.material) else {
+                    continue;
+                };
+                let key = (material.alpha.pass(), p.material, cell.0, cell.1);
+                let count = (p.indices.len() / 3 * 3) as u32;
+                let (indices, vertices) = counts.entry(key).or_default();
+                if count > 0 {
+                    ranges.push((key, *indices, count, *vertices, index));
+                }
+                *indices += count;
+                *vertices += p.vertices.len() as u32;
+            }
+            local.push(ranges);
+        }
+        // Cells without triangles add nothing to the merge.
+        let mut bases: BTreeMap<Key, (u32, u32)> = BTreeMap::new();
+        let (mut first, mut base) = (0u32, 0u32);
+        for (key, (indices, vertices)) in counts {
+            if indices > 0 {
+                bases.insert(key, (first, base));
+                first += indices;
+                base += vertices;
+            }
+        }
+        local
+            .into_iter()
+            .map(|ranges| {
+                ranges
+                    .into_iter()
+                    .map(|(key, at, count, offset, primitive)| {
+                        let (first, base) = bases[&key];
+                        IndexRange {
+                            first: first + at,
+                            count,
+                            base: base + offset,
+                            primitive,
+                        }
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// The merged indices `range` of placement `placement` holds, as
+    /// [`Self::merge`] writes them.
+    #[must_use]
+    pub fn range_indices(&self, placement: usize, range: &IndexRange) -> Vec<u32> {
+        let Some(p) = self.placements.get(placement) else {
+            return Vec::new();
+        };
+        let mirrored = p.transform.determinant() < 0.0;
+        let Some(primitive) = self
+            .meshes
+            .get(p.mesh)
+            .and_then(|m| m.primitives.get(range.primitive))
+        else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(range.count as usize);
+        for triangle in primitive.indices.chunks_exact(3) {
+            let [a, b, c] = [triangle[0], triangle[1], triangle[2]].map(|i| i + range.base);
+            out.extend(if mirrored { [a, c, b] } else { [a, b, c] });
+        }
+        out.truncate(range.count as usize);
+        out
     }
 
     /// Imports a static glTF 2.0 file as one mesh and returns its index;
@@ -1179,6 +1351,46 @@ mod tests {
                 assert!(p.cmpge(batch.min).all() && p.cmple(batch.max).all());
             }
         }
+    }
+
+    #[test]
+    fn index_ranges_find_each_placements_triangles_in_the_merge() {
+        let mut scene = scene(&[AlphaMode::Opaque, AlphaMode::Blend]);
+        scene.place(0, Mat4::from_translation(Vec3::new(1.0, 0.0, 1.0)));
+        scene.place(1, Mat4::from_translation(Vec3::new(2.0, 0.0, 2.0)));
+        scene.place(0, Mat4::from_translation(Vec3::new(9.0, 0.0, 1.0)));
+        scene.place(0, Mat4::from_translation(Vec3::new(3.0, 0.0, 2.0)));
+        let merged = scene.merge().unwrap();
+        let ranges = scene.index_ranges();
+        assert_eq!(ranges.len(), 4);
+        for (index, (placement, ranges)) in scene.placements.iter().zip(&ranges).enumerate() {
+            assert_eq!(ranges.len(), 1);
+            let IndexRange { first, count, .. } = ranges[0];
+            assert_eq!(
+                scene.range_indices(index, &ranges[0]),
+                merged.indices[first as usize..(first + count) as usize]
+            );
+            let at = placement.transform.w_axis.truncate();
+            // Every vertex the range draws is this placement's quad.
+            for &i in &merged.indices[first as usize..(first + count) as usize] {
+                let p = Vec3::from(merged.vertices[i as usize].pos);
+                assert!(p.x >= at.x - 1e-4 && p.x <= at.x + 1.0 + 1e-4, "{p} {at}");
+                assert!((p.z - at.z).abs() < 1e-4, "{p} {at}");
+            }
+        }
+        // The ranges cover the merge once.
+        let total: u32 = ranges.iter().flatten().map(|r| r.count).sum();
+        assert_eq!(total as usize, merged.indices.len());
+        // Edits replay from any revision seen.
+        let edits = IndexEdits::default();
+        edits.write(6, vec![0; 6]);
+        edits.write(0, vec![1; 6]);
+        assert_eq!(edits.revision(), 2);
+        assert_eq!(edits.since(0).0.len(), 2);
+        assert_eq!(edits.since(1).0, vec![(0, vec![1; 6])]);
+        edits.write(6, vec![2; 6]);
+        assert_eq!(edits.since(2).0, vec![(6, vec![2; 6])]);
+        assert_eq!(edits.since(0).0.len(), 2);
     }
 
     #[test]

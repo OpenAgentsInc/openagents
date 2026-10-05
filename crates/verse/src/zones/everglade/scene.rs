@@ -154,7 +154,7 @@ pub(crate) fn copy_material(
 
 /// [`copy_material`], with a kit plaster or roof-tile material replaced by
 /// its neutral image in `paint`'s color.
-fn copy_painted(
+pub(crate) fn copy_painted(
     pack: &ZonePack,
     index: u16,
     scene: &mut TexturedScene,

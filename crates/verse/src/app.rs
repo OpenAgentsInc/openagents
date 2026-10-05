@@ -2265,13 +2265,26 @@ impl App {
                     return self.zone_action(intent);
                 }
             }
-            // 2 to 5 cast the hotbar's spells.
+            // Everglade's town: Escape leaves Meteor Swarm's aim or stops
+            // its cast, and R restores the buildings.
+            if self.in_bare_everglade() && !self.runtime.in_demolition() {
+                if code == KeyCode::Escape && self.runtime.demolition_cancel() {
+                    return;
+                }
+                if code == KeyCode::KeyR {
+                    return self.zone_action(ZoneIntent::Rebuild);
+                }
+            }
+            // 2 to 5 cast the hotbar's spells, 6 aims Meteor Swarm, and 7
+            // swings the sledgehammer.
             if self.in_bare_everglade() {
                 let slot = match code {
                     KeyCode::Digit2 => Some(1),
                     KeyCode::Digit3 => Some(2),
                     KeyCode::Digit4 => Some(3),
                     KeyCode::Digit5 => Some(4),
+                    KeyCode::Digit6 => Some(5),
+                    KeyCode::Digit7 => Some(6),
                     _ => None,
                 };
                 if let Some((intent, ..)) =
@@ -3278,6 +3291,17 @@ impl App {
                             size.map(|v| v / self.scale),
                             HOTBAR_BOTTOM,
                             index,
+                        );
+                    }
+                    // Meteor Swarm's help and cast bar over the tray.
+                    if let Some(swarm) = self.runtime.everglade_swarm() {
+                        zones::everglade::demolition::hotbar::draw_town(
+                            &mut bar,
+                            atlas,
+                            size.map(|v| v / self.scale),
+                            HOTBAR_BOTTOM,
+                            zones::everglade::hotbar::COUNT,
+                            &swarm,
                         );
                     }
                     for vertex in &mut bar.vertices {

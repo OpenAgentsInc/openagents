@@ -22,7 +22,12 @@ fn wall(side: Side, index: u8) -> Role {
     } else {
         5
     };
-    Role::Wall { side, index, count }
+    Role::Wall {
+        side,
+        index,
+        count,
+        story: 0,
+    }
 }
 
 /// A hammer path that passes through the outer face of `piece`.
@@ -111,7 +116,7 @@ fn breaking_two_south_sections_leaves_the_roof_up() {
         let piece = find(&site, wall(Side::South, index));
         site.damage(piece, 1000, site.specs()[piece].center, DVec3::ZERO);
     }
-    let roof = find(&site, Role::Roof);
+    let roof = find(&site, Role::Roof { span: 0, spans: 1 });
     assert_eq!(site.pieces()[roof].status, Status::Standing);
     run(&mut site, 1.0);
     assert_eq!(site.pieces()[roof].status, Status::Standing);
@@ -120,7 +125,7 @@ fn breaking_two_south_sections_leaves_the_roof_up() {
 #[test]
 fn knocking_out_an_eave_wall_drops_the_roof_onto_the_rest() {
     let mut site = site();
-    let roof = find(&site, Role::Roof);
+    let roof = find(&site, Role::Roof { span: 0, spans: 1 });
     let start = site.specs()[roof].center.y as f32;
     for index in 0..4 {
         let piece = find(&site, wall(Side::West, index));
@@ -134,11 +139,18 @@ fn knocking_out_an_eave_wall_drops_the_roof_onto_the_rest() {
     }
     // The chimney and the gables go with it.
     assert_ne!(
-        site.pieces()[find(&site, Role::Chimney)].status,
+        site.pieces()[find(&site, Role::Chimney { span: 0 })].status,
         Status::Standing
     );
     assert_ne!(
-        site.pieces()[find(&site, Role::Gable { side: Side::South })].status,
+        site.pieces()[find(
+            &site,
+            Role::Gable {
+                side: Side::South,
+                span: 0
+            }
+        )]
+        .status,
         Status::Standing
     );
     run(&mut site, 3.0);
@@ -392,7 +404,7 @@ mod meteor_swarm {
     fn the_roof_falls_when_its_walls_are_destroyed() {
         let mut site = site();
         let mut swarm = Swarm::default();
-        let roof = find(&site, Role::Roof);
+        let roof = find(&site, Role::Roof { span: 0, spans: 1 });
         let start = site.specs()[roof].center.y as f32;
         // Just outside the west eave wall's middle.
         let ([cx, cz], [hx, _]) = COTTAGES[0];

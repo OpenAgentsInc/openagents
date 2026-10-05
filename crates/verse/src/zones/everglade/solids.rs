@@ -50,21 +50,51 @@ pub fn build_with(
 ) -> Result<Solids, String> {
     let mut solids = Solids::over(height);
     for placement in placements {
-        let model = pack
-            .model(placement.model)
-            .ok_or_else(|| format!("The Everglade pack has no {}", placement.model))?;
-        let (min, max) = model.bounds();
-        let base = height(placement.at[0], placement.at[1]) + placement.lift;
-        if placement.collision != Collision::None {
-            let top = base + max[1] * placement.scale;
-            for footprint in placement.footprints((min, max)) {
-                solids.add_block(footprint, top);
-            }
-        } else if placement.model.starts_with("village/Roof_RoundTiles")
-            || placement.model == layout::HOUSE_ROOF
-        {
-            let across = placement.transform().transform_vector3(Vec3::X).normalize();
-            solids.add_roof(Roof {
+        let (blocks, roof) = of_placement(pack, placement)?;
+        for (footprint, top) in blocks {
+            solids.add_block(footprint, top);
+        }
+        if let Some(roof) = roof {
+            solids.add_roof(roof);
+        }
+    }
+    for &footprint in boards {
+        solids.add_block(footprint, f32::INFINITY);
+    }
+    Ok(solids)
+}
+
+/// What one placement adds to the solids with the models in `pack`: its
+/// blocks, each a footprint and its top, and a round-tile roof's surface.
+///
+/// # Errors
+///
+/// Returns a message when the pack lacks the placed model.
+pub fn of_placement(
+    pack: &ZonePack,
+    placement: &Placement,
+) -> Result<(Vec<(crate::controller::Footprint, f32)>, Option<Roof>), String> {
+    let model = pack
+        .model(placement.model)
+        .ok_or_else(|| format!("The Everglade pack has no {}", placement.model))?;
+    let (min, max) = model.bounds();
+    let base = height(placement.at[0], placement.at[1]) + placement.lift;
+    if placement.collision != Collision::None {
+        let top = base + max[1] * placement.scale;
+        let blocks = placement
+            .footprints((min, max))
+            .into_iter()
+            .map(|footprint| (footprint, top))
+            .collect();
+        return Ok((blocks, None));
+    }
+    if placement.model.starts_with("village/Roof_RoundTiles")
+        || placement.model == layout::HOUSE_ROOF
+    {
+        let across = placement.transform().transform_vector3(Vec3::X).normalize();
+        return Ok((
+            Vec::new(),
+            Some(Roof {
                 center: placement.at,
                 across: [across.x, across.z],
                 half: [
@@ -73,11 +103,8 @@ pub fn build_with(
                 ],
                 eave: base + min[1] * placement.scale,
                 ridge: base + max[1] * placement.scale,
-            });
-        }
+            }),
+        ));
     }
-    for &footprint in boards {
-        solids.add_block(footprint, f32::INFINITY);
-    }
-    Ok(solids)
+    Ok((Vec::new(), None))
 }

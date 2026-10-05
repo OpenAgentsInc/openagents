@@ -544,6 +544,17 @@ impl Page {
             if let Some(index) = tip {
                 zones::everglade::hotbar::draw_tip(&mut ui, layout, self.css_size(), 0.0, index);
             }
+            // Meteor Swarm's help and cast bar over the tray.
+            if let Some(swarm) = self.runtime.everglade_swarm() {
+                zones::everglade::demolition::hotbar::draw_town(
+                    &mut ui,
+                    layout,
+                    self.css_size(),
+                    0.0,
+                    zones::everglade::hotbar::COUNT,
+                    &swarm,
+                );
+            }
         }
         if let (Some(layout), Some(bar)) = (&self.layout, self.runtime.demolition_bar()) {
             zones::everglade::demolition::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &bar);
@@ -787,12 +798,14 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             }
             // The demolition yard's hotbar: 1 swings the sledgehammer, 2
             // aims Meteor Swarm, and R rebuilds. Escape leaves the aim or
-            // stops the cast.
-            if down
-                && event.code() == "Escape"
-                && page.runtime.in_demolition()
-                && page.runtime.demolition_cancel()
-            {
+            // stops the cast, there and in Everglade's town, where R
+            // restores the buildings.
+            if down && event.code() == "Escape" && page.runtime.demolition_cancel() {
+                event.prevent_default();
+                return;
+            }
+            if down && event.code() == "KeyR" && page.runtime.everglade_swarm().is_some() {
+                let _ = page.runtime.zone_intent(zones::Intent::Rebuild);
                 event.prevent_default();
                 return;
             }
@@ -899,7 +912,7 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             if let Some(at) = page.pressed_at.take()
                 && event.is_primary()
                 && event.time_stamp() - at <= 300.0
-                && page.runtime.in_demolition()
+                && (page.runtime.in_demolition() || page.runtime.demolition_targeting())
             {
                 if page.runtime.demolition_targeting() {
                     page.aim_meteor_swarm([event.offset_x() as f32, event.offset_y() as f32]);

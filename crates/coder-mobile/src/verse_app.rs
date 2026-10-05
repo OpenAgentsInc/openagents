@@ -1489,6 +1489,21 @@ impl Scene {
                     }
                     None => {}
                 }
+            } else if valid
+                && touch.target.is_none()
+                && !touch.movement
+                && elapsed <= WORLD_TAP_SECONDS
+                && self.world.demolition_targeting()
+            {
+                // Aiming Meteor Swarm: a tap casts it where it lands.
+                let size = self.lifecycle.viewport().logical_size();
+                let aspect = self.aspect();
+                self.world.demolition_aim(
+                    aspect,
+                    (x / size[0].max(1.0)).clamp(0.0, 1.0),
+                    (y / size[1].max(1.0)).clamp(0.0, 1.0),
+                );
+                self.world.demolition_confirm();
             } else if valid && touch.target.is_none() && elapsed <= WORLD_TAP_SECONDS {
                 self.world_tap([x, y], timestamp, touch.movement);
             } else if self
@@ -2764,6 +2779,17 @@ impl Scene {
                             self.lifecycle.viewport().logical_size(),
                             self.hotbar_bottom(),
                             index,
+                        );
+                    }
+                    // Meteor Swarm's help and cast bar over the tray.
+                    if let Some(swarm) = self.world.everglade_swarm() {
+                        verse::zones::everglade::demolition::hotbar::draw_town(
+                            &mut bar,
+                            &layout,
+                            self.lifecycle.viewport().logical_size(),
+                            self.hotbar_bottom(),
+                            verse::zones::everglade::hotbar::COUNT,
+                            &swarm,
                         );
                     }
                     for vertex in &mut bar.vertices {

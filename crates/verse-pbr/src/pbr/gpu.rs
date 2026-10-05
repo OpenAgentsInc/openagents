@@ -365,9 +365,22 @@ pub struct TexturedGpu {
     batches: Vec<textured::Batch>,
     materials: Vec<TexturedMaterial>,
     groups: Vec<wgpu::BindGroup>,
+    /// The scene's index edits applied so far
+    /// ([`textured::IndexEdits::revision`]); part of the static casters'
+    /// identity, so a cached shadow redraws after an edit.
+    pub edits: u64,
 }
 
 impl TexturedGpu {
+    /// Rewrites the merged indices from `first` on, within the buffer.
+    pub fn write_indices(&self, queue: &wgpu::Queue, first: u32, indices: &[u32]) {
+        let bytes: &[u8] = bytemuck::cast_slice(indices);
+        let offset = u64::from(first) * 4;
+        if !bytes.is_empty() && offset + bytes.len() as u64 <= self.indices.size() {
+            queue.write_buffer(&self.indices, offset, bytes);
+        }
+    }
+
     /// Rewrites a figure's vertices; the caller has checked their count
     /// against the uploaded mesh ([`textured::Figure::validate`]).
     pub fn write_vertices(&self, queue: &wgpu::Queue, vertices: &[TexturedVertex]) {
@@ -1486,11 +1499,13 @@ impl Photo {
             indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("verse textured indices"),
                 contents: index_bytes,
-                usage: wgpu::BufferUsages::INDEX,
+                // Zones rewrite ranges of a static scene's indices.
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             }),
             batches: merged.batches.clone(),
             materials: scene.materials.clone(),
             groups,
+            edits: 0,
         }
     }
 
@@ -2418,6 +2433,7 @@ fn static_identity(world: &Batches<'_>) -> u64 {
         gpu.vertices.hash(&mut hasher);
         gpu.indices.hash(&mut hasher);
         gpu.batches.len().hash(&mut hasher);
+        gpu.edits.hash(&mut hasher);
     }
     hasher.finish()
 }

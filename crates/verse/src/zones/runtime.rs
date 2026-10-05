@@ -233,6 +233,13 @@ impl WorldRuntime {
         }
         if let Some(scene) = &world.mesh.textured {
             everglade.bake_light(scene.clone());
+            // The town's buildings break where the sledgehammer and
+            // Meteor Swarm reach them; a town that can't is still a town.
+            if !self.zone_state.demolition
+                && let Err(error) = everglade.start_town(pack, scene.clone())
+            {
+                eprintln!("verse: Everglade's buildings stay whole: {error}");
+            }
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
@@ -578,17 +585,17 @@ impl WorldRuntime {
                 self.zone_state
                     .everglade
                     .as_mut()
-                    .ok_or("Enter the demolition yard first")?
+                    .ok_or("Enter Everglade first")?
                     .demolish(intent == Intent::Rebuild)?;
                 self.zone_state.error = None;
             }
             Intent::MeteorSwarm => {
+                let player = self.player.clone();
                 self.zone_state
                     .everglade
                     .as_mut()
-                    .and_then(Everglade::demolition_mut)
-                    .ok_or("Enter the demolition yard first")?
-                    .meteor_swarm()?;
+                    .ok_or("Enter Everglade first")?
+                    .meteor_swarm(&player)?;
                 self.zone_state.error = None;
             }
             Intent::Interact => {
@@ -740,21 +747,46 @@ impl WorldRuntime {
             active: glade.levitating,
             cooldown: 0.0,
         };
-        Some([levitate, feather, wind, reverse, stone])
+        // Meteor Swarm and the sledgehammer, once the town's buildings can
+        // break: free, without a cooldown.
+        let on = |enabled, active| Slot {
+            enabled,
+            active,
+            cooldown: 0.0,
+        };
+        let (wielding, swarm) = glade.town().map_or((false, None), |town| {
+            let (wielding, swarm) = town.bar();
+            (wielding, Some(swarm))
+        });
+        let meteor = swarm.map_or(on(false, false), |s| {
+            on(s.ready || s.targeting, s.targeting || s.casting.is_some())
+        });
+        Some([
+            levitate,
+            feather,
+            wind,
+            reverse,
+            stone,
+            meteor,
+            on(glade.town().is_some(), wielding),
+        ])
     }
 
-    /// How far the demolition yard's meteors shake the camera this frame.
+    /// How far Meteor Swarm's blasts shake the camera this frame, in the
+    /// demolition yard or Everglade's town.
     #[must_use]
     pub(crate) fn demolition_shake(&self) -> Vec3 {
+        if self.zone != ZoneId::Everglade {
+            return Vec3::ZERO;
+        }
         self.zone_state
             .everglade
             .as_ref()
-            .and_then(Everglade::demolition)
-            .map_or(Vec3::ZERO, |yard| yard.shake())
+            .map_or(Vec3::ZERO, Everglade::shake)
     }
 
-    /// Whether Meteor Swarm's circle follows the cursor in the demolition
-    /// yard.
+    /// Whether Meteor Swarm's circle follows the cursor, in the demolition
+    /// yard or Everglade's town.
     #[must_use]
     pub fn demolition_targeting(&self) -> bool {
         self.zone == ZoneId::Everglade
@@ -762,8 +794,20 @@ impl WorldRuntime {
                 .zone_state
                 .everglade
                 .as_ref()
-                .and_then(Everglade::demolition)
-                .is_some_and(|yard| yard.swarm().targeting())
+                .and_then(Everglade::swarm)
+                .is_some_and(super::everglade::demolition::meteor::Swarm::targeting)
+    }
+
+    /// Meteor Swarm's state in Everglade's town, for the overlay that
+    /// draws its help and cast bar over the hotbar; `None` elsewhere and
+    /// in the demolition yard, whose own hotbar draws them.
+    #[must_use]
+    pub fn everglade_swarm(&self) -> Option<super::everglade::demolition::meteor::Status> {
+        if self.zone != ZoneId::Everglade {
+            return None;
+        }
+        let glade = self.zone_state.everglade.as_ref()?;
+        Some(glade.town()?.swarm().status())
     }
 
     /// Puts Meteor Swarm's circle on the ground under the normalized
@@ -782,34 +826,31 @@ impl WorldRuntime {
         self.zone_state
             .everglade
             .as_mut()
-            .and_then(Everglade::demolition_mut)
-            .is_some_and(|yard| yard.aim(origin, direction, &player))
+            .is_some_and(|glade| glade.aim_swarm(origin, direction, &player))
     }
 
     /// Casts Meteor Swarm at its circle. Returns whether the cast began.
     pub fn demolition_confirm(&mut self) -> bool {
+        if self.zone != ZoneId::Everglade {
+            return false;
+        }
         let player = self.player.clone();
         self.zone_state
             .everglade
             .as_mut()
-            .and_then(Everglade::demolition_mut)
-            .is_some_and(|yard| yard.confirm(&player))
+            .is_some_and(|glade| glade.confirm_swarm(&player))
     }
 
     /// Leaves Meteor Swarm's targeting or stops its cast, spending
     /// nothing. Returns whether there was either to stop.
     pub fn demolition_cancel(&mut self) -> bool {
-        let Some(yard) = self
-            .zone_state
+        if self.zone != ZoneId::Everglade {
+            return false;
+        }
+        self.zone_state
             .everglade
             .as_mut()
-            .and_then(Everglade::demolition_mut)
-        else {
-            return false;
-        };
-        let busy = yard.swarm().targeting() || yard.swarm().casting();
-        yard.cancel();
-        busy
+            .is_some_and(Everglade::cancel_swarm)
     }
 
     /// The demolition yard's hotbar, or `None` outside the yard.

@@ -181,6 +181,11 @@ mobile zone identifiers, tests, and capture example. The ground is generated in
 Rust: a gentle heightfield, flat inside the clearing, rising toward the tree
 ring, with grass and path textures. Its sign reads `EVERGLADE`.
 
+The town's kit buildings break. Key 6 on the hotbar aims Meteor Swarm and
+key 7 swings the sledgehammer, both free and without a cooldown; `R`
+restores every building. The workshop hall is protected. See
+[Destructible buildings](destructible-buildings.md#everglades-town).
+
 ## Layout
 
 The zone is about 510 m across, with a flat clearing 272 m across: sixteen

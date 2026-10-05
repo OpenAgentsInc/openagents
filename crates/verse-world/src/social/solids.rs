@@ -77,6 +77,12 @@ impl Solids {
         self.blocks.push(Block { footprint, top });
     }
 
+    /// Keeps only the blockers `keep` accepts, by footprint and top, m.
+    pub fn retain_blocks(&mut self, mut keep: impl FnMut(&Footprint, f32) -> bool) {
+        self.blocks
+            .retain(|block| keep(&block.footprint, block.top));
+    }
+
     /// Adds a roof a character can stand on and strikes from below.
     pub fn add_roof(&mut self, roof: Roof) {
         self.roofs.push(roof);

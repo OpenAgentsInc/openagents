@@ -7,7 +7,7 @@
 //! face it continues, darkened as a broken interior, so no chunk shows as a
 //! bare box.
 
-use super::cottage::{Cut, Draft};
+use super::kit::{Cut, Draft};
 use super::site::Cuboid;
 use crate::pbr::textured::{TexturedVertex, UNBAKED};
 use crate::zones::everglade_pack::ZonePack;

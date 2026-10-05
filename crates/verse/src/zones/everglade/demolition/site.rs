@@ -15,6 +15,7 @@
 
 use glam::{DQuat, DVec3, Mat4, Vec3};
 use physics::{Body, BodyId, BodyKind, Collider, Filter, Material, Shape, Uniform, World};
+use std::collections::BTreeMap;
 
 /// Physics step, s, as the chamber's spell world.
 pub const STEP: f64 = 1.0 / 120.0;
@@ -69,22 +70,34 @@ pub enum Side {
     East,
 }
 
-/// What a piece is in its building, which decides what holds it up.
+/// What a piece is in its building, which decides what holds it up. A
+/// building has one or more stories of wall lines on a rectangle and one
+/// 8 m wide roof span or more across its top story, west to east.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role {
-    /// Section `index` of `count` along the `side` wall line, from the
-    /// west or the south end.
-    Wall { side: Side, index: u8, count: u8 },
-    /// The corner post where the `a` and `b` lines meet; `a` is south or
-    /// north.
-    Post { a: Side, b: Side },
-    /// The roof, which bears on the west and east wall lines.
-    Roof,
-    /// The brick gable over the `side` end wall.
-    Gable { side: Side },
-    /// The chimney, through the roof.
-    Chimney,
+    /// Section `index` of `count` along the `side` wall line of `story`,
+    /// from the west or the south end.
+    Wall {
+        side: Side,
+        index: u8,
+        count: u8,
+        story: u8,
+    },
+    /// The corner post of `story` where the `a` and `b` lines meet; `a` is
+    /// south or north.
+    Post { a: Side, b: Side, story: u8 },
+    /// Roof span `span` of `spans`, from the west, which bears on the top
+    /// story's walls under its eaves: the west or east wall line at the
+    /// building's ends, and the south and north lines between spans.
+    Roof { span: u8, spans: u8 },
+    /// The brick gable of roof span `span` over the `side` end wall.
+    Gable { side: Side, span: u8 },
+    /// A chimney through roof span `span`.
+    Chimney { span: u8 },
 }
+
+/// Wall sections under one 8 m roof span.
+const SPAN_SECTIONS: u8 = 4;
 
 /// What a piece is made of: its dust's color, hit points, and mass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -228,6 +241,17 @@ pub struct Site {
     specs: Vec<PieceSpec>,
     world: World,
     pieces: Vec<Piece>,
+    /// The piece each body is, by body ID, while it stands or is loose.
+    owner: Vec<Option<usize>>,
+    /// Each building's pieces, and its top story.
+    members: BTreeMap<usize, Vec<usize>>,
+    tops: BTreeMap<usize, u8>,
+    /// Most chunks alive at once ([`MAX_CHUNKS`] unless set).
+    max_chunks: usize,
+    /// Half the side of the flat ground slab at height zero, m, and raised
+    /// floors over it, each a center and half extents.
+    ground_half: f64,
+    floors: Vec<(DVec3, DVec3)>,
     puffs: Vec<Puff>,
     seed: u64,
     rng: u64,
@@ -248,6 +272,12 @@ impl Site {
             specs,
             world: World::new(STEP),
             pieces: Vec::new(),
+            owner: Vec::new(),
+            members: BTreeMap::new(),
+            tops: BTreeMap::new(),
+            max_chunks: MAX_CHUNKS,
+            ground_half: 80.0,
+            floors: Vec::new(),
             puffs: Vec::new(),
             seed,
             rng: seed,
@@ -259,7 +289,23 @@ impl Site {
         site
     }
 
-    fn raise(&mut self) {
+    /// Keeps at most `max` chunks alive from now on.
+    pub fn set_max_chunks(&mut self, max: usize) {
+        self.max_chunks = max;
+        self.cap_chunks();
+    }
+
+    /// Makes the flat ground slab `half` meters either side of the origin,
+    /// and adds `floors` over it, each a box's center and half extents, for
+    /// ground that rises. Takes effect when the world is next built.
+    pub fn set_ground(&mut self, half: f64, floors: Vec<(DVec3, DVec3)>) {
+        self.ground_half = half;
+        self.floors = floors;
+    }
+
+    /// A physics world with only the ground in it: body 0, the slab, with
+    /// the floors' colliders.
+    fn ground(&self) -> World {
         let mut world = World::new(STEP);
         let ground = world.add(
             Body::new(1.0, DVec3::ONE, DVec3::new(0.0, -0.5, 0.0)).with_kind(BodyKind::Static),
@@ -268,60 +314,203 @@ impl Site {
             Collider::new(
                 ground,
                 Shape::Cuboid {
-                    half: DVec3::new(80.0, 0.5, 80.0),
+                    half: DVec3::new(self.ground_half, 0.5, self.ground_half),
                 },
             )
             .with_material(MATERIAL),
         );
-        let mut pieces = Vec::with_capacity(self.specs.len());
-        for spec in &self.specs {
-            let mut body = Body::new(
-                spec.mass,
-                Body::box_inertia(spec.mass, spec.size),
-                spec.center,
-            )
-            .with_kind(BodyKind::Static);
-            body.orientation = spec.orientation;
-            body.prev_orientation = spec.orientation;
-            let id = world.add(body);
-            // A gable stands under the roof's slopes but does not carry
-            // them, so the two never touch.
-            let filter = match spec.role {
-                Role::Roof => Filter {
-                    group: ROOF,
-                    mask: !GABLE,
-                },
-                Role::Gable { .. } => Filter {
-                    group: GABLE,
-                    mask: !ROOF,
-                },
-                _ => Filter::ALL,
-            };
-            for collider in &spec.colliders {
-                world.add_collider(
-                    Collider::new(
-                        id,
-                        Shape::Cuboid {
-                            half: collider.half,
-                        },
-                    )
-                    .at(collider.center, collider.rotation)
-                    .with_material(MATERIAL)
-                    .with_filter(filter),
-                );
-            }
-            pieces.push(Piece {
+        for &(center, half) in &self.floors {
+            world.add_collider(
+                Collider::new(ground, Shape::Cuboid { half })
+                    .at(center - DVec3::new(0.0, -0.5, 0.0), DQuat::IDENTITY)
+                    .with_material(MATERIAL),
+            );
+        }
+        world
+    }
+
+    fn raise(&mut self) {
+        self.world = self.ground();
+        self.pieces = Vec::with_capacity(self.specs.len());
+        self.owner.clear();
+        for index in 0..self.specs.len() {
+            let body = self.piece_body(index);
+            let id = self.world.add(body);
+            self.add_piece_colliders(index, id);
+            self.own(id, Some(index));
+            self.pieces.push(Piece {
                 body: id,
-                hit_points: spec.hit_points,
+                hit_points: self.specs[index].hit_points,
                 status: Status::Standing,
                 chunks: Vec::new(),
             });
         }
-        self.world = world;
-        self.pieces = pieces;
+        self.index_buildings();
         self.puffs.clear();
         self.pending = 0.0;
         self.thrown.clear();
+    }
+
+    /// Piece `index`'s body as built: static, where it was placed.
+    fn piece_body(&self, index: usize) -> Body {
+        let spec = &self.specs[index];
+        let mut body = Body::new(
+            spec.mass,
+            Body::box_inertia(spec.mass, spec.size),
+            spec.center,
+        )
+        .with_kind(BodyKind::Static);
+        body.orientation = spec.orientation;
+        body.prev_orientation = spec.orientation;
+        body
+    }
+
+    /// Adds piece `index`'s colliders to body `id`.
+    fn add_piece_colliders(&mut self, index: usize, id: BodyId) {
+        let spec = &self.specs[index];
+        // A gable stands under the roof's slopes but does not carry
+        // them, so the two never touch.
+        let filter = match spec.role {
+            Role::Roof { .. } => Filter {
+                group: ROOF,
+                mask: !GABLE,
+            },
+            Role::Gable { .. } => Filter {
+                group: GABLE,
+                mask: !ROOF,
+            },
+            _ => Filter::ALL,
+        };
+        let colliders: Vec<Collider> = spec
+            .colliders
+            .iter()
+            .map(|collider| {
+                Collider::new(
+                    id,
+                    Shape::Cuboid {
+                        half: collider.half,
+                    },
+                )
+                .at(collider.center, collider.rotation)
+                .with_material(MATERIAL)
+                .with_filter(filter)
+            })
+            .collect();
+        for collider in colliders {
+            self.world.add_collider(collider);
+        }
+    }
+
+    /// Adds a chunk's body with `cuboid`'s collider, slightly smaller so
+    /// neighbouring chunks start apart.
+    fn add_chunk(&mut self, body: Body, cuboid: &Cuboid) -> BodyId {
+        let id = self.world.add(body);
+        self.world.add_collider(
+            Collider::new(
+                id,
+                Shape::Cuboid {
+                    half: (cuboid.half * 0.94).max(DVec3::splat(0.03)),
+                },
+            )
+            .with_material(MATERIAL),
+        );
+        id
+    }
+
+    /// Records that body `id` is `piece`, or no piece.
+    fn own(&mut self, id: BodyId, piece: Option<usize>) {
+        let at = id.0 as usize;
+        if self.owner.len() <= at {
+            self.owner.resize(at + 1, None);
+        }
+        self.owner[at] = piece;
+    }
+
+    /// The standing or loose piece body `id` is.
+    fn owner_of(&self, id: BodyId) -> Option<usize> {
+        self.owner.get(id.0 as usize).copied().flatten()
+    }
+
+    /// Groups the pieces by building and finds each building's top story.
+    fn index_buildings(&mut self) {
+        self.members.clear();
+        self.tops.clear();
+        for (index, spec) in self.specs.iter().enumerate() {
+            self.members.entry(spec.building).or_default().push(index);
+            if let Role::Wall { story, .. } = spec.role {
+                let top = self.tops.entry(spec.building).or_default();
+                *top = (*top).max(story);
+            }
+        }
+    }
+
+    /// Raises `specs` beside the pieces already here, intact and standing,
+    /// and returns their indices.
+    pub fn add(&mut self, specs: Vec<PieceSpec>) -> std::ops::Range<usize> {
+        let start = self.specs.len();
+        self.specs.extend(specs);
+        for index in start..self.specs.len() {
+            let body = self.piece_body(index);
+            let id = self.world.add(body);
+            self.add_piece_colliders(index, id);
+            self.own(id, Some(index));
+            self.pieces.push(Piece {
+                body: id,
+                hit_points: self.specs[index].hit_points,
+                status: Status::Standing,
+                chunks: Vec::new(),
+            });
+        }
+        self.index_buildings();
+        start..self.specs.len()
+    }
+
+    /// Keeps only the pieces whose spec `keep` accepts, each as it is now:
+    /// standing, loose where it lies and moving as it moves, or broken
+    /// into the chunks still alive. The physics world is rebuilt without
+    /// the rest, so removed bodies don't linger in it. Piece indices
+    /// change; the kept pieces keep their order.
+    pub fn retain(&mut self, keep: impl Fn(&PieceSpec) -> bool) {
+        let fresh = self.ground();
+        let old = std::mem::replace(&mut self.world, fresh);
+        let then = old.time();
+        let now = self.world.time();
+        let specs = std::mem::take(&mut self.specs);
+        let pieces = std::mem::take(&mut self.pieces);
+        self.owner.clear();
+        self.thrown.clear();
+        let ground = BodyId(0);
+        for (spec, mut piece) in specs.into_iter().zip(pieces) {
+            if !keep(&spec) {
+                continue;
+            }
+            let index = self.specs.len();
+            self.specs.push(spec);
+            match piece.status {
+                Status::Standing | Status::Loose => {
+                    let id = self.world.add(old[piece.body]);
+                    self.add_piece_colliders(index, id);
+                    self.own(id, Some(index));
+                    piece.body = id;
+                }
+                Status::Broken => {
+                    piece.body = ground;
+                    for (k, chunk) in piece.chunks.iter_mut().enumerate() {
+                        if chunk.gone {
+                            chunk.body = ground;
+                            continue;
+                        }
+                        let cuboid = self.specs[index].chunks[k];
+                        chunk.body = self.add_chunk(old[chunk.body], &cuboid);
+                        chunk.until = chunk.until - then + now;
+                    }
+                }
+            }
+            self.pieces.push(piece);
+        }
+        self.index_buildings();
+        self.pending = 0.0;
+        self.revision += 1;
     }
 
     /// Rebuilds every piece as it was first raised.
@@ -369,11 +558,7 @@ impl Site {
     fn near(&self, point: DVec3, reach: f64) -> Vec<(usize, f64, DVec3)> {
         let mut found: Vec<(usize, f64, DVec3)> = Vec::new();
         for collider in self.world.colliders() {
-            let Some(index) = self
-                .pieces
-                .iter()
-                .position(|p| p.body == collider.body && p.status != Status::Broken)
-            else {
+            let Some(index) = self.owner_of(collider.body) else {
                 continue;
             };
             let on = collider.closest_point(&self.world, point);
@@ -457,6 +642,7 @@ impl Site {
         let body = self.world[id];
         wake_near(&mut self.world, id);
         self.world.remove_body(id);
+        self.own(id, None);
         let spec = &self.specs[piece];
         let total: f64 = spec
             .chunks
@@ -501,20 +687,10 @@ impl Site {
             chunk.vel = body.vel + omega.cross(pos - body.pos) + kick + spread;
             chunk.omega = DVec3::new(self.unit(), self.unit(), self.unit())
                 * if k > 0.0 { 2.0 + 8.0 * k } else { 2.0 };
-            let chunk_id = self.world.add(chunk);
+            let chunk_id = self.add_chunk(chunk, &cuboid);
             if matches!(push, Push::From { .. }) {
                 self.throw(chunk_id);
             }
-            // Slightly smaller, so neighbouring chunks start apart.
-            self.world.add_collider(
-                Collider::new(
-                    chunk_id,
-                    Shape::Cuboid {
-                        half: (cuboid.half * 0.94).max(DVec3::splat(0.03)),
-                    },
-                )
-                .with_material(MATERIAL),
-            );
             // The fragments nearest an explosion's heart end first, so
             // the debris cap takes them, hidden in the fireball, before
             // the ones that fly.
@@ -536,7 +712,7 @@ impl Site {
         self.cap_chunks();
     }
 
-    /// Removes the oldest chunks past [`MAX_CHUNKS`].
+    /// Removes the oldest chunks past the cap ([`MAX_CHUNKS`] unless set).
     fn cap_chunks(&mut self) {
         let mut alive: Vec<(f64, usize, usize)> = self
             .pieces
@@ -551,11 +727,11 @@ impl Site {
                     .map(move |(i, c)| (c.until, p, i))
             })
             .collect();
-        if alive.len() <= MAX_CHUNKS {
+        if alive.len() <= self.max_chunks {
             return;
         }
         alive.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let excess = alive.len() - MAX_CHUNKS;
+        let excess = alive.len() - self.max_chunks;
         for &(_, p, i) in &alive[..excess] {
             let chunk = &mut self.pieces[p].chunks[i];
             chunk.gone = true;
@@ -585,9 +761,7 @@ impl Site {
     pub fn touches(&self, point: Vec3, reach: f32) -> bool {
         let point = point.as_dvec3();
         self.world.colliders().iter().any(|collider| {
-            self.pieces
-                .iter()
-                .any(|p| p.body == collider.body && p.status != Status::Broken)
+            self.owner_of(collider.body).is_some()
                 && collider.closest_point(&self.world, point).distance(point) <= f64::from(reach)
         })
     }
@@ -673,9 +847,11 @@ impl Site {
 
     /// Sets loose every standing piece nothing holds up any more, until
     /// nothing changes: a wall section needs a standing neighbor on its
-    /// line or a standing corner post, a post a standing wall beside it,
-    /// the roof two standing sections under each eave, a gable the roof and
-    /// a standing section of its end wall, and the chimney the roof.
+    /// line or a standing corner post, and above the ground story the
+    /// section under it; a post a standing wall beside it, and the post
+    /// under it; a roof span two standing top-story sections under each
+    /// eave; a gable its roof span and a standing section of its end wall;
+    /// and a chimney its roof span.
     pub fn support(&mut self) {
         loop {
             let falling: Vec<usize> = (0..self.pieces.len())
@@ -688,46 +864,67 @@ impl Site {
                 if self.standing(piece) {
                     self.loosen(piece);
                 }
-                if self.specs[piece].role == Role::Roof {
+                if matches!(self.specs[piece].role, Role::Roof { .. }) {
                     self.buckle(piece);
                 }
             }
         }
     }
 
-    /// When a roof comes loose, what is left of a weak eave line can't
-    /// carry it alone: its sections and corner posts crumble outward and
-    /// the roof crashes down after them.
+    /// The top story of `building`.
+    fn top(&self, building: usize) -> u8 {
+        self.tops.get(&building).copied().unwrap_or(0)
+    }
+
+    /// When a roof span comes loose, what is left of a weak outer eave line
+    /// under it can't carry it alone: the top story's sections and corner
+    /// posts there crumble outward and the roof crashes down after them.
     fn buckle(&mut self, roof: usize) {
         let building = self.specs[roof].building;
+        let top = self.top(building);
+        let Role::Roof { span, spans } = self.specs[roof].role else {
+            return;
+        };
+        let members = self.members.get(&building).cloned().unwrap_or_default();
         for line in [Side::West, Side::East] {
-            // The line, its corner posts, and the end walls' sections at
-            // its corners.
-            let on_line = |spec: &PieceSpec| {
-                spec.building == building
-                    && match spec.role {
-                        Role::Wall { side, .. } if side == line => true,
-                        Role::Wall {
-                            side: Side::South | Side::North,
-                            index,
-                            count,
-                        } => {
-                            (line == Side::West && index == 0)
-                                || (line == Side::East && index + 1 == count)
-                        }
-                        Role::Post { b, .. } => b == line,
-                        _ => false,
-                    }
+            let outer = match line {
+                Side::West => span == 0,
+                _ => span + 1 == spans,
             };
-            let sections = (0..self.pieces.len())
-                .filter(|&i| self.standing(i))
-                .filter(|&i| matches!(self.specs[i].role, Role::Wall { side, .. } if side == line))
-                .filter(|&i| self.specs[i].building == building)
+            if !outer {
+                continue;
+            }
+            // The line, its corner posts, and the end walls' sections at
+            // its corners, on the top story.
+            let on_line = |spec: &PieceSpec| match spec.role {
+                Role::Wall { side, story, .. } if side == line => story == top,
+                Role::Wall {
+                    side: Side::South | Side::North,
+                    index,
+                    count,
+                    story,
+                } => {
+                    story == top
+                        && ((line == Side::West && index == 0)
+                            || (line == Side::East && index + 1 == count))
+                }
+                Role::Post { b, story, .. } => b == line && story == top,
+                _ => false,
+            };
+            let sections = members
+                .iter()
+                .filter(|&&i| self.standing(i))
+                .filter(|&&i| {
+                    matches!(self.specs[i].role,
+                        Role::Wall { side, story, .. } if side == line && story == top)
+                })
                 .count();
             if sections >= 2 {
                 continue;
             }
-            let weak: Vec<usize> = (0..self.pieces.len())
+            let weak: Vec<usize> = members
+                .iter()
+                .copied()
                 .filter(|&i| self.standing(i) && on_line(&self.specs[i]))
                 .collect();
             let out = match line {
@@ -751,49 +948,107 @@ impl Site {
     fn held(&self, piece: usize) -> bool {
         let spec = &self.specs[piece];
         let building = spec.building;
+        let top = self.top(building);
+        let members = self.members.get(&building).map_or(&[][..], Vec::as_slice);
         let others = || {
-            self.specs
+            members
                 .iter()
-                .enumerate()
-                .filter(move |(i, s)| *i != piece && s.building == building)
-                .filter(|(i, _)| self.standing(*i))
-                .map(|(_, s)| s.role)
+                .copied()
+                .filter(move |&i| i != piece && self.standing(i))
+                .map(|i| self.specs[i].role)
         };
-        let sections = |line: Side| {
+        // Standing top-story sections on `line` whose index is in `range`.
+        let sections = |line: Side, range: std::ops::RangeInclusive<i32>| {
             others()
-                .filter(|r| matches!(r, Role::Wall { side, .. } if *side == line))
+                .filter(|r| {
+                    matches!(r, Role::Wall { side, index, story, .. }
+                        if *side == line && *story == top && range.contains(&i32::from(*index)))
+                })
                 .count()
         };
+        let every = i32::MIN..=i32::MAX;
+        let roof =
+            |span: u8| others().any(|r| matches!(r, Role::Roof { span: s, .. } if s == span));
+        // An eave between two spans rests on the south and north lines'
+        // sections around it.
+        let inner = |boundary: u8| {
+            let at = i32::from(boundary) * i32::from(SPAN_SECTIONS);
+            sections(Side::South, at - 2..=at + 1) + sections(Side::North, at - 2..=at + 1) >= 2
+        };
         match spec.role {
-            Role::Wall { side, index, count } => others().any(|role| match role {
-                Role::Wall {
-                    side: s, index: i, ..
-                } => s == side && (i + 1 == index || index + 1 == i),
-                Role::Post { a, b } => {
-                    let ends = |end: Side| {
-                        (index == 0 && matches!(end, Side::West | Side::South))
-                            || (index + 1 == count && matches!(end, Side::East | Side::North))
-                    };
-                    (a == side && ends(b)) || (b == side && ends(a))
-                }
-                _ => false,
-            }),
-            Role::Post { a, b } => others().any(|role| match role {
-                Role::Wall { side, index, count } => {
-                    let first = index == 0;
-                    let last = index + 1 == count;
-                    let at = |line: Side, end: Side| {
-                        side == line
-                            && ((first && matches!(end, Side::West | Side::South))
-                                || (last && matches!(end, Side::East | Side::North)))
-                    };
-                    at(a, b) || at(b, a)
-                }
-                _ => false,
-            }),
-            Role::Roof => sections(Side::West) >= 2 && sections(Side::East) >= 2,
-            Role::Gable { side } => others().any(|r| r == Role::Roof) && sections(side) >= 1,
-            Role::Chimney => others().any(|r| r == Role::Roof),
+            Role::Wall {
+                side,
+                index,
+                count,
+                story,
+            } => {
+                let beside = others().any(|role| match role {
+                    Role::Wall {
+                        side: s,
+                        index: i,
+                        story: t,
+                        ..
+                    } => t == story && s == side && (i + 1 == index || index + 1 == i),
+                    Role::Post { a, b, story: t } => {
+                        let ends = |end: Side| {
+                            (index == 0 && matches!(end, Side::West | Side::South))
+                                || (index + 1 == count && matches!(end, Side::East | Side::North))
+                        };
+                        t == story && ((a == side && ends(b)) || (b == side && ends(a)))
+                    }
+                    _ => false,
+                });
+                let below = story == 0
+                    || others().any(|r| {
+                        matches!(r, Role::Wall { side: s, index: i, story: t, .. }
+                            if s == side && i == index && t + 1 == story)
+                    });
+                beside && below
+            }
+            Role::Post { a, b, story } => {
+                let beside = others().any(|role| match role {
+                    Role::Wall {
+                        side,
+                        index,
+                        count,
+                        story: t,
+                    } => {
+                        let first = index == 0;
+                        let last = index + 1 == count;
+                        let at = |line: Side, end: Side| {
+                            side == line
+                                && ((first && matches!(end, Side::West | Side::South))
+                                    || (last && matches!(end, Side::East | Side::North)))
+                        };
+                        t == story && (at(a, b) || at(b, a))
+                    }
+                    _ => false,
+                });
+                let below = story == 0
+                    || others().any(|r| {
+                        matches!(r, Role::Post { a: pa, b: pb, story: t }
+                            if pa == a && pb == b && t + 1 == story)
+                    });
+                beside && below
+            }
+            Role::Roof { span, spans } => {
+                let west = if span == 0 {
+                    sections(Side::West, every.clone()) >= 2
+                } else {
+                    inner(span)
+                };
+                let east = if span + 1 == spans {
+                    sections(Side::East, every) >= 2
+                } else {
+                    inner(span + 1)
+                };
+                west && east
+            }
+            Role::Gable { side, span } => {
+                let first = i32::from(span) * i32::from(SPAN_SECTIONS);
+                roof(span) && sections(side, first..=first + i32::from(SPAN_SECTIONS) - 1) >= 1
+            }
+            Role::Chimney { span } => roof(span),
         }
     }
 
@@ -805,9 +1060,9 @@ impl Site {
         self.pieces[piece].status = Status::Loose;
         self.revision += 1;
         let outward = match spec.role {
-            Role::Wall { side, .. } | Role::Gable { side } => Some(side),
+            Role::Wall { side, .. } | Role::Gable { side, .. } => Some(side),
             Role::Post { a, .. } => Some(a),
-            Role::Roof | Role::Chimney => None,
+            Role::Roof { .. } | Role::Chimney { .. } => None,
         }
         .map(|side| match side {
             Side::South => -DVec3::Z,
@@ -890,7 +1145,7 @@ impl Site {
             }
             let damage = ((impulse - IMPACT) / IMPACT_PER_POINT) as i32;
             for body in [a, b] {
-                if let Some(piece) = self.pieces.iter().position(|p| p.body == body) {
+                if let Some(piece) = self.owner_of(body) {
                     hurt.push((piece, damage, point));
                 }
             }
@@ -910,7 +1165,11 @@ impl Site {
             let body = &self.world[self.pieces[piece].body];
             let up = body.orientation * DVec3::Y;
             let built = spec.orientation * DVec3::Y;
-            let limit = if spec.role == Role::Roof { 50.0 } else { 62.0 };
+            let limit = if matches!(spec.role, Role::Roof { .. }) {
+                50.0
+            } else {
+                62.0
+            };
             if up.dot(built) < f64::to_radians(limit).cos() {
                 let at = body.pos;
                 self.shatter(
@@ -1005,12 +1264,21 @@ impl Site {
                 continue;
             }
             let pose = spec.pose();
+            let bottom = |collider: &Cuboid| {
+                let frame = pose * collider.frame();
+                let half = collider.half.as_vec3();
+                frame.transform_point3(Vec3::new(0.0, -half.y, 0.0)).y
+            };
+            let lowest = spec
+                .colliders
+                .iter()
+                .map(bottom)
+                .fold(f32::INFINITY, f32::min);
             for collider in &spec.colliders {
                 let frame = pose * collider.frame();
                 let half = collider.half.as_vec3();
                 // A lintel over a doorway does not block feet.
-                let bottom = frame.transform_point3(Vec3::new(0.0, -half.y, 0.0)).y;
-                if bottom > 1.0 {
+                if bottom(collider) > lowest + 1.0 {
                     continue;
                 }
                 let (mut min, mut max) =
@@ -1086,5 +1354,36 @@ fn wake_near(world: &mut World, body: BodyId) {
     };
     for id in near {
         world.wake(id);
+    }
+}
+
+/// What the sledgehammer and Meteor Swarm act on: the yard's site, or a
+/// town that raises its buildings into a site when something reaches them.
+pub trait Target {
+    /// Whether `point` is within `reach` of something a meteor bursts on.
+    fn touches(&self, point: Vec3, reach: f32) -> bool;
+    /// An explosion at `center`, as [`Site::explode`].
+    fn explode(&mut self, center: Vec3, radius: f32, damage: i32, speed: f32) -> Vec<Blow>;
+    /// A hammer blow along `path`, as [`Site::strike`].
+    fn strike(&mut self, path: &[Vec3], push: Vec3, reach: f32) -> Option<Blow>;
+    /// A die roll from 1 to `sides`.
+    fn roll(&mut self, sides: u32) -> i32;
+}
+
+impl Target for Site {
+    fn touches(&self, point: Vec3, reach: f32) -> bool {
+        Site::touches(self, point, reach)
+    }
+
+    fn explode(&mut self, center: Vec3, radius: f32, damage: i32, speed: f32) -> Vec<Blow> {
+        Site::explode(self, center, radius, damage, speed)
+    }
+
+    fn strike(&mut self, path: &[Vec3], push: Vec3, reach: f32) -> Option<Blow> {
+        Site::strike(self, path, push, reach)
+    }
+
+    fn roll(&mut self, sides: u32) -> i32 {
+        Site::roll(self, sides)
     }
 }
