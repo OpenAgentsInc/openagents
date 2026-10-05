@@ -139,7 +139,8 @@ impl Everglade {
     pub fn demolition_world(pack: &ZonePack) -> Result<World, String> {
         let mut world = World::default();
         let (mut scene, _) = scene::build(pack, &demolition::trees())?;
-        draw::ground(&mut scene);
+        // Grass only: the town's roads and ponds belong to its layout.
+        draw::ground_with(&mut scene, false);
         scene.validate()?;
         world.mesh.textured = Some(Arc::new(scene));
         Ok(world)
