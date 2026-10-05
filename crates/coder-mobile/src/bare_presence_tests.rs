@@ -27,6 +27,7 @@ fn the_grid_starts_at_its_spawn_rather_than_a_saved_position() {
     let presence = crate::BarePresence {
         secret_hex: "11".repeat(32),
         relay: None,
+        name: None,
     };
     let scene = Scene::new(crate::verse_ffi::bare_config(
         800,

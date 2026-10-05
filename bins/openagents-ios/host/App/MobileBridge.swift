@@ -230,6 +230,8 @@ struct AccountPacket: Decodable {
     let origin: String
     let changelog: [Release]
     let nsec: String?
+    /// The name over the player's head in the Verse; absent until set.
+    let display_name: String?
 }
 
 /// One counted award on the trainer card.
@@ -742,6 +744,18 @@ final class MobileBridge: ObservableObject {
         call(["op": "account", "reveal": reveal]) { data in
             guard let packet = try? JSONDecoder().decode(AccountPacket.self, from: data),
                   packet.schema == "openagents.account.v1" else { return }
+            received(packet)
+        }
+    }
+
+    /// Sets the display name shown over the player's head in the Verse; an
+    /// empty name clears it. The answer is the account packet with the name
+    /// as the app cleaned it, which is also kept for the Verse tab.
+    func setDisplayName(_ name: String, received: @escaping (AccountPacket) -> Void) {
+        call(["op": "set_display_name", "name": name]) { data in
+            guard let packet = try? JSONDecoder().decode(AccountPacket.self, from: data),
+                  packet.schema == "openagents.account.v1" else { return }
+            UserDefaults.standard.set(packet.display_name, forKey: VerseWorld.displayNameKey)
             received(packet)
         }
     }

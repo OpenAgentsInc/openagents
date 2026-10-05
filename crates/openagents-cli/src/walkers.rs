@@ -125,6 +125,7 @@ pub fn walkers(output: &Output, args: &Args, wait: u64) -> Result<u8, String> {
         let id = Identity::from_secret(&format!("walker-{n}"), identity::random_secret())?;
         let pubkey = id.signer.pubkey().to_owned();
         let mut session = Session::start_presence(id, &relay, world)?;
+        session.set_display_name(Some(&format!("walker-{n}")));
         session.set_publish_intervals(intervals)?;
         let (pos, yaw) = WALKS[n % WALKS.len()].at(n as f32 * 7.0);
         let player = PlayerController::new(pos, yaw);

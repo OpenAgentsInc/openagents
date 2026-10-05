@@ -879,6 +879,10 @@ pub struct AccountPacket {
     /// How the key was made, for the Identity Keys screen.
     pub origin: &'static str,
     pub changelog: &'static [Release],
+    /// The name shown over the player's head in the Verse, cleaned as the
+    /// tag draws it; absent until set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     /// The device's secret key in NIP-19 form. Present only when the
     /// request asked to reveal it.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -889,13 +893,51 @@ pub struct AccountPacket {
 /// source and keep it in a this-device-only store.
 pub const ORIGIN: &str = "Made at random on this device and kept only in its secure storage. It isn't derived from a seed phrase (NIP-06), so the nsec is its only backup.";
 
+/// The file under the state directory that keeps the display name.
+pub const DISPLAY_NAME_FILE: &str = "display-name";
+
+/// The saved display name, cleaned; `None` when unset or unusable.
+#[must_use]
+pub fn load_display_name(state_dir: &std::path::Path) -> Option<String> {
+    std::fs::read_to_string(state_dir.join(DISPLAY_NAME_FILE))
+        .ok()
+        .and_then(|raw| verse::session::display_name(&raw))
+}
+
+/// Saves `name` cleaned, or removes it when nothing drawable is left, and
+/// returns what is now saved.
+///
+/// # Errors
+///
+/// Returns why the state directory could not be written.
+pub fn save_display_name(
+    state_dir: &std::path::Path,
+    name: &str,
+) -> Result<Option<String>, String> {
+    let path = state_dir.join(DISPLAY_NAME_FILE);
+    match verse::session::display_name(name) {
+        Some(cleaned) => {
+            std::fs::write(&path, &cleaned).map_err(|e| e.to_string())?;
+            Ok(Some(cleaned))
+        }
+        None => {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.to_string()),
+            }
+            Ok(None)
+        }
+    }
+}
+
 /// The device's public key as `(hex, npub)`.
 pub fn public(secret: &SecretKey) -> (String, String) {
     let (key, _) = secret.x_only_public_key(&Secp256k1::new());
     (key.to_string(), nostr::nip19::encode_npub(&key.serialize()))
 }
 
-pub fn packet(secret: &SecretKey, reveal: bool) -> AccountPacket {
+pub fn packet(secret: &SecretKey, reveal: bool, display_name: Option<String>) -> AccountPacket {
     let (public_hex, npub) = public(secret);
     AccountPacket {
         schema: "openagents.account.v1",
@@ -903,6 +945,7 @@ pub fn packet(secret: &SecretKey, reveal: bool) -> AccountPacket {
         public_hex,
         origin: ORIGIN,
         changelog: CHANGELOG,
+        display_name,
         nsec: reveal.then(|| nostr::nip19::encode_nsec(&secret.secret_bytes())),
     }
 }

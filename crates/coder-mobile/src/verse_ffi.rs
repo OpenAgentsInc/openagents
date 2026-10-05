@@ -20,6 +20,8 @@ pub struct BarePresence {
     pub secret_hex: String,
     /// A `wss://` relay; the public relay when absent.
     pub relay: Option<String>,
+    /// The name shown over this player's head; the short key when absent.
+    pub name: Option<String>,
 }
 
 /// The bare world's Gym connection: the host's `gym-connect:` code, as in
@@ -86,8 +88,8 @@ pub(crate) fn bare_config_with_gym(
     presence: Option<BarePresence>,
     gym: BareGym,
 ) -> Config {
-    let (secret_hex, world_relay, world_offline) = match presence {
-        Some(presence) => (presence.secret_hex, presence.relay, false),
+    let (secret_hex, world_relay, display_name, world_offline) = match presence {
+        Some(presence) => (presence.secret_hex, presence.relay, presence.name, false),
         None => {
             let secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
             let hex = secret
@@ -95,7 +97,7 @@ pub(crate) fn bare_config_with_gym(
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect();
-            (hex, None, true)
+            (hex, None, None, true)
         }
     };
     Config {
@@ -107,6 +109,7 @@ pub(crate) fn bare_config_with_gym(
         gym_code: gym.code,
         synthetic_gym: gym.preview,
         world_relay,
+        display_name,
         world_offline: world_offline || gym.preview || gym.xp_preview,
         door_preferences: None,
         zone_cache_directory: gym.zone_cache_directory,
@@ -603,6 +606,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: false,
             world_relay: None,
+            display_name: None,
             world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,

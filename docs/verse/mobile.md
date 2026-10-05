@@ -654,10 +654,27 @@ bare world needs:
   other; they do not see Coder's plaza, and Coder does not see them.
 - **Presence only.** `Session::start_presence` subscribes to pose frames and
   entity states for that world and publishes the avatar's frames and states
-  with no display name, and the shared ball and blocks
+  with the display name from Account, when one is set, and the shared ball and blocks
   ([Sharing the ball](#sharing-the-ball)) in those same frames and states.
   It subscribes to and publishes no chat, rooms, private messages,
   gestures, zone commands, profiles, or companion entity.
+- **Names over heads.** The tag over each avatar shows the player's display
+  name, then ` · lv n` when the trainer shows a level
+  (`verse::xp::name_tag`). A player with no name shows the first eight hex
+  characters of their key. The name travels in the NIP-MV entity state's
+  `name` field, so a phone, a desktop, and a browser all read the same
+  one. `verse::session::display_name` cleans a name the same way
+  everywhere: only characters the tag font draws (printable ASCII,
+  Latin-1 letters, and `·—…•`; no control characters, emoji, or other
+  scripts), one space between words, at most 24 characters. Set it under
+  **Account > Display name** on the phone (the `set_display_name` app
+  request, saved in the state directory's `display-name` file), or with
+  `openagents verse name NAME` for a CLI key, which also publishes it as
+  the key's NIP-01 profile. To test across devices: set a name on one
+  device, open the Grid on another, and read it over the first device's
+  avatar; `openagents --json verse who` lists it in `name`, and
+  `openagents verse walkers 20` fills the Grid with players named
+  `walker-0` to `walker-19`.
 - **Its own identity.** A separate secp256k1 key in Keychain
   (`com.openagents.app.verse`, this device only, available while unlocked)
   signs world events. The device key that holds host grants never signs a

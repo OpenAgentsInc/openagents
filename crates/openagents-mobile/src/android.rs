@@ -141,6 +141,9 @@ pub(crate) struct SurfaceConfig {
     /// offline.
     #[serde(default)]
     pub(crate) world_secret_hex: Option<String>,
+    /// The name shown over this player's head, from Account.
+    #[serde(default)]
+    pub(crate) display_name: Option<String>,
     /// At creation only: the Gym connection the host saved for the world
     /// key, a `gym-connect:` code. Rust validates it; an invalid code shows
     /// on the Gym board rather than refusing the world.
@@ -180,6 +183,7 @@ impl SurfaceConfig {
         Ok(Some(coder_mobile::BarePresence {
             secret_hex: secret.clone(),
             relay: None,
+            name: self.display_name.clone(),
         }))
     }
 }

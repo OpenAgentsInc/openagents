@@ -68,6 +68,11 @@ internal class AccountScreens(private val activity: MainActivity, private val br
         val body = activity.column().apply { setPadding(activity.dp(16), 0, activity.dp(16), activity.dp(24)) }
         val npub = account?.textOrNull("npub")
         val hex = account?.textOrNull("public_hex")
+        val shown = account?.textOrNull("display_name")
+        body.section("Display name", "Other players in the Grid read this over your avatar. Up to 24 letters, digits, and punctuation.") {
+            add(key(shown ?: "Not set", "identity-display-name")); rowDivider()
+            add(action("Change display name", "identity-display-name-change") { askDisplayName(shown, refresh) })
+        }
         body.section("Public key", "Share your npub freely. It identifies this device.") {
             add(key(npub, "identity-npub")); rowDivider(); add(copyRow("Copy npub", npub, "identity-copy-npub"))
         }
@@ -100,8 +105,31 @@ internal class AccountScreens(private val activity: MainActivity, private val br
         return ScrollView(activity).apply { addView(body) }
     }
 
+    private fun askDisplayName(current: String?, refresh: () -> Unit) {
+        val field = android.widget.EditText(activity).apply {
+            hint = "Shown over your head"; tag = "identity-display-name-field"; isSingleLine = true
+            setText(current ?: "")
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+        }
+        val frame = android.widget.FrameLayout(activity).apply {
+            setPadding(activity.dp(20), activity.dp(8), activity.dp(20), 0); addView(field)
+        }
+        dialog().setTitle("Display name")
+            .setView(frame)
+            .setPositiveButton("Save") { _, _ ->
+                bridge.setDisplayName(field.text.toString()) { account = it; refresh() }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     /** Reads the keys and changelog (never the nsec) for the Account screens. */
-    fun load(refresh: () -> Unit) = bridge.account { account = it; refresh() }
+    fun load(refresh: () -> Unit) = bridge.account {
+        account = it
+        VerseSurface.saveDisplayName(activity, it.textOrNull("display_name"))
+        refresh()
+    }
 
     private fun warn(refresh: () -> Unit) = reveal("Reveal your nsec?",
         "Anyone with your nsec can act as this device on your computers. Never share it, and make sure no one can see your screen.",

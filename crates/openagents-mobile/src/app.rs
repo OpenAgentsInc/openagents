@@ -272,6 +272,12 @@ pub enum Request {
         #[serde(default)]
         reveal: bool,
     },
+    /// Sets the display name shown over the player's head in the Verse
+    /// (Account > Display name), then answers with the account packet.
+    /// An empty name clears it.
+    SetDisplayName {
+        name: String,
+    },
     /// The Account tab's trainer card for the Verse world key, as 64 hex
     /// characters from the platform's protected store. `reveal` returns
     /// its secret too; the Trainer Key screen sends it only after the
@@ -771,6 +777,8 @@ pub struct App {
     /// The device key. It leaves the app only through an explicit
     /// [`Request::Account`] reveal.
     secret: SecretKey,
+    /// Where the app keeps its state, including the display name.
+    state_dir: PathBuf,
     device: String,
     device_npub: String,
     computers: Option<Computers>,
@@ -1007,6 +1015,7 @@ impl App {
             runtime,
             native_computers: launch.native_computers,
             secret,
+            state_dir: config.state_dir.clone(),
             device,
             device_npub: device_npub.clone(),
             computers,
@@ -1165,7 +1174,13 @@ impl App {
             return serde_json::to_vec(&packet).unwrap_or_default();
         }
         if let Request::Account { reveal } = request {
-            let packet = crate::account::packet(&self.secret, reveal);
+            let name = crate::account::load_display_name(&self.state_dir);
+            let packet = crate::account::packet(&self.secret, reveal, name);
+            return serde_json::to_vec(&packet).unwrap_or_default();
+        }
+        if let Request::SetDisplayName { name } = request {
+            let saved = crate::account::save_display_name(&self.state_dir, &name).unwrap_or(None);
+            let packet = crate::account::packet(&self.secret, false, saved);
             return serde_json::to_vec(&packet).unwrap_or_default();
         }
         if let Request::Trainer {
@@ -1533,6 +1548,7 @@ impl App {
             // `respond` answers it with the account packet; the app packet
             // never carries the secret key.
             Request::Account { .. }
+            | Request::SetDisplayName { .. }
             | Request::Trainer { .. }
             | Request::TrainerProfile { .. }
             | Request::TrainerLink { .. }

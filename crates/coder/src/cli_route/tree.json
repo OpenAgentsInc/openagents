@@ -8479,7 +8479,7 @@
                 ]
               }
             ],
-            "summary": "Walk N simulated players with fresh keys in loops in front of the spawn (default world verse-bare) at the phone's cadence, or RATE frames a second, until stopped or for SECONDS; --loopback starts an in-process relay and prints its address. NDJSON progress.",
+            "summary": "Walk N simulated players with fresh keys in loops in front of the spawn (default world verse-bare) at the shared 5 Hz cadence, or RATE frames a second, until stopped or for SECONDS; --loopback starts an in-process relay and prints its address. NDJSON progress.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }

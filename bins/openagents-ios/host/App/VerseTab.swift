@@ -168,6 +168,8 @@ final class VerseWorld: ObservableObject {
     /// last failed with, so a frame never connects twice.
     private var studioAttempt: String?
     private var studioConnecting = false
+    /// The display name the app last cleaned and saved, for the world's config.
+    static let displayNameKey = "verse.display_name"
     /// Where the Compare notes switch is saved between launches.
     static let gymNotesKey = "verse.gymNotes"
     let motionDriver = DeviceMotionDriver(source: CoreMotionSource())
@@ -792,6 +794,10 @@ final class VerseWorldView: UIView {
             // Compare notes, as the player last left it; off until switched on.
             configuration["gym_notes"] = UserDefaults.standard.bool(forKey: VerseWorld.gymNotesKey)
                 || Self.launchGymNotes
+            // The name over this player's head, as Account last saved it.
+            if let name = UserDefaults.standard.string(forKey: VerseWorld.displayNameKey) {
+                configuration["display_name"] = name
+            }
             if let relay = Self.checkRelay { configuration["check_relay"] = relay }
             guard let data = try? JSONSerialization.data(withJSONObject: configuration) else { return }
             handle = data.withUnsafeBytes {

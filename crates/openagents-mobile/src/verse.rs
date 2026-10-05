@@ -79,6 +79,10 @@ struct Config {
     /// stays offline.
     #[serde(default)]
     world_secret_hex: Option<String>,
+    /// The display name from Account, shown over this player's head and
+    /// sent in the world's entity states; the short key when absent.
+    #[serde(default)]
+    display_name: Option<String>,
     /// The Gym connection the host saved for the world key, a
     /// `gym-connect:` code. Rust validates it; an invalid code shows on the
     /// Gym board rather than refusing the world.
@@ -123,6 +127,7 @@ impl Config {
         Ok(Some(BarePresence {
             secret_hex: secret.clone(),
             relay: None,
+            name: self.display_name.clone(),
         }))
     }
 }
