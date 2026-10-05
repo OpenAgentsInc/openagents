@@ -453,7 +453,16 @@ openagents verse say "hello" --to near
 openagents verse gesture greet --to PUBKEY,avatar
 openagents verse tail --wait 60 --json  # poses, gestures, states, chat as they arrive
 openagents verse leave
+openagents verse walkers 20 --world verse-bare --wait 60 --json   # 20 simulated Grid players
+openagents verse load --world verse-bare --players 20 --wait 60 --json   # what a viewer sees of them
 ```
+
+`verse walkers` walks N fresh-key players in loops in front of the Grid spawn,
+on the phone's cadence or `--hz RATE`; `--loopback` starts an in-process relay.
+`verse load` listens to every pose frame in the world and reports each
+publisher's rate, gaps, and frame age; it exits 1 when fewer than `--players`
+publishers sent a frame. The retained 20-player receipt against the public relay
+is `docs/audits/receipts/2026-10-05-grid-walkers-20-public-load.json`.
 
 `--relay` defaults to `wss://relay.openagents.com`, `--world` to
 `verse-plaza`, and `--as` names the profile key (default `default`).

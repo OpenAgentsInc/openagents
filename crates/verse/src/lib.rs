@@ -37,6 +37,8 @@ pub mod gym_results;
 pub mod hud;
 pub mod identity;
 pub mod imported;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod loopback;
 pub mod mesh;
 pub mod minimap;
 pub mod mv;

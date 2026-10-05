@@ -25,6 +25,16 @@ pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
   chat [--limit N]          Recent world chat lines.
   tail [--wait SECONDS]     Follow poses, gestures, states, and chat as they arrive.
   me                        This identity's public key and last known state.
+  load [--players N] [--wait SECONDS]
+                            Listen to every pose frame in the world (default 30 s)
+                            and report each publisher's rate, gaps, and frame age;
+                            exit 1 when fewer than N publishers sent a frame.
+  walkers N [--hz RATE] [--loopback] [--wait SECONDS]
+                            Walk N simulated players with fresh keys in loops in
+                            front of the spawn (default world verse-bare) at the
+                            phone's cadence, or RATE frames a second, until
+                            stopped or for SECONDS; --loopback starts an in-process
+                            relay and prints its address. NDJSON progress.
   move X,Y,Z [--yaw DEGREES] [--name NAME]
                             Stand at a point: publish the avatar state and a frame.
   say TEXT [--to all|ads|zone|near|here] [--zone NAME]
@@ -91,6 +101,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("chat", Effect::ReadOnly),
     Declared::computer("tail", Effect::LongRunning),
     Declared::computer("me", Effect::ReadOnly),
+    Declared::computer("load", Effect::LongRunning),
+    Declared::computer("walkers", Effect::Publishes),
     Declared::computer("move", Effect::Publishes),
     Declared::computer("say", Effect::Publishes),
     Declared::computer("gesture", Effect::Publishes),
@@ -372,6 +384,8 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
         "look" => (&["at", "radius", "wait"], 0, 0),
         "chat" => (&["limit"], 0, 0),
         "tail" => (&["wait"], 0, 0),
+        "load" => (&["wait", "players"], 0, 0),
+        "walkers" => (&["wait", "hz"], 1, 1),
         "me" | "leave" => (&[], 0, 0),
         "move" => (&["yaw", "name"], 1, 1),
         "say" => (&["to", "zone", "at"], 1, usize::MAX),
@@ -407,7 +421,12 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
     };
     let mut options = vec!["as", "relay", "world", "entity"];
     options.extend_from_slice(specific);
-    let args = match crate::argv::parse_command(rest, &label, &options, &[], min, max) {
+    let switches: &[&str] = if canonical == "walkers" {
+        &["loopback"]
+    } else {
+        &[]
+    };
+    let args = match crate::argv::parse_command(rest, &label, &options, switches, min, max) {
         Ok(args) => args,
         Err(message) => return output.usage(group, &message, &usage),
     };
@@ -460,9 +479,15 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
             Err(message) => output.fail(group, &message),
         };
     }
+    if canonical == "walkers" {
+        return match crate::walkers::walkers(output, &args, wait) {
+            Ok(code) => code,
+            Err(message) => output.fail(group, &message),
+        };
+    }
     let read_only = matches!(
         command.as_str(),
-        "who" | "look" | "nearby" | "chat" | "tail"
+        "who" | "look" | "nearby" | "chat" | "tail" | "load"
     );
     let mut context = match Context::open_as(&args, read_only) {
         Ok(context) => context,
@@ -473,6 +498,7 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
         "look" | "nearby" => look(output, &mut context, &args, wait),
         "chat" => chat(output, &mut context, &args),
         "tail" => tail(output, &mut context, wait),
+        "load" => crate::walkers::load(output, &mut context, &args, wait),
         "me" => me(output, &mut context),
         "move" | "go" => move_to(output, &mut context, &args),
         "say" => say(output, &mut context, &args),

@@ -78,6 +78,7 @@ mod study;
 mod terminal;
 #[cfg(test)]
 mod tree;
+mod walkers;
 #[cfg(unix)]
 mod wallet;
 #[cfg(unix)]

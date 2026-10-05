@@ -68,6 +68,9 @@ const ROOM_SUB: &str = "chat-rooms";
 const DM_SUB: &str = "chat-pm";
 const LIVE_SUB: &str = "mv-live";
 const STATE_SUB: &str = "mv-state";
+/// How long a join step (an AUTH answer or a world subscription) may go
+/// unanswered before the session sends it again.
+pub const JOIN_RETRY: Duration = Duration::from_secs(5);
 const ME_SUB: &str = "mv-me";
 const SCAN_WAIT: Duration = Duration::from_millis(1200);
 /// Agents closer than this greet each other, in meters.
@@ -246,6 +249,12 @@ pub struct Session {
     last_frame: Option<Instant>,
     last_state: Option<(Instant, Vec3, f32)>,
     throttled_until: Option<Instant>,
+    /// Pose frames published since the session started.
+    frames_published: u64,
+    /// `rate-limited:` refusals the relay answered.
+    refusals: u64,
+    /// The relay's last refusal or notice, verbatim.
+    last_refusal: Option<String>,
     scan: Option<Scan>,
     scans: u64,
     last_player: Option<Vec3>,
@@ -272,6 +281,11 @@ pub struct Session {
     pub room_names: HashMap<String, String>,
     joined: u64,
     auth_id: Option<String>,
+    /// The relay's open NIP-42 challenge, kept so a lost answer can be re-sent.
+    challenge: Option<String>,
+    /// When this connection last moved toward `Online`; a join step the
+    /// relay never answers is repeated after [`JOIN_RETRY`].
+    joining_since: Option<Instant>,
     seen_chat: HashSet<String>,
     chat_order: VecDeque<String>,
     online: HashSet<String>,
@@ -382,31 +396,10 @@ impl Session {
             return Err("invalid world identifier".into());
         }
         let me = id.signer.pubkey().to_owned();
-        if presence_only {
-            link.send(Out::Subscribe {
-                id: LIVE_SUB.into(),
-                filters: vec![json!({"kinds": [mv::FRAME_KIND], "#w": [world]})],
-                live: true,
-            });
-            link.send(Out::Subscribe {
-                id: STATE_SUB.into(),
-                filters: vec![json!({"kinds": [mv::STATE_KIND], "#w": [world], "limit": 500})],
-                live: true,
-            });
-        } else {
-            link.send(Out::Subscribe {
-                id: LIVE_SUB.into(),
-                filters: vec![
-                    json!({"kinds": [mv::FRAME_KIND, mv::GESTURE_KIND], "#w": [world]}),
-                    json!({"kinds": [mv::COMMAND_KIND], "#w": [world], "#p": [me]}),
-                ],
-                live: true,
-            });
-            link.send(Out::Subscribe {
-                id: STATE_SUB.into(),
-                filters: vec![json!({"kinds": [mv::STATE_KIND], "#w": [world], "limit": 500})],
-                live: true,
-            });
+        for subscribe in world_subscriptions(world, presence_only, &me) {
+            link.send(subscribe);
+        }
+        if !presence_only {
             link.send(Out::Subscribe {
                 id: CHAT_SUB.into(),
                 filters: vec![json!({"kinds": [mv::CHAT_KIND], "#w": [world], "limit": 100})],
@@ -442,6 +435,9 @@ impl Session {
             last_frame: None,
             last_state: None,
             throttled_until: None,
+            frames_published: 0,
+            refusals: 0,
+            last_refusal: None,
             scan: None,
             scans: 0,
             last_player: None,
@@ -460,6 +456,8 @@ impl Session {
             room_names: HashMap::new(),
             joined: unix_now(),
             auth_id: None,
+            challenge: None,
+            joining_since: None,
             seen_chat: HashSet::new(),
             chat_order: VecDeque::new(),
             online: HashSet::new(),
@@ -586,6 +584,47 @@ impl Session {
 
     /// Limits every publication to `limit` events in any minute, or lifts
     /// the limit. A presence session starts at [`EVENT_BUDGET`].
+    /// Pose frames this session has published.
+    #[must_use]
+    pub fn frames_published(&self) -> u64 {
+        self.frames_published
+    }
+
+    /// `rate-limited:` refusals the relay has answered; the session publishes
+    /// at a quarter of its cadence for five seconds after each.
+    #[must_use]
+    pub fn refusals(&self) -> u64 {
+        self.refusals
+    }
+
+    /// The relay's last refusal or notice, verbatim, and the connection
+    /// error shown in the window title, for diagnostics.
+    #[must_use]
+    pub fn last_refusal(&self) -> Option<&str> {
+        self.connection_error.or(self.last_refusal.as_deref())
+    }
+
+    /// Where this session stands with the relay: its status, whether the
+    /// relay challenged and accepted its NIP-42 authentication, and whether
+    /// the live and state subscriptions have answered.
+    #[must_use]
+    pub fn diagnostics(&self) -> serde_json::Value {
+        serde_json::json!({
+            "status": format!("{:?}", self.status),
+            "challenged": self.challenge.is_some(),
+            "authenticated": self.auth_accepted,
+            "live_ready": self.world_live_ready,
+            "state_ready": self.world_state_ready,
+            "last_refusal": self.last_refusal(),
+        })
+    }
+
+    /// Whether the relay's last refusal still slows publishing at `now`.
+    #[must_use]
+    pub fn throttled(&self, now: Instant) -> bool {
+        self.throttled_until.is_some_and(|until| now < until)
+    }
+
     pub fn set_event_budget(&mut self, limit: Option<usize>) {
         self.budget.limit = limit;
     }
@@ -634,6 +673,7 @@ impl Session {
         for message in self.link.drain() {
             self.handle(message, now);
         }
+        self.retry_join(now);
         let arrived = std::mem::take(&mut self.bodies_in);
         if let Some(bodies) = bodies.as_deref_mut() {
             bodies.join(self.id.signer.pubkey());
@@ -691,6 +731,7 @@ impl Session {
                 &frame,
                 unix_now(),
             ));
+            self.frames_published += 1;
             self.budget.record(now);
         }
 
@@ -921,6 +962,8 @@ impl Session {
             In::Connected => {
                 self.status = Status::Connecting;
                 self.auth_id = None;
+                self.challenge = None;
+                self.joining_since = Some(now);
                 self.auth_accepted = false;
                 self.world_live_ready = false;
                 self.world_state_ready = false;
@@ -934,6 +977,8 @@ impl Session {
                 self.status = Status::Offline;
                 self.connection_error = Some("Relay unavailable. Reconnecting…");
                 self.auth_id = None;
+                self.challenge = None;
+                self.joining_since = None;
                 self.auth_accepted = false;
                 self.world_live_ready = false;
                 self.world_state_ready = false;
@@ -953,17 +998,8 @@ impl Session {
                 self.auth_accepted = false;
                 self.world_live_ready = false;
                 self.world_state_ready = false;
-                let event = self.id.signer.sign(
-                    unix_now(),
-                    22_242,
-                    vec![
-                        Tag::new(vec!["relay".into(), self.link.url.clone()]),
-                        Tag::new(vec!["challenge".into(), challenge]),
-                    ],
-                    String::new(),
-                );
-                self.auth_id = Some(event.id.clone());
-                self.link.send(Out::Auth(event));
+                self.challenge = Some(challenge);
+                self.answer_challenge(now);
             }
             In::Ok {
                 id, accepted: true, ..
@@ -971,6 +1007,7 @@ impl Session {
                 self.auth_accepted = true;
                 self.world_live_ready = false;
                 self.world_state_ready = false;
+                self.joining_since = Some(now);
                 self.update_world_status();
                 if self.presence_only {
                     return;
@@ -1090,7 +1127,17 @@ impl Session {
                 message,
                 ..
             } if message.starts_with("rate-limited:") => {
+                self.refusals += 1;
+                self.last_refusal = Some(message);
                 self.throttled_until = Some(now + Duration::from_secs(5));
+            }
+            In::Ok {
+                accepted: false,
+                message,
+                ..
+            }
+            | In::Notice(message) => {
+                self.last_refusal = Some(message);
             }
             In::Closed(sub, reason) if matches!(sub.as_str(), LIVE_SUB | STATE_SUB) => {
                 if sub == LIVE_SUB {
@@ -1107,7 +1154,7 @@ impl Session {
                         Some("Relay refused world updates. Rejoin or choose another relay.");
                 }
             }
-            In::Ok { .. } | In::Closed(..) | In::Notice(_) => {}
+            In::Ok { .. } | In::Closed(..) => {}
         }
     }
 
@@ -1115,6 +1162,53 @@ impl Session {
     /// returns what remains for the crowd.
     fn take_bodies(&mut self, received: Received) -> Option<Received> {
         split_bodies(received, &mut self.bodies_in)
+    }
+
+    /// Signs the relay's open challenge and sends the AUTH answer.
+    fn answer_challenge(&mut self, now: Instant) {
+        let Some(challenge) = self.challenge.clone() else {
+            return;
+        };
+        let event = self.id.signer.sign(
+            unix_now(),
+            22_242,
+            vec![
+                Tag::new(vec!["relay".into(), self.link.url.clone()]),
+                Tag::new(vec!["challenge".into(), challenge]),
+            ],
+            String::new(),
+        );
+        self.auth_id = Some(event.id.clone());
+        self.joining_since = Some(now);
+        self.link.send(Out::Auth(event));
+    }
+
+    /// Repeats a join step the relay has not answered within
+    /// [`JOIN_RETRY`]: the AUTH answer, or the world subscriptions still
+    /// waiting for their EOSE.
+    fn retry_join(&mut self, now: Instant) {
+        if self.status != Status::Connecting {
+            return;
+        }
+        let Some(since) = self.joining_since else {
+            return;
+        };
+        if now.duration_since(since) < JOIN_RETRY {
+            return;
+        }
+        if self.auth_id.is_some() && !self.auth_accepted {
+            self.answer_challenge(now);
+            return;
+        }
+        let me = self.pubkey().to_owned();
+        let [live, state] = world_subscriptions(self.world, self.presence_only, &me);
+        if !self.world_live_ready {
+            self.link.send(live);
+        }
+        if !self.world_state_ready {
+            self.link.send(state);
+        }
+        self.joining_since = Some(now);
     }
 
     fn update_world_status(&mut self) {
@@ -1651,6 +1745,30 @@ fn random_unit() -> f32 {
     u32::from_str_radix(&hex, 16).unwrap_or(0) as f32 / 16_777_216.0
 }
 
+/// The live and state subscriptions a session holds in `world`.
+fn world_subscriptions(world: &str, presence_only: bool, me: &str) -> [Out; 2] {
+    let live = if presence_only {
+        vec![json!({"kinds": [mv::FRAME_KIND], "#w": [world]})]
+    } else {
+        vec![
+            json!({"kinds": [mv::FRAME_KIND, mv::GESTURE_KIND], "#w": [world]}),
+            json!({"kinds": [mv::COMMAND_KIND], "#w": [world], "#p": [me]}),
+        ]
+    };
+    [
+        Out::Subscribe {
+            id: LIVE_SUB.into(),
+            filters: live,
+            live: true,
+        },
+        Out::Subscribe {
+            id: STATE_SUB.into(),
+            filters: vec![json!({"kinds": [mv::STATE_KIND], "#w": [world], "limit": 500})],
+            live: true,
+        },
+    ]
+}
+
 fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1888,6 +2006,37 @@ mod tests {
             session.connection_error,
             Some("Relay unavailable. Reconnecting…")
         );
+    }
+
+    #[test]
+    fn unanswered_join_steps_are_repeated_after_join_retry() {
+        let mut session = isolated();
+        let now = Instant::now();
+        session.handle(In::Connected, now);
+        session.handle(In::Auth("challenge".into()), now);
+        let answer = session.auth_id.clone().unwrap();
+        session.retry_join(now + JOIN_RETRY / 2);
+        assert_eq!(session.joining_since, Some(now));
+        session.retry_join(now + JOIN_RETRY);
+        assert_eq!(session.joining_since, Some(now + JOIN_RETRY));
+        assert_eq!(session.challenge.as_deref(), Some("challenge"));
+        assert!(session.auth_id.is_some());
+        session.handle(
+            In::Ok {
+                id: answer,
+                accepted: true,
+                message: String::new(),
+            },
+            now + JOIN_RETRY,
+        );
+        session.handle(In::Eose(LIVE_SUB.into()), now + JOIN_RETRY);
+        assert_eq!(session.status, Status::Connecting);
+        session.retry_join(now + JOIN_RETRY * 2);
+        assert_eq!(session.joining_since, Some(now + JOIN_RETRY * 2));
+        session.handle(In::Eose(STATE_SUB.into()), now + JOIN_RETRY * 2);
+        assert_eq!(session.status, Status::Online);
+        session.retry_join(now + JOIN_RETRY * 4);
+        assert_eq!(session.joining_since, Some(now + JOIN_RETRY * 2));
     }
 
     #[test]

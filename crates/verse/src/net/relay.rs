@@ -1,6 +1,6 @@
 //! The native relay worker: a WebSocket over rustls on its own thread's
 //! Tokio runtime.
-use super::{In, MAX_WIRE, Out, QUEUE, parse};
+use super::{INBOX, In, MAX_WIRE, Out, QUEUE, parse};
 use futures_util::{SinkExt, StreamExt};
 use nostr::domain::Event;
 use serde_json::{Value, json};
@@ -28,7 +28,7 @@ impl Link {
     #[cfg(test)]
     pub(crate) fn idle() -> Self {
         let (tx, _) = async_mpsc::channel(QUEUE);
-        let (_, rx) = mpsc::sync_channel(QUEUE);
+        let (_, rx) = mpsc::sync_channel(INBOX);
         let (cancel, _) = watch::channel(false);
         let (_, done) = mpsc::sync_channel(1);
         Self {
@@ -44,7 +44,7 @@ impl Link {
     #[must_use]
     pub fn start(url: &str) -> Self {
         let (tx, mut out) = async_mpsc::channel(QUEUE);
-        let (inbox, rx) = mpsc::sync_channel(QUEUE);
+        let (inbox, rx) = mpsc::sync_channel(INBOX);
         let (cancel, mut cancellation) = watch::channel(false);
         let (complete, done) = mpsc::sync_channel(1);
         let thread_url = url.to_owned();
@@ -111,10 +111,10 @@ impl Link {
         }
         true
     }
-    /// Drain at most one queue's worth of messages, keeping frame work bounded.
+    /// Drain at most one inbox's worth of messages, keeping frame work bounded.
     #[must_use]
     pub fn drain(&self) -> Vec<In> {
-        self.rx.try_iter().take(QUEUE).collect()
+        self.rx.try_iter().take(INBOX).collect()
     }
     /// Cancel the worker. The optional wait is capped at 100 ms; UI callers use zero.
     pub fn shutdown(&mut self, wait: Duration) -> bool {
