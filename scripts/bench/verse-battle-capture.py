@@ -9,6 +9,7 @@ parser.add_argument('--client-compiled-revision')
 parser.add_argument('--seconds',type=int,default=60)
 parser.add_argument('--players',type=int,default=20)
 parser.add_argument('--persistent',action='store_true',help='Enable host saves in the isolated scratch directory')
+parser.add_argument('--gpu-timing',action='store_true',default=os.environ.get('VERSE_GPU_TIMING')=='1',help='Request optional native GPU timestamps and record the request in the workload')
 parser.add_argument('--delay-ms',type=int,default=40)
 parser.add_argument('--jitter-ms',type=int,default=20)
 args=parser.parse_args()
@@ -77,9 +78,10 @@ if args.persistent:
     host['state_dir']=str(root/'state')
 (root/'host.json').write_text(json.dumps(host))
 env=dict(os.environ)
+env['VERSE_GPU_TIMING']='1' if args.gpu_timing else '0'
 (root/'home').mkdir()
 env['HOME']=str(root/'home')
-(root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'persistent_storage':args.persistent,'compiled_revisions':{'host':args.compiled_revision,'clients':args.client_compiled_revision or args.compiled_revision},'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.']}))
+(root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'persistent_storage':args.persistent,'gpu_timestamps_requested':args.gpu_timing,'compiled_revisions':{'host':args.compiled_revision,'clients':args.client_compiled_revision or args.compiled_revision},'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.']}))
 logs=[];processes=[]
 try:
     log=open(root/'host.log','w');logs.append(log)
