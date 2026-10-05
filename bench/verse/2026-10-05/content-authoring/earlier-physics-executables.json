@@ -1,0 +1,26 @@
+[
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/physics-bfa467f2e8ab145e",
+    "bytes": 32226960,
+    "sha256": "6eda3980f6d38c839ad6d491cd0f1707dc8b19a28dbaf264c04a29ecc95160df",
+    "proof": "Earlier own physics audit test executable; retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/scene-broadphase/rebased-checks.log",
+    "log_sha256": "3a51c078792d581eec48e429a17ce0023bf0015a11a992b4183cf731ce1a2aba"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/physics-26695ed498dea646",
+    "bytes": 32691528,
+    "sha256": "e68db194a62f62df168d1bf109b57fd4f7601f3215cbcae10a8d24ee32396dbf",
+    "proof": "Earlier own physics audit test executable; retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/scene-broadphase/integrated-tests.log",
+    "log_sha256": "6e6821d885e7b3547222cd3ef5a0790e079774d9635766294baffe17e2faaaed"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/physics-9f8a668d09d6abbf",
+    "bytes": 38291320,
+    "sha256": "38394416a143cfba656470ad33711635ae8b0bf01576cdffab8490bc6150da76",
+    "proof": "Earlier own physics audit test executable; retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/navigation-crowd/tests.log",
+    "log_sha256": "917d724347af907cc747ac6ff8201f20ac8ce062e0e94d6081492698b85d0442"
+  }
+]

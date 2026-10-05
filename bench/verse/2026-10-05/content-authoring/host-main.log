@@ -1,0 +1,77 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+warning: `verse-world` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 52s
+     Running tests/worlds.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-c70ec3f77caa2c34)
+
+running 2 tests
+ritual check: {"instance":8400,"ticks":300,"content":[133,235,148,227,197,67,5,67,227,68,174,220,207,11,156,210,22,195,129,77,245,186,58,107,109,241,181,153,197,132,230,70],"checkpoint_bytes":40268,"actors":14}
+
+ritual authenticated: instance 8400 with 14 actors
+Authored host: {"instance":1,"ticks":60,"content":[207,121,104,236,113,143,34,241,132,87,195,57,156,127,166,168,198,116,110,182,136,118,254,71,105,161,153,4,13,165,91,182],"checkpoint_bytes":55091,"actors":15}
+
+test an_authored_generation_loads_and_recovers_through_the_dedicated_host ... ok
+{"schema":"verse.host.operations.cli.live.v1","status":{"schema":"verse.host.operator.response.v1","availability":"fresh","age_ms":10,"ready":true,"drain_requested":false,"snapshot":{"schema":"verse.host.operations.v1","build":{"package_version":"0.1.0","source_revision":"b03b81eae12b9374eb1caf04fe5bc3711b889003","wire_version":29},"instance":8400,"content":[133,235,148,227,197,67,5,67,227,68,174,220,207,11,156,210,22,195,129,77,245,186,58,107,109,241,181,153,197,132,230,70],"sampled_unix_ms":1791242689929,"elapsed_ms":1001,"phase":"running","live":true,"ready":true,"reasons":[],"metrics":{"admission":{"capacity_refusals":0,"pre_auth_refusals":0,"ip_refusals":0,"handshake_rate_refusals":0,"principal_capacity_refusals":0,"principal_work_refusals":0,"aggregate_work_refusals":0,"projections":1,"commands":0,"pending_peak":1,"active_peak":1,"pending":0,"active":1,"principal_records":1,"completed":0,"handshake_timeouts":0,"handshake_refusals":0,"authentication_timeouts":0,"authentication_refusals":0,"grant_refusals":0,"retired_connections":0,"frame_failures":0,"read_timeouts":0,"write_failures":0,"request_rate_failures":0,"host_failures":0,"transport_closures":0,"cancelled_workers":0},"ticks":29,"requests":2,"dropped_seconds":0.0,"simulation":{"observations":29,"p95_upper_bound_ms":0.041481,"p99_upper_bound_ms":0.041481,"maximum_ms":0.041481,"total_ms":0.6178},"read_projection":{"observations":0,"p95_upper_bound_ms":null,"p99_upper_bound_ms":null,"maximum_ms":0.0,"total_ms":0.0},"storage_commit":{"observations":30,"p95_upper_bound_ms":15.647107,"p99_upper_bound_ms":15.647107,"maximum_ms":15.647107,"total_ms":216.820885},"journal_sync":{"observations":29,"p95_upper_bound_ms":6.0210300000000005,"p99_upper_bound_ms":6.0210300000000005,"maximum_ms":6.0210300000000005,"total_ms":140.493416},"request_queue":0,"request_queue_peak":1,"writer_queue":0,"writer_queue_peak":1,"held_reply_bytes":0,"held_reply_bytes_peak":4323,"storage_refusals":0,"storage_paused_seconds":0.0,"durable_commits":30,"durable_revision":30,"pending_commit_age_ms":null,"actor_count":14,"live_hostiles":13,"motor_recovery_blocks":0,"navigation_refusals":0},"budgets":{"connections":128,"pre_auth_connections":32,"request_queue":128,"writer_copies":2,"held_reply_bytes":33554432,"receipt_staging_bytes":134217728,"client_observations":128,"diagnostic_records":128,"status_bytes":262144},"clients":[{"connection":1,"authenticated":true,"requests":2,"received_payload_bytes":497,"sent_payload_bytes":22250,"idle_ms":827,"delivered_tick":5,"delivered_tick_lag":24,"last_delivery_ms_ago":827,"work_refusals":0}],"records":[{"sequence":1,"elapsed_ms":1,"phase":"running","reasons":[]}],"omitted_records":0}}}
+Chamber 8400 listening on 127.0.0.1:33165
+Chamber stopped: 35 ticks, 2 requests, 1 completed connections, 0.000000 dropped seconds
+Admission: {"capacity_refusals":0,"pre_auth_refusals":0,"ip_refusals":0,"handshake_rate_refusals":0,"principal_capacity_refusals":0,"principal_work_refusals":0,"aggregate_work_refusals":0,"projections":1,"commands":0,"pending_peak":1,"active_peak":1,"pending":0,"active":0,"principal_records":1,"completed":1,"handshake_timeouts":0,"handshake_refusals":0,"authentication_timeouts":0,"authentication_refusals":0,"grant_refusals":0,"retired_connections":0,"frame_failures":0,"read_timeouts":0,"write_failures":0,"request_rate_failures":0,"host_failures":0,"transport_closures":1,"cancelled_workers":0}
+Collision queries: {"ray":{"calls":0,"errors":0,"truncated":0,"nodes":0,"triangles":0,"capsule_tests":0,"scene_nodes":0,"scene_candidates":0,"wall_seconds":0.0,"maximum_wall_seconds":0.0},"overlap":{"calls":0,"errors":0,"truncated":0,"nodes":0,"triangles":0,"capsule_tests":0,"scene_nodes":0,"scene_candidates":0,"wall_seconds":0.0,"maximum_wall_seconds":0.0},"sweep":{"calls":0,"errors":0,"truncated":0,"nodes":0,"triangles":0,"capsule_tests":0,"scene_nodes":0,"scene_candidates":0,"wall_seconds":0.0,"maximum_wall_seconds":0.0}}
+Motor recovery: 0 blocked advances, last diagnostic None
+Movement expiry: {"total":0,"admission":0,"primary_tick":0,"additional_tick":0,"bootstrap":0,"samples":[],"omitted":0}
+Checkpoint storage: 37 commits, 68099 bytes, 0.257913 seconds
+Storage backlog: 1 peak copies, 0 refused requests, 0 paused ticks, 0.000000 paused seconds
+Simulation: 35 observations, p50/p95/p99 upper bounds 0.000041/0.000041/0.000041 seconds, maximum 0.000041 seconds, total 0.000690 seconds
+Persistence capture: 37 observations, p50/p95/p99 upper bounds 0.000100/0.000120/0.000120 seconds, maximum 0.000120 seconds, total 0.002164 seconds
+Admitted read projection: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+Running checkpoint copy: 35 observations, p50/p95/p99 upper bounds 0.000098/0.000098/0.000098 seconds, maximum 0.000098 seconds, total 0.001692 seconds
+Storage commit: 37 observations, p50/p95/p99 upper bounds 0.008000/0.015647/0.015647 seconds, maximum 0.015647 seconds, total 0.257913 seconds
+Commit preparation: 36 observations, p50/p95/p99 upper bounds 0.002000/0.002454/0.002454 seconds, maximum 0.002454 seconds, total 0.047290 seconds
+Reward history sync: 36 observations, p50/p95/p99 upper bounds 0.000002/0.000002/0.000002 seconds, maximum 0.000002 seconds, total 0.000035 seconds
+Journal encoding: 36 observations, p50/p95/p99 upper bounds 0.000500/0.000912/0.000912 seconds, maximum 0.000912 seconds, total 0.015110 seconds
+Journal write: 36 observations, p50/p95/p99 upper bounds 0.000050/0.000050/0.000050 seconds, maximum 0.000050 seconds, total 0.000839 seconds
+Journal sync: 36 observations, p50/p95/p99 upper bounds 0.006021/0.006021/0.006021 seconds, maximum 0.006021 seconds, total 0.173521 seconds
+Snapshot compaction: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+
+{"schema":"verse.host.operations.cli.recovery.v1","operation":"--backup","report":{"schema":"verse.backup.v1","content":[133,235,148,227,197,67,5,67,227,68,174,220,207,11,156,210,22,195,129,77,245,186,58,107,109,241,181,153,197,132,230,70],"instance":8400,"revision":37,"checkpoint_digest":[240,124,69,12,80,172,248,3,5,96,84,17,90,183,204,182,169,105,81,87,44,149,21,186,60,44,214,56,231,95,159,133],"manifest_digest":[203,34,223,23,170,156,123,12,157,108,75,50,162,187,255,219,199,92,121,91,230,29,140,232,206,170,73,21,58,114,187,139],"files":1,"bytes":48088,"migrations":0}}
+{"schema":"verse.host.operations.cli.recovery.v1","operation":"--verify-backup","report":{"schema":"verse.backup.v1","content":[133,235,148,227,197,67,5,67,227,68,174,220,207,11,156,210,22,195,129,77,245,186,58,107,109,241,181,153,197,132,230,70],"instance":8400,"revision":37,"checkpoint_digest":[240,124,69,12,80,172,248,3,5,96,84,17,90,183,204,182,169,105,81,87,44,149,21,186,60,44,214,56,231,95,159,133],"manifest_digest":[203,34,223,23,170,156,123,12,157,108,75,50,162,187,255,219,199,92,121,91,230,29,140,232,206,170,73,21,58,114,187,139],"files":1,"bytes":48088,"migrations":0}}
+{"schema":"verse.host.operations.cli.recovery.v1","operation":"--restore-backup","report":{"schema":"verse.backup.v1","content":[133,235,148,227,197,67,5,67,227,68,174,220,207,11,156,210,22,195,129,77,245,186,58,107,109,241,181,153,197,132,230,70],"instance":8400,"revision":37,"checkpoint_digest":[240,124,69,12,80,172,248,3,5,96,84,17,90,183,204,182,169,105,81,87,44,149,21,186,60,44,214,56,231,95,159,133],"manifest_digest":[203,34,223,23,170,156,123,12,157,108,75,50,162,187,255,219,199,92,121,91,230,29,140,232,206,170,73,21,58,114,187,139],"files":1,"bytes":48088,"migrations":0}}
+{"schema":"verse.host.operations.cli.result.v1","live_status":true,"active_writer_export_refused":true,"clean_drain":true,"offline_readiness_refused":true,"backup_verified":true,"restored_authority_tick":35,"prune_passed":true}
+observatory check: {"instance":8401,"ticks":300,"content":[223,222,94,151,50,121,86,96,22,31,226,42,95,160,169,48,147,16,234,1,166,158,125,98,147,202,142,186,102,200,150,205],"checkpoint_bytes":6850,"actors":1}
+
+observatory authenticated: instance 8401 with 1 actors
+Chamber 8401 listening on 127.0.0.1:41373
+Chamber stopped: 4 ticks, 4 requests, 1 completed connections, 0.000000 dropped seconds
+Admission: {"capacity_refusals":0,"pre_auth_refusals":0,"ip_refusals":0,"handshake_rate_refusals":0,"principal_capacity_refusals":0,"principal_work_refusals":0,"aggregate_work_refusals":0,"projections":2,"commands":1,"pending_peak":1,"active_peak":1,"pending":0,"active":0,"principal_records":1,"completed":1,"handshake_timeouts":0,"handshake_refusals":0,"authentication_timeouts":0,"authentication_refusals":0,"grant_refusals":0,"retired_connections":0,"frame_failures":0,"read_timeouts":0,"write_failures":0,"request_rate_failures":0,"host_failures":0,"transport_closures":1,"cancelled_workers":0}
+Collision queries: {"ray":{"calls":0,"errors":0,"truncated":0,"nodes":0,"triangles":0,"capsule_tests":0,"scene_nodes":0,"scene_candidates":0,"wall_seconds":0.0,"maximum_wall_seconds":0.0},"overlap":{"calls":16,"errors":0,"truncated":0,"nodes":48,"triangles":192,"capsule_tests":0,"scene_nodes":48,"scene_candidates":32,"wall_seconds":0.00040859399999999997,"maximum_wall_seconds":0.000038019},"sweep":{"calls":32,"errors":0,"truncated":0,"nodes":96,"triangles":384,"capsule_tests":0,"scene_nodes":96,"scene_candidates":64,"wall_seconds":0.00032734499999999994,"maximum_wall_seconds":0.000023815}}
+Motor recovery: 0 blocked advances, last diagnostic None
+Movement expiry: {"total":0,"admission":0,"primary_tick":0,"additional_tick":0,"bootstrap":0,"samples":[],"omitted":0}
+Checkpoint storage: 0 commits, 0 bytes, 0.000000 seconds
+Storage backlog: 0 peak copies, 0 refused requests, 0 paused ticks, 0.000000 paused seconds
+Simulation: 4 observations, p50/p95/p99 upper bounds 0.000360/0.000360/0.000360 seconds, maximum 0.000360 seconds, total 0.001262 seconds
+Persistence capture: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+Admitted read projection: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+Running checkpoint copy: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+Storage commit: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+Commit preparation: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+Reward history sync: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+Journal encoding: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+Journal write: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+Journal sync: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+Snapshot compaction: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds, total 0.000000 seconds
+
+test two_original_worlds_use_the_same_dedicated_host_and_authentication ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.08s
+

@@ -48,3 +48,12 @@ This evidence establishes admitted content production, upload, and recovery.
 It does not establish a device frame-time target, a windowed 3D editor, compressed
 texture formats, arbitrary geometry import, author productivity, or production
 art quality.
+
+The main integration changes only `service/net/session_pipeline.rs` among the
+254 recorded source inputs. `source-before-main.json` and its patch retain the
+pre-integration source. `source.json` records the rebased implementation, and
+`host-main.log` passes both integration tests against that transport. The final
+checks pass 141 engine tests, ten authoring tests, one CLI workflow, four host
+unit tests, two host integrations, 78 renderer tests, and one native mip
+readback. Six other renderer tests remain ignored. Formatting and local
+documentation links pass.

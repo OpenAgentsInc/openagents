@@ -45,8 +45,11 @@ V18 remediation in [#10637](https://github.com/OpenAgentsInc/openagents/issues/1
 contains recoverable crowd movement and passes a declared durable 20-player/
 40-hostile profile, including three combined repeats and a ten-minute soak.
 Historical failed battles remain retained. The accepted profile uses one native
-renderer and nineteen headless clients on one machine; broader device,
-authoring, coordinated operations, device, and population readiness remains open in V20–V28.
+renderer and nineteen headless clients on one machine. V20 remediation in
+[#10736](https://github.com/OpenAgentsInc/openagents/issues/10736) adds a validated
+content workbench, undoable edits, authority previews, and sealed playable
+generations. Broader animation, art, coordinated operations, device, and
+population readiness remains open in V21–V28.
 
 The [engine roadmap](../verse/engine/roadmap.md) already names a battle with
 about 20 authenticated players and 40 active NPCs. That milestone now has a bounded accepted profile. Neither a 64-player admission limit nor a video with two
@@ -158,7 +161,7 @@ Evidence labels:
 | V17 | P1 | Shared rendering, compiled content, and dedicated TLS hosting have working consumers. | Code, recorded | Engine extraction and host packaging | Complete ([#10636](https://github.com/OpenAgentsInc/openagents/issues/10636)) |
 | V18 | P0 | Contained crowd recovery and a durable 20/40 battle pass the declared profile. | Recorded, code | Movement failure handling and scale acceptance | Complete ([#10637](https://github.com/OpenAgentsInc/openagents/issues/10637)), one native renderer |
 | V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Complete ([#10735](https://github.com/OpenAgentsInc/openagents/issues/10735)) |
-| V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | In progress ([#10736](https://github.com/OpenAgentsInc/openagents/issues/10736)) |
+| V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Complete ([#10736](https://github.com/OpenAgentsInc/openagents/issues/10736)) |
 | V21 | P2 | Animation needs production locomotion and authoring support. | Code, gap | Animation and character content | Open |
 | V22 | P2 | Lighting paths need a common visual and performance contract. | Code, risk | Rendering and art direction | Open |
 | V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Open |
@@ -1535,7 +1538,12 @@ its quest field and leaves the current pointer unchanged. A dedicated-host test
 accepts the quest, advances the authority, commits, recovers the same checkpoint after the expected controller fence,
 and refuses changed quest rules against the retained state. Targeted engine,
 world, content, host, and renderer checks and native archive upload readbacks are
-recorded with source, executable, and artifact hashes.
+recorded with source, executable, and artifact hashes. The final authoring suite
+passes ten tests, the CLI workflow passes, the engine passes 141 tests, and the
+renderer passes 78 library tests plus the native archive readback. Both host
+integrations pass after rebasing onto current main. The full world run passes
+572 tests with one storage-resume timing failure and three ignored tests; the
+timing test passes alone. Both results remain retained.
 
 **Remaining limits:** This is a command editor with standalone SVG diagnostics.
 It is not a windowed 3D editor. Geometry tools create static boxes and reuse

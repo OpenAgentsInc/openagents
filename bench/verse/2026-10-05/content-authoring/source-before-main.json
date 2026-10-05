@@ -1,8 +1,8 @@
 {
   "schema": "verse.author.source.v1",
-  "recorded_at_utc": "2026-10-05T23:19:33.655418+00:00",
-  "source_commit": "b03b81eae12b9374eb1caf04fe5bc3711b889003",
-  "main_parent": "c537e58d43ba07d2cc134217bf03d27d69ba6a72",
+  "recorded_at_utc": "2026-10-05T23:15:12.679680+00:00",
+  "source_commit": "4665f70bc0c33f97c609fc974c662cc67ec84433",
+  "main_parent": "c033e5ede1ad1b1a120fc4135ac5ed8a301bd399",
   "patch": "source.patch.gz",
   "sha256": {
     "Cargo.lock": "758bea5fb69605e2b52f12494dd95ab56055ded98bef7a3029328b6521a0d012",
@@ -175,7 +175,7 @@
     "crates/verse-world/src/service/net/admission.rs": "094103dc4dbcd83f881bbda425f54011a11f46e048f273e3d258d9b015aa1a4c",
     "crates/verse-world/src/service/net/operator_tests.rs": "d91853076383817be6d961d36ec123203acb95c1569d11a9ac1f4b90a8f95775",
     "crates/verse-world/src/service/net/resume_tests.rs": "d58fcdc752a5fa2c8f1bf4346c0859ba14ec68a8d240d0363f91c07e71f7ace3",
-    "crates/verse-world/src/service/net/session_pipeline.rs": "39e5e806a91e711c57541e84edd00fc685376f3f94e47e7f651d5473f9f00a95",
+    "crates/verse-world/src/service/net/session_pipeline.rs": "4671e17f01400b2b63b86a38bec49d0855aded09b1345b2e98ad701c1246551c",
     "crates/verse-world/src/service/net/timing.rs": "e51b514a78b43c44f27591accfde330ecc3ee3e3ee435aeb6a4323aafd414589",
     "crates/verse-world/src/service/net.rs": "84705ce951e9883d4f90878d73b50be8a0b48ef9ba22f13868955bc54fbe30dd",
     "crates/verse-world/src/service/operator.rs": "416f0cb4e2a03e2bc02a365dcef51839a6d122256dfd89f4681281e3f560bd51",
@@ -259,12 +259,5 @@
     "crates/verse-world/src/wind_wall/tests.rs": "9a861d16802156547a199d2d71faa0ed0560b67fe807889620d65cc65535dca7",
     "crates/verse-world/src/wind_wall.rs": "bf6b750009b7f40c702633d88d5af915b0d58dd8802e33328b9ae713bd0d9989",
     "rust-toolchain.toml": "8e390d6a0838315f972690f46ef8bae8b7ecc9ee6c1ed70140ef852869c2482e"
-  },
-  "integration": {
-    "before_main_manifest": "source-before-main.json",
-    "changed_source_inputs": [
-      "crates/verse-world/src/service/net/session_pipeline.rs"
-    ],
-    "repeat": "Both host integration tests pass against rebased main; see host-main.log"
   }
 }

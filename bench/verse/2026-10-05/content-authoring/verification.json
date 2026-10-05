@@ -1,6 +1,6 @@
 {
   "schema": "verse.author.verification.v1",
-  "recorded_at_utc": "2026-10-05T23:19:06.718160+00:00",
+  "recorded_at_utc": "2026-10-05T23:25:06.090201+00:00",
   "checks": [
     {
       "log": "engine.log",
@@ -9,7 +9,12 @@
       ],
       "finished": [
         "Finished `test` profile [unoptimized + debuginfo] target(s) in 20.03s"
-      ]
+      ],
+      "command": "cargo test -p verse-engine --features asset-io --lib -- --nocapture",
+      "phase": "before main integration",
+      "executables_sha256": {
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-0dfba4dc924d9bac": "93cdb5fc78aa34e489ef5f6082c33d0e364bf34e848019a3a9b3dd881da49690"
+      }
     },
     {
       "log": "world.log",
@@ -18,7 +23,12 @@
       ],
       "finished": [
         "Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 57s"
-      ]
+      ],
+      "command": "cargo test -p verse-world --features service-net --lib",
+      "phase": "before main integration",
+      "executables_sha256": {
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9": "62d50d189496f4a8184555a3adadf5eb5c65417cf4dda0b9cb964d7a3ef94f74"
+      }
     },
     {
       "log": "world-resume-isolated.log",
@@ -27,7 +37,12 @@
       ],
       "finished": [
         "Finished `test` profile [unoptimized + debuginfo] target(s) in 0.26s"
-      ]
+      ],
+      "command": "cargo test -p verse-world --features service-net --lib service::net::resume_tests::queued_intervals_survive_storage_resume_without_expiry -- --exact --nocapture",
+      "phase": "before main integration",
+      "executables_sha256": {
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9": "62d50d189496f4a8184555a3adadf5eb5c65417cf4dda0b9cb964d7a3ef94f74"
+      }
     },
     {
       "log": "content-full.log",
@@ -39,7 +54,9 @@
       ],
       "finished": [
         "Finished `test` profile [unoptimized + debuginfo] target(s) in 29.65s"
-      ]
+      ],
+      "command": "cargo test -p verse-content --features compiler,verse-world/service-net -- --nocapture",
+      "phase": "before main integration"
     },
     {
       "log": "authoring-final.log",
@@ -48,7 +65,12 @@
       ],
       "finished": [
         "Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 35s"
-      ]
+      ],
+      "command": "cargo test -p verse-content --features compiler,verse-world/service-net --lib authoring::",
+      "phase": "before main integration",
+      "executables_sha256": {
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-cf21e83b63d31373": "5bf7dbaab27b0782c69aa293ee27d32f0a4aaf5acaf8270b4a8896d1bc451f31"
+      }
     },
     {
       "log": "cli-final.log",
@@ -57,7 +79,14 @@
       ],
       "finished": [
         "Finished `test` profile [unoptimized + debuginfo] target(s) in 26.37s"
-      ]
+      ],
+      "command": "cargo test -p verse-content --features compiler,verse-world/service-net --test author -- --nocapture",
+      "phase": "before main integration",
+      "executables_sha256": {
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/author-cd93c9a288fe70ec": "b676d0fc3e0bd153631fdae3364805dcc5ff1104c648984794558f4e7da5e27e",
+        "/home/christopherdavid/work/openagents-target-agent1/debug/verse-content": "c959636282864c7c987ca20279c46f19ec716eaea497f9fa0b37c344d55f8cbb",
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-57d6466e22e4ecd7": "c959636282864c7c987ca20279c46f19ec716eaea497f9fa0b37c344d55f8cbb"
+      }
     },
     {
       "log": "host.log",
@@ -69,7 +98,31 @@
       ],
       "finished": [
         "Finished `test` profile [unoptimized + debuginfo] target(s) in 1.72s"
-      ]
+      ],
+      "command": "cargo test -p verse-host -- --nocapture",
+      "phase": "before main integration",
+      "executables_sha256": {
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-aeaf4b0b014ea212": "d87e30569a58a3e556d446791f0d57baff6094ecb72367a06771a9c00176860f",
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-fc8c3a71db7889f3": "a7c770d3819aafccc5e5478df3c286843c4fdab57cae754d7e9c35e4823bfbc8",
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-c70ec3f77caa2c34": "bc097cb4ee2c70fc94b58cf48c11ff140fff9442504e01b1f0853788786dd140",
+        "/home/christopherdavid/work/openagents-target-agent1/debug/verse-host": "785e2f4a3f3db55d4ea22feeb595cb861fe1143b0fa1da9cb6878b381e5b6312",
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-802d68f5e650d2ca": "785e2f4a3f3db55d4ea22feeb595cb861fe1143b0fa1da9cb6878b381e5b6312"
+      }
+    },
+    {
+      "log": "host-main.log",
+      "results": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.08s"
+      ],
+      "finished": [
+        "Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 52s"
+      ],
+      "command": "cargo test -p verse-host --test worlds -- --nocapture",
+      "phase": "rebased main",
+      "executables_sha256": {
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-c70ec3f77caa2c34": "1a77a0b5cfcfac064e12919fee9f44b0788b4f20892284c3352e5ecb9077dba2",
+        "/home/christopherdavid/work/openagents-target-agent1/debug/verse-host": "fdddf6e09cc97edb90d475389b693c6a21e8268de901cc2d48855203cd1c5f7e"
+      }
     },
     {
       "log": "renderer.log",
@@ -78,7 +131,12 @@
       ],
       "finished": [
         "Finished `test` profile [unoptimized + debuginfo] target(s) in 21.93s"
-      ]
+      ],
+      "command": "cargo test -p verse-pbr --lib",
+      "phase": "before main integration",
+      "executables_sha256": {
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-5d96ac9ba06d7f76": "5c90ad9e7a2b199bf614524ead9a83bfd69ee41d1ba4d92f7aea9f428f8e7a2a"
+      }
     },
     {
       "log": "renderer-mips.log",
@@ -87,32 +145,39 @@
       ],
       "finished": [
         "Finished `test` profile [unoptimized + debuginfo] target(s) in 0.27s"
-      ]
+      ],
+      "command": "cargo test -p verse-pbr --lib uploaded_roles_and_material_bindings_match_linear_light_and_mask_recipes -- --ignored --nocapture",
+      "phase": "before main integration",
+      "executables_sha256": {
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-5d96ac9ba06d7f76": "5c90ad9e7a2b199bf614524ead9a83bfd69ee41d1ba4d92f7aea9f428f8e7a2a"
+      }
     },
     {
       "log": "compiler-only.log",
       "results": [],
       "finished": [
         "Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.80s"
-      ]
+      ],
+      "command": "cargo check -p verse-content --features compiler",
+      "phase": "before main integration"
     }
   ],
   "executables_sha256": {
-    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-5d96ac9ba06d7f76": "5c90ad9e7a2b199bf614524ead9a83bfd69ee41d1ba4d92f7aea9f428f8e7a2a",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-0dfba4dc924d9bac": "93cdb5fc78aa34e489ef5f6082c33d0e364bf34e848019a3a9b3dd881da49690",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9": "62d50d189496f4a8184555a3adadf5eb5c65417cf4dda0b9cb964d7a3ef94f74",
     "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-cf21e83b63d31373": "5bf7dbaab27b0782c69aa293ee27d32f0a4aaf5acaf8270b4a8896d1bc451f31",
     "/home/christopherdavid/work/openagents-target-agent1/debug/deps/author-cd93c9a288fe70ec": "b676d0fc3e0bd153631fdae3364805dcc5ff1104c648984794558f4e7da5e27e",
     "/home/christopherdavid/work/openagents-target-agent1/debug/verse-content": "c959636282864c7c987ca20279c46f19ec716eaea497f9fa0b37c344d55f8cbb",
     "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-57d6466e22e4ecd7": "c959636282864c7c987ca20279c46f19ec716eaea497f9fa0b37c344d55f8cbb",
-    "/home/christopherdavid/work/openagents-target-agent1/debug/verse-host": "785e2f4a3f3db55d4ea22feeb595cb861fe1143b0fa1da9cb6878b381e5b6312",
-    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-802d68f5e650d2ca": "785e2f4a3f3db55d4ea22feeb595cb861fe1143b0fa1da9cb6878b381e5b6312",
-    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-0dfba4dc924d9bac": "93cdb5fc78aa34e489ef5f6082c33d0e364bf34e848019a3a9b3dd881da49690",
     "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-aeaf4b0b014ea212": "d87e30569a58a3e556d446791f0d57baff6094ecb72367a06771a9c00176860f",
     "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-fc8c3a71db7889f3": "a7c770d3819aafccc5e5478df3c286843c4fdab57cae754d7e9c35e4823bfbc8",
-    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-c70ec3f77caa2c34": "bc097cb4ee2c70fc94b58cf48c11ff140fff9442504e01b1f0853788786dd140",
-    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9": "62d50d189496f4a8184555a3adadf5eb5c65417cf4dda0b9cb964d7a3ef94f74"
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-c70ec3f77caa2c34": "1a77a0b5cfcfac064e12919fee9f44b0788b4f20892284c3352e5ecb9077dba2",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/verse-host": "fdddf6e09cc97edb90d475389b693c6a21e8268de901cc2d48855203cd1c5f7e",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-802d68f5e650d2ca": "785e2f4a3f3db55d4ea22feeb595cb861fe1143b0fa1da9cb6878b381e5b6312",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-5d96ac9ba06d7f76": "5c90ad9e7a2b199bf614524ead9a83bfd69ee41d1ba4d92f7aea9f428f8e7a2a"
   },
   "artifacts_sha256": {
-    "README.md": "8cc904b5c44fb5e7890e3eb5e949e5b2627e9f3c7663fe9270ec452dc6571918",
+    "README.md": "f10b1175c063b0c4be1f7a3da16f1267368f979dc1e7a1b7afb9a4d1b2417d8a",
     "acceptance.json": "a1c33eb1443eb52ad3101860d5f0af8f7a6d8b3dafad92859c80edd2c11cd501",
     "authoring-disk-failure.log": "0f76bfa6aa237e4740cf44fdae3e2e8e4716101a01a0fbdcccf94fbaeb688eee",
     "authoring-disk-retry-failure.log": "0f76bfa6aa237e4740cf44fdae3e2e8e4716101a01a0fbdcccf94fbaeb688eee",
@@ -124,6 +189,7 @@
     "content-full.log": "a855ebe2134080fb6ee9016b196c6f7883df45108bd4c51b99384f76fc61fa6f",
     "diagnostic-fixture-failure.log": "445286bf20a5395fab7eabe3e6a1d6bed1923750bd7cbbcd4384c78ce08a09c0",
     "document.json": "efc96796f4aa2433aa362d1858b02d8fed303fc81a99f422646d62280c29de32",
+    "earlier-physics-executables.json": "51ce6c8cbe11bd297a3e8937ce329c9170c9b881a064990e8d3a4f10ef1d0387",
     "earlier-test-executables.json": "2fcf62c37a09a9c82eb0466e534200c0f7ebd49025a709fc12bed21e25cca954",
     "engine.log": "f1a91c3b4d48e8ab1dbd560aae27dd7c00bfa6585f7aff410215c18de28e69e3",
     "failed-archive-executable.json": "d4ac98edc583d23e734e7b209315f882c51056ae0e412d8d8a6501b01c7363a7",
@@ -133,6 +199,8 @@
     "host-archive-fixture-failure.log": "48a6a3071f011611ae56d3dd679dbb00e3b88ca33c3a9ede5428afd55e7eff41",
     "host-disk-failure.log": "31824d6b4256e8986d74b58257a29205a9f02c6e8241320adb1a4d14496d7e37",
     "host-fence-fixture-failure.log": "48f18e333a79c907a4d6aa2d0349aad15617fc55de7004e4f964eda9c3da7fff",
+    "host-main-disk-failure.log": "330eb23bf03bbcde1a629b3c86867b738d024652c4fe13b1998c509e3c5efb46",
+    "host-main.log": "6218c80db6f4f1606e23b0ed93b41f291e26b4dd95d4101a2f5b39ae84a9ced9",
     "host.log": "8f7bddc820bace69eb51b48bf10e5afd025c2e9ec597f9036f99f89e25e2d7c2",
     "integer-key-failure.log": "f4176d78fc5f3bbc481d5b564d9863537d12697c3a0df638ec2559bb5a76c59c",
     "mips.json": "cfdf17d1451fc69ac5307ed7793165612154cfafa5406ab51e3a392aade13f10",
@@ -143,15 +211,36 @@
     "outpost.svg": "90b9382e23d4c123b86c89c6a6946a77225576c459fd04bced29a014561bc5c6",
     "passed-content-executables.json": "19e228f9e517d56c8f5af4fa2822c8dba25999e4011c3f6bb6dc809b5e6bde42",
     "passed-host-executables.json": "cb3e8cead44daea1a934198248e48b4712acc981644309c92654e049cf8a935a",
+    "passed-renderer-executable.json": "8f37ebd1e70f4c030cfcb469c4ba13b6d48cf9a350333dcf6f841da516540f55",
     "renderer-disk-failure.log": "27ea469f03c1899d0ab2954a5315912f31ddd1e9843a464e7e278099ae3aedb4",
     "renderer-disk-retry-failure.log": "566a0629e540b16cb61b69c4bc5b07a7bcc7a9b45a4abd174cc8df4c6fa9c762",
     "renderer-mips.log": "76a438c9794e450b82dac20924b7d33e2aa3e354147aff7366d917e50ad8c168",
     "renderer.log": "a42710a55df0ac0f07c528751cc545b80018e3de67dc01c5e148006e8c835662",
     "replaced-content-executables.json": "67d477446fe7383b3fc0104d1228666e6a46cce453b784bafd31a492ee5dc032",
-    "source.json": "7101b6103d4af9c70ab8a0d4a253019b8470cde3317fa6331d90fbf6ca93eb05",
+    "source-before-main.json": "7101b6103d4af9c70ab8a0d4a253019b8470cde3317fa6331d90fbf6ca93eb05",
+    "source-before-main.patch.gz": "15bceb7aea17dfb3c005daa09ab2b5229c17a4bafe16ff4a49b135b7513e4cd8",
+    "source.json": "82f71460edb7395dabbd9d16c19841be9aebbe256a19b2c633c99ac9cedbd829",
     "source.patch.gz": "15bceb7aea17dfb3c005daa09ab2b5229c17a4bafe16ff4a49b135b7513e4cd8",
     "world-disk-failure.log": "7958212de2b6e9b6de426f8b9cdadf62512b56457ad0e89f192b64ee6ee72736",
     "world-resume-isolated.log": "813b58d293763bbc988c5b40f93eeada23181f1dea306f9e0bdbd215a43a0d14",
     "world.log": "b63e486a5768cacd5bac0a8570f20f7b85bcb01c20b356097518256dc0636928"
+  },
+  "environment": {
+    "CARGO_TARGET_DIR": "/home/christopherdavid/work/openagents-target-agent1",
+    "CARGO_BUILD_JOBS": "2",
+    "VERSE_AUTHOR_EVIDENCE": "bench/verse/2026-10-05/content-authoring (CLI retention only)"
+  },
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+  "notes": [
+    "The full world run has one timing failure; its isolated retry passes.",
+    "The full content log predates the last numeric-key, retention, and reopen changes; final authoring and CLI logs exercise them.",
+    "Rebase integrates a main transport queue fix; final host integration tests compile and exercise the merged transport.",
+    "Per-check executable hashes preserve binaries replaced at the same path."
+  ],
+  "documentation": {
+    "format_command": "cargo fmt -p verse-engine -p verse-world -p verse-content -p verse-host -p verse-pbr -- --check",
+    "format_exit": 0,
+    "local_links": "passed",
+    "prose_diff_check": "passed"
   }
 }
