@@ -1,0 +1,75 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "compiled_revision": "75a8cf971d9976ed8b3cbd0f0a48306637fa2cc3",
+  "client_compiled_revision": "f6ed2aa223c7fed2c163c62da1cfd4255048a529",
+  "host_binary_sha256": "02765945214e13437589e16172f142b205b14b66addcff8fa519837bab1d26cf",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "wire_version": 27,
+  "movement_send_steps": 6,
+  "timings": {
+    "frame_interval_ms": {
+      "samples": 4441,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 8.750667,
+      "p95": 14.527999999999999,
+      "p99": 17.609625,
+      "maximum": 34.759209
+    },
+    "gpu_total_ms": {
+      "samples": 4438,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 2.067125,
+      "p95": 9.1665,
+      "p99": 10.617084,
+      "maximum": 14.459375
+    },
+    "command_turnaround_ms": {
+      "samples": 733,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 66.68070900000001,
+      "p95": 115.637667,
+      "p99": 209.151166,
+      "maximum": 309.387
+    },
+    "sdk_verified_snapshot_age_ms": {
+      "samples": 4441,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 33.501584,
+      "p95": 87.433084,
+      "p99": 147.071541,
+      "maximum": 245.575125
+    }
+  },
+  "movement_expiry": {
+    "total": 58,
+    "admission": 0,
+    "primary_tick": 2,
+    "additional_tick": 56,
+    "bootstrap": 0,
+    "omitted": 26
+  },
+  "native_reset_reasons": {
+    "control_epoch": 5
+  },
+  "validation": [
+    "38 focused network and worker checks pass.",
+    "Updated Linux host build passes.",
+    "Native, headless load, and host exit zero.",
+    "All 19 headless rows observe 20 players and at least 40 live hostiles throughout their battle samples.",
+    "Repeat baseline movement expiries: 58."
+  ],
+  "limitations": [
+    "Shared machine load prevents causal attribution across successive runs.",
+    "Repeatability, impaired-network, input-to-display, and soak acceptance remain unproven.",
+    "One completed baseline does not establish full roadmap acceptance."
+  ],
+  "movement_inputs": 20708,
+  "producer_pressure": 0
+}

@@ -1,0 +1,6375 @@
+{
+  "schema": "verse.multiplayer.load.v3",
+  "movement_frames_requested": true,
+  "status": "complete",
+  "seconds": 75,
+  "players": [
+    {
+      "player": 0,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 966,
+          "control": {
+            "world_step": 1464,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 240
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1532,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1540,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1540,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1563,
+          "control": {
+            "world_step": 3852,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 389
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2159,
+          "control": {
+            "world_step": 6236,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 8,
+            "accepted_sequence": 92
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1024,
+      "snapshot_bytes": 74019346,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 705,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 695,
+      "movement_inputs": 1094,
+      "input_pressure": 0,
+      "refusals": 14,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 192,
+      "binding_to_outcome_ms": {
+        "samples": 1125,
+        "p95": 138.243792,
+        "max": 381.511541
+      }
+    },
+    {
+      "player": 1,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 964,
+          "control": {
+            "world_step": 1456,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 239
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1532,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1532,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3740,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1562,
+          "control": {
+            "world_step": 3852,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 15
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1741,
+          "control": {
+            "world_step": 4568,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 137
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1985,
+          "control": {
+            "world_step": 5540,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 300
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2160,
+          "control": {
+            "world_step": 6240,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2161,
+          "control": {
+            "world_step": 6248,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1030,
+      "snapshot_bytes": 74463413,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 710,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 698,
+      "movement_inputs": 1089,
+      "input_pressure": 0,
+      "refusals": 15,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 160,
+      "binding_to_outcome_ms": {
+        "samples": 1121,
+        "p95": 135.78675,
+        "max": 415.53375
+      }
+    },
+    {
+      "player": 2,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 968,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 243
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1542,
+          "control": {
+            "world_step": 3772,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1563,
+          "control": {
+            "world_step": 3856,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 8
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2015,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2018,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2018,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2163,
+          "control": {
+            "world_step": 6256,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 10,
+            "accepted_sequence": 94
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1019,
+      "snapshot_bytes": 73667553,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 700,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 687,
+      "movement_inputs": 1088,
+      "input_pressure": 0,
+      "refusals": 24,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 56,
+      "binding_to_outcome_ms": {
+        "samples": 1118,
+        "p95": 142.50725,
+        "max": 359.156833
+      }
+    },
+    {
+      "player": 3,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 964,
+          "control": {
+            "world_step": 1456,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 240
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3744,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1562,
+          "control": {
+            "world_step": 3852,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 13
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1744,
+          "control": {
+            "world_step": 4580,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 139
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2164,
+          "control": {
+            "world_step": 6260,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1026,
+      "snapshot_bytes": 74176584,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 707,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 696,
+      "movement_inputs": 1094,
+      "input_pressure": 0,
+      "refusals": 17,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 182,
+      "binding_to_outcome_ms": {
+        "samples": 1126,
+        "p95": 136.57312499999998,
+        "max": 415.39412500000003
+      }
+    },
+    {
+      "player": 4,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 967,
+          "control": {
+            "world_step": 1468,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 240
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 992,
+          "control": {
+            "world_step": 1568,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 992,
+          "control": {
+            "world_step": 1568,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 992,
+          "control": {
+            "world_step": 1568,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 994,
+          "control": {
+            "world_step": 1580,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 994,
+          "control": {
+            "world_step": 1580,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1208,
+          "control": {
+            "world_step": 2432,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 139
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1542,
+          "control": {
+            "world_step": 3772,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1564,
+          "control": {
+            "world_step": 3856,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 11
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1746,
+          "control": {
+            "world_step": 4584,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 136
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2164,
+          "control": {
+            "world_step": 6260,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2166,
+          "control": {
+            "world_step": 6268,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1025,
+      "snapshot_bytes": 74102352,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 706,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 694,
+      "movement_inputs": 1096,
+      "input_pressure": 0,
+      "refusals": 22,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 1,
+        "Shield": 2,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 1127,
+        "p95": 133.277791,
+        "max": 371.268667
+      }
+    },
+    {
+      "player": 5,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1484,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3744,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1564,
+          "control": {
+            "world_step": 3856,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 14
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5688,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2163,
+          "control": {
+            "world_step": 6256,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 10,
+            "accepted_sequence": 94
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1024,
+      "snapshot_bytes": 74042618,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 707,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 695,
+      "movement_inputs": 1091,
+      "input_pressure": 0,
+      "refusals": 16,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 182,
+      "binding_to_outcome_ms": {
+        "samples": 1122,
+        "p95": 133.393958,
+        "max": 442.588084
+      }
+    },
+    {
+      "player": 6,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 242
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1562,
+          "control": {
+            "world_step": 3848,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 650
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2015,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2018,
+          "control": {
+            "world_step": 5672,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2162,
+          "control": {
+            "world_step": 6252,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 94
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 2222,
+          "control": {
+            "world_step": 6488,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 136
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1007,
+      "snapshot_bytes": 72801205,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 693,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 685,
+      "movement_inputs": 1100,
+      "input_pressure": 0,
+      "refusals": 15,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 1131,
+        "p95": 141.102042,
+        "max": 370.549042
+      }
+    },
+    {
+      "player": 7,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 907,
+          "control": {
+            "world_step": 1228,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 201
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 966,
+          "control": {
+            "world_step": 1464,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 241
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1532,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1532,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1540,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1540,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1540,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1562,
+          "control": {
+            "world_step": 3852,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 390
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5580,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5580,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2162,
+          "control": {
+            "world_step": 6252,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 110
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1006,
+      "snapshot_bytes": 72721363,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 690,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 682,
+      "movement_inputs": 1099,
+      "input_pressure": 0,
+      "refusals": 13,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 2,
+        "Web": 3
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 1129,
+        "p95": 145.614125,
+        "max": 370.826375
+      }
+    },
+    {
+      "player": 8,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 964,
+          "control": {
+            "world_step": 1456,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 240
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1543,
+          "control": {
+            "world_step": 3776,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1562,
+          "control": {
+            "world_step": 3848,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2162,
+          "control": {
+            "world_step": 6248,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 8,
+            "accepted_sequence": 112
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 995,
+      "snapshot_bytes": 71901222,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 679,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 670,
+      "movement_inputs": 1095,
+      "input_pressure": 0,
+      "refusals": 18,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 192,
+      "binding_to_outcome_ms": {
+        "samples": 1125,
+        "p95": 143.275,
+        "max": 382.768042
+      }
+    },
+    {
+      "player": 9,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 964,
+          "control": {
+            "world_step": 1456,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 240
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3744,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1562,
+          "control": {
+            "world_step": 3852,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 13
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1926,
+          "control": {
+            "world_step": 5308,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 262
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2015,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2018,
+          "control": {
+            "world_step": 5672,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2162,
+          "control": {
+            "world_step": 6248,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 10,
+            "accepted_sequence": 95
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1001,
+      "snapshot_bytes": 72366847,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 686,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 674,
+      "movement_inputs": 1087,
+      "input_pressure": 0,
+      "refusals": 22,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 2
+      },
+      "minimum_hp": 184,
+      "binding_to_outcome_ms": {
+        "samples": 1119,
+        "p95": 138.240541,
+        "max": 391.280458
+      }
+    },
+    {
+      "player": 10,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1484,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1484,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 973,
+          "control": {
+            "world_step": 1492,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3744,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3744,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1564,
+          "control": {
+            "world_step": 3856,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 8
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1664,
+          "control": {
+            "world_step": 4260,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1667,
+          "control": {
+            "world_step": 4272,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 10,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 10,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 10,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 10,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 10,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 12,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 12,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 12,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2015,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 12,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2018,
+          "control": {
+            "world_step": 5672,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 12,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2164,
+          "control": {
+            "world_step": 6260,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 14,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 2223,
+          "control": {
+            "world_step": 6496,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 1
+            },
+            "epoch": 15,
+            "accepted_sequence": 36
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 990,
+      "snapshot_bytes": 71511203,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 673,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 653,
+      "movement_inputs": 1071,
+      "input_pressure": 0,
+      "refusals": 25,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 1104,
+        "p95": 143.153583,
+        "max": 378.20475
+      }
+    },
+    {
+      "player": 11,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 243
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1564,
+          "control": {
+            "world_step": 3856,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 9
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2000,
+          "control": {
+            "world_step": 5600,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2000,
+          "control": {
+            "world_step": 5600,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2000,
+          "control": {
+            "world_step": 5600,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2000,
+          "control": {
+            "world_step": 5600,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2000,
+          "control": {
+            "world_step": 5600,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2001,
+          "control": {
+            "world_step": 5608,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2164,
+          "control": {
+            "world_step": 6256,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 984,
+      "snapshot_bytes": 71073256,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 670,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 658,
+      "movement_inputs": 1093,
+      "input_pressure": 0,
+      "refusals": 20,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 56,
+      "binding_to_outcome_ms": {
+        "samples": 1123,
+        "p95": 146.777584,
+        "max": 402.610625
+      }
+    },
+    {
+      "player": 12,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 968,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 242
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3744,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3748,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1564,
+          "control": {
+            "world_step": 3856,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 13
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2163,
+          "control": {
+            "world_step": 6256,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 111
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 995,
+      "snapshot_bytes": 71893126,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 680,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 673,
+      "movement_inputs": 1102,
+      "input_pressure": 0,
+      "refusals": 13,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 158,
+      "binding_to_outcome_ms": {
+        "samples": 1133,
+        "p95": 140.137166,
+        "max": 423.36670799999996
+      }
+    },
+    {
+      "player": 13,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 968,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 242
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3740,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1541,
+          "control": {
+            "world_step": 3764,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1564,
+          "control": {
+            "world_step": 3856,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 8
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1685,
+          "control": {
+            "world_step": 4344,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 93
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2018,
+          "control": {
+            "world_step": 5672,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2164,
+          "control": {
+            "world_step": 6260,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 988,
+      "snapshot_bytes": 71407933,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 675,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 660,
+      "movement_inputs": 1085,
+      "input_pressure": 0,
+      "refusals": 19,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 158,
+      "binding_to_outcome_ms": {
+        "samples": 1116,
+        "p95": 142.44458300000002,
+        "max": 383.299291
+      }
+    },
+    {
+      "player": 14,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 968,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 239
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3740,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1564,
+          "control": {
+            "world_step": 3856,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 14
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1625,
+          "control": {
+            "world_step": 4104,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 55
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5652,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2015,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2018,
+          "control": {
+            "world_step": 5672,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2164,
+          "control": {
+            "world_step": 6256,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2165,
+          "control": {
+            "world_step": 6264,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 980,
+      "snapshot_bytes": 70790244,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 666,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 653,
+      "movement_inputs": 1085,
+      "input_pressure": 0,
+      "refusals": 16,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 108,
+      "binding_to_outcome_ms": {
+        "samples": 1117,
+        "p95": 139.15845800000002,
+        "max": 406.06066699999997
+      }
+    },
+    {
+      "player": 15,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1480,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1480,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1480,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 973,
+          "control": {
+            "world_step": 1496,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 974,
+          "control": {
+            "world_step": 1496,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3744,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3744,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1564,
+          "control": {
+            "world_step": 3856,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 12
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5688,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2163,
+          "control": {
+            "world_step": 6256,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 10,
+            "accepted_sequence": 94
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 972,
+      "snapshot_bytes": 70173646,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 658,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 646,
+      "movement_inputs": 1084,
+      "input_pressure": 0,
+      "refusals": 19,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 178,
+      "binding_to_outcome_ms": {
+        "samples": 1116,
+        "p95": 139.62133400000002,
+        "max": 393.05391699999996
+      }
+    },
+    {
+      "player": 16,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 966,
+          "control": {
+            "world_step": 1464,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 241
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1265,
+          "control": {
+            "world_step": 2664,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 446
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3740,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1562,
+          "control": {
+            "world_step": 3852,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1620,
+          "control": {
+            "world_step": 4084,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 35
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1681,
+          "control": {
+            "world_step": 4332,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 76
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1863,
+          "control": {
+            "world_step": 5052,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 201
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1923,
+          "control": {
+            "world_step": 5296,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 240
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1985,
+          "control": {
+            "world_step": 5544,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 282
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5572,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5572,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5680,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2020,
+          "control": {
+            "world_step": 5688,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2159,
+          "control": {
+            "world_step": 6236,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 10,
+            "accepted_sequence": 91
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 2219,
+          "control": {
+            "world_step": 6480,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 10,
+            "accepted_sequence": 132
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 2279,
+          "control": {
+            "world_step": 6720,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 10,
+            "accepted_sequence": 174
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 962,
+      "snapshot_bytes": 69437929,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 651,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 638,
+      "movement_inputs": 1092,
+      "input_pressure": 0,
+      "refusals": 24,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 1,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 1,
+        "Thunderwave": 3,
+        "Web": 2
+      },
+      "minimum_hp": 112,
+      "binding_to_outcome_ms": {
+        "samples": 1123,
+        "p95": 142.766708,
+        "max": 430.904041
+      }
+    },
+    {
+      "player": 17,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 966,
+          "control": {
+            "world_step": 1464,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 241
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3744,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3744,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1563,
+          "control": {
+            "world_step": 3852,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 11
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1800,
+          "control": {
+            "world_step": 4804,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1800,
+          "control": {
+            "world_step": 4804,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1987,
+          "control": {
+            "world_step": 5548,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 7,
+            "accepted_sequence": 117
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2000,
+          "control": {
+            "world_step": 5600,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 8,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2000,
+          "control": {
+            "world_step": 5600,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 8,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2000,
+          "control": {
+            "world_step": 5600,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 8,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2000,
+          "control": {
+            "world_step": 5600,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 8,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2164,
+          "control": {
+            "world_step": 6260,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 9,
+            "accepted_sequence": 106
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 966,
+      "snapshot_bytes": 69743887,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 655,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 642,
+      "movement_inputs": 1087,
+      "input_pressure": 0,
+      "refusals": 13,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 1117,
+        "p95": 142.058333,
+        "max": 430.814625
+      }
+    },
+    {
+      "player": 18,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 907,
+          "control": {
+            "world_step": 1228,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 201
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 964,
+          "control": {
+            "world_step": 1456,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 241
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 983,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 984,
+          "control": {
+            "world_step": 1536,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1145,
+          "control": {
+            "world_step": 2180,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 103
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1387,
+          "control": {
+            "world_step": 3152,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 269
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1535,
+          "control": {
+            "world_step": 3740,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1537,
+          "control": {
+            "world_step": 3752,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1563,
+          "control": {
+            "world_step": 3856,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1565,
+          "control": {
+            "world_step": 3860,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1565,
+          "control": {
+            "world_step": 3860,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1623,
+          "control": {
+            "world_step": 4096,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 8,
+            "accepted_sequence": 35
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1925,
+          "control": {
+            "world_step": 5304,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 8,
+            "accepted_sequence": 241
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1992,
+          "control": {
+            "world_step": 5568,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1995,
+          "control": {
+            "world_step": 5584,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2013,
+          "control": {
+            "world_step": 5660,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2018,
+          "control": {
+            "world_step": 5672,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2162,
+          "control": {
+            "world_step": 6252,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 12,
+            "accepted_sequence": 94
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 967,
+      "snapshot_bytes": 69840094,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 656,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 641,
+      "movement_inputs": 1076,
+      "input_pressure": 0,
+      "refusals": 28,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 2,
+        "Web": 2
+      },
+      "minimum_hp": 192,
+      "binding_to_outcome_ms": {
+        "samples": 1109,
+        "p95": 142.182167,
+        "max": 430.858583
+      }
+    }
+  ],
+  "limits": [
+    "Headless authenticated clients measure transport and authority load, not rendering.",
+    "Headless intervals use confirmed server time plus the existing bounded authority lookahead, without native prediction or rendering; the receipt declares the requested movement mode.",
+    "Binding-to-outcome includes server processing and client delivery, not isolated RTT.",
+    "Timing retains at most 8192 samples per player."
+  ]
+}
