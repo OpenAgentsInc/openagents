@@ -71,12 +71,7 @@ fn the_battle_net_launcher_floats_in_the_middle_of_the_screen() {
 
 #[test]
 fn a_game_client_tiles_and_a_floating_one_goes_back_in_the_tree() {
-    for (class, title) in [
-        ("Wow.exe", ""),
-        ("SC2_x64.exe", ""),
-        ("wine", "World of Warcraft"),
-        ("wine", "StarCraft II"),
-    ] {
+    for (class, title) in [("SC2_x64.exe", ""), ("wine", "StarCraft II")] {
         let effects = coder_binds::matching_with(class, title, &host_rules());
         assert!(effects.suppress_fullscreen, "{class} {title}");
         let (mut manager, id) = layout_with_one();

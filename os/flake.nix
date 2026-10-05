@@ -192,8 +192,6 @@
               "bind = SUPER, Z, exec, coder-zoom"
               "bind = SUPER, G, exec, coder-battlenet"
               "windowrule = match:class ^(battle\\.net\\.exe|Battle\\.net\\.exe|steam_app_battlenet)$, float on, center on"
-              "windowrule = match:class (?i)^(wow.*|world of warcraft.*|steam_app_.*wow.*)$, tile on, suppress_event maximize fullscreen"
-              "windowrule = match:title (?i)^(World of Warcraft.*)$, tile on, suppress_event maximize fullscreen"
               "windowrule = match:class (?i)^(sc2.*|starcraft.*|steam_app_.*sc2.*)$, tile on, suppress_event maximize fullscreen"
               "windowrule = match:title (?i)^(StarCraft II.*)$, tile on, suppress_event maximize fullscreen"
             ];
@@ -201,7 +199,7 @@
             missing = lib.filter (line: !(lib.elem line lines)) expected;
             grantOk =
               map (bind: bind.key) grant.extraBinds == [ "D" "Z" "G" ]
-              && builtins.length grant.extraRules == 5
+              && builtins.length grant.extraRules == 3
               && (lib.head grant.extraRules).effects.center
               && grant.launchers == [ "dictation" "presentation" "browser" "android" "camera" "hands" ];
             # The capability modules add their rows after the default start

@@ -3,9 +3,8 @@
 # rules without declaring the options its private modules own.
 #
 # The values are the ones a host with Zoom, a slide deck, and Battle.net sets
-# today: three launcher chords, a floating Battle.net launcher, and World of
-# Warcraft and StarCraft II clients that tile as a pane and ignore a
-# fullscreen request. `flake.nix` checks that `/etc/coderos/hyprland.conf`
+# today: three launcher chords, a floating Battle.net launcher, and a
+# StarCraft II client that tiles as a pane and ignores a fullscreen request. `flake.nix` checks that `/etc/coderos/hyprland.conf`
 # holds each line exactly as the host's session reads it now, and that the
 # Coder compositor's grant carries the same entries.
 #
@@ -44,19 +43,6 @@ in
         float = true;
         center = true;
       }
-      (game // {
-        name = "World of Warcraft client, by class";
-        patterns = [
-          { prefix = "wow"; }
-          { prefix = "world of warcraft"; }
-          { prefix = "steam_app_"; holds = "wow"; }
-        ];
-      })
-      (game // {
-        name = "World of Warcraft client, by title";
-        field = "title";
-        patterns = [ { prefix = "World of Warcraft"; } ];
-      })
       (game // {
         name = "StarCraft II client, by class";
         patterns = [

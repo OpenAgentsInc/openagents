@@ -854,9 +854,9 @@ in
       example = lib.literalExpression ''
         [
           {
-            name = "World of Warcraft client, by title";
+            name = "StarCraft II client, by title";
             field = "title";
-            patterns = [ { prefix = "World of Warcraft"; } ];
+            patterns = [ { prefix = "StarCraft II"; } ];
             ignoreCase = true;
             float = false;
             suppressFullscreen = true;

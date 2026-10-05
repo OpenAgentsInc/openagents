@@ -290,7 +290,7 @@ coder-desk shot /tmp/screen.png
 
 ## Xwayland
 
-The deck, Zoom, the Android emulator, and Battle.net with World of Warcraft
+The deck, Zoom, the Android emulator, and Battle.net with StarCraft II
 are X11 programs on a CoderOS host, and the `game` tool sends its input to
 the game with `xdotool` over XTEST, which only an X server answers. The
 compositor runs that server through Smithay's `xwayland` module and is its
@@ -370,7 +370,7 @@ adds Battle.net as `os/tests/extension-points.nix` does:
 | --- | --- |
 | Class `Emulator` | Floats where it asked, at the size it asked for. The aspect ratio the rule keeps is recorded; the layout crate has no ratio to hold yet. |
 | Class `battle.net.exe`, `Battle.net.exe`, or `steam_app_battlenet` | Floats in the middle of the screen at the size it asked for. |
-| A class that starts with `wow`, `world of warcraft`, `sc2`, or `starcraft` in any case, a `steam_app_` class holding `wow` or `sc2`, or a title that starts with `World of Warcraft` or `StarCraft II` in any case | Tiles. A fullscreen or maximize request leaves it in its tile. |
+| A class that starts with `sc2` or `starcraft` in any case, a `steam_app_` class holding `sc2`, or a title that starts with `StarCraft II` in any case | Tiles. A fullscreen or maximize request leaves it in its tile. |
 
 The clipboard and the primary selection do not cross between an X11
 program and a Wayland one: the compositor answers no selection request from
@@ -555,7 +555,7 @@ The X11 checks run against the display the log names, here `:1`:
 coder-desk open -- xeyes             # starts Xwayland, then a tile
 coder-desk list                      # the tile, with app_id XEyes
 DISPLAY=:1 xdotool search --class XEyes
-coder-desk open -- "xterm -class Wow.exe -fullscreen"   # tiles, not fullscreen
+coder-desk open -- "xterm -class SC2_x64.exe -fullscreen"   # tiles, not fullscreen
 coder-desk open -- "xterm -class battle.net.exe"        # floats, centered
 coder-desk open -- "xterm -class Emulator"              # floats
 ```

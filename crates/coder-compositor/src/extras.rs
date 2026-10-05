@@ -178,12 +178,6 @@ pub(crate) mod tests {
          "field": "class", "ignoreCase": false, "name": "Battle.net launcher",
          "patterns": [{"exact": "battle.net.exe"}, {"exact": "Battle.net.exe"}, {"exact": "steam_app_battlenet"}]},
         {"effects": {"border": null, "center": false, "float": false, "keepAspectRatio": false, "pin": false, "shadow": null, "suppressFullscreen": true},
-         "field": "class", "ignoreCase": true, "name": "World of Warcraft client, by class",
-         "patterns": [{"prefix": "wow"}, {"prefix": "world of warcraft"}, {"holds": "wow", "prefix": "steam_app_"}]},
-        {"effects": {"border": null, "center": false, "float": false, "keepAspectRatio": false, "pin": false, "shadow": null, "suppressFullscreen": true},
-         "field": "title", "ignoreCase": true, "name": "World of Warcraft client, by title",
-         "patterns": [{"prefix": "World of Warcraft"}]},
-        {"effects": {"border": null, "center": false, "float": false, "keepAspectRatio": false, "pin": false, "shadow": null, "suppressFullscreen": true},
          "field": "class", "ignoreCase": true, "name": "StarCraft II client, by class",
          "patterns": [{"prefix": "sc2"}, {"prefix": "starcraft"}, {"holds": "sc2", "prefix": "steam_app_"}]},
         {"effects": {"border": null, "center": false, "float": false, "keepAspectRatio": false, "pin": false, "shadow": null, "suppressFullscreen": true},
@@ -211,19 +205,19 @@ pub(crate) mod tests {
         );
         assert_eq!(extras.binds[0].mods, coder_binds::Mods::SUPER_SHIFT);
         assert_eq!(extras.binds[0].key, coder_binds::Key::Char('d'));
-        assert_eq!(extras.rules.len(), 5);
+        assert_eq!(extras.rules.len(), 3);
         assert_eq!(extras.rules[1].case, Case::Any);
         assert_eq!(
             extras.rules[1].patterns[2],
             ExtraPattern::PrefixHolding {
                 prefix: "steam_app_".to_string(),
-                holds: "wow".to_string()
+                holds: "sc2".to_string()
             }
         );
         assert_eq!(extras.rules[2].field, Field::Title);
         assert_eq!(
             extras.rules[1].hyprland(),
-            "windowrule = match:class (?i)^(wow.*|world of warcraft.*|steam_app_.*wow.*)$, tile on, suppress_event maximize fullscreen"
+            "windowrule = match:class (?i)^(sc2.*|starcraft.*|steam_app_.*sc2.*)$, tile on, suppress_event maximize fullscreen"
         );
     }
 

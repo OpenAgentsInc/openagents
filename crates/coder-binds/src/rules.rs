@@ -491,23 +491,23 @@ mod tests {
                 },
             },
             ExtraRule {
-                name: owned("World of Warcraft client, by class"),
+                name: owned("StarCraft II client, by class"),
                 field: Field::AppId,
                 patterns: vec![
-                    ExtraPattern::Prefix(owned("wow")),
-                    ExtraPattern::Prefix(owned("world of warcraft")),
+                    ExtraPattern::Prefix(owned("sc2")),
+                    ExtraPattern::Prefix(owned("starcraft")),
                     ExtraPattern::PrefixHolding {
                         prefix: owned("steam_app_"),
-                        holds: owned("wow"),
+                        holds: owned("sc2"),
                     },
                 ],
                 case: Case::Any,
                 effects: game,
             },
             ExtraRule {
-                name: owned("World of Warcraft client, by title"),
+                name: owned("StarCraft II client, by title"),
                 field: Field::Title,
-                patterns: vec![ExtraPattern::Prefix(owned("World of Warcraft"))],
+                patterns: vec![ExtraPattern::Prefix(owned("StarCraft II"))],
                 case: Case::Any,
                 effects: game,
             },
@@ -524,12 +524,12 @@ mod tests {
             assert!(!launcher.suppress_fullscreen, "{class}");
         }
         for (class, title) in [
-            ("Wow.exe", ""),
-            ("wowclassic.exe", ""),
-            ("WOW.EXE", ""),
-            ("World of Warcraft", ""),
-            ("steam_app_wow", ""),
-            ("wine", "World of Warcraft"),
+            ("SC2_x64.exe", ""),
+            ("sc2.exe", ""),
+            ("SC2.EXE", ""),
+            ("StarCraft II", ""),
+            ("steam_app_sc2", ""),
+            ("wine", "StarCraft II"),
         ] {
             let game = matching_with(class, title, &extra);
             assert_eq!(game.float, Some(false), "{class} {title}");
@@ -539,8 +539,8 @@ mod tests {
         // Without the host's rules the table has nothing to say about a
         // game, and a class that holds a game's name past its start is not
         // a game's.
-        assert_eq!(matching("Wow.exe", ""), Effects::default());
-        assert_eq!(matching_with("firewow", "", &extra), Effects::default());
+        assert_eq!(matching("SC2_x64.exe", ""), Effects::default());
+        assert_eq!(matching_with("websc2", "", &extra), Effects::default());
         // A host rule folds after the table's, so it wins where they meet.
         let over = [ExtraRule {
             name: "selfie tiles".to_string(),
@@ -564,8 +564,8 @@ mod tests {
             lines,
             [
                 r"windowrule = match:class ^(battle\.net\.exe|Battle\.net\.exe|steam_app_battlenet)$, float on, center on",
-                "windowrule = match:class (?i)^(wow.*|world of warcraft.*|steam_app_.*wow.*)$, tile on, suppress_event maximize fullscreen",
-                "windowrule = match:title (?i)^(World of Warcraft.*)$, tile on, suppress_event maximize fullscreen",
+                "windowrule = match:class (?i)^(sc2.*|starcraft.*|steam_app_.*sc2.*)$, tile on, suppress_event maximize fullscreen",
+                "windowrule = match:title (?i)^(StarCraft II.*)$, tile on, suppress_event maximize fullscreen",
             ]
         );
     }
