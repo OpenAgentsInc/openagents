@@ -1,0 +1,9 @@
+Chamber 220 listening on 127.0.0.1:64478
+Chamber stopped: 2613 ticks, 50565 requests, 20 completed connections, 0.000000 dropped seconds
+Collision queries: {"ray":{"calls":21902,"errors":0,"truncated":1,"nodes":946719,"triangles":262824,"capsule_tests":0,"wall_seconds":0.05516176900000057,"maximum_wall_seconds":0.00006475},"overlap":{"calls":488436,"errors":0,"truncated":0,"nodes":49659952,"triangles":5164080,"capsule_tests":327378,"wall_seconds":5.097556298999467,"maximum_wall_seconds":0.003361792},"sweep":{"calls":1467040,"errors":0,"truncated":87791,"nodes":149387346,"triangles":16549380,"capsule_tests":1344162,"wall_seconds":10.586015503993348,"maximum_wall_seconds":0.002195375}}
+Motor recovery: 0 blocked advances, last diagnostic None
+Checkpoint storage: 0 commits, 0 bytes, 0.000000 seconds
+Storage backlog: 0 peak copies, 0 refused requests, 0 paused ticks, 0.000000 paused seconds
+Simulation: 2613 observations, p50/p95/p99 upper bounds 0.008000/0.016000/0.031793 seconds, maximum 0.031793 seconds
+Persistence capture: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds
+Storage commit: 0 observations, p50/p95/p99 upper bounds 0.000000/0.000000/0.000000 seconds, maximum 0.000000 seconds

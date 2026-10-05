@@ -1,0 +1,70 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 45,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "compiled_revisions": {
+      "host": "b6e86ff7e3",
+      "clients": "b6e86ff7e3"
+    },
+    "fixture_revision": "b6e86ff7e3b66d284106d956ee0f8ff6dac48aba",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "build": {
+    "cargo_profile": "dev",
+    "added_package_opt_level_3": [
+      "serde_json",
+      "memchr",
+      "zmij"
+    ],
+    "debug_assertions": "retained",
+    "validation": "Native host, remote, and load examples build; forty-five-second twenty-player capture completes."
+  },
+  "measurements": {
+    "frame_interval_ms": {
+      "samples": 3911,
+      "omitted": 0,
+      "median": 11.058541,
+      "p95": 15.503582999999999,
+      "max": 3651.659208
+    },
+    "command_finish_ms": {
+      "samples": 3911,
+      "omitted": 0,
+      "median": 4.190250000000001,
+      "p95": 5.313584,
+      "max": 10.197541
+    },
+    "prediction_correction_meters": {
+      "samples": 56,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.6341111063957214,
+      "max": 0.6772096157073975
+    },
+    "minimum_live_hostiles": 40,
+    "server_simulation_max_ms": 31.793,
+    "server_dropped_seconds": 0
+  },
+  "limits": [
+    "All twenty connections complete; each headless occupancy sample retains forty live hostile NPCs.",
+    "Frame p95 15.504 ms and maximum server simulation 31.793 ms meet the timing targets for this run only.",
+    "Prediction correction p95 0.634 m and maximum 0.677 m remain above the declared flat-ground target.",
+    "Persistent storage and GPU instrumentation are disabled; headless movement uses legacy commands.",
+    "One native client and nineteen headless clients share hardware with the host.",
+    "Earlier baseline overlaps sampling and compilation; revisions and trajectories differ, so this is not an isolated causal comparison.",
+    "Startup remains included; input-to-display latency and persistent soak remain unmeasured.",
+    "No no-lag or full-roadmap completion is claimed."
+  ]
+}
