@@ -462,12 +462,12 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
         axes: [0., 1.],
         yaw: 0.,
     }));
-    session.prediction.advance(8. / 120.).unwrap();
+    session.prediction.advance(2. / 120.).unwrap();
     session.send_movement_interval().unwrap();
     let Input::MovementFrame { token, mut frame } = inputs.try_recv().unwrap() else {
         panic!("Missing complete interval")
     };
-    assert_eq!(frame.steps, verse_world::movement::frames::MAX_STEPS);
+    assert_eq!(frame.steps, verse_world::movement::frames::SEND_STEPS);
     assert_eq!(frame.segments.len(), 2);
     assert_eq!(frame.segments[0].axes, [1., 0.]);
     assert_eq!(frame.segments[1].offset, 4);
@@ -489,7 +489,7 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
     ));
     updates.try_send(Update::Outcome(response)).unwrap();
     session.consume(&scene).unwrap();
-    gateway.tick(0.1).unwrap();
+    gateway.tick(0.05).unwrap();
     updates
         .try_send(Update::Snapshot(request(
             &mut gateway,

@@ -4,6 +4,8 @@ use std::collections::VecDeque;
 use verse_engine::core::LifeId;
 
 pub const MAX_STEPS: u32 = 12;
+/// Producer batches leave room for two complete intervals per authority tick.
+pub const SEND_STEPS: u32 = 6;
 pub const MAX_QUEUED: usize = 16;
 pub const MAX_LAG: u64 = 32;
 pub const BOOTSTRAP_LAG: u64 = 48;

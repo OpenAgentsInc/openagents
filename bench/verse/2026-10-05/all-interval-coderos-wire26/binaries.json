@@ -1,0 +1,22 @@
+{
+  "compiled_revisions": {
+    "verse_remote": "7546bf426d",
+    "verse_load": "7546bf426d"
+  },
+  "wire_version": 26,
+  "sha256": {
+    "verse_remote": "2073227e20967de1481b220cfc1fbd21630b38f0440ab9813d4f689cd05777c4",
+    "verse_load": "c433b92a0c8f030ba668e2d07144928ff3218fdb2cc919cf73b6ab1832ce53b2"
+  },
+  "client_platform": "macOS arm64",
+  "client_features": [
+    "imported-desktop",
+    "remote-chamber"
+  ],
+  "host": {
+    "revision": "7546bf426da3d2f977406f5b6f9a7e26dddb1771",
+    "sha256": "b5f0b0f98e0cac344a4c7b09b3f1df29d2047dd781d05e8d98b80cda6b408d02",
+    "cargo_profile_dev_debug": 0,
+    "target_directory": "/home/christopherdavid/work/openagents-target-verse-battle-agent1"
+  }
+}

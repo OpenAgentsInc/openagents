@@ -159,8 +159,8 @@ async fn player(
       }
       let start=match frame_cursor {Some((life,old_epoch,start)) if (life,old_epoch)==context=>start,_=>baseline.physics_step};
       let limit=baseline.world_step.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
-      let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::MAX_STEPS)) as u32;
-      if steps<verse_world::movement::frames::MAX_STEPS {continue;}
+      let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::SEND_STEPS)) as u32;
+      if steps<verse_world::movement::frames::SEND_STEPS {continue;}
       let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
        segments:vec![verse_world::movement::frames::Segment {offset:0,axes,yaw:std::f32::consts::PI,until:start+verse_world::movement::HELD_STEPS,jump:false}]};
       frame.validate_payload()?;

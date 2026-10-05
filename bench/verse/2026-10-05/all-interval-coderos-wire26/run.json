@@ -1,0 +1,23 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "players": 20,
+  "configured_hostile_npcs": 40,
+  "native_seconds": 45,
+  "wire_version": 26,
+  "revision": "7546bf426d",
+  "limitations": [
+    "Shared host and client load; no isolated causal comparison.",
+    "No injected network impairment or input-to-display measurement.",
+    "Movement expiry and frame p95 exceed the smooth battle target."
+  ],
+  "timings": {
+    "frame_p95_ms": 21.4365,
+    "gpu_p95_ms": 11.439834,
+    "verified_snapshot_age_p95_ms": 129.0085,
+    "command_turnaround_p95_ms": 162.989458,
+    "movement_expiries": 774,
+    "checkpoint_copy_max_ms": 0.37,
+    "deferred_read_projection_max_ms": 9.459
+  }
+}

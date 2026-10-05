@@ -1,0 +1,7 @@
+{
+  "requested": false,
+  "status": "not_started",
+  "limits": [
+    "CPU sampling adds observer overhead and does not establish performance acceptance."
+  ]
+}

@@ -806,10 +806,10 @@ impl Session {
             .ok_or("Movement interval time credit is unavailable")?;
         let steps = end
             .saturating_sub(start)
-            .min(u64::from(verse_world::movement::frames::MAX_STEPS)) as u32;
+            .min(u64::from(verse_world::movement::frames::SEND_STEPS)) as u32;
         // Keep local prediction immediate while amortizing durable ordered requests.
         // The complete history retains direction changes, lease expiries, and jump edges.
-        if steps < verse_world::movement::frames::MAX_STEPS
+        if steps < verse_world::movement::frames::SEND_STEPS
             || self.input.capacity() == 0
             || self.pending.len() >= PENDING_LIMIT
         {
