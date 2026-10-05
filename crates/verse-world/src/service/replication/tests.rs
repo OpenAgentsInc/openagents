@@ -231,6 +231,11 @@ fn distant_population_keeps_steady_bytes_constant_and_records_cost() {
                 .actors
                 .len();
         }
+        assert_eq!(
+            sender.stats.encoded_bytes,
+            bytes.iter().sum::<usize>() as u64
+        );
+        assert_eq!(sender.stats.max_packet_bytes, *bytes.iter().max().unwrap());
         assert_eq!(sender.stats.deltas, 59);
         if let Some(expected) = &steady {
             assert_eq!(&bytes[1..], expected);
