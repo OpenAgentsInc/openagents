@@ -84,6 +84,17 @@ pause as in a zone; closing it puts the player back in front of the arch.
 `verse --no-ritual` hides the arch. The chamber window needs a `verse`
 built with `--features remote-chamber,imported-desktop`.
 
+On the phone, a `ritual.json` in the app's zone cache directory opens the
+same arch on the Grid. Walking through it plays the chamber on the Grid's
+engine surface, signed by the phone's world identity: the left stick moves,
+the look stick turns the camera, and a four-slot hotbar, **Leave**, and
+**Respawn** sit over the chamber's own HUD. Backgrounding the app stops the
+connection and returning reconnects to the same character. Each visit writes
+`chamber-frames.json` beside `ritual.json` with the frame intervals and
+actor count the phone saw. The phone and the desktop window share one client
+session, `imported::chamber_session::Session`, for the transport, the
+replica, and movement prediction.
+
 ### Ruins controls
 
 Movement and combat run together. The bottom hotbar supplies **Firebolt**,

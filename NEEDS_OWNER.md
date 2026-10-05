@@ -283,3 +283,34 @@ the iOS build and the Metal surface were not run. To finish checking:
    legacy renderer and the Grid returns on the engine.
 4. With `openagents verse walkers 10` running, confirm ten walkers with
    their names move smoothly on the phone's Grid.
+
+## The phone in the chamber (#10586)
+
+The phone joins the chamber through the RITUAL arch, and the session,
+suspend and resume, host loss, and respawn pass against an in-process
+chamber host. The frame-time run on a phone did not happen: the build
+machine's disk filled during the Android release build. To finish checking:
+
+1. Host a chamber on a scratch directory with a temporary `HOME`:
+   `openagents chamber pack DIR/assets`, `openagents chamber tls DIR`, and
+   `openagents chamber host DIR/host.json` with
+   `"guests": {"cap": 16, "ring": [0, 0, -22], "radius": 3}` and the scene
+   `assets/verse/original/ritual.json`. Join five more guests with
+   `openagents chamber move` under five scratch profiles, so the chamber
+   holds 20 actors with the phone.
+2. Write `ritual.json` (address, instance, `trust_der`, `pack`, `scene`,
+   `dir`, and `server_name`) and copy it, the certificate, the pack, the
+   scene, and the asset directory into the app's zone cache directory: on
+   Android, `cache/VerseZones` of `com.openagents.app` (`adb push`, then
+   `adb shell run-as com.openagents.app cp ...`); on iOS, `VerseZones` in
+   the app's caches directory. An emulator reaches the Mac's host at
+   `10.0.2.2`.
+3. On an Android phone and an iPhone built from `main` (release Rust), walk
+   through the `RITUAL` arch on the Grid, fight for two minutes, die and
+   respawn, background and foreground the app, then tap **Leave**. Confirm
+   the player returns before the arch with Grid presence restored.
+4. Copy `chamber-frames.json` from beside `ritual.json` into
+   `docs/verse/verification/2026-10-05-phone-chamber/` for each device.
+5. Fight a desktop player in the same chamber (`verse` built with
+   `--features remote-chamber,imported-desktop`, through its own RITUAL
+   arch): each must see the other's character move, cast, and take damage.
