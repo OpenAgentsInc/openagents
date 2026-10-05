@@ -3,16 +3,16 @@
 
 use serde::{Deserialize, Serialize};
 
-pub mod assets;
+pub use verse_zone_ruins::assets;
 pub mod everglade;
 pub mod everglade_pack;
 pub mod gate;
 pub mod grove;
 pub mod hud;
 mod lab;
-mod lagrange;
+pub use verse_zone_lagrange as lagrange;
 pub mod operators;
-mod ruins;
+pub use verse_zone_ruins as ruins;
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -153,12 +153,7 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             fog_end: crate::render::FOG_END,
             height_fog: None,
         },
-        ZoneId::Ruins => Atmosphere {
-            color: [0.045, 0.092, 0.079],
-            fog_start: 24.0,
-            fog_end: 82.0,
-            height_fog: None,
-        },
+        ZoneId::Ruins => ruins::ATMOSPHERE,
         // Vacuum: no scattering. Fog only fades the edge of the 2 km sky shell.
         ZoneId::Lagrange1 => Atmosphere {
             color: [0.0, 0.0, 0.004],

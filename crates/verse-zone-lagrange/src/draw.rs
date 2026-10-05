@@ -10,7 +10,7 @@ use crate::pbr::{LitVertex, Material};
 
 /// A material with optional overrides of its color and roughness.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Surface {
+pub struct Surface {
     pub material: Material,
     pub color: Option<[f32; 3]>,
     pub roughness: Option<f32>,
@@ -35,7 +35,7 @@ impl Surface {
         }
     }
 
-    pub(super) fn vertex(self, t: &Mat4, p: Vec3, n: Vec3, tangent: Vec3) -> LitVertex {
+    pub fn vertex(self, t: &Mat4, p: Vec3, n: Vec3, tangent: Vec3) -> LitVertex {
         let (color, metallic, roughness) = self.material.parameters();
         LitVertex {
             pos: t.transform_point3(p).to_array(),
@@ -54,12 +54,12 @@ impl Surface {
 }
 
 /// One vertex of `s` placed by `t`.
-pub(super) fn vertex(s: Surface, t: &Mat4, p: Vec3, n: Vec3, tangent: Vec3) -> LitVertex {
+pub fn vertex(s: Surface, t: &Mat4, p: Vec3, n: Vec3, tangent: Vec3) -> LitVertex {
     s.vertex(t, p, n, tangent)
 }
 
 /// Appends a quad `q` (object space, wound either way) facing `normal`.
-pub(super) fn quad(
+pub fn quad(
     out: &mut Vec<LitVertex>,
     t: &Mat4,
     q: [Vec3; 4],
@@ -75,7 +75,7 @@ pub(super) fn quad(
 /// A box of half extents `half` centered on the object origin. `faces` gives
 /// the surface of the +X, −X, +Y, −Y, +Z, and −Z faces. Tangents follow the
 /// box's long axis, so brushed metal streaks along a member.
-pub(super) fn cuboid_faces(out: &mut Vec<LitVertex>, t: &Mat4, half: Vec3, faces: [Surface; 6]) {
+pub fn cuboid_faces(out: &mut Vec<LitVertex>, t: &Mat4, half: Vec3, faces: [Surface; 6]) {
     let c = |x: f32, y: f32, z: f32| Vec3::new(x, y, z) * half;
     let along = if half.z >= half.x && half.z >= half.y {
         Vec3::Z
@@ -153,13 +153,13 @@ pub(super) fn cuboid_faces(out: &mut Vec<LitVertex>, t: &Mat4, half: Vec3, faces
     }
 }
 
-pub(super) fn cuboid(out: &mut Vec<LitVertex>, t: &Mat4, half: Vec3, s: impl Into<Surface>) {
+pub fn cuboid(out: &mut Vec<LitVertex>, t: &Mat4, half: Vec3, s: impl Into<Surface>) {
     let s = s.into();
     cuboid_faces(out, t, half, [s; 6]);
 }
 
 /// A box placed by center and rotation.
-pub(super) fn block(
+pub fn block(
     out: &mut Vec<LitVertex>,
     center: Vec3,
     half: Vec3,
@@ -175,13 +175,7 @@ pub(super) fn block(
 }
 
 /// A square-section member from `a` to `b`.
-pub(super) fn member(
-    out: &mut Vec<LitVertex>,
-    a: Vec3,
-    b: Vec3,
-    width: f32,
-    s: impl Into<Surface>,
-) {
+pub fn member(out: &mut Vec<LitVertex>, a: Vec3, b: Vec3, width: f32, s: impl Into<Surface>) {
     let d = b - a;
     let Some(dir) = d.try_normalize() else {
         return;
@@ -198,7 +192,7 @@ pub(super) fn member(
 
 /// A cone frustum along object +Z, centered, with smooth side normals.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn frustum(
+pub fn frustum(
     out: &mut Vec<LitVertex>,
     t: &Mat4,
     r0: f32,
@@ -246,13 +240,7 @@ pub(super) fn frustum(
 }
 
 /// A lattice truss: four longerons, rungs, and diagonal braces.
-pub(super) fn lattice(
-    out: &mut Vec<LitVertex>,
-    a: Vec3,
-    b: Vec3,
-    width: f32,
-    s: impl Into<Surface>,
-) {
+pub fn lattice(out: &mut Vec<LitVertex>, a: Vec3, b: Vec3, width: f32, s: impl Into<Surface>) {
     let s = s.into();
     let axis = (b - a).normalize();
     let u = axis.any_orthonormal_vector();
@@ -275,7 +263,7 @@ pub(super) fn lattice(
 }
 
 /// A band around a cylinder: a short, slightly larger cylinder.
-pub(super) fn band(
+pub fn band(
     out: &mut Vec<LitVertex>,
     center: Vec3,
     axis: Vec3,

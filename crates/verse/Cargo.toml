@@ -75,6 +75,11 @@ openagents-chat-app = { path = "../openagents-chat-app", optional = true }
 openagents-connect = { path = "../openagents-connect", optional = true }
 physics = { path = "../physics" }
 verse-lagrange = { path = "../verse-lagrange" }
+# The Lagrange 1 zone; `verse` re-exports it as `zones::lagrange`.
+verse-zone-lagrange = { path = "../verse-zone-lagrange" }
+# The Ruins zone and its pack loader; `verse` re-exports them as
+# `zones::ruins` and `zones::assets`.
+verse-zone-ruins = { path = "../verse-zone-ruins" }
 verse-ruins = { path = "../verse-ruins" }
 glam = "0.30.10"
 resvg = { version = "0.48.1", default-features = false }

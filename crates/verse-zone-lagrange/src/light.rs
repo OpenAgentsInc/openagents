@@ -17,10 +17,10 @@ use crate::pbr::{
 };
 
 /// The region that casts and receives sun shadows and holds the probes.
-pub(super) const BOUNDS_MIN: Vec3 = Vec3::new(-34.0, -14.0, -16.0);
-pub(super) const BOUNDS_MAX: Vec3 = Vec3::new(34.0, 18.0, 28.0);
+pub const BOUNDS_MIN: Vec3 = Vec3::new(-34.0, -14.0, -16.0);
+pub const BOUNDS_MAX: Vec3 = Vec3::new(34.0, 18.0, 28.0);
 
-pub(super) struct Light {
+pub struct Light {
     bvh: Arc<Bvh>,
     probes: Option<Arc<ProbeGrid>>,
     pending: Option<mpsc::Receiver<ProbeGrid>>,

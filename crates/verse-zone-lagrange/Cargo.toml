@@ -1,0 +1,17 @@
+[package]
+name = "verse-zone-lagrange"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's Lagrange 1 zone: input mapping and the station, suit, and sky drawn on the physical path over verse-lagrange's physics."
+
+[dependencies]
+glam = "0.30.10"
+verse-core = { path = "../verse-core" }
+verse-lagrange = { path = "../verse-lagrange" }
+verse-pbr = { path = "../verse-pbr" }
+verse-world = { path = "../verse-world" }
+
+[lints]
+workspace = true

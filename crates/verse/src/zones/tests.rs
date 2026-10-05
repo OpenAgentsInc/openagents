@@ -513,24 +513,6 @@ fn the_tether_button_unclips_and_clips_back_on() {
     assert!(runtime.zone_snapshot(1.0).station.unwrap().tethered);
 }
 
-/// The solids the lines wrap around follow the drawn structure: every
-/// vertex of the station and its wings lies within a centimeter of one.
-#[test]
-fn the_lines_wrap_the_structure_as_it_is_drawn() {
-    let solids = verse_lagrange::station::structure_solids();
-    let mut drawn = Vec::new();
-    super::lagrange::structure_vertices(&mut drawn);
-    assert!(drawn.len() > 1_000);
-    for vertex in drawn {
-        let p = glam::DVec3::from(vertex.map(f64::from));
-        let nearest = solids
-            .iter()
-            .map(|solid| solid.distance(p).0)
-            .fold(f64::INFINITY, f64::min);
-        assert!(nearest < 0.01, "{p} is {nearest} m from every solid");
-    }
-}
-
 #[test]
 fn zone_names_resolve_to_their_shared_worlds() {
     for (name, zone) in [

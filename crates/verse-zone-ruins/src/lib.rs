@@ -7,8 +7,14 @@
 //! the ambient probes, and the shared output pass. Health bars, spell orbs,
 //! and sparks stay display-colored faces, as the original drew them. The
 //! simulation and combat do not read any of this.
+//!
+//! `verse` re-exports this crate as `zones::ruins` and its pack loader as
+//! `zones::assets`, so an edit here recompiles this crate and what depends
+//! on it rather than all of Verse.
 
-use super::assets::LoadedAssets;
+pub mod assets;
+
+use crate::assets::LoadedAssets;
 use crate::{
     mesh::{Mesh, Vertex},
     pbr::{Key, LitVertex, Material, Neon},
@@ -16,6 +22,19 @@ use crate::{
 };
 use glam::{Mat4, Vec3};
 use verse_ruins::{Simulation, Snapshot, Spell, scene::Terrain};
+
+// The paths this zone was written against inside `crates/verse`.
+use verse_core::world;
+use verse_pbr::{mesh, pbr};
+use verse_world::social::controller;
+
+/// The zone's air: the original's dark green field and fog.
+pub const ATMOSPHERE: verse_core::zone::Atmosphere = verse_core::zone::Atmosphere {
+    color: [0.045, 0.092, 0.079],
+    fog_start: 24.0,
+    fog_end: 82.0,
+    height_fog: None,
+};
 
 /// Toward the light the original renderer baked into the terrain's colors.
 const SUN: Vec3 = Vec3::new(-0.3, 0.8, 0.4);
@@ -27,7 +46,7 @@ const STONE: [f32; 3] = [0.28, 0.3, 0.24];
 /// below this, so no surface returns more light than it receives.
 const MAX_ALBEDO: f32 = 0.9;
 
-pub(crate) struct Ruins {
+pub struct Ruins {
     pub assets: LoadedAssets,
     pub simulation: Simulation,
     pub snapshot: Snapshot,
@@ -95,7 +114,7 @@ impl Ruins {
     /// original, and a key light from the original's baked light direction,
     /// whose shadow follows the camera to the fog.
     pub fn stage(time: f32) -> Neon {
-        let air = super::atmosphere(super::ZoneId::Ruins);
+        let air = ATMOSPHERE;
         Neon {
             field: air.color,
             fog_start: air.fog_start,

@@ -73,6 +73,10 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.verse-world]
 opt-level = 3
+[profile.dev.package.verse-zone-lagrange]
+opt-level = 3
+[profile.dev.package.verse-zone-ruins]
+opt-level = 3
 [profile.dev.package.physics]
 opt-level = 3
 [profile.dev.package.wgpu]

@@ -1,5 +1,7 @@
 //! Lagrange 1: a construction station on a Lissajous orbit about Sun–Earth L1.
-//! Physics lives in `verse-lagrange`; this module maps input and draws the scene.
+//! Physics lives in `verse-lagrange`; this crate maps input and draws the
+//! scene, and `verse` re-exports it as `zones::lagrange`, so an edit here
+//! recompiles this crate and what depends on it rather than all of Verse.
 //!
 //! Scene axes follow the station frame: -Z faces the Sun, +Z the Earth, +Y the
 //! ecliptic north pole. Structure, parts, and the suit are generated here with
@@ -9,6 +11,11 @@
 
 mod draw;
 mod light;
+
+// The paths this zone was written against inside `crates/verse`.
+use verse_core::world;
+use verse_pbr::{mesh, pbr};
+use verse_world::social::controller;
 
 use std::sync::OnceLock;
 
@@ -32,9 +39,9 @@ const SKY: f32 = 1_850.0;
 const LEVEL_PITCH: f32 = 0.28;
 const LEVEL_BAND: f32 = 0.12;
 /// The return portal, beside the airlock.
-pub(crate) const RETURN_PORTAL: Vec3 = Vec3::new(-5.0, 4.4, 22.5);
+pub const RETURN_PORTAL: Vec3 = Vec3::new(-5.0, 4.4, 22.5);
 
-pub(crate) struct Lagrange {
+pub struct Lagrange {
     pub station: Station,
     /// Draw contacts, their impulses, joints, and thrust.
     pub overlay: bool,
@@ -317,7 +324,7 @@ fn baked() -> (
 /// Positions of every drawn vertex of the fixed structure and the
 /// undeflected wings.
 #[cfg(test)]
-pub(crate) fn structure_vertices(out: &mut Vec<[f32; 3]>) {
+pub fn structure_vertices(out: &mut Vec<[f32; 3]>) {
     out.extend(structure_with_wings().iter().map(|v| v.pos));
 }
 
@@ -1106,5 +1113,26 @@ fn outline(mesh: &mut Mesh, center: Vec3, half: Vec3, color: [f32; 3]) {
         ((-1., 1., -1.), (-1., 1., 1.)),
     ] {
         line(mesh, c(p.0, p.1, p.2), c(q.0, q.1, q.2), color);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The solids the lines wrap around follow the drawn structure: every
+    /// vertex of the station and its wings lies within a centimeter of one.
+    #[test]
+    fn the_lines_wrap_the_structure_as_it_is_drawn() {
+        let solids = verse_lagrange::station::structure_solids();
+        let mut drawn = Vec::new();
+        super::structure_vertices(&mut drawn);
+        assert!(drawn.len() > 1_000);
+        for vertex in drawn {
+            let p = glam::DVec3::from(vertex.map(f64::from));
+            let nearest = solids
+                .iter()
+                .map(|solid| solid.distance(p).0)
+                .fold(f64::INFINITY, f64::min);
+            assert!(nearest < 0.01, "{p} is {nearest} m from every solid");
+        }
     }
 }

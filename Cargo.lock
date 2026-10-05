@@ -14980,6 +14980,8 @@ dependencies = [
  "verse-pbr",
  "verse-ruins",
  "verse-world",
+ "verse-zone-lagrange",
+ "verse-zone-ruins",
  "web-time",
  "webpki-roots 1.0.9",
  "wgpu",
@@ -15150,6 +15152,32 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "verse-engine",
+]
+
+[[package]]
+name = "verse-zone-lagrange"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "verse-core",
+ "verse-lagrange",
+ "verse-pbr",
+ "verse-world",
+]
+
+[[package]]
+name = "verse-zone-ruins"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "libc",
+ "reqwest 0.12.28",
+ "sha2 0.10.9",
+ "tempfile",
+ "verse-core",
+ "verse-pbr",
+ "verse-ruins",
+ "verse-world",
 ]
 
 [[package]]
