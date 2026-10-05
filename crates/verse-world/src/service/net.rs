@@ -738,7 +738,7 @@ async fn session_until<S: Transport>(
                     .map_err(|_| "Chamber write timed out")??;
                 continue;
             }
-            let wait_for_storage = authenticated && matches!(&request.body, Body::MovementFrame { .. });
+            let wait_for_storage = movement_storage_wait(authenticated, &request.body);
             let authenticate_key = match request.body { Body::Authenticate { public_key, .. } => Some(public_key), _ => None };
             let (bytes, admitted) = request_with_storage_backpressure(&send, id, bytes, wait_for_storage).await?;
             let response: ResponseHeader = serde_json::from_slice(&bytes).map_err(|_| "Invalid chamber response")?;
@@ -763,6 +763,14 @@ async fn session_until<S: Transport>(
 
 // Hold only explicitly unadmitted intervals, preserving their bytes and connection order.
 // An IO failure or any other refusal is never retried here.
+fn movement_storage_wait(authenticated: bool, body: &Body) -> bool {
+    authenticated
+        && matches!(
+            body,
+            Body::BeginMovementFrames { .. } | Body::MovementFrame { .. }
+        )
+}
+
 async fn request_with_storage_backpressure(
     send: &mpsc::Sender<Event>,
     id: ConnectionId,
@@ -1012,7 +1020,7 @@ pub(super) mod tests {
     }
 
     #[tokio::test]
-    async fn interval_storage_backpressure_preserves_exact_request_and_refusal_boundaries() {
+    async fn movement_entry_storage_backpressure_preserves_exact_request_and_refusal_boundaries() {
         for (wait, admitted, code, count) in [
             (true, true, "storage_busy", 3),
             (false, true, "storage_busy", 1),
@@ -1021,7 +1029,21 @@ pub(super) mod tests {
         ] {
             let keys = [key(177), key(178), key(179)];
             let (id, _) = gateway(&keys).open_json(0).unwrap();
-            let request = vec![1, 2, 3, 4];
+            let request = Request {
+                version: VERSION,
+                request_id: 9,
+                body: Body::BeginMovementFrames {
+                    life: super::super::wire::Life {
+                        instance: 120,
+                        actor: 1,
+                        generation: 0,
+                    },
+                    epoch: 4,
+                },
+            };
+            let wait = movement_storage_wait(wait, &request.body);
+            assert!(!movement_storage_wait(true, &Body::Snapshot {}));
+            let request = serde_json::to_vec(&request).unwrap();
             let expected = request.clone();
             let (send, mut receive) = mpsc::channel(4);
             let peer = tokio::spawn(async move {
