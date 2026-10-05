@@ -13,6 +13,8 @@ use std::{
     },
 };
 
+mod character;
+
 const LEAF_RECEIPTS: usize = 16;
 const NODE_BYTES: usize = 256 * 1024;
 const PENDING_BYTES: usize = 128 * 1024 * 1024;
@@ -22,6 +24,7 @@ pub(super) type Root = Option<[u8; 32]>;
 #[serde(deny_unknown_fields)]
 enum Node {
     Leaf(Vec<Receipt>),
+    Character(Vec<character::Indexed>),
     Branch([Root; 16]),
 }
 
@@ -178,6 +181,9 @@ impl History {
         if matches!(&node, Node::Leaf(receipts) if receipts.len() > LEAF_RECEIPTS) {
             return Err("Reward history leaf budget exceeded".into());
         }
+        if matches!(&node,Node::Character(records) if records.len()>LEAF_RECEIPTS) {
+            return Err("Character receipt leaf budget exceeded".into());
+        }
         Ok(node)
     }
     fn write(&self, node: &Node) -> Result<[u8; 32], String> {
@@ -252,6 +258,9 @@ impl History {
                 }
                 Node::Branch(children) if depth < 64 => root = children[nibble(key, depth)],
                 Node::Branch(_) => return Err("Reward history index depth exceeded".into()),
+                Node::Character(_) => {
+                    return Err("Legacy reward lookup cannot read a character index".into());
+                }
             }
         }
         Err("Reward history index depth exceeded".into())
@@ -319,6 +328,9 @@ impl History {
                 Ok(count)
             }
             Node::Branch(_) => Err("Reward history index depth exceeded".into()),
+            Node::Character(_) => {
+                Err("Legacy reward validation cannot read a character index".into())
+            }
         }
     }
     fn insert_at(
@@ -347,6 +359,9 @@ impl History {
                 [None; 16]
             }
             Node::Branch(children) => children,
+            Node::Character(_) => {
+                return Err("Cannot insert legacy rewards into a character index".into());
+            }
         };
         if depth >= 64 {
             return Err("Reward history index depth exceeded".into());

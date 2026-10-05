@@ -697,3 +697,45 @@ model while the bow occupies the hands. The [equipment receipt](../../bench/vers
 retains TLS storage-failure/restart evidence and native rendering/panel fixtures.
 Damage/armor modifiers remain. Native attachments now consume each parent's
 final blended and grounded palette through the portable leaf-mount contract.
+
+## Realm instances and transfer
+
+With `service-net`, `service::realm::Realm` owns independent game instances under
+one exclusive filesystem writer lock. A sealed manifest binds each instance's
+content, immutable checkpoint, capacity, phase, endpoint, and authority epoch to
+its registered character placements. Creation, admission, draining, stop,
+restart, endpoint changes, and explicit 30-second leases use trusted host APIs.
+Every tick and dispatch checks the lease. Recovery parks connections, revokes
+leases, and advances authority epochs. Supply nondecreasing host milliseconds;
+the TLS realm adapter uses Unix epoch milliseconds and stops if the clock
+regresses or an expired lease cannot renew.
+
+`Realm::transfer` moves a living additional adventurer between compatible
+item, outfit, equipment, and progression catalogs. The host selects a destination
+and collision-checked spawn. One atomic manifest publication selects both world
+checkpoints, the character placement, and the immutable transfer retry index.
+Retain the nonzero 16-byte operation ID across uncertain results. Exact retries
+return the original transfer; changed arguments are refused. Health, mana,
+equipment, progression, inventory, and remaining cooldowns survive. Temporary
+world effects and input stop. Both affected instances park their old connections
+and require fresh authentication. Character receipt books preserve original
+mutation outcomes across local actor changes and repeated transfers; an old item
+use cannot debit or heal again. Save version 10, character schema 3, retains these
+books; versions 1–9 remain readable under their original schema rules.
+
+`service::realm::net::serve` hosts prebound TLS listeners with the existing wire
+protocol and SDK. A separate coordinator thread owns storage and all games; TLS
+workers hold no mutable authority. It bounds sockets and dispatch work to 128,
+coalesces timer work, and records skipped time. Its local `Control` handle routes,
+admits, drains, and transfers characters; client bodies cannot invoke those
+operator actions. Run creation and lifecycle APIs before serving. This initial
+adapter serializes durability work and is not accepted for a crowded 30 Hz battle.
+
+The realm has 32 instance slots and 2,048 registered characters, with the existing
+64-player game limit. Primary avatars remain scene anchors and cannot transfer;
+character decoupling and capacity growth are separate work. Existing foreign
+reward-history directories require an explicit import workflow. Distributed
+failover, seamless world simulation, history garbage collection, and storage
+throughput acceptance remain. The [realm transfer receipt](../../bench/verse/2026-10-04/realm-transfer/run.json)
+records two actual TLS instances, five process-death boundaries, and the tested
+limits.

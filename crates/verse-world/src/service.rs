@@ -22,6 +22,8 @@ pub mod presentation;
 pub mod progression;
 #[cfg(feature = "service-reach")]
 pub mod reach;
+#[cfg(feature = "service-net")]
+pub mod realm;
 #[cfg(feature = "service-auth")]
 pub mod replica;
 #[cfg(feature = "service-auth")]
@@ -462,7 +464,7 @@ impl Chamber {
         let (_, life) = self.player(principal, session)?;
         Ok((
             life,
-            self.rewards.revision(),
+            self.rewards.character_revision(life.actor),
             self.rewards
                 .character(life.actor)
                 .cloned()

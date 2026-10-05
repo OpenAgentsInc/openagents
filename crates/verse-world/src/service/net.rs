@@ -574,7 +574,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
     }
 }
 
-async fn connection(
+pub(in crate::service) async fn connection(
     socket: TcpStream,
     acceptor: TlsAcceptor,
     send: mpsc::Sender<Event>,

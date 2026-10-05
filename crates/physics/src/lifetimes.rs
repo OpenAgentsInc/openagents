@@ -248,6 +248,16 @@ impl Bodies {
         }
         Ok(due)
     }
+    /// Retains the generation fence after an actor leaves the owning world.
+    pub fn retire_actor(&mut self, life: Life) -> Result<(), String> {
+        self.entries
+            .get(&life.entity)
+            .filter(|r| r.life == life && r.actor)
+            .ok_or("Retired actor body is stale or missing")?;
+        self.remove(life);
+        self.entries.get_mut(&life.entity).unwrap().actor = false;
+        Ok(())
+    }
     pub fn corpse_colliders(&self) -> Result<Vec<MeshCollider>, String> {
         self.entries
             .values()
@@ -281,6 +291,20 @@ mod tests {
             radius: 0.35,
             height: 1.8,
         }
+    }
+    #[test]
+    fn actor_retirement_keeps_generation_fences_without_live_collision() {
+        let mut bodies = Bodies::new(7);
+        bodies.spawn(life(0), DVec3::Y, hull()).unwrap();
+        assert!(bodies.retire_actor(life(1)).is_err());
+        assert!(bodies.get(life(0)).unwrap().damage_enabled());
+        bodies.retire_actor(life(0)).unwrap();
+        let record = bodies.get(life(0)).unwrap();
+        assert!(!record.actor);
+        assert_eq!(record.phase, Phase::Removed);
+        assert!(!record.selection_enabled());
+        assert!(bodies.spawn(life(0), DVec3::Y, hull()).is_err());
+        bodies.validate().unwrap();
     }
     #[test]
     fn death_masks_expiry_and_replacement_are_fenced() {

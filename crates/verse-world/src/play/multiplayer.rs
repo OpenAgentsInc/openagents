@@ -115,6 +115,106 @@ impl Player {
         }
     }
 }
+#[derive(Clone)]
+pub(crate) struct PortablePlayer {
+    combat: crate::rules::transfer::Portable,
+    controls: Controls,
+    bow_remaining: f32,
+    time: f32,
+    yaw: f32,
+    appearance: verse_engine::director::Actor,
+}
+impl Game {
+    pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+        let player = self
+            .additional_players
+            .get(&actor)
+            .ok_or("Primary scene anchor cannot transfer before character decoupling")?;
+        if self.simulation.private_snapshot(player.source)?.player.hp == 0 {
+            return Err("Defeated characters cannot transfer".into());
+        }
+        let appearance = self
+            .scene
+            .actors
+            .iter()
+            .find(|a| a.id == actor)
+            .cloned()
+            .ok_or("Transfer appearance is missing")?;
+        let portable = PortablePlayer {
+            combat: self.simulation.take_player(player.source)?,
+            controls: player.controls.clone(),
+            bow_remaining: (player.bow_ready - self.time).max(0.),
+            time: self.time,
+            yaw: player.yaw,
+            appearance,
+        };
+        let life = player.admission.actor();
+        let source = player.source;
+        self.spells.end_concentration(actor)?;
+        let casts: Vec<_> = self
+            .spells
+            .owned
+            .iter()
+            .filter(|o| o.caster == actor)
+            .map(|o| o.cast)
+            .collect();
+        for cast in casts {
+            self.spells.end_cast(cast)?;
+        }
+        self.controls.forget_actor(source);
+        for p in self.additional_players.values_mut() {
+            p.controls.forget_actor(source);
+        }
+        self.additional_players.remove(&actor);
+        self.observed_health.remove(&source);
+        self.scene.actors.retain(|a| a.id != actor);
+        let physical = physics::queries::Life {
+            instance: life.instance,
+            entity: life.actor,
+            generation: life.generation,
+        };
+        self.bodies.retire_actor(physical)?;
+        self.blockers.remove(physical)?;
+        self.sync_bodies(0.)?;
+        self.checkpoint()?;
+        Ok(portable)
+    }
+    pub(crate) fn put_transfer_player(
+        &mut self,
+        life: LifeId,
+        portable: PortablePlayer,
+    ) -> Result<(), String> {
+        let p = self
+            .additional_players
+            .get_mut(&life.actor)
+            .ok_or("Destination transfer player is missing")?;
+        if p.admission.actor() != life {
+            return Err("Destination transfer life is stale".into());
+        }
+        p.controls = portable
+            .controls
+            .transfer_cooldowns(portable.time, self.time);
+        p.bow_ready = self.time + portable.bow_remaining;
+        p.yaw = portable.yaw;
+        self.simulation.put_player(p.source, portable.combat)?;
+        self.simulation
+            .teleport_chamber_actor(p.source, p.position.to_array(), p.yaw)?;
+        let appearance = self
+            .scene
+            .actors
+            .iter_mut()
+            .find(|a| a.id == life.actor)
+            .ok_or("Destination transfer appearance is missing")?;
+        let mut moved = portable.appearance;
+        moved.id = life.actor;
+        moved.position = p.position;
+        moved.yaw = p.yaw;
+        *appearance = moved;
+        self.sync_bodies(0.)?;
+        self.checkpoint()?;
+        Ok(())
+    }
+}
 impl Game {
     pub fn movement_baseline(
         &self,
@@ -249,15 +349,18 @@ impl Game {
             .find(|a| a.id == self.player_actor())
             .ok_or("Missing player appearance")?
             .clone();
-        let source = self.simulation.spawn_player(spawn.to_array())?;
+        let position = character.feet.as_vec3();
+        let source = self.simulation.spawn_player(position.to_array())?;
         appearance.id = actor;
-        appearance.position = spawn;
+        appearance.position = position;
         appearance.name = format!("Adventurer {actor}");
         appearance.nameplate = false;
         appearance.health = 200;
         self.scene.actors.push(appearance);
         let mut player = Player::new(Admission::new(life, controller), source, spawn);
         player.character = character;
+        player.position = position;
+        player.previous = position;
         self.additional_players.insert(actor, player);
         self.next_player_actor = next;
         self.sync_bodies(0.)?;

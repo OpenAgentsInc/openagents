@@ -55,6 +55,16 @@ pub struct Controls {
     roots: BTreeMap<u32, Vec3>,
 }
 impl Controls {
+    pub(crate) fn transfer_cooldowns(&self, source_time: f32, destination_time: f32) -> Self {
+        Self {
+            ready: self
+                .ready
+                .iter()
+                .map(|(spell, at)| (*spell, destination_time + (at - source_time).max(0.)))
+                .collect(),
+            ..Self::default()
+        }
+    }
     /// Opaque retained stamp of the latest admitted Misty Step in this life.
     pub fn teleport_stamp(&self) -> Option<f32> {
         self.ready.get(&Utility::MistyStep).copied()

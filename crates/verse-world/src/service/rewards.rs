@@ -121,6 +121,10 @@ pub(super) struct Ledger {
     archive: Option<history::History>,
     #[cfg(feature = "service-auth")]
     root: history::Root,
+    #[cfg(feature = "service-auth")]
+    books: Option<BTreeMap<u64, books::Book>>,
+    #[cfg(feature = "service-auth")]
+    legacy_revision: Option<u64>,
 }
 
 #[cfg(feature = "service-auth")]
@@ -131,6 +135,10 @@ pub(super) struct Checkpoint {
     revision: u64,
     root: history::Root,
     receipts: Vec<Receipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    books: Option<BTreeMap<u64, books::Book>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    legacy_revision: Option<u64>,
 }
 
 pub(super) fn entries(entries: &[Entry]) -> Result<(), String> {
@@ -164,8 +172,20 @@ fn add(target: &mut BTreeMap<u64, u32>, additions: &[Entry]) -> Result<(), Strin
     }
     Ok(())
 }
+#[cfg(feature = "service-auth")]
+mod books;
+#[cfg(feature = "service-auth")]
+impl Checkpoint {
+    pub(super) fn realm_books(&self) -> bool {
+        self.books.is_some()
+    }
+}
 impl Ledger {
     pub(super) fn receipt(&self, actor: u64, source: [u8; 32]) -> Result<Option<Receipt>, String> {
+        #[cfg(feature = "service-auth")]
+        if self.books.is_some() {
+            return self.book_receipt(actor, source);
+        }
         if let Some(receipt) = self
             .receipts
             .iter()
@@ -181,6 +201,14 @@ impl Ledger {
     }
     pub(super) fn contains(&self, actor: u64, source: [u8; 32]) -> Result<bool, String> {
         self.receipt(actor, source).map(|r| r.is_some())
+    }
+    pub(super) fn character_revision(&self, actor: u64) -> u64 {
+        #[cfg(feature = "service-auth")]
+        if let Some(book) = self.books.as_ref().and_then(|books| books.get(&actor)) {
+            return book.revision;
+        }
+        let _ = actor;
+        self.revision
     }
     pub(super) fn revision(&self) -> u64 {
         self.revision
@@ -215,6 +243,8 @@ impl Ledger {
             revision: self.revision,
             root: self.root,
             receipts: self.receipts.clone(),
+            books: self.books.clone(),
+            legacy_revision: self.legacy_revision,
         })
     }
     #[cfg(feature = "service-auth")]
@@ -225,8 +255,16 @@ impl Ledger {
         if saved.characters.len() > MAX_CHARACTERS || saved.receipts.len() > ACTIVE_RECEIPTS {
             return Err("Saved reward ledger budget exceeded".into());
         }
+        if saved.books.is_some() != saved.legacy_revision.is_some()
+            || (saved.books.is_some()
+                && (!saved.receipts.is_empty()
+                    || saved.legacy_revision.is_some_and(|r| r > saved.revision)))
+        {
+            return Err("Saved realm and legacy receipt lanes are inconsistent".into());
+        }
         let archived = saved
-            .revision
+            .legacy_revision
+            .unwrap_or(saved.revision)
             .checked_sub(saved.receipts.len() as u64)
             .ok_or("Saved reward revisions are incompatible")?;
         if let Some(archive) = &archive {
@@ -281,12 +319,23 @@ impl Ledger {
             }
             validate_transaction(&receipt.transaction)?;
         }
+        if let Some(books) = &saved.books {
+            books::validate(
+                books,
+                &saved.characters,
+                archive
+                    .as_ref()
+                    .ok_or("Saved realm requires receipt history")?,
+            )?;
+        }
         Ok(Self {
             characters: saved.characters,
             receipts: saved.receipts,
             revision: saved.revision,
             archive,
             root: saved.root,
+            books: saved.books,
+            legacy_revision: saved.legacy_revision,
         })
     }
     pub(super) fn batch(&mut self, transactions: Vec<Transaction>) -> Result<(), String> {
@@ -316,7 +365,14 @@ impl Ledger {
     pub(super) fn apply(&mut self, transaction: Transaction) -> Result<Receipt, String> {
         validate_transaction(&transaction)?;
         if let Some(receipt) = self.receipt(transaction.actor, transaction.source)? {
-            return if receipt.transaction == transaction {
+            let equal = receipt.transaction == transaction;
+            #[cfg(feature = "service-auth")]
+            let equal = if self.books.is_some() {
+                books::equivalent(&receipt.transaction, &transaction)
+            } else {
+                equal
+            };
+            return if equal {
                 Ok(receipt)
             } else {
                 Err("Reward source already binds a different transaction".into())
@@ -403,6 +459,15 @@ impl Ledger {
                 .ok_or("Reward revisions exhausted")?,
             transaction,
         };
+        #[cfg(feature = "service-auth")]
+        if self.books.is_some() {
+            return self.commit_book(
+                receipt.transaction.actor,
+                receipt.transaction.source,
+                receipt,
+                next,
+            );
+        }
         #[cfg(feature = "service-auth")]
         if let Some(archive) = &self.archive {
             if self.receipts.len() >= ACTIVE_RECEIPTS {

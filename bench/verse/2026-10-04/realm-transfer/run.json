@@ -1,0 +1,247 @@
+{
+  "character_schema": 3,
+  "checks": [
+    {
+      "command": "cargo test -p verse-world --features service-net",
+      "ignored": 2,
+      "passed": 432,
+      "scope": "Full service suite before the final trusted reward API, startup lease checks, and graceful lease release; subsequent focused realm checks cover those changes.",
+      "seconds": 74.5
+    },
+    {
+      "command": "cargo test -p verse-world --features service-net service::realm::tests -- --nocapture",
+      "ignored": 0,
+      "passed": 10,
+      "scope": "Final realm code after integration of origin/main at the source parent, including five child process crashes and real TLS SDK transfer.",
+      "seconds": 4.77
+    },
+    {
+      "command": "cargo test -p verse-world",
+      "ignored": 0,
+      "passed": 289,
+      "scope": "Portable rules and admission after integration.",
+      "seconds": 6.67
+    },
+    {
+      "command": "cargo test -p physics",
+      "ignored": 1,
+      "passed": 115,
+      "scope": "Actor retirement, retained generation fences, and existing physics behavior.",
+      "seconds": 2.17
+    },
+    {
+      "command": "cargo test -p verse --no-default-features --features imported-desktop,remote-chamber imported::remote_",
+      "ignored": 0,
+      "passed": 14,
+      "scope": "Native remote presentation and input consumers after integration. PKG_CONFIG_PATH includes the installed ALSA development package.",
+      "seconds": 0.69
+    }
+  ],
+  "crash_boundaries": [
+    {
+      "exact_original_item_retry": true,
+      "exact_transfer_retry": true,
+      "exit_code": 86,
+      "recovered_owner": "source",
+      "remaining_items": 3,
+      "stage": "before_snapshots"
+    },
+    {
+      "exact_original_item_retry": true,
+      "exact_transfer_retry": true,
+      "exit_code": 86,
+      "recovered_owner": "source",
+      "remaining_items": 3,
+      "stage": "after_snapshots"
+    },
+    {
+      "exact_original_item_retry": true,
+      "exact_transfer_retry": true,
+      "exit_code": 86,
+      "recovered_owner": "source",
+      "remaining_items": 3,
+      "stage": "before_seal"
+    },
+    {
+      "exact_original_item_retry": true,
+      "exact_transfer_retry": true,
+      "exit_code": 86,
+      "recovered_owner": "destination",
+      "remaining_items": 3,
+      "stage": "after_seal"
+    },
+    {
+      "exact_original_item_retry": true,
+      "exact_transfer_retry": true,
+      "exit_code": 86,
+      "recovered_owner": "destination",
+      "remaining_items": 3,
+      "stage": "after_directory_sync"
+    }
+  ],
+  "created_utc": "2026-10-05T01:37:02.051058+00:00",
+  "finding": "V06",
+  "integration": {
+    "change": "Preserve upstream REACH transport and Open event fields; realm TLS requires explicit enrollment.",
+    "checks": [
+      {
+        "command": "cargo test -p verse-world --features service-reach",
+        "ignored": 2,
+        "passed": 440,
+        "scope": "Full final integrated service suite, including all realm and five REACH grant/identity/channel tests.",
+        "seconds": 84.7
+      },
+      {
+        "command": "cargo test -p verse --no-default-features --features imported-desktop,remote-chamber imported::remote_",
+        "ignored": 0,
+        "passed": 14,
+        "scope": "Final integrated native consumers; installed ALSA development package on PKG_CONFIG_PATH.",
+        "seconds": 0.68
+      }
+    ],
+    "source_parent": "d073728f79bd1373ed2c6e0cb3c8ed0fabe80ad6",
+    "source_sha256": {
+      "assets/verse/original/ritual.json": "0e2c943e012ad5f491a2e40414c81a35876df07d183ce91c2c5c5194d0f7b4f1",
+      "crates/physics/src/lifetimes.rs": "aad3858d3294edac523726319085fd486c9cd9fa735980e3afe6ee52cd69ebed",
+      "crates/verse-world/Cargo.toml": "f93a62dde65d8b3c94c2474f25e0c70b58b259bd00ba2ed54a1e1b8c61fe8f9a",
+      "crates/verse-world/src/play/multiplayer.rs": "b06a9e6f9c301073258cfaa7bfa9bc8cc857dcddbc2c0c412f6a1be3a19eb0c2",
+      "crates/verse-world/src/rules.rs": "09a2cfc3f91af1db3e89c0a6792e976bf6660def8690b9a60e39063b6608f8dd",
+      "crates/verse-world/src/rules/transfer.rs": "2b753e33afcae8cbd937d52d7e3ea58c9e21b9190551a74d6606f7b044484469",
+      "crates/verse-world/src/service.rs": "18099c25ca77a0e7c3c56aa55c3e5c5e0de317b6735038c1d1896a43149082ee",
+      "crates/verse-world/src/service/auth.rs": "81487294c2436a257ff49db0d3e84639eb90748cdd3771382b352c0504edadb5",
+      "crates/verse-world/src/service/client.rs": "84100be5c8bff1c4cb37855b9858684e45e82b987e6687a3afef792c0c5d542c",
+      "crates/verse-world/src/service/host.rs": "4b185cac1e81223eda39cde9aa87ff04de4b01371b1cd6fcf2cc51686f01a5a4",
+      "crates/verse-world/src/service/net.rs": "b02e9c96ed914373d01f7a3561074b3a8454829b4eb83f1949ac7ab7d10d72b0",
+      "crates/verse-world/src/service/reach.rs": "996bda0fa93f3786b7438898c58b55058ba964d19375b738396358da6d7364cb",
+      "crates/verse-world/src/service/reach_tests.rs": "c7ecf7d1e5e7df0c71de80ea26e03ab3e3c56640b062ffc702fbb00d9e5c902f",
+      "crates/verse-world/src/service/realm.rs": "061902aafdb15ae9a9cfbad862d9c00bf041a48c72d7fd0bb7473c6019820931",
+      "crates/verse-world/src/service/realm/disk.rs": "aae2daea502ecdf2eb1765ff7dde30a9241a1da2a8c5a3f9f31658a11387b942",
+      "crates/verse-world/src/service/realm/net.rs": "44494129cedc5e7c39e8ac0afe4dea72d9215fb072b57e422af8b760af7405fb",
+      "crates/verse-world/src/service/realm/tests.rs": "73dc15575e0baed448185728fc1fd7635504dc71b7270590f2c38159b37acab6",
+      "crates/verse-world/src/service/realm/transfer.rs": "364839137f52250ac268f662ced503e532c0b9a9f91fb5149007d06e1451bf4a",
+      "crates/verse-world/src/service/rewards.rs": "41dba50d7921edffcd0b6df93ff6b44de7c734b66a840395c46fefb5a07996a5",
+      "crates/verse-world/src/service/rewards/books.rs": "7f020c74a894a5b268735a5b83123e898daf4a2d795cf0f6bfba3b719673dcd8",
+      "crates/verse-world/src/service/rewards/history.rs": "c2de5f9dcf28a92f3e5d4d2ea5f357f5022d2523efabc733527ec9b0c30cad4f",
+      "crates/verse-world/src/service/rewards/history/character.rs": "f6e2d120e44a229819252ce56d6af5ac92f2dd439205ab7d6fdfdc6cba1b26b8",
+      "crates/verse-world/src/service/save.rs": "97404f70a6ae6db327ede9c7ea1df4254cb7a272557c4ab96181f7a713d1c4a7",
+      "crates/verse-world/src/utilities.rs": "2174a0c6b2db9b8589c44d083d201046d68ac5a860036ad587b5f6ecd6485714"
+    },
+    "timing_limit": "Functional TLS runs execute alongside unit tests; coordinator peak timings do not establish isolated or population performance.",
+    "tls": {
+      "destination_instance": 1002,
+      "exact_retry_without_debit": true,
+      "instances": 2,
+      "original_item_revision": 2,
+      "owned_characters": 3,
+      "remaining_recovery_items": 3,
+      "routed_sdk_reauthentication": true,
+      "schema": "verse.realm.tls.acceptance.v1",
+      "source_instance": 1001,
+      "source_sessions_fenced": true,
+      "stats": {
+        "queue_peak": 2,
+        "requests": 7,
+        "skipped_seconds": 0.0,
+        "ticks": 22,
+        "work_peak_seconds": 0.091994204
+      },
+      "transfer_operation": "retained 16-byte identity"
+    }
+  },
+  "issue": 10593,
+  "limitations": [
+    "This is one coordinator over independent instances, not distributed consensus or cross-host failover.",
+    "A full checkpoint and filesystem synchronization serialize each admitted mutation or dirty read; the adapter has not met crowded 30 Hz throughput acceptance.",
+    "The TLS observation is a short functional loopback run; peak work timing is not a population percentile or a load acceptance result.",
+    "Primary avatars remain scene anchors and refuse transfer pending V09. Existing simulation and retired-body limits remain.",
+    "Admission and transfer park connections in the affected instances and require fresh authentication.",
+    "Existing foreign reward-history directories require an explicit import workflow. Realm manifest content migration, history garbage collection, and retention policy remain.",
+    "No real owner machines, live engines, WAN, power-loss tests, GPU capture, or mobile transfer UI were used."
+  ],
+  "limits": {
+    "authority_lease_ms": 30000,
+    "character_receipt_index_depth": 64,
+    "character_receipt_leaf_records": 16,
+    "dispatch_queue": 128,
+    "instances": 32,
+    "manifest_bytes": 1048576,
+    "pending_timer_events": 1,
+    "registered_characters": 2048,
+    "simulation_players": 64,
+    "tls_connections": 128,
+    "transfer_index_depth": 32,
+    "transfer_leaf_records": 16,
+    "transfer_node_bytes": 262144,
+    "world_checkpoint_bytes": 8388608
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "build": "cargo test; verse-world and physics opt-level=3, debug assertions and debug info enabled",
+    "cpu": "Intel Core i7-14700K",
+    "logical_cpus": 28
+  },
+  "profile": {
+    "additional_character_initial_experience": 900,
+    "additional_character_initial_health": 125,
+    "additional_character_initial_mana": 15,
+    "destination_instance": 1002,
+    "frozen_catalogs": [
+      "items",
+      "outfits",
+      "equipment",
+      "progression"
+    ],
+    "instances": 2,
+    "new_character_receipts_in_branching_test": 40,
+    "registered_characters": 3,
+    "remaining_items_before_and_after_exact_retry": 3,
+    "resources_and_remaining_cooldowns_preserved": true,
+    "source_instance": 1001,
+    "transfer_steps_in_branching_test": 20
+  },
+  "rules_revision": "verse-chamber-owned-v20",
+  "save_version": 10,
+  "schema": "verse.realm.transfer.acceptance.v1",
+  "source_parent": "91ef83fc1fff26dc00509ca675a0b87060e34d95",
+  "source_sha256": {
+    "assets/verse/original/ritual.json": "0e2c943e012ad5f491a2e40414c81a35876df07d183ce91c2c5c5194d0f7b4f1",
+    "crates/physics/src/lifetimes.rs": "aad3858d3294edac523726319085fd486c9cd9fa735980e3afe6ee52cd69ebed",
+    "crates/verse-world/src/play/multiplayer.rs": "b06a9e6f9c301073258cfaa7bfa9bc8cc857dcddbc2c0c412f6a1be3a19eb0c2",
+    "crates/verse-world/src/rules.rs": "09a2cfc3f91af1db3e89c0a6792e976bf6660def8690b9a60e39063b6608f8dd",
+    "crates/verse-world/src/rules/transfer.rs": "2b753e33afcae8cbd937d52d7e3ea58c9e21b9190551a74d6606f7b044484469",
+    "crates/verse-world/src/service.rs": "d88b200b86f131bb1c6d95cd6a13d1c8558f43e186a0a999fca4f4892ea7bb15",
+    "crates/verse-world/src/service/net.rs": "c11908eb3ef0b18046d40677e130fd264a1142dbce02c3069c069c5d855d8084",
+    "crates/verse-world/src/service/realm.rs": "061902aafdb15ae9a9cfbad862d9c00bf041a48c72d7fd0bb7473c6019820931",
+    "crates/verse-world/src/service/realm/disk.rs": "aae2daea502ecdf2eb1765ff7dde30a9241a1da2a8c5a3f9f31658a11387b942",
+    "crates/verse-world/src/service/realm/net.rs": "8b1e6b40bda8c222f37ed61f87e5dd0ca8264fe03ef19e445aa9de5149414be5",
+    "crates/verse-world/src/service/realm/tests.rs": "73dc15575e0baed448185728fc1fd7635504dc71b7270590f2c38159b37acab6",
+    "crates/verse-world/src/service/realm/transfer.rs": "364839137f52250ac268f662ced503e532c0b9a9f91fb5149007d06e1451bf4a",
+    "crates/verse-world/src/service/rewards.rs": "41dba50d7921edffcd0b6df93ff6b44de7c734b66a840395c46fefb5a07996a5",
+    "crates/verse-world/src/service/rewards/books.rs": "7f020c74a894a5b268735a5b83123e898daf4a2d795cf0f6bfba3b719673dcd8",
+    "crates/verse-world/src/service/rewards/history.rs": "c2de5f9dcf28a92f3e5d4d2ea5f357f5022d2523efabc733527ec9b0c30cad4f",
+    "crates/verse-world/src/service/rewards/history/character.rs": "f6e2d120e44a229819252ce56d6af5ac92f2dd439205ab7d6fdfdc6cba1b26b8",
+    "crates/verse-world/src/service/save.rs": "97404f70a6ae6db327ede9c7ea1df4254cb7a272557c4ab96181f7a713d1c4a7",
+    "crates/verse-world/src/utilities.rs": "2174a0c6b2db9b8589c44d083d201046d68ac5a860036ad587b5f6ecd6485714"
+  },
+  "tls": {
+    "destination_instance": 1002,
+    "exact_retry_without_debit": true,
+    "instances": 2,
+    "original_item_revision": 2,
+    "owned_characters": 3,
+    "remaining_recovery_items": 3,
+    "routed_sdk_reauthentication": true,
+    "schema": "verse.realm.tls.acceptance.v1",
+    "source_instance": 1001,
+    "source_sessions_fenced": true,
+    "stats": {
+      "queue_peak": 3,
+      "requests": 7,
+      "skipped_seconds": 0.0,
+      "ticks": 22,
+      "work_peak_seconds": 0.087966032
+    },
+    "transfer_operation": "retained 16-byte identity"
+  },
+  "wire_version": 23
+}

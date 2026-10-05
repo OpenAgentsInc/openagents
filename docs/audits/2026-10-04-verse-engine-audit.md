@@ -32,7 +32,9 @@ offline migration, retained backups, and guarded rollback. V04 remediation in
 [#10580](https://github.com/OpenAgentsInc/openagents/issues/10580) establishes a
 bounded deterministic delayed-movement profile. V05 remediation in
 [#10591](https://github.com/OpenAgentsInc/openagents/issues/10591) adds conservative
-spatial relevance, acknowledged deltas, and bounded snapshot scheduling. Two
+spatial relevance, acknowledged deltas, and bounded snapshot scheduling. V06
+remediation in [#10593](https://github.com/OpenAgentsInc/openagents/issues/10593)
+adds independent instances, exclusive leases, and atomic character transfer. Two
 findings still deserve
 immediate engineering attention:
 
@@ -141,7 +143,7 @@ Evidence labels:
 | V03 | P0 | Content/rules changes lack a general durable migration path. | Code, gap | Content and save versions | Complete ([#10575](https://github.com/OpenAgentsInc/openagents/issues/10575)) |
 | V04 | P1 | Confirmed movement intervals pass a bounded delayed profile. | Recorded, code | Movement and client replication | Complete ([#10580](https://github.com/OpenAgentsInc/openagents/issues/10580)) |
 | V05 | P1 | Spatial replication bounds steady traffic in retained fixtures. | Recorded, code | World service replication | Complete ([#10591](https://github.com/OpenAgentsInc/openagents/issues/10591)) |
-| V06 | P1 | One chamber process does not provide realm/instance management. | Code, gap | World hosting | Open |
+| V06 | P1 | Independent realm instances have durable placement, leases, lifecycle, and transfer. | Code | World hosting | Complete ([#10593](https://github.com/OpenAgentsInc/openagents/issues/10593)) |
 | V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters | Open |
 | V08 | P1 | Admission needs production enrollment and overload policy. | Code, gap | World access and transport | Open |
 | V09 | P1 | Character identity and rewards remain chamber-scoped. | Code, gap | Persistent character domain | Open |
@@ -472,23 +474,67 @@ accepted AAA MMORPG capacity; V06, V10, V12, and V18 retain that work. The origi
 remains background for spatial list reuse; the implementation shares no Unreal
 code.
 
-### V06: A chamber is not a realm service
+### V06: Independent realm lifecycle and transfer are implemented
 
-[`Chamber`](../../crates/verse-world/src/service.rs) owns one `Game`;
-[`verse_host`](../../crates/verse/examples/verse_host.rs) starts one configured
-instance with one listener. Instance IDs fence commands but do not allocate
-instances, manage population, route joins, transfer characters, or recover
-authority on another machine. A 128-socket cap and a 64-player game cap are
-admission limits, not a scaling design.
+Resolved for the independent-instance profile in
+[#10593](https://github.com/OpenAgentsInc/openagents/issues/10593).
+[`Realm`](../../crates/verse-world/src/service/realm.rs) owns actual `Gateway` and
+`Game` instances behind an exclusive coordinator lock. One sealed manifest
+records content-bound immutable world checkpoints, stable realm character IDs,
+placement, capacity, phase, endpoint, and authority epochs. Host APIs create,
+admit, drain, stop, restart, and lease instances. Every tick, connection, and
+dispatch checks the explicit 30-second lease; acquisition and recovery park old
+sessions. Recovery advances epochs and requires fresh acquisition. Host time
+cannot regress. Admission caps remain explicit: 32 instances, 2,048 registered
+characters, and the existing 64-player simulation limit.
 
-**Improve:** Add a host lifecycle for instance creation, draining, placement,
-admission, ownership leases, and restart. Start with independent instances and
-explicit character transfer. Defer seamless distributed simulation until a
-measured product requirement needs it.
+[`Transfer`](../../crates/verse-world/src/service/realm/transfer.rs) prepares and
+validates both game copies before publishing. One atomic manifest rename selects
+both checkpoints, the destination placement, and an immutable transfer retry
+root. Before that seal, recovery chooses the source; after it, recovery chooses
+the destination. Uncertain durability poisons the coordinator and withholds the
+result until recovery. A bounded radix index retains original transfer outcomes
+without a fixed operation lifetime cap. Changed retry arguments are refused.
 
-**Acceptance:** Run multiple instances, transfer one character with an exclusive
-ownership fence, crash during transfer, and recover without duplicate characters,
-inventory, or two authorities advancing the same instance.
+A living additional adventurer retains health, mana, inventory, equipment,
+progression, and remaining cooldowns across different world clocks. Temporary
+world effects and input stop; both affected instances require fresh connection
+authentication. Compatible item, outfit, equipment, and progression catalogs are
+required, and destination capacity and collision admission run before publication.
+[`Receipt books`](../../crates/verse-world/src/service/rewards/books.rs) bind
+history to the realm character rather than its local actor. Original item,
+outfit, equipment, quest, and reward outcomes stay intact after repeated transfers;
+exact retries return the original revision without another debit or restoration.
+The legacy receipt root remains immutable and new per-character roots grow
+independently. Save version 10, character schema 3, records these namespaces;
+versions 1–9 retain their own schema admission rules.
+
+[`Realm TLS hosting`](../../crates/verse-world/src/service/realm/net.rs) uses the
+existing framed TLS transport and SDK across separate instance listeners. A
+local operator handle routes, admits, drains, and transfers characters; clients
+cannot request those operator actions through the wire. The coordinator thread
+owns all mutable games and disk work, while socket tasks retain bounded queues
+and existing protocol deadlines. Socket and dispatch limits are 128; timer work
+coalesces and skipped elapsed time is recorded.
+
+**Acceptance:** The [retained receipt](../../bench/verse/2026-10-04/realm-transfer/run.json)
+covers two actual TLS instances, SDK reauthentication at the routed destination,
+exclusive coordinator refusal, stale lease refusal, draining, restart, capacity,
+incompatible catalogs, and repeated placement. Five subprocess termination
+boundaries recover exactly one character owner and three remaining items. Both
+old and new receipt namespaces preserve exact item-use retries across transfer,
+return transfer, and restart. Twenty transfers exercise branching history nodes.
+
+**Limits:** This is one coordinator over independent instances, with no claim of
+distributed consensus, seamless cross-instance simulation, or accepted population
+scale. The TLS adapter serializes checkpoint work and has not established the proposed
+crowded 30 Hz throughput target; V08, V10, and V18 retain load and containment
+acceptance. Primary avatars remain scene anchors and refuse transfer until V09
+removes that coupling. Both worlds reconnect on transfer or admission. Foreign
+reward-history imports, online content migration for realm manifests, archive
+garbage collection, and retention policy remain operator work under V19. The
+receipt covers scratch loopback and process death; it does not test disk power
+loss, remote host failover, WAN delivery, GPU rendering, or mobile transfer UI.
 
 ### V07: Local worlds and presence use different authority models
 
@@ -1081,3 +1127,21 @@ The isolated cadence and growing-state measurements are retained in the V02
 receipt. All checks pass. After integrating the bounded capsule-exit change,
 the affected network tests and host example check also pass. Existing transcripts, research artifacts, and
 measurement receipts remain in place.
+
+V06 runs formatting for `verse-world` and `physics`, the full service suite
+(432 passing tests, two ignored helpers), final realm acceptance (10 passing
+tests, including five subprocess crash boundaries and two real TLS listeners),
+portable world tests (289), physics tests (115, one ignored), and native remote
+consumer tests (14). The final realm checks cover changes added after the full
+suite: trusted reward grants, startup lease validation, and graceful lease release.
+All pass. The native check uses the installed ALSA development package and the
+imported-desktop/remote-chamber feature set. Source hashes, parent identity, timing,
+and scope are retained in the V06 receipt. No release gate, Clippy, or owner-host
+live smoke runs.
+
+After integrating `d073728f79` and its shared REACH transport, V06 reruns the
+full `service-reach` world suite (440 passing tests, two ignored helpers) and
+the 14 native consumer tests. Both pass. The upstream grant and device-identity
+checks remain intact; realm TLS continues to require explicit enrollment.
+The receipt retains the original measurement identity separately from the
+integrated source hashes and final TLS observation.

@@ -1,5 +1,6 @@
 //! Owned chamber resources, projectiles, impacts, and presentation snapshots.
 //! The retained Ruins adapter is a parity reference, not a dependency.
+pub(crate) mod transfer;
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

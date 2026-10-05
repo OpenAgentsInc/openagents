@@ -284,8 +284,8 @@ fn populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_qu
     let reviewed = plan(&store, &f);
     assert_eq!(reviewed.source.character_schema, 1);
     assert_eq!(reviewed.source.save_version, 8);
-    assert_eq!(reviewed.target.character_schema, 2);
-    assert_eq!(reviewed.target.save_version, 9);
+    assert_eq!(reviewed.target.character_schema, 3);
+    assert_eq!(reviewed.target.save_version, 10);
     assert_eq!(reviewed.source.rules, "verse-chamber-owned-v18");
     assert_eq!(reviewed.target.rules, crate::play::RULES_REVISION);
     assert_eq!(std::fs::read(root.join("chamber.json")).unwrap(), original);

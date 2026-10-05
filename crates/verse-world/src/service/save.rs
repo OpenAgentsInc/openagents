@@ -18,7 +18,7 @@ struct Owner {
     key: [u8; 32],
     actor: u64,
 }
-pub const CHARACTER_SCHEMA: u16 = 2;
+pub const CHARACTER_SCHEMA: u16 = 3;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Saved {
@@ -156,7 +156,7 @@ impl Prepared {
     pub(super) fn encode(&self) -> Result<Vec<u8>, String> {
         let ledger = self.rewards.checkpoint();
         let saved = Saved {
-            version: 9,
+            version: 10,
             content: self.content,
             world: String::from_utf8(self.game.checkpoint()?)
                 .map_err(|_| "Cannot encode saved world")?,
@@ -213,14 +213,19 @@ pub(super) fn decode_with_history(
         return Err("Saved chamber byte budget exceeded".into());
     }
     let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
-    if !matches!(saved.version, 1..=9)
+    if !matches!(saved.version, 1..=10)
         || (saved.version == 1 && saved.rewards.is_some())
         || ((2..=7).contains(&saved.version) && saved.rewards.is_none())
         || (saved.version < 8 && saved.ledger.is_some())
         || (saved.version == 8 && (saved.ledger.is_none() || saved.rewards.is_some()))
-        || (saved.version == 9
+        || (saved.version >= 9
             && (saved.ledger.is_some() == saved.rewards.is_some()
-                || saved.character_schema != Some(CHARACTER_SCHEMA)
+                || saved.character_schema
+                    != Some(if saved.version == 9 {
+                        2
+                    } else {
+                        CHARACTER_SCHEMA
+                    })
                 || saved.owners.is_none()))
         || (saved.version < 9 && (saved.character_schema.is_some() || saved.owners.is_some()))
         || (saved.version < 3 && saved.progression.is_some())
@@ -281,6 +286,9 @@ pub(super) fn decode_with_history(
         }
     }
     if let Some(ledger) = saved.ledger {
+        if saved.version < 10 && ledger.realm_books() {
+            return Err("Legacy save cannot contain realm receipt namespaces".into());
+        }
         chamber.rewards = super::rewards::Ledger::restore(ledger, archive)?;
         for actor in chamber.rewards.actors() {
             if chamber.game.player_admission(actor).is_none() {
@@ -978,7 +986,7 @@ mod tests {
         assert_eq!(upgraded.game().player_life(), g.game().player_life());
         let saved: serde_json::Value =
             serde_json::from_slice(&upgraded.checkpoint().unwrap()).unwrap();
-        assert_eq!(saved["version"], 9);
+        assert_eq!(saved["version"], 10);
     }
     #[test]
     fn recovery_items_spend_once_restore_only_owned_resources_and_validate_saved_debits() {
