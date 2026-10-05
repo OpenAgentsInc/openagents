@@ -10,6 +10,7 @@ COPY migrations ./migrations
 COPY crates ./crates
 COPY nips ./nips
 COPY tests ./tests
+COPY vendor ./vendor
 RUN cargo build --locked --release -p nostr-relay --bin nostr-relay \
     && strip target/release/nostr-relay
 
