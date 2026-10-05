@@ -25,6 +25,10 @@ pub struct Config {
     /// listed joins as a spectator.
     #[serde(default)]
     pub enrollments: Vec<Enrollment>,
+    /// Public admission: any key that proves itself joins as a player on a
+    /// spawn ring, up to the cap. Spectators stay enrollment-only.
+    #[serde(default)]
+    pub guests: Option<super::auth::Guests>,
     #[serde(default)]
     pub authored_combat_health: bool,
     /// Explicit hosted social rules. Omission retains the combat profile.
@@ -124,8 +128,11 @@ impl Config {
             }
         }
         let tls = self.transport == Transport::Tls {};
+        if let Some(guests) = &self.guests {
+            guests.validate()?;
+        }
         if self.instance == 0
-            || (tls && self.enrollments.is_empty())
+            || (tls && self.enrollments.is_empty() && self.guests.is_none())
             || self.enrollments.len() > 128
         {
             return Err("Invalid chamber instance or enrollment budget".into());
@@ -178,7 +185,8 @@ impl Config {
                 Role::Spectator {} => {}
             }
         }
-        if primary > 1 || players > 63 {
+        let guests = self.guests.as_ref().map_or(0, |g| g.cap as usize);
+        if primary > 1 || players + guests > 63 {
             return Err("Configured controlled player capacity exceeded".into());
         }
         Ok(())
@@ -203,22 +211,32 @@ impl Config {
             }
         }
         gateway
+            .with_guests(self.guests.clone(), self.configured_players())?
             .with_rewards(self.rewards.clone())?
             .with_progression(self.progression.clone())?
             .with_items(self.items.clone())?
             .with_outfits(self.outfits.clone())?
             .with_equipment(self.equipment.clone())
     }
+    fn configured_players(&self) -> usize {
+        self.enrollments
+            .iter()
+            .filter(|e| matches!(e.role, Role::Player { .. }))
+            .count()
+    }
     /// Refuses changed startup rights instead of silently replacing saved character ownership.
     pub fn validate_recovered(&self, gateway: &Gateway) -> Result<(), String> {
         self.validate()?;
         // Over a REACH channel, granted keys outside the role table were
-        // enrolled as spectators; nothing else may differ.
+        // enrolled as spectators; with guests, as players; nothing else may differ.
+        let primary = gateway.game().player_life().actor;
         let granted = gateway.chamber.grants.iter().filter(|(principal, rights)| {
             !self.enrollments.iter().any(|enrollment| {
                 public_key(&enrollment.public_key).is_ok_and(|key| key == principal.0)
             }) && !(self.transport != Transport::Tls {}
                 && matches!(rights, super::Rights::Spectator))
+                && !(self.guests.is_some()
+                    && matches!(rights, super::Rights::Player(actor) if *actor != primary))
         });
         if gateway.game().social_state().map(|s| &s.profile) != self.social_profile.as_ref()
             || gateway.game().player_life().instance != self.instance
@@ -318,6 +336,7 @@ mod tests {
                 public_key: keys,
                 role: Role::Primary {},
             }],
+            guests: None,
             authored_combat_health: false,
             social_profile: None,
             state_dir: None,
@@ -544,6 +563,62 @@ mod tests {
         reach.validate_recovered(&gateway).unwrap();
         // Over TLS the role table is the whole admission list.
         assert!(config().validate_recovered(&gateway).is_err());
+    }
+    #[test]
+    fn guests_join_as_players_on_the_ring_up_to_the_cap_and_recover() {
+        use secp256k1::Secp256k1;
+        let secp = Secp256k1::new();
+        let mut config = config();
+        config.enrollments.clear();
+        assert!(config.validate().is_err());
+        config.guests = Some(super::super::auth::Guests {
+            cap: 2,
+            ring: [0., 0., -22.],
+            radius: 3.,
+        });
+        config.validate().unwrap();
+        let mut over = config.clone();
+        over.guests.as_mut().unwrap().cap = 64;
+        assert!(over.validate().is_err());
+        let mut gateway = config.gateway(game(170)).unwrap();
+        let join = |gateway: &mut Gateway, n: u8| {
+            let keypair = super::super::net::tests::key(n);
+            let key = keypair.x_only_public_key().0.serialize();
+            let (id, challenge) = gateway.open(0).unwrap();
+            let signature = secp
+                .sign_schnorr_no_aux_rand(&challenge.signing_digest(key), &keypair)
+                .to_byte_array();
+            gateway.authenticate(id, 0, key, signature).map(|()| id)
+        };
+        let first = join(&mut gateway, 21).unwrap();
+        let second = join(&mut gateway, 22).unwrap();
+        assert_eq!(gateway.guest_count(), 2);
+        let a = gateway.admission(first).unwrap().actor();
+        let b = gateway.admission(second).unwrap().actor();
+        assert_ne!(a, b);
+        assert_ne!(a.actor, gateway.game().player_life().actor);
+        let error = join(&mut gateway, 23).unwrap_err();
+        assert!(error.contains("guest capacity"), "{error}");
+        // A returning guest keeps its adventurer instead of taking a slot.
+        let again = join(&mut gateway, 21).unwrap();
+        assert_eq!(gateway.admission(again).unwrap().actor(), a);
+        assert_eq!(gateway.guest_count(), 2);
+        config.validate_recovered(&gateway).unwrap();
+        let mut closed = config.clone();
+        closed.guests = None;
+        closed.enrollments.push(Enrollment {
+            public_key: key(1),
+            role: Role::Primary {},
+        });
+        assert!(closed.validate_recovered(&gateway).is_err());
+        // Spectators stay enrollment-only: nothing admits an unknown key as one.
+        assert!(
+            gateway
+                .chamber
+                .grants
+                .values()
+                .all(|r| matches!(r, super::super::Rights::Player(_)))
+        );
     }
     #[test]
     fn strict_configuration_refuses_duplicate_keys_roles_and_spawn_budgets() {

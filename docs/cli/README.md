@@ -570,6 +570,34 @@ local caster). A spectator enrollment reads `status`, `snapshot`, `events`,
 and `watch` and holds no adventurer. `events` pages the committed authority
 log (dialogue, camera handoff, damage, death, respawn) by serial, and
 `watch` prints snapshots and new events as NDJSON until the wait ends.
+### A public chamber with guests
+
+A host admits any key that proves itself when its configuration carries a
+`guests` policy beside (or instead of) `enrollments`:
+
+```json
+"guests": { "cap": 16, "ring": [0, 0, -22], "radius": 3 }
+```
+
+Each new key becomes a player on the spawn ring, up to `cap` guest players
+(configured players and guests together stay within 63); a returning key
+keeps its adventurer. A full ring refuses with `Chamber guest capacity
+exceeded`, a blocked ring spot moves the spawn to the next free one, and
+spectators stay enrollment-only. A key holds one seat however often it
+reconnects, and the listener's budget of eight connections per address
+bounds how many guest seats one address can take at a time. Saved state recovers guests as
+players; removing the policy later refuses recovery, as any changed rights
+do.
+
+`openagents chamber service install CONFIG.json [--binary PATH] [--state DIR]`
+runs that host from login on as a launchd agent (macOS) or systemd user unit
+(Linux) named `com.openagents.chamber`, logging to
+`~/.openagents/chamber-host.log`; `service status` and `service uninstall`
+report and remove it. Against a public instance,
+`openagents --json chamber status --to HOST:PORT --instance N --trust cert.der`
+works with any profile and reports `population.players` (admitted player
+seats besides the chamber's own first seat) and `population.alive`.
+
 ### A chamber over REACH
 
 A chamber can instead run beside a Coder host and admit devices by their

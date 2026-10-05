@@ -38,6 +38,13 @@ pub const GRID_EVERGLADE_OPEN: bool = true;
 /// the stack, the dominoes, the pillar, and the Gym all stand clear of it.
 /// Side, forward, m.
 pub const GRID_EVERGLADE_AT: [f64; 2] = [9.0, 11.0];
+/// The Grid's RITUAL arch in the same frame: centered, beyond the stack
+/// and the dominoes, so a player walking out from the spawn passes between
+/// the side arches and the blocks before reaching it. Shown only when the
+/// desktop has a pinned chamber to join ([`crate::ritual`]). Side, forward, m.
+pub const GRID_RITUAL_AT: [f64; 2] = [0.0, 26.0];
+/// The RITUAL arch's lettering.
+pub const RITUAL_SIGN: &str = "RITUAL";
 /// Half the arch's clear opening between its pillars, m.
 pub const OPENING_HALF: f32 = 1.5;
 /// How far either side of the arch's plane counts as inside it, m.
@@ -69,6 +76,13 @@ impl Gate {
     #[must_use]
     pub fn everglade(layout: &crate::blocks::Layout) -> Self {
         Self::on_grid(layout, GRID_EVERGLADE_AT)
+    }
+
+    /// The Grid's RITUAL arch to the pinned chamber, placed and turned as
+    /// [`Self::grid`].
+    #[must_use]
+    pub fn ritual(layout: &crate::blocks::Layout) -> Self {
+        Self::on_grid(layout, GRID_RITUAL_AT)
     }
 
     /// An arch at `site` (side, forward) in `layout`, inside the world's

@@ -234,3 +234,22 @@ here. To finish checking:
 2. Standing in Everglade, run `openagents verse walkers 5 --world everglade`
    and `openagents --json verse who --world everglade`; the walkers must be
    visible in the glade and absent from the Grid.
+
+## Two desktops in a public chamber through RITUAL (#10585)
+
+The guest chamber host and the Grid's RITUAL arch were checked on one
+machine: four guest keys joined a local host, a fifth was refused, and a
+reconnect kept its seat. The two-desktop play test needs a second
+contributor machine and a desktop display, which this box has not. To finish
+checking:
+
+1. Run a host with a `guests` policy on a machine two desktops can reach
+   (`openagents chamber host CONFIG.json`, or `chamber service install`),
+   and copy its DER certificate to both desktops.
+2. Write `~/.verse/ritual.json` on both (address, instance, `trust_der`,
+   `pack`, `scene`, `dir`) and start `verse` built with
+   `--features remote-chamber,imported-desktop`.
+3. Walk both players through the `RITUAL` arch, fight cultists in the same
+   chamber window, read `openagents --json chamber status` for
+   `population.players: 2`, then close the windows and read that both
+   players stand before the arch again with Grid presence restored.

@@ -38,13 +38,21 @@ pub(crate) const USAGE: &str = "usage: openagents chamber COMMAND [OPTIONS]
                             the ones `openagents host serve` takes, and
                             --label names the instance in the owner
                             directory when the keys include the owner key.
+  service install CONFIG.json [--binary PATH] [--state DIR] [--root DIR]
+                            [--keys DIR | --keychain] [--label TEXT]
+                            Run `chamber host CONFIG.json` from login on as
+                            a launchd agent (macOS) or systemd user unit
+                            (Linux); the access options pass through.
+  service uninstall | status
+                            Remove the unit, or report whether it runs.
   tls DIR [--name NAME]     Write a self-signed TLS certificate and key for a
                             host under DIR (cert.der, key.der; NAME defaults
                             to localhost).
   pack DIR                  Compile the original ritual asset pack under DIR
                             (runtime-pack.json) for a host and its clients.
-  status                    This identity's admission, the host tick, and the
-                            living actors.
+  status                    This identity's admission, the host tick, the
+                            living actors, and the population (players
+                            present, guest count and cap when public).
   snapshot                  The full authoritative state the host serves.
   events [--after SERIAL] [--limit N]
                             Committed authority events: dialogue, damage,
@@ -86,6 +94,7 @@ Connection: --to HOST:PORT --instance N --trust CERT.der [--server-name NAME]
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("host", Effect::LongRunning),
+    Declared::computer("service", Effect::LocalWrite),
     Declared::computer("tls", Effect::LocalWrite),
     Declared::computer("pack", Effect::LocalWrite),
     Declared::computer("status", Effect::ReadOnly),
@@ -387,6 +396,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         )
         .map_err(Fail::Usage)
         .and_then(|args| host_command(output, &args)),
+        "service" => Ok(service::run(output, rest)),
         "tls" => parse_command(rest, "tls", &["name"], &[], 1, 1)
             .map_err(Fail::Usage)
             .and_then(|args| tls_command(output, &args)),
@@ -600,6 +610,23 @@ fn status_json(client: &Client, state: &State) -> Value {
         "actors": actors_json(state),
         "projectiles": state.snapshot.projectiles.len(),
         "effects": state.snapshot.effects.len(),
+        "population": population_json(state),
+    })
+}
+
+/// Players present in the chamber: actors another identity controls.
+/// Admitted player seats other than the chamber's own first seat, which
+/// exists whether or not a primary key holds it.
+fn population_json(state: &State) -> Value {
+    let players = state
+        .snapshot
+        .actors
+        .iter()
+        .filter(|actor| actor.faction == "player" && actor.id != 0)
+        .collect::<Vec<_>>();
+    json!({
+        "players": players.len(),
+        "alive": players.iter().filter(|actor| actor.alive).count(),
     })
 }
 
@@ -1481,5 +1508,305 @@ mod tests {
         assert_eq!(connection.instance, Some(9));
         assert_eq!(connection.address.unwrap().port(), 1);
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+/// `chamber service`: a launchd agent or systemd user unit that runs
+/// `openagents chamber host CONFIG.json` from login on.
+mod service {
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    use coder_service::service::Platform;
+    use serde_json::{Value, json};
+
+    use crate::{Args, Output, argv::parse_command};
+
+    const LABEL: &str = "com.openagents.chamber";
+
+    pub fn run(output: &Output, words: &[String]) -> u8 {
+        let Some(platform) = Platform::current() else {
+            return output.fail("chamber service", "chamber service needs macOS or Linux");
+        };
+        let home_dir = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let path = platform
+            .default_registration_dir(&home_dir)
+            .join(match platform {
+                Platform::Macos => format!("{LABEL}.plist"),
+                Platform::Linux => format!("{LABEL}.service"),
+            });
+        let result = match words
+            .split_first()
+            .map(|(verb, rest)| (verb.as_str(), rest))
+        {
+            Some(("install", rest)) => parse_command(
+                rest,
+                "service install",
+                &["binary", "state", "root", "keys", "label"],
+                &["keychain"],
+                1,
+                1,
+            )
+            .map_err(|e| (true, e))
+            .and_then(|args| install(platform, &path, &args).map_err(|e| (false, e))),
+            Some(("uninstall", _)) => uninstall(platform, &path).map_err(|e| (false, e)),
+            Some(("status", _)) => status(platform, &path).map_err(|e| (false, e)),
+            _ => Err((
+                true,
+                "service needs install CONFIG.json, uninstall, or status".into(),
+            )),
+        };
+        match result {
+            Ok(value) => {
+                output.emit(&value, |v| {
+                    format!(
+                        "{} {} ({})",
+                        v["service"].as_str().unwrap_or(""),
+                        v["state"].as_str().unwrap_or(""),
+                        v["path"].as_str().unwrap_or("")
+                    )
+                });
+                0
+            }
+            Err((true, message)) => output.usage("chamber", &message, super::USAGE),
+            Err((false, message)) => output.fail("chamber service", &message),
+        }
+    }
+
+    fn absolute(path: &str) -> Result<PathBuf, String> {
+        let path = Path::new(path);
+        if path.is_absolute() {
+            return Ok(path.to_owned());
+        }
+        std::env::current_dir()
+            .map(|dir| dir.join(path))
+            .map_err(|error| format!("current directory: {error}"))
+    }
+
+    /// The `chamber host` words the unit runs, each path made absolute.
+    fn host_words(args: &Args) -> Result<Vec<String>, String> {
+        let config = absolute(&args.positional()[0])?;
+        if !config.is_file() {
+            return Err(format!("{}: not a file", config.display()));
+        }
+        super::host::Config::from_json(&super::bounded(&config, 64 * 1024)?)
+            .map_err(|e| format!("{}: {e}", config.display()))?;
+        let mut words = vec!["--json".to_owned(), "chamber".into(), "host".into()];
+        words.push(config.display().to_string());
+        for name in ["state", "root", "keys"] {
+            if let Some(value) = args.option(name) {
+                words.push(format!("--{name}"));
+                words.push(absolute(value)?.display().to_string());
+            }
+        }
+        if let Some(label) = args.option("label") {
+            words.push("--label".into());
+            words.push(label.to_owned());
+        }
+        if args.switch("keychain") {
+            words.push("--keychain".into());
+        }
+        Ok(words)
+    }
+
+    fn xml(text: &str) -> String {
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    }
+
+    fn render(platform: Platform, binary: &Path, words: &[String], log: &Path) -> String {
+        let binary = binary.display();
+        let log = log.display();
+        match platform {
+            Platform::Macos => {
+                let arguments: String = words
+                    .iter()
+                    .map(|word| format!("<string>{}</string>", xml(word)))
+                    .collect();
+                format!(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>{LABEL}</string>
+  <key>ProgramArguments</key>
+  <array><string>{binary}</string>{arguments}</array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>{log}</string>
+  <key>StandardErrorPath</key><string>{log}</string>
+</dict>
+</plist>
+"#
+                )
+            }
+            Platform::Linux => {
+                let arguments: Vec<String> = words
+                    .iter()
+                    .map(|word| {
+                        if word.contains([' ', '"', '\\']) {
+                            format!("\"{}\"", word.replace('\\', "\\\\").replace('"', "\\\""))
+                        } else {
+                            word.clone()
+                        }
+                    })
+                    .collect();
+                format!(
+                    "[Unit]\nDescription=openagents chamber host\nAfter=network-online.target\n\n[Service]\nExecStart={binary} {}\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n",
+                    arguments.join(" ")
+                )
+            }
+        }
+    }
+
+    fn sh(program: &str, args: &[&str]) -> Result<String, String> {
+        let done = Command::new(program)
+            .args(args)
+            .output()
+            .map_err(|error| format!("{program}: {error}"))?;
+        let text = String::from_utf8_lossy(&done.stdout).into_owned()
+            + &String::from_utf8_lossy(&done.stderr);
+        if done.status.success() {
+            Ok(text)
+        } else {
+            Err(format!("{program} {}: {}", args.join(" "), text.trim()))
+        }
+    }
+
+    fn uid() -> String {
+        // SAFETY: getuid has no preconditions.
+        unsafe { libc::getuid() }.to_string()
+    }
+
+    fn install(platform: Platform, path: &Path, args: &Args) -> Result<Value, String> {
+        let binary = match args.option("binary") {
+            Some(path) => absolute(path)?,
+            None => std::env::current_exe().map_err(|error| format!("current binary: {error}"))?,
+        };
+        let words = host_words(args)?;
+        let log = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".openagents/chamber-host.log");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("{}: {error}", parent.display()))?;
+        }
+        if let Some(parent) = log.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("{}: {error}", parent.display()))?;
+        }
+        std::fs::write(path, render(platform, &binary, &words, &log))
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        match platform {
+            Platform::Macos => {
+                let domain = format!("gui/{}", uid());
+                let _ = sh("launchctl", &["bootout", &format!("{domain}/{LABEL}")]);
+                sh(
+                    "launchctl",
+                    &["bootstrap", &domain, &path.display().to_string()],
+                )?;
+            }
+            Platform::Linux => {
+                sh("systemctl", &["--user", "daemon-reload"])?;
+                sh(
+                    "systemctl",
+                    &["--user", "enable", "--now", &format!("{LABEL}.service")],
+                )?;
+            }
+        }
+        Ok(json!({
+            "service": LABEL,
+            "state": "installed",
+            "path": path.display().to_string(),
+            "binary": binary.display().to_string(),
+            "config": words[3],
+            "log": log.display().to_string(),
+        }))
+    }
+
+    fn uninstall(platform: Platform, path: &Path) -> Result<Value, String> {
+        match platform {
+            Platform::Macos => {
+                let _ = sh("launchctl", &["bootout", &format!("gui/{}/{LABEL}", uid())]);
+            }
+            Platform::Linux => {
+                let _ = sh(
+                    "systemctl",
+                    &["--user", "disable", "--now", &format!("{LABEL}.service")],
+                );
+            }
+        }
+        let existed = path.exists();
+        if existed {
+            std::fs::remove_file(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        }
+        if platform == Platform::Linux {
+            let _ = sh("systemctl", &["--user", "daemon-reload"]);
+        }
+        Ok(json!({
+            "service": LABEL,
+            "state": if existed { "removed" } else { "absent" },
+            "path": path.display().to_string(),
+        }))
+    }
+
+    fn status(platform: Platform, path: &Path) -> Result<Value, String> {
+        let registered = path.exists();
+        let (active, detail) = match platform {
+            Platform::Macos => match sh("launchctl", &["print", &format!("gui/{}/{LABEL}", uid())])
+            {
+                Ok(text) => (text.contains("state = running"), text),
+                Err(text) => (false, text),
+            },
+            Platform::Linux => match sh(
+                "systemctl",
+                &["--user", "is-active", &format!("{LABEL}.service")],
+            ) {
+                Ok(text) => (text.trim() == "active", text),
+                Err(text) => (false, text),
+            },
+        };
+        Ok(json!({
+            "service": LABEL,
+            "state": if !registered { "absent" } else if active { "running" } else { "stopped" },
+            "path": path.display().to_string(),
+            "detail": detail.trim(),
+        }))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn units_quote_the_host_words() {
+            let words = vec![
+                "--json".to_owned(),
+                "chamber".into(),
+                "host".into(),
+                "/tmp/a b.json".into(),
+            ];
+            let linux = render(
+                Platform::Linux,
+                Path::new("/bin/oa"),
+                &words,
+                Path::new("/l"),
+            );
+            assert!(
+                linux.contains("ExecStart=/bin/oa --json chamber host \"/tmp/a b.json\""),
+                "{linux}"
+            );
+            let mac = render(
+                Platform::Macos,
+                Path::new("/bin/oa"),
+                &words,
+                Path::new("/l"),
+            );
+            assert!(mac.contains("<string>/tmp/a b.json</string>"));
+        }
     }
 }

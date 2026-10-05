@@ -350,6 +350,10 @@ pub(crate) struct State {
     gate_cooldown: f32,
     /// Whether the Grid shows its portal; see [`gate::GRID_PORTAL_OPEN`].
     grid_portal: bool,
+    /// The pinned chamber the Grid's RITUAL arch joins, when there is one.
+    ritual: Option<std::path::PathBuf>,
+    /// A RITUAL crossing the application has not taken yet.
+    ritual_crossed: bool,
 }
 impl Default for State {
     fn default() -> Self {
@@ -370,6 +374,8 @@ impl Default for State {
             elapsed: 0.0,
             gate_cooldown: 0.0,
             grid_portal: gate::GRID_PORTAL_OPEN,
+            ritual: None,
+            ritual_crossed: false,
         }
     }
 }

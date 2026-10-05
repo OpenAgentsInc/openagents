@@ -54,6 +54,7 @@ pub mod pbr;
 pub mod pillar;
 pub mod render;
 pub mod replay;
+pub mod ritual;
 pub mod runtime;
 pub mod session;
 pub mod shared;

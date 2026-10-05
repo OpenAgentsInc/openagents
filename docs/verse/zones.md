@@ -71,6 +71,19 @@ through the station's return arch comes back in front of the Grid's arch
 Grid, Lagrange 1 draws its guides, overlays, arch, and panel in the neutral
 palette. See [the Grid's portal](mobile.md#the-grids-portal-to-lagrange-1).
 
+On the desktop, a `~/.verse/ritual.json` (or `verse --ritual CONFIG`) adds a
+third arch to the Grid, `RITUAL`, centered beyond the blocks. It pins an
+authoritative chamber the desktop trusts out of band: the host's address and
+instance, its DER certificate, and the local pack, scene, and asset directory
+whose content identity the host checks
+([`ritual.rs`](../../crates/verse/src/ritual.rs)). Walking through the arch
+opens the chamber in its own window, signed by the profile key, which a
+public host admits as a guest (`docs/cli/README.md`, "Public chambers").
+While that window is open the Grid's presence, chat, feed, XP, and board
+pause as in a zone; closing it puts the player back in front of the arch.
+`verse --no-ritual` hides the arch. The chamber window needs a `verse`
+built with `--features remote-chamber,imported-desktop`.
+
 ### Ruins controls
 
 Movement and combat run together. The bottom hotbar supplies **Firebolt**,

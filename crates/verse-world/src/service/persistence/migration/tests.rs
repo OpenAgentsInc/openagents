@@ -36,6 +36,7 @@ fn config(root: &Path) -> Config {
         state_dir: Some(root.into()),
         authored_combat_health: false,
         social_profile: None,
+        guests: None,
         enrollments: vec![
             enrollment(91, Role::Primary {}),
             enrollment(

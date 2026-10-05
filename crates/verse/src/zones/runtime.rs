@@ -974,6 +974,41 @@ impl WorldRuntime {
         .then(|| super::Gate::everglade(&crate::blocks::Layout::grid()))
     }
 
+    /// The Grid's RITUAL arch to the pinned chamber, when the desktop has one
+    /// ([`Self::set_ritual`]); none elsewhere.
+    #[must_use]
+    pub fn ritual_gate(&self) -> Option<super::Gate> {
+        (self.is_bare() && self.zone_state.ritual.is_some())
+            .then(|| super::Gate::ritual(&crate::blocks::Layout::grid()))
+    }
+
+    /// Pins the chamber configuration the Grid's RITUAL arch joins, or
+    /// removes the arch.
+    pub fn set_ritual(&mut self, config: Option<std::path::PathBuf>) {
+        self.zone_state.ritual = config;
+        self.zone_state.ritual_crossed = false;
+    }
+
+    /// The pinned chamber configuration, once per walk through the RITUAL
+    /// arch. The application joins the chamber and, on return, calls
+    /// [`Self::return_from_ritual`].
+    pub fn take_ritual_crossing(&mut self) -> Option<std::path::PathBuf> {
+        std::mem::take(&mut self.zone_state.ritual_crossed)
+            .then(|| self.zone_state.ritual.clone())
+            .flatten()
+    }
+
+    /// Puts the player back in front of the RITUAL arch, facing away from it.
+    ///
+    /// # Errors
+    /// The Grid has no RITUAL arch, or the player cannot be placed.
+    pub fn return_from_ritual(&mut self) -> Result<(), String> {
+        let gate = self.ritual_gate().ok_or("The Grid has no RITUAL arch")?;
+        let (pos, yaw) = gate.front();
+        self.zone_state.gate_cooldown = super::gate::COOLDOWN;
+        self.place_player(pos, yaw)
+    }
+
     /// The Grid's shown walk-in portals with their destinations.
     fn grid_gates(&self) -> Vec<(ZoneId, super::Gate)> {
         [
@@ -1063,6 +1098,9 @@ impl WorldRuntime {
             for (zone, gate) in self.grid_gates() {
                 mesh.extend(&gate.mesh(ZoneId::Plaza, zone.sign(), elapsed));
             }
+            if let Some(gate) = self.ritual_gate() {
+                mesh.extend(&gate.mesh(ZoneId::Plaza, super::gate::RITUAL_SIGN, elapsed));
+            }
             return mesh;
         }
         for (_, at) in self.zone.portals() {
@@ -1086,6 +1124,16 @@ impl WorldRuntime {
         }
         let to = self.player.pos;
         if self.is_plaza() {
+            if self
+                .ritual_gate()
+                .is_some_and(|gate| gate.crossed(from, to))
+            {
+                self.cancel_navigation();
+                self.doors.cancel_transient();
+                self.zone_state.ritual_crossed = true;
+                self.zone_state.gate_cooldown = super::gate::COOLDOWN;
+                return;
+            }
             let Some((zone, _)) = self
                 .grid_gates()
                 .into_iter()
