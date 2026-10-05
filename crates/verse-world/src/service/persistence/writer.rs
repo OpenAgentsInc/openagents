@@ -18,6 +18,7 @@ pub(in crate::service) struct Done {
     pub token: u64,
     pub result: Result<Commit, String>,
     pub seconds: f64,
+    pub timings: super::CommitTimings,
 }
 pub(in crate::service) struct Writer {
     pub send: Option<mpsc::Sender<Work>>,
@@ -40,13 +41,14 @@ impl Writer {
                         break;
                     }
                     let start = Instant::now();
-                    let result = store.commit_prepared(work.prepared);
+                    let (result, timings) = store.commit_measured(work.prepared);
                     let failed = result.is_err();
                     if finished
                         .send(Done {
                             token: work.token,
                             result,
                             seconds: start.elapsed().as_secs_f64(),
+                            timings,
                         })
                         .is_err()
                         || failed

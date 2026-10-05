@@ -168,15 +168,21 @@ pub async fn serve(
         ),
         ("Running checkpoint copy", &exit.stats.checkpoint_copy),
         ("Storage commit", &exit.stats.commits),
+        ("Commit preparation", &exit.stats.commit_preparation),
+        ("Reward history sync", &exit.stats.history_sync),
+        ("Journal encoding", &exit.stats.journal_encoding),
+        ("Journal write and sync", &exit.stats.journal_sync),
+        ("Snapshot compaction", &exit.stats.snapshot_compaction),
     ] {
         println!(
-            "{}: {} observations, p50/p95/p99 upper bounds {:.6}/{:.6}/{:.6} seconds, maximum {:.6} seconds",
+            "{}: {} observations, p50/p95/p99 upper bounds {:.6}/{:.6}/{:.6} seconds, maximum {:.6} seconds, total {:.6} seconds",
             label,
             timing.count,
             timing.percentile(0.5).unwrap_or(0.),
             timing.percentile(0.95).unwrap_or(0.),
             timing.percentile(0.99).unwrap_or(0.),
-            timing.maximum_seconds
+            timing.maximum_seconds,
+            timing.total_seconds
         );
     }
     if let Some(error) = exit.failure {

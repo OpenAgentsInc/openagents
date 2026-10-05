@@ -63,6 +63,11 @@ pub struct Stats {
     pub deferred_read_projection: Timing,
     pub checkpoint_copy: Timing,
     pub commits: Timing,
+    pub commit_preparation: Timing,
+    pub history_sync: Timing,
+    pub journal_encoding: Timing,
+    pub journal_sync: Timing,
+    pub snapshot_compaction: Timing,
     pub simulation_phases: Phases,
     pub capture_phases: Phases,
     pub commit_phases: Phases,
@@ -139,6 +144,20 @@ fn finish(
 ) -> Result<(), String> {
     stats.checkpoint_seconds += done.seconds;
     stats.commits.record(done.seconds);
+    for (timing, seconds) in [
+        (&mut stats.commit_preparation, done.timings.preparation),
+        (&mut stats.history_sync, done.timings.history_sync),
+        (&mut stats.journal_encoding, done.timings.journal_encoding),
+        (&mut stats.journal_sync, done.timings.journal_sync),
+        (
+            &mut stats.snapshot_compaction,
+            done.timings.snapshot_compaction,
+        ),
+    ] {
+        if let Some(seconds) = seconds {
+            timing.record(seconds);
+        }
+    }
     stats.commit_phases.record(done.seconds);
     let committed = done.result?;
     if committed.written {

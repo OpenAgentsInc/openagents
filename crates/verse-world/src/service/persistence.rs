@@ -30,6 +30,23 @@ fn digest(revision: u64, checkpoint: &str) -> [u8; 32] {
     h.update(checkpoint.as_bytes());
     h.finalize().into()
 }
+#[derive(Clone, Copy, Default)]
+pub(in crate::service) struct CommitTimings {
+    pub preparation: Option<f64>,
+    pub history_sync: Option<f64>,
+    pub journal_encoding: Option<f64>,
+    pub journal_sync: Option<f64>,
+    pub snapshot_compaction: Option<f64>,
+}
+fn observed<T>(
+    slot: &mut Option<f64>,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let start = std::time::Instant::now();
+    let result = operation();
+    *slot = Some(start.elapsed().as_secs_f64());
+    result
+}
 pub struct Commit {
     pub revision: u64,
     pub bytes: usize,
@@ -265,6 +282,21 @@ impl Store {
         &mut self,
         prepared: super::save::Prepared,
     ) -> Result<Commit, String> {
+        self.commit_measured(prepared).0
+    }
+    pub(super) fn commit_measured(
+        &mut self,
+        prepared: super::save::Prepared,
+    ) -> (Result<Commit, String>, CommitTimings) {
+        let mut timings = CommitTimings::default();
+        let result = self.commit_inner(prepared, &mut timings);
+        (result, timings)
+    }
+    fn commit_inner(
+        &mut self,
+        prepared: super::save::Prepared,
+        timings: &mut CommitTimings,
+    ) -> Result<Commit, String> {
         if self.poisoned || self.recovered.is_some() {
             return Err("Chamber storage is unavailable or recovery is still pending".into());
         }
@@ -276,10 +308,13 @@ impl Store {
         }
         #[cfg(test)]
         self.boundary("before_encode");
-        let state = prepared.expanded()?;
-        let hash = journal::hash(&state)?;
+        let (state, hash) = observed(&mut timings.preparation, || {
+            let state = prepared.expanded()?;
+            let hash = journal::hash(&state)?;
+            Ok((state, hash))
+        })?;
         if self.last_hash == Some(hash) {
-            if let Err(error) = self.history.synchronize() {
+            if let Err(error) = observed(&mut timings.history_sync, || self.history.synchronize()) {
                 self.poisoned = true;
                 return Err(error);
             }
@@ -295,7 +330,7 @@ impl Store {
             .ok_or("Chamber commit revisions exhausted")?;
         let result = (|| {
             regular_or_absent(&self.root.join("next.json"))?;
-            self.history.synchronize()?;
+            observed(&mut timings.history_sync, || self.history.synchronize())?;
             #[cfg(test)]
             self.boundary("after_history");
             let mut bytes = 0;
@@ -309,6 +344,7 @@ impl Store {
                         &state,
                         self.last_hash.ok_or("Committed chamber digest is absent")?,
                         hash,
+                        timings,
                     )?;
                     self.records += 1;
                     #[cfg(test)]
@@ -324,18 +360,21 @@ impl Store {
                     .len()
                     >= journal::LOG_BYTES
             {
-                let checkpoint = String::from_utf8(journal::contract(&state)?)
-                    .map_err(|_| "Cannot encode committed chamber")?;
-                bytes += self.snapshot(revision, checkpoint)?;
-                #[cfg(test)]
-                self.boundary("before_journal_clear");
-                self.journal
-                    .set_len(0)
-                    .and_then(|_| self.journal.sync_all())
-                    .map_err(|_| "Cannot compact chamber journal")?;
-                self.records = 0;
-                #[cfg(test)]
-                self.boundary("after_journal_clear");
+                bytes += observed(&mut timings.snapshot_compaction, || {
+                    let checkpoint = String::from_utf8(journal::contract(&state)?)
+                        .map_err(|_| "Cannot encode committed chamber")?;
+                    let bytes = self.snapshot(revision, checkpoint)?;
+                    #[cfg(test)]
+                    self.boundary("before_journal_clear");
+                    self.journal
+                        .set_len(0)
+                        .and_then(|_| self.journal.sync_all())
+                        .map_err(|_| "Cannot compact chamber journal")?;
+                    self.records = 0;
+                    #[cfg(test)]
+                    self.boundary("after_journal_clear");
+                    Ok(bytes)
+                })?;
             }
             Ok(bytes)
         })();

@@ -195,27 +195,33 @@ pub(super) fn append(
     new: &Value,
     parent_hash: [u8; 32],
     state_hash: [u8; 32],
+    timings: &mut super::CommitTimings,
 ) -> Result<usize, String> {
-    let mut changes = Vec::new();
-    diff(old, new, &mut Vec::new(), &mut changes)?;
-    let mut record = Record {
-        version: 1,
-        revision,
-        parent: parent_hash,
-        state: state_hash,
-        changes,
-        digest: [0; 32],
-    };
-    record.digest = seal(&record)?;
-    let mut bytes =
-        serde_json::to_vec(&record).map_err(|_| "Cannot encode chamber journal record")?;
-    bytes.push(b'\n');
-    if bytes.len() > RECORD_BYTES {
-        return Err("Chamber journal record byte budget exceeded".into());
-    }
-    file.write_all(&bytes)
-        .and_then(|_| file.sync_all())
-        .map_err(|_| "Cannot append and sync chamber journal record")?;
+    let bytes = super::observed(&mut timings.journal_encoding, || {
+        let mut changes = Vec::new();
+        diff(old, new, &mut Vec::new(), &mut changes)?;
+        let mut record = Record {
+            version: 1,
+            revision,
+            parent: parent_hash,
+            state: state_hash,
+            changes,
+            digest: [0; 32],
+        };
+        record.digest = seal(&record)?;
+        let mut bytes =
+            serde_json::to_vec(&record).map_err(|_| "Cannot encode chamber journal record")?;
+        bytes.push(b'\n');
+        if bytes.len() > RECORD_BYTES {
+            return Err("Chamber journal record byte budget exceeded".into());
+        }
+        Ok(bytes)
+    })?;
+    super::observed(&mut timings.journal_sync, || {
+        file.write_all(&bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|_| "Cannot append and sync chamber journal record".into())
+    })?;
     Ok(bytes.len())
 }
 /// Replay complete records; only an unterminated final append can be discarded.
@@ -400,6 +406,7 @@ mod tests {
                 &new,
                 hash(&old).unwrap(),
                 hash(&new).unwrap(),
+                &mut super::super::CommitTimings::default(),
             )
             .unwrap();
             let mut restored = old;
@@ -432,6 +439,7 @@ mod tests {
             &new,
             hash(&old).unwrap(),
             hash(&new).unwrap(),
+            &mut super::super::CommitTimings::default(),
         )
         .unwrap();
         let mut file = File::open(path).unwrap();
