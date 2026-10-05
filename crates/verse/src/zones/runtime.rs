@@ -1478,7 +1478,7 @@ mod tests {
     fn zone_command_refuses_without_a_simulation_or_in_another_zone() {
         let mut world = WorldRuntime::new();
         let error = world
-            .zone_command(&command("lagrange-1-v1", "status", vec![]))
+            .zone_command(&command("verse-lagrange-1", "status", vec![]))
             .unwrap_err();
         assert!(error.contains("not loaded"), "{error}");
         world.install_lagrange();
@@ -1493,7 +1493,7 @@ mod tests {
         use crate::mv::Arg;
         let mut world = WorldRuntime::new();
         world.install_lagrange();
-        let zone = "lagrange-1-v1";
+        let zone = "verse-lagrange-1";
         let before = world
             .zone_state
             .lagrange

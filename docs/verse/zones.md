@@ -31,7 +31,7 @@ belong in the [iOS](../../bins/coder-ios/README.md) and
 | Concern | Amber plaza | Ruins | Lagrange 1 | Physics Lab | Everglade |
 | --- | --- | --- | --- | --- | --- |
 | `ZoneId` / serialized ID | `Plaza` / `plaza` | `Ruins` / `ruins` | `Lagrange1` / `lagrange1` | `PhysicsLab` / `physics_lab` | `Everglade` / `everglade` |
-| World ID | `verse-plaza` | `ruins-v1` | `lagrange-1-v1` | `physics-lab-v1` | `everglade-v1` |
+| World ID | `verse-plaza` | `ruins-v1` | `verse-lagrange-1` | `physics-lab-v1` | `verse-everglade` |
 | Presentation | Coder's four amber intensities on near-black | Forest greens, baked model colors, fog 24–82 m | Vacuum black, direct sunlight from −Z, fog only at the 1–2 km sky shell | Dark blueprint hall, cyan edges on dark faces, fog 30–90 m | Daylight sky with clouds and sky-colored fog on a lit stage, textured Quaternius models with alpha-tested foliage, fog 40–170 m |
 | Geometry | Shared Rust world | Pinned on-demand pack plus retained heightfield and voxel ruins | Procedural station, stars, Sun, Earth, and Moon | Procedural hall, railed stage, and scenario bodies | Generated heightfield (flat 34 m clearing rising to the 58 m tree ring) and a pinned textured pack: tree ring, workshop hall, yard, and station furniture, with Verse-drawn boards |
 | Physics | Flat-ground walking, collision, jump | `ruins.heightfield.v1`: original controller on the retained heightfield | Sun–Earth CR3BP orbit, linearized L1 field locally, rigid bodies, cold-gas EVA pack ([details](lagrange-1.md)) | Flat-ground walking; nine `physics` crate scenarios at 1/120 s ([details](physics-lab.md)) | Plaza walking and jumping over the heightfield |

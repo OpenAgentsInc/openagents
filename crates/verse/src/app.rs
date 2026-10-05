@@ -1223,6 +1223,48 @@ impl App {
             }
             self.update_title();
         }
+        self.sync_zone_presence(active);
+    }
+
+    /// In a zone, presence alone joins the zone's shared NIP-MV world, so
+    /// players who walked through the same arch see each other there; the
+    /// plaza's chat, feed, XP, and board stay paused.
+    fn sync_zone_presence(&mut self, active: bool) {
+        let wanted = (active && !self.runtime.is_plaza() && !self.runtime.zone_loading())
+            .then(|| self.runtime.zone.world_id());
+        let Some(relay) = self.connection_options.relay.clone() else {
+            return;
+        };
+        if self
+            .session
+            .as_ref()
+            .is_some_and(|session| Some(session.world()) != wanted && !self.plaza_interactive())
+        {
+            if let Some(session) = &mut self.session {
+                session.leave(&self.runtime.player, &self.runtime.agent);
+            }
+            self.session = None;
+            self.presented_entities = crate::mesh::Mesh::default();
+        }
+        let Some(world) = wanted else {
+            return;
+        };
+        if self.session.is_some() {
+            return;
+        }
+        let started = crate::identity::load_or_create(
+            &crate::identity::home(),
+            &self.connection_options.profile,
+        )
+        .and_then(|id| Session::start_presence(id, &relay, world));
+        match started {
+            Ok(mut session) => {
+                session.set_display_name(Some(&self.connection_options.profile));
+                session.crowd.set_live_only(true);
+                self.session = Some(session);
+            }
+            Err(error) => self.offline_log.push(chat::Line::system(error)),
+        }
     }
 
     fn zone_action(&mut self, action: ZoneIntent) {
@@ -2988,9 +3030,47 @@ impl App {
 
     /// Name tags and speech bubbles: over you, your agent, nearby players,
     /// and Nostr stand-ins.
+    /// Name tags in a zone: the players sharing its world, and this one.
+    fn zone_overheads(&self, now: Instant) -> Vec<hud::Overhead> {
+        use coder_ui::theme::Intensity;
+        let Some(s) = &self.session else {
+            return Vec::new();
+        };
+        if self.runtime.zone_loading() {
+            return Vec::new();
+        }
+        let snapshot = self.xp.as_ref().and_then(|b| b.snapshot.as_ref());
+        let mut out = vec![hud::Overhead {
+            feet: self.runtime.player.pos,
+            lift: 2.2,
+            name: Some(xp::name_tag(snapshot, s.pubkey(), Some(s.profile()))),
+            name_step: Intensity::ThreeQuarters,
+            bubble: None,
+        }];
+        for e in s.crowd.shown(now) {
+            if e.role != "avatar" || e.pos.distance(self.runtime.player.pos) > 60.0 {
+                continue;
+            }
+            let name = s.name_of(&e.pubkey);
+            let name = (!name.ends_with('\u{2026}')).then_some(name);
+            out.push(hud::Overhead {
+                feet: e.pos,
+                lift: 2.2,
+                name: Some(xp::name_tag(snapshot, &e.pubkey, name.as_deref())),
+                name_step: if e.online {
+                    Intensity::Half
+                } else {
+                    Intensity::Quarter
+                },
+                bubble: None,
+            });
+        }
+        out
+    }
+
     fn overheads(&self, now: Instant) -> Vec<hud::Overhead> {
         if !self.plaza_interactive() {
-            return Vec::new();
+            return self.zone_overheads(now);
         }
         use coder_ui::theme::Intensity;
         let mut out = Vec::new();
@@ -3480,6 +3560,74 @@ mod tests {
         assert_eq!(app.runtime.player.pos, plaza.pos);
         assert_eq!(app.runtime.player.yaw, plaza.yaw);
         assert!(app.session.is_none(), "offline return does not connect");
+    }
+
+    #[test]
+    fn lagrange_1_desktop_joins_the_zones_shared_world_and_the_return_leaves_it() {
+        let relay = crate::loopback::LoopbackRelay::start();
+        let home = std::env::temp_dir().join(format!(
+            "verse-desktop-zone-presence-{}",
+            crate::identity::random_hex(8)
+        ));
+        std::fs::create_dir_all(&home).unwrap();
+        // SAFETY: tests in this module run on the test harness's threads only.
+        unsafe { std::env::set_var("VERSE_HOME", &home) };
+        let mut app = App::new(&Options {
+            profile: format!("zone-test-{}", std::process::id()),
+            relay: Some(relay.url.clone()),
+            ..Options::default()
+        })
+        .expect("desktop state");
+        app.runtime.install_lagrange();
+        app.sync_zone_services(true);
+        assert!(app.plaza_services_paused && app.feed.is_none() && app.xp.is_none());
+        let zone_world = zones::ZoneId::Lagrange1.world_id();
+        let session = app.session.as_ref().expect("zone presence");
+        assert_eq!(session.world(), zone_world);
+        assert_eq!(zone_world, "verse-lagrange-1");
+
+        let other =
+            crate::identity::Identity::from_secret("zoned", crate::identity::random_secret())
+                .unwrap();
+        let mut zoned = Session::start_presence(other, &relay.url, zone_world).unwrap();
+        let mut zoned_player = PlayerController::new(app.runtime.player.pos, 0.0);
+        zoned.set_display_name(Some("Zed"));
+        let agent = Agent::new(&zoned_player);
+        let started = Instant::now();
+        let mut met = false;
+        while started.elapsed() < Duration::from_secs(8) && !met {
+            let now = Instant::now();
+            zoned.tick(now, &zoned_player, &agent);
+            zoned_player.pos.x += 0.01;
+            if let Some(session) = &mut app.session {
+                session.tick(now, &app.runtime.player, &app.runtime.agent);
+                met = session
+                    .crowd
+                    .shown(now)
+                    .iter()
+                    .any(|e| e.pubkey == zoned.pubkey())
+                    && session.name_of(zoned.pubkey()) == "Zed";
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(met, "the zone's other player never appeared");
+        let tags = app.overheads(Instant::now());
+        assert!(
+            tags.iter()
+                .any(|tag| tag.name.as_deref().is_some_and(|n| n.starts_with("Zed"))),
+            "no name tag for the zone's other player: {:?}",
+            tags.iter().map(|t| t.name.clone()).collect::<Vec<_>>()
+        );
+
+        app.zone_action(ZoneIntent::Return);
+        assert!(app.runtime.is_plaza());
+        assert_eq!(
+            app.session.as_ref().map(Session::world),
+            Some(session::WORLD),
+            "the return rejoins the plaza's world"
+        );
+        unsafe { std::env::remove_var("VERSE_HOME") };
+        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[test]

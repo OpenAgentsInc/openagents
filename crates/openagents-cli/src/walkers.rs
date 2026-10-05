@@ -77,6 +77,18 @@ pub fn intervals(hz: Option<f32>) -> Result<PublishIntervals, String> {
     })
 }
 
+/// The `--world` option: a NIP-MV world identifier, or a zone's name
+/// (`everglade`, `lagrange-1`), which stands for that zone's shared world.
+fn world_option(option: Option<&str>) -> &'static str {
+    let Some(name) = option else {
+        return verse::session::BARE_WORLD;
+    };
+    match verse::zones::ZoneId::from_name(name) {
+        Some(zone) => zone.world_id(),
+        None => Box::leak(name.to_owned().into_boxed_str()),
+    }
+}
+
 /// `verse walkers N`: N players with fresh keys walk loops in `--world` on
 /// `--relay`, or on an in-process loopback relay, for `wait` seconds (0:
 /// until stopped). One line per join, every five seconds a progress line,
@@ -103,12 +115,7 @@ pub fn walkers(output: &Output, args: &Args, wait: u64) -> Result<u8, String> {
         || relay_url(args.option("relay")),
         |relay| relay.url.clone(),
     );
-    let world: &'static str = Box::leak(
-        args.option("world")
-            .unwrap_or(verse::session::BARE_WORLD)
-            .to_owned()
-            .into_boxed_str(),
-    );
+    let world = world_option(args.option("world"));
     output.line(
         &json!({"type": "relay", "url": relay, "world": world, "players": count,
             "moving_ms": intervals.moving.as_millis() as u64,
@@ -348,6 +355,15 @@ pub fn load(output: &Output, context: &mut Context, args: &Args, wait: u64) -> R
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_world_option_names_zones_or_passes_a_world_through() {
+        assert_eq!(super::world_option(None), verse::session::BARE_WORLD);
+        assert_eq!(super::world_option(Some("everglade")), "verse-everglade");
+        assert_eq!(super::world_option(Some("lagrange-1")), "verse-lagrange-1");
+        assert_eq!(super::world_option(Some("verse-bare")), "verse-bare");
+        assert_eq!(super::world_option(Some("my-world")), "my-world");
+    }
+
     use super::*;
 
     #[test]

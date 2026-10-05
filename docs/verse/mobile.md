@@ -504,9 +504,15 @@ The OpenAgents app's bare world reaches Everglade through its walk-in arch,
 with the studio connected to a paired computer; its
 [walk-in portal](#the-grids-portal-to-lagrange-1) to Lagrange 1 is hidden.
 
-Plaza presence and Gym observation pause while loading or visiting a zone,
-then resume the configured plaza behavior on return. Zones are local-only;
-this does not join another relay or publish their coordinates as plaza movement.
+Plaza presence and Gym observation pause while loading a zone. Lagrange 1
+and Everglade are shared instances: through the arch, presence re-keys to
+the zone's own NIP-MV world (`verse-lagrange-1`, `verse-everglade`, the
+`ZoneId::world_id` values), so players who walked through the same arch see
+each other, their names, and collide there, and the Grid's players don't
+leak in. On return, presence rejoins the Grid's or plaza's world. The Ruins
+and the Physics Lab stay local-only; no zone joins another relay or
+publishes its coordinates as plaza movement. Simulate company in a zone with
+`openagents verse walkers 5 --world everglade`.
 Pairing and retained-chat grants remain separate. See
 [zone architecture and limits](zones.md) and
 [source mechanics and parity](ruins-source-parity.md).
