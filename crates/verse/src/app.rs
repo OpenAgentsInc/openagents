@@ -72,6 +72,9 @@ pub struct Options {
     /// Open straight into the Grove, the druid training field, once the
     /// window shows (`verse --grove`).
     pub grove: bool,
+    /// Open Everglade as the demolition yard (`--demolition`): two kit
+    /// cottages to knock down with a sledgehammer.
+    pub demolition: bool,
     /// A notice Everglade's caption leads with, such as that no coding
     /// agent can sign in, so the studio's seats cannot work.
     pub studio_notice: Option<String>,
@@ -99,6 +102,7 @@ impl Default for Options {
             studio_muted: false,
             everglade: false,
             grove: false,
+            demolition: false,
             studio_notice: None,
             ritual: crate::ritual::default_config(),
             #[cfg(feature = "remote-chamber")]
@@ -578,6 +582,9 @@ struct App {
     /// keyboard steers.
     #[cfg(feature = "remote-chamber")]
     hosted: Option<(crate::hosted::Link, f32)>,
+    /// When the left button went down in the demolition yard: a quick
+    /// click swings the hammer, a drag turns the camera.
+    swing_press: Option<Instant>,
 }
 
 /// The replay list: the retained `beats-winner` runs and which is chosen.
@@ -752,6 +759,7 @@ impl App {
             }
             None => None,
         };
+        runtime.set_demolition(options.demolition);
         let zone_operators = zone_operators_for(session.as_ref());
         Ok(Self {
             window: None,
@@ -834,6 +842,7 @@ impl App {
             studio_badge: None,
             window_focused: true,
             everglade_pending: None,
+            swing_press: None,
             climb: 0.0,
             #[cfg(feature = "remote-chamber")]
             hosted,
@@ -2150,6 +2159,14 @@ impl App {
                 });
                 return;
             }
+            // The demolition yard: 1 swings the sledgehammer, R rebuilds.
+            if self.runtime.in_demolition() {
+                match code {
+                    KeyCode::Digit1 => return self.zone_action(ZoneIntent::Swing),
+                    KeyCode::KeyR => return self.zone_action(ZoneIntent::Rebuild),
+                    _ => {}
+                }
+            }
             // The Grove's hotbar: 1 to 9 cast its spells, and 0 rests.
             if self.in_bare_grove() {
                 let digit = match code {
@@ -2679,6 +2696,17 @@ impl App {
             }
             return;
         }
+        if button == MouseButton::Left && self.runtime.in_demolition() {
+            if pressed {
+                self.swing_press = Some(Instant::now());
+            } else if self
+                .swing_press
+                .take()
+                .is_some_and(|at| at.elapsed() <= Duration::from_millis(300))
+            {
+                self.zone_action(ZoneIntent::Swing);
+            }
+        }
         match button {
             MouseButton::Left if pressed && !self.keys.left_button && self.click() => return,
             MouseButton::Left
@@ -3106,7 +3134,7 @@ impl App {
                         && !self.board_open
                         && !self.gym_open
                         && self.picker.is_none()
-                        && !self.in_bare_everglade()
+                        && (!self.in_bare_everglade() || self.runtime.in_demolition())
                         && !self.in_bare_grove(),
                 ));
                 if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.zone_frame) {

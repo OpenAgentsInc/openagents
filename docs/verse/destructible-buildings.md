@@ -1,7 +1,9 @@
 # Destructible buildings
 
 Status: research and specification, October 4, 2026. Nothing here is
-implemented by this document. The owner asked: "If I have a huge sledgehammer
+implemented by this document; a standalone phase D1 demo runs with `verse
+--demolition` ([`demolition/`](../../crates/verse/src/zones/everglade/demolition/mod.rs)).
+The owner asked: "If I have a huge sledgehammer
 and I wanna start attacking buildings and damaging them, and if they fall
 apart, to start crumbling and leaning or whatever — whatever is needed and
 missing from the engine. Write a specification for that."

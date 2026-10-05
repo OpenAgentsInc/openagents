@@ -136,6 +136,9 @@ struct Page {
     layout: Option<Atlas>,
     /// A held Up (1) or Down (-1) and the pointer holding it, if any.
     climb: Option<(Option<i32>, f32)>,
+    /// When the primary button or a touch went down, in milliseconds: in
+    /// the demolition yard a quick tap swings the hammer.
+    pressed_at: Option<f64>,
 }
 
 async fn run() -> Result<(), String> {
@@ -159,6 +162,14 @@ async fn run() -> Result<(), String> {
     });
     let bytes = download(&window).await?;
     let mut runtime = WorldRuntime::new();
+    // `?demolition` opens the demolition yard: two kit cottages to knock
+    // down with a sledgehammer, as `verse --demolition` does.
+    runtime.set_demolition(
+        window
+            .location()
+            .search()
+            .is_ok_and(|query| query.split(['?', '&']).any(|part| part == "demolition")),
+    );
     if grove {
         status("Opening the Grove…");
         runtime.install_grove_bytes(&bytes)?;
@@ -244,6 +255,7 @@ async fn run() -> Result<(), String> {
         stopped: false,
         layout: atlas.layout_at_scale(scale),
         climb: None,
+        pressed_at: None,
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -535,6 +547,19 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 event.prevent_default();
                 return;
             }
+            // The demolition yard: 1 swings the sledgehammer, R rebuilds.
+            if down && page.runtime.in_demolition() {
+                let intent = match event.code().as_str() {
+                    "Digit1" => Some(zones::Intent::Swing),
+                    "KeyR" => Some(zones::Intent::Rebuild),
+                    _ => None,
+                };
+                if let Some(intent) = intent {
+                    let _ = page.runtime.zone_intent(intent);
+                    event.prevent_default();
+                    return;
+                }
+            }
             let used = page.hotbar_key(&event.code(), down);
             if used || page.input.key(&event.code(), down) {
                 event.prevent_default();
@@ -560,6 +585,9 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             let on_canvas = [event.offset_x() as f32, event.offset_y() as f32];
             if page.press_hotbar(on_canvas, Some(event.pointer_id())) {
                 return;
+            }
+            if event.is_primary() && event.button() == 0 {
+                page.pressed_at = Some(event.time_stamp());
             }
             if event.pointer_type() == "touch" {
                 let at = [event.client_x() as f32, event.client_y() as f32];
@@ -592,6 +620,13 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
         on(&canvas, name, move |event: PointerEvent| {
             let mut page = page.borrow_mut();
             page.release_climb(Some(event.pointer_id()), None);
+            if let Some(at) = page.pressed_at.take()
+                && event.is_primary()
+                && event.time_stamp() - at <= 300.0
+                && page.runtime.in_demolition()
+            {
+                let _ = page.runtime.zone_intent(zones::Intent::Swing);
+            }
             if event.pointer_type() == "touch" {
                 page.input.touch_end(event.pointer_id());
             } else {
