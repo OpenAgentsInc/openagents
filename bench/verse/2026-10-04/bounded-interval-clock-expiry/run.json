@@ -1,0 +1,59 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 45,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "native_movement_frames_requested": true,
+    "compiled_revisions": {
+      "host": "f5cac837a6d79ef1761ef787cbc8b6f7572039cb",
+      "headless_clients": "f5cac837a6d79ef1761ef787cbc8b6f7572039cb",
+      "native_client": "20355df02681b7e490fd7d3a7895b502d9744f53"
+    },
+    "fixture_revision": "95892995b0f253774d425af02032cbf579f9ad45",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "checks": {
+    "native_prediction_integration_regression": "passed",
+    "native_client_build": "passed"
+  },
+  "observation": "Same-context interval refusal disconnects the worker at clock expiry: world step 2364, confirmed step 2325.",
+  "native": {
+    "frame_interval_ms": {
+      "samples": 1337,
+      "omitted": 0,
+      "median": 12.992167,
+      "p95": 20.010666,
+      "max": 4823.890208
+    },
+    "prediction_correction_meters": {
+      "samples": 66,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.24691496789455414
+    },
+    "reset_reasons": {
+      "control_epoch": 23,
+      "teleport": 1
+    }
+  },
+  "window_failure": "Chamber update stream stopped",
+  "disposition": "Revert the outstanding-interval cap because this capture does not establish benefit; invalidate expired control atomically during authority admission before returning its refusal.",
+  "limits": [
+    "The authority clock-expiry cause is recorded; aggregate epoch counts are not direct expiry counts.",
+    "Persistence and GPU timestamps are disabled; headless clients use legacy movement.",
+    "Shared hardware and different trajectories prevent a causal attribution of failure to the scheduling cap.",
+    "The proposed authority recovery fix has not yet passed its focused check."
+  ]
+}

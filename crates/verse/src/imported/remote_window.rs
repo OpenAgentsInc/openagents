@@ -121,7 +121,6 @@ struct App {
     input_token: u64,
     frame_cursor: Option<(verse_engine::core::LifeId, u64, u64)>,
     frame_bindings: std::collections::BTreeMap<u64, (verse_engine::core::LifeId, u64)>,
-    interval_pending: std::collections::BTreeSet<u64>,
     frame_entry: Option<(verse_engine::core::LifeId, u64)>,
     frame_entry_pending: bool,
     profile: super::remote_record::Profile,
@@ -181,7 +180,6 @@ impl App {
             input_token: 0,
             frame_cursor: None,
             frame_bindings: Default::default(),
-            interval_pending: Default::default(),
             frame_entry: None,
             frame_entry_pending: false,
             profile: Default::default(),
@@ -310,11 +308,7 @@ impl App {
         let steps = end
             .saturating_sub(start)
             .min(u64::from(verse_world::movement::frames::MAX_STEPS)) as u32;
-        if steps < 4
-            || self.input.capacity() == 0
-            || self.pending.len() >= 64
-            || self.interval_pending.len() >= verse_world::service::client::PIPELINE_CAPACITY / 2
-        {
+        if steps < 4 || self.input.capacity() == 0 || self.pending.len() >= 64 {
             return Ok(());
         }
         let frame = self.prediction.movement_frame(start, steps)?;
@@ -327,7 +321,6 @@ impl App {
                 self.input_token = token;
                 self.frame_cursor = Some((life, epoch, start + u64::from(steps)));
                 self.frame_bindings.insert(token, (life, epoch));
-                self.interval_pending.insert(token);
                 self.pending.push_back((None, Some(token)));
             }
             Err(mpsc::error::TrySendError::Full(_)) => self.status = "Input queue is busy".into(),
@@ -513,7 +506,6 @@ impl App {
                             }
                         }
                         Err(message) => {
-                            self.interval_pending.remove(&token);
                             self.pending.retain(|(_, pending)| *pending != Some(token));
                             if self.record.is_some() {
                                 self.profile
@@ -573,9 +565,6 @@ impl App {
                         }
                     }
                     let (ability, token) = self.pending.pop_front().unwrap_or_default();
-                    if let Some(token) = token {
-                        self.interval_pending.remove(&token);
-                    }
                     if let Some(started) = token.and_then(|t| self.profile.bindings.remove(&t)) {
                         self.profile
                             .bound_to_outcome_ms
@@ -1760,49 +1749,6 @@ mod tests {
                 .position
                 .distance(gateway.game().actor_position(life.actor).unwrap())
                 < 0.0001
-        );
-        let mut queued = Vec::new();
-        for _ in 0..verse_world::service::client::PIPELINE_CAPACITY / 2 {
-            app.prediction.advance(4. / 120.).unwrap();
-            app.send_movement_interval().unwrap();
-            let Input::MovementFrame { token, frame } = inputs.try_recv().unwrap() else {
-                panic!("Missing bounded interval");
-            };
-            queued.push((token, frame));
-        }
-        let blocked_cursor = app.frame_cursor.unwrap();
-        app.prediction.advance(8. / 120.).unwrap();
-        app.send_movement_interval().unwrap();
-        assert!(inputs.try_recv().is_err());
-        assert_eq!(app.frame_cursor, Some(blocked_cursor));
-        let (token, mut frame) = queued.remove(0);
-        frame.sequence = gateway.admission(connection).unwrap().accepted_sequence() + 1;
-        frame.tick = gateway.game().authority_tick;
-        updates
-            .try_send(Update::FrameBound {
-                token,
-                binding: Ok(frame.clone()),
-            })
-            .unwrap();
-        updates
-            .try_send(Update::Outcome(request(
-                &mut gateway,
-                connection,
-                304,
-                Body::MovementFrame { frame },
-            )))
-            .unwrap();
-        app.consume().unwrap();
-        assert!(!app.interval_pending.contains(&token));
-        app.send_movement_interval().unwrap();
-        let Input::MovementFrame { frame, .. } = inputs.try_recv().unwrap() else {
-            panic!("Missing contiguous catch-up interval");
-        };
-        assert_eq!(frame.start, blocked_cursor.2);
-        assert_eq!(frame.steps, 8);
-        assert_eq!(
-            app.interval_pending.len(),
-            verse_world::service::client::PIPELINE_CAPACITY / 2
         );
         let context = app.prediction.context().unwrap();
         let cursor = app.frame_cursor;
