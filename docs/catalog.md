@@ -552,6 +552,7 @@ The following guides and plans were added after the September 29 inventory.
 | [terminal/2026-10-02-coder-terminal-gap-analysis.md](terminal/2026-10-02-coder-terminal-gap-analysis.md) | Historical assessment | Original release compared with private Coder Terminal |
 | [terminal/smart-terminal.md](terminal/smart-terminal.md) | Specification / proposal | Real terminal, blocks, requests, sessions, and sharing |
 | [terminal/workbench-roadmap.md](terminal/workbench-roadmap.md) | Delivery plan | Grid and standalone MVP, Everglade, all-work sessions, and paid cloud |
+| [terminal/issue-roadmap.md](terminal/issue-roadmap.md) | Issue directory | Complete workbench backlog, public project, milestones, and native blockers |
 
 ## terminal-bench
 

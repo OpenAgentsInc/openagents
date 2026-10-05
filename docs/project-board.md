@@ -1,8 +1,15 @@
 # The OpenAgents project board
 
-Every open issue in `OpenAgentsInc/openagents` is on one org project:
+Every open issue in `OpenAgentsInc/openagents` is on the required org project:
 **OpenAgents**, <https://github.com/orgs/OpenAgentsInc/projects/19>
 (created 2026-10-02, linked to this repository).
+
+The owner also requested a dedicated public project for the terminal effort:
+[OpenAgents Terminal and Workbench](https://github.com/orgs/OpenAgentsInc/projects/20).
+Its issues stay on both projects. The [terminal issue directory](terminal/issue-roadmap.md)
+records the complete backlog, delivery milestones, and native blockers.
+Project 20 separates **Today MVP** from every follow-up and conditional
+research issue; it does not replace project 19.
 
 ## Fields
 
@@ -10,7 +17,7 @@ Every open issue in `OpenAgentsInc/openagents` is on one org project:
 | --- | --- | --- |
 | Status | Todo, In progress, Blocked, In review, Done | Where the work is. Agents keep it current (rule in `AGENTS.md`). |
 | Area | router, terminal, cloud/Boat, payments, plugins, background, wallet/Spark, BYOK, claims/issue-flow, host, docs, other | Owning surface. |
-| Priority | P0, P1, P2 | P0 is owner-flagged: cloud/Boat (#10216–#10227) and the router-in-terminal umbrella #10204 with its children. |
+| Priority | P0, P1, P2 | P0 is owner-flagged work, including today's terminal MVP #10642–#10644. Earlier examples include cloud/Boat #10216–#10227 and the router-in-terminal umbrella #10204. |
 | Size | S, M, L | Rough effort. |
 | Executor | Coder, Subagent, Owner | Coder-sized (`coder-sized` label, `openagents chat work --issues coder-sized`), a full agent, or an owner decision. |
 | Blocked by | text, e.g. `#10187 #10189` | Mirror of the open native dependencies, for the board view. |
@@ -68,3 +75,25 @@ Project: number `19`, node id `PVT_kwDOBubymc4BlgVZ`.
 The issue flow (`openagents chat work`, `openagents issue claim|release`) is
 to set Status itself when it claims, releases, and lands (#10203); until that
 lands, run `scripts/project-status.sh` by hand.
+
+## Terminal project updates
+
+The existing status and sync scripts target project 19. When an issue belongs
+to the terminal project, update its **Status** and **Blocked by** fields on
+project 20 as well. Its status names match the global board. Keep native
+dependencies authoritative; a related integration is not a completion blocker.
+
+Project 20 has **Delivery**, **Workstream**, **Priority**, **Size**, and
+**Scope** fields. Delivery also maps to a repository milestone. Only #10642,
+#10643, and #10644 belong to **Today MVP**; the remaining issues do not gate
+the first Grid and standalone release. **Conditional research** needs an
+explicit measured outcome or recorded decision before implementation becomes
+a product commitment.
+
+For a terminal status update, obtain the item ID with `gh project item-add 20`
+and use `gh project item-edit` with project ID `PVT_kwDOBubymc4Blzsv`.
+Read current field and option IDs with
+`gh project field-list 20 --owner OpenAgentsInc --format json`.
+Claim the implementation issue before starting it and release its claim when
+stopping. Closing code-complete work does not claim an owner-only device,
+payment, or store step has passed; record that step in `NEEDS_OWNER.md`.

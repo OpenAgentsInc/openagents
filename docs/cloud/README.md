@@ -10,6 +10,10 @@ other clients. Purchased credits require shared funding, quotes,
 reservations, metering, and recovery through the agentic execution router.
 Boat/GCE operator placement and hosted model fallback already exist; they
 do not establish a customer credit balance or a paid remote-computer product.
+The [paid-cloud issue directory](../terminal/issue-roadmap.md#later-paid-cloud)
+tracks the retail contract, account, funding, execution, recovery, and launch
+slices on the [Terminal and Workbench project](https://github.com/orgs/OpenAgentsInc/projects/20).
+Later payment and market profiles have separate conditional issues.
 
 On `main` today: the Boat SDK (`crates/boat`), the daily Boat template
 (`crates/boat-template`, `scripts/cloud/coder-host-setup.sh`), builds on Boat

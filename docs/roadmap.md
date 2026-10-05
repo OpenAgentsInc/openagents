@@ -21,6 +21,9 @@ a multiplexer for all work, including product panes, admitted cloud
 computers paid with credits, and mobile/web continuity through the shared
 router and resource owners. World placement is a separate decision. These
 milestones remain planned until their scoped checks and release receipts pass.
+The [complete issue directory](terminal/issue-roadmap.md) maps this effort to
+the public [Terminal and Workbench project](https://github.com/orgs/OpenAgentsInc/projects/20),
+with today's three release issues separated from all subsequent milestones.
 
 The [launch roadmap](roadmap/2026-09-29-launch-roadmap.md) holds the OpenAgents
 app MVP that ships to playtesters on 2026-09-29, its known limits, and the

@@ -23,6 +23,9 @@ thread view and the `openagents terminal` TTY command. The
 [smart terminal specification](smart-terminal.md) defines shell blocks,
 requests, proposals, and durable sessions. Those roadmap additions are
 planned until their issues have retained release evidence.
+The [issue directory](issue-roadmap.md) maps the full plan to the public
+[Terminal and Workbench project](https://github.com/orgs/OpenAgentsInc/projects/20),
+with today's three release requirements separated from later work.
 
 ## Install
 

@@ -352,6 +352,12 @@ crash recovery before a small funded test. Broader paid workers, bids, escrow,
 training markets, and contributor payouts have their own acceptance; they
 do not block the terminal MVP or become implemented through this roadmap.
 
+Code-complete qualification tooling closes after it lands and its own safe
+checks pass. An owner-only funded run stays in `NEEDS_OWNER.md`, with exact
+limits and commands. Paid availability remains disabled until the supported
+configuration has actual qualification evidence; an issue's closure is not
+that evidence. A failed owner verification opens a new defect issue.
+
 ## Delivery sequence and ownership
 
 Dates beyond today are ordered milestones, not elapsed-time promises.
@@ -385,6 +391,18 @@ for smart behavior, [#10643](https://github.com/OpenAgentsInc/openagents/issues/
 for the shared standalone application, and [#10644](https://github.com/OpenAgentsInc/openagents/issues/10644)
 for release/demo integration. The
 last issue is blocked by the first two; application extraction and behavior
-work start in parallel. Each issue records its own acceptance and current
-project-board status. Later milestones become issues when their concrete
-contracts and acceptance are ready; this document preserves their scope now.
+work start in parallel. The owner requested the entire remaining roadmap
+as issues on October 5. The public
+[OpenAgents Terminal and Workbench project](https://github.com/orgs/OpenAgentsInc/projects/20)
+and [complete issue directory](issue-roadmap.md) track all delivery milestones,
+including separate conditional research and later market contracts. Every
+issue also stays on the required OpenAgents project 19.
+
+The project has dedicated views for today's deployable MVP, the next Everglade
+pass, every subsequent issue, paid cloud, and conditional research. Native
+GitHub dependencies are completion blockers; related integrations remain
+nonblocking. Existing studio intents deliver the next workshop pass; the
+later studio router adapter and optional public API do not gate it. Resource
+identity contracts precede product adapters, while host arbitration, owned
+remote-task admission, and paid retail contracts can advance independently
+of graphical attachment.

@@ -756,3 +756,12 @@ prepaid accounting without changing the sats contract or creating a
 game-only ledger. Observation, execution, disclosure, and spending remain
 separate authorities. A reconnect follows the funded execution identity;
 it cannot charge or dispatch again.
+
+The [complete workbench issue directory](../terminal/issue-roadmap.md)
+and [public project](https://github.com/orgs/OpenAgentsInc/projects/20)
+track the integration deltas and their native blockers. Delivered local
+admissions and lifecycle remain foundations. Owned remote-task admission
+does not wait for the terminal snapshot protocol; each new adapter receives
+its own retained qualification. Studio routing, the public API, composed
+graphs, and additional payment rails remain later extensions rather than
+prerequisites for the first Grid or direct studio release.
