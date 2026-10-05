@@ -1,0 +1,12 @@
+{
+  "compiled_revision": "32323eeec7",
+  "acceptance": "failed",
+  "reason": "All clients complete, but one headless player observes no interval movement; storage pauses and snapshot age exceed responsiveness goals.",
+  "steady_frame_p95_ms": 17.631458,
+  "steady_gpu_p95_ms": 10.579375,
+  "limits": [
+    "Shared hardware; no isolated causal performance comparison.",
+    "Successful exits do not prove sustained interval movement.",
+    "Input-to-display remains unmeasured."
+  ]
+}
