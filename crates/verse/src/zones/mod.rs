@@ -422,7 +422,13 @@ pub fn portal_mesh(zone: ZoneId, elapsed: f32) -> crate::mesh::Mesh {
     mesh
 }
 
-fn arch(mesh: &mut crate::mesh::Mesh, zone: ZoneId, sign: &str, at: glam::Vec3, elapsed: f32) {
+pub(crate) fn arch(
+    mesh: &mut crate::mesh::Mesh,
+    zone: ZoneId,
+    sign: &str,
+    at: glam::Vec3,
+    elapsed: f32,
+) {
     use crate::mesh::Vertex;
     use coder_ui::theme::Intensity;
     use glam::{Mat4, Vec3};

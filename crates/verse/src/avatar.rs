@@ -7,7 +7,7 @@ use crate::controller::PlayerController;
 use crate::mesh::Mesh;
 
 /// Leg-swing cycles per meter travelled.
-const STRIDE: f32 = 0.55;
+pub(crate) const STRIDE: f32 = 0.55;
 
 /// The avatar's walk cycle, advanced by distance rather than time so the
 /// feet keep pace with the ground.
@@ -26,6 +26,18 @@ impl Gait {
         let target = if speed > 0.1 && !airborne { 0.75 } else { 0.0 };
         self.swing += (target - self.swing) * (1.0 - 0.001f32.powf(dt));
     }
+
+    /// The limbs' swing angle this instant, in radians.
+    #[must_use]
+    pub fn swing_angle(&self) -> f32 {
+        self.phase.sin() * self.swing
+    }
+
+    /// Where this instant lies in the walk cycle, from 0 to 1.
+    #[must_use]
+    pub fn cycle(&self) -> f32 {
+        self.phase / std::f32::consts::TAU
+    }
 }
 
 /// Builds the local player's avatar for this frame.
@@ -40,7 +52,7 @@ pub fn mesh(pc: &PlayerController, gait: &Gait) -> Mesh {
 pub fn figure(pos: Vec3, rot: Quat, gait: &Gait, bright: Intensity) -> Mesh {
     let mut mesh = Mesh::default();
     let root = Mat4::from_rotation_translation(rot, pos);
-    let swing = gait.phase.sin() * gait.swing;
+    let swing = gait.swing_angle();
 
     let limb = |pivot: Vec3, size: Vec3, angle: f32| {
         root * Mat4::from_translation(pivot)

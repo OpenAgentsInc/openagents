@@ -13,10 +13,10 @@ const CHARACTER_MANIFEST: &[u8] =
 const PROP_MANIFEST: &[u8] =
     include_bytes!("../../../../assets/verse/props/quaternius/manifest.json");
 const PUGLIN: &str = "8d0a87d7165e5da0761418491511d2187e46de359e2f65110538f8b91a48e6af";
-fn id(value: &str) -> Result<AssetId, String> {
+pub(crate) fn id(value: &str) -> Result<AssetId, String> {
     AssetId::new(value)
 }
-fn bundle(parts: &[&[u8]]) -> (String, u64) {
+pub(crate) fn bundle(parts: &[&[u8]]) -> (String, u64) {
     let mut hash = Sha256::new();
     let mut bytes = 0;
     for part in parts {
@@ -26,7 +26,7 @@ fn bundle(parts: &[&[u8]]) -> (String, u64) {
     }
     (format!("{:x}", hash.finalize()), bytes)
 }
-fn source(
+pub(crate) fn source(
     name: &str,
     creator: &str,
     license: License,

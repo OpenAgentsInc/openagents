@@ -26,6 +26,7 @@ pub mod doors;
 pub mod edr;
 pub mod feed;
 pub(crate) mod gles;
+pub mod grid_pack;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod gym;
 pub mod gym_evals;
