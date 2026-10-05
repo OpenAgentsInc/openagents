@@ -1,5 +1,8 @@
 # Generated models with Blender
 
+The step-by-step procedure for agents is the
+[asset runbook](asset-runbook.md).
+
 Status: proven, October 5, 2026; the plan below is proposed.
 
 Verse's zones are built from CC0 kits, and the kits run out. The city map needs
