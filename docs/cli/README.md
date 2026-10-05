@@ -471,6 +471,33 @@ is `docs/audits/receipts/2026-10-05-grid-walkers-20-public-load.json`.
 which stands for that zone's shared world (`verse-everglade`,
 `verse-lagrange-1`); `walkers` defaults to `verse-bare`, the Grid.
 
+### Driving the in-world terminal (`verse terminal`)
+
+The Verse window on this computer listens on
+`~/.openagents/verse/terminal.sock` (`VERSE_TERMINAL_SOCKET` overrides it;
+`--socket PATH` names another). `openagents verse terminal` sends one JSON
+request a line to it and prints the reply, so a shell, a test, or an agent
+drives the same panes the window draws. Nothing crosses the relay: the panes
+are PTYs of this computer, and the socket admits only this user.
+
+```sh
+openagents verse terminal status --json          # open, focused, tabs, panes with ids and sizes
+openagents verse terminal open                   # show it with focus; the first pane starts
+openagents verse terminal split cols -- /bin/sh          # a shell pane beside the first
+openagents verse terminal send 'echo terminal-$((40+2))' --enter
+openagents verse terminal read --wait-for terminal-42 --json   # exits 1 when it never appears
+openagents verse terminal key ctrl-c
+openagents verse terminal focus left             # or a pane id, right, up, down
+openagents verse terminal tab new; openagents verse terminal zoom
+openagents verse terminal close; openagents verse terminal hide
+```
+
+Requests are served between frames, so a reply means the overlay did it; a
+request waits up to 10 s for a window that has stopped drawing. `send`
+pastes its text through `coder_vt::Terminal::paste` (bracketed when the
+program asked for it); `key` encodes a named key or chord through
+`Terminal::key`, as the keyboard does.
+
 ### Driving owned entities (`verse control`)
 
 NIP-MV entities belong to the key that signs them, so `control` drives

@@ -211,3 +211,158 @@ fn a_pane_runs_a_program_on_a_pty_and_shows_its_output() {
     overlay.shutdown();
     assert_eq!(overlay.panes(), 0);
 }
+
+#[cfg(unix)]
+#[test]
+fn control_requests_open_split_type_and_read_panes() {
+    use super::control::{self, Request, call};
+    let root = tempfile::tempdir().unwrap();
+    let socket = root.path().join("terminal.sock");
+    let mut overlay = Overlay::with(
+        root.path(),
+        "/bin/sh".into(),
+        Program::Command {
+            program: "/bin/sh".into(),
+            args: vec!["-c".into(), "echo first-pane; exec cat".into()],
+            label: "first".into(),
+        },
+    );
+    overlay.listen(&socket).unwrap();
+    // Hidden, the overlay still answers.
+    let status = overlay.apply(&Request::Status).unwrap();
+    assert_eq!(status["open"], false);
+    assert_eq!(status["panes"].as_array().unwrap().len(), 0);
+    // Open starts the first pane with focus; the world is told once.
+    let opened = overlay.apply(&Request::Open).unwrap();
+    assert_eq!(opened["focused"], true);
+    assert_eq!(overlay.focus_changed(), Some(true));
+    assert_eq!(overlay.focus_changed(), None);
+    let text = wait(&mut overlay, |t| t.contains("first-pane"));
+    assert!(text.contains("first-pane"), "{text}");
+    // A split runs a command line found on PATH or by absolute path.
+    let split = overlay
+        .apply(&Request::Split {
+            axis: "cols".into(),
+            program: vec![
+                "/bin/sh".into(),
+                "-c".into(),
+                "echo split-pane; exec cat".into(),
+            ],
+        })
+        .unwrap();
+    assert_eq!(split["panes"].as_array().unwrap().len(), 2);
+    let focused: Vec<u64> = split["panes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|p| p["focused"] == true)
+        .map(|p| p["id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(focused, vec![2]);
+    let text = wait(&mut overlay, |t| t.contains("split-pane"));
+    assert!(text.contains("split-pane"), "{text}");
+    // Typing and a named key reach the focused pane's program.
+    overlay
+        .apply(&Request::Send {
+            text: "typed-$((40+2))".into(),
+        })
+        .unwrap();
+    overlay
+        .apply(&Request::Key {
+            name: "enter".into(),
+        })
+        .unwrap();
+    let text = wait(&mut overlay, |t| t.matches("typed-").count() >= 2);
+    assert!(text.matches("typed-").count() >= 2, "{text}");
+    // Read names a pane; focus moves by direction and by id.
+    let read = overlay.apply(&Request::Read { pane: Some(1) }).unwrap();
+    assert!(read["text"].as_str().unwrap().contains("first-pane"));
+    assert!(!read["text"].as_str().unwrap().contains("typed-"));
+    overlay
+        .apply(&Request::Focus {
+            direction: Some("left".into()),
+            pane: None,
+        })
+        .unwrap();
+    assert!(overlay.focused_text().unwrap().contains("first-pane"));
+    overlay
+        .apply(&Request::Focus {
+            direction: None,
+            pane: Some(2),
+        })
+        .unwrap();
+    assert!(overlay.focused_text().unwrap().contains("split-pane"));
+    assert!(
+        overlay
+            .apply(&Request::Focus {
+                direction: None,
+                pane: Some(9)
+            })
+            .is_err()
+    );
+    assert!(
+        overlay
+            .apply(&Request::Key {
+                name: "hyper-q".into()
+            })
+            .is_err()
+    );
+    assert!(
+        overlay
+            .apply(&Request::Split {
+                axis: "cols".into(),
+                program: vec!["no-such-program-verse".into()],
+            })
+            .is_err()
+    );
+    // Over the socket: a request from another thread is served by tick.
+    let path = socket.clone();
+    let client =
+        std::thread::spawn(move || call(&path, &serde_json::json!({ "op": "read", "pane": 2 })));
+    let reply = loop {
+        overlay.tick();
+        if client.is_finished() {
+            break client.join().unwrap().unwrap();
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(reply["ok"], true);
+    assert!(
+        reply["text"].as_str().unwrap().contains("split-pane"),
+        "{reply}"
+    );
+    let path = socket.clone();
+    let client = std::thread::spawn(move || call(&path, &serde_json::json!({ "op": "zoom" })));
+    let reply = loop {
+        overlay.tick();
+        if client.is_finished() {
+            break client.join().unwrap().unwrap();
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(reply["tabs"][0]["zoomed"], true);
+    // Hide keeps the panes; close ends the focused one.
+    let hidden = overlay.apply(&Request::Hide).unwrap();
+    assert_eq!(hidden["open"], false);
+    assert_eq!(hidden["panes"].as_array().unwrap().len(), 2);
+    overlay.apply(&Request::Close).unwrap();
+    assert_eq!(overlay.panes(), 1);
+    overlay.shutdown();
+    drop(overlay);
+    assert!(!socket.exists());
+
+    let older = control::Listener::bind(&socket).unwrap();
+    assert!(
+        control::Listener::bind(&socket).is_err(),
+        "a live socket stays"
+    );
+    std::fs::remove_file(&socket).unwrap();
+    let newer = control::Listener::bind(&socket).unwrap();
+    drop(older);
+    assert!(
+        socket.exists(),
+        "an older listener must not remove a newer one's socket"
+    );
+    drop(newer);
+    assert!(!socket.exists());
+}

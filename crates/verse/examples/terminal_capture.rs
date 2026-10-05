@@ -1,5 +1,11 @@
 //! Offline visual check of the terminal overlay over the plaza.
-//! Usage: terminal_capture OUTPUT.png [SCALE]
+//! Usage: terminal_capture OUTPUT.png [SCALE] [--serve SECONDS]
+//!
+//! With `--serve`, it also listens on the terminal control socket
+//! (`VERSE_TERMINAL_SOCKET` or `~/.openagents/verse/terminal.sock`) and keeps
+//! drawing frames for SECONDS, so `openagents verse terminal` can drive it
+//! without a window; the frame it renders at the end shows what the
+//! commands did.
 //!
 //! Opens the overlay with three panes on real PTYs of this computer, in a
 //! temporary directory that is also their home: OpenAgents Terminal when
@@ -32,9 +38,19 @@ fn sh(script: &str, label: &str) -> Program {
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let output = PathBuf::from(args.next().ok_or("Expected an output PNG path")?);
-    let scale: f32 = args.next().map_or(Ok(2.0), |s| {
-        s.parse().map_err(|_| format!("{s} is not a number"))
-    })?;
+    let mut scale = 2.0_f32;
+    let mut serve: Option<Duration> = None;
+    while let Some(arg) = args.next() {
+        if arg == "--serve" {
+            let seconds: u64 = args
+                .next()
+                .and_then(|s| s.parse().ok())
+                .ok_or("--serve expects a number of seconds")?;
+            serve = Some(Duration::from_secs(seconds));
+        } else {
+            scale = arg.parse().map_err(|_| format!("{arg} is not a number"))?;
+        }
+    }
     let (width, height) = ((1280.0 * scale) as u32, (800.0 * scale) as u32);
     let root = std::env::temp_dir().join(format!("verse-terminal-{}", std::process::id()));
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
@@ -46,6 +62,21 @@ fn main() -> Result<(), String> {
     let first = Program::openagents_terminal()
         .unwrap_or_else(|| sh("ls -la /usr/bin | head -40; exec cat", "ls"));
     let mut overlay = Overlay::with(&root, "/bin/sh".into(), first);
+    if let Some(wait) = serve {
+        let socket =
+            verse::terminal::control::default_path().ok_or("No HOME: set VERSE_TERMINAL_SOCKET")?;
+        overlay.listen(&socket)?;
+        eprintln!("serving {} for {}s", socket.display(), wait.as_secs());
+        let atlas = verse::ui::Atlas::new((14.0 * scale).round());
+        let size = [width as f32, height as f32];
+        let deadline = Instant::now() + wait;
+        while Instant::now() < deadline {
+            let mut batch = verse::ui::UiBatch::default();
+            overlay.draw(&mut batch, &atlas, size);
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        return finish(overlay, &root, &output, width, height, scale);
+    }
     overlay.toggle();
     let atlas = verse::ui::Atlas::new((14.0 * scale).round());
     let size = [width as f32, height as f32];
@@ -76,11 +107,24 @@ fn main() -> Result<(), String> {
     let button = Overlay::button_for(size, scale, None);
     overlay.button = Some(button);
     overlay.pointer([button.x + button.w / 2.0, button.y + button.h / 2.0]);
+    finish(overlay, &root, &output, width, height, scale)
+}
+
+fn finish(
+    mut overlay: Overlay,
+    root: &std::path::Path,
+    output: &std::path::Path,
+    width: u32,
+    height: u32,
+    scale: f32,
+) -> Result<(), String> {
+    let atlas = verse::ui::Atlas::new((14.0 * scale).round());
+    let size = [width as f32, height as f32];
     let mut batch = verse::ui::UiBatch::default();
     overlay.draw(&mut batch, &atlas, size);
     let runtime = WorldRuntime::new();
     let result = verse::render::capture(
-        &output,
+        output,
         width,
         height,
         &runtime.world.mesh,
@@ -90,6 +134,6 @@ fn main() -> Result<(), String> {
         &atlas,
     );
     overlay.shutdown();
-    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(root);
     result
 }

@@ -8829,6 +8829,35 @@
           }
         },
         {
+          "name": "terminal",
+          "leaf": {
+            "path": [
+              "verse",
+              "terminal"
+            ],
+            "usage": [
+              "terminal COMMAND"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "terminal"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "COMMAND"
+                  }
+                ]
+              }
+            ],
+            "summary": "Drive the terminal overlay of the Verse window on this computer: status, open, hide, split, focus, close, send, key, read, tab, zoom (openagents verse terminal --help).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "control",
           "children": [
             {
@@ -9299,6 +9328,12 @@
           "name": "duration",
           "value": "SECONDS",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "help",
           "optional": true,
           "repeated": true
         },

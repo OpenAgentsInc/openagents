@@ -55,6 +55,10 @@ pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
                             messages, and gestures.
   unmute PLAYER             Hear a muted player again.
   blocked                  The players this computer blocked or muted.
+  terminal COMMAND          Drive the terminal overlay of the Verse window on
+                            this computer: status, open, hide, split, focus,
+                            close, send, key, read, tab, zoom
+                            (openagents verse terminal --help).
   control ENTITY move X,Y,Z [--yaw DEGREES] [--role ROLE] [--name NAME]
   control ENTITY gesture NAME [--to PUBKEY,ENTITY] [--at X,Y,Z]
   control ENTITY leave      Drive another entity this identity publishes (for
@@ -115,6 +119,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("me", Effect::ReadOnly),
     Declared::computer("load", Effect::LongRunning),
     Declared::computer("walkers", Effect::Publishes),
+    Declared::computer("terminal", Effect::LocalWrite),
     Declared::computer("move", Effect::Publishes),
     Declared::computer("say", Effect::Publishes),
     Declared::computer("gesture", Effect::Publishes),
@@ -393,6 +398,9 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
     if matches!(command.as_str(), "--help" | "-h" | "help") {
         println!("{USAGE}");
         return 0;
+    }
+    if group == "verse" && command == "terminal" {
+        return crate::verse_terminal::run(output, rest);
     }
     let canonical = match command.as_str() {
         "nearby" => "look",
