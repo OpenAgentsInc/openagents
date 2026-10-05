@@ -1,0 +1,121 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "incomplete",
+  "compiled_revision": "aad0643554fb0b51a4416a4afc035044bc2ccac7",
+  "client_compiled_revision": "cbed11fd6be9cab314410e67b91c52fedeed1a10",
+  "host_binary_sha256": "e20e17c2430700f49c9698ee315068ef242ccc32d72803cad85f93d334b1ea93",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "wire_version": 27,
+  "movement_send_steps": 6,
+  "timings": {
+    "frame_interval_ms": {
+      "samples": 4073,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 10.205459,
+      "p95": 15.538375,
+      "p99": 17.9865,
+      "maximum": 26.564708
+    },
+    "gpu_total_ms": {
+      "samples": 4071,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 2.125542,
+      "p95": 9.116833,
+      "p99": 10.744166,
+      "maximum": 13.073083
+    },
+    "command_turnaround_ms": {
+      "samples": 775,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 62.600375,
+      "p95": 96.7355,
+      "p99": 124.709916,
+      "maximum": 694.632209
+    },
+    "sdk_verified_snapshot_age_ms": {
+      "samples": 4073,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 32.823209,
+      "p95": 82.15325,
+      "p99": 219.588667,
+      "maximum": 581.0265
+    }
+  },
+  "movement_expiry": {
+    "total": 0,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 0,
+    "bootstrap": 0,
+    "omitted": 0
+  },
+  "native_reset_reasons": {
+    "control_epoch": 2,
+    "teleport": 1
+  },
+  "validation": [
+    "39 focused network, worker, and client control checks pass; both new clients build successfully.",
+    "Updated Linux host build passes.",
+    "Native, headless load, and host exit zero.",
+    "All 19 headless rows observe 20 players and at least 40 live hostiles throughout their battle samples.",
+    "Controlled delayed route retains failed movement acceptance.",
+    "Zero movement expiries in this no-impairment baseline."
+  ],
+  "limitations": [
+    "Shared machine load prevents causal attribution across successive runs.",
+    "Repeatability, impaired-network, input-to-display, and soak acceptance remain unproven.",
+    "One completed baseline does not establish full roadmap acceptance.",
+    "Proxy delay applies to ordered TCP chunks and does not simulate packet loss.",
+    "Updated clients include unrelated upstream graphics and terminal changes; successive runs are not an isolated causal comparison.",
+    "Proxy errors requiring classification: 18.",
+    "Delayed performance remains failed, and baseline repeatability is not established."
+  ],
+  "movement_inputs": 21245,
+  "producer_pressure": 0,
+  "delay_ms": 0,
+  "jitter_ms": 0,
+  "delay_mode": "scheduled",
+  "harness_revision": "14e19e6e1f82651a03032533e1fb7d416f937a10",
+  "request_window": {
+    "samples": 2047,
+    "omitted": 0,
+    "invalid": 0,
+    "p50": 2.0,
+    "p95": 3.0,
+    "p99": 4.0,
+    "maximum": 6.0
+  },
+  "queued_inputs": {
+    "samples": 2047,
+    "omitted": 0,
+    "invalid": 0,
+    "p50": 0.0,
+    "p95": 0.0,
+    "p99": 1.0,
+    "maximum": 2.0
+  },
+  "proxy_error_classification": "unresolved",
+  "load_compiled_revision": "cbed11fd6be9cab314410e67b91c52fedeed1a10",
+  "prediction_correction_meters": {
+    "samples": 598,
+    "omitted": 0,
+    "median": 0.0,
+    "p95": 0.047263383865356445,
+    "max": 3.4077506065368652
+  },
+  "control_discontinuity_meters": {
+    "samples": 3,
+    "omitted": 0,
+    "median": 0.0,
+    "p95": 4.914869785308838,
+    "max": 4.914869785308838
+  },
+  "proxy_error_count": 18,
+  "proxy_queue_peak": 1
+}

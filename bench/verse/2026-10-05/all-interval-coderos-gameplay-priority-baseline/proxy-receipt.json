@@ -1,0 +1,132 @@
+{
+  "schema": "verse.delayed-route.v2",
+  "delay_ms": 0,
+  "jitter_ms": 0,
+  "delay_mode": "scheduled",
+  "delay_queue_capacity": 32,
+  "delay_queue_peak": 1,
+  "connections": 20,
+  "upstream_bytes": 13390343,
+  "downstream_bytes": 264305954,
+  "forwarded_chunks": 99236,
+  "errors": 18,
+  "refused_connections": 0,
+  "error_details": [
+    {
+      "elapsed_seconds": 77.038880792,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.03909008299999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.039187417,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.0392315,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.03927645799999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.039333375,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.03938425,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.03947724999999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.039527958,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.03957629199999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.03978479199999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.03981974999999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.03982687499999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.03983395799999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.03984079199999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.042452458,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.04249525,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 77.042503958,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    }
+  ],
+  "omitted_error_details": 0,
+  "limits": [
+    "Delay applies to each TCP read chunk, not decrypted game messages.",
+    "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+    "Serial mode adds delay after each read and also limits chunk throughput.",
+    "TCP preserves byte order; this fixture does not simulate packet loss."
+  ],
+  "wall_seconds": 77.07289887499999
+}
