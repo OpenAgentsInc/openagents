@@ -808,6 +808,9 @@ pub(crate) struct Scene {
     pub(crate) relay: Option<String>,
     pub(crate) reader_relay: Option<String>,
     pub(crate) restore_spawn: bool,
+    /// Where the block and mute lists live ([`verse::blocklist`]); none
+    /// keeps them for this mount only.
+    blocklist_directory: Option<std::path::PathBuf>,
     synthetic: bool,
     spawn_pending: bool,
     camera_mode: CameraMode,
@@ -1038,6 +1041,7 @@ impl Scene {
                 .to_owned(),
             relay,
             restore_spawn,
+            blocklist_directory: None,
             reader_relay: None,
             synthetic: config.synthetic,
             spawn_pending: false,
@@ -1159,6 +1163,27 @@ impl Scene {
         Ok(())
     }
 
+    /// Keeps the block and mute lists in `directory`, read each time the
+    /// world's presence starts and written on each change.
+    pub(crate) fn set_blocklist_directory(&mut self, directory: Option<std::path::PathBuf>) {
+        self.blocklist_directory = directory;
+    }
+
+    /// Blocks or unblocks the player with `pubkey` in the running presence
+    /// session and saves the list. Returns whether it changed.
+    pub fn set_player_blocked(&mut self, pubkey: &str, blocked: bool) -> Result<bool, String> {
+        let session = self.session.as_mut().ok_or("The world is offline")?;
+        let changed = if blocked {
+            session.block(pubkey)?
+        } else {
+            session.unblock(pubkey)
+        };
+        if changed && let Some(directory) = &self.blocklist_directory {
+            session.blocklist().save(directory)?;
+        }
+        Ok(changed)
+    }
+
     pub(crate) fn world_signer(&self) -> Result<nostr::domain::RelaySigner, String> {
         Ok(verse::identity::Identity::from_secret("phone", self.secret)?.signer)
     }
@@ -1184,6 +1209,11 @@ impl Scene {
             Session::start_with_identity(identity, relay)?
         };
         session.set_publish_intervals(intervals)?;
+        if let Some(directory) = &self.blocklist_directory
+            && let Ok(people) = verse::blocklist::Blocklist::load(directory)
+        {
+            session.set_blocklist(people);
+        }
         self.spawn_pending = std::mem::take(&mut self.restore_spawn);
         if self.spawn_pending {
             session.begin_spawn(Duration::from_millis(1500));

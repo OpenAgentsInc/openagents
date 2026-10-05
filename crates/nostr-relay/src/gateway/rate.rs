@@ -10,6 +10,11 @@ use super::GatewayLimits;
 const WINDOW: Duration = Duration::from_secs(60);
 const OBSERVER_WINDOW: Duration = Duration::from_secs(1);
 const POSE_WINDOW: Duration = Duration::from_secs(1);
+/// How long a key that published a pose-lane event counts as present in its
+/// world: three of NIP-MV's five-second idle keepalives.
+pub const WORLD_PRESENCE: Duration = Duration::from_secs(15);
+/// Most worlds the pose lane tracks at once.
+const MAX_WORLDS: usize = 4_096;
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_RATE_KEYS: usize = 100_000;
 
@@ -28,10 +33,26 @@ struct State {
     observer_agent: HashMap<String, Counter>,
     pose_ip: HashMap<IpAddr, Counter>,
     pose_pubkey: HashMap<String, Counter>,
+    worlds: HashMap<String, World>,
     req_ip: HashMap<IpAddr, Counter>,
     media_ip: HashMap<IpAddr, Counter>,
     media_pubkey: HashMap<String, Counter>,
     last_cleanup: Instant,
+}
+
+/// One world's pose lane: who published lately, and this second's frames.
+struct World {
+    present: HashMap<String, Instant>,
+    frames: Counter,
+}
+
+/// Why the pose lane refused an event for its world.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorldRefusal {
+    /// The world already holds its population cap of other keys.
+    Full,
+    /// The world spent this second's pose-lane budget.
+    Budget,
 }
 
 struct Counter {
@@ -56,6 +77,7 @@ impl RateLimiter {
                 observer_agent: HashMap::new(),
                 pose_ip: HashMap::new(),
                 pose_pubkey: HashMap::new(),
+                worlds: HashMap::new(),
                 req_ip: HashMap::new(),
                 media_ip: HashMap::new(),
                 media_pubkey: HashMap::new(),
@@ -172,6 +194,76 @@ impl RateLimiter {
         )
     }
 
+    /// Whether `pubkey` may publish one more pose-lane event in `world`: a
+    /// key not already present is refused while the world holds
+    /// `world_population_cap` others, and the world as a whole may carry
+    /// `world_pose_events_per_second`. A cap or budget of zero is no limit.
+    pub fn pose_in_world(&self, world: &str, pubkey: &str) -> Result<(), WorldRefusal> {
+        self.pose_in_world_at(world, pubkey, Instant::now())
+    }
+
+    fn pose_in_world_at(
+        &self,
+        world: &str,
+        pubkey: &str,
+        now: Instant,
+    ) -> Result<(), WorldRefusal> {
+        let Ok(mut state) = self.inner.lock() else {
+            return Err(WorldRefusal::Budget);
+        };
+        state.cleanup();
+        if !state.worlds.contains_key(world) && state.worlds.len() >= MAX_WORLDS {
+            return Err(WorldRefusal::Full);
+        }
+        let entry = state
+            .worlds
+            .entry(world.to_owned())
+            .or_insert_with(|| World {
+                present: HashMap::new(),
+                frames: Counter {
+                    started: now,
+                    count: 0,
+                },
+            });
+        entry
+            .present
+            .retain(|_, seen| now.saturating_duration_since(*seen) < WORLD_PRESENCE);
+        let cap = self.limits.world_population_cap as usize;
+        if cap > 0 && !entry.present.contains_key(pubkey) && entry.present.len() >= cap {
+            return Err(WorldRefusal::Full);
+        }
+        let budget = self.limits.world_pose_events_per_second;
+        if now.saturating_duration_since(entry.frames.started) >= POSE_WINDOW {
+            entry.frames = Counter {
+                started: now,
+                count: 0,
+            };
+        }
+        if budget > 0 && entry.frames.count >= budget {
+            return Err(WorldRefusal::Budget);
+        }
+        entry.frames.count += 1;
+        entry.present.insert(pubkey.to_owned(), now);
+        Ok(())
+    }
+
+    /// Keys present in `world` now: those that published a pose-lane event
+    /// within [`WORLD_PRESENCE`].
+    #[cfg(test)]
+    pub fn world_population(&self, world: &str) -> usize {
+        let Ok(state) = self.inner.lock() else {
+            return 0;
+        };
+        let now = Instant::now();
+        state.worlds.get(world).map_or(0, |entry| {
+            entry
+                .present
+                .values()
+                .filter(|seen| now.saturating_duration_since(**seen) < WORLD_PRESENCE)
+                .count()
+        })
+    }
+
     pub fn media_from_ip(&self, ip: IpAddr) -> bool {
         let Ok(mut state) = self.inner.lock() else {
             return false;
@@ -263,6 +355,12 @@ impl State {
             .retain(|_, counter| now.duration_since(counter.started) < POSE_WINDOW);
         self.pose_pubkey
             .retain(|_, counter| now.duration_since(counter.started) < POSE_WINDOW);
+        self.worlds.retain(|_, world| {
+            world
+                .present
+                .retain(|_, seen| now.saturating_duration_since(*seen) < WORLD_PRESENCE);
+            !world.present.is_empty()
+        });
         self.req_ip
             .retain(|_, counter| now.duration_since(counter.started) < WINDOW);
         self.media_ip
@@ -297,7 +395,9 @@ mod tests {
 
     use crate::gateway::GatewayLimits;
 
-    use super::RateLimiter;
+    use std::time::{Duration, Instant};
+
+    use super::{RateLimiter, WORLD_PRESENCE, WorldRefusal};
 
     #[test]
     fn rate_and_connection_limits_fail_closed_and_permits_release() {
@@ -382,5 +482,56 @@ mod tests {
         assert!(gift_wrap.event_from_pubkey("outer-wrapper"));
         assert!(gift_wrap.gift_wrap_for_recipient("recipient"));
         assert!(!gift_wrap.gift_wrap_for_recipient("recipient"));
+    }
+
+    #[test]
+    fn a_full_world_refuses_a_new_key_until_a_present_one_goes_quiet() {
+        let limits = GatewayLimits {
+            world_population_cap: 2,
+            world_pose_events_per_second: 0,
+            ..GatewayLimits::default()
+        };
+        let limiter = RateLimiter::new(limits);
+        let start = Instant::now();
+        assert_eq!(limiter.pose_in_world_at("verse-bare", "a", start), Ok(()));
+        assert_eq!(limiter.pose_in_world_at("verse-bare", "b", start), Ok(()));
+        assert_eq!(
+            limiter.pose_in_world_at("verse-bare", "c", start),
+            Err(WorldRefusal::Full)
+        );
+        // Present keys keep publishing, and another world has its own cap.
+        assert_eq!(limiter.pose_in_world_at("verse-bare", "a", start), Ok(()));
+        assert_eq!(limiter.pose_in_world_at("other", "c", start), Ok(()));
+        // Once `b` has been quiet for the presence window, `c` takes its
+        // place while `a` keeps its own.
+        let later = start + WORLD_PRESENCE - Duration::from_secs(1);
+        assert_eq!(limiter.pose_in_world_at("verse-bare", "a", later), Ok(()));
+        let after = start + WORLD_PRESENCE;
+        assert_eq!(limiter.pose_in_world_at("verse-bare", "c", after), Ok(()));
+        assert_eq!(
+            limiter.pose_in_world_at("verse-bare", "b", after),
+            Err(WorldRefusal::Full)
+        );
+    }
+
+    #[test]
+    fn a_world_spends_its_frame_budget_each_second() {
+        let limits = GatewayLimits {
+            world_population_cap: 0,
+            world_pose_events_per_second: 3,
+            ..GatewayLimits::default()
+        };
+        let limiter = RateLimiter::new(limits);
+        let start = Instant::now();
+        for key in ["a", "b", "c"] {
+            assert_eq!(limiter.pose_in_world_at("w", key, start), Ok(()));
+        }
+        assert_eq!(
+            limiter.pose_in_world_at("w", "a", start),
+            Err(WorldRefusal::Budget)
+        );
+        assert_eq!(limiter.pose_in_world_at("elsewhere", "a", start), Ok(()));
+        let next = start + Duration::from_secs(1);
+        assert_eq!(limiter.pose_in_world_at("w", "a", next), Ok(()));
     }
 }

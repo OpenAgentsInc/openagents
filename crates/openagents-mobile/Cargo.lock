@@ -9124,6 +9124,7 @@ dependencies = [
  "gym-bridge",
  "gym-leaderboard",
  "libc",
+ "miniz_oxide 0.8.9",
  "nostr",
  "objc2",
  "openagents-connect",
@@ -9142,6 +9143,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "toml",
+ "verse-content",
  "verse-engine",
  "verse-gfx",
  "verse-lagrange",
@@ -9153,6 +9155,21 @@ dependencies = [
  "webpki-roots 1.0.9",
  "wgpu",
  "xp-ledger",
+]
+
+[[package]]
+name = "verse-content"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "gltf",
+ "physics",
+ "png",
+ "resvg",
+ "serde_json",
+ "sha2 0.10.9",
+ "verse-engine",
+ "verse-world",
 ]
 
 [[package]]
@@ -9223,8 +9240,11 @@ dependencies = [
  "png",
  "pollster",
  "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "verse-engine",
  "verse-gfx",
+ "web-time",
  "wgpu",
 ]
 

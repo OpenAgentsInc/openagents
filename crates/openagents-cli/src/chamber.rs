@@ -99,7 +99,8 @@ Connection: --to HOST:PORT --instance N --trust CERT.der [--server-name NAME]
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("host", Effect::LongRunning),
-    Declared::computer("service", Effect::LocalWrite),
+    Declared::computer("service install", Effect::LocalWrite),
+    Declared::computer("service uninstall", Effect::LocalWrite),
     Declared::computer("tls", Effect::LocalWrite),
     Declared::computer("pack", Effect::LocalWrite),
     Declared::computer("status", Effect::ReadOnly),

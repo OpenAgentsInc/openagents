@@ -375,6 +375,12 @@ impl Crowd {
         mesh
     }
 
+    /// Forgets everything `pubkey` published, as when the player blocks it.
+    pub fn forget(&mut self, pubkey: &str) {
+        self.entities.retain(|(owner, _), _| owner != pubkey);
+        self.sessions.remove(pubkey);
+    }
+
     /// Forgets entities that have neither frames nor durable state.
     pub fn prune(&mut self, now: Instant) {
         self.entities

@@ -8245,7 +8245,7 @@
               "who"
             ],
             "usage": [
-              "who"
+              "who [--wait SECONDS]"
             ],
             "forms": [
               {
@@ -8253,11 +8253,18 @@
                   {
                     "kind": "literal",
                     "word": "who"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "wait",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Every entity with a state in the world, nearest first.",
+            "summary": "Every entity with a state in the world, nearest first, and the world's population: players online, players whose frames arrive in a short listen (default 2 s), and their frames a second.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
@@ -8367,7 +8374,7 @@
                 ]
               }
             ],
-            "summary": "Follow poses, gestures, states, and chat as they arrive.",
+            "summary": "Follow poses, gestures, states, and chat as they arrive, then report the live population and frame cadence.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -8677,6 +8684,147 @@
             ],
             "summary": "Mark this identity's avatar offline.",
             "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "block",
+          "leaf": {
+            "path": [
+              "verse",
+              "block"
+            ],
+            "usage": [
+              "block PLAYER"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "block"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PLAYER"
+                  }
+                ]
+              }
+            ],
+            "summary": "Hide a player (a public key, npub, or name) from every Verse client on this computer; it stays hidden after relaunch.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "unblock",
+          "leaf": {
+            "path": [
+              "verse",
+              "unblock"
+            ],
+            "usage": [
+              "unblock PLAYER"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "unblock"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PLAYER"
+                  }
+                ]
+              }
+            ],
+            "summary": "Show a blocked player again.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "mute",
+          "leaf": {
+            "path": [
+              "verse",
+              "mute"
+            ],
+            "usage": [
+              "mute PLAYER"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "mute"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PLAYER"
+                  }
+                ]
+              }
+            ],
+            "summary": "Keep a player's avatar but hide their chat, private messages, and gestures.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "unmute",
+          "leaf": {
+            "path": [
+              "verse",
+              "unmute"
+            ],
+            "usage": [
+              "unmute PLAYER"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "unmute"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PLAYER"
+                  }
+                ]
+              }
+            ],
+            "summary": "Hear a muted player again.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "blocked",
+          "leaf": {
+            "path": [
+              "verse",
+              "blocked"
+            ],
+            "usage": [
+              "blocked"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "blocked"
+                  }
+                ]
+              }
+            ],
+            "summary": "The players this computer blocked or muted.",
+            "effect": "read_only",
             "runs_on": "connected_computer"
           }
         },
@@ -9056,6 +9204,14 @@
       "options": [
         {
           "kind": "option",
+          "name": "wait",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "at",
           "value": "X,Y,Z",
           "open": true,
@@ -9066,14 +9222,6 @@
           "kind": "option",
           "name": "radius",
           "value": "METERS",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "wait",
-          "value": "SECONDS",
           "open": true,
           "optional": true,
           "repeated": true
@@ -9552,8 +9700,151 @@
                 ]
               }
             ],
-            "summary": "Run a chamber host on this machine until stopped: the configuration names the scene, pack, and transport. Over TLS (the default) it also names the certificate and key (DER) and enrolled keys. Over REACH (transport type `reach`) the Coder host's key and access store admit devices with the `world` right; the access options are the ones `openagents host serve` takes, and --label names the instance in the owner directory when the keys include the owner key. With profile `everglade` it hosts Everglade under the social rules, bound to the pinned Everglade pack, and walks the Agent Studio's seats from the Coder host's control socket on this computer (--studio-socket overrides it).",
+            "summary": "Run a chamber host on this machine until stopped: the configuration names the scene, pack, and transport. Over TLS (the default) it also names the certificate and key (DER) and enrolled keys. Over REACH (transport type `reach`) the Coder host's key and access store admit devices with the `world` right; the access options are the ones `openagents host serve` takes, and --label names the instance in the owner directory when the keys include the owner key.",
             "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "service",
+          "children": [
+            {
+              "name": "install",
+              "leaf": {
+                "path": [
+                  "chamber",
+                  "service",
+                  "install"
+                ],
+                "usage": [
+                  "service install CONFIG.json [--binary PATH] [--state DIR] [--root DIR] [--keys DIR | --keychain] [--label TEXT]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "service"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "install"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "CONFIG.json"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "binary",
+                        "value": "PATH",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "state",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "keys",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "keychain",
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "label",
+                        "value": "TEXT",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Run `chamber host CONFIG.json` from login on as a launchd agent (macOS) or systemd user unit (Linux); the access options pass through.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "uninstall",
+              "leaf": {
+                "path": [
+                  "chamber",
+                  "service",
+                  "uninstall"
+                ],
+                "usage": [
+                  "service uninstall | status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "service"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "uninstall"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Remove the unit, or report whether it runs. With profile `everglade` it hosts Everglade under the social rules, bound to the pinned Everglade pack, and walks the Agent Studio's seats from the Coder host's control socket on this computer (--studio-socket overrides it).",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "chamber",
+              "status"
+            ],
+            "usage": [
+              "service uninstall | status",
+              "status"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  }
+                ]
+              },
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  }
+                ]
+              }
+            ],
+            "summary": "Remove the unit, or report whether it runs. With profile `everglade` it hosts Everglade under the social rules, bound to the pinned Everglade pack, and walks the Agent Studio's seats from the Coder host's control socket on this computer (--studio-socket overrides it).",
+            "effect": "read_only",
             "runs_on": "connected_computer"
           }
         },
@@ -9619,31 +9910,6 @@
             ],
             "summary": "Compile the original ritual asset pack under DIR (runtime-pack.json) for a host and its clients.",
             "effect": "local_write",
-            "runs_on": "connected_computer"
-          }
-        },
-        {
-          "name": "status",
-          "leaf": {
-            "path": [
-              "chamber",
-              "status"
-            ],
-            "usage": [
-              "status"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "status"
-                  }
-                ]
-              }
-            ],
-            "summary": "This identity's admission, the host tick, and the living actors.",
-            "effect": "read_only",
             "runs_on": "connected_computer"
           }
         },
@@ -10101,6 +10367,14 @@
         {
           "kind": "option",
           "name": "studio-socket",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "binary",
           "value": "PATH",
           "open": true,
           "optional": true,

@@ -44,7 +44,7 @@ use super::{
     media::{MediaStorage, STALE_RESERVATION_AGE, is_media_request, serve_media},
     push::{self, PushExecutor},
     query::{is_query_request, serve_query},
-    rate::{ConnectionPermit, RateLimiter},
+    rate::{ConnectionPermit, RateLimiter, WorldRefusal},
     socket::{
         ServerWebSocket, effective_ip, is_websocket_upgrade, read_http_head, serve_http,
         websocket_handshake,
@@ -1445,6 +1445,8 @@ async fn handle_event(
         let reason = match rejection {
             EventKeyRateRejection::Event => "rate-limited: event rate exceeded",
             EventKeyRateRejection::GiftWrapRecipient => GIFT_WRAP_RECIPIENT_RATE_EXCEEDED,
+            EventKeyRateRejection::WorldFull => WORLD_FULL,
+            EventKeyRateRejection::WorldBudget => WORLD_BUDGET_EXCEEDED,
         };
         pending.push_back(ok_message(&event.id, false, reason));
         return Ok(());
@@ -2181,6 +2183,8 @@ fn owner_scoped_filter_denial(filters: &[Filter], read_pubkeys: &[String]) -> Op
 enum EventKeyRateRejection {
     Event,
     GiftWrapRecipient,
+    WorldFull,
+    WorldBudget,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2188,6 +2192,13 @@ enum EventPreflightRejection {
     IpRate,
     InvalidCrypto(crate::domain::DomainError),
 }
+
+/// The refusal of a pose-lane event from a new key while its world holds
+/// its population cap. It is `rate-limited:` so the publisher backs off and
+/// tries again later, when a present player may have left.
+const WORLD_FULL: &str = "rate-limited: world is full; try again when a player leaves";
+/// The refusal of a pose-lane event once its world spent this second's budget.
+const WORLD_BUDGET_EXCEEDED: &str = "rate-limited: world pose budget exceeded";
 
 /// Whether `kind` travels in the pose lane: NIP-MV frames and gestures,
 /// ephemeral events a moving player publishes several times a second, which
@@ -2239,6 +2250,15 @@ fn event_key_rate_rejection_for(
     };
     if !allowed {
         return Some(EventKeyRateRejection::Event);
+    }
+    if is_pose_lane(event.kind)
+        && let Some(world) = event.tag_values("w").next()
+    {
+        match rate.pose_in_world(world, &event.pubkey) {
+            Ok(()) => {}
+            Err(WorldRefusal::Full) => return Some(EventKeyRateRejection::WorldFull),
+            Err(WorldRefusal::Budget) => return Some(EventKeyRateRejection::WorldBudget),
+        }
     }
     if event.kind == 1_059
         && !event
@@ -2487,7 +2507,53 @@ mod tests {
         store::StoredEvent,
     };
 
-    use super::{DurableSequence, MAX_NOTIFICATION_GAP, validate_and_clamp_filters};
+    use super::{
+        DurableSequence, EventKeyRateRejection, MAX_NOTIFICATION_GAP, event_key_rate_rejection_for,
+        validate_and_clamp_filters,
+    };
+    use crate::gateway::{GatewayLimits, rate::RateLimiter};
+
+    fn frame(pubkey: &str, world: Option<&str>) -> Event {
+        Event {
+            id: "0".repeat(64),
+            pubkey: pubkey.to_owned(),
+            created_at: 0,
+            kind: nostr::kinds::MV_FRAME,
+            tags: world
+                .map(|world| vec![crate::domain::Tag(vec!["w".to_owned(), world.to_owned()])])
+                .unwrap_or_default(),
+            content: String::new(),
+            sig: "0".repeat(128),
+        }
+    }
+
+    #[test]
+    fn a_world_at_its_cap_refuses_a_new_players_frames() {
+        let rate = RateLimiter::new(GatewayLimits {
+            world_population_cap: 1,
+            ..GatewayLimits::default()
+        });
+        let first = "a".repeat(64);
+        let second = "b".repeat(64);
+        assert_eq!(
+            event_key_rate_rejection_for(&rate, &frame(&first, Some("verse-bare")), None),
+            None
+        );
+        assert_eq!(
+            event_key_rate_rejection_for(&rate, &frame(&second, Some("verse-bare")), None),
+            Some(EventKeyRateRejection::WorldFull)
+        );
+        // The same key in another world, and a frame naming no world, pass.
+        assert_eq!(
+            event_key_rate_rejection_for(&rate, &frame(&second, Some("verse-ruins")), None),
+            None
+        );
+        assert_eq!(
+            event_key_rate_rejection_for(&rate, &frame(&second, None), None),
+            None
+        );
+        assert_eq!(rate.world_population("verse-bare"), 1);
+    }
 
     fn stored(ingest_seq: i64) -> StoredEvent {
         StoredEvent {

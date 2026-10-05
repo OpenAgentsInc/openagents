@@ -114,6 +114,12 @@ pub fn launch(root: &Path, relay: &str, fixture: bool) -> Result<Launch, String>
             notes: preferences.notes,
             check_relay,
             results_cache_directory: Some(directory.join("results").to_string_lossy().into_owned()),
+            // The lists `openagents verse block` and the Verse app keep.
+            blocklist_directory: Some(
+                root.join(".openagents/verse")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
             ..BareGym::default()
         },
     })

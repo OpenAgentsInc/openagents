@@ -314,3 +314,20 @@ machine's disk filled during the Android release build. To finish checking:
 5. Fight a desktop player in the same chamber (`verse` built with
    `--features remote-chamber,imported-desktop`, through its own RITUAL
    arch): each must see the other's character move, cast, and take damage.
+
+## The world population cap on the public relay (#10588)
+
+The relay now refuses a 21st key's NIP-MV frames in one world
+(`NOSTR_RELAY_WORLD_POPULATION_CAP`, default 20) and bounds a world's
+frames a second (`NOSTR_RELAY_WORLD_POSE_PER_SEC`, default 300). Unit
+tests cover the cap and the budget; the public relay doesn't run it until
+it's redeployed. To finish checking:
+
+1. Deploy the relay from `main` (`docs/deployment/runbook-cloud-run.md`).
+2. With the Grid empty, run `openagents verse walkers 21 --wait 30`; the
+   `done` line must count refusals (`rate-limited: world is full`), and
+   `openagents verse who --world verse-bare` must show 20 live.
+3. Raise `NOSTR_RELAY_WORLD_POPULATION_CAP` before the 20-player soak
+   (#10589), which also brings a phone, a desktop, and a browser.
+4. Block a walker with `openagents verse block KEY`, relaunch the Verse
+   app on the same computer, and check that the walker stays hidden.

@@ -26,6 +26,7 @@ use serde_json::json;
 use nostr::domain::Tag;
 
 use crate::agent::Agent;
+use crate::blocklist::Blocklist;
 use crate::chat::{self, Channel};
 use crate::controller::{Footprint, PlayerController};
 use crate::crowd::Crowd;
@@ -292,6 +293,8 @@ pub struct Session {
     last_name_ask: Option<Instant>,
     limits: chat::Limits,
     muted: HashSet<String>,
+    /// Players this person blocked or muted; see [`crate::blocklist`].
+    people: Blocklist,
     /// Room display names by id, from NIP-29 metadata.
     pub room_names: HashMap<String, String>,
     joined: u64,
@@ -470,6 +473,7 @@ impl Session {
             last_name_ask: None,
             limits: chat::Limits::new(Instant::now()),
             muted: HashSet::new(),
+            people: Blocklist::default(),
             room_names: HashMap::new(),
             joined: unix_now(),
             auth_id: None,
@@ -977,6 +981,8 @@ impl Session {
 
     fn handle(&mut self, message: In, now: Instant) {
         match message {
+            // A blocked player's events never reach the crowd or the log.
+            In::Event { event, .. } if self.people.is_blocked(&event.pubkey) => {}
             In::Connected => {
                 self.status = Status::Connecting;
                 self.auth_id = None;
@@ -1107,7 +1113,7 @@ impl Session {
                         if self.invited.len() < MAX_PEOPLE {
                             self.invited.push((pubkey.clone(), now));
                         }
-                        if !self.muted.contains("gestures") {
+                        if !self.muted.contains("gestures") && !self.people.is_muted(pubkey) {
                             let who = self.name_of(pubkey);
                             self.log.push(chat::Line {
                                 channel: Some(Channel::Here),
@@ -1387,6 +1393,70 @@ impl Session {
         candidates.into_iter().next()
     }
 
+    /// The players this person blocked or muted.
+    #[must_use]
+    pub fn blocklist(&self) -> &Blocklist {
+        &self.people
+    }
+
+    /// Replaces the block and mute lists, as loaded from
+    /// [`Blocklist::load`], and forgets every blocked player at once.
+    pub fn set_blocklist(&mut self, people: Blocklist) {
+        for pubkey in &people.blocked {
+            self.forget_player(pubkey);
+        }
+        self.people = people;
+    }
+
+    /// Blocks `pubkey`: its avatar disappears now and its events are
+    /// dropped from here on. The caller saves [`Session::blocklist`] to
+    /// keep it across sessions.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when `pubkey` is this player's own key, isn't a
+    /// hex public key, or the list is full.
+    pub fn block(&mut self, pubkey: &str) -> Result<bool, String> {
+        if pubkey == self.pubkey() {
+            return Err("you can't block yourself".into());
+        }
+        let changed = self.people.block(pubkey)?;
+        self.forget_player(pubkey);
+        Ok(changed)
+    }
+
+    /// Unblocks `pubkey`; its avatar returns with its next frame.
+    pub fn unblock(&mut self, pubkey: &str) -> bool {
+        self.people.unblock(pubkey)
+    }
+
+    /// Mutes `pubkey`: its avatar stays, and its chat, private messages,
+    /// and gesture lines are hidden.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when `pubkey` is this player's own key, isn't a
+    /// hex public key, or the list is full.
+    pub fn mute_player(&mut self, pubkey: &str) -> Result<bool, String> {
+        if pubkey == self.pubkey() {
+            return Err("you can't mute yourself".into());
+        }
+        let changed = self.people.mute(pubkey)?;
+        self.bubbles.retain(|bubble| bubble.pubkey != pubkey);
+        Ok(changed)
+    }
+
+    /// Unmutes `pubkey`.
+    pub fn unmute_player(&mut self, pubkey: &str) -> bool {
+        self.people.unmute(pubkey)
+    }
+
+    fn forget_player(&mut self, pubkey: &str) {
+        self.crowd.forget(pubkey);
+        self.bubbles.retain(|bubble| bubble.pubkey != pubkey);
+        self.online.remove(pubkey);
+    }
+
     /// Mutes or unmutes by `!mute` word. Returns the notice to show.
     pub fn set_mute(&mut self, word: &str, mute: bool) -> String {
         let keys = chat::mute_set(word);
@@ -1559,6 +1629,9 @@ impl Session {
         if event.pubkey == self.pubkey() {
             return;
         }
+        if self.people.is_muted(&event.pubkey) {
+            return;
+        }
         let Ok(line) = mv::decode_chat(event, self.world) else {
             return;
         };
@@ -1618,7 +1691,10 @@ impl Session {
         let Ok(message) = nostr::nip17::chat_message(&rumor) else {
             return;
         };
-        if !self.remember_chat(&rumor.id) || self.muted.contains("pm") {
+        if !self.remember_chat(&rumor.id)
+            || self.muted.contains("pm")
+            || self.people.is_muted(&message.pubkey)
+        {
             return;
         }
         let mine = message.pubkey == self.pubkey();
@@ -2330,6 +2406,83 @@ mod tests {
         assert_eq!(
             session.room_names.get("lounge").map(String::as_str),
             Some("Lounge")
+        );
+    }
+
+    #[test]
+    fn a_blocked_player_disappears_and_stays_gone_after_relaunch() {
+        let dir = tempfile::tempdir().unwrap();
+        let other = nostr::domain::RelaySigner::from_secret_hex(&"03".repeat(32)).unwrap();
+        let frame = |n: u64| {
+            let frame = Frame {
+                v: 1,
+                s: "ab".into(),
+                n,
+                t: n * 200,
+                e: vec![EntityPose::new(
+                    "avatar",
+                    "avatar",
+                    Vec3::ZERO,
+                    Quat::IDENTITY,
+                )],
+            };
+            In::Event {
+                sub: LIVE_SUB.into(),
+                event: Box::new(mv::frame_event(&other, BARE_WORLD, &frame, unix_now())),
+            }
+        };
+        let mut session = online_presence();
+        let now = Instant::now();
+        session.handle(frame(1), now);
+        assert_eq!(session.crowd.len(), 1);
+        assert!(session.block(&session.pubkey().to_owned()).is_err());
+        assert!(session.block(other.pubkey()).unwrap());
+        assert!(session.crowd.is_empty(), "the avatar goes at once");
+        session.handle(frame(2), now);
+        assert!(session.crowd.is_empty(), "and its frames are dropped");
+        session.blocklist().save(dir.path()).unwrap();
+
+        // A new session that loads the saved list never shows the player.
+        let mut relaunched = online_presence();
+        relaunched.set_blocklist(Blocklist::load(dir.path()).unwrap());
+        relaunched.handle(frame(3), now);
+        assert!(relaunched.crowd.is_empty());
+        assert!(relaunched.unblock(other.pubkey()));
+        relaunched.handle(frame(4), now);
+        assert_eq!(relaunched.crowd.len(), 1);
+    }
+
+    #[test]
+    fn a_muted_player_still_walks_but_its_greeting_is_hidden() {
+        let mut session = isolated();
+        let other = nostr::domain::RelaySigner::from_secret_hex(&"04".repeat(32)).unwrap();
+        assert!(session.mute_player(other.pubkey()).unwrap());
+        let greet = Gesture {
+            v: 1,
+            id: "agent".into(),
+            g: "greet".into(),
+            t: 1,
+            d: None,
+            at: Vec::new(),
+            to: Some([session.pubkey().to_owned(), "agent".into()]),
+        };
+        session.handle(
+            In::Event {
+                sub: LIVE_SUB.into(),
+                event: Box::new(mv::gesture_event(
+                    &other,
+                    WORLD,
+                    &greet,
+                    Vec3::ZERO,
+                    unix_now(),
+                )),
+            },
+            Instant::now(),
+        );
+        assert_eq!(session.greets_received(), 1);
+        assert!(
+            session.log.world.is_empty() && session.log.personal.is_empty(),
+            "no line for a muted player"
         );
     }
 

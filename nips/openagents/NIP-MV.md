@@ -652,6 +652,11 @@ app's backdrop is such a spectator of `verse-bare`.
   per pubkey should give these kinds a separate per-second limit, or clients
   will be throttled into jerky motion. A relay MAY reject frames with
   `rate-limited:`; a publisher that sees that prefix SHOULD lower its rate.
+- A relay MAY cap a world's population: the keys that published a frame or
+  gesture in that world lately. It refuses a further key's frames with
+  `rate-limited:` until a present key goes quiet, and MAY also bound the
+  frames a whole world carries each second. A publisher backs off as for
+  any `rate-limited:` refusal and tries again later.
 - Relays MAY limit frame content size. A frame with 16 entities fits in 4
   KB.
 

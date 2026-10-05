@@ -94,6 +94,13 @@ starts, even with no traffic. Before a deploy:
   clients publish 5 frames a second while moving; a relay without the lane
   throttles them to jerky motion. Set the IP lane with the largest crowd
   behind one address in mind (20 players at 5 Hz is 100 a second).
+- Each NIP-MV world (its `w` tag) holds at most
+  `NOSTR_RELAY_WORLD_POPULATION_CAP` keys (default 20) that published a
+  frame or gesture in the last 15 seconds, and carries at most
+  `NOSTR_RELAY_WORLD_POSE_PER_SEC` pose-lane events a second (default 300).
+  A further key gets `rate-limited: world is full; try again when a player
+  leaves`. Zero turns either bound off; raise the cap for a soak with more
+  players.
 
 An older binary refuses to start against a ledger with a version it doesn't
 know (`database has unknown version`). The running instance keeps serving, but

@@ -67,6 +67,10 @@ pub struct BareGym {
     /// shows its walk-in portal to Everglade, whose pinned pack loads into
     /// this directory; without it the Grid has no such portal.
     pub zone_cache_directory: Option<String>,
+    /// Where the player's block and mute lists live
+    /// ([`verse::blocklist`]); the zone cache directory when absent, and
+    /// this mount only when both are.
+    pub blocklist_directory: Option<String>,
 }
 
 #[cfg(test)]
@@ -500,9 +504,16 @@ impl VerseHandle {
             }
             _ => None,
         };
+        let blocklist = gym
+            .blocklist_directory
+            .clone()
+            .or_else(|| gym.zone_cache_directory.clone())
+            .filter(|directory| std::path::Path::new(directory).is_absolute())
+            .map(std::path::PathBuf::from);
         let mut scene = Scene::new(bare_config_with_gym(
             width, height, scale, hdr, presence, gym,
         ))?;
+        scene.set_blocklist_directory(blocklist);
         scene.gym_panel = panel;
         scene.results_panel = results_panel;
         scene.evals_panel = evals_panel;

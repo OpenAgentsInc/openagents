@@ -171,6 +171,8 @@ pub unsafe extern "C" fn openagents_verse_create(
             notes: config.gym_notes,
             check_relay: config.check_relay.filter(|_| cfg!(debug_assertions)),
             zone_cache_directory: zone_cache(config.results_cache_directory.as_deref()),
+            // The block list lives beside the zone packs.
+            blocklist_directory: None,
         };
         unsafe {
             VerseHandle::create_bare_with_gym(

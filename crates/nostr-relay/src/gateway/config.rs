@@ -29,6 +29,12 @@ pub struct GatewayLimits {
     pub pose_events_per_second_pubkey: u32,
     /// Pose-lane events an IP address may publish each second.
     pub pose_events_per_second_ip: u32,
+    /// Keys that may publish pose-lane events in one NIP-MV world at once;
+    /// a further key is refused until one goes quiet. Zero is no cap.
+    pub world_population_cap: u32,
+    /// Pose-lane events one NIP-MV world may carry each second, from all
+    /// its keys together. Zero is no budget.
+    pub world_pose_events_per_second: u32,
     pub req_per_minute_ip: u32,
     pub media_per_minute_ip: u32,
     pub media_per_minute_pubkey: u32,
@@ -51,6 +57,8 @@ impl Default for GatewayLimits {
             observer_events_per_second_agent: 100,
             pose_events_per_second_pubkey: 12,
             pose_events_per_second_ip: 400,
+            world_population_cap: 20,
+            world_pose_events_per_second: 300,
             req_per_minute_ip: 120,
             media_per_minute_ip: 30,
             media_per_minute_pubkey: 15,
@@ -234,6 +242,8 @@ impl GatewayConfig {
             )?,
             pose_events_per_second_pubkey: parse_or("NOSTR_RELAY_RATE_POSE_PER_SEC_PUBKEY", "12")?,
             pose_events_per_second_ip: parse_or("NOSTR_RELAY_RATE_POSE_PER_SEC_IP", "400")?,
+            world_population_cap: parse_or("NOSTR_RELAY_WORLD_POPULATION_CAP", "20")?,
+            world_pose_events_per_second: parse_or("NOSTR_RELAY_WORLD_POSE_PER_SEC", "300")?,
             req_per_minute_ip: parse_or("NOSTR_RELAY_RATE_REQ_PER_MIN_IP", "120")?,
             media_per_minute_ip: parse_or("NOSTR_RELAY_RATE_MEDIA_PER_MIN_IP", "30")?,
             media_per_minute_pubkey: parse_or("NOSTR_RELAY_RATE_MEDIA_PER_MIN_PUBKEY", "15")?,

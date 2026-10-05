@@ -185,6 +185,11 @@ pub enum Command {
     Mute(String),
     /// Show a channel again: `!unmute all`.
     Unmute(String),
+    /// Hide the player whose name starts with this, and drop everything
+    /// they publish: `!block kiki`.
+    Block(String),
+    /// Show a blocked player again: `!unblock kiki`.
+    Unblock(String),
     /// Nothing to do.
     Nothing,
 }
@@ -203,6 +208,8 @@ pub fn parse(input: &str, method: &Channel) -> Command {
         return match verb.as_str() {
             "mute" => Command::Mute(what),
             "unmute" | "hear" => Command::Unmute(what),
+            "block" if what != "all" => Command::Block(what),
+            "unblock" if what != "all" => Command::Unblock(what),
             _ => Command::Send(method.clone(), input.to_owned()),
         };
     }
@@ -501,6 +508,15 @@ mod tests {
             parse("!hear ads", &Channel::All),
             Command::Unmute("ads".into())
         );
+        assert_eq!(
+            parse("!block Kiki", &Channel::All),
+            Command::Block("kiki".into())
+        );
+        assert_eq!(
+            parse("!unblock kiki", &Channel::All),
+            Command::Unblock("kiki".into())
+        );
+        assert!(matches!(parse("!block", &Channel::All), Command::Send(..)));
         assert!(mute_set("all").contains(&"near"));
         assert!(
             !mute_set("all").contains(&"ads"),

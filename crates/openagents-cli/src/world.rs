@@ -18,12 +18,16 @@ use crate::{Args, Output, out};
 use coder::cli_route::tree::{Declared, Effect};
 
 pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
-  who                       Every entity with a state in the world, nearest first.
+  who [--wait SECONDS]      Every entity with a state in the world, nearest first,
+                            and the world's population: players online, players
+                            whose frames arrive in a short listen (default 2 s),
+                            and their frames a second.
   look [--at X,Y,Z] [--radius METERS] [--wait SECONDS]
                             Listen for live poses around a point (default: where
                             this identity stands) and list what is there.
   chat [--limit N]          Recent world chat lines.
-  tail [--wait SECONDS]     Follow poses, gestures, states, and chat as they arrive.
+  tail [--wait SECONDS]     Follow poses, gestures, states, and chat as they arrive,
+                            then report the live population and frame cadence.
   me                        This identity's public key and last known state.
   load [--players N] [--wait SECONDS]
                             Listen to every pose frame in the world (default 30 s)
@@ -43,6 +47,14 @@ pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
                             Perform a gesture (for example greet or look-around).
   name NAME                 Publish a kind 0 profile with this display name.
   leave                     Mark this identity's avatar offline.
+  block PLAYER              Hide a player (a public key, npub, or name) from every
+                            Verse client on this computer; it stays hidden after
+                            relaunch.
+  unblock PLAYER            Show a blocked player again.
+  mute PLAYER               Keep a player's avatar but hide their chat, private
+                            messages, and gestures.
+  unmute PLAYER             Hear a muted player again.
+  blocked                  The players this computer blocked or muted.
   control ENTITY move X,Y,Z [--yaw DEGREES] [--role ROLE] [--name NAME]
   control ENTITY gesture NAME [--to PUBKEY,ENTITY] [--at X,Y,Z]
   control ENTITY leave      Drive another entity this identity publishes (for
@@ -108,6 +120,11 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("gesture", Effect::Publishes),
     Declared::computer("name", Effect::Publishes),
     Declared::computer("leave", Effect::Publishes),
+    Declared::computer("block", Effect::LocalWrite),
+    Declared::computer("unblock", Effect::LocalWrite),
+    Declared::computer("mute", Effect::LocalWrite),
+    Declared::computer("unmute", Effect::LocalWrite),
+    Declared::computer("blocked", Effect::ReadOnly),
     Declared::computer("control move", Effect::Publishes),
     Declared::computer("control gesture", Effect::Publishes),
     Declared::computer("control leave", Effect::Publishes),
@@ -383,13 +400,14 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
         other => other,
     };
     let (specific, min, max): (&[&str], usize, usize) = match canonical {
-        "who" => (&["at"], 0, 0),
+        "who" => (&["at", "wait"], 0, 0),
         "look" => (&["at", "radius", "wait"], 0, 0),
         "chat" => (&["limit"], 0, 0),
         "tail" => (&["wait"], 0, 0),
         "load" => (&["wait", "players"], 0, 0),
         "walkers" => (&["wait", "hz"], 1, 1),
-        "me" | "leave" => (&[], 0, 0),
+        "me" | "leave" | "blocked" => (&[], 0, 0),
+        "block" | "unblock" | "mute" | "unmute" => (&[], 1, 1),
         "move" => (&["yaw", "name"], 1, 1),
         "say" => (&["to", "zone", "at"], 1, usize::MAX),
         "gesture" => (&["to", "at", "duration"], 1, 1),
@@ -488,6 +506,15 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
             Err(message) => output.fail(group, &message),
         };
     }
+    if matches!(
+        canonical,
+        "block" | "unblock" | "mute" | "unmute" | "blocked"
+    ) {
+        return match people(output, &args, canonical) {
+            Ok(code) => code,
+            Err(message) => output.fail(group, &message),
+        };
+    }
     let read_only = matches!(
         command.as_str(),
         "who" | "look" | "nearby" | "chat" | "tail" | "load"
@@ -497,7 +524,7 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
         Err(message) => return output.fail(group, &message),
     };
     let result = match command.as_str() {
-        "who" => who(output, &mut context, &args),
+        "who" => who(output, &mut context, &args, wait),
         "look" | "nearby" => look(output, &mut context, &args, wait),
         "chat" => chat(output, &mut context, &args),
         "tail" => tail(output, &mut context, wait),
@@ -631,22 +658,204 @@ fn render_rows_at(value: &Value, now_ms: u64) -> String {
     text
 }
 
-fn who(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
+fn who(output: &Output, context: &mut Context, args: &Args, wait: u64) -> Result<u8, String> {
     let mut scene = Scene::default();
     context.states(&mut scene, DEFAULT_WAIT)?;
     let origin = context.origin(args)?.0;
     let me = context.pubkey().to_owned();
+    let listen = Duration::from_secs(if wait == 0 { 2 } else { wait });
+    let world = context.world.clone();
+    let mut cadence = Cadence::default();
+    context.client.subscribe(
+        vec![json!({
+            "kinds": [mv::FRAME_KIND],
+            "#w": [world],
+            "since": unix_now().saturating_sub(1),
+        })],
+        true,
+        listen,
+        |event| {
+            if let Some(Received::Frame { pubkey, .. }) = scene.absorb(event, &world) {
+                cadence.frame(&pubkey);
+            }
+        },
+    )?;
     let rows = scene.rows(Some(origin), None);
+    let population = cadence.population(&scene, listen);
     output.emit(
         &json!({
             "world": context.world,
             "origin": origin.to_array(),
             "me": me,
+            "population": population,
             "entities": rows,
         }),
-        render_rows,
+        |value| {
+            format!(
+                "{}\n{}",
+                render_population(&value["population"], value["world"].as_str().unwrap_or("")),
+                render_rows(value)
+            )
+        },
     );
     Ok(0)
+}
+
+/// Pose frames counted by publisher during a listen.
+#[derive(Default)]
+struct Cadence {
+    frames: BTreeMap<String, u64>,
+}
+
+impl Cadence {
+    fn frame(&mut self, pubkey: &str) {
+        *self.frames.entry(pubkey.to_owned()).or_default() += 1;
+    }
+
+    /// The world's population: players whose avatar state says online,
+    /// players whose frames arrived during `listened`, and the median of
+    /// their frames a second.
+    fn population(&self, scene: &Scene, listened: Duration) -> Value {
+        let online = scene
+            .entities
+            .iter()
+            .filter(|((_, id), seen)| id == "avatar" && seen.online)
+            .map(|((pubkey, _), _)| pubkey)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        let seconds = listened.as_secs_f64().max(f64::EPSILON);
+        let mut rates: Vec<f64> = self
+            .frames
+            .values()
+            .map(|&count| count as f64 / seconds)
+            .collect();
+        rates.sort_by(f64::total_cmp);
+        let median = rates.get(rates.len() / 2).copied();
+        json!({
+            "online": online,
+            "live": self.frames.len(),
+            "frames_per_second": median.map(|rate| (rate * 10.0).round() / 10.0),
+            "listened_s": listened.as_secs(),
+        })
+    }
+}
+
+fn render_population(value: &Value, world: &str) -> String {
+    let rate = value["frames_per_second"]
+        .as_f64()
+        .map(|rate| format!(", {rate:.1} frames a second each"))
+        .unwrap_or_default();
+    format!(
+        "{world}: {} live in {} s{rate}; {} online.",
+        value["live"], value["listened_s"], value["online"]
+    )
+}
+
+/// `block`, `unblock`, `mute`, `unmute`, and `blocked`: the lists every
+/// Verse client on this computer reads from [`verse::identity::home`].
+fn people(output: &Output, args: &Args, command: &str) -> Result<u8, String> {
+    use verse::blocklist::Blocklist;
+    let dir = verse::identity::home();
+    let mut list = Blocklist::load(&dir)?;
+    let mut changed = None;
+    if command != "blocked" {
+        let player = args.positional()[0].as_str();
+        let listed = match command {
+            "unblock" => Some(&list.blocked),
+            "unmute" => Some(&list.muted),
+            _ => None,
+        };
+        let pubkey = resolve_player(args, player, listed)?;
+        let did = match command {
+            "block" => list.block(&pubkey)?,
+            "mute" => list.mute(&pubkey)?,
+            "unblock" => list.unblock(&pubkey),
+            _ => list.unmute(&pubkey),
+        };
+        if did {
+            list.save(&dir)?;
+        }
+        changed = Some((pubkey, did));
+    }
+    output.emit(
+        &json!({
+            "file": Blocklist::path(&dir),
+            "pubkey": changed.as_ref().map(|(pubkey, _)| pubkey),
+            "changed": changed.as_ref().map(|(_, did)| did),
+            "blocked": list.blocked,
+            "muted": list.muted,
+        }),
+        |value| {
+            let keys = |list: &str| {
+                value[list]
+                    .as_array()
+                    .map(|keys| {
+                        keys.iter()
+                            .filter_map(Value::as_str)
+                            .collect::<Vec<_>>()
+                            .join("\n  ")
+                    })
+                    .filter(|text| !text.is_empty())
+                    .unwrap_or_else(|| "(none)".to_owned())
+            };
+            format!(
+                "blocked:\n  {}\nmuted:\n  {}",
+                keys("blocked"),
+                keys("muted")
+            )
+        },
+    );
+    Ok(0)
+}
+
+/// A player's hex public key from `player`: a hex key, an npub, a prefix of
+/// a key already in `listed`, or the start of a name a player in the world
+/// shows.
+fn resolve_player(
+    args: &Args,
+    player: &str,
+    listed: Option<&std::collections::BTreeSet<String>>,
+) -> Result<String, String> {
+    let lower = player.to_ascii_lowercase();
+    if verse::blocklist::is_pubkey(&lower) {
+        return Ok(lower);
+    }
+    if lower.starts_with("npub1") {
+        return nostr::nip19::decode_npub(&lower)
+            .map(|bytes| bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+            .map_err(|error| format!("{player} isn't a valid npub: {error}"));
+    }
+    if let Some(listed) = listed {
+        let matches: Vec<&String> = listed
+            .iter()
+            .filter(|key| key.starts_with(&lower))
+            .collect();
+        if let [only] = matches.as_slice() {
+            return Ok((*only).clone());
+        }
+    }
+    let mut context = Context::open_as(args, true)?;
+    let mut scene = Scene::default();
+    let read = context.states(&mut scene, DEFAULT_WAIT);
+    context.client.close();
+    read?;
+    let found: Vec<&String> = scene
+        .names
+        .iter()
+        .filter(|(_, name)| name.to_lowercase().starts_with(&lower))
+        .map(|(pubkey, _)| pubkey)
+        .collect();
+    match found.as_slice() {
+        [only] => Ok((*only).clone()),
+        [] => Err(format!(
+            "no player named {player} in {}; give a public key or npub",
+            context.world
+        )),
+        _ => Err(format!(
+            "{} players' names start with {player}; give more of the name or the key",
+            found.len()
+        )),
+    }
 }
 
 fn look(output: &Output, context: &mut Context, args: &Args, wait: u64) -> Result<u8, String> {
@@ -752,6 +961,7 @@ fn tail(output: &Output, context: &mut Context, wait: u64) -> Result<u8, String>
     let world = context.world.clone();
     let mut scene = Scene::default();
     let mut shown = 0usize;
+    let mut cadence = Cadence::default();
     context.client.subscribe(
         vec![json!({
             "kinds": [mv::FRAME_KIND, mv::GESTURE_KIND, mv::STATE_KIND, mv::CHAT_KIND],
@@ -773,6 +983,9 @@ fn tail(output: &Output, context: &mut Context, wait: u64) -> Result<u8, String>
             let Some(received) = scene.absorb(event, &world) else {
                 return;
             };
+            if let Received::Frame { pubkey, .. } = &received {
+                cadence.frame(pubkey);
+            }
             shown += 1;
             let value = match received {
                 Received::Frame { pubkey, frame } => json!({
@@ -845,6 +1058,10 @@ fn tail(output: &Output, context: &mut Context, wait: u64) -> Result<u8, String>
     if shown == 0 && !output.json() {
         println!("Nothing arrived in {} s.", wait.as_secs());
     }
+    let mut population = cadence.population(&scene, wait);
+    population["type"] = "population".into();
+    let world = context.world.clone();
+    output.line(&population, |value| render_population(value, &world));
     Ok(0)
 }
 

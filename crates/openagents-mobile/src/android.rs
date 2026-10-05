@@ -213,6 +213,8 @@ impl SurfaceConfig {
             notes: self.gym_notes,
             check_relay: None,
             zone_cache_directory: crate::verse::zone_cache(self.results_cache_directory.as_deref()),
+            // The block list lives beside the zone packs.
+            blocklist_directory: None,
         })
     }
 }

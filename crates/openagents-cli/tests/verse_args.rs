@@ -261,3 +261,34 @@ async fn look_radius_is_in_meters_and_filters_stored_and_live_poses() {
     assert_eq!(ids, ["near", "live-near", "edge"], "{value}");
     server.abort();
 }
+
+#[test]
+fn a_blocked_player_stays_in_the_computers_list_until_unblocked() {
+    let home = tempfile::tempdir().unwrap();
+    let walker = "ab".repeat(32);
+    let run = |args: &[&str]| -> Value {
+        let output = command(home.path())
+            .arg("--json")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).unwrap()
+    };
+    let blocked = run(&["verse", "block", &walker.to_uppercase()]);
+    assert_eq!(blocked["changed"], true, "{blocked}");
+    assert_eq!(blocked["blocked"], json!([walker]));
+    assert!(home.path().join(".openagents/verse/blocked.json").is_file());
+    // Another command, as after a relaunch, reads the same list.
+    let listed = run(&["verse", "blocked"]);
+    assert_eq!(listed["blocked"], json!([walker]));
+    assert_eq!(listed["muted"], json!([]));
+    // A unique prefix of a listed key is enough to unblock it.
+    let unblocked = run(&["verse", "unblock", &walker[..8]]);
+    assert_eq!(unblocked["changed"], true, "{unblocked}");
+    assert_eq!(unblocked["blocked"], json!([]));
+}

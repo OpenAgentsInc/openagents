@@ -681,12 +681,64 @@ fn zone_operators_for(session: Option<&Session>) -> crate::zones::operators::Ope
     list
 }
 
+/// `session` with the block and mute lists this computer keeps in
+/// [`crate::identity::home`]; an unreadable file leaves them empty.
+fn with_saved_blocklist(mut session: Session) -> Session {
+    if let Ok(people) = crate::blocklist::Blocklist::load(&crate::identity::home()) {
+        session.set_blocklist(people);
+    }
+    session
+}
+
+/// Blocks or unblocks the player whose name or key starts with `name`, saves
+/// the list, and returns the notice to show.
+fn block_by_name(session: &mut Session, name: &str, block: bool) -> String {
+    let found = if block {
+        session.find_player(name).map(|(pubkey, _)| pubkey)
+    } else {
+        session
+            .blocklist()
+            .blocked
+            .iter()
+            .find(|pubkey| {
+                pubkey.starts_with(name) || session.name_of(pubkey).to_lowercase().starts_with(name)
+            })
+            .cloned()
+    };
+    let Some(pubkey) = found else {
+        return format!(
+            "No player named {name} to {}.",
+            if block { "block" } else { "unblock" }
+        );
+    };
+    let who = session.name_of(&pubkey);
+    let changed = if block {
+        match session.block(&pubkey) {
+            Ok(changed) => changed,
+            Err(error) => return error,
+        }
+    } else {
+        session.unblock(&pubkey)
+    };
+    if changed && let Err(error) = session.blocklist().save(&crate::identity::home()) {
+        return format!("Couldn't save the block list: {error}");
+    }
+    if block {
+        format!("Blocked {who}. Type !unblock {name} to see them again.")
+    } else {
+        format!("Unblocked {who}.")
+    }
+}
+
 impl App {
     fn new(options: &Options) -> Result<Self, String> {
         let world = world::build();
         let mut player = PlayerController::new(world::SPAWN, 0.0);
         let mut session = match &options.relay {
-            Some(relay) => Some(Session::start(&options.profile, relay)?),
+            Some(relay) => Some(with_saved_blocklist(Session::start(
+                &options.profile,
+                relay,
+            )?)),
             None => None,
         };
         let spawn = match &mut session {
@@ -1308,6 +1360,7 @@ impl App {
             if let Some(relay) = &self.connection_options.relay {
                 match Session::start(&self.connection_options.profile, relay) {
                     Ok(session) => {
+                        let session = with_saved_blocklist(session);
                         self.zone_operators = zone_operators_for(Some(&session));
                         self.session = Some(session);
                     }
@@ -1364,7 +1417,8 @@ impl App {
         )
         .and_then(|id| Session::start_presence(id, &relay, world));
         match started {
-            Ok(mut session) => {
+            Ok(session) => {
+                let mut session = with_saved_blocklist(session);
                 session.set_display_name(Some(&self.connection_options.profile));
                 session.crowd.set_live_only(true);
                 self.session = Some(session);
@@ -1878,6 +1932,8 @@ impl App {
             },
             chat::Command::Mute(word) => Some(session.set_mute(&word, true)),
             chat::Command::Unmute(word) => Some(session.set_mute(&word, false)),
+            chat::Command::Block(name) => Some(block_by_name(session, &name, true)),
+            chat::Command::Unblock(name) => Some(block_by_name(session, &name, false)),
         };
         if let Some(notice) = notice {
             session.log.push(chat::Line::system(notice));

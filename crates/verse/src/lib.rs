@@ -15,6 +15,7 @@ pub mod audio_native;
 pub mod avatar;
 pub mod ball;
 pub mod blocks;
+pub use verse_net::blocklist;
 #[cfg(feature = "model-host")]
 pub mod brain;
 pub use verse_gfx::camera;
