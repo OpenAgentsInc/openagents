@@ -78,6 +78,7 @@ pub(crate) struct Profile {
     pub render_submission_ms: Samples,
     pub frame_interval_ms: Samples,
     pub renderer_phases: std::collections::BTreeMap<&'static str, Samples>,
+    pub gpu_health: Option<super::gpu_timing::Health>,
     pub renderer_counts: std::collections::BTreeMap<&'static str, Samples>,
     pub correction_meters: Samples,
     pub discontinuity_meters: Samples,
@@ -93,6 +94,7 @@ pub(crate) struct Profile {
 }
 impl Profile {
     pub fn render(&mut self, timing: super::FrameTimings, present_ms: f64) {
+        self.gpu_health = timing.gpu_health;
         if let Some(sample) = timing.gpu_sample {
             for (name, value) in [
                 ("gpu_shadow_ms", sample.shadow_ms),
@@ -170,6 +172,7 @@ impl Profile {
             "render_submission_cpu_ms":self.render_submission_ms.summary(),
             "frame_interval_ms":self.frame_interval_ms.summary(),
             "renderer_phase_ms":self.renderer_phases.iter().map(|(key, value)| (*key, value.summary())).collect::<std::collections::BTreeMap<_, _>>(),
+            "gpu_sample_health":self.gpu_health,
             "renderer_counts":self.renderer_counts.iter().map(|(key, value)| (*key, value.summary())).collect::<std::collections::BTreeMap<_, _>>(),
             "prediction_correction_meters":self.correction_meters.summary(),
             "intentional_discontinuity_meters":self.discontinuity_meters.summary(),

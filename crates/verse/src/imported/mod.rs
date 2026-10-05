@@ -135,6 +135,7 @@ fn ground_lift(model: &verse_engine::assets::Model, palette: &Pose) -> f32 {
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct FrameTimings {
     pub gpu_sample: Option<gpu_timing::Sample>,
+    pub gpu_health: Option<gpu_timing::Health>,
     pub gpu_timestamps_available: bool,
     pub prepare_ms: f64,
     pub encode_ms: f64,
@@ -2048,6 +2049,7 @@ impl Renderer {
             self.last_timings = FrameTimings {
                 gpu_sample,
                 gpu_timestamps_available: self.gpu_timer.is_some(),
+                gpu_health: self.gpu_timer.as_ref().map(|timer| timer.health()),
                 prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
                 encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
                 command_encode_ms: encoded.duration_since(prepared).as_secs_f64() * 1000.,
@@ -2092,6 +2094,7 @@ impl Renderer {
         self.last_timings = FrameTimings {
             gpu_sample,
             gpu_timestamps_available: self.gpu_timer.is_some(),
+            gpu_health: self.gpu_timer.as_ref().map(|timer| timer.health()),
             prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
             encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
             command_encode_ms: encoded.duration_since(prepared).as_secs_f64() * 1000.,

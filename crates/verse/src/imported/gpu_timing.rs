@@ -9,6 +9,41 @@ pub struct Sample {
     pub overlay_ms: f64,
     pub total_ms: f64,
 }
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+pub struct Health {
+    pub issued: u64,
+    pub valid: u64,
+    pub zero_duration: u64,
+    pub out_of_order: u64,
+    pub invalid_period: u64,
+    pub map_errors: u64,
+    pub busy_frames: u64,
+    pub coalesced: u64,
+    pub invalid_examples: [Option<[u64; 4]>; 4],
+}
+#[derive(Debug, PartialEq)]
+enum Invalid {
+    ZeroDuration,
+    OutOfOrder,
+    Period,
+}
+impl Health {
+    fn reject(&mut self, reason: Invalid, ticks: [u64; 4]) {
+        let count = match reason {
+            Invalid::ZeroDuration => &mut self.zero_duration,
+            Invalid::OutOfOrder => &mut self.out_of_order,
+            Invalid::Period => &mut self.invalid_period,
+        };
+        *count = count.saturating_add(1);
+        if let Some(example) = self
+            .invalid_examples
+            .iter_mut()
+            .find(|value| value.is_none())
+        {
+            *example = Some(ticks);
+        }
+    }
+}
 struct Slot {
     query: wgpu::QuerySet,
     resolve: wgpu::Buffer,
@@ -19,17 +54,20 @@ pub(super) struct Timer {
     slots: Vec<Slot>,
     frame: u64,
     period: f64,
+    health: Health,
 }
-fn sample(frame: u64, ticks: [u64; 4], period: f64) -> Option<Sample> {
-    if ticks[3] == ticks[0]
-        || !period.is_finite()
-        || period <= 0.
-        || ticks.windows(2).any(|pair| pair[1] < pair[0])
-    {
-        return None;
+fn sample(frame: u64, ticks: [u64; 4], period: f64) -> Result<Sample, Invalid> {
+    if !period.is_finite() || period <= 0. {
+        return Err(Invalid::Period);
+    }
+    if ticks.windows(2).any(|pair| pair[1] < pair[0]) {
+        return Err(Invalid::OutOfOrder);
+    }
+    if ticks[3] == ticks[0] {
+        return Err(Invalid::ZeroDuration);
     }
     let ms = |a: usize, b: usize| (ticks[b] - ticks[a]) as f64 * period / 1_000_000.;
-    Some(Sample {
+    Ok(Sample {
         frame,
         shadow_ms: ms(0, 1),
         world_ms: ms(1, 2),
@@ -68,6 +106,7 @@ impl Timer {
             slots,
             frame: 0,
             period: f64::from(queue.get_timestamp_period()),
+            health: Health::default(),
         })
     }
     pub fn begin(&mut self, device: &wgpu::Device) -> (Option<usize>, Option<Sample>) {
@@ -87,28 +126,42 @@ impl Timer {
                         if !has_shadow {
                             ticks[0] = ticks[1];
                         }
-                        if let Some(value) = sample(*frame, ticks, self.period)
-                            && latest.is_none_or(|previous| previous.frame < value.frame)
-                        {
-                            latest = Some(value);
+                        match sample(*frame, ticks, self.period) {
+                            Ok(value) => {
+                                self.health.valid = self.health.valid.saturating_add(1);
+                                if latest.is_some() {
+                                    self.health.coalesced = self.health.coalesced.saturating_add(1);
+                                }
+                                if latest.is_none_or(|previous| previous.frame < value.frame) {
+                                    latest = Some(value);
+                                }
+                            }
+                            Err(reason) => self.health.reject(reason, ticks),
                         }
                         drop(bytes);
                         slot.readback.unmap();
+                    } else {
+                        self.health.map_errors = self.health.map_errors.saturating_add(1);
                     }
                     slot.pending = None;
                 }
                 Err(mpsc::TryRecvError::Empty) => {}
                 Err(mpsc::TryRecvError::Disconnected) => {
+                    self.health.map_errors = self.health.map_errors.saturating_add(1);
                     slot.readback.unmap();
                     slot.pending = None;
                 }
             }
         }
         self.frame = self.frame.saturating_add(1);
-        (
-            self.slots.iter().position(|slot| slot.pending.is_none()),
-            latest,
-        )
+        let free = self.slots.iter().position(|slot| slot.pending.is_none());
+        if free.is_none() {
+            self.health.busy_frames = self.health.busy_frames.saturating_add(1);
+        }
+        (free, latest)
+    }
+    pub fn health(&self) -> Health {
+        self.health
     }
     pub fn boundary(
         &self,
@@ -131,6 +184,7 @@ impl Timer {
     }
     pub fn submitted(&mut self, slot: Option<usize>, has_shadow: bool) {
         if let Some(index) = slot {
+            self.health.issued = self.health.issued.saturating_add(1);
             let slot = &mut self.slots[index];
             let (tx, rx) = mpsc::channel();
             slot.pending = Some((self.frame, has_shadow, rx));
@@ -219,15 +273,29 @@ mod tests {
         );
     }
     #[test]
+    fn invalid_sample_reasons_are_counted_and_examples_are_bounded() {
+        let mut health = super::Health::default();
+        for ticks in [[0; 4], [4, 3, 2, 1], [5; 4], [6; 4], [7; 4]] {
+            health.reject(super::sample(1, ticks, 1.).unwrap_err(), ticks);
+        }
+        assert_eq!(health.zero_duration, 4);
+        assert_eq!(health.out_of_order, 1);
+        assert_eq!(health.invalid_examples.iter().flatten().count(), 4);
+        assert_eq!(
+            super::sample(1, [0; 4], f64::NAN).unwrap_err(),
+            super::Invalid::Period
+        );
+    }
+    #[test]
     fn timestamp_units_and_invalid_order_are_explicit() {
         let s = super::sample(42, [10, 1010, 3010, 4010], 1000.).unwrap();
         assert_eq!(
             (s.frame, s.shadow_ms, s.world_ms, s.overlay_ms, s.total_ms),
             (42, 1., 2., 1., 4.)
         );
-        assert!(super::sample(1, [4, 3, 2, 1], 1.).is_none());
-        assert!(super::sample(1, [0; 4], f64::NAN).is_none());
-        assert!(super::sample(1, [0; 4], 0.).is_none());
-        assert!(super::sample(1, [0; 4], 1.).is_none());
+        assert!(super::sample(1, [4, 3, 2, 1], 1.).is_err());
+        assert!(super::sample(1, [0; 4], f64::NAN).is_err());
+        assert!(super::sample(1, [0; 4], 0.).is_err());
+        assert!(super::sample(1, [0; 4], 1.).is_err());
     }
 }
