@@ -1,0 +1,43 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 45,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "compiled_revisions": {
+      "host": "76eaebb0e1",
+      "clients": "76eaebb0e1"
+    },
+    "fixture_revision": "76eaebb0e13cf9db286f9c99b37408c80390dd64",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "checks": {
+    "native_client_tests": 6,
+    "native_examples_build": "passed"
+  },
+  "observation": "Pausing automatic arrival movement allows native interval entry, but the worker disconnects after a stale or unavailable interval refusal.",
+  "native": {
+    "window_failure": "Chamber update stream stopped",
+    "final_movement_profile": "frames",
+    "recorded_frames": 78
+  },
+  "harness": "Load process exceeded its fifty-second completion wait; harness terminated its owned processes and retained partial measurements.",
+  "disposition": "Native automatic-movement gate reverted after the failed capture; prior working behavior retained.",
+  "limits": [
+    "Zero corrections in seventy-eight frames do not establish movement quality; the native client disconnected early.",
+    "Host continued with zero blocked motor advances; no claim is made that all twenty clients completed.",
+    "Storage and GPU timestamps are disabled; headless movement remains legacy.",
+    "Next work must handle interval lifecycle expiry/refusal with fresh control and without replaying uncertain intervals.",
+    "No battle or roadmap acceptance is claimed."
+  ]
+}

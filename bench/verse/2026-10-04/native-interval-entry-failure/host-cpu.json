@@ -1,0 +1,79 @@
+{
+  "schema": "verse.host.cpu-observation.v1",
+  "samples": [
+    {
+      "elapsed_seconds": 0.004142708999999911,
+      "cumulative_cpu_seconds": 1.1
+    },
+    {
+      "elapsed_seconds": 0.009074791999999832,
+      "cumulative_cpu_seconds": 1.1
+    },
+    {
+      "elapsed_seconds": 1.0229915419999998,
+      "cumulative_cpu_seconds": 1.36
+    },
+    {
+      "elapsed_seconds": 2.0389072919999993,
+      "cumulative_cpu_seconds": 1.7
+    },
+    {
+      "elapsed_seconds": 3.0512450839999996,
+      "cumulative_cpu_seconds": 2.03
+    },
+    {
+      "elapsed_seconds": 4.058226375,
+      "cumulative_cpu_seconds": 2.37
+    },
+    {
+      "elapsed_seconds": 5.068129875,
+      "cumulative_cpu_seconds": 2.73
+    },
+    {
+      "elapsed_seconds": 6.073777249999999,
+      "cumulative_cpu_seconds": 3.07
+    },
+    {
+      "elapsed_seconds": 7.0803133339999995,
+      "cumulative_cpu_seconds": 3.39
+    },
+    {
+      "elapsed_seconds": 8.086951375000002,
+      "cumulative_cpu_seconds": 3.75
+    },
+    {
+      "elapsed_seconds": 9.094431375,
+      "cumulative_cpu_seconds": 4.12
+    },
+    {
+      "elapsed_seconds": 10.102842166999999,
+      "cumulative_cpu_seconds": 4.45
+    },
+    {
+      "elapsed_seconds": 11.118831458999999,
+      "cumulative_cpu_seconds": 4.89
+    },
+    {
+      "elapsed_seconds": 12.134141084,
+      "cumulative_cpu_seconds": 5.4
+    },
+    {
+      "elapsed_seconds": 13.144863709,
+      "cumulative_cpu_seconds": 5.96
+    },
+    {
+      "elapsed_seconds": 14.155190709,
+      "cumulative_cpu_seconds": 6.5
+    },
+    {
+      "elapsed_seconds": 15.165075375,
+      "cumulative_cpu_seconds": 7.18
+    }
+  ],
+  "sample_errors": 0,
+  "limits": [
+    "External process CPU time includes all host threads, not isolated simulation stages.",
+    "CPU time precision depends on the system ps implementation.",
+    "Samples cover native capture and load completion; startup is excluded."
+  ]
+}
