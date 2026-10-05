@@ -953,8 +953,14 @@ impl Renderer {
                 immediate_size: 0,
             });
         let shadow_pipeline=device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse skinned local shadow"),layout:Some(&shadow_pipeline_layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(true),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:wgpu::DepthBiasState{constant:1,slope_scale:1.0,clamp:0.0}}),multisample:Default::default(),fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("shadow_fs"),compilation_options:Default::default(),targets:&[]}),multiview_mask:None,cache:None});
-        let instanced_shadows =
-            instancing::Shadows::new(&device, &shadow_layout, &shadow_material_layout);
+        let instanced_shadows = instancing::Shadows::new(
+            &device,
+            &shadow_layout,
+            &shadow_material_layout,
+            &frame_layout,
+            &texture_layout,
+            scene_format,
+        );
         let static_batches = upload(&device, merge(&pack, static_instances));
         let mut models = HashMap::new();
         for (name, model) in &pack.models {
@@ -1827,6 +1833,59 @@ impl Renderer {
                                             .is_none_or(|bounds| bounds.visible(view.view_proj)))
                                     .then_some(&self.static_world_bundles[index])
                                 });
+                        if blend < 2
+                            && let Some(instancing) = &self.instanced_shadows
+                        {
+                            pass.execute_bundles(static_bundles);
+                            let mut groups: Vec<(verse_engine::residency::ModelHandle, Vec<u32>)> =
+                                Vec::new();
+                            for (i, model) in resolved.models().iter().enumerate() {
+                                if self.actors[i + 1].world_counts[blend] == 0
+                                    || actor_bounds[i]
+                                        .is_some_and(|bounds| !bounds.visible(view.view_proj))
+                                {
+                                    continue;
+                                }
+                                if let Some((_, actors)) =
+                                    groups.iter_mut().find(|(key, _)| key == model)
+                                {
+                                    actors.push(i as u32);
+                                } else {
+                                    groups.push((*model, vec![i as u32]));
+                                }
+                            }
+                            pass.set_pipeline(&instancing.world_pipeline);
+                            pass.set_bind_group(0, &self.frame_group, &[]);
+                            pass.set_bind_group(2, &instancing.group, &[]);
+                            for (model, actors) in groups {
+                                let start = instance_cursor;
+                                let end = start + actors.len() as u32;
+                                if end > instancing::INDEX_CAPACITY {
+                                    return Err(
+                                        "World instance indices exceed the frame budget".into()
+                                    );
+                                }
+                                self.queue.write_buffer(
+                                    &instancing.indices,
+                                    u64::from(start) * 4,
+                                    bytemuck::cast_slice(&actors),
+                                );
+                                instance_cursor = end;
+                                for batch in self.models[&model]
+                                    .iter()
+                                    .filter(|batch| batch.blend == blend as u8)
+                                {
+                                    pass.set_bind_group(1, &self.materials[&batch.material], &[]);
+                                    pass.set_vertex_buffer(0, batch.vertices.slice(..));
+                                    pass.set_index_buffer(
+                                        batch.indices.slice(..),
+                                        wgpu::IndexFormat::Uint32,
+                                    );
+                                    pass.draw_indexed(0..batch.count, 0, start..end);
+                                }
+                            }
+                            continue;
+                        }
                         let mut order: Vec<_> = instances.iter().enumerate().collect();
                         if blend == 2 {
                             order.sort_by(|(_, a), (_, b)| {

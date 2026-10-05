@@ -1,4 +1,4 @@
-//! Bounded skeletal instance storage for dynamic shadow draws.
+//! Bounded skeletal instance storage for dynamic shadow and opaque world draws.
 use super::{GpuVertex, Pose};
 
 pub(super) struct Shadows {
@@ -6,8 +6,9 @@ pub(super) struct Shadows {
     pub indices: wgpu::Buffer,
     pub group: wgpu::BindGroup,
     pub pipeline: wgpu::RenderPipeline,
+    pub world_pipeline: wgpu::RenderPipeline,
 }
-pub(super) const INDEX_CAPACITY: u32 = 24 * 1024;
+pub(super) const INDEX_CAPACITY: u32 = 26 * 1024;
 fn source() -> String {
     include_str!("scene.wgsl")
         .split("@fragment fn fs(")
@@ -19,11 +20,26 @@ fn source() -> String {
             "@vertex fn vs(v:In,@builtin(instance_index) instance:u32)->Out {\n let pose_index=indices[instance];")
         .replace("pose.", "poses[pose_index].")
 }
+fn world_source() -> String {
+    include_str!("scene.wgsl")
+        .replace("@group(2) @binding(0) var<uniform> pose:Pose;",
+            "@group(2) @binding(0) var<storage,read> poses:array<Pose>;\n@group(2) @binding(1) var<storage,read> indices:array<u32>;")
+        .replace("@location(3) tint:vec3<f32> };", "@location(3) tint:vec3<f32>,@location(4) @interpolate(flat) pose_index:u32 };")
+        .replace("@vertex fn vs(v:In)->Out {",
+            "@vertex fn vs(v:In,@builtin(instance_index) instance:u32)->Out {\n let pose_index=indices[instance];")
+        .replace("var o:Out;", "var o:Out;o.pose_index=pose_index;")
+        .replace("@fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{",
+            "@fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{\n let pose_index=v.pose_index;")
+        .replace("pose.", "poses[pose_index].")
+}
 impl Shadows {
     pub fn new(
         device: &wgpu::Device,
         frame: &wgpu::BindGroupLayout,
         material: &wgpu::BindGroupLayout,
+        world_frame: &wgpu::BindGroupLayout,
+        world_material: &wgpu::BindGroupLayout,
+        world_format: wgpu::TextureFormat,
     ) -> Option<Self> {
         let size = std::mem::size_of::<Pose>() as u64 * 1024;
         let limits = device.limits();
@@ -37,7 +53,7 @@ impl Shadows {
             label: Some("Verse shadow instance storage"),
             entries: &std::array::from_fn::<_, 2, _>(|binding| wgpu::BindGroupLayoutEntry {
                 binding: binding as u32,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
@@ -92,16 +108,55 @@ impl Shadows {
             multisample:Default::default(),fragment:Some(wgpu::FragmentState {module:&shader,
                 entry_point:Some("shadow_fs"),compilation_options:Default::default(),targets:&[]}),
             multiview_mask:None,cache:None });
+        let world_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Verse instanced world shader"),
+            source: wgpu::ShaderSource::Wgsl(world_source().into()),
+        });
+        let world_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Verse instanced world layout"),
+            bind_group_layouts: &[Some(world_frame), Some(world_material), Some(&layout)],
+            immediate_size: 0,
+        });
+        let world_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Verse instanced opaque world"), layout: Some(&world_layout),
+            vertex: wgpu::VertexState { module: &world_shader, entry_point: Some("vs"), compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<GpuVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3] }] },
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: Some(true), depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                stencil: Default::default(), bias: Default::default() }),
+            multisample: wgpu::MultisampleState { count: 4, ..Default::default() },
+            fragment: Some(wgpu::FragmentState { module: &world_shader, entry_point: Some("fs"),
+                compilation_options: Default::default(), targets: &[Some(wgpu::ColorTargetState {
+                    format: world_format, blend: None, write_mask: wgpu::ColorWrites::ALL })] }),
+            multiview_mask: None, cache: None,
+        });
         Some(Self {
             poses,
             indices,
             group,
             pipeline,
+            world_pipeline,
         })
     }
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn world_storage_shader_validates_independent_flat_pose_indices() {
+        let text = super::world_source();
+        assert!(text.contains("o.pose_index=pose_index"));
+        assert!(text.contains("let pose_index=v.pose_index"));
+        let module = naga::front::wgsl::parse_str(&text).unwrap();
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap();
+    }
     #[test]
     fn storage_shader_validates_and_reads_an_instance_index() {
         let text = super::source();
