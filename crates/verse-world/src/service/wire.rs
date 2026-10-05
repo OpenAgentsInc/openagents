@@ -1848,6 +1848,104 @@ mod tests {
         assert_eq!(state.movement.unwrap().applied_sequence, 1);
     }
     #[test]
+    fn expired_interval_refusal_exposes_the_new_epoch_and_allows_fresh_entry() {
+        use crate::movement::{
+            Profile,
+            frames::{Frame, Segment},
+        };
+        fn proposal(g: &Gateway, id: ConnectionId) -> Frame {
+            let admission = g.admission(id).unwrap();
+            let life = admission.actor();
+            let baseline = g.game().movement_baseline(life).unwrap().unwrap();
+            Frame {
+                life,
+                epoch: admission.epoch(),
+                sequence: admission.accepted_sequence() + 1,
+                tick: g.game().authority_tick,
+                start: baseline.physics_step,
+                steps: 4,
+                segments: vec![Segment {
+                    offset: 0,
+                    axes: [1., 0.],
+                    yaw: 0.,
+                    until: baseline.physics_step + 60,
+                    jump: false,
+                }],
+            }
+        }
+        let mut g = gateway();
+        let owner = key(225);
+        g.enroll_primary(public(&owner)).unwrap();
+        let id = join(&mut g, &owner);
+        g.tick(1. / 30.).unwrap();
+        let life = g.admission(id).unwrap().actor();
+        let epoch = g.admission(id).unwrap().epoch();
+        assert!(matches!(
+            send(
+                &mut g,
+                id,
+                2,
+                Body::BeginMovementFrames {
+                    life: life.into(),
+                    epoch,
+                }
+            )
+            .body,
+            Reply::Snapshot { .. }
+        ));
+        for _ in 0..9 {
+            g.tick(1. / 30.).unwrap();
+        }
+        let first = proposal(&g, id);
+        assert!(matches!(
+            send(&mut g, id, 3, Body::MovementFrame { frame: first }).body,
+            Reply::Accepted
+        ));
+        g.tick(1. / 30.).unwrap();
+        let delayed = proposal(&g, id);
+        let epoch = delayed.epoch;
+        let response = send(
+            &mut g,
+            id,
+            4,
+            Body::MovementFrame {
+                frame: delayed.clone(),
+            },
+        );
+        assert!(matches!(response.body, Reply::Refused {message, ..}
+            if message.contains("Movement interval clock expired")));
+        let control = response.control.unwrap();
+        assert_eq!(control.epoch, epoch + 1);
+        assert_eq!(control.accepted_sequence, 0);
+        let response = send(&mut g, id, 5, Body::Snapshot {});
+        let Reply::Snapshot { state } = response.body else {
+            panic!("Missing recovery snapshot");
+        };
+        state.validate_control(110, &response.control).unwrap();
+        assert_eq!(state.movement.unwrap().profile, Profile::Arrival);
+        let response = send(&mut g, id, 6, Body::MovementFrame { frame: delayed });
+        assert!(matches!(response.body, Reply::Refused { .. }));
+        assert_eq!(response.control.unwrap().epoch, control.epoch);
+        assert!(matches!(
+            send(
+                &mut g,
+                id,
+                7,
+                Body::BeginMovementFrames {
+                    life: life.into(),
+                    epoch: control.epoch,
+                }
+            )
+            .body,
+            Reply::Snapshot { .. }
+        ));
+        let fresh = proposal(&g, id);
+        assert!(matches!(
+            send(&mut g, id, 8, Body::MovementFrame { frame: fresh }).body,
+            Reply::Accepted
+        ));
+    }
+    #[test]
     fn stale_tick_refusal_is_explicit_and_does_not_consume_or_apply_the_command() {
         let mut g = gateway();
         let k = key(224);
