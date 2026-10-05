@@ -1,0 +1,30 @@
+{
+  "acceptance": "failed",
+  "reason": "Server simulation stays within its interval in this capture; native frame p95 exceeds 16.7 ms and repeated control epochs prevent a sustained-movement claim.",
+  "steady_frame_p95_ms": 18.700875,
+  "steady_frame_max_ms": 42.047041,
+  "steady_snapshot_age_p95_ms": 285.83587500000004,
+  "steady_gpu_p95_ms": 10.447333,
+  "server_simulation_max_ms": 30.827,
+  "storage_paused_seconds": 0.603163,
+  "storage_paused_ticks": 18,
+  "storage_refused_requests": 131,
+  "headless_observed_frame_snapshots_range": [
+    271,
+    294
+  ],
+  "headless_movement_inputs_range": [
+    490,
+    528
+  ],
+  "remote_scratch_removed": true,
+  "limits": [
+    "Different hardware, trajectories, and checkpoint code prevent an isolated causal comparison with the local capture.",
+    "Linux CPU and Mac client CPU remain shared with other work; SSH forwarding adds transport overhead.",
+    "Histogram upper bounds are not exact percentiles.",
+    "No injected delay or jitter; impaired-network acceptance remains separate.",
+    "One out-of-order GPU result is excluded; input-to-display remains unmeasured.",
+    "Native control_epoch resets total 71; aggregate reset reasons do not identify every expiry. Native refusal trace omits 161 records.",
+    "A 6431.99 ms startup frame is excluded from steady-state timing. No native death or respawn occurs in this capture."
+  ]
+}
