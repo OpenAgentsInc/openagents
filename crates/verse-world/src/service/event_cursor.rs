@@ -37,6 +37,11 @@ impl EventPage {
                 return Err("Invalid chamber event identity or continuity".into());
             }
             match &event.kind {
+                Kind::Ability { label }
+                    if event.actor.is_none() || label.is_empty() || label.len() > 64 =>
+                {
+                    return Err("Invalid ability event".into());
+                }
                 Kind::Dialogue { text } if text.len() > 4096 => {
                     return Err("Chamber dialogue exceeds byte budget".into());
                 }

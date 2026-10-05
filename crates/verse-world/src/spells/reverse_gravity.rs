@@ -5,21 +5,29 @@ use serde::{Deserialize, Serialize};
 pub struct Effect {
     pub cast: u64,
     pub caster: u64,
+    #[serde(default = "default_dc")]
+    pub save_dc: i32,
     pub spell: rules::ReverseGravity,
 }
 
-pub fn cast(game: &mut Game) -> Result<(), String> {
+fn default_dc() -> i32 {
+    super::SPELL_SAVE_DC
+}
+
+pub fn cast(game: &mut Game, context: super::Caster) -> Result<(), String> {
+    context.validate(game)?;
     let point = game
-        .actor_position(game.selected)
-        .unwrap_or(game.player)
+        .actor_position(context.selected)
+        .unwrap_or(context.feet)
         .as_dvec3();
-    cast_at(game, point)
+    cast_at(game, context, point)
 }
 
 /// Admit an explicitly chosen ground point through the native spell rules.
-pub fn cast_at(game: &mut Game, point: glam::DVec3) -> Result<(), String> {
-    let caster = game.player_actor();
-    if point.distance(game.player.as_dvec3()) > rules::RANGE {
+pub fn cast_at(game: &mut Game, context: super::Caster, point: glam::DVec3) -> Result<(), String> {
+    context.validate(game)?;
+    let caster = context.life.actor;
+    if point.distance(context.feet.as_dvec3()) > rules::RANGE {
         return Err("Reverse Gravity point is beyond 100 feet".into());
     }
     let actors: Vec<_> = super::feather_fall::candidates(game)
@@ -35,7 +43,7 @@ pub fn cast_at(game: &mut Game, point: glam::DVec3) -> Result<(), String> {
         super::proxies::add(game, cast, *actor)?;
     }
     let mut spell =
-        rules::ReverseGravity::cast(&mut game.spells.world, game.player.as_dvec3(), point)
+        rules::ReverseGravity::cast(&mut game.spells.world, context.feet.as_dvec3(), point)
             .map_err(|e| format!("Reverse Gravity refused: {e:?}"))?;
     let ground = ground(&game.spells.world);
     for actor in actors {
@@ -46,10 +54,10 @@ pub fn cast_at(game: &mut Game, point: glam::DVec3) -> Result<(), String> {
             .find(|p| p.actor == actor && p.cast == cast)
             .unwrap()
             .body;
-        let save = game
-            .spells
-            .dice
-            .save(actor, "Dexterity", 0, super::SPELL_SAVE_DC);
+        let save =
+            game.spells
+                .dice_for(context.life.actor)
+                .save(actor, "Dexterity", 0, context.save_dc);
         let grabbed = spell.grab(
             &mut game.spells.world,
             body,
@@ -66,6 +74,7 @@ pub fn cast_at(game: &mut Game, point: glam::DVec3) -> Result<(), String> {
     game.spells.reversed.push(Effect {
         cast,
         caster,
+        save_dc: context.save_dc,
         spell,
     });
     Ok(())
@@ -80,9 +89,9 @@ pub fn entries(game: &mut Game) -> Result<(), String> {
         .iter()
         .enumerate()
         .filter(|(_, e)| e.spell.active())
-        .map(|(i, e)| (i, e.cast, e.spell.gravity.cylinder))
+        .map(|(i, e)| (i, e.cast, e.caster, e.save_dc, e.spell.gravity.cylinder))
         .collect();
-    for (index, cast, cylinder) in effects {
+    for (index, cast, caster, dc, cylinder) in effects {
         for candidate in &candidates {
             let actor = u64::from(candidate.id);
             if !cylinder.contains(candidate.position)
@@ -95,10 +104,7 @@ pub fn entries(game: &mut Game) -> Result<(), String> {
                 continue;
             }
             let body = super::proxies::add(game, cast, actor)?;
-            let save = game
-                .spells
-                .dice
-                .save(actor, "Dexterity", 0, super::SPELL_SAVE_DC);
+            let save = game.spells.dice_for(caster).save(actor, "Dexterity", 0, dc);
             let ground = ground(&game.spells.world);
             let effect = &mut game.spells.reversed[index];
             effect.spell.track(&game.spells.world, body);

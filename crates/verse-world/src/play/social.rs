@@ -361,9 +361,9 @@ impl Game {
                     .find(|o| o.id == object && o.kind == expected)
                     .ok_or("Unknown social interaction")?;
                 let feet = if actor == self.player_actor() {
-                    self.player
+                    self.primary.player
                 } else {
-                    self.additional_players[&actor].position
+                    self.additional_players[&actor].player
                 };
                 if feet.distance(Vec3::from_array(object.feet)) > 2.5 {
                     return Err("Social interaction is out of reach".into());
@@ -409,7 +409,9 @@ impl Game {
             },
         };
         if actor == self.player_actor() {
-            self.admission.admit(sender, &command, self.authority_tick)
+            self.primary
+                .admission
+                .admit(sender, &command, self.authority_tick)
         } else {
             self.additional_players
                 .get_mut(&actor)
@@ -587,7 +589,7 @@ pub(crate) mod tests {
         for _ in 0..20 {
             g.tick(1. / 30., [0.; 2]).unwrap();
         }
-        assert!(g.player.x.abs() > 0.1);
+        assert!(g.primary.player.x.abs() > 0.1);
         assert!(g.activate(Ability::Fireball).is_err());
         let cast = g
             .player_admission(life.actor)
@@ -647,7 +649,10 @@ pub(crate) mod tests {
         for _ in 0..10 {
             g.tick(1. / 30., [0.; 2]).unwrap();
         }
-        assert!((g.player.y - (g.player.x * 0.1 + g.player.z * 0.05)).abs() < 0.05);
+        assert!(
+            (g.primary.player.y - (g.primary.player.x * 0.1 + g.primary.player.z * 0.05)).abs()
+                < 0.05
+        );
         let restored = Game::restore(&g.checkpoint().unwrap()).unwrap();
         assert_eq!(
             g.query_scene.snapshot(2001).unwrap(),

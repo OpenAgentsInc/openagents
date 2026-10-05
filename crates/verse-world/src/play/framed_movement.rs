@@ -20,7 +20,7 @@ impl Game {
             return Err("Movement interval owner is stale or unsupported".into());
         }
         let active = if life.actor == self.player_actor() {
-            self.frame_clock.is_some()
+            self.primary.frame_clock.is_some()
         } else {
             self.additional_players[&life.actor].frame_clock.is_some()
         };
@@ -45,7 +45,7 @@ impl Game {
         self.handoff_player(life, sender)?;
         let clock = Some(Clock::new(self.physics_steps, 0));
         if life.actor == self.player_actor() {
-            self.frame_clock = clock;
+            self.primary.frame_clock = clock;
         } else {
             self.additional_players
                 .get_mut(&life.actor)
@@ -73,7 +73,7 @@ impl Game {
         }
         if self.player_snapshot(frame.life)?.player.hp == 0 || !self.unlocked() {
             let active = if actor == self.player_actor() {
-                self.frame_clock.is_some()
+                self.primary.frame_clock.is_some()
             } else {
                 self.additional_players[&actor].frame_clock.is_some()
             };
@@ -83,7 +83,7 @@ impl Game {
             return Err("Movement interval control is stale or unavailable".into());
         }
         let clock = if actor == self.player_actor() {
-            self.frame_clock.as_ref()
+            self.primary.frame_clock.as_ref()
         } else {
             self.additional_players[&actor].frame_clock.as_ref()
         }
@@ -122,10 +122,11 @@ impl Game {
             },
         };
         if actor == self.player_actor() {
-            self.admission
+            self.primary
+                .admission
                 .admit(sender, &command, self.authority_tick)
                 .map_err(|e| format!("Movement interval refused: {e:?}"))?;
-            self.frame_clock = Some(next);
+            self.primary.frame_clock = Some(next);
         } else {
             let player = self.additional_players.get_mut(&actor).unwrap();
             player
@@ -144,14 +145,14 @@ impl Game {
             .is_some_and(|clock| clock.expired(self.physics_steps))
         {
             self.movement_expiry
-                .record(self.frame_clock.as_ref().unwrap().expiry_sample(
+                .record(self.primary.frame_clock.as_ref().unwrap().expiry_sample(
                     self.player_actor(),
-                    self.admission.epoch(),
+                    self.primary.admission.epoch(),
                     self.authority_tick,
                     self.physics_steps,
                     ExpiryOrigin::PrimaryTick,
                 ));
-            self.handoff_player(self.player_life(), self.admission.controller())?;
+            self.handoff_player(self.player_life(), self.primary.admission.controller())?;
         }
         Ok(())
     }
@@ -313,7 +314,7 @@ mod tests {
             assert!(if secondary {
                 g.additional_players[&life.actor].frame_clock.is_none()
             } else {
-                g.frame_clock.is_none()
+                g.primary.frame_clock.is_none()
             });
             assert!(g.submit_movement_frame(owner, dead_frame.clone()).is_err());
             assert_eq!(
@@ -396,12 +397,12 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(g.casting.is_some());
+        assert!(g.primary.casting.is_some());
         let mana = g.snapshot().player.mana;
         let f = frame(&g, life, false);
         g.submit_movement_frame(Controller(9), f).unwrap();
         ticks(&mut g, 1);
-        assert!(g.casting.is_none());
+        assert!(g.primary.casting.is_none());
         assert!(g.snapshot().player.mana >= mana);
         assert!(g.movement_baseline(life).unwrap().unwrap().applied_sequence >= 2);
     }

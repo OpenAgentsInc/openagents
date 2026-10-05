@@ -1366,16 +1366,16 @@ pub fn action_bar(
         let x = left + (8.0 + index as f32 * 42.0) * s;
         let spell = ability.catalog();
         let (ready, cd, total) = match (ability, spell) {
-            (Ability::Spell(slot), Some(spell)) => {
+            (Ability::Spell(slot), Some(_spell)) => {
+                let state = game.actor_state(game.player_life()).unwrap();
+                let tuning = &state.definition.catalog[slot];
                 let cd = game
-                    .spells
-                    .ready
-                    .get(slot)
-                    .map_or(0.0, |at| (at - game.time).max(0.0));
+                    .catalog_cooldown(game.player_life(), *slot)
+                    .unwrap_or(0.);
                 (
-                    cd == 0.0 && snapshot.player.mana >= spell.cost,
+                    cd == 0. && snapshot.player.mana >= tuning.cost,
                     cd,
-                    spell.cooldown.max(0.01),
+                    tuning.cooldown.max(0.01),
                 )
             }
             _ => (false, 0.0, 1.0),

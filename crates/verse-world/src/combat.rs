@@ -4,6 +4,44 @@ use glam::Vec3;
 use std::collections::BTreeMap;
 use verse_engine::director::{Action, Scene};
 
+/// Trusted encounter tuning for the chamber's existing hostile archetypes.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Definition {
+    pub duration: f32,
+    pub enemy_health: u32,
+    pub boss_health: u32,
+    pub warmup: f32,
+    pub stagger: f32,
+}
+impl Default for Definition {
+    fn default() -> Self {
+        Self {
+            duration: 200.,
+            enemy_health: 15,
+            boss_health: 300_000,
+            warmup: 2.,
+            stagger: 0.8,
+        }
+    }
+}
+impl Definition {
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.duration.is_finite()
+            || !(1. ..=600.).contains(&self.duration)
+            || !(1..=1_000_000).contains(&self.enemy_health)
+            || !(1..=1_000_000).contains(&self.boss_health)
+            || !self.warmup.is_finite()
+            || !(0. ..=60.).contains(&self.warmup)
+            || !self.stagger.is_finite()
+            || !(0. ..=60.).contains(&self.stagger)
+        {
+            return Err("Invalid encounter definition".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct EnemyCast {
     pub actor: u64,
@@ -22,6 +60,8 @@ pub struct EnemyCast {
 }
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Encounter {
+    #[serde(default)]
+    pub definition: Definition,
     pub positions: BTreeMap<u64, Vec3>,
     pub casts: Vec<EnemyCast>,
     pub released: BTreeMap<u64, f32>,
@@ -47,8 +87,16 @@ impl Game {
         if self.social_state().is_some() {
             return self.restart_social(agent);
         }
-        let mut fresh =
-            Self::combat_authored_in(self.scene.clone(), agent, self.player_life().instance)?;
+        let definition = self
+            .encounter
+            .as_ref()
+            .map_or_else(Definition::default, |e| e.definition.clone());
+        let mut fresh = Self::combat_authored_definition(
+            self.scene.clone(),
+            agent,
+            self.player_life().instance,
+            definition,
+        )?;
         fresh.adopt_restart_fences(self)?;
         fresh.rebuild_players_after_restart(self)?;
         fresh.time = fresh.scene.cut_at - if agent { 3. } else { 0. };
@@ -61,22 +109,41 @@ impl Game {
     }
 
     /// Starts combat in the instance selected by its trusted host.
-    pub fn combat_in(mut scene: Scene, agent: bool, instance: u64) -> Result<Self, String> {
-        for actor in &mut scene.actors {
-            if actor.nameplate && !actor.friendly {
-                actor.health = if actor.model == "claude" { 300_000 } else { 15 };
-            }
-        }
-        Self::combat_authored_in(scene, agent, instance)
+    pub fn combat_in(scene: Scene, agent: bool, instance: u64) -> Result<Self, String> {
+        Self::combat_configured_in(scene, agent, instance, Definition::default())
     }
-
-    /// Starts combat with hostile health declared by the trusted scene author.
-    pub fn combat_authored_in(
+    /// Starts an encounter from validated content without adding a player rule.
+    pub fn combat_configured_in(
         mut scene: Scene,
         agent: bool,
         instance: u64,
+        definition: Definition,
     ) -> Result<Self, String> {
-        scene.duration = 200.0;
+        definition.validate()?;
+        for actor in &mut scene.actors {
+            if actor.nameplate && !actor.friendly {
+                actor.health = if actor.model == "claude" {
+                    definition.boss_health
+                } else {
+                    definition.enemy_health
+                };
+            }
+        }
+        Self::combat_authored_definition(scene, agent, instance, definition)
+    }
+
+    /// Starts combat with hostile health declared by the trusted scene author.
+    pub fn combat_authored_in(scene: Scene, agent: bool, instance: u64) -> Result<Self, String> {
+        Self::combat_authored_definition(scene, agent, instance, Definition::default())
+    }
+    fn combat_authored_definition(
+        mut scene: Scene,
+        agent: bool,
+        instance: u64,
+        definition: Definition,
+    ) -> Result<Self, String> {
+        definition.validate()?;
+        scene.duration = definition.duration;
         // Combat dialogue and attacks replace the staged post-handoff reactions.
         scene
             .cues
@@ -90,13 +157,18 @@ impl Game {
             },
         });
         let mut game = Self::new_in(scene, instance)?;
-        let mut encounter = Encounter::default();
+        let mut encounter = Encounter {
+            definition,
+            ..Default::default()
+        };
         for actor in &game.scene.actors {
             if actor.nameplate && !actor.friendly {
                 encounter.positions.insert(actor.id, actor.position);
                 encounter.ready.insert(
                     actor.id,
-                    game.scene.cut_at + 2.0 + (actor.id % 6) as f32 * 0.8,
+                    game.scene.cut_at
+                        + encounter.definition.warmup
+                        + (actor.id % 6) as f32 * encounter.definition.stagger,
                 );
             }
         }
@@ -115,6 +187,7 @@ impl Game {
 }
 impl Encounter {
     pub fn validate(&self, game: &Game) -> Result<(), String> {
+        self.definition.validate()?;
         if self.casts.len() > 128
             || self.positions.len() > 256
             || self.ready.len() > 256
@@ -652,6 +725,35 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn encounter_content_changes_health_duration_and_survives_restart() {
+        let scene =
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap();
+        let definition = Definition {
+            duration: 150.,
+            enemy_health: 30,
+            boss_health: 1000,
+            warmup: 5.,
+            stagger: 0.2,
+        };
+        let mut game = Game::combat_configured_in(scene, false, 11, definition).unwrap();
+        assert_eq!(game.scene.duration, 150.);
+        assert_eq!(game.encounter.as_ref().unwrap().boss_max, 1000);
+        game.restart_combat(false).unwrap();
+        assert_eq!(game.scene.duration, 150.);
+        assert_eq!(
+            Game::restore(&game.checkpoint().unwrap())
+                .unwrap()
+                .encounter
+                .unwrap()
+                .definition
+                .enemy_health,
+            30
+        );
+        let mut invalid = Definition::default();
+        invalid.stagger = f32::INFINITY;
+        assert!(invalid.validate().is_err());
+    }
     #[test]
     fn moving_cultists_walk_and_death_playback_never_rewinds() {
         let scene =

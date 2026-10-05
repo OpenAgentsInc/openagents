@@ -13,26 +13,28 @@ pub struct Effect {
     pub state: rules::Levitation,
 }
 
-pub fn cast(game: &mut Game) -> Result<(), String> {
-    let target = if game.selected >= super::PROP_ENTITY_BASE {
+pub fn cast(game: &mut Game, context: super::Caster) -> Result<(), String> {
+    context.validate(game)?;
+    let target = if context.selected >= super::PROP_ENTITY_BASE {
         Target::Prop(
             game.spells
                 .props
                 .iter()
-                .position(|p| p.life.entity == game.selected && !p.removed)
+                .position(|p| p.life.entity == context.selected && !p.removed)
                 .ok_or("Unknown Levitate prop")?,
         )
-    } else if game.actor_character(game.selected).is_some() {
-        Target::Actor(game.selected)
+    } else if game.actor_character(context.selected).is_some() {
+        Target::Actor(context.selected)
     } else {
-        Target::Actor(game.player_actor())
+        Target::Actor(context.life.actor)
     };
-    cast_on(game, target)
+    cast_on(game, context, target)
 }
 
-pub fn cast_on(game: &mut Game, target: Target) -> Result<(), String> {
-    let caster = game.player_actor();
-    let caster_position = game.player.as_dvec3();
+pub fn cast_on(game: &mut Game, context: super::Caster, target: Target) -> Result<(), String> {
+    context.validate(game)?;
+    let caster = context.life.actor;
+    let caster_position = context.feet.as_dvec3();
     let (position, subject) = match target {
         Target::Actor(actor) => {
             if game
@@ -95,11 +97,11 @@ pub fn cast_on(game: &mut Game, target: Target) -> Result<(), String> {
     };
     let mut save = None;
     let admission = rules::admit(subject, position.distance(caster_position), || {
-        let rolled = game.spells.dice.save(
+        let rolled = game.spells.dice_for(context.life.actor).save(
             target_id,
             "Constitution",
             constitution,
-            super::SPELL_SAVE_DC,
+            context.save_dc,
         );
         let roll = rolled.roll as i32;
         save = Some(rolled);

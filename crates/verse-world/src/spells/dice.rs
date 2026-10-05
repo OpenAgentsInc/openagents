@@ -106,6 +106,22 @@ impl Dice {
     }
 }
 
+/// Returns a caster's reproducible stream. The original stream remains the
+/// primary caster's stream so retained scenario fixtures keep their rolls.
+pub(crate) fn for_caster<'a>(
+    legacy: &'a mut Dice,
+    streams: &'a mut BTreeMap<u64, Dice>,
+    primary: u64,
+    caster: u64,
+) -> &'a mut Dice {
+    if caster == primary {
+        legacy
+    } else {
+        let seed = legacy.seed ^ caster.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        streams.entry(caster).or_insert_with(|| Dice::new(seed))
+    }
+}
+
 /// SRD falling: 1d6 Bludgeoning per 10 feet fallen, at most 20d6.
 pub const FALL_DICE_MAX: u32 = 20;
 

@@ -10,7 +10,7 @@
 //! calibrated velocity ([`physics::character::Character::push_speed`] and
 //! [`super::SpellWorld::prop_push_speed`]), so walls, crates, and other
 //! creatures decide where the target actually stops.
-use super::{FEET, SPELL_SAVE_DC, Target, Track};
+use super::{FEET, Target, Track};
 use crate::play::Game;
 use glam::{DVec3, Vec3};
 
@@ -55,14 +55,12 @@ impl Cube {
 }
 
 /// Resolves an admitted Thunderwave from the caster's place and facing.
-pub(crate) fn resolve(game: &mut Game, facing: Vec3) -> Result<(), String> {
-    resolve_for(game, game.player_actor(), game.player, facing)
-}
 pub(crate) fn resolve_for(
     game: &mut Game,
     caster: u64,
     position: Vec3,
     facing: Vec3,
+    save_dc: i32,
 ) -> Result<(), String> {
     let cube = Cube::new(position.as_dvec3(), facing.as_dvec3());
     let origin = position + Vec3::Y * 1.4;
@@ -107,9 +105,12 @@ pub(crate) fn resolve_for(
         );
         let save = game
             .spells
-            .dice
-            .save(actor, "Constitution", modifier, SPELL_SAVE_DC);
-        let rolled = game.spells.dice.sum(DAMAGE_DICE.0, DAMAGE_DICE.1) as i32;
+            .dice_for(caster)
+            .save(actor, "Constitution", modifier, save_dc);
+        let rolled = game
+            .spells
+            .dice_for(caster)
+            .sum(DAMAGE_DICE.0, DAMAGE_DICE.1) as i32;
         let damage = if save.success { rolled / 2 } else { rolled };
         game.simulation.bow_impact(id, damage)?;
         let center = feet.as_dvec3() + DVec3::Y * CENTER;

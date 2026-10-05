@@ -6,20 +6,36 @@ use serde::{Deserialize, Serialize};
 pub struct Effect {
     pub cast: u64,
     pub caster: u64,
+    #[serde(default = "default_dc")]
+    pub save_dc: i32,
     pub gust: rules::Gust,
 }
 
-pub fn cast(game: &mut Game) -> Result<(), String> {
-    let caster = game.player_actor();
-    let forward = DVec3::new(-f64::from(game.yaw.sin()), 0., -f64::from(game.yaw.cos()));
+fn default_dc() -> i32 {
+    super::SPELL_SAVE_DC
+}
+
+pub fn cast(game: &mut Game, context: super::Caster) -> Result<(), String> {
+    context.validate(game)?;
+    let caster = context.life.actor;
+    let forward = DVec3::new(
+        -f64::from(context.yaw.sin()),
+        0.,
+        -f64::from(context.yaw.cos()),
+    );
     let gust = rules::Gust::cast(
         caster as u32,
-        game.player.as_dvec3(),
+        context.feet.as_dvec3(),
         forward,
         game.time as f64,
     )?;
     let cast = game.spells.begin_cast(caster, true)?;
-    game.spells.gusts.push(Effect { cast, caster, gust });
+    game.spells.gusts.push(Effect {
+        cast,
+        caster,
+        save_dc: context.save_dc,
+        gust,
+    });
     game.spells.record(
         game.time,
         "Gust of Wind",
@@ -39,28 +55,34 @@ pub fn update(game: &mut Game) -> Result<(), String> {
         })
         .collect();
     let mut events = vec![];
-    let player = game.player_actor();
+    let positions: std::collections::BTreeMap<_, _> = game
+        .player_actors()
+        .into_iter()
+        .filter_map(|actor| game.actor_position(actor).map(|p| (actor, p)))
+        .collect();
     for effect in &mut game.spells.gusts {
-        if effect.caster == player {
-            effect.gust.follow(game.player.as_dvec3());
+        if let Some(position) = positions.get(&effect.caster) {
+            effect.gust.follow(position.as_dvec3());
         }
+        let dice = super::dice::for_caster(
+            &mut game.spells.dice,
+            &mut game.spells.caster_dice,
+            game.spells.primary_caster,
+            effect.caster,
+        );
         events.extend(
             effect
                 .gust
                 .flames(game.time as f64, &mut game.spells.flames, &mut || {
-                    game.spells.dice.roll(100)
+                    dice.roll(100)
                 }),
         );
-        events.extend(
-            effect
-                .gust
-                .creatures_with(game.time as f64, &creatures, &mut |id| {
-                    game.spells
-                        .dice
-                        .save(u64::from(id), "Strength", 0, super::SPELL_SAVE_DC)
-                        .roll as i32
-                }),
-        );
+        events.extend(effect.gust.creatures_with_dc(
+            game.time as f64,
+            &creatures,
+            effect.save_dc,
+            &mut |id| dice.save(u64::from(id), "Strength", 0, effect.save_dc).roll as i32,
+        ));
     }
     for event in events {
         match event {

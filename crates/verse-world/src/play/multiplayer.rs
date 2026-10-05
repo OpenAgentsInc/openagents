@@ -4,44 +4,58 @@ use crate::{Admission, Command, Controller, Intent};
 use verse_engine::core::LifeId;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Player {
-    pub(super) admission: Admission,
-    pub(super) source: u32,
-    pub(super) character: physics::character::Character,
-    pub(super) position: Vec3,
-    pub(super) previous: Vec3,
-    spawn: Vec3,
-    pub(super) yaw: f32,
-    pending_move: Option<[f32; 2]>,
+pub struct Player {
+    pub(crate) admission: Admission,
     #[serde(default)]
-    held_move: crate::movement::Held,
-    pending_jump: bool,
+    pub(crate) source: u32,
+    #[serde(default)]
+    pub definition: crate::content::Character,
+    pub(crate) character: physics::character::Character,
+    #[serde(alias = "position")]
+    pub player: Vec3,
+    #[serde(alias = "previous")]
+    pub(crate) previous_player: Vec3,
+    #[serde(default)]
+    pub(crate) spawn: Vec3,
+    pub yaw: f32,
+    #[serde(default)]
+    pub selected: u64,
+    #[serde(default)]
+    pub(crate) catalog_ready: BTreeMap<u8, f32>,
+    #[serde(alias = "pending_move")]
+    pub(crate) pending_movement: Option<[f32; 2]>,
+    #[serde(default, alias = "held_move")]
+    pub(crate) held_movement: crate::movement::Held,
+    pub(crate) pending_jump: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) frame_clock: Option<crate::movement::frames::Clock>,
-    pub(super) controls: Controls,
-    pub(super) casting: Option<Casting>,
-    bow_ready: f32,
-    last_cast: Option<(Ability, f32)>,
-    motion_clock: f32,
-    locomotion: [f32; 2],
-    moving: bool,
-    died_at: Option<f32>,
+    pub(crate) frame_clock: Option<crate::movement::frames::Clock>,
+    pub controls: Controls,
+    pub casting: Option<Casting>,
+    pub bow_ready: f32,
+    pub last_cast: Option<(Ability, f32)>,
+    pub(crate) motion_clock: f32,
+    pub(crate) locomotion: [f32; 2],
+    pub moving: bool,
+    #[serde(default)]
+    pub(crate) died_at: Option<f32>,
     #[serde(skip)]
-    trajectory: Vec<[f32; 3]>,
+    pub(crate) player_trajectory: Vec<[f32; 3]>,
 }
 impl Player {
-    fn new(admission: Admission, source: u32, spawn: Vec3) -> Self {
+    pub(super) fn new(admission: Admission, source: u32, spawn: Vec3) -> Self {
         Self {
             admission,
             source,
+            definition: Default::default(),
             character: physics::character::Character::new(spawn.as_dvec3()),
-            position: spawn,
-            previous: spawn,
+            player: spawn,
+            previous_player: spawn,
             spawn,
             yaw: std::f32::consts::PI,
-            pending_move: None,
-            held_move: Default::default(),
+            selected: 0,
+            catalog_ready: BTreeMap::new(),
+            pending_movement: None,
+            held_movement: Default::default(),
             pending_jump: false,
             frame_clock: None,
             controls: Controls::default(),
@@ -52,7 +66,7 @@ impl Player {
             locomotion: [0.; 2],
             moving: false,
             died_at: None,
-            trajectory: vec![],
+            player_trajectory: vec![],
         }
     }
     pub(super) fn frame(
@@ -62,7 +76,7 @@ impl Player {
         time: f32,
         collision: bool,
     ) {
-        frame.actor.position = self.position;
+        frame.actor.position = self.player;
         frame.actor.yaw = self.yaw;
         frame.life = Some(self.admission.actor());
         frame.health = hp;
@@ -117,6 +131,9 @@ impl Player {
 }
 #[derive(Clone)]
 pub(crate) struct PortablePlayer {
+    definition: crate::content::Character,
+    catalog_remaining: BTreeMap<u8, f32>,
+    dice: Option<crate::spells::Dice>,
     combat: crate::rules::transfer::Portable,
     controls: Controls,
     bow_remaining: f32,
@@ -150,6 +167,13 @@ impl Game {
             .cloned()
             .ok_or("Transfer appearance is missing")?;
         let portable = PortablePlayer {
+            definition: player.definition.clone(),
+            catalog_remaining: player
+                .catalog_ready
+                .iter()
+                .map(|(slot, at)| (*slot, (*at - self.time).max(0.)))
+                .collect(),
+            dice: self.spells.caster_dice.get(&actor).cloned(),
             combat: self.simulation.take_player(player.source)?,
             controls: player.controls.clone(),
             bow_remaining: (player.bow_ready - self.time).max(0.),
@@ -170,7 +194,7 @@ impl Game {
         for cast in casts {
             self.spells.end_cast(cast)?;
         }
-        self.controls.forget_actor(source);
+        self.primary.controls.forget_actor(source);
         for p in self.additional_players.values_mut() {
             p.controls.forget_actor(source);
         }
@@ -179,6 +203,7 @@ impl Game {
             encounter.casts.retain(|c| c.target_life != life);
         }
         self.additional_players.remove(&actor);
+        self.prune_caster_dice();
         self.observed_health.remove(&source);
         self.scene.actors.retain(|a| a.id != actor);
         let physical = physics::queries::Life {
@@ -205,11 +230,19 @@ impl Game {
             .cloned()
             .ok_or("Primary appearance is missing")?;
         let portable = PortablePlayer {
+            definition: self.primary.definition.clone(),
+            catalog_remaining: self
+                .primary
+                .catalog_ready
+                .iter()
+                .map(|(slot, at)| (*slot, (*at - self.time).max(0.)))
+                .collect(),
+            dice: Some(self.spells.dice.clone()),
             combat: self.simulation.take_player(0)?,
-            controls: self.controls.clone(),
-            bow_remaining: (self.bow_ready - self.time).max(0.),
+            controls: self.primary.controls.clone(),
+            bow_remaining: (self.primary.bow_ready - self.time).max(0.),
             time: self.time,
-            yaw: self.yaw,
+            yaw: self.primary.yaw,
             appearance,
         };
         self.spells.end_concentration(life.actor)?;
@@ -231,10 +264,10 @@ impl Game {
             encounter.casts.retain(|c| c.target_life != life);
         }
         self.control_handoff(false)?;
-        self.controls = Controls::default();
-        self.casting = None;
-        self.last_cast = None;
-        self.bow_ready = 0.;
+        self.primary.controls = Controls::default();
+        self.primary.casting = None;
+        self.primary.last_cast = None;
+        self.primary.bow_ready = 0.;
         self.observed_health.remove(&0);
         self.primary_resident = false;
         let physical = physics::queries::Life {
@@ -260,6 +293,16 @@ impl Game {
         if p.admission.actor() != life {
             return Err("Destination transfer life is stale".into());
         }
+        portable.definition.validate()?;
+        p.definition = portable.definition;
+        p.catalog_ready = portable
+            .catalog_remaining
+            .into_iter()
+            .map(|(slot, remaining)| (slot, self.time + remaining))
+            .collect();
+        if let Some(dice) = portable.dice {
+            self.spells.caster_dice.insert(life.actor, dice);
+        }
         p.controls = portable
             .controls
             .transfer_cooldowns(portable.time, self.time);
@@ -269,7 +312,7 @@ impl Game {
         p.died_at = dead.then_some(self.time);
         self.simulation.put_player(p.source, portable.combat)?;
         self.simulation
-            .teleport_chamber_actor(p.source, p.position.to_array(), p.yaw)?;
+            .teleport_chamber_actor(p.source, p.player.to_array(), p.yaw)?;
         let appearance = self
             .scene
             .actors
@@ -278,7 +321,7 @@ impl Game {
             .ok_or("Destination transfer appearance is missing")?;
         let mut moved = portable.appearance;
         moved.id = life.actor;
-        moved.position = p.position;
+        moved.position = p.player;
         moved.yaw = p.yaw;
         *appearance = moved;
         self.sync_bodies(0.)?;
@@ -293,10 +336,12 @@ impl Game {
     ) -> Result<Option<crate::movement::Baseline>, String> {
         let (admission, character, yaw, pending, dead) = if life.actor == self.player_actor() {
             (
-                &self.admission,
-                self.character,
-                self.yaw,
-                self.pending_movement.is_some() || self.pending_jump || self.agent_controlled,
+                &self.primary.admission,
+                self.primary.character,
+                self.primary.yaw,
+                self.primary.pending_movement.is_some()
+                    || self.primary.pending_jump
+                    || self.agent_controlled,
                 self.snapshot().player.hp == 0,
             )
         } else {
@@ -308,7 +353,7 @@ impl Game {
                 &player.admission,
                 player.character,
                 player.yaw,
-                player.pending_move.is_some() || player.pending_jump,
+                player.pending_movement.is_some() || player.pending_jump,
                 self.simulation.snapshot_for(player.source)?.player.hp == 0,
             )
         };
@@ -319,9 +364,9 @@ impl Game {
             return Ok(None);
         }
         let held = if life.actor == self.player_actor() {
-            self.held_movement
+            self.primary.held_movement
         } else {
-            self.additional_players[&life.actor].held_move
+            self.additional_players[&life.actor].held_movement
         };
         let target = crate::spells::Target::Actor(life.actor);
         let held_by_spell = self
@@ -352,7 +397,7 @@ impl Game {
             jump_allowed: !(held_by_spell || levitated),
         };
         let clock = if life.actor == self.player_actor() {
-            self.frame_clock.as_ref()
+            self.primary.frame_clock.as_ref()
         } else {
             self.additional_players[&life.actor].frame_clock.as_ref()
         };
@@ -443,6 +488,11 @@ impl Game {
                 !record.actor
                     && record.phase == physics::lifetimes::Phase::Removed
                     && matches!(record.hull, physics::lifetimes::Hull::UprightCapsule { .. })
+                    && !self
+                        .spells
+                        .meteors
+                        .iter()
+                        .any(|e| e.caster == record.life.entity && !e.swarm.finished())
                     && record.life.entity > authored_max
                     && record.life.entity < self.next_player_actor
                     && !self.scene.actors.iter().any(|a| a.id == record.life.entity)
@@ -503,10 +553,11 @@ impl Game {
         appearance.nameplate = false;
         appearance.health = 200;
         self.scene.actors.push(appearance);
+        self.spells.caster_dice.remove(&actor);
         let mut player = Player::new(Admission::new(life, controller), source, spawn);
         player.character = character;
-        player.position = position;
-        player.previous = position;
+        player.player = position;
+        player.previous_player = position;
         self.additional_players.insert(actor, player);
         self.next_player_actor = next;
         self.sync_bodies(0.)?;
@@ -514,7 +565,7 @@ impl Game {
     }
     pub fn player_admission(&self, actor: u64) -> Option<&Admission> {
         if actor == self.player_actor() {
-            self.primary_resident.then_some(&self.admission)
+            self.primary_resident.then_some(&self.primary.admission)
         } else {
             self.additional_players.get(&actor).map(|p| &p.admission)
         }
@@ -554,7 +605,11 @@ impl Game {
     pub fn player_hud(&self, life: LifeId) -> Result<crate::hud::Own, String> {
         let snapshot = self.player_private_snapshot(life)?;
         let (controls, bow_ready, casting) = if life == self.player_life() {
-            (&self.controls, self.bow_ready, self.casting.as_ref())
+            (
+                &self.primary.controls,
+                self.primary.bow_ready,
+                self.primary.casting.as_ref(),
+            )
         } else {
             let p = &self.additional_players[&life.actor];
             (&p.controls, p.bow_ready, p.casting.as_ref())
@@ -588,7 +643,7 @@ impl Game {
             .ok_or("Unknown controlled player")?;
         self.simulation.recover_resources(source, health, mana)
     }
-    pub(super) fn player_source(&self, actor: u64) -> Option<u32> {
+    pub(crate) fn player_source(&self, actor: u64) -> Option<u32> {
         if actor == self.player_actor() {
             self.primary_resident.then_some(0)
         } else {
@@ -603,21 +658,22 @@ impl Game {
             return Err("Player life is stale".into());
         }
         if life.actor == self.player_actor() {
-            self.admission
+            self.primary
+                .admission
                 .handoff(controller)
                 .map_err(|e| format!("Control handoff refused: {e:?}"))?;
             self.agent_controlled = controller == Controller(2);
-            self.pending_movement = None;
-            self.held_movement = Default::default();
-            self.pending_jump = false;
-            self.frame_clock = None;
+            self.primary.pending_movement = None;
+            self.primary.held_movement = Default::default();
+            self.primary.pending_jump = false;
+            self.primary.frame_clock = None;
         } else {
             let p = self.additional_players.get_mut(&life.actor).unwrap();
             p.admission
                 .handoff(controller)
                 .map_err(|e| format!("Control handoff refused: {e:?}"))?;
-            p.pending_move = None;
-            p.held_move = Default::default();
+            p.pending_movement = None;
+            p.held_movement = Default::default();
             p.pending_jump = false;
             p.frame_clock = None;
         }
@@ -640,21 +696,13 @@ impl Game {
         if p.frame_clock.is_some() && matches!(command.intent, Intent::Move { .. } | Intent::Jump) {
             return Err("This controller requires movement intervals".into());
         }
-        if let Intent::Cast {
-            aim,
-            target,
-            ability,
-        } = &command.intent
-        {
+        if let Intent::Cast { aim, target, .. } = &command.intent {
             if aim[1].abs() > 0.001
                 || target.is_some_and(|life| {
                     self.lives.get(&life.actor) != Some(&life) || !self.hostile_actor(life.actor)
                 })
             {
                 return Err("Invalid spell target or horizontal aim".into());
-            }
-            if matches!(ability, Ability::Spell(_) | Ability::SpellCommand(_)) {
-                return Err("This catalog spell needs a shared-caster adapter".into());
             }
         }
         self.additional_players
@@ -663,10 +711,26 @@ impl Game {
             .admission
             .admit(controller, &command, self.authority_tick)
             .map_err(|e| format!("Command refused: {e:?}"))?;
+        if let Intent::Cast {
+            ability,
+            target,
+            aim,
+        } = command.intent
+        {
+            if matches!(ability, Ability::Spell(_) | Ability::SpellCommand(_)) {
+                let state = self.additional_players.get_mut(&actor).unwrap();
+                state.yaw = (-aim[0]).atan2(-aim[2]);
+                if let Some(target) = target {
+                    state.selected = target.actor;
+                }
+                let context = self.caster_context(command.actor)?;
+                return self.activate_catalog(context, ability);
+            }
+        }
         let mut p = self.additional_players.remove(&actor).unwrap();
         let result = match command.intent {
             Intent::Move { axes, yaw } => {
-                p.pending_move = Some(axes);
+                p.pending_movement = Some(axes);
                 p.yaw = yaw;
                 Ok(())
             }
@@ -680,13 +744,16 @@ impl Game {
                 aim,
             } => {
                 p.yaw = (-aim[0]).atan2(-aim[2]);
+                if let Some(target) = target {
+                    p.selected = target.actor;
+                }
                 self.activate_player(&mut p, ability, target)
             }
         };
         self.additional_players.insert(actor, p);
         result
     }
-    fn activate_player(
+    pub(super) fn activate_player(
         &mut self,
         p: &mut Player,
         ability: Ability,
@@ -705,7 +772,42 @@ impl Game {
             })
             .map(|a| Vec3::from(a.pos));
         let direction = Vec3::new(-p.yaw.sin(), 0., -p.yaw.cos());
-        let start = p.position + Vec3::Y * 1.4;
+        let start = p.player + Vec3::Y * 1.4;
+        if matches!(ability, Ability::FireBolt | Ability::Bow) {
+            if let Some(prop) = self
+                .spells
+                .props
+                .iter()
+                .find(|p2| p2.life.entity == p.selected && !p2.removed)
+            {
+                let end = self.spells.world[prop.body].pos.as_vec3();
+                if start.distance(end) > 36.576 {
+                    return Err("Target is out of range".into());
+                }
+                let direction = (end - start).normalize_or_zero();
+                if ability == Ability::FireBolt {
+                    self.simulation.cast_at(
+                        p.source,
+                        crate::rules::Spell::Firebolt,
+                        start.to_array(),
+                        direction.to_array(),
+                    )?;
+                } else {
+                    if self.time < p.bow_ready {
+                        return Err("Bow is cooling down".into());
+                    }
+                    self.simulation.launch_bow_at(
+                        p.source,
+                        start.to_array(),
+                        direction.to_array(),
+                    )?;
+                    p.bow_ready = self.time + 1.;
+                }
+                p.last_cast = Some((ability, self.time));
+                self.record_ability(ability);
+                return Ok(());
+            }
+        }
         if let Some(spell) = ability.utility() {
             if matches!(spell, Utility::Web | Utility::Grease)
                 && target_position.is_some_and(|pos| !self.attack_clear(start, pos + Vec3::Y * 1.1))
@@ -714,13 +816,13 @@ impl Game {
             }
             let teleport = if spell == Utility::MistyStep {
                 let destination = if self.colliders.is_empty() {
-                    p.position + direction * 9.144
+                    p.player + direction * 9.144
                 } else {
                     physics::character::slide(
                         &self.query_scene,
                         self.actor_filter(p.admission.actor()),
                         physics::character::Settings::default(),
-                        p.position.as_dvec3(),
+                        p.player.as_dvec3(),
                         (direction * 9.144).as_dvec3(),
                         true,
                     )?
@@ -744,31 +846,40 @@ impl Game {
                 p.source,
                 spell,
                 self.time,
-                p.position,
+                p.player,
                 direction,
                 target_position,
                 teleport,
-                |_| true,
+                |position| {
+                    physics::kinematic::sweep_box(
+                        start.as_dvec3(),
+                        glam::DVec3::splat(0.12),
+                        (position + Vec3::Y * 1.1 - start).as_dvec3(),
+                        &self.colliders,
+                    )
+                    .is_ok_and(|hit| hit.is_none())
+                },
             )?;
             if spell == Utility::Thunderwave {
                 crate::spells::thunderwave::resolve_for(
                     self,
                     p.admission.actor().actor,
-                    p.position,
+                    p.player,
                     direction,
+                    p.definition.save_dc,
                 )?;
             }
             if spell == Utility::MistyStep {
-                p.position = destination;
-                p.previous = destination;
+                p.player = destination;
+                p.previous_player = destination;
                 p.character = physics::character::Character::new(destination.as_dvec3());
-                p.trajectory.clear();
+                p.player_trajectory.clear();
                 if p.frame_clock.take().is_some() {
                     p.admission
                         .handoff(p.admission.controller())
                         .map_err(|e| format!("Teleport control fence refused: {e:?}"))?;
-                    p.held_move = Default::default();
-                    p.pending_move = None;
+                    p.held_movement = Default::default();
+                    p.pending_movement = None;
                     p.pending_jump = false;
                 }
                 self.simulation
@@ -857,45 +968,45 @@ impl Game {
                         .handoff(p.admission.controller())
                         .map_err(|e| format!("Expired interval handoff refused: {e:?}"))?;
                     p.frame_clock = None;
-                    p.pending_move = None;
+                    p.pending_movement = None;
                     p.pending_jump = false;
-                    p.held_move = Default::default();
+                    p.held_movement = Default::default();
                 }
                 let axes = if dead {
-                    p.pending_move = None;
-                    p.held_move = Default::default();
+                    p.pending_movement = None;
+                    p.held_movement = Default::default();
                     [0.; 2]
                 } else {
                     let start = self.physics_steps - steps as u64;
-                    if let Some(axes) = p.pending_move.take() {
-                        p.held_move.refresh(axes, start)?;
+                    if let Some(axes) = p.pending_movement.take() {
+                        p.held_movement.refresh(axes, start)?;
                     }
-                    p.held_move.axes(start)
+                    p.held_movement.axes(start)
                 };
                 let walk = crate::movement::walk(axes, p.yaw)?;
                 let speed = walk.speed;
                 let terrain = crate::spells::black_tentacles::speed_scale(
                     &self.spells,
                     actor,
-                    p.position.as_dvec3(),
+                    p.player.as_dvec3(),
                 ) as f32;
                 let velocity = walk.direction * speed * terrain;
                 if dead || velocity.length_squared() > 0. {
                     p.casting = None;
                 }
-                p.previous = p.position;
+                p.previous_player = p.player;
                 p.locomotion = axes;
                 let jump = std::mem::take(&mut p.pending_jump) && !dead;
                 let mut fell = 0.;
-                p.trajectory = vec![p.position.to_array()];
+                p.player_trajectory = vec![p.player.to_array()];
                 if dead {
-                    p.trajectory.push(p.position.to_array());
+                    p.player_trajectory.push(p.player.to_array());
                 } else if self.colliders.is_empty() {
-                    p.position += velocity * dt;
-                    p.position.x = p.position.x.clamp(-12., 12.);
-                    p.position.z = p.position.z.clamp(-25., 12.);
-                    p.character = physics::character::Character::new(p.position.as_dvec3());
-                    p.trajectory.push(p.position.to_array());
+                    p.player += velocity * dt;
+                    p.player.x = p.player.x.clamp(-12., 12.);
+                    p.player.z = p.player.z.clamp(-25., 12.);
+                    p.character = physics::character::Character::new(p.player.as_dvec3());
+                    p.player_trajectory.push(p.player.to_array());
                 } else {
                     let framed = p.frame_clock.is_some();
                     let frame_work = if let Some(clock) = &mut p.frame_clock {
@@ -917,7 +1028,7 @@ impl Game {
                     for step in 0..count {
                         let (velocity, jump_step) = if framed {
                             let input = frame_work[step as usize];
-                            p.held_move = input.held;
+                            p.held_movement = input.held;
                             p.yaw = input.yaw;
                             p.locomotion = input.held.axes(input.at);
                             let walk = crate::movement::walk(p.locomotion, p.yaw)?;
@@ -982,20 +1093,21 @@ impl Game {
                             before_bounce,
                         );
                         fell += p.character.landed.unwrap_or(0.);
-                        p.trajectory.push(p.character.feet.as_vec3().to_array());
+                        p.player_trajectory
+                            .push(p.character.feet.as_vec3().to_array());
                     }
-                    p.position = p.character.feet.as_vec3();
+                    p.player = p.character.feet.as_vec3();
                 }
-                let distance = p.position.distance(p.previous);
+                let distance = p.player.distance(p.previous_player);
                 p.moving = distance > 0.00001;
                 p.motion_clock += distance / speed;
                 self.simulation
-                    .place_chamber_actor(p.source, p.position.to_array(), p.yaw)?;
-                if p.trajectory.len() >= 2 {
+                    .place_chamber_actor(p.source, p.player.to_array(), p.yaw)?;
+                if p.player_trajectory.len() >= 2 {
                     self.simulation
-                        .record_motion_path(p.source, p.trajectory.clone())?;
+                        .record_motion_path(p.source, p.player_trajectory.clone())?;
                 }
-                self.place_actor_body(p.admission.actor(), p.position, dt as f64)?;
+                self.place_actor_body(p.admission.actor(), p.player, dt as f64)?;
                 let warded = fell > 0.
                     && self
                         .spells
@@ -1014,11 +1126,12 @@ impl Game {
                 if !dead && fell > 0. && !warded && !gentle {
                     let dice = crate::spells::fall_dice(fell);
                     if dice > 0 {
-                        let amount = self.spells.dice.sum(dice, 6) as i32;
+                        let amount =
+                            self.spells.dice_for(p.admission.actor().actor).sum(dice, 6) as i32;
                         let hp = self.simulation.snapshot_for(p.source)?.player.hp;
                         let loss = amount.min(hp);
                         self.simulation.player_damage_for(p.source, loss)?;
-                        self.player_damage_event(p.admission.actor(), p.source, loss, p.position)?;
+                        self.player_damage_event(p.admission.actor(), p.source, loss, p.player)?;
                     }
                 }
                 if p.casting.as_ref().is_some_and(|c| self.time >= c.ends) {
@@ -1060,7 +1173,7 @@ impl Game {
                 .player_resources(0)
                 .is_some_and(|p| p.hp > 0)
         {
-            result.push((self.player_life(), self.player));
+            result.push((self.player_life(), self.primary.player));
         }
         result.extend(
             self.additional_players
@@ -1070,7 +1183,7 @@ impl Game {
                         .player_resources(p.source)
                         .is_some_and(|p| p.hp > 0)
                 })
-                .map(|p| (p.admission.actor(), p.position)),
+                .map(|p| (p.admission.actor(), p.player)),
         );
         result
     }
@@ -1080,7 +1193,7 @@ impl Game {
         } else {
             self.additional_players
                 .get(&actor)
-                .map_or(0, |p| p.trajectory.len().saturating_sub(1))
+                .map_or(0, |p| p.player_trajectory.len().saturating_sub(1))
         }
     }
     pub(crate) fn player_path_at(&self, actor: u64, fraction: f32) -> Vec3 {
@@ -1088,13 +1201,15 @@ impl Game {
             return self.player_motion_at(fraction);
         }
         let p = &self.additional_players[&actor];
-        if p.trajectory.len() < 2 {
-            return p.position;
+        if p.player_trajectory.len() < 2 {
+            return p.player;
         }
-        let segment = fraction.clamp(0., 1.) * (p.trajectory.len() - 1) as f32;
-        let index = (segment.floor() as usize).min(p.trajectory.len() - 2);
-        Vec3::from(p.trajectory[index])
-            .lerp(Vec3::from(p.trajectory[index + 1]), segment - index as f32)
+        let segment = fraction.clamp(0., 1.) * (p.player_trajectory.len() - 1) as f32;
+        let index = (segment.floor() as usize).min(p.player_trajectory.len() - 2);
+        Vec3::from(p.player_trajectory[index]).lerp(
+            Vec3::from(p.player_trajectory[index + 1]),
+            segment - index as f32,
+        )
     }
     pub fn hostile_hit_player(&mut self, life: LifeId, damage: i32) -> Result<(i32, i32), String> {
         if !(0..=10_000).contains(&damage)
@@ -1114,7 +1229,7 @@ impl Game {
         }
         let absorbed = p.controls.absorb(damage, self.time);
         let loss = (damage - absorbed).min(hp);
-        let (source, position) = (p.source, p.position);
+        let (source, position) = (p.source, p.player);
         self.simulation.player_damage_for(source, loss)?;
         if loss == hp {
             p.died_at = Some(self.time);
@@ -1201,6 +1316,7 @@ impl Game {
             generation: life.generation,
         };
         let (source, spawn) = (p.source, p.spawn);
+        let definition = p.definition.clone();
         let mut blockers = self.blockers.clone();
         if blockers.remove(physical)? && self.navigation.is_some() {
             self.replace_blockers(blockers)?;
@@ -1212,6 +1328,7 @@ impl Game {
         self.spells.end_concentration(life.actor)?;
         let next = admission.actor();
         let mut p = Player::new(admission, source, spawn);
+        p.definition = definition;
         p.character = character;
         self.additional_players.insert(life.actor, p);
         if let Some(e) = &mut self.encounter {
@@ -1223,7 +1340,7 @@ impl Game {
         Ok(next)
     }
     pub(crate) fn shared_prone(&self, position: Vec3) -> bool {
-        self.controls.prone(position, self.time)
+        self.primary.controls.prone(position, self.time)
             || self
                 .additional_players
                 .values()
@@ -1243,23 +1360,30 @@ impl Game {
     /// Read-only effect projection for every controlled adventurer.
     pub fn controlled_effects(&self) -> impl Iterator<Item = (LifeId, Vec3, &Controls)> + '_ {
         self.primary_resident
-            .then_some((self.player_life(), self.player, &self.controls))
+            .then_some((
+                self.player_life(),
+                self.primary.player,
+                &self.primary.controls,
+            ))
             .into_iter()
             .chain(
                 self.additional_players
                     .values()
-                    .map(|p| (p.admission.actor(), p.position, &p.controls)),
+                    .map(|p| (p.admission.actor(), p.player, &p.controls)),
             )
     }
     pub(crate) fn rebuild_players_after_restart(&mut self, previous: &Game) -> Result<(), String> {
+        self.configure_character(self.player_life(), previous.primary.definition.clone())?;
         for (actor, p) in &previous.additional_players {
             let mut admission = p.admission.clone();
             admission
                 .respawn()
                 .map_err(|e| format!("Restart player refused: {e:?}"))?;
             let source = self.simulation.spawn_player(p.spawn.to_array())?;
+            let life = admission.actor();
             self.additional_players
                 .insert(*actor, Player::new(admission, source, p.spawn));
+            self.configure_character(life, p.definition.clone())?;
         }
         self.next_player_actor = previous.next_player_actor;
         if !previous.primary_resident {
@@ -1290,14 +1414,16 @@ impl Game {
         }
         self.routes.clear();
         self.navigation_goals.clear();
-        self.admission = previous.admission.clone();
-        self.admission
+        self.primary.admission = previous.primary.admission.clone();
+        self.primary
+            .admission
             .respawn()
             .map_err(|e| format!("Migration life refused: {e:?}"))?;
         self.authority_tick = previous.authority_tick;
         self.event_serial = previous.event_serial;
         self.events = previous.events.clone();
         self.sync_bodies(0.)?;
+        self.configure_character(self.player_life(), previous.primary.definition.clone())?;
         let appearance = self
             .scene
             .actors
@@ -1331,9 +1457,11 @@ impl Game {
                 .spawn_player(character.feet.as_vec3().to_array())?;
             let mut player = Player::new(admission, source, spawn);
             player.character = character;
-            player.position = character.feet.as_vec3();
-            player.previous = player.position;
+            player.player = character.feet.as_vec3();
+            player.previous_player = player.player;
+            let life = player.admission.actor();
             self.additional_players.insert(*actor, player);
+            self.configure_character(life, old.definition.clone())?;
             let mut actor_appearance = appearance.clone();
             actor_appearance.id = *actor;
             actor_appearance.position = spawn;
@@ -1351,6 +1479,22 @@ impl Game {
         Ok(self)
     }
     pub(super) fn validate_players(&self) -> Result<(), String> {
+        if self.primary.source != 0 {
+            return Err("Primary resource source disagrees".into());
+        }
+        for p in std::iter::once(&self.primary).chain(self.additional_players.values()) {
+            p.definition.validate()?;
+            if p.catalog_ready.len() > 9
+                || p.catalog_ready.iter().any(|(slot, at)| {
+                    crate::spells::spell_in_slot(*slot).is_none() || !at.is_finite() || *at < 0.
+                })
+            {
+                return Err("Invalid actor catalog cooldowns".into());
+            }
+        }
+        if self.spells.primary_caster != self.primary.admission.actor().actor {
+            return Err("Primary dice ownership disagrees".into());
+        }
         if self.primary_resident == self.simulation.primary_absent() {
             return Err("Primary character and simulation ownership disagree".into());
         }
@@ -1360,9 +1504,9 @@ impl Game {
                 .player_resources(0)
                 .is_none_or(|r| r.hp != 0)
                 || self.agent_controlled
-                || self.pending_movement.is_some()
-                || self.pending_jump
-                || self.casting.is_some())
+                || self.primary.pending_movement.is_some()
+                || self.primary.pending_jump
+                || self.primary.casting.is_some())
         {
             return Err("Absent primary character retains live authority".into());
         }
@@ -1398,26 +1542,27 @@ impl Game {
                 || *actor == self.player_actor()
                 || self.lives.contains_key(actor)
                 || !sources.insert(p.source)
-                || !p.position.is_finite()
-                || !p.previous.is_finite()
-                || p.previous.abs().max_element() > 10_000.
+                || !p.player.is_finite()
+                || !p.previous_player.is_finite()
+                || p.previous_player.abs().max_element() > 10_000.
                 || !p.spawn.is_finite()
                 || p.spawn.abs().max_element() > 10_000.
-                || p.position.abs().max_element() > 10_000.
-                || p.character.feet.as_vec3() != p.position
+                || p.player.abs().max_element() > 10_000.
+                || p.character.feet.as_vec3() != p.player
                 || !p.yaw.is_finite()
                 || !p.motion_clock.is_finite()
                 || p.motion_clock < 0.
                 || !p.bow_ready.is_finite()
                 || p.bow_ready < 0.
-                || p.pending_move
+                || p.pending_movement
                     .is_some_and(|a| a.iter().any(|v| !v.is_finite() || v.abs() > 1.))
-                || p.held_move.validate(self.physics_steps).is_err()
+                || p.held_movement.validate(self.physics_steps).is_err()
                 || p.locomotion.iter().any(|v| !v.is_finite() || v.abs() > 1.)
                 || p.died_at
                     .is_some_and(|at| !at.is_finite() || at < 0. || at > self.time)
                 || p.last_cast.is_some_and(|(a, at)| {
-                    matches!(a, Ability::Spell(_) | Ability::SpellCommand(_))
+                    (matches!(a, Ability::Spell(_) | Ability::SpellCommand(_))
+                        && a.catalog().is_none())
                         || !at.is_finite()
                         || at < 0.
                         || at > self.time
@@ -1434,7 +1579,7 @@ impl Game {
                     .actors
                     .iter()
                     .find(|a| a.id == p.source)
-                    .is_none_or(|a| Vec3::from(a.pos) != p.position)
+                    .is_none_or(|a| Vec3::from(a.pos) != p.player)
             {
                 return Err("Invalid controlled player checkpoint".into());
             }
@@ -1584,8 +1729,13 @@ mod tests {
     fn movement_baselines_follow_the_spell_target_not_the_caster() {
         let (mut game, extra) = world();
         let primary = game.player_life();
-        crate::spells::levitate::cast_on(&mut game, crate::spells::Target::Actor(primary.actor))
-            .unwrap();
+        let context = game.caster_context(game.player_life()).unwrap();
+        crate::spells::levitate::cast_on(
+            &mut game,
+            context,
+            crate::spells::Target::Actor(primary.actor),
+        )
+        .unwrap();
         assert_eq!(
             game.movement_baseline(primary)
                 .unwrap()
@@ -1707,13 +1857,18 @@ mod tests {
             .unwrap()
             .values_mut()
         {
-            player.as_object_mut().unwrap().remove("held_move");
+            player.as_object_mut().unwrap().remove("held_movement");
         }
         assert!(Game::restore(&serde_json::to_vec(&old).unwrap()).is_err());
         old["rules_revision"] = crate::play::RULES_REVISION.into();
         let migrated = Game::restore(&serde_json::to_vec(&old).unwrap()).unwrap();
         assert_eq!(migrated.held_movement.until, 0);
-        assert_eq!(migrated.additional_players[&extra.actor].held_move.until, 0);
+        assert_eq!(
+            migrated.additional_players[&extra.actor]
+                .held_movement
+                .until,
+            0
+        );
         let mut bad: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         bad["world"]["held_movement"]["until"] = u64::MAX.into();
         assert!(Game::restore(&serde_json::to_vec(&bad).unwrap()).is_err());
@@ -1769,9 +1924,9 @@ mod tests {
         game.tick(1. / 30., [0.; 2]).unwrap();
         game.hostile_hit(10000).unwrap();
         game.tick(1. / 30., [0.; 2]).unwrap();
-        assert_eq!(game.held_movement.until, 0);
+        assert_eq!(game.primary.held_movement.until, 0);
         game.respawn_player().unwrap();
-        assert_eq!(game.held_movement.until, 0);
+        assert_eq!(game.primary.held_movement.until, 0);
         assert_eq!(game.player_life().generation, primary.generation + 1);
     }
 
@@ -1863,17 +2018,20 @@ mod tests {
     #[test]
     fn dead_adventurers_do_not_drift_with_previous_external_motion() {
         let (mut g, life) = world();
-        g.character.add_velocity(glam::DVec3::X * 5.);
+        g.primary.character.add_velocity(glam::DVec3::X * 5.);
         g.additional_players
             .get_mut(&life.actor)
             .unwrap()
             .character
             .add_velocity(glam::DVec3::X * 5.);
-        let positions = (g.player, g.actor_position(life.actor).unwrap());
+        let positions = (g.primary.player, g.actor_position(life.actor).unwrap());
         g.hostile_hit(200).unwrap();
         g.hostile_hit_player(life, 200).unwrap();
         steps(&mut g, 15);
-        assert_eq!(positions, (g.player, g.actor_position(life.actor).unwrap()));
+        assert_eq!(
+            positions,
+            (g.primary.player, g.actor_position(life.actor).unwrap())
+        );
         Game::restore(&g.checkpoint().unwrap()).unwrap();
     }
     #[test]
@@ -1911,9 +2069,9 @@ mod tests {
             },
         );
         g.submit(Controller(1), c).unwrap();
-        let start = g.player;
+        let start = g.primary.player;
         steps(&mut g, 1);
-        assert!(g.player.z > start.z);
+        assert!(g.primary.player.z > start.z);
         assert!(g.actor_position(life.actor).unwrap().z > -22.);
         assert_eq!(g.physics_steps, 4);
         assert_eq!(g.player_path_segments(life.actor), 4);
@@ -1963,7 +2121,7 @@ mod tests {
         g.submit(Controller(10), c).unwrap();
         steps(&mut g, 1);
         assert!(g.additional_players[&life.actor].casting.is_none());
-        assert!(g.casting.is_some());
+        assert!(g.primary.casting.is_some());
         let bytes = g.checkpoint().unwrap();
         let mut restored = Game::restore(&bytes).unwrap();
         steps(&mut g, 70);
@@ -2032,7 +2190,7 @@ mod tests {
     fn corrupted_player_checkpoint_and_obstructed_spawn_are_refused() {
         let (mut g, life) = world();
         let before = g.checkpoint().unwrap();
-        assert!(g.add_player(Controller(11), g.player).is_err());
+        assert!(g.add_player(Controller(11), g.primary.player).is_err());
         assert_eq!(before, g.checkpoint().unwrap());
         let mut bad: serde_json::Value = serde_json::from_slice(&before).unwrap();
         bad["world"]["additional_players"][life.actor.to_string()]["admission"]["actor"]["instance"] =

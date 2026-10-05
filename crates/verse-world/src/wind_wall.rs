@@ -550,13 +550,23 @@ impl WindWall {
     /// decide which props the wall stops, and apply the updraft. Records
     /// every updraft impulse in `ledger`.
     pub fn before_step(&mut self, world: &mut World, props: &[Prop], ledger: &mut Ledger) {
+        let grounded = supported(world, &self.bodies);
+        self.before_step_with_support(world, props, ledger, &grounded);
+    }
+    /// Uses retained support state when transient contact reports are unavailable.
+    pub(crate) fn before_step_with_support(
+        &mut self,
+        world: &mut World,
+        props: &[Prop],
+        ledger: &mut Ledger,
+        grounded: &BTreeSet<BodyId>,
+    ) {
         if world.time() >= self.until {
             self.end(world, props);
         }
         if self.ended {
             return;
         }
-        let grounded = supported(world, &self.bodies);
         let dt = world.dt;
         let time = world.time();
         for prop in props {
@@ -636,7 +646,7 @@ pub fn set_blocked(world: &mut World, body: BodyId, blocked: bool) {
 
 /// Bodies the last step's contacts held up from below, not counting the
 /// wall's own bodies.
-fn supported(world: &World, wall: &[BodyId]) -> BTreeSet<BodyId> {
+pub(crate) fn supported(world: &World, wall: &[BodyId]) -> BTreeSet<BodyId> {
     let mut out = BTreeSet::new();
     for c in &world.contacts {
         if wall.contains(&c.body_a) || wall.contains(&c.body_b) {

@@ -10,13 +10,15 @@ pub struct Effect {
     pub objects: Vec<rules::Unattended>,
 }
 
-pub fn cast(game: &mut Game) -> Result<(), String> {
+pub fn cast(game: &mut Game, context: super::Caster) -> Result<(), String> {
+    context.validate(game)?;
     let point = game
-        .actor_position(game.selected)
-        .unwrap_or(game.player + glam::Vec3::new(-game.yaw.sin(), 0., -game.yaw.cos()) * 10.)
+        .actor_position(context.selected)
+        .unwrap_or(context.feet + glam::Vec3::new(-context.yaw.sin(), 0., -context.yaw.cos()) * 10.)
         .as_dvec3();
     cast_at(
         game,
+        context,
         [
             point,
             point + DVec3::X * 4.,
@@ -26,12 +28,13 @@ pub fn cast(game: &mut Game) -> Result<(), String> {
     )
 }
 
-pub fn cast_at(game: &mut Game, points: [DVec3; 4]) -> Result<(), String> {
+pub fn cast_at(game: &mut Game, context: super::Caster, points: [DVec3; 4]) -> Result<(), String> {
+    context.validate(game)?;
     if game.scene.collision_profile.as_deref() == Some("original-chamber-v1") {
         return Err("Meteor Swarm requires open sky; leave the indoor chamber".into());
     }
-    let caster = game.player_actor();
-    let origin = game.player.as_dvec3() + DVec3::Y * 1.4;
+    let caster = context.life.actor;
+    let origin = context.feet.as_dvec3() + DVec3::Y * 1.4;
     rules::validate(origin, &points, |p| {
         physics::kinematic::sweep_box(
             origin,
@@ -57,15 +60,23 @@ pub fn cast_at(game: &mut Game, points: [DVec3; 4]) -> Result<(), String> {
     } else {
         rules::Flight::STANDARD
     };
+    let super::SpellWorld {
+        world,
+        dice,
+        caster_dice,
+        primary_caster,
+        ..
+    } = &mut game.spells;
+    let dice = super::dice::for_caster(dice, caster_dice, *primary_caster, context.life.actor);
     let swarm = rules::MeteorSwarm::cast_with_flight(
-        &mut game.spells.world,
+        world,
         origin,
         points,
         super::GRAVITY,
         flight,
-        super::SPELL_SAVE_DC,
+        context.save_dc,
         |_| true,
-        &mut |s| game.spells.dice.roll(s),
+        &mut |s| dice.roll(s),
     )
     .map_err(|e| format!("Meteor Swarm refused: {e:?}"))?;
     let cast = game.spells.begin_cast(caster, false)?;

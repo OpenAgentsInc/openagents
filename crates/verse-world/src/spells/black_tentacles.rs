@@ -9,24 +9,26 @@ pub struct Effect {
     pub spell: rules::BlackTentacles,
 }
 
-pub fn cast(game: &mut Game) -> Result<(), String> {
+pub fn cast(game: &mut Game, context: super::Caster) -> Result<(), String> {
+    context.validate(game)?;
     let point = game
-        .actor_position(game.selected)
-        .unwrap_or(game.player + glam::Vec3::new(-game.yaw.sin(), 0., -game.yaw.cos()) * 6.)
+        .actor_position(context.selected)
+        .unwrap_or(context.feet + glam::Vec3::new(-context.yaw.sin(), 0., -context.yaw.cos()) * 6.)
         .as_dvec3();
-    cast_at(game, point)
+    cast_at(game, context, point)
 }
 
 /// Admit an explicitly chosen ground point through the native spell rules.
-pub fn cast_at(game: &mut Game, point: glam::DVec3) -> Result<(), String> {
-    let center = rules::place(game.player.as_dvec3(), point, |x, z| {
+pub fn cast_at(game: &mut Game, context: super::Caster, point: glam::DVec3) -> Result<(), String> {
+    context.validate(game)?;
+    let center = rules::place(context.feet.as_dvec3(), point, |x, z| {
         super::wind_wall::ground(&game.spells.world, glam::DVec2::new(x, z))
     })
     .map_err(|e| format!("Black Tentacles refused: {e:?}"))?;
     if game.spells.props.len() + rules::GRID * rules::GRID * rules::SEGMENTS > super::MAX_PROPS {
         return Err("Tentacle body budget exceeded".into());
     }
-    let caster = game.player_actor();
+    let caster = context.life.actor;
     let actors: Vec<_> = super::feather_fall::candidates(game)
         .iter()
         .map(|c| u64::from(c.id))
@@ -65,28 +67,33 @@ pub fn cast_at(game: &mut Game, point: glam::DVec3) -> Result<(), String> {
         .iter()
         .map(|p| (p.body, p.actor))
         .collect();
+    let super::SpellWorld {
+        world,
+        dice,
+        caster_dice,
+        primary_caster,
+        ..
+    } = &mut game.spells;
+    let dice = super::dice::for_caster(dice, caster_dice, *primary_caster, context.life.actor);
     let (spell, events) = rules::BlackTentacles::cast_with(
-        &mut game.spells.world,
+        world,
         center,
         DVec3::new(0., -super::GRAVITY, 0.),
-        super::SPELL_SAVE_DC,
-        game.spells.dice.seed,
+        context.save_dc,
+        dice.seed,
         &targets,
         &mut |body, sides| {
             if let Some(actor) = body.and_then(|b| identities.get(&b)) {
-                game.spells
-                    .dice
-                    .save(*actor, "Strength", 0, super::SPELL_SAVE_DC)
-                    .roll
+                dice.save(*actor, "Strength", 0, context.save_dc).roll
             } else {
-                game.spells.dice.roll(sides)
+                dice.roll(sides)
             }
         },
     );
     for event in events {
         record(&mut game.spells, event);
     }
-    let instance = game.player_life().instance;
+    let instance = context.life.instance;
     for tentacle in &spell.tentacles {
         for body in &tentacle.segments {
             game.spells.adopt_body(
@@ -152,7 +159,11 @@ pub fn escape(game: &mut Game, actor: u64) -> Result<(), String> {
         .ok_or("No tentacle restraint")?
         .spell
         .dc;
-    let save = game.spells.dice.save(actor, "Athletics", 0, dc);
+    let save = if game.player_source(actor).is_some() {
+        game.spells.dice_for(actor).save(actor, "Athletics", 0, dc)
+    } else {
+        game.spells.dice.save(actor, "Athletics", 0, dc)
+    };
     let event = game
         .spells
         .tentacles

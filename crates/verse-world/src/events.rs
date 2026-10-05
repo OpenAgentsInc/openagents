@@ -6,6 +6,7 @@ use verse_engine::core::LifeId;
 pub enum Kind {
     Dialogue { text: String },
     CameraHandoff,
+    Ability { label: String },
     Damage { amount: i32, incoming: bool },
     Death,
     Respawn,

@@ -454,6 +454,11 @@ impl View {
                 return Err("Invalid remote view event identity".into());
             }
             match &event.kind {
+                Kind::Ability { label }
+                    if event.actor.is_none() || label.is_empty() || label.len() > 64 =>
+                {
+                    return Err("Invalid ability event".into());
+                }
                 Kind::Dialogue { text } if text.len() > 4096 => {
                     return Err("Remote dialogue exceeds byte budget".into());
                 }

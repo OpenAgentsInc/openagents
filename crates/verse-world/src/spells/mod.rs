@@ -73,8 +73,41 @@ pub struct SpellDef {
     /// Chamber mana and cooldown: MMO tuning, not tabletop rules.
     pub cost: i32,
     pub cooldown: f32,
-    /// Runs an admitted cast. The caster's facing is `game.yaw`.
-    pub cast: fn(&mut crate::play::Game) -> Result<(), String>,
+    /// Runs trusted effect construction with an explicit current caster.
+    pub cast: fn(&mut crate::play::Game, Caster) -> Result<(), String>,
+}
+
+/// Immutable context captured after command admission. Effect constructors
+/// validate its actor life, source, pose, and authority tick before using it.
+#[derive(Clone, Copy, Debug)]
+pub struct Caster {
+    pub(crate) life: verse_engine::core::LifeId,
+    pub(crate) source: u32,
+    pub(crate) feet: glam::Vec3,
+    pub(crate) yaw: f32,
+    pub(crate) selected: u64,
+    pub(crate) save_dc: i32,
+    pub(crate) tick: u64,
+}
+impl Caster {
+    pub fn life(self) -> verse_engine::core::LifeId {
+        self.life
+    }
+    pub(crate) fn validate(self, game: &crate::play::Game) -> Result<(), String> {
+        let actor = game
+            .actor_state(self.life)
+            .ok_or("Spell caster life is stale")?;
+        if actor.source != self.source
+            || actor.player != self.feet
+            || actor.yaw != self.yaw
+            || actor.selected != self.selected
+            || actor.definition.save_dc != self.save_dc
+            || game.authority_tick != self.tick
+        {
+            return Err("Spell caster context is stale".into());
+        }
+        Ok(())
+    }
 }
 
 /// Row-two spells. Reserved slots, in issue order: 0 Telekinesis (#10452),
@@ -253,6 +286,10 @@ pub struct SpellWorld {
     pub props: Vec<Prop>,
     pub ledger: Ledger,
     pub dice: Dice,
+    #[serde(default)]
+    pub(crate) primary_caster: u64,
+    #[serde(default)]
+    pub(crate) caster_dice: BTreeMap<u64, Dice>,
     pub fields: Vec<SpellField>,
     pub owned: Vec<Owned>,
     /// Caster actor to the cast that holds their concentration.
@@ -330,6 +367,8 @@ impl SpellWorld {
             world,
             props: vec![],
             dice: Dice::new(seed),
+            primary_caster: 0,
+            caster_dice: BTreeMap::new(),
             fields: vec![],
             owned: vec![],
             concentration: BTreeMap::new(),
@@ -357,9 +396,23 @@ impl SpellWorld {
         }
     }
 
+    pub(crate) fn dice_for(&mut self, caster: u64) -> &mut Dice {
+        dice::for_caster(
+            &mut self.dice,
+            &mut self.caster_dice,
+            self.primary_caster,
+            caster,
+        )
+    }
     pub fn validate(&self, instance: u64) -> Result<(), String> {
         self.world.check_version()?;
         self.dice.validate()?;
+        if self.caster_dice.len() > 128 {
+            return Err("Too many caster dice streams".into());
+        }
+        for dice in self.caster_dice.values() {
+            dice.validate()?;
+        }
         self.validate_effects()?;
         if self.feather_falls.len() > 64 {
             return Err("Too many Feather Fall effects".into());
@@ -894,14 +947,21 @@ impl SpellWorld {
                 self.proxies.iter().map(|p| (p.body, p.actor)).collect();
             let mut tentacle_events = vec![];
             for effect in &mut self.tentacles {
+                let dice = dice::for_caster(
+                    &mut self.dice,
+                    &mut self.caster_dice,
+                    self.primary_caster,
+                    effect.caster,
+                );
+                let dc = effect.spell.dc;
                 tentacle_events.extend(effect.spell.before_step_with(
                     &mut self.world,
                     &targets,
                     &mut |body, sides| {
                         if let Some(actor) = body.and_then(|b| identities.get(&b)) {
-                            self.dice.save(*actor, "Strength", 0, SPELL_SAVE_DC).roll
+                            dice.save(*actor, "Strength", 0, dc).roll
                         } else {
-                            self.dice.roll(sides)
+                            dice.roll(sides)
                         }
                     },
                     Some(&mut self.ledger),
@@ -925,9 +985,12 @@ impl SpellWorld {
                         radius: p.spec.dimensions.max_element() * 0.5,
                     })
                     .collect();
-                effect
-                    .wall
-                    .before_step(&mut self.world, &props, &mut self.ledger);
+                effect.wall.before_step_with_support(
+                    &mut self.world,
+                    &props,
+                    &mut self.ledger,
+                    &effect.supported,
+                );
             }
             for effect in &self.gusts {
                 let profiles: Vec<_> = self
@@ -1033,14 +1096,23 @@ impl SpellWorld {
                 })
                 .collect();
             self.world.step(&fields);
+            for effect in &mut self.wind_walls {
+                effect.supported = crate::wind_wall::supported(&self.world, &effect.wall.bodies);
+            }
             let mut gravity_broken = Vec::new();
             for (effect, before) in self.reversed.iter_mut().zip(&reversed_velocities) {
+                let dice = dice::for_caster(
+                    &mut self.dice,
+                    &mut self.caster_dice,
+                    self.primary_caster,
+                    effect.caster,
+                );
                 for impact in effect.spell.observe(&mut self.world, before) {
                     if impact.strike.dice == 0 {
                         continue;
                     }
                     let damage = (0..impact.strike.dice)
-                        .map(|_| self.dice.roll(6) as i32)
+                        .map(|_| dice.roll(6) as i32)
                         .sum::<i32>();
                     if let Some(proxy) = self.proxies.iter().find(|p| p.body == impact.body) {
                         self.damage
@@ -1192,11 +1264,17 @@ impl SpellWorld {
             let mut meteor_bodies = vec![];
             let mut meteor_events = vec![];
             for effect in &mut self.meteors {
+                let dice = dice::for_caster(
+                    &mut self.dice,
+                    &mut self.caster_dice,
+                    self.primary_caster,
+                    effect.caster,
+                );
                 for impact in effect.swarm.after_step(
                     &mut self.world,
                     &self.creatures,
                     &mut effect.objects,
-                    &mut |s| self.dice.roll(s),
+                    &mut |s| dice.roll(s),
                 ) {
                     meteor_events.push((
                         format!(

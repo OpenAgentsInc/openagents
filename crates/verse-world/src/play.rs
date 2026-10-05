@@ -1,4 +1,5 @@
 //! Owned chamber authority and read-only cinematic presentation.
+mod caster;
 mod framed_movement;
 mod multiplayer;
 pub mod social;
@@ -9,8 +10,8 @@ use std::collections::BTreeMap;
 use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
-/// Checkpoint revision. v23 persists bounded navigation scheduling.
-pub const RULES_REVISION: &str = "verse-chamber-owned-v23";
+/// Checkpoint revision. v24 stores every controlled actor in the shared record.
+pub const RULES_REVISION: &str = "verse-chamber-owned-v24";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
@@ -184,8 +185,10 @@ fn primary_present() -> bool {
 fn is_primary_present(value: &bool) -> bool {
     *value
 }
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize)]
 pub struct Game {
+    #[serde(flatten)]
+    pub(crate) primary: multiplayer::Player,
     #[serde(
         default = "primary_present",
         skip_serializing_if = "is_primary_present"
@@ -197,14 +200,6 @@ pub struct Game {
     next_player_actor: u64,
     #[serde(default)]
     migration_generation: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    frame_clock: Option<crate::movement::frames::Clock>,
-    pub(crate) admission: crate::Admission,
-    pending_movement: Option<[f32; 2]>,
-    #[serde(default)]
-    held_movement: crate::movement::Held,
-    pending_jump: bool,
-    pub(crate) character: physics::character::Character,
     pub(crate) npc_characters: BTreeMap<u64, physics::character::Character>,
     routes: BTreeMap<u64, Route>,
     navigation_goals: BTreeMap<u64, NavigationGoal>,
@@ -229,9 +224,6 @@ pub struct Game {
     pub physics_clock: physics::FixedStep,
     pub physics_steps: u64,
     clock_origin: Option<f64>,
-    previous_player: Vec3,
-    #[serde(skip)]
-    player_trajectory: Vec<[f32; 3]>,
     previous_npc: BTreeMap<u64, Vec3>,
     #[serde(skip)]
     pub(crate) query_scene: physics::queries::Scene,
@@ -245,32 +237,194 @@ pub struct Game {
     pub agent_controlled: bool,
     pub time: f32,
     pub authority_tick: u64,
-    pub player: Vec3,
-    pub yaw: f32,
     pub camera: super::controls::Camera,
-    pub selected: u64,
     pub message: String,
     pub(crate) simulation: Simulation,
-    pub controls: Controls,
     /// Physics the spells act through: dynamic props, fields, dice, ledger.
     pub spells: crate::spells::SpellWorld,
     pub(crate) ids: BTreeMap<u64, u32>,
     pub(crate) lives: BTreeMap<u64, verse_engine::core::LifeId>,
-    pub bow_ready: f32,
-    pub last_cast: Option<(Ability, f32)>,
-    pub casting: Option<Casting>,
     pub impacts: Vec<(Vec3, f32, u8)>,
     pub damage_numbers: Vec<DamageNumber>,
     damage_serial: u64,
     observed_health: BTreeMap<u32, i32>,
-    pub moving: bool,
-    locomotion: [f32; 2],
-    motion_clock: f32,
     npc_motion_clock: BTreeMap<u64, f32>,
     npc_motion: BTreeMap<u64, Vec3>,
     npc_yaw: BTreeMap<u64, f32>,
     npc_deaths: BTreeMap<u64, (f32, Vec3)>,
 }
+// Decode the primary record separately: Serde's flatten content reader rejects
+// integer map keys in controls and cooldowns. The public JSON remains flat.
+#[derive(serde::Deserialize)]
+struct GameWire {
+    pub(crate) primary: multiplayer::Player,
+    #[serde(
+        default = "primary_present",
+        skip_serializing_if = "is_primary_present"
+    )]
+    primary_resident: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    social: Option<social::State>,
+    additional_players: BTreeMap<u64, multiplayer::Player>,
+    next_player_actor: u64,
+    #[serde(default)]
+    migration_generation: u64,
+    pub(crate) npc_characters: BTreeMap<u64, physics::character::Character>,
+    routes: BTreeMap<u64, Route>,
+    navigation_goals: BTreeMap<u64, NavigationGoal>,
+    blockers: physics::walkable::Blockers,
+    bodies: physics::lifetimes::Bodies,
+    #[serde(skip)]
+    pub motor_recovery: crate::movement::RecoveryObservations,
+    #[serde(skip)]
+    pub movement_expiry: crate::movement::frames::ExpiryObservations,
+    #[serde(default)]
+    navigation_scheduler: physics::walkable::Scheduler,
+    #[serde(skip)]
+    navigation_scratch: physics::walkable::SearchScratch,
+    #[serde(skip)]
+    navigation_crowd: physics::walkable::Crowd,
+    #[serde(skip)]
+    navigation_cover: BTreeMap<(u8, u64), (glam::DVec3, glam::DVec3)>,
+    pub navigation_plans: u64,
+    pub navigation_budget_refusals: u64,
+    #[serde(skip)]
+    navigation: Option<std::sync::Arc<physics::walkable::Navigation>>,
+    pub physics_clock: physics::FixedStep,
+    pub physics_steps: u64,
+    clock_origin: Option<f64>,
+    previous_npc: BTreeMap<u64, Vec3>,
+    #[serde(skip)]
+    pub(crate) query_scene: physics::queries::Scene,
+    pub events: Vec<crate::events::Event>,
+    event_serial: u64,
+    emitted_cues: std::collections::BTreeSet<usize>,
+    #[serde(skip)]
+    pub(crate) colliders: Vec<physics::kinematic::Aabb>,
+    pub scene: Scene,
+    pub encounter: Option<super::combat::Encounter>,
+    pub agent_controlled: bool,
+    pub time: f32,
+    pub authority_tick: u64,
+    pub camera: super::controls::Camera,
+    pub message: String,
+    pub(crate) simulation: Simulation,
+    /// Physics the spells act through: dynamic props, fields, dice, ledger.
+    pub spells: crate::spells::SpellWorld,
+    pub(crate) ids: BTreeMap<u64, u32>,
+    pub(crate) lives: BTreeMap<u64, verse_engine::core::LifeId>,
+    pub impacts: Vec<(Vec3, f32, u8)>,
+    pub damage_numbers: Vec<DamageNumber>,
+    damage_serial: u64,
+    observed_health: BTreeMap<u32, i32>,
+    npc_motion_clock: BTreeMap<u64, f32>,
+    npc_motion: BTreeMap<u64, Vec3>,
+    npc_yaw: BTreeMap<u64, f32>,
+    npc_deaths: BTreeMap<u64, (f32, Vec3)>,
+}
+impl<'de> serde::Deserialize<'de> for Game {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut value = serde_json::Value::deserialize(deserializer)?;
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| serde::de::Error::custom("World checkpoint must be an object"))?;
+        let mut primary = serde_json::Map::new();
+        for key in [
+            "admission",
+            "source",
+            "definition",
+            "character",
+            "player",
+            "previous_player",
+            "spawn",
+            "yaw",
+            "selected",
+            "catalog_ready",
+            "pending_movement",
+            "held_movement",
+            "pending_jump",
+            "frame_clock",
+            "controls",
+            "casting",
+            "bow_ready",
+            "last_cast",
+            "motion_clock",
+            "locomotion",
+            "moving",
+            "died_at",
+        ] {
+            if let Some(value) = object.remove(key) {
+                primary.insert(key.into(), value);
+            }
+        }
+        object.insert("primary".into(), serde_json::Value::Object(primary));
+        let wire: GameWire = serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            primary: wire.primary,
+            primary_resident: wire.primary_resident,
+            social: wire.social,
+            additional_players: wire.additional_players,
+            next_player_actor: wire.next_player_actor,
+            migration_generation: wire.migration_generation,
+            npc_characters: wire.npc_characters,
+            routes: wire.routes,
+            navigation_goals: wire.navigation_goals,
+            blockers: wire.blockers,
+            bodies: wire.bodies,
+            motor_recovery: wire.motor_recovery,
+            movement_expiry: wire.movement_expiry,
+            navigation_scheduler: wire.navigation_scheduler,
+            navigation_scratch: wire.navigation_scratch,
+            navigation_crowd: wire.navigation_crowd,
+            navigation_cover: wire.navigation_cover,
+            navigation_plans: wire.navigation_plans,
+            navigation_budget_refusals: wire.navigation_budget_refusals,
+            navigation: wire.navigation,
+            physics_clock: wire.physics_clock,
+            physics_steps: wire.physics_steps,
+            clock_origin: wire.clock_origin,
+            previous_npc: wire.previous_npc,
+            query_scene: wire.query_scene,
+            events: wire.events,
+            event_serial: wire.event_serial,
+            emitted_cues: wire.emitted_cues,
+            colliders: wire.colliders,
+            scene: wire.scene,
+            encounter: wire.encounter,
+            agent_controlled: wire.agent_controlled,
+            time: wire.time,
+            authority_tick: wire.authority_tick,
+            camera: wire.camera,
+            message: wire.message,
+            simulation: wire.simulation,
+            spells: wire.spells,
+            ids: wire.ids,
+            lives: wire.lives,
+            impacts: wire.impacts,
+            damage_numbers: wire.damage_numbers,
+            damage_serial: wire.damage_serial,
+            observed_health: wire.observed_health,
+            npc_motion_clock: wire.npc_motion_clock,
+            npc_motion: wire.npc_motion,
+            npc_yaw: wire.npc_yaw,
+            npc_deaths: wire.npc_deaths,
+        })
+    }
+}
+
+pub use multiplayer::Player as ActorState;
+impl std::ops::Deref for Game {
+    type Target = ActorState;
+    fn deref(&self) -> &Self::Target {
+        &self.primary
+    }
+}
+impl std::ops::DerefMut for Game {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.primary
+    }
+}
+
 impl Game {
     /// Enables collision-query measurements without changing gameplay or checkpoint state.
     pub fn enable_query_profiling(&self) {
@@ -299,6 +453,9 @@ impl Game {
             .ok_or("World generation exhausted")?;
         self.migration_generation = generation;
         self.spells.generation = generation;
+        self.navigation_scheduler = Default::default();
+        self.navigation_goals.clear();
+        self.routes.clear();
         for prop in &mut self.spells.props {
             self.query_scene.remove(prop.query_key());
             prop.life.generation = generation;
@@ -308,8 +465,9 @@ impl Game {
     }
     pub(super) fn adopt_restart_fences(&mut self, previous: &Self) -> Result<(), String> {
         self.fence_world_generation(previous)?;
-        self.admission = previous.admission.clone();
-        self.admission
+        self.primary.admission = previous.primary.admission.clone();
+        self.primary
+            .admission
             .respawn()
             .map_err(|e| format!("Restart refused: {e:?}"))?;
         self.control_handoff(self.agent_controlled)?;
@@ -337,7 +495,7 @@ impl Game {
             self.events.remove(0);
         }
         self.events.push(crate::events::Event {
-            instance: self.admission.actor().instance,
+            instance: self.primary.admission.actor().instance,
             serial: self.event_serial,
             tick: self.authority_tick,
             time: self.time,
@@ -357,7 +515,8 @@ impl Game {
             .collect();
         for (index, cue) in due {
             let life = self.actor_life(cue.actor).or_else(|| {
-                (cue.actor == self.admission.actor().actor).then_some(self.admission.actor())
+                (cue.actor == self.primary.admission.actor().actor)
+                    .then_some(self.primary.admission.actor())
             });
             match cue.action {
                 Action::Yell { text, .. } => {
@@ -371,19 +530,19 @@ impl Game {
         Ok(())
     }
     pub fn player_life(&self) -> verse_engine::core::LifeId {
-        self.admission.actor()
+        self.primary.admission.actor()
     }
     pub(super) fn player_motion_segments(&self) -> usize {
-        self.player_trajectory.len().saturating_sub(1)
+        self.primary.player_trajectory.len().saturating_sub(1)
     }
     pub(super) fn player_motion_at(&self, fraction: f32) -> Vec3 {
-        if self.player_trajectory.len() < 2 {
-            return self.player;
+        if self.primary.player_trajectory.len() < 2 {
+            return self.primary.player;
         }
-        let segment = fraction.clamp(0., 1.) * (self.player_trajectory.len() - 1) as f32;
-        let index = (segment.floor() as usize).min(self.player_trajectory.len() - 2);
-        Vec3::from(self.player_trajectory[index]).lerp(
-            Vec3::from(self.player_trajectory[index + 1]),
+        let segment = fraction.clamp(0., 1.) * (self.primary.player_trajectory.len() - 1) as f32;
+        let index = (segment.floor() as usize).min(self.primary.player_trajectory.len() - 2);
+        Vec3::from(self.primary.player_trajectory[index]).lerp(
+            Vec3::from(self.primary.player_trajectory[index + 1]),
             segment - index as f32,
         )
     }
@@ -451,6 +610,7 @@ impl Game {
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         if saved.version != 1
             || (saved.rules_revision != RULES_REVISION
+                && saved.rules_revision != "verse-chamber-owned-v23"
                 && saved.rules_revision != "verse-chamber-owned-v22"
                 && saved.rules_revision != "verse-chamber-owned-v21"
                 && saved.rules_revision != "verse-chamber-owned-v20"
@@ -462,6 +622,7 @@ impl Game {
             return Err("Unsupported world checkpoint".into());
         }
         if saved.rules_revision != RULES_REVISION
+            && saved.rules_revision != "verse-chamber-owned-v23"
             && saved.rules_revision != "verse-chamber-owned-v22"
             && saved.rules_revision != "verse-chamber-owned-v21"
             && saved.world.social.is_some()
@@ -469,15 +630,26 @@ impl Game {
             return Err("Legacy rules cannot contain hosted social state".into());
         }
         if saved.rules_revision != RULES_REVISION
+            && saved.rules_revision != "verse-chamber-owned-v23"
             && saved.rules_revision != "verse-chamber-owned-v22"
             && !saved.world.primary_resident
         {
             return Err("Legacy rules cannot contain an absent primary character".into());
         }
         let mut world = saved.world;
+        world.spells.primary_caster = world.primary.admission.actor().actor;
+        if saved.rules_revision != RULES_REVISION {
+            world.primary.catalog_ready = std::mem::take(&mut world.spells.ready);
+            world.primary.spawn = world
+                .scene
+                .actors
+                .iter()
+                .find(|actor| actor.id == world.primary.admission.actor().actor)
+                .map_or(world.primary.player, |actor| actor.position);
+        }
         world.validate_social()?;
         world.validate_clock()?;
-        world.held_movement.validate(world.physics_steps)?;
+        world.primary.held_movement.validate(world.physics_steps)?;
         world.bodies.validate()?;
         world.validate_body_bindings()?;
         if let Some(encounter) = &world.encounter {
@@ -486,7 +658,7 @@ impl Game {
         world.validate_roles()?;
         world.simulation.validate()?;
         world.validate_players()?;
-        world.controls.validate()?;
+        world.primary.controls.validate()?;
         world.blockers.validate()?;
         if world.navigation_goals.iter().any(|(actor, goal)| {
             world.lives.get(actor) != Some(&goal.life)
@@ -496,7 +668,7 @@ impl Game {
         }) {
             return Err("Invalid directed navigation checkpoint".into());
         }
-        if world.blockers.instance != world.admission.actor().instance
+        if world.blockers.instance != world.primary.admission.actor().instance
             || world.routes.iter().any(|(id, route)| {
                 world.lives.get(id) != Some(&route.life)
                     || !route.target.is_finite()
@@ -513,7 +685,7 @@ impl Game {
         }
         world
             .navigation_scheduler
-            .validate(world.admission.actor().instance)?;
+            .validate(world.primary.admission.actor().instance)?;
         if world
             .navigation_scheduler
             .tick()
@@ -528,23 +700,23 @@ impl Game {
         }) {
             return Err("Navigation scheduler contains a stale actor life".into());
         }
-        world.character.validate()?;
+        world.primary.character.validate()?;
         for character in world.npc_characters.values() {
             character.validate()?;
         }
         if !world.time.is_finite()
             || world.time < 0.
-            || !world.player.is_finite()
-            || !world.yaw.is_finite()
+            || !world.primary.player.is_finite()
+            || !world.primary.yaw.is_finite()
             || world.ids.len() > 256
             || world.ids.len() != world.lives.len()
             || (world.social.is_none()
-                && !world.ids.contains_key(&world.selected)
+                && !world.ids.contains_key(&world.primary.selected)
                 && !world
                     .spells
                     .props
                     .iter()
-                    .any(|p| p.life.entity == world.selected))
+                    .any(|p| p.life.entity == world.primary.selected))
             || world
                 .scene
                 .actors
@@ -569,14 +741,14 @@ impl Game {
                 .iter()
                 .any(|index| *index >= world.scene.cues.len())
             || world.events.iter().any(|e| {
-                e.instance != world.admission.actor().instance
+                e.instance != world.primary.admission.actor().instance
                     || e.serial > world.event_serial
                     || e.tick > world.authority_tick
                     || !e.time.is_finite()
             })
             || world.ids.keys().any(|id| {
                 world.lives.get(id).is_none_or(|life| {
-                    life.actor != *id || life.instance != world.admission.actor().instance
+                    life.actor != *id || life.instance != world.primary.admission.actor().instance
                 })
             })
             || world
@@ -584,7 +756,7 @@ impl Game {
                 .actors
                 .iter()
                 .find(|a| a.model == "adventurer")
-                .is_none_or(|a| a.id != world.admission.actor().actor)
+                .is_none_or(|a| a.id != world.primary.admission.actor().actor)
         {
             return Err("Invalid world checkpoint state".into());
         }
@@ -594,9 +766,11 @@ impl Game {
         } else {
             world.static_queries()?
         };
-        world.spells.validate(world.admission.actor().instance)?;
-        if !world.character.feet.is_finite()
-            || !world.character.vertical_speed.is_finite()
+        world
+            .spells
+            .validate(world.primary.admission.actor().instance)?;
+        if !world.primary.character.feet.is_finite()
+            || !world.primary.character.vertical_speed.is_finite()
             || world.npc_characters.iter().any(|(id, character)| {
                 !world.lives.contains_key(id)
                     || !character.feet.is_finite()
@@ -606,7 +780,7 @@ impl Game {
                 .previous_npc
                 .iter()
                 .any(|(id, pose)| !world.lives.contains_key(id) || !pose.is_finite())
-            || !world.previous_player.is_finite()
+            || !world.primary.previous_player.is_finite()
             || world.physics_clock.dt != 1. / 120.
             || world.physics_clock.max_steps != 12
             || !world.physics_clock.accumulator.is_finite()
@@ -618,7 +792,7 @@ impl Game {
         }
         world.navigation = crate::room::profile_navigation(
             world.scene.collision_profile.as_deref(),
-            world.admission.actor().instance,
+            world.primary.admission.actor().instance,
         )?;
         world.navigation_cover = world.navigation_obstacles();
         for collider in world.blockers.colliders()? {
@@ -651,12 +825,12 @@ impl Game {
         Ok(world)
     }
     fn validate_clock(&self) -> Result<(), String> {
-        if let Some(clock) = &self.frame_clock {
+        if let Some(clock) = &self.primary.frame_clock {
             clock.validate(
                 self.physics_steps,
-                self.admission.actor(),
-                self.admission.epoch(),
-                self.admission.accepted_sequence(),
+                self.primary.admission.actor(),
+                self.primary.admission.epoch(),
+                self.primary.admission.accepted_sequence(),
             )?;
         }
         if self.spells.generation != self.migration_generation {
@@ -684,7 +858,7 @@ impl Game {
         }
         Ok(physics::character::slide(
             &self.query_scene,
-            self.actor_filter(self.admission.actor()),
+            self.actor_filter(self.primary.admission.actor()),
             physics::character::Settings::default(),
             position.as_dvec3(),
             delta.as_dvec3(),
@@ -761,7 +935,7 @@ impl Game {
     fn validate_body_bindings(&self) -> Result<(), String> {
         if self.bodies.records().filter(|r| r.actor).count()
             != self.ids.len() + usize::from(self.primary_resident) + self.additional_players.len()
-            || self.bodies.instance != self.admission.actor().instance
+            || self.bodies.instance != self.primary.admission.actor().instance
         {
             return Err("Checkpoint physics body ownership disagrees".into());
         }
@@ -800,8 +974,8 @@ impl Game {
                 continue;
             }
 
-            let (expected, source) = if r.life.entity == self.admission.actor().actor {
-                (Some(self.admission.actor()), Some(0))
+            let (expected, source) = if r.life.entity == self.primary.admission.actor().actor {
+                (Some(self.primary.admission.actor()), Some(0))
             } else {
                 (
                     self.actor_life(r.life.entity),
@@ -933,14 +1107,14 @@ impl Game {
         use physics::lifetimes::{Hull, Phase};
         let snapshot = self.snapshot();
         let mut actors = if self.primary_resident {
-            vec![(self.admission.actor(), 0, self.player)]
+            vec![(self.primary.admission.actor(), 0, self.primary.player)]
         } else {
             vec![]
         };
         actors.extend(
             self.additional_players
                 .values()
-                .map(|p| (p.admission.actor(), p.source, p.position)),
+                .map(|p| (p.admission.actor(), p.source, p.player)),
         );
         actors.extend(self.ids.iter().map(|(actor, source)| {
             let position = snapshot
@@ -1180,7 +1354,7 @@ impl Game {
         let life = self
             .actor_life(actor)
             .ok_or("Hostile movement life is missing")?;
-        let instance = self.admission.actor().instance;
+        let instance = self.primary.admission.actor().instance;
         let ignore = Some(physics::queries::Life {
             instance,
             entity: actor,
@@ -1454,7 +1628,13 @@ impl Game {
                 |s| s.profile.geometry_in(instance)?.compile(instance),
             )?
         };
-        let spells = crate::spells::SpellWorld::new(&colliders, SPELL_SEED);
+        let mut spells = crate::spells::SpellWorld::new(&colliders, SPELL_SEED);
+        spells.primary_caster = scene
+            .actors
+            .iter()
+            .find(|a| a.model == "adventurer")
+            .unwrap()
+            .id;
         let next_player_actor = scene
             .actors
             .iter()
@@ -1465,16 +1645,28 @@ impl Game {
             .checked_add(1)
             .ok_or("Player actor IDs exhausted")?;
         let mut world = Self {
+            primary: multiplayer::Player::new(
+                crate::Admission::new(
+                    verse_engine::core::LifeId {
+                        instance,
+                        actor: scene
+                            .actors
+                            .iter()
+                            .find(|a| a.model == "adventurer")
+                            .unwrap()
+                            .id,
+                        generation: 0,
+                    },
+                    crate::Controller(1),
+                ),
+                0,
+                player,
+            ),
             social,
             additional_players: BTreeMap::new(),
             next_player_actor,
             primary_resident: true,
             migration_generation: 0,
-            frame_clock: None,
-            pending_movement: None,
-            held_movement: Default::default(),
-            pending_jump: false,
-            character: physics::character::Character::new(player.as_dvec3()),
             npc_characters: BTreeMap::new(),
             routes: BTreeMap::new(),
             navigation_goals: BTreeMap::new(),
@@ -1495,39 +1687,21 @@ impl Game {
             physics_clock: physics::FixedStep::new(1. / 120., 12),
             clock_origin: None,
             physics_steps: 0,
-            previous_player: player,
-            player_trajectory: vec![],
             previous_npc: BTreeMap::new(),
             query_scene,
             events: vec![],
             event_serial: 0,
             emitted_cues: Default::default(),
-            admission: crate::Admission::new(
-                verse_engine::core::LifeId {
-                    instance,
-                    actor: scene
-                        .actors
-                        .iter()
-                        .find(|a| a.model == "adventurer")
-                        .unwrap()
-                        .id,
-                    generation: 0,
-                },
-                crate::Controller(1),
-            ),
+
             colliders,
             scene,
             encounter: None,
             agent_controlled: false,
             time: 0.0,
             authority_tick: 0,
-            player,
-            yaw: std::f32::consts::PI,
             camera: super::controls::Camera::default(),
-            selected,
             message: String::new(),
             simulation,
-            controls: Controls::default(),
             spells,
             lives: ids
                 .keys()
@@ -1543,21 +1717,16 @@ impl Game {
                 })
                 .collect(),
             ids,
-            bow_ready: 0.0,
-            last_cast: None,
-            casting: None,
             impacts: vec![],
             damage_numbers: vec![],
             damage_serial: 0,
             observed_health,
-            moving: false,
-            locomotion: [0.0; 2],
-            motion_clock: 0.,
             npc_motion_clock: BTreeMap::new(),
             npc_motion: BTreeMap::new(),
             npc_yaw: BTreeMap::new(),
             npc_deaths: BTreeMap::new(),
         };
+        world.primary.selected = selected;
         world.sync_bodies(0.)?;
         if world.scene.collision_profile.as_deref() == Some("original-chamber-v1") {
             for (name, kind, position) in [
@@ -1633,13 +1802,13 @@ impl Game {
             if a.actor.id == self.player_actor() {
                 a.health = snapshot.player.hp.max(0) as u32;
                 a.actor.health = snapshot.player.max_hp as u32;
-                a.animation_time = if self.moving {
-                    self.motion_clock
+                a.animation_time = if self.primary.moving {
+                    self.primary.motion_clock
                 } else {
                     self.time
                 };
-                a.actor.position = self.player;
-                a.actor.yaw = self.yaw;
+                a.actor.position = self.primary.player;
+                a.actor.yaw = self.primary.yaw;
                 if snapshot.player.hp == 0 {
                     a.animation = State::Death.into();
                     a.animation_time = self
@@ -1649,21 +1818,21 @@ impl Game {
                         .map_or(0.8, |at| (self.time - at).min(2.0));
                     continue;
                 }
-                a.animation = if self.moving {
+                a.animation = if self.primary.moving {
                     if self.scene.collision_profile.is_some()
-                        && self.locomotion[0].abs() > self.locomotion[1].abs()
+                        && self.primary.locomotion[0].abs() > self.primary.locomotion[1].abs()
                     {
-                        if self.locomotion[0] < 0. {
+                        if self.primary.locomotion[0] < 0. {
                             State::StrafeLeft
                         } else {
                             State::StrafeRight
                         }
-                    } else if self.locomotion[1] < 0.0 {
+                    } else if self.primary.locomotion[1] < 0.0 {
                         State::Backpedal
                     } else {
                         State::Run
                     }
-                } else if self.last_cast.is_some_and(|(ability, at)| {
+                } else if self.primary.last_cast.is_some_and(|(ability, at)| {
                     ability == Ability::Bow && self.time - at < BOW_STANCE
                 }) {
                     State::BowReady
@@ -1671,15 +1840,15 @@ impl Game {
                     State::CombatReady
                 }
                 .into();
-                if !self.colliders.is_empty() && self.character.support.is_none() {
+                if !self.colliders.is_empty() && self.primary.character.support.is_none() {
                     a.animation = State::Airborne.into();
                     a.animation_time = 0.2;
                 }
-                if let Some(cast) = &self.casting {
+                if let Some(cast) = &self.primary.casting {
                     a.animation = State::Cast.into();
                     a.animation_time = self.time - cast.started;
                 }
-                if let Some((ability, at)) = self.last_cast {
+                if let Some((ability, at)) = self.primary.last_cast {
                     if self.time - at < 1.0 {
                         a.animation = if ability == Ability::Bow {
                             State::BowRelease
@@ -1737,7 +1906,7 @@ impl Game {
                             a.animation = State::SpellRelease.into();
                             a.animation_time = self.time - e.released[&a.actor.id];
                         }
-                        let direction = self.player - a.actor.position;
+                        let direction = self.primary.player - a.actor.position;
                         if !a.actor.friendly {
                             a.actor.yaw = self
                                 .npc_yaw
@@ -1832,7 +2001,7 @@ impl Game {
             }
         }
         let direction = self.camera.direction();
-        let anchor = self.player + Vec3::Y * if self.agent_controlled { 3.0 } else { 1.4 };
+        let anchor = self.primary.player + Vec3::Y * if self.agent_controlled { 3.0 } else { 1.4 };
         let mut desired = anchor - direction * self.camera.distance;
         desired.y = desired.y.max(0.25);
         frame.eye = if self.colliders.is_empty() {
@@ -1953,12 +2122,12 @@ impl Game {
         self.sync_bodies(0.)?;
         let dead = self.snapshot().player.hp == 0;
         if dead {
-            self.casting = None;
+            self.primary.casting = None;
         }
         if !dead
             && (self.agent_controlled
-                || (self.pending_movement.is_none()
-                    && self.admission.controller() == crate::Controller(1)))
+                || (self.primary.pending_movement.is_none()
+                    && self.primary.admission.controller() == crate::Controller(1)))
         {
             let movement = if self.agent_controlled {
                 super::combat::drive(self, dt)?
@@ -1971,54 +2140,55 @@ impl Game {
                     self.authority_tick,
                     crate::Intent::Move {
                         axes: movement.map(|v| v.clamp(-1., 1.)),
-                        yaw: self.yaw,
+                        yaw: self.primary.yaw,
                     },
                 )
                 .map_err(|e| format!("Movement refused: {e:?}"))?;
-            self.submit(self.admission.controller(), command)?;
+            self.submit(self.primary.admission.controller(), command)?;
         }
         self.expire_primary_frames()?;
         let movement = if dead {
-            self.pending_movement = None;
-            self.held_movement = Default::default();
+            self.primary.pending_movement = None;
+            self.primary.held_movement = Default::default();
             [0.; 2]
         } else {
             let start = self.physics_steps - physics_steps as u64;
-            if let Some(axes) = self.pending_movement.take() {
-                self.held_movement.refresh(axes, start)?;
+            if let Some(axes) = self.primary.pending_movement.take() {
+                self.primary.held_movement.refresh(axes, start)?;
             }
-            self.held_movement.axes(start)
+            self.primary.held_movement.axes(start)
         };
-        let walk = crate::movement::walk(movement, self.yaw)?;
+        let walk = crate::movement::walk(movement, self.primary.yaw)?;
         let speed = walk.speed;
         // Black Tentacles' square is Difficult Terrain: half speed.
         let terrain = crate::spells::black_tentacles::speed_scale(
             &self.spells,
             self.player_actor(),
-            self.player.as_dvec3(),
+            self.primary.player.as_dvec3(),
         ) as f32;
         let delta = walk.direction * dt * speed * terrain;
-        self.moving = delta.length_squared() > 0.0;
-        self.locomotion = movement;
-        if self.moving && self.casting.take().is_some() {
+        self.primary.moving = delta.length_squared() > 0.0;
+        self.primary.locomotion = movement;
+        if self.primary.moving && self.primary.casting.take().is_some() {
             self.message = "Cast interrupted by movement".into();
         }
-        let previous_player = self.player;
-        self.previous_player = self.player;
-        let jump = std::mem::take(&mut self.pending_jump) && !dead;
+        let previous_player = self.primary.player;
+        self.primary.previous_player = self.primary.player;
+        let jump = std::mem::take(&mut self.primary.pending_jump) && !dead;
         // Jumping while Telekinesis holds something lets go instead.
         let mut player_path = vec![];
         if self.colliders.is_empty() {
-            self.player = self.move_player(self.player, delta)?;
-            player_path.extend([previous_player.to_array(), self.player.to_array()]);
+            self.primary.player = self.move_player(self.primary.player, delta)?;
+            player_path.extend([previous_player.to_array(), self.primary.player.to_array()]);
         } else {
-            if self.character.feet.as_vec3() != self.player {
-                self.character = physics::character::Character::new(self.player.as_dvec3());
+            if self.primary.character.feet.as_vec3() != self.primary.player {
+                self.primary.character =
+                    physics::character::Character::new(self.primary.player.as_dvec3());
             }
-            let framed = self.frame_clock.is_some();
+            let framed = self.primary.frame_clock.is_some();
             let frame_work = if dead {
                 Vec::new()
-            } else if let Some(clock) = &mut self.frame_clock {
+            } else if let Some(clock) = &mut self.primary.frame_clock {
                 crate::movement::frames::expand(&clock.take(self.physics_steps)?)
             } else {
                 Vec::new()
@@ -2034,28 +2204,30 @@ impl Game {
                 .iter()
                 .any(|step| step.held.axes(step.at).iter().any(|v| *v != 0.))
             {
-                self.casting = None;
+                self.primary.casting = None;
             }
             let velocity = if dt > 0. {
                 (delta / dt).as_dvec3()
             } else {
                 glam::DVec3::ZERO
             };
-            player_path.push(self.character.feet.as_vec3().to_array());
-            let filter = self.actor_filter(self.admission.actor());
+            player_path.push(self.primary.character.feet.as_vec3().to_array());
+            let filter = self.actor_filter(self.primary.admission.actor());
             let mut fell = 0.;
             for step in 0..steps {
                 let (velocity, jump_step) = if framed {
                     let input = frame_work[step as usize];
-                    self.held_movement = input.held;
-                    self.yaw = input.yaw;
-                    self.locomotion = input.held.axes(input.at);
+                    self.primary.held_movement = input.held;
+                    self.primary.yaw = input.yaw;
+                    self.primary.locomotion = input.held.axes(input.at);
                     (
-                        crate::movement::walk(self.locomotion, self.yaw)?
+                        crate::movement::walk(self.primary.locomotion, self.primary.yaw)?
                             .direction
                             .as_dvec3()
                             * f64::from(
-                                crate::movement::walk(self.locomotion, self.yaw)?.speed * terrain,
+                                crate::movement::walk(self.primary.locomotion, self.primary.yaw)?
+                                    .speed
+                                    * terrain,
                             ),
                         input.jump,
                     )
@@ -2069,66 +2241,79 @@ impl Game {
                 };
                 crate::spells::feather_fall::prepare(
                     &mut self.spells,
-                    self.admission.actor().actor,
-                    &mut self.character,
+                    self.primary.admission.actor().actor,
+                    &mut self.primary.character,
                     spell_time,
                     self.physics_clock.dt,
                 );
                 let velocity = crate::spells::levitate::prepare(
                     &mut self.spells,
-                    self.admission.actor().actor,
-                    &mut self.character,
+                    self.primary.admission.actor().actor,
+                    &mut self.primary.character,
                     velocity,
                     spell_time,
                     self.physics_clock.dt,
                 );
                 let velocity = crate::spells::telekinesis::prepare(
                     &self.spells,
-                    self.admission.actor().actor,
-                    &mut self.character,
+                    self.primary.admission.actor().actor,
+                    &mut self.primary.character,
                     velocity,
                 );
                 let velocity = crate::spells::proxies::prepare(
                     &self.spells,
-                    self.admission.actor().actor,
-                    &mut self.character,
+                    self.primary.admission.actor().actor,
+                    &mut self.primary.character,
                     velocity,
                 );
-                let velocity =
-                    crate::spells::gust::movement(&self.spells, self.character.feet, velocity);
-                let before_bounce = self.character.external;
-                if !self.motor_recovery.observe(self.character.step_contained(
-                    &self.query_scene,
-                    filter,
-                    physics::character::Settings::default(),
+                let velocity = crate::spells::gust::movement(
+                    &self.spells,
+                    self.primary.character.feet,
                     velocity,
-                    jump_step,
-                    self.physics_clock.dt,
-                )?) {
+                );
+                let before_bounce = self.primary.character.external;
+                if !self
+                    .motor_recovery
+                    .observe(self.primary.character.step_contained(
+                        &self.query_scene,
+                        filter,
+                        physics::character::Settings::default(),
+                        velocity,
+                        jump_step,
+                        self.physics_clock.dt,
+                    )?)
+                {
                     break;
                 }
                 crate::spells::levitate::bounce(
                     &self.spells,
-                    self.admission.actor().actor,
-                    &mut self.character,
+                    self.primary.admission.actor().actor,
+                    &mut self.primary.character,
                     before_bounce,
                 );
-                fell += self.character.landed.unwrap_or(0.);
-                player_path.push(self.character.feet.as_vec3().to_array());
+                fell += self.primary.character.landed.unwrap_or(0.);
+                player_path.push(self.primary.character.feet.as_vec3().to_array());
             }
-            self.player = self.character.feet.as_vec3();
+            self.primary.player = self.primary.character.feet.as_vec3();
             if !dead {
                 self.fall_damage(None, fell)?;
             }
         }
-        self.place_actor_body(self.admission.actor(), self.player, dt as f64)?;
-        let travelled = self.player.distance(previous_player);
-        self.motion_clock += travelled / speed;
-        self.moving = travelled > 0.00001;
-        self.player_trajectory = player_path.clone();
+        self.place_actor_body(
+            self.primary.admission.actor(),
+            self.primary.player,
+            dt as f64,
+        )?;
+        let travelled = self.primary.player.distance(previous_player);
+        self.primary.motion_clock += travelled / speed;
+        self.primary.moving = travelled > 0.00001;
+        self.primary.player_trajectory = player_path.clone();
         if player_path.len() >= 2 {
-            self.simulation
-                .place_chamber_actor(0, self.player.to_array(), self.yaw)?;
+            self.simulation.place_chamber_actor(
+                0,
+                self.primary.player.to_array(),
+                self.primary.yaw,
+            )?;
             self.simulation.record_motion_path(0, player_path)?;
         }
         self.step_additional(physics_steps as u32, dt)?;
@@ -2195,7 +2380,7 @@ impl Game {
                 }
                 let mut desired = authored;
                 if !a.actor.friendly {
-                    desired = self.controls.position(id, authored, self.time);
+                    desired = self.primary.controls.position(id, authored, self.time);
                     for p in self.additional_players.values_mut() {
                         desired = p.controls.position(id, desired, self.time);
                     }
@@ -2211,7 +2396,7 @@ impl Game {
                         );
                         let slowed = previous + (desired - previous) * terrain;
                         if slowed != desired {
-                            self.controls.displace(id, slowed - desired);
+                            self.primary.controls.displace(id, slowed - desired);
                             desired = slowed;
                         }
                     }
@@ -2307,7 +2492,7 @@ impl Game {
                     }
                     let feet = character.feet.as_vec3();
                     if (knocked || character.knocked()) && !navigated {
-                        self.controls.displace(id, feet - previous);
+                        self.primary.controls.displace(id, feet - previous);
                     }
                     if fell > 0. {
                         falls.push((a.actor.id, fell));
@@ -2328,8 +2513,13 @@ impl Game {
         if physics_steps > 0 {
             self.step_spells(physics_steps as usize)?;
         }
-        if self.casting.as_ref().is_some_and(|c| self.time >= c.ends) {
-            let cast = self.casting.take().unwrap();
+        if self
+            .primary
+            .casting
+            .as_ref()
+            .is_some_and(|c| self.time >= c.ends)
+        {
+            let cast = self.primary.casting.take().unwrap();
             if self.actor_life(cast.target_life.actor) != Some(cast.target_life)
                 || self.ids.get(&cast.target_life.actor).is_none_or(|id| {
                     self.snapshot()
@@ -2346,7 +2536,7 @@ impl Game {
                     cast.origin.to_array(),
                     cast.direction.to_array(),
                 )?;
-                self.last_cast = Some((cast.ability, self.time));
+                self.primary.last_cast = Some((cast.ability, self.time));
             } else {
                 self.message = "Cast blocked by chamber geometry".into();
             }
@@ -2354,8 +2544,8 @@ impl Game {
         self.simulation.tick_at(
             dt,
             (self.physics_steps as f64 * self.physics_clock.dt) as f32,
-            self.player.to_array(),
-            self.yaw,
+            self.primary.player.to_array(),
+            self.primary.yaw,
         )?;
         for effect in self.snapshot().effects {
             self.impacts
@@ -2408,7 +2598,7 @@ impl Game {
                                 .total_cmp(&b.1.distance_squared(Vec3::from(source.pos)))
                                 .then_with(|| a.0.actor.cmp(&b.0.actor))
                         })
-                        .map_or(self.player, |(_, p)| p)
+                        .map_or(self.primary.player, |(_, p)| p)
                         - Vec3::from(source.pos)
                 };
                 let target = (-direction.x).atan2(-direction.z);
@@ -2486,7 +2676,7 @@ impl Game {
             self.event(Some(next_life), crate::events::Kind::Respawn)?;
             self.observed_health.remove(&old);
             self.observed_health.insert(source, actor.health as i32);
-            self.controls.forget_actor(old);
+            self.primary.controls.forget_actor(old);
             for p in self.additional_players.values_mut() {
                 p.controls.forget_actor(old);
             }
@@ -2517,7 +2707,7 @@ impl Game {
             return Ok(());
         }
         let life = if incoming {
-            Some(self.admission.actor())
+            Some(self.primary.admission.actor())
         } else {
             self.actor_life(actor)
         };
@@ -2557,7 +2747,7 @@ impl Game {
     }
     pub fn hostile_held(&self, id: u64) -> bool {
         self.ids.get(&id).is_some_and(|source| {
-            self.controls.held(*source)
+            self.primary.controls.held(*source)
                 || self
                     .additional_players
                     .values()
@@ -2568,7 +2758,7 @@ impl Game {
         if self.snapshot().player.hp == 0 {
             return Ok((0, 0));
         }
-        let absorbed = self.controls.absorb(damage, self.time);
+        let absorbed = self.primary.controls.absorb(damage, self.time);
         let lost = (damage - absorbed).min(self.snapshot().player.hp);
         self.simulation.chamber_player_damage(lost)?;
         if lost > 0 {
@@ -2578,8 +2768,9 @@ impl Game {
                 .iter()
                 .find(|a| a.model == "adventurer")
                 .map_or(14, |a| a.id);
-            self.damage_number(actor, lost, self.player, true)?;
-            self.impacts.push((self.player + Vec3::Y, self.time, 3));
+            self.damage_number(actor, lost, self.primary.player, true)?;
+            self.impacts
+                .push((self.primary.player + Vec3::Y, self.time, 3));
         }
         Ok((lost, absorbed))
     }
@@ -2594,23 +2785,23 @@ impl Game {
         if !live.is_empty() {
             let index = live
                 .iter()
-                .position(|id| *id == self.selected)
+                .position(|id| *id == self.primary.selected)
                 .map_or(0, |i| (i + 1) % live.len());
-            self.selected = live[index];
+            self.primary.selected = live[index];
         }
     }
     pub fn activate(&mut self, ability: Ability) -> Result<(), String> {
         let tick = self.authority_tick;
         let intent = crate::Intent::Cast {
             ability,
-            target: self.lives.get(&self.selected).copied(),
-            aim: [-self.yaw.sin(), 0., -self.yaw.cos()],
+            target: self.lives.get(&self.primary.selected).copied(),
+            aim: [-self.primary.yaw.sin(), 0., -self.primary.yaw.cos()],
         };
         let command = self
             .admission
             .command(tick, intent)
             .map_err(|e| format!("Command refused: {e:?}"))?;
-        self.submit(self.admission.controller(), command)
+        self.submit(self.primary.admission.controller(), command)
     }
     /// Turns the adventurer through an admitted movement command.
     pub fn face(&mut self, yaw: f32) -> Result<(), String> {
@@ -2621,7 +2812,7 @@ impl Game {
                 crate::Intent::Move { axes: [0.; 2], yaw },
             )
             .map_err(|e| format!("Turn refused: {e:?}"))?;
-        self.submit(self.admission.controller(), command)
+        self.submit(self.primary.admission.controller(), command)
     }
     /// Scene actor ID of the adventurer.
     pub(crate) fn player_actors(&self) -> Vec<u64> {
@@ -2632,15 +2823,15 @@ impl Game {
             .collect()
     }
     pub fn player_actor(&self) -> u64 {
-        self.admission.actor().actor
+        self.primary.admission.actor().actor
     }
     /// Feet position of a living scene actor, the adventurer included.
     pub fn actor_position(&self, actor: u64) -> Option<Vec3> {
         if actor == self.player_actor() {
-            return self.primary_resident.then_some(self.player);
+            return self.primary_resident.then_some(self.primary.player);
         }
         if let Some(p) = self.additional_players.get(&actor) {
-            return Some(p.position);
+            return Some(p.player);
         }
         let id = self.ids.get(&actor)?;
         self.snapshot()
@@ -2667,7 +2858,7 @@ impl Game {
     /// The movement controller of a scene actor, the adventurer included.
     pub(crate) fn spell_velocity(&mut self, actor: u64, velocity: glam::DVec3) {
         if actor == self.player_actor() {
-            self.character.add_velocity(velocity);
+            self.primary.character.add_velocity(velocity);
         } else if let Some(player) = self.additional_players.get_mut(&actor) {
             player.character.add_velocity(velocity);
         } else if let Some(character) = self.npc_characters.get_mut(&actor) {
@@ -2684,7 +2875,7 @@ impl Game {
             .ok_or("Stone displacement target is missing")?;
         let filter = self.actor_filter(life);
         let controller = if actor == self.player_actor() {
-            &mut self.character
+            &mut self.primary.character
         } else if let Some(player) = self.additional_players.get_mut(&actor) {
             &mut player.character
         } else {
@@ -2699,12 +2890,12 @@ impl Game {
             feet,
         )?;
         if actor == self.player_actor() {
-            self.player = feet.as_vec3();
+            self.primary.player = feet.as_vec3();
         } else if let Some(player) = self.additional_players.get_mut(&actor) {
-            player.position = feet.as_vec3();
+            player.player = feet.as_vec3();
             self.simulation.place_chamber_actor(
                 player.source,
-                player.position.to_array(),
+                player.player.to_array(),
                 player.yaw,
             )?;
         } else if let Some(source) = self.ids.get(&actor).copied() {
@@ -2715,7 +2906,7 @@ impl Game {
     }
     pub fn actor_character(&self, actor: u64) -> Option<&physics::character::Character> {
         if actor == self.player_actor() {
-            Some(&self.character)
+            Some(&self.primary.character)
         } else if let Some(p) = self.additional_players.get(&actor) {
             Some(&p.character)
         } else {
@@ -2736,7 +2927,7 @@ impl Game {
         }
         let index = self.spells.props.len() as u64;
         let life = physics::queries::Life {
-            instance: self.admission.actor().instance,
+            instance: self.primary.admission.actor().instance,
             entity: crate::spells::PROP_ENTITY_BASE + index,
             generation: self.migration_generation,
         };
@@ -2798,7 +2989,7 @@ impl Game {
                 let lost = damage.min(self.snapshot().player.hp);
                 self.simulation.chamber_player_damage(lost)?;
                 let id = self.player_actor();
-                self.damage_number(id, lost, self.player, true)?;
+                self.damage_number(id, lost, self.primary.player, true)?;
                 "Adventurer".to_string()
             }
             Some(actor) => {
@@ -2874,7 +3065,7 @@ impl Game {
                 .player_resources(0)
                 .is_some_and(|p| p.hp > 0)
             {
-                push(&mut self.character);
+                push(&mut self.primary.character);
             }
             for p in self.additional_players.values_mut() {
                 if self
@@ -2972,8 +3163,8 @@ impl Game {
                 .actor_life(actor)
                 .ok_or("Telekinesis creature life is missing")?;
             let filter = self.actor_filter(life);
-            let c = if actor == self.admission.actor().actor {
-                &mut self.character
+            let c = if actor == self.primary.admission.actor().actor {
+                &mut self.primary.character
             } else if let Some(player) = self.additional_players.get_mut(&actor) {
                 &mut player.character
             } else {
@@ -3010,9 +3201,9 @@ impl Game {
             }
             let position = c.feet.as_vec3();
             if actor == self.player_actor() {
-                self.player = position;
+                self.primary.player = position;
             } else if let Some(player) = self.additional_players.get_mut(&actor) {
-                player.position = position;
+                player.player = position;
                 self.simulation.place_chamber_actor(
                     player.source,
                     position.to_array(),
@@ -3061,7 +3252,7 @@ impl Game {
             movers.push(crate::spells::Mover {
                 actor: player,
                 mass: masses[&player],
-                character: &mut self.character,
+                character: &mut self.primary.character,
             });
         }
         for (actor, p) in self.additional_players.iter_mut() {
@@ -3088,6 +3279,7 @@ impl Game {
         }
         self.spells.couple(&mut movers)?;
         couple_characters(&mut movers);
+        self.prune_caster_dice();
         self.spells.insert_query_colliders(&mut self.query_scene)?;
         self.refresh_navigation_obstacles()?;
         self.simulation.set_spell_cover(
@@ -3109,7 +3301,7 @@ impl Game {
             .admission
             .command(self.authority_tick, crate::Intent::Jump)
             .map_err(|e| format!("Jump refused: {e:?}"))?;
-        self.submit(self.admission.controller(), command)
+        self.submit(self.primary.admission.controller(), command)
     }
     /// Produces a read-only pose between the previous and current authority ticks.
     pub fn interpolated_frame(&self, alpha: f32) -> Result<Frame, String> {
@@ -3118,13 +3310,16 @@ impl Game {
         }
         let mut frame = self.frame();
         if self.unlocked() {
-            let pose = self.previous_player.lerp(self.player, alpha);
-            let delta = pose - self.player;
+            let pose = self
+                .primary
+                .previous_player
+                .lerp(self.primary.player, alpha);
+            let delta = pose - self.primary.player;
             for actor in &mut frame.actors {
                 if actor.actor.id == self.player_actor() {
                     actor.actor.position = pose;
                 } else if let Some(p) = self.additional_players.get(&actor.actor.id) {
-                    actor.actor.position = p.previous.lerp(p.position, alpha);
+                    actor.actor.position = p.previous_player.lerp(p.player, alpha);
                 } else if actor.health > 0 {
                     if let Some(previous) = self.previous_npc.get(&actor.actor.id) {
                         actor.actor.position = previous.lerp(actor.actor.position, alpha);
@@ -3165,7 +3360,7 @@ impl Game {
             entity: old.actor,
             generation: old.generation,
         };
-        let mut admission = self.admission.clone();
+        let mut admission = self.primary.admission.clone();
         admission
             .respawn()
             .map_err(|e| format!("Respawn refused: {e:?}"))?;
@@ -3179,28 +3374,28 @@ impl Game {
         self.simulation.respawn_player(spawn.to_array(), yaw)?;
         self.clear_social_seat(old);
         self.bodies.remove(physical);
-        self.admission = admission;
-        self.frame_clock = None;
+        self.primary.admission = admission;
+        self.primary.frame_clock = None;
         self.agent_controlled = false;
-        self.player = spawn;
-        self.previous_player = spawn;
-        self.player_trajectory.clear();
-        self.character = character;
-        self.yaw = yaw;
+        self.primary.player = spawn;
+        self.primary.previous_player = spawn;
+        self.primary.player_trajectory.clear();
+        self.primary.character = character;
+        self.primary.yaw = yaw;
         self.camera = Default::default();
-        self.pending_movement = None;
-        self.held_movement = Default::default();
-        self.pending_jump = false;
-        self.casting = None;
-        self.last_cast = None;
-        self.bow_ready = self.time;
-        self.controls = Default::default();
+        self.primary.pending_movement = None;
+        self.primary.held_movement = Default::default();
+        self.primary.pending_jump = false;
+        self.primary.casting = None;
+        self.primary.last_cast = None;
+        self.primary.bow_ready = self.time;
+        self.primary.controls = Default::default();
         self.impacts.clear();
         self.damage_numbers.retain(|n| n.actor != old.actor);
         self.observed_health.insert(0, self.snapshot().player.hp);
-        self.moving = false;
-        self.locomotion = [0.; 2];
-        self.motion_clock = 0.;
+        self.primary.moving = false;
+        self.primary.locomotion = [0.; 2];
+        self.primary.motion_clock = 0.;
         if let Some(encounter) = &mut self.encounter {
             encounter.casts.retain(|c| c.target_life != old);
             encounter.ended = None;
@@ -3213,15 +3408,16 @@ impl Game {
     }
     /// Fences queued commands when switching between human and agent control.
     pub fn control_handoff(&mut self, agent: bool) -> Result<(), String> {
-        self.admission
+        self.primary
+            .admission
             .handoff(crate::Controller(if agent { 2 } else { 1 }))
             .map_err(|e| format!("Control handoff refused: {e:?}"))?;
         self.clear_social_seat(self.player_life());
         self.agent_controlled = agent;
-        self.frame_clock = None;
-        self.pending_movement = None;
-        self.held_movement = Default::default();
-        self.pending_jump = false;
+        self.primary.frame_clock = None;
+        self.primary.pending_movement = None;
+        self.primary.held_movement = Default::default();
+        self.primary.pending_jump = false;
         Ok(())
     }
     /// Applies a controller command through the same local admission boundary.
@@ -3231,9 +3427,41 @@ impl Game {
         command: crate::Command<Ability>,
     ) -> Result<(), String> {
         let life = command.actor;
-        let result = self.submit_owned(controller, command);
+        let before = matches!(command.intent, crate::Intent::Cast { .. }).then(|| self.clone());
+        let fence = command.clone();
+        let cast_label = match command.intent {
+            crate::Intent::Cast { ability, .. } => Some(ability.label().to_string()),
+            _ => None,
+        };
+        let result = self.submit_owned(controller, command).and_then(|()| {
+            if let Some(label) = cast_label {
+                self.event(Some(life), crate::events::Kind::Ability { label })?;
+            }
+            Ok(())
+        });
         if result.is_ok() {
             self.clear_social_seat(life);
+        } else if let Some(before) = before {
+            let admitted = before
+                .player_admission(life.actor)
+                .zip(self.player_admission(life.actor))
+                .is_some_and(|(previous, current)| {
+                    current.actor() == life
+                        && (current.epoch() > previous.epoch()
+                            || current.epoch() == previous.epoch()
+                                && current.accepted_sequence() > previous.accepted_sequence())
+                });
+            *self = before;
+            if admitted {
+                let tick = self.authority_tick;
+                // Refusals roll back gameplay, while the admitted envelope stays
+                // consumed so a transport cannot replay it as a new command.
+                self.actor_state_mut(life)
+                    .unwrap()
+                    .admission
+                    .admit(controller, &fence, tick)
+                    .map_err(|e| format!("Refused command fence disagrees: {e:?}"))?;
+            }
         }
         result
     }
@@ -3251,7 +3479,7 @@ impl Game {
         if !self.unlocked() || self.snapshot().player.hp == 0 {
             return Err("The adventurer cannot act in the current state".into());
         }
-        if self.frame_clock.is_some()
+        if self.primary.frame_clock.is_some()
             && matches!(
                 command.intent,
                 crate::Intent::Move { .. } | crate::Intent::Jump
@@ -3260,19 +3488,21 @@ impl Game {
             return Err("This controller requires movement intervals".into());
         }
         if matches!(command.intent, crate::Intent::Jump) {
-            self.admission
+            self.primary
+                .admission
                 .admit(controller, &command, self.authority_tick)
                 .map_err(|e| format!("Command refused: {e:?}"))?;
-            self.pending_jump = true;
+            self.primary.pending_jump = true;
             return Ok(());
         }
         if let crate::Intent::Move { axes, yaw } = command.intent {
             let tick = self.authority_tick;
-            self.admission
+            self.primary
+                .admission
                 .admit(controller, &command, tick)
                 .map_err(|e| format!("Command refused: {e:?}"))?;
-            self.yaw = yaw;
-            self.pending_movement = Some(axes);
+            self.primary.yaw = yaw;
+            self.primary.pending_movement = Some(axes);
             return Ok(());
         }
         let crate::Intent::Cast {
@@ -3292,13 +3522,14 @@ impl Game {
             return Err("Target life is stale".into());
         }
         let tick = self.authority_tick;
-        self.admission
+        self.primary
+            .admission
             .admit(controller, &command, tick)
             .map_err(|e| format!("Command refused: {e:?}"))?;
         if let Some(target) = target {
-            self.selected = target.actor;
+            self.primary.selected = target.actor;
         }
-        self.yaw = (-aim[0]).atan2(-aim[2]);
+        self.primary.yaw = (-aim[0]).atan2(-aim[2]);
         self.activate_admitted(ability)
     }
     fn activate_admitted(&mut self, ability: Ability) -> Result<(), String> {
@@ -3311,351 +3542,14 @@ impl Game {
         if self.snapshot().player.hp <= 0 {
             return Err("The adventurer is dead".into());
         }
-        if self.casting.is_some()
-            && !matches!(
-                ability,
-                Ability::Spell(3)
-                    | Ability::SpellCommand(crate::spells::command::Command::Targets {
-                        slot: 3,
-                        ..
-                    })
-            )
-        {
-            return Err("A spell is already being cast".into());
+        if matches!(ability, Ability::Spell(_) | Ability::SpellCommand(_)) {
+            let context = self.caster_context(self.player_life())?;
+            return self.activate_catalog(context, ability);
         }
-        if let Ability::SpellCommand(crate::spells::command::Command::EndConcentration) = ability {
-            return self.spells.end_concentration(self.player_actor());
-        }
-        if let Ability::SpellCommand(crate::spells::command::Command::Hand(point)) = ability {
-            let caster = self.player_actor();
-            let effect = self
-                .spells
-                .telekinesis
-                .iter_mut()
-                .find(|e| e.caster == caster && e.grip.grip.is_some())
-                .ok_or("No Telekinesis grip")?;
-            effect.aim = glam::DVec3::from_array(point.map(|mm| f64::from(mm) / 1000.));
-            return Ok(());
-        }
-        if let Ability::SpellCommand(crate::spells::command::Command::Release) = ability {
-            let caster = self.player_actor();
-            let effect = self
-                .spells
-                .telekinesis
-                .iter_mut()
-                .find(|e| e.caster == caster && e.grip.grip.is_some())
-                .ok_or("No Telekinesis grip")?;
-            effect
-                .grip
-                .release(&mut self.spells.world, crate::telekinesis::Reason::Let);
-            return Ok(());
-        }
-        if let Ability::SpellCommand(crate::spells::command::Command::Altitude(mm)) = ability {
-            let caster = self.player_actor();
-            let effect = self
-                .spells
-                .levitations
-                .iter_mut()
-                .find(|e| e.caster == caster && e.state.holding())
-                .ok_or("No held Levitate target")?;
-            effect
-                .state
-                .command(f64::from(mm) / 1000., self.time as f64)
-                .map_err(|e| format!("Altitude command refused: {e:?}"))?;
-            return Ok(());
-        }
-        if let Ability::SpellCommand(crate::spells::command::Command::Wind(aim)) = ability {
-            let caster = self.player_actor();
-            let effect = self
-                .spells
-                .gusts
-                .iter_mut()
-                .find(|e| e.caster == caster && e.gust.active(self.time as f64))
-                .ok_or("No active Gust of Wind")?;
-            return effect.gust.reaim(
-                glam::DVec3::from_array(aim.map(|v| f64::from(v) / 1000.)),
-                self.time as f64,
-            );
-        }
-        if let Ability::SpellCommand(crate::spells::command::Command::Escape) = ability {
-            return crate::spells::black_tentacles::escape(self, self.player_actor());
-        }
-        if let Some(slot) = match ability {
-            Ability::Spell(slot) => Some(slot),
-            Ability::SpellCommand(command) => Some(command.slot()),
-            _ => None,
-        } {
-            let spell = ability.catalog().ok_or("No spell in this slot")?;
-            if self
-                .spells
-                .ready
-                .get(&slot)
-                .is_some_and(|at| *at > self.time)
-            {
-                return Err("Spell is cooling down".into());
-            }
-            if self.snapshot().player.mana < spell.cost {
-                return Err("Not enough mana".into());
-            }
-            let retained = match slot {
-                0 => self.spells.telekinesis.len(),
-                1 => self.spells.walls.len(),
-                2 => self.spells.levitations.len(),
-                3 => self.spells.feather_falls.len(),
-                4 => self.spells.gusts.len(),
-                5 => self.spells.wind_walls.len(),
-                6 => self.spells.tentacles.len(),
-                7 => self.spells.meteors.len(),
-                8 => self.spells.reversed.len(),
-                _ => 0,
-            };
-            if retained >= 64 {
-                return Err("Retained spell effect budget exceeded".into());
-            }
-            match ability {
-                Ability::SpellCommand(crate::spells::command::Command::Targets {
-                    slot,
-                    targets,
-                    count,
-                }) => {
-                    if count == 0 || usize::from(count) > targets.len() {
-                        return Err("Invalid spell target count".into());
-                    }
-                    match slot {
-                        3 => {
-                            let chosen = targets[..usize::from(count)]
-                                .iter()
-                                .map(|id| {
-                                    u32::try_from(*id).map_err(|_| {
-                                        "Feather Fall target ID is too large".to_string()
-                                    })
-                                })
-                                .collect::<Result<Vec<_>, _>>()?;
-                            crate::spells::feather_fall::cast_on(self, &chosen)?;
-                        }
-                        0 | 2 if count == 1 => {
-                            let target = if targets[0] >= crate::spells::PROP_ENTITY_BASE {
-                                crate::spells::Target::Prop(
-                                    self.spells
-                                        .props
-                                        .iter()
-                                        .position(|p| p.life.entity == targets[0] && !p.removed)
-                                        .ok_or("Unknown spell prop")?,
-                                )
-                            } else {
-                                crate::spells::Target::Actor(targets[0])
-                            };
-                            if slot == 0 {
-                                crate::spells::telekinesis::cast_on(self, target)?;
-                            } else {
-                                crate::spells::levitate::cast_on(self, target)?;
-                            }
-                        }
-                        _ => return Err("This spell does not accept these targets".into()),
-                    }
-                }
-                Ability::SpellCommand(crate::spells::command::Command::Point { slot, point }) => {
-                    let point = glam::DVec3::from_array(point.map(|v| f64::from(v) / 1000.));
-                    match slot {
-                        6 => crate::spells::black_tentacles::cast_at(self, point)?,
-                        8 => crate::spells::reverse_gravity::cast_at(self, point)?,
-                        _ => return Err("This spell does not accept a ground point".into()),
-                    }
-                }
-                Ability::SpellCommand(crate::spells::command::Command::WindWall {
-                    points,
-                    count,
-                }) => {
-                    if !(2..=8).contains(&count) {
-                        return Err("Wind Wall needs 2 to 8 path points".into());
-                    }
-                    crate::spells::wind_wall::cast_path(
-                        self,
-                        points[..usize::from(count)]
-                            .iter()
-                            .map(|p| glam::DVec2::from_array(p.map(|v| f64::from(v) / 1000.)))
-                            .collect(),
-                    )?;
-                }
-                Ability::SpellCommand(crate::spells::command::Command::Meteors(points)) => {
-                    crate::spells::meteor_swarm::cast_at(
-                        self,
-                        points.map(|p| glam::DVec3::from_array(p.map(|v| f64::from(v) / 1000.))),
-                    )?;
-                }
-                Ability::SpellCommand(crate::spells::command::Command::Stone {
-                    shape,
-                    from,
-                    to,
-                    count,
-                    thin,
-                }) => {
-                    crate::spells::wall_of_stone::authored(self, shape, from, to, count, thin)?;
-                }
-                _ => (spell.cast)(self)?,
-            }
-            self.simulation.spend_chamber_mana(spell.cost)?;
-            self.spells.ready.insert(slot, self.time + spell.cooldown);
-            self.record_ability(ability);
-            self.last_cast = Some((ability, self.time));
-            self.message = format!("{}: {}", spell.label, spell.description);
-            return Ok(());
-        }
-        if let Some(spell) = ability.utility() {
-            let target = self
-                .frame()
-                .actors
-                .into_iter()
-                .find(|a| a.actor.id == self.selected && a.health > 0)
-                .map(|a| a.actor.position);
-            if matches!(spell, Utility::Web | Utility::Grease)
-                && target.is_some_and(|p| {
-                    !self.attack_clear(self.player + Vec3::Y * 1.4, p + Vec3::Y * 1.1)
-                })
-            {
-                return Err("Target is blocked by chamber geometry".into());
-            }
-            let direction = Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos());
-            let teleport = if spell == Utility::MistyStep && !self.colliders.is_empty() {
-                Some(self.move_player(self.player, direction * 9.144)?)
-            } else {
-                None
-            };
-            if let Some(destination) = teleport {
-                let mut check = self.character;
-                check.teleport(
-                    &self.query_scene,
-                    self.actor_filter(self.admission.actor()),
-                    physics::character::Settings::default(),
-                    destination.as_dvec3(),
-                )?;
-            }
-            let colliders = &self.colliders;
-            let origin = self.player + Vec3::Y * 1.4;
-            let destination = self.controls.cast_with_visibility(
-                &mut self.simulation,
-                spell,
-                self.time,
-                self.player,
-                direction,
-                target,
-                teleport,
-                |position| {
-                    physics::kinematic::sweep_box(
-                        origin.as_dvec3(),
-                        glam::DVec3::splat(0.12),
-                        (position + Vec3::Y * 1.1 - origin).as_dvec3(),
-                        colliders,
-                    )
-                    .is_ok_and(|hit| hit.is_none())
-                },
-            )?;
-            if spell == Utility::Thunderwave {
-                crate::spells::thunderwave::resolve(self, direction)?;
-            }
-            self.player = destination;
-            if spell == Utility::MistyStep {
-                self.simulation
-                    .teleport_chamber_actor(0, destination.to_array(), self.yaw)?;
-                self.character = physics::character::Character::new(destination.as_dvec3());
-                self.previous_player = destination;
-                if self.frame_clock.is_some() {
-                    self.handoff_player(self.player_life(), self.admission.controller())?;
-                }
-            }
-            self.record_ability(ability);
-            self.last_cast = Some((ability, self.time));
-            self.message = format!("{}: {}", ability.label(), ability.description());
-            return Ok(());
-        }
-        if matches!(ability, Ability::FireBolt | Ability::Bow) {
-            if let Some(prop) = self
-                .spells
-                .props
-                .iter()
-                .find(|p| p.life.entity == self.selected && !p.removed)
-            {
-                let start = self.player + Vec3::Y * 1.4;
-                let end = self.spells.world[prop.body].pos.as_vec3();
-                if start.distance(end) > 36.576 {
-                    return Err("Target is out of range".into());
-                }
-                let direction = (end - start).normalize_or_zero();
-                if ability == Ability::FireBolt {
-                    self.simulation.cast(
-                        crate::rules::Spell::Firebolt,
-                        start.to_array(),
-                        direction.to_array(),
-                    )?;
-                } else {
-                    if self.time < self.bow_ready {
-                        return Err("Bow is cooling down".into());
-                    }
-                    self.simulation
-                        .launch_bow(start.to_array(), direction.to_array())?;
-                    self.bow_ready = self.time + 1.;
-                }
-                self.record_ability(ability);
-                return Ok(());
-            }
-        }
-        let target = self
-            .frame()
-            .actors
-            .into_iter()
-            .find(|a| a.actor.id == self.selected && a.health > 0)
-            .ok_or("Select a living target")?;
-        let start = self.player + Vec3::Y * 1.4;
-        let end = target.actor.position + Vec3::Y * 1.1;
-        let range = if ability == Ability::Fireball {
-            45.72
-        } else {
-            36.576
-        };
-        if start.distance(end) > range {
-            return Err("Target is out of range".into());
-        }
-        if !self.attack_clear(start, end) {
-            return Err("Target is blocked by chamber geometry".into());
-        }
-        if let Some(spell) = ability.spell() {
-            let state = self.snapshot();
-            let gate = state.abilities.iter().find(|a| a.id == spell).unwrap();
-            if !gate.ready {
-                return Err(if state.player.mana < gate.cost {
-                    "Not enough mana"
-                } else {
-                    "Spell is cooling down"
-                }
-                .into());
-            }
-            if ability == Ability::FireBolt {
-                self.simulation.cast(
-                    spell,
-                    start.to_array(),
-                    (end - start).normalize().to_array(),
-                )?;
-            } else {
-                self.casting = Some(Casting {
-                    target_life: self.lives[&self.selected],
-                    aim: end,
-                    ability,
-                    started: self.time,
-                    ends: self.time + 1.0,
-                    origin: start,
-                    direction: (end - start).normalize(),
-                });
-            }
-        } else {
-            if self.time < self.bow_ready {
-                return Err("Bow is cooling down".into());
-            }
-            self.simulation
-                .launch_bow(start.to_array(), (end - start).normalize().to_array())?;
-            self.bow_ready = self.time + 1.0;
-        }
-        self.record_ability(ability);
-        self.last_cast = Some((ability, self.time));
+        let mut state = self.primary.clone();
+        let target = self.lives.get(&state.selected).copied();
+        self.activate_player(&mut state, ability, target)?;
+        self.primary = state;
         self.message = ability.label().into();
         Ok(())
     }
@@ -3809,8 +3703,8 @@ mod tests {
             .into_iter()
             .find(|a| a.actor.model.starts_with("cultist"))
             .unwrap();
-        g.player = target.actor.position + Vec3::Z;
-        g.yaw = 0.0;
+        g.primary.player = target.actor.position + Vec3::Z;
+        g.primary.yaw = 0.0;
         g.activate(Ability::Thunderwave).unwrap();
         g.tick(0.01, [0.0; 2]).unwrap();
         let dealt = 100
@@ -3834,8 +3728,8 @@ mod tests {
     fn floating_incoming_damage_excludes_absorption_and_caps_lethal_hits() {
         let mut g = game();
         g.time = 30.0;
-        g.controls.shield = 18;
-        g.controls.shield_until = 34.0;
+        g.primary.controls.shield = 18;
+        g.primary.controls.shield_until = 34.0;
         assert_eq!(g.hostile_hit(45).unwrap(), (27, 18));
         assert_eq!(g.damage_numbers.len(), 1);
         assert_eq!(g.damage_numbers[0].amount, 27);
@@ -3855,20 +3749,20 @@ mod tests {
         for _ in 0..201 {
             g.tick(0.1, [0.0; 2]).unwrap();
         }
-        let before = g.player;
+        let before = g.primary.player;
         g.tick(0.1, [0.0, 1.0]).unwrap();
-        assert!((g.player.distance(before) - 6.4008 * 0.1).abs() < 0.001);
-        let before = g.player;
+        assert!((g.primary.player.distance(before) - 6.4008 * 0.1).abs() < 0.001);
+        let before = g.primary.player;
         g.tick(0.1, [0.0, -1.0]).unwrap();
-        assert!((g.player.distance(before) - 4.1148 * 0.1).abs() < 0.001);
-        let before = g.player;
+        assert!((g.primary.player.distance(before) - 4.1148 * 0.1).abs() < 0.001);
+        let before = g.primary.player;
         g.tick(0.1, [1.0, 1.0]).unwrap();
-        assert!((g.player.distance(before) - 6.4008 * 0.1).abs() < 0.001);
+        assert!((g.primary.player.distance(before) - 6.4008 * 0.1).abs() < 0.001);
         let projection = g.frame().view_projection(1280.0 / 720.0);
-        let before = g.player;
+        let before = g.primary.player;
         g.tick(0.1, [1.0, 0.0]).unwrap();
         assert!(
-            (projection * (g.player - before).extend(0.0)).x > 0.0,
+            (projection * (g.primary.player - before).extend(0.0)).x > 0.0,
             "Right strafe must move toward screen right"
         );
     }
@@ -3879,15 +3773,15 @@ mod tests {
         for _ in 0..201 {
             g.tick(0.1, [0.0; 2]).unwrap();
         }
-        g.selected = u64::MAX;
+        g.primary.selected = u64::MAX;
         g.activate(Ability::Light).unwrap();
-        assert!(g.controls.light.is_some());
-        let before = g.player;
+        assert!(g.primary.controls.light.is_some());
+        let before = g.primary.player;
         g.activate(Ability::MistyStep).unwrap();
-        assert!(g.player.distance(before) > 9.0);
+        assert!(g.primary.player.distance(before) > 9.0);
         assert_eq!(g.snapshot().player.mana, 18);
         assert!(g.activate(Ability::MistyStep).is_err());
-        g.selected = 2;
+        g.primary.selected = 2;
         g.activate(Ability::Web).unwrap();
         g.tick(0.1, [0.0; 2]).unwrap();
         let rooted = g
@@ -3921,7 +3815,7 @@ mod tests {
                 .animation,
             State::Prone.into()
         );
-        g.player = rooted - Vec3::Z * 3.0;
+        g.primary.player = rooted - Vec3::Z * 3.0;
         let hp = g
             .frame()
             .actors
@@ -4022,15 +3916,15 @@ mod interruption_tests {
             game.tick(0.1, [0.0, 0.0]).unwrap();
         }
         game.activate(Ability::Fireball).unwrap();
-        assert!(game.casting.is_some());
+        assert!(game.primary.casting.is_some());
         game.tick(0.05, [1.0, 0.0]).unwrap();
-        assert!(game.casting.is_none());
+        assert!(game.primary.casting.is_none());
         assert_eq!(game.snapshot().player.mana, 20);
         let health = game
             .frame()
             .actors
             .iter()
-            .find(|a| a.actor.id == game.selected)
+            .find(|a| a.actor.id == game.primary.selected)
             .unwrap()
             .health;
         game.activate(Ability::Bow).unwrap();
@@ -4041,7 +3935,7 @@ mod interruption_tests {
             game.frame()
                 .actors
                 .iter()
-                .find(|a| a.actor.id == game.selected)
+                .find(|a| a.actor.id == game.primary.selected)
                 .unwrap()
                 .health,
             health - 6
@@ -4051,7 +3945,7 @@ mod interruption_tests {
             game.frame()
                 .actors
                 .iter()
-                .find(|a| a.actor.id == game.selected)
+                .find(|a| a.actor.id == game.primary.selected)
                 .unwrap()
                 .health,
             health - 6
@@ -4072,30 +3966,32 @@ mod original_collision_tests {
     #[test]
     fn original_player_stops_at_column_and_slides_along_its_face() {
         let mut g = game();
-        g.player = Vec3::new(13., 0., -13.);
-        g.yaw = -std::f32::consts::FRAC_PI_2;
+        g.primary.player = Vec3::new(13., 0., -13.);
+        g.primary.yaw = -std::f32::consts::FRAC_PI_2;
         for _ in 0..20 {
             g.tick(0.1, [0., 1.]).unwrap();
         }
-        assert!(g.player.x < 13.951 && g.player.x > 13.94);
-        let stopped_clock = g.motion_clock;
+        assert!(g.primary.player.x < 13.951 && g.primary.player.x > 13.94);
+        let stopped_clock = g.primary.motion_clock;
         g.tick(0.1, [0., 1.]).unwrap();
-        assert!(!g.moving);
-        assert!((g.motion_clock - stopped_clock).abs() < 0.00001);
-        let slid = g.move_player(g.player, Vec3::new(2., 0., 2.)).unwrap();
+        assert!(!g.primary.moving);
+        assert!((g.primary.motion_clock - stopped_clock).abs() < 0.00001);
+        let slid = g
+            .move_player(g.primary.player, Vec3::new(2., 0., 2.))
+            .unwrap();
         assert!(slid.z > -11.01 && slid.x < 13.951);
     }
     #[test]
     fn owned_locomotion_selects_backward_and_strafe_states_from_actual_motion() {
         let mut g = game();
-        g.player = Vec3::new(0., 0., -16.);
+        g.primary.player = Vec3::new(0., 0., -16.);
         for (movement, clip) in [
             ([0., -1.], State::Backpedal),
             ([-1., 0.], State::StrafeLeft),
             ([1., 0.], State::StrafeRight),
             ([0., 1.], State::Run),
         ] {
-            let previous = g.motion_clock;
+            let previous = g.primary.motion_clock;
             g.tick(0.05, movement).unwrap();
             let player = g
                 .frame()
@@ -4104,18 +4000,21 @@ mod original_collision_tests {
                 .find(|a| a.actor.model == "adventurer")
                 .unwrap();
             assert_eq!(player.animation, clip.into());
-            assert!(g.motion_clock > previous);
-            assert_eq!(player.animation_time, g.motion_clock);
+            assert!(g.primary.motion_clock > previous);
+            assert_eq!(player.animation_time, g.primary.motion_clock);
         }
     }
     #[test]
     fn blink_uses_collision_admitted_destination_and_matching_effect() {
         let mut g = game();
-        g.player = Vec3::new(13., 0., -13.);
-        g.yaw = -std::f32::consts::FRAC_PI_2;
+        g.primary.player = Vec3::new(13., 0., -13.);
+        g.primary.yaw = -std::f32::consts::FRAC_PI_2;
         g.activate(Ability::MistyStep).unwrap();
-        assert!(g.player.x < 13.951 && g.player.x > 13.94);
-        assert_eq!(g.controls.areas.last().unwrap().position, g.player);
+        assert!(g.primary.player.x < 13.951 && g.primary.player.x > 13.94);
+        assert_eq!(
+            g.primary.controls.areas.last().unwrap().position,
+            g.primary.player
+        );
         assert_eq!(g.snapshot().player.mana, 18);
     }
     #[test]
@@ -4127,14 +4026,14 @@ mod original_collision_tests {
     #[test]
     fn original_camera_shortens_at_walls_and_restores_requested_zoom_in_open_space() {
         let mut g = game();
-        g.player = Vec3::new(20.8, 0., -7.);
+        g.primary.player = Vec3::new(20.8, 0., -7.);
         g.camera.yaw = std::f32::consts::FRAC_PI_2;
         g.camera.pitch = 0.;
         g.camera.distance = 10.;
         let blocked = g.frame();
         assert!(blocked.eye.x < 21.351 && blocked.eye.x > 21.34);
         assert_eq!(g.camera.distance, 10.);
-        g.player = Vec3::new(0., 0., -7.);
+        g.primary.player = Vec3::new(0., 0., -7.);
         let clear = g.frame();
         assert!((clear.eye.x - 10.).abs() < 1e-4);
         assert_eq!(g.camera.distance, 10.);
@@ -4162,8 +4061,8 @@ mod original_collision_tests {
     #[test]
     fn obstructed_player_attacks_do_not_spend_resources_or_start_casts() {
         let mut g = game();
-        g.player = Vec3::new(13., 0., -13.);
-        g.selected = 2;
+        g.primary.player = Vec3::new(13., 0., -13.);
+        g.primary.selected = 2;
         g.simulation
             .place_chamber_actor(g.ids[&2], [17., 0., -13.], 0.)
             .unwrap();
@@ -4178,8 +4077,8 @@ mod original_collision_tests {
             assert!(g.activate(ability).is_err());
         }
         assert_eq!(g.snapshot().player.mana, 20);
-        assert!(g.casting.is_none());
-        assert_eq!(g.bow_ready, 0.);
+        assert!(g.primary.casting.is_none());
+        assert_eq!(g.primary.bow_ready, 0.);
         assert!(g.snapshot().projectiles.is_empty());
     }
     fn intervening_wall() -> physics::kinematic::Aabb {
@@ -4203,11 +4102,11 @@ mod original_collision_tests {
         g.tick(0.05, [0.0, 0.0]).unwrap();
         assert_eq!(stance(&g), State::CombatReady.into());
         g.activate(Ability::Bow).unwrap();
-        while g.time < g.last_cast.unwrap().1 + 1.5 {
+        while g.time < g.primary.last_cast.unwrap().1 + 1.5 {
             g.tick(0.05, [0.0, 0.0]).unwrap();
         }
         assert_eq!(stance(&g), State::BowReady.into());
-        while g.time < g.last_cast.unwrap().1 + BOW_STANCE + 0.1 {
+        while g.time < g.primary.last_cast.unwrap().1 + BOW_STANCE + 0.1 {
             g.tick(0.05, [0.0, 0.0]).unwrap();
         }
         assert_eq!(stance(&g), State::CombatReady.into());
@@ -4231,7 +4130,7 @@ mod original_collision_tests {
             .frame()
             .actors
             .into_iter()
-            .find(|a| a.actor.id == g.selected)
+            .find(|a| a.actor.id == g.primary.selected)
             .unwrap()
             .health;
         for _ in 0..12 {
@@ -4241,7 +4140,7 @@ mod original_collision_tests {
             g.frame()
                 .actors
                 .into_iter()
-                .find(|a| a.actor.id == g.selected)
+                .find(|a| a.actor.id == g.primary.selected)
                 .unwrap()
                 .health,
             hp
@@ -4269,9 +4168,9 @@ mod original_collision_tests {
     #[test]
     fn thunderwave_does_not_damage_a_cultist_behind_a_column() {
         let mut g = game();
-        g.player = Vec3::new(13., 0., -13.);
-        g.yaw = -std::f32::consts::FRAC_PI_2;
-        g.selected = 2;
+        g.primary.player = Vec3::new(13., 0., -13.);
+        g.primary.yaw = -std::f32::consts::FRAC_PI_2;
+        g.primary.selected = 2;
         g.simulation
             .place_chamber_actor(g.ids[&2], [17., 0., -13.], 0.)
             .unwrap();
@@ -4376,9 +4275,9 @@ mod checkpoint_tests {
             )
             .unwrap();
         game.submit(crate::Controller(1), command).unwrap();
-        let before = game.player;
+        let before = game.primary.player;
         game.tick(1. / 30., [0.; 2]).unwrap();
-        assert!(game.player.distance(before) > 0.2);
+        assert!(game.primary.player.distance(before) > 0.2);
         let command = game
             .admission
             .command(
@@ -4391,9 +4290,9 @@ mod checkpoint_tests {
             .unwrap();
         game.submit(crate::Controller(1), command).unwrap();
         game.control_handoff(false).unwrap();
-        let before = game.player;
+        let before = game.primary.player;
         game.tick(1. / 30., [0.; 2]).unwrap();
-        assert_eq!(game.player, before);
+        assert_eq!(game.primary.player, before);
     }
     #[test]
     fn restart_fences_commands_from_the_previous_encounter() {
@@ -4434,12 +4333,12 @@ mod grounded_movement_tests {
         let mut game = game();
         game.tick(0., [0.; 2]).unwrap();
         game.jump().unwrap();
-        let start = game.player;
+        let start = game.primary.player;
         game.tick(1. / 240., [0., 1.]).unwrap();
         assert_eq!(game.time, 30.);
         assert_eq!(game.snapshot().elapsed, 0.);
-        assert_eq!(game.player, start);
-        assert!(game.pending_jump);
+        assert_eq!(game.primary.player, start);
+        assert!(game.primary.pending_jump);
         let bytes = game.checkpoint().unwrap();
         let mut restored = Game::restore(&bytes).unwrap();
         for _ in 0..239 {
@@ -4465,7 +4364,7 @@ mod grounded_movement_tests {
         assert_eq!(game.physics_steps, 4);
         game.jump().unwrap();
         game.tick(1. / 30., [0.; 2]).unwrap();
-        assert!(game.player.y > 0.1);
+        assert!(game.primary.player.y > 0.1);
         assert_eq!(
             game.frame()
                 .actors
@@ -4484,7 +4383,7 @@ mod grounded_movement_tests {
             .unwrap()
             .actor
             .position;
-        assert!(position.y > game.previous_player.y && position.y < game.player.y);
+        assert!(position.y > game.primary.previous_player.y && position.y < game.primary.player.y);
         assert_eq!(before, game.checkpoint().unwrap());
         let mut restored = Game::restore(&before).unwrap();
         for _ in 0..120 {
@@ -4492,11 +4391,11 @@ mod grounded_movement_tests {
             restored.tick(1. / 30., [0.; 2]).unwrap();
         }
         assert_eq!(game.checkpoint().unwrap(), restored.checkpoint().unwrap());
-        assert!(game.player.y < 0.001);
+        assert!(game.primary.player.y < 0.001);
         game.jump().unwrap();
         game.control_handoff(false).unwrap();
         game.tick(1. / 30., [0.; 2]).unwrap();
-        assert!(game.player.y < 0.001);
+        assert!(game.primary.player.y < 0.001);
     }
     #[test]
     fn frame_rates_produce_identical_grounded_authority() {
@@ -4512,7 +4411,7 @@ mod grounded_movement_tests {
             }
             assert_eq!(game.physics_steps, 240);
             assert_eq!(game.physics_clock.dropped, 0.);
-            poses.push(game.player);
+            poses.push(game.primary.player);
         }
         assert_eq!(poses[0], poses[1]);
         assert_eq!(poses[1], poses[2]);
@@ -4541,7 +4440,7 @@ mod compiled_navigation_tests {
         g.move_hostile(2, start, target, 0.04).unwrap();
         assert!(g.routes.contains_key(&2));
         let distant = physics::queries::Life {
-            instance: g.admission.actor().instance,
+            instance: g.primary.admission.actor().instance,
             entity: 900,
             generation: 0,
         };
@@ -4728,27 +4627,29 @@ mod body_lifetime_tests {
     fn living_capsules_block_other_lives_ignore_self_and_rebuild_on_load() {
         let mut g = game();
         g.time = 30.;
-        g.player = Vec3::new(0., 0., -15.);
+        g.primary.player = Vec3::new(0., 0., -15.);
         g.simulation
-            .place_chamber_actor(0, g.player.to_array(), 0.)
+            .place_chamber_actor(0, g.primary.player.to_array(), 0.)
             .unwrap();
         g.simulation
             .place_chamber_actor(g.ids[&2], [1.2, 0., -15.], 0.)
             .unwrap();
         g.sync_bodies(0.).unwrap();
-        let stop = g.move_player(g.player, Vec3::X * 4.).unwrap();
+        let stop = g.move_player(g.primary.player, Vec3::X * 4.).unwrap();
         assert!(stop.x <= 0.5001 && stop.x > 0.45, "{stop:?}");
-        assert!(g.move_player(g.player, -Vec3::X).unwrap().x < -0.99);
+        assert!(g.move_player(g.primary.player, -Vec3::X).unwrap().x < -0.99);
         let restored = Game::restore(&g.checkpoint().unwrap()).unwrap();
         assert_eq!(
             stop,
-            restored.move_player(restored.player, Vec3::X * 4.).unwrap()
+            restored
+                .move_player(restored.primary.player, Vec3::X * 4.)
+                .unwrap()
         );
         let life = g.actor_life(2).unwrap();
         g.place_actor_body(life, Vec3::new(-1.2, 0., -15.), 0.)
             .unwrap();
         let moved = g
-            .move_hostile(2, Vec3::new(-1.2, 0., -15.), g.player, 1.)
+            .move_hostile(2, Vec3::new(-1.2, 0., -15.), g.primary.player, 1.)
             .unwrap();
         assert!(moved.x <= -0.6999 && moved.x > -1.19, "{moved:?}");
     }
@@ -4840,9 +4741,9 @@ mod body_lifetime_tests {
     #[test]
     fn restart_and_checkpoint_reject_stale_body_ownership() {
         let mut g = game();
-        let old = g.admission.actor();
+        let old = g.primary.admission.actor();
         g.restart_combat(false).unwrap();
-        let current = g.admission.actor();
+        let current = g.primary.admission.actor();
         assert_eq!(current.generation, old.generation + 1);
         let key = physics::queries::Life {
             instance: old.instance,
@@ -4964,8 +4865,8 @@ mod player_respawn_tests {
                 )
                 .unwrap();
             let old = g.player_life();
-            g.pending_movement = Some([0., 1.]);
-            g.pending_jump = true;
+            g.primary.pending_movement = Some([0., 1.]);
+            g.primary.pending_jump = true;
             g.hostile_hit(10000).unwrap();
             g.tick(1. / 30., [0.; 2]).unwrap();
             let npc_health: Vec<_> = g
@@ -4982,7 +4883,11 @@ mod player_respawn_tests {
             assert_eq!(g.snapshot().player.hp, 200);
             assert_eq!(g.snapshot().player.mana, 20);
             assert!(!g.agent_controlled);
-            assert!(g.pending_movement.is_none() && !g.pending_jump && g.casting.is_none());
+            assert!(
+                g.primary.pending_movement.is_none()
+                    && !g.primary.pending_jump
+                    && g.primary.casting.is_none()
+            );
             assert!(g.submit(crate::Controller(1), command).is_err());
             assert_eq!(g.lives, lives);
             assert_eq!(g.npc_deaths, deadlines);
@@ -5127,7 +5032,7 @@ mod friendly_tests {
                 .health,
             123
         );
-        restored.selected = 2;
+        restored.primary.selected = 2;
         let mana = restored.snapshot().player.mana;
         assert!(restored.activate(Ability::Bow).is_err());
         assert_eq!(restored.snapshot().player.mana, mana);
@@ -5144,12 +5049,13 @@ mod friendly_tests {
         game.fall_damage(Some(2), 100.).unwrap();
         assert_eq!(serde_json::to_vec(&game.spells.dice).unwrap(), before);
         for spell in [Utility::Web, Utility::Grease] {
-            game.controls
+            game.primary
+                .controls
                 .cast(
                     &mut game.simulation,
                     spell,
                     game.time,
-                    game.player,
+                    game.primary.player,
                     Vec3::Z,
                     Some(position),
                 )
@@ -5173,7 +5079,7 @@ mod friendly_tests {
         for _ in 0..30 {
             game.tick(1. / 30., [0.; 2]).unwrap();
         }
-        assert!(!game.controls.held(source));
+        assert!(!game.primary.controls.held(source));
         let frame = game.frame();
         let giver = frame.actors.iter().find(|a| a.actor.id == 2).unwrap();
         assert_eq!(giver.health, 123);
@@ -5214,8 +5120,8 @@ mod friendly_tests {
         assert_eq!(game.next_player_actor, 15);
         game.tick(0., [0.; 2]).unwrap();
         let giver = game.actor_position(1_000_000).unwrap();
-        assert!(giver.distance(game.player) < 4.);
-        assert!(game.attack_clear(game.player + Vec3::Y * 1.4, giver + Vec3::Y * 1.1));
+        assert!(giver.distance(game.primary.player) < 4.);
+        assert!(game.attack_clear(game.primary.player + Vec3::Y * 1.4, giver + Vec3::Y * 1.1));
         assert_eq!(
             game.frame()
                 .actors
@@ -5288,7 +5194,7 @@ mod motor_containment_tests {
         let mut game = Game::combat(scene, false).unwrap();
         game.time = game.scene.cut_at;
         game.tick(1. / 30., [0.; 2]).unwrap();
-        let position = game.player;
+        let position = game.primary.player;
         let instance = game.player_life().instance;
         for (entity, lo, hi) in [(90001, -2., 0.1), (90002, -0.1, 2.)] {
             game.query_scene
@@ -5315,7 +5221,7 @@ mod motor_containment_tests {
         let time = game.time;
         for _ in 0..3 {
             game.tick(1. / 30., [1., 0.]).unwrap();
-            assert_eq!(game.player, position);
+            assert_eq!(game.primary.player, position);
         }
         assert_eq!(game.authority_tick, tick + 3);
         assert!(game.time > time);

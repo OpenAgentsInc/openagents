@@ -27,17 +27,19 @@ pub fn candidates(game: &Game) -> Vec<rules::Candidate> {
         .collect()
 }
 
-pub fn cast(game: &mut Game) -> Result<(), String> {
-    let candidates = visible_falling(game);
-    let caster = game.player.as_dvec3() + DVec3::Y * 0.9;
+pub fn cast(game: &mut Game, context: super::Caster) -> Result<(), String> {
+    context.validate(game)?;
+    let candidates = visible_falling(game, context);
+    let caster = context.feet.as_dvec3() + DVec3::Y * 0.9;
     let chosen =
         rules::decide(caster, &candidates).ok_or("No visible falling creatures within 60 feet")?;
-    cast_on(game, &chosen)
+    cast_on(game, context, &chosen)
 }
 
-pub fn cast_on(game: &mut Game, chosen: &[u32]) -> Result<(), String> {
+pub fn cast_on(game: &mut Game, context: super::Caster, chosen: &[u32]) -> Result<(), String> {
+    context.validate(game)?;
     let candidates = candidates(game);
-    let caster = game.player.as_dvec3() + DVec3::Y * 0.9;
+    let caster = context.feet.as_dvec3() + DVec3::Y * 0.9;
     for id in chosen {
         let candidate = candidates
             .iter()
@@ -55,14 +57,14 @@ pub fn cast_on(game: &mut Game, chosen: &[u32]) -> Result<(), String> {
         }
     }
     let effect = rules::FeatherFall::cast(
-        game.player_actor() as u32,
+        context.life.actor as u32,
         caster,
         &candidates,
         chosen,
         game.time as f64,
     )
     .map_err(|e| format!("Feather Fall refused: {e:?}"))?;
-    game.spells.begin_cast(game.player_actor(), false)?;
+    game.spells.begin_cast(context.life.actor, false)?;
     for id in chosen {
         let actor = u64::from(*id);
         game.spells.track(Track {
@@ -239,12 +241,19 @@ mod tests {
 
 /// Read-only reaction availability for the player's action bar.
 pub fn reaction_available(game: &Game) -> bool {
-    game.spells.ready.get(&3).is_none_or(|at| *at <= game.time)
-        && game.snapshot().player.mana >= super::CATALOG[3].cost
-        && !visible_falling(game).is_empty()
+    let Ok(context) = game.caster_context(game.player_life()) else {
+        return false;
+    };
+    let spell = &game.actor_state(context.life).unwrap().definition.catalog[&3];
+    game.primary
+        .catalog_ready
+        .get(&3)
+        .is_none_or(|at| *at <= game.time)
+        && game.snapshot().player.mana >= spell.cost
+        && !visible_falling(game, context).is_empty()
 }
-fn visible_falling(game: &Game) -> Vec<rules::Candidate> {
-    let caster = game.player.as_dvec3() + DVec3::Y * 0.9;
+fn visible_falling(game: &Game, context: super::Caster) -> Vec<rules::Candidate> {
+    let caster = context.feet.as_dvec3() + DVec3::Y * 0.9;
     candidates(game)
         .into_iter()
         .filter(|c| {

@@ -159,7 +159,7 @@ Evidence labels:
 | V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload | Complete ([#10629](https://github.com/OpenAgentsInc/openagents/issues/10629)) |
 | V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics | Complete ([#10630](https://github.com/OpenAgentsInc/openagents/issues/10630)) |
 | V15 | P1 | Content-bound navigation tiles have scheduled routes and local invalidation. | Code, recorded | Navigation and AI | Complete ([#10634](https://github.com/OpenAgentsInc/openagents/issues/10634)), grounded profile |
-| V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters | Open |
+| V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters | Complete (chamber profile; [#10635](https://github.com/OpenAgentsInc/openagents/issues/10635)) |
 | V17 | P1 | Engine boundaries remain intertwined with the Verse application. | Code | Engine extraction and host packaging | Open |
 | V18 | P0 | Crowd recovery improves, but failure containment and scale acceptance remain. | Recorded, code | Movement failure handling and scale acceptance | Open |
 | V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Open |
@@ -811,7 +811,7 @@ results to their original submitted frame. The pinned
 supplies the timestamp conversion period. `VERSE_GPU_TIMING=1` requests the
 feature when supported; ordinary rendering remains available without it.
 
-[`FrameProfile`](../../crates/verse/src/profiling.rs) retains the first 120
+[`FrameProfile`](../../crates/verse-gfx/src/profiling.rs) retains the first 120
 submitted frames separately from steady work. Each phase admits at most 48
 series of 8,192 observations and reports invalid values and omissions. Renderer
 construction uses frame zero; delayed GPU and capture results keep their source
@@ -909,7 +909,7 @@ LOD is claimed, and actor animation remains fully evaluated. The retained crowd
 measurements identify enough headroom for this fixture without introducing an
 untested animation LOD policy.
 
-[`gpu_lifecycle`](../../crates/verse/src/gpu_lifecycle.rs) records the device's
+[`gpu_lifecycle`](../../crates/verse-gfx/src/gpu_lifecycle.rs) records the device's
 loss callback and polling errors. Native recovery creates a new admitted device,
 pipelines, targets, and presentation bindings from retained verified source
 values, without reopening deleted asset files. It preserves compatible actor
@@ -978,7 +978,7 @@ and refuse symlinks and nonregular files. The cooker publishes a verified,
 synced file without replacing an existing digest. Manifest metadata has separate
 chunk, edge, and JSON bounds.
 
-[`Source`](../../crates/verse/src/streaming.rs) integrates with both native
+[`Source`](../../crates/verse-pbr/src/streaming.rs) integrates with both native
 `render::Renderer` and `render::Layer`. Per-frame bytes limit incremental buffer
 and image writes; a soft CPU deadline stops before the next driver call.
 Evicted GPU handles are released before replacement allocation. Geometry becomes
@@ -1155,29 +1155,65 @@ measurement does not establish a whole-game or production MMO frame gate; V18
 owns those budgets. Physics, Verse, world, native consumer, and browser checks
 cover the shared implementation; no owner host or phone run is claimed.
 
-### V16: The primary adventurer remains a special implementation path
+<a id="v16-the-primary-adventurer-remains-a-special-implementation-path"></a>
 
-[`play::Game`](../../crates/verse-world/src/play.rs) and
-[`play::multiplayer`](../../crates/verse-world/src/play/multiplayer.rs) separate
-the primary player's fields from additional players. Additional-player admission
-explicitly refuses `Ability::Spell` and `Ability::SpellCommand`, while the
-[`spell catalog`](../../crates/verse-world/src/spells/mod.rs) callbacks mutate
-`Game` and derive facing from primary state. The original ten abilities have
-shared-caster implementations; the newer physics spells do not have equivalent
-multiplayer coverage.
+### V16: Shared caster records and validated chamber tuning
 
-Named model/profile checks, built-in rooms, ability enums, hardcoded resource
-defaults, and encounter adapters also mix chamber content with reusable rules.
+**Status:** Complete for the audited chamber ability profile
+([#10635](https://github.com/OpenAgentsInc/openagents/issues/10635)).
 
-**Improve:** Make every player an actor-scoped record and pass an explicit caster
-context to every ability. Preserve the original ten-ability behavior while
-moving definitions and encounter parameters into validated content. Keep AI,
-player, and agent controllers on the same command boundary.
+[`Game`](../../crates/verse-world/src/play.rs) stores primary and additional
+players in the same `ActorState` record. The original ten abilities use the same
+actor dispatcher. Each of the nine
+[`catalog constructors`](../../crates/verse-world/src/spells/mod.rs) receives a
+captured `Caster` and checks its life, source, pose, selection, save difficulty,
+and authority tick. Player, AI, and agent inputs use the same admitted command
+boundary. The primary-player field projection remains for existing local
+presentation and the flat checkpoint layout.
 
-**Acceptance:** Every shipped ability works for two independent casters with
-separate resources, concentration, cooldowns, collisions, events, and saves.
-Adding a second encounter or character class does not require a new player branch
-or a renderer-specific combat rule.
+[`Caster dispatch`](../../crates/verse-world/src/play/caster.rs) scopes catalog
+cooldowns, mana charges, commands, concentration, and seeded dice to the caster.
+Thunderwave also uses the admitted caster's dice and save difficulty. Catalog
+casts emit authority events with the caster's life. Ongoing Gust of Wind follows
+each owner, concurrent Wind Walls remain in projectile collision, and Wind Wall
+retains the support state its next physics step needs after restoration. Failed
+casts restore gameplay changes while keeping an admitted command sequence
+consumed, as required by the transport contract. Generation changes discard
+pending navigation work with obsolete actor lives.
+
+[`Character content`](../../crates/verse-world/src/content.rs) validates class
+keys, health, mana, save difficulty, and catalog costs/cooldowns. Bounds are
+200–600 health, 20–60 mana, DC 5–30, costs 0–20, and cooldowns 0–600 seconds.
+[`Encounter content`](../../crates/verse-world/src/combat.rs) validates hostile
+health, duration, warmup, and stagger. Defaults preserve the chamber profile.
+A test defines a storm warden with different resources, DC, and Gust tuning
+without a player branch or renderer rule. Another changes encounter health and
+timing through the existing rules. Character tuning and remaining catalog
+cooldowns survive world transfer; restarts retain the selected definitions.
+Checkpoint v24 reads the supported older profiles, including v23's additional
+player aliases and primary catalog cooldowns.
+
+**Evidence:** The paired-caster tests admit all 19 abilities with independent
+records and resources, retain events and cooldowns, and compare 26 subsequent
+50-millisecond updates byte for byte with restored worlds. Separate checks cover
+scoped saves, hand/release and altitude commands, concentration, moving remote
+Gust ownership, character transfer, legacy layout migration, and refusal fences.
+The service-enabled world suite passed 510 tests with two intentional subprocess
+helpers ignored; the six final caster tests passed separately. Verse passed 507 tests with 13 intentional GPU/fixture checks ignored after
+regenerating and repinning stale Grid and Everglade artifacts; its 22 content-pack
+checks also passed separately. Native desktop,
+mobile, and CLI checks, the browser build, and affected-package formatting
+passed. Retained evidence is under
+[`actor-casters`](../../bench/verse/2026-10-05/actor-casters/README.md).
+
+**Remaining limits:** This covers the chamber's ten original and nine catalog
+abilities. Class data tunes these implementations; new effect mechanics and
+hostile archetypes still require Rust adapters. Named room/model choices and
+other application zone demos remain application content. Remote catalog UI and
+those demos' authority parity are covered by V24; authoring is covered by V20.
+Cast rollback currently clones the bounded game state; its cost needs V18 scale
+acceptance. These two-caster, same-platform replay checks establish neither MMO
+raid throughput nor cross-platform replay equivalence, which remain V18 and V27.
 
 ### V17: Engine extraction needs actual consumers
 
@@ -1355,9 +1391,9 @@ quality tiers reduce crowd cost without altering damage timing.
 
 The chamber has validated local metallic/roughness materials, fog, HDR output,
 32 lights, and up to four cube-shadow sources.
-[`pbr`](../../crates/verse/src/pbr/mod.rs) has a different environment pipeline
+[`pbr`](../../crates/verse-pbr/src/pbr/mod.rs) has a different environment pipeline
 with quality tiers, cascades, screen-space effects, and baked irradiance.
-[`textured_bake`](../../crates/verse/src/pbr/textured_bake.rs) now bakes Everglade
+[`textured_bake`](../../crates/verse-pbr/src/pbr/textured_bake.rs) now bakes Everglade
 vertex ambient and probes. The Everglade compiler intentionally retains only
 base-color maps from environment models. These are distinct supported profiles,
 not one common high-fidelity material path.

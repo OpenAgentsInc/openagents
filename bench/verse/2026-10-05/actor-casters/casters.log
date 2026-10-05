@@ -1,0 +1,26 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2844:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2844 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.50s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-d5f07b36d91f3f1e)
+
+running 6 tests
+test play::caster::tests::character_content_scopes_saves_tuning_streams_and_commands ... ok
+test play::caster::tests::moving_remote_gust_follows_its_owner_without_moving_the_other_line ... ok
+test play::caster::tests::previous_checkpoint_layout_migrates_primary_and_additional_records ... ok
+test play::caster::tests::refused_cast_restores_gameplay_and_retains_the_consumed_envelope ... ok
+test play::caster::tests::character_tuning_and_catalog_cooldowns_survive_world_transfer ... ok
+test play::caster::tests::every_shipped_ability_admits_two_independent_casters_and_restores ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 507 filtered out; finished in 1.76s
+

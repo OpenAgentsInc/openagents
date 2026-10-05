@@ -15,24 +15,26 @@ pub struct Effect {
     pub proxy: Option<physics::BodyId>,
 }
 
-pub fn cast(game: &mut Game) -> Result<(), String> {
-    let target = if game.selected >= super::PROP_ENTITY_BASE {
+pub fn cast(game: &mut Game, context: super::Caster) -> Result<(), String> {
+    context.validate(game)?;
+    let target = if context.selected >= super::PROP_ENTITY_BASE {
         Target::Prop(
             game.spells
                 .props
                 .iter()
-                .position(|p| p.life.entity == game.selected && !p.removed)
+                .position(|p| p.life.entity == context.selected && !p.removed)
                 .ok_or("Unknown Telekinesis prop")?,
         )
     } else {
-        Target::Actor(game.selected)
+        Target::Actor(context.selected)
     };
-    cast_on(game, target)
+    cast_on(game, context, target)
 }
 
-pub fn cast_on(game: &mut Game, target: Target) -> Result<(), String> {
-    let caster = game.player_actor();
-    let caster_position = game.player.as_dvec3() + DVec3::Y * 0.9;
+pub fn cast_on(game: &mut Game, context: super::Caster, target: Target) -> Result<(), String> {
+    context.validate(game)?;
+    let caster = context.life.actor;
+    let caster_position = context.feet.as_dvec3() + DVec3::Y * 0.9;
     let (position, size, subject) = match target {
         Target::Actor(actor) => {
             if game
@@ -88,10 +90,10 @@ pub fn cast_on(game: &mut Game, target: Target) -> Result<(), String> {
         return Err("Telekinesis target is behind cover".into());
     }
     let save = if let Target::Actor(actor) = target {
-        let save = game
-            .spells
-            .dice
-            .save(actor, "Strength", 0, super::SPELL_SAVE_DC);
+        let save =
+            game.spells
+                .dice_for(context.life.actor)
+                .save(actor, "Strength", 0, context.save_dc);
         let native = rules::Save::new(save.roll as i32, save.modifier, save.dc);
         game.spells.record(
             game.time,

@@ -59,6 +59,7 @@ impl SpellWorld {
             })
             || self.gusts.iter().any(|e| {
                 e.cast > self.casts
+                    || !(5..=30).contains(&e.save_dc)
                     || !e.gust.line.origin.is_finite()
                     || !e.gust.line.direction.is_finite()
                     || !e.gust.cast_at.is_finite()
@@ -73,7 +74,7 @@ impl SpellWorld {
                         .any(|p| !body(p.body) || !p.until.is_finite())
             })
             || self.wind_walls.iter().any(|e| {
-                e.cast > self.casts
+                e.cast > self.casts || e.supported.len()>8192 || e.supported.iter().any(|id|!body(*id))
                     || !e.wall.until.is_finite()
                     || e.wall.wall.path.len() > 64
                     || e.wall.wall.path.iter().any(|p| !p.is_finite())
@@ -112,7 +113,7 @@ impl SpellWorld {
                     })
             })
             || self.reversed.iter().any(|e| {
-                e.cast > self.casts
+                e.cast > self.casts || !(5..=30).contains(&e.save_dc)
                     || !e.spell.gravity.cylinder.base.is_finite()
                     || e.spell.gravity.cylinder.radius != crate::reverse_gravity::RADIUS
                     || e.spell.gravity.cylinder.height != crate::reverse_gravity::HEIGHT

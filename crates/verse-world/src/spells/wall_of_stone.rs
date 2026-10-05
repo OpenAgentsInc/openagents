@@ -9,15 +9,25 @@ pub struct Effect {
     pub wall: rules::rig::Wall,
 }
 
-pub fn cast(game: &mut Game) -> Result<(), String> {
-    let forward = DVec3::new(-f64::from(game.yaw.sin()), 0., -f64::from(game.yaw.cos()));
+pub fn cast(game: &mut Game, context: super::Caster) -> Result<(), String> {
+    context.validate(game)?;
+    let forward = DVec3::new(
+        -f64::from(context.yaw.sin()),
+        0.,
+        -f64::from(context.yaw.cos()),
+    );
     let side = DVec3::new(forward.z, 0., -forward.x);
-    let start = game.player.as_dvec3() + forward * 4. - side * rules::Form::Thick.size().x;
+    let start = context.feet.as_dvec3() + forward * 4. - side * rules::Form::Thick.size().x;
     let panels = rules::shapes::straight(start, side, 2, rules::Form::Thick);
-    raise(game, &panels)
+    raise(game, context, &panels)
 }
 
-pub fn raise(game: &mut Game, panels: &[rules::Placement]) -> Result<(), String> {
+pub fn raise(
+    game: &mut Game,
+    context: super::Caster,
+    panels: &[rules::Placement],
+) -> Result<(), String> {
+    context.validate(game)?;
     let mut stone = vec![];
     let mut bodies = vec![];
     for collider in game.spells.world.colliders() {
@@ -44,7 +54,7 @@ pub fn raise(game: &mut Game, panels: &[rules::Placement]) -> Result<(), String>
             bodies.push(collider.body);
         }
     }
-    let plan = rules::validate::validate(panels, &stone, game.player.as_dvec3())
+    let plan = rules::validate::validate(panels, &stone, context.feet.as_dvec3())
         .map_err(|e| format!("Wall of Stone placement refused: {e:?}"))?;
     if game.spells.props.len() + panels.len() > super::MAX_PROPS {
         return Err("Stone panel budget exceeded".into());
@@ -57,13 +67,15 @@ pub fn raise(game: &mut Game, panels: &[rules::Placement]) -> Result<(), String>
             radius: 0.35,
             height: 1.8,
         };
-        let side = creature.feet - game.player.as_dvec3();
+        let side = creature.feet - context.feet.as_dvec3();
         let mut destination = rules::creatures::push_out(panels, creature, side);
         if rules::creatures::enclosed(panels, &stone, creature) {
-            let save = game
-                .spells
-                .dice
-                .save(actor, "Dexterity", 0, super::SPELL_SAVE_DC);
+            let save = game.spells.dice_for(context.life.actor).save(
+                actor,
+                "Dexterity",
+                0,
+                context.save_dc,
+            );
             let result = rules::creatures::resolve_enclosure(
                 panels,
                 &stone,
@@ -92,7 +104,7 @@ pub fn raise(game: &mut Game, panels: &[rules::Placement]) -> Result<(), String>
             );
         }
     }
-    let cast = game.spells.begin_cast(game.player_actor(), true)?;
+    let cast = game.spells.begin_cast(context.life.actor, true)?;
     let first_prop = game.spells.props.len();
     let wall = rules::rig::Wall::raise(&mut game.spells.world, &plan, &bodies, game.time as f64);
     for panel in &wall.panels {
@@ -101,12 +113,12 @@ pub fn raise(game: &mut Game, panels: &[rules::Placement]) -> Result<(), String>
             "Stone panel",
             super::PropKind::SpellBody,
             Some(cast),
-            game.player_life().instance,
+            context.life.instance,
         )?;
     }
     game.spells.walls.push(Effect {
         cast,
-        caster: game.player_actor(),
+        caster: context.life.actor,
         wall,
     });
     for prop in &game.spells.props[first_prop..] {
@@ -135,12 +147,14 @@ pub fn raise(game: &mut Game, panels: &[rules::Placement]) -> Result<(), String>
 /// Build a bounded layout using the same validator as the default barricade.
 pub fn authored(
     game: &mut Game,
+    context: super::Caster,
     shape: u8,
     from: [i32; 3],
     to: [i32; 3],
     count: u8,
     thin: bool,
 ) -> Result<(), String> {
+    context.validate(game)?;
     if count == 0 || count > 10 {
         return Err("Stone layout count must be between 1 and 10".into());
     }
@@ -159,7 +173,7 @@ pub fn authored(
         4 => rules::shapes::enclosure(from, form),
         _ => return Err("Unknown stone layout".into()),
     };
-    raise(game, &panels)
+    raise(game, context, &panels)
 }
 
 /// Current panel bounds for the chamber's projectile cover sweep.

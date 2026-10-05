@@ -238,6 +238,7 @@ mod tests {
 
 pub mod black_tentacles;
 pub mod combat;
+pub mod content;
 pub mod controls;
 pub mod events;
 pub mod feather_fall;

@@ -7,19 +7,27 @@ pub struct Effect {
     pub cast: u64,
     pub caster: u64,
     pub wall: rules::WindWall,
+    #[serde(default)]
+    pub supported: std::collections::BTreeSet<physics::BodyId>,
 }
 
-pub fn cast(game: &mut Game) -> Result<(), String> {
-    let facing = DVec3::new(-f64::from(game.yaw.sin()), 0., -f64::from(game.yaw.cos()));
-    let center = game.player.as_dvec3() + facing * 4.;
+pub fn cast(game: &mut Game, context: super::Caster) -> Result<(), String> {
+    context.validate(game)?;
+    let facing = DVec3::new(
+        -f64::from(context.yaw.sin()),
+        0.,
+        -f64::from(context.yaw.cos()),
+    );
+    let center = context.feet.as_dvec3() + facing * 4.;
     let side = DVec2::new(-facing.z, facing.x);
     let path = rules::Wall::straight(DVec2::new(center.x, center.z), side, 30. * super::FEET);
-    cast_path(game, path)
+    cast_path(game, context, path)
 }
 
 /// Admit a continuous authored path through the native placement validator.
-pub fn cast_path(game: &mut Game, path: Vec<DVec2>) -> Result<(), String> {
-    let wall = rules::Wall::new(path, game.player.as_dvec3(), |p| {
+pub fn cast_path(game: &mut Game, context: super::Caster, path: Vec<DVec2>) -> Result<(), String> {
+    context.validate(game)?;
+    let wall = rules::Wall::new(path, context.feet.as_dvec3(), |p| {
         ground(&game.spells.world, p)
     })
     .map_err(|e| format!("Wind Wall placement refused: {e:?}"))?;
@@ -27,17 +35,20 @@ pub fn cast_path(game: &mut Game, path: Vec<DVec2>) -> Result<(), String> {
         .into_iter()
         .filter(|c| wall.in_area(c.position - DVec3::Y * 0.9, 0.35, 1.8))
         .collect();
-    let cast = game.spells.begin_cast(game.player_actor(), true)?;
+    let cast = game.spells.begin_cast(context.life.actor, true)?;
     for target in victims {
-        let save = game
-            .spells
-            .dice
-            .save(u64::from(target.id), "Strength", 0, super::SPELL_SAVE_DC);
-        let (_, damage) =
-            rules::appearance_damage(save.success, || game.spells.dice.roll(8) as i32);
-        if u64::from(target.id) == game.player_actor() {
-            game.simulation
-                .chamber_player_damage(damage.min(game.snapshot().player.hp))?;
+        let save = game.spells.dice_for(context.life.actor).save(
+            u64::from(target.id),
+            "Strength",
+            0,
+            context.save_dc,
+        );
+        let (_, damage) = rules::appearance_damage(save.success, || {
+            game.spells.dice_for(context.life.actor).roll(8) as i32
+        });
+        if let Some(source) = game.player_source(u64::from(target.id)) {
+            let hp = game.simulation.snapshot_for(source)?.player.hp;
+            game.simulation.player_damage_for(source, damage.min(hp))?;
         } else if let Some(source) = game.ids.get(&u64::from(target.id)).copied() {
             game.simulation.bow_impact(source, damage)?;
         }
@@ -48,19 +59,22 @@ pub fn cast_path(game: &mut Game, path: Vec<DVec2>) -> Result<(), String> {
             Some(save),
         );
     }
-    let wall = rules::WindWall::raise(
-        &mut game.spells.world,
-        wall,
-        game.time as f64,
-        game.spells.dice.seed,
-    );
-    game.simulation
-        .set_spell_wind_walls(vec![wall.wall.clone()]);
+    let seed = game.spells.dice_for(context.life.actor).seed;
+    let wall = rules::WindWall::raise(&mut game.spells.world, wall, game.time as f64, seed);
     game.spells.wind_walls.push(Effect {
         cast,
-        caster: game.player_actor(),
+        caster: context.life.actor,
+        supported: rules::supported(&game.spells.world, &wall.bodies),
         wall,
     });
+    game.simulation.set_spell_wind_walls(
+        game.spells
+            .wind_walls
+            .iter()
+            .filter(|e| !e.wall.ended && f64::from(game.time) < e.wall.until)
+            .map(|e| e.wall.wall.clone())
+            .collect(),
+    );
     Ok(())
 }
 

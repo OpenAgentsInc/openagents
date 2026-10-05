@@ -469,6 +469,16 @@ impl Gust {
         creatures: &[Creature],
         d20: &mut impl FnMut(u32) -> i32,
     ) -> Vec<Event> {
+        self.creatures_with_dc(time, creatures, SPELL_SAVE_DC, d20)
+    }
+    /// Resolve saves against the admitted caster's difficulty class.
+    pub fn creatures_with_dc(
+        &mut self,
+        time: f64,
+        creatures: &[Creature],
+        dc: i32,
+        d20: &mut impl FnMut(u32) -> i32,
+    ) -> Vec<Event> {
         let mut events = Vec::new();
         if !self.active(time) {
             return events;
@@ -491,13 +501,13 @@ impl Gust {
             self.clocks
                 .insert(creature.id, due.map_or(time, |d| d) + TURN);
             let roll = d20(creature.id);
-            let passed = roll + creature.strength >= SPELL_SAVE_DC;
+            let passed = roll + creature.strength >= dc;
             events.push(Event::Save {
                 creature: creature.id,
                 reason,
                 roll,
                 modifier: creature.strength,
-                dc: SPELL_SAVE_DC,
+                dc,
                 passed,
             });
             if !passed {

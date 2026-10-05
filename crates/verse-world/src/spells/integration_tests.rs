@@ -175,7 +175,8 @@ fn tentacle_terrain_halves_admitted_walking_without_a_restraint() {
     let actor = slowed.player_actor();
     slowed.spells.dice.force_save(actor, 20).unwrap();
     let center = slowed.player.as_dvec3() + glam::DVec3::X * 2.8;
-    super::black_tentacles::cast_at(&mut slowed, center).unwrap();
+    let context = slowed.caster_context(slowed.player_life()).unwrap();
+    super::black_tentacles::cast_at(&mut slowed, context, center).unwrap();
     let start = normal.player;
     normal.tick(1. / 30., [1., 0.]).unwrap();
     slowed.tick(1. / 30., [1., 0.]).unwrap();

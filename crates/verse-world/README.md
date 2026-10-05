@@ -8,7 +8,7 @@ chamber reads its snapshots and cinematic projection. Human and controller
 requests share admission. A trusted adapter supplies controller identity;
 this crate does not authenticate network connections.
 
-The `verse-chamber-owned-v19` rules profile independently implements retained
+The `verse-chamber-owned-v24` rules profile independently implements retained
 chamber behavior; it imports no vendor source. Firebolt deals 8 damage, each of
 three magic missiles deals 4, and fireball deals 15 in a visible 6.096-meter radius
 with three 6-damage burn ticks. Living characters regenerate one mana per second.
@@ -52,6 +52,15 @@ additional adventurers in this same chamber. `submit` dispatches by exact player
 life and retains independent movement, jump, casting, bow/utility cooldowns,
 shields, and travel animation phase. All ten original abilities share the same
 NPCs, capsule collision, spell physics, projectiles, events, and fixed clock.
+The same actor record and ability dispatcher serve primary and additional
+players. The nine physics catalog spells capture the caster's current life,
+source, pose, selection, and save difficulty. Catalog cooldowns, dice, concentration,
+and commands belong to each caster. Validated character and encounter definitions
+configure resources, catalog cost/timing, save difficulty, hostile health, and
+encounter timing. World transfer carries character tuning and remaining catalog
+cooldowns. Gameplay refusals restore spell effects and resources while retaining
+consumed command sequences. Wind Wall retains the support state its next step
+needs for checkpoint replay.
 Hostiles select the nearest living adventurer with actor-ID ties and sweep their
 actual movement paths; defeat ends the encounter only when all adventurers die.
 Owned respawn and reset fence lives and commands without dropping other players.
@@ -186,13 +195,13 @@ match HUD life to acknowledged control and validate resources, clocks, slots,
 and cast targets. Native `owned_hud` drawing shares the local ten-slot row,
 portrait/resources, cast bar, and respawn button. Owned hit tests exclude hidden
 catalog slots and gate death/respawn controls. Remote window mounting, target
-HUD, and catalog shared-caster adapters remain.
+HUD, and catalog action-bar projection remain.
 
 The remote view retains an exact-life target and cycles live hostile poses in
 stable actor order. Death events, hidden/dead snapshots, and new generations
 clear selection; friendly/foreign/stale lives are refused. Native `target_hud`
 shares local portrait/name/health drawing, hides dead targets, and rejects stale
-frame lives before drawing. Remote mounting and catalog adapters remain.
+frame lives before drawing. Remote mounting and catalog action-bar projection remain.
 
 Wire version six carries live physics prop box poses through presentation.
 Kinds, secured variants, dimensions, centers, and unit rotations are bounded
@@ -861,7 +870,7 @@ Movement, social interactions, and replication use the same authenticated game
 and control fences. `host::Config::social_profile` selects this profile;
 `bind_content` includes its digest in the scene/asset identity. Startup recovery
 refuses changed profiles. Host, CLI, and offline migration preparation use this
-binding. Supported older combat checkpoints remain readable under rules v22;
+binding. Supported older combat checkpoints remain readable under rules v24;
 wire clients use version 25.
 
 Seats are exclusive and tied to a character life. Accepted interactions stop
