@@ -1,0 +1,49 @@
+{
+  "source_base": "b61f0ba34f72eba8149231333109e73134bd44a5",
+  "patch_sha256": "b5045a980b95c21ddf24d54236dc8230a0f7e3347386f6d1865c1d67c1a94237",
+  "platform": "Linux, private scratch TLS authority and durable store on CoderOS",
+  "authenticated_players": 20,
+  "movement_interval_streams": 1,
+  "background_players": 19,
+  "background_work": "Replicated snapshots and accepted zero-axis movement commands, every 33 ms plus request time",
+  "injected_writer_stall_ms": 1200,
+  "primary_network_delay_each_way_ms": 40,
+  "focused_test": {
+    "passed": 1,
+    "failed": 0,
+    "elapsed_seconds": 5.9,
+    "build_seconds": 204,
+    "background_requests": 1264
+  },
+  "delayed_fixture_family": {
+    "passed": 4,
+    "failed": 0,
+    "elapsed_seconds": 5.43,
+    "background_requests": 1330
+  },
+  "primary_movement_resets": 0,
+  "primary_correction_p95_m": 0,
+  "verification": [
+    "Targeted cargo test with service-auth,service-reach; one build job; persistent target; debug info disabled",
+    "All four delayed-worker fixtures from the same built test executable",
+    "rustfmt check and git diff check"
+  ],
+  "limitations": [
+    "Only the primary player sends complete movement intervals; background players use legacy movement commands.",
+    "No casts, rendered scene, or 40-NPC battle acceptance.",
+    "Initial Mac run failed before traffic because fixed spawns overlapped; a later build was stopped after identifying parallel-handshake setup would exceed the pending IP limit. The retained successful fixture uses collision-checked spawns and sequential handshakes.",
+    "One injected stall with shared player traffic does not reproduce the latest full battle failure."
+  ],
+  "integration_verification": {
+    "source_base": "f03dac7090cb103a32fe839ae12431b86db2400a",
+    "patch_sha256": "bfe63acfe5e8f15b07b78753ca8c627c0d57ce010101839a4168ad6a580feaf5",
+    "passed": 4,
+    "failed": 0,
+    "build_seconds": 169,
+    "elapsed_seconds": 5.91,
+    "background_requests": 1176,
+    "primary_movement_resets": 0,
+    "primary_correction_p95_m": 0,
+    "preserved_assertions": "Slow accepted snapshot responses yield at least 40 ms before the next read starts"
+  }
+}

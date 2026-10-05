@@ -1,0 +1,17 @@
+
+running 4 tests
+VERSE_V04_TLS_EVIDENCE {"up_ms":0,"down_ms":0,"durable_stall_ms":300,"bound":56,"accepted":56,"observations":53,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":1,"background_requests":0}
+test service::worker::delayed::durable_writer_stall_preserves_owned_interval_timeline ... ok
+VERSE_V04_TLS_EVIDENCE {"up_ms":67,"down_ms":100,"durable_stall_ms":0,"bound":59,"accepted":56,"observations":17,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":1,"background_requests":0}
+test service::worker::delayed::delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline ... ok
+VERSE_V04_TLS_EVIDENCE {"up_ms":40,"down_ms":40,"durable_stall_ms":1200,"bound":58,"accepted":55,"observations":28,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":1,"background_requests":0}
+test service::worker::delayed::delayed_route_and_long_writer_stall_preserve_owned_interval_timeline ... ok
+VERSE_V04_TLS_EVIDENCE {"up_ms":40,"down_ms":40,"durable_stall_ms":1200,"bound":58,"accepted":56,"observations":23,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":20,"background_requests":1330}
+test service::worker::delayed::shared_player_pressure_and_long_writer_stall_preserve_owned_interval_timeline ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 535 filtered out; finished in 5.43s
+

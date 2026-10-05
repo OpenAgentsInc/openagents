@@ -1,0 +1,39 @@
+From https://github.com/OpenAgentsInc/openagents
+ * branch                  main       -> FETCH_HEAD
+   1ff8fc4959..f03dac7090  main       -> origin/main
+Previous HEAD position was b61f0ba34f Cover delayed movement through a long durable writer stall
+HEAD is now at f03dac7090 Put Meteor Swarm and the Thunderbolt on 1 and 2, and freeze only resting debris
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/verse-battle-host-agent1/crates/verse-engine)
+   Compiling physics v0.1.0 (/home/christopherdavid/work/verse-battle-host-agent1/crates/physics)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/verse-battle-host-agent1/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+
+running 4 tests
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized] target(s) in 2m 49s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-verse-battle-agent1/debug/deps/verse_world-5115cbce0f3ef316)
+VERSE_V04_TLS_EVIDENCE {"up_ms":0,"down_ms":0,"durable_stall_ms":300,"bound":72,"accepted":71,"observations":38,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":1,"background_requests":0}
+test service::worker::delayed::durable_writer_stall_preserves_owned_interval_timeline ... ok
+VERSE_V04_TLS_EVIDENCE {"up_ms":67,"down_ms":100,"durable_stall_ms":0,"bound":89,"accepted":84,"observations":13,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":1,"background_requests":0}
+test service::worker::delayed::delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline ... ok
+VERSE_V04_TLS_EVIDENCE {"up_ms":40,"down_ms":40,"durable_stall_ms":1200,"bound":76,"accepted":73,"observations":17,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":1,"background_requests":0}
+test service::worker::delayed::delayed_route_and_long_writer_stall_preserve_owned_interval_timeline ... ok
+VERSE_V04_TLS_EVIDENCE {"up_ms":40,"down_ms":40,"durable_stall_ms":1200,"bound":89,"accepted":84,"observations":15,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":20,"background_requests":1176}
+test service::worker::delayed::shared_player_pressure_and_long_writer_stall_preserve_owned_interval_timeline ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 554 filtered out; finished in 5.91s
+
