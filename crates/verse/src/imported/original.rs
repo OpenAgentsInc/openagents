@@ -52,6 +52,8 @@ fn cuboid(
         blend: 0,
         emissive,
         tint: color,
+        topology: Default::default(),
+        unlit: false,
     };
     for (normal, axes) in [
         ([1., 0., 0.], [1, 2]),
@@ -91,6 +93,8 @@ fn equipment_samples(pack: &mut Pack) {
         texture: 0,
         blend: 0,
         emissive: false,
+        topology: Default::default(),
+        unlit: false,
         tint: [0.34, 0.13, 0.56],
     };
     for i in 0..16 {
@@ -539,6 +543,8 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
         texture: 0,
         blend: 0,
         emissive: true,
+        topology: Default::default(),
+        unlit: false,
         tint: [1., 0.2, 0.03],
     };
     for latitude in 0..=12 {

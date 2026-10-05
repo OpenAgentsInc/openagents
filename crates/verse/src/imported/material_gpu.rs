@@ -7,6 +7,8 @@ pub(super) struct Key {
     pub blend: u8,
     pub emissive: bool,
     pub maps: [Option<usize>; 4],
+    pub lines: bool,
+    pub unlit: bool,
     values: [u32; 9],
 }
 impl Key {
@@ -16,6 +18,8 @@ impl Key {
             texture: surface.texture,
             blend: surface.blend,
             emissive: surface.emissive,
+            lines: surface.topology == verse_engine::assets::Topology::Lines,
+            unlit: surface.unlit || surface.topology == verse_engine::assets::Topology::Lines,
             maps: [
                 m.normal_texture,
                 m.metallic_roughness_texture,
@@ -47,7 +51,7 @@ impl Key {
                 v[1],
             ],
             [v[2], v[3], v[4], v[5]],
-            [v[6], v[7], v[8], 0.],
+            [v[6], v[7], v[8], u8::from(self.unlit) as f32],
             self.maps.map(|slot| u8::from(slot.is_some()) as f32),
         ]
     }
@@ -63,6 +67,8 @@ mod tests {
             texture: 0,
             blend: 0,
             emissive: false,
+            topology: Default::default(),
+            unlit: false,
             tint: [1.; 3],
             material: Default::default(),
         }
@@ -85,6 +91,19 @@ mod tests {
         let mut tinted = original.clone();
         tinted.tint = [0.5; 3];
         assert_eq!(Key::from_surface(&tinted), key);
+    }
+    #[test]
+    fn lines_and_unlit_surfaces_keep_their_own_materials() {
+        let key = Key::from_surface(&surface());
+        let mut unlit = surface();
+        unlit.unlit = true;
+        let mut lines = surface();
+        lines.topology = verse_engine::assets::Topology::Lines;
+        assert_ne!(Key::from_surface(&unlit), key);
+        assert_ne!(Key::from_surface(&lines), key);
+        assert_ne!(Key::from_surface(&lines), Key::from_surface(&unlit));
+        assert!(Key::from_surface(&lines).unlit);
+        assert_eq!(Key::from_surface(&unlit).uniform()[2][3], 1.);
     }
     #[test]
     fn packing_preserves_factors_and_presence_flags() {

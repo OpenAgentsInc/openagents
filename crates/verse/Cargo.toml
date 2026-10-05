@@ -152,6 +152,10 @@ name = "everglade_capture"
 required-features = ["capture"]
 
 [[example]]
+name = "line_surface_capture"
+required-features = ["capture"]
+
+[[example]]
 name = "bare_capture"
 required-features = ["capture"]
 

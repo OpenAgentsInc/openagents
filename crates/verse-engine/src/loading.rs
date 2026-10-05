@@ -571,6 +571,8 @@ mod tests {
                 texture: 0,
                 blend: 0,
                 emissive: false,
+                topology: Default::default(),
+                unlit: false,
                 tint: [f32::NAN; 3],
             });
         assert!(f.load(Default::default()).is_err());

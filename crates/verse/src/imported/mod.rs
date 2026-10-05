@@ -16,6 +16,7 @@ pub mod characters;
 pub mod combat;
 pub mod controls;
 mod culling;
+pub mod flat;
 #[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
 pub mod giver_panel;
 mod gpu_timing;
@@ -78,6 +79,19 @@ struct Pose {
     params: [f32; 4],
     bones: [[[f32; 4]; 4]; 256],
 }
+/// Pipeline slots: four blend modes each for lit triangles, unlit triangles
+/// (depth-biased so coincident lines win), and lines.
+const SLOTS: usize = 12;
+fn slot(blend: u8, unlit: bool, lines: bool) -> usize {
+    usize::from(blend)
+        + if lines {
+            8
+        } else if unlit {
+            4
+        } else {
+            0
+        }
+}
 struct Batch {
     bounds: Option<culling::Bounds>,
     vertices: wgpu::Buffer,
@@ -86,6 +100,13 @@ struct Batch {
     material: material_gpu::Key,
     blend: u8,
     emissive: bool,
+    lines: bool,
+    slot: usize,
+}
+impl Batch {
+    fn casts_shadow(&self) -> bool {
+        self.blend < 2 && !self.emissive && !self.lines
+    }
 }
 struct Actor {
     buffer: wgpu::Buffer,
@@ -98,7 +119,7 @@ struct Actor {
         Option<verse_engine::core::LifeId>,
     )>,
     world_bundles: Vec<Option<wgpu::RenderBundle>>,
-    world_counts: [usize; 4],
+    world_counts: [usize; SLOTS],
 }
 struct Grounding {
     basis: [[f32; 4]; 3],
@@ -417,6 +438,8 @@ fn upload(device: &wgpu::Device, merged: Merged) -> Vec<Batch> {
             material,
             blend: material.blend,
             emissive: material.emissive,
+            lines: material.lines,
+            slot: slot(material.blend, material.unlit, material.lines),
         })
         .collect()
 }
@@ -954,8 +977,19 @@ impl Renderer {
             immediate_size: 0,
         });
         let mut pipelines = Vec::new();
-        for blend in 0..4 {
-            pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:Default::default()}),multisample:wgpu::MultisampleState{count:4,..Default::default()},fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format:scene_format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
+        for slot in 0..SLOTS {
+            let blend = (slot % 4) as u8;
+            let lines = slot >= 8;
+            let bias = if (4..8).contains(&slot) {
+                wgpu::DepthBiasState {
+                    constant: 2,
+                    slope_scale: 1.0,
+                    clamp: 0.0,
+                }
+            } else {
+                Default::default()
+            };
+            pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,topology:if lines{wgpu::PrimitiveTopology::LineList}else{wgpu::PrimitiveTopology::TriangleList},..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias}),multisample:wgpu::MultisampleState{count:4,..Default::default()},fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format:scene_format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
         }
         let shadow_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1376,8 +1410,8 @@ impl Renderer {
                 shadow_bundles: (0..24).map(|_| None).collect(),
                 shadow_count: 0,
                 frozen: Default::default(),
-                world_bundles: (0..4).map(|_| None).collect(),
-                world_counts: [0; 4],
+                world_bundles: (0..SLOTS).map(|_| None).collect(),
+                world_counts: [0; SLOTS],
             });
         }
         self.playback.retain(|(id, model), _| {
@@ -1529,11 +1563,8 @@ impl Renderer {
             let actor = &mut self.actors[i + 1];
             if actor.shadow_model != Some(*model) {
                 actor.shadow_model = Some(*model);
-                actor.world_counts = std::array::from_fn(|blend| {
-                    self.models[model]
-                        .iter()
-                        .filter(|b| usize::from(b.blend) == blend)
-                        .count()
+                actor.world_counts = std::array::from_fn(|slot| {
+                    self.models[model].iter().filter(|b| b.slot == slot).count()
                 });
                 actor
                     .shadow_bundles
@@ -1545,7 +1576,7 @@ impl Renderer {
                     .for_each(|bundle| *bundle = None);
                 actor.shadow_count = self.models[model]
                     .iter()
-                    .filter(|b| b.blend < 2 && !b.emissive)
+                    .filter(|b| b.casts_shadow())
                     .count();
             }
             if actor.shadow_count == 0 || (self.instanced_shadows.is_some() && frozen[i].is_none())
@@ -1575,10 +1606,7 @@ impl Renderer {
                 bundle.set_pipeline(&self.shadow_pipeline);
                 bundle.set_bind_group(0, &self.shadow_groups[layer], &[]);
                 bundle.set_bind_group(2, &actor.group, &[]);
-                for batch in self.models[model]
-                    .iter()
-                    .filter(|b| b.blend < 2 && !b.emissive)
-                {
+                for batch in self.models[model].iter().filter(|b| b.casts_shadow()) {
                     bundle.set_bind_group(1, &self.shadow_materials[&batch.material], &[]);
                     bundle.set_vertex_buffer(0, batch.vertices.slice(..));
                     bundle.set_index_buffer(batch.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -1597,23 +1625,20 @@ impl Renderer {
                     self.world_bundle(
                         &self.actors[0].group,
                         std::slice::from_ref(batch),
-                        batch.blend,
+                        batch.slot,
                     )
                 })
                 .collect();
         }
         for (i, model) in resolved.models().iter().enumerate() {
-            for blend in 0..4 {
-                if (blend >= 2 || self.instanced_shadows.is_none())
-                    && self.actors[i + 1].world_counts[blend] > 0
-                    && self.actors[i + 1].world_bundles[blend].is_none()
+            for slot in 0..SLOTS {
+                if (slot >= 2 || self.instanced_shadows.is_none())
+                    && self.actors[i + 1].world_counts[slot] > 0
+                    && self.actors[i + 1].world_bundles[slot].is_none()
                 {
-                    let bundle = self.world_bundle(
-                        &self.actors[i + 1].group,
-                        &self.models[model],
-                        blend as u8,
-                    );
-                    self.actors[i + 1].world_bundles[blend] = Some(bundle);
+                    let bundle =
+                        self.world_bundle(&self.actors[i + 1].group, &self.models[model], slot);
+                    self.actors[i + 1].world_bundles[slot] = Some(bundle);
                 }
             }
         }
@@ -1716,11 +1741,7 @@ impl Renderer {
                     pass.set_pipeline(&self.shadow_pipeline);
                     pass.set_bind_group(0, &self.shadow_groups[layer], &[]);
                     pass.set_bind_group(2, &self.actors[0].group, &[]);
-                    for batch in self
-                        .static_batches
-                        .iter()
-                        .filter(|b| b.blend < 2 && !b.emissive)
-                    {
+                    for batch in self.static_batches.iter().filter(|b| b.casts_shadow()) {
                         if batch.bounds.is_some_and(|b| {
                             !b.visible(Mat4::from_cols_array_2d(&frame.shadow[layer]))
                         }) {
@@ -1824,7 +1845,7 @@ impl Renderer {
                         }
                         for batch in self.models[&model]
                             .iter()
-                            .filter(|batch| batch.blend < 2 && !batch.emissive)
+                            .filter(|batch| batch.casts_shadow())
                         {
                             pass.set_bind_group(1, &self.shadow_materials[&batch.material], &[]);
                             pass.set_vertex_buffer(0, batch.vertices.slice(..));
@@ -1874,13 +1895,14 @@ impl Renderer {
                         ..Default::default()
                     });
                     pass.set_bind_group(0, &self.frame_group, &[]);
-                    for blend in 0..4 {
+                    for slot in 0..SLOTS {
+                        let blend = slot % 4;
                         let static_bundles =
                             self.static_batches
                                 .iter()
                                 .enumerate()
                                 .filter_map(|(index, batch)| {
-                                    (batch.blend == blend as u8
+                                    (batch.slot == slot
                                         && batch
                                             .bounds
                                             .is_none_or(|bounds| bounds.visible(view.view_proj)))
@@ -1889,14 +1911,14 @@ impl Renderer {
                                         &self.static_world_bundles[index]
                                     })
                                 });
-                        if blend < 2
+                        if slot < 2
                             && let Some(instancing) = &self.instanced_shadows
                         {
                             pass.execute_bundles(static_bundles);
                             let mut groups: Vec<(verse_engine::residency::ModelHandle, Vec<u32>)> =
                                 Vec::new();
                             for (i, model) in resolved.models().iter().enumerate() {
-                                if self.actors[i + 1].world_counts[blend] == 0
+                                if self.actors[i + 1].world_counts[slot] == 0
                                     || actor_bounds[i]
                                         .is_some_and(|bounds| !bounds.visible(view.view_proj))
                                 {
@@ -1929,7 +1951,7 @@ impl Renderer {
                                 instance_cursor = end;
                                 for batch in self.models[&model]
                                     .iter()
-                                    .filter(|batch| batch.blend == blend as u8)
+                                    .filter(|batch| batch.slot == slot)
                                 {
                                     pass.set_bind_group(1, &self.materials[&batch.material], &[]);
                                     pass.set_vertex_buffer(0, batch.vertices.slice(..));
@@ -1957,14 +1979,14 @@ impl Renderer {
                         }
                         let actor_bundles = order.into_iter().filter_map(|(i, _)| {
                             let actor = &self.actors[i + 1];
-                            if actor.world_counts[blend] == 0
+                            if actor.world_counts[slot] == 0
                                 || actor_bounds[i]
                                     .is_some_and(|bounds| !bounds.visible(view.view_proj))
                             {
                                 return None;
                             }
-                            world_draws.set(world_draws.get() + actor.world_counts[blend]);
-                            Some(actor.world_bundles[blend].as_ref().unwrap())
+                            world_draws.set(world_draws.get() + actor.world_counts[slot]);
+                            Some(actor.world_bundles[slot].as_ref().unwrap())
                         });
                         pass.execute_bundles(static_bundles.chain(actor_bundles));
                     }
@@ -2151,7 +2173,7 @@ impl Renderer {
         &self,
         pose: &wgpu::BindGroup,
         batches: &[Batch],
-        blend: u8,
+        slot: usize,
     ) -> wgpu::RenderBundle {
         let mut bundle =
             self.device
@@ -2166,10 +2188,10 @@ impl Renderer {
                     sample_count: 4,
                     multiview: None,
                 });
-        bundle.set_pipeline(&self.pipelines[usize::from(blend)]);
+        bundle.set_pipeline(&self.pipelines[slot]);
         bundle.set_bind_group(0, &self.frame_group, &[]);
         bundle.set_bind_group(2, pose, &[]);
-        for batch in batches.iter().filter(|b| b.blend == blend) {
+        for batch in batches.iter().filter(|b| b.slot == slot) {
             bundle.set_bind_group(1, &self.materials[&batch.material], &[]);
             bundle.set_vertex_buffer(0, batch.vertices.slice(..));
             bundle.set_index_buffer(batch.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -2254,6 +2276,8 @@ mod tests {
             clips: vec![],
             attachments: vec![],
             surfaces: vec![Surface {
+                topology: Default::default(),
+                unlit: false,
                 material: Default::default(),
                 vertices: [[-0.2, -1., 0.], [0.3, 0., 0.], [0.2, 2., 0.]]
                     .into_iter()

@@ -326,6 +326,8 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
                 })
                 .collect();
             model.surfaces.push(Surface {
+                topology: Default::default(),
+                unlit: false,
                 material: authored,
                 vertices,
                 indices: reader

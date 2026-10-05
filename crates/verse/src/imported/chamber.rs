@@ -765,6 +765,8 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
                         3
                     },
                     emissive: true,
+                    topology: Default::default(),
+                    unlit: false,
                     tint: if name == "effect-grease" {
                         [0.1, 0.075, 0.04]
                     } else if sprite.is_some() {
@@ -802,6 +804,8 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
                     texture,
                     blend,
                     emissive: true,
+                    topology: Default::default(),
+                    unlit: false,
                     tint,
                 }],
             },
@@ -829,6 +833,8 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
                 texture,
                 blend: 3,
                 emissive: true,
+                topology: Default::default(),
+                unlit: false,
                 tint: [1.0; 3],
             }],
         },
@@ -885,6 +891,8 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
                     texture,
                     blend: 3,
                     emissive: true,
+                    topology: Default::default(),
+                    unlit: false,
                     tint: color,
                 }],
             },
@@ -899,6 +907,8 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         texture,
         blend: 3,
         emissive: true,
+        topology: Default::default(),
+        unlit: false,
         tint: [0.65, 0.15, 0.85],
     };
     pack.models.get_mut("effect-rune").unwrap().source = "verse/ground/effect-rune".into();
