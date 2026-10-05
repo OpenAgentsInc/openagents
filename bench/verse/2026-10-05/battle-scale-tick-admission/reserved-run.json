@@ -1,0 +1,121 @@
+{
+  "schema": "verse.battle.tick.admission.reserved.execution.v1",
+  "issue": 10559,
+  "base_revision": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "source_patch": "tick-admission-source.patch",
+  "executable_sha256": "c785e04754a5cd2fd223261d5f0b0f21ba2cf29ccb26a9b7385ea5c9d83352d1",
+  "seconds": 120,
+  "status": "complete",
+  "declared_acceptance": "failed",
+  "acceptance_failures": [
+    "Player 0 prediction maximum Some(2.501253366470337) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction maximum Some(2.501253366470337) exceeds 1 meters or is unavailable"
+  ],
+  "movement_expiries": {
+    "total": 4,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 4,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 236,
+        "epoch": 2,
+        "authority_tick": 1090,
+        "origin": "additional_tick",
+        "world_step": 1960,
+        "confirmed_step": 1924,
+        "projected_step": 1924,
+        "received_at": 1940,
+        "applied_sequence": 266,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 239,
+        "epoch": 4,
+        "authority_tick": 1678,
+        "origin": "additional_tick",
+        "world_step": 4312,
+        "confirmed_step": 4276,
+        "projected_step": 4276,
+        "received_at": 4276,
+        "applied_sequence": 400,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 238,
+        "epoch": 9,
+        "authority_tick": 3731,
+        "origin": "additional_tick",
+        "world_step": 12524,
+        "confirmed_step": 12488,
+        "projected_step": 12488,
+        "received_at": 12492,
+        "applied_sequence": 371,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 234,
+        "epoch": 9,
+        "authority_tick": 3826,
+        "origin": "additional_tick",
+        "world_step": 12904,
+        "confirmed_step": 12868,
+        "projected_step": 12868,
+        "received_at": 12872,
+        "applied_sequence": 410,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 0
+  },
+  "workload_ticks": 3541,
+  "frame_cpu_p95_ms": 5.943841,
+  "gpu_p95_ms": 7.081984,
+  "snapshot_age_p95_ms": 200.937952,
+  "recovery": {
+    "characters_checked": 20,
+    "active_receipts": 70,
+    "ledger_revision": 218,
+    "retained_events": 512,
+    "checkpoint_bytes": 362028,
+    "restored_checkpoint_bytes": 362028,
+    "live_hostiles": 40,
+    "actor_count": 60
+  },
+  "storage_profile": {
+    "type": "preallocated ext4 loopback filesystem",
+    "image_bytes": 536870912,
+    "backing_device": "same physical NVMe root filesystem",
+    "mount_options": [
+      "nodev",
+      "nosuid",
+      "noexec"
+    ],
+    "purpose": "Protect scratch authority and diagnostic writes from competing root filesystem allocations"
+  },
+  "limits": [
+    "Four movement expiries and a 2.50-meter primary prediction correction leave continuity and prediction acceptance incomplete.",
+    "This changes the storage filesystem profile; comparison with direct-root runs cannot isolate a causal performance improvement.",
+    "Other compilers were observed during the run. No own compiler ran during measurement.",
+    "Offscreen rendering does not measure physical input-to-display latency.",
+    "The reserved filesystem and frozen executable remain private scratch resources for ongoing diagnosis; no owner service was changed."
+  ],
+  "sha256": {
+    "combined-tick-reserved-01.log": "fedb8dbd5a7c8e08224c2ff278da9e8239446f2d36c2344d242b4472882bdecd",
+    "combined-tick-reserved-01.json": "83356e5691a05c67487272141fc0d818b71d2995d3b983791bc28451664717ad",
+    "reserved-run.sh": "fd6127bd19748831920268e3c640746ed55318c37284accfdea5eb6d955f2e70"
+  }
+}
