@@ -60,18 +60,37 @@ pub fn run_recorded(
     event_loop.set_control_flow(ControlFlow::Poll);
     let (input, inputs, updates, output) = worker::channels();
     let (stop, stopping) = oneshot::channel();
+    let observer = worker::Observer::default();
+    let observation = record.as_ref().map(|_| observer.clone());
     let thread = std::thread::spawn(move || {
-        runtime.block_on(worker::run(
-            client,
-            cursor,
-            worker::NATIVE_CADENCE,
-            inputs,
-            updates,
-            stopping,
-        ))
+        runtime.block_on(async move {
+            if let Some(observer) = observation {
+                worker::run_profiled(
+                    client,
+                    cursor,
+                    worker::NATIVE_CADENCE,
+                    inputs,
+                    updates,
+                    stopping,
+                    observer,
+                )
+                .await
+            } else {
+                worker::run(
+                    client,
+                    cursor,
+                    worker::NATIVE_CADENCE,
+                    inputs,
+                    updates,
+                    stopping,
+                )
+                .await
+            }
+        })
     });
     let mut app = App::new(pack, atlas, scene, dir, view, input, output);
     app.record = record;
+    app.observer = observer;
     let result = event_loop.run_app(&mut app).map_err(|e| e.to_string());
     let _ = stop.send(());
     let worker_result = thread
@@ -106,6 +125,10 @@ struct App {
     last: Instant,
     next_move: Instant,
     received_at: Instant,
+    observer: worker::Observer,
+    latest_verified_snapshot: Option<Instant>,
+    warmup_completed_at: Option<Instant>,
+    last_input_handled: Option<Instant>,
     owned_life: Option<verse_engine::core::LifeId>,
     owned_teleport: Option<f32>,
     status: String,
@@ -165,6 +188,10 @@ impl App {
             last: Instant::now(),
             next_move: Instant::now(),
             received_at: Instant::now(),
+            observer: worker::Observer::default(),
+            latest_verified_snapshot: None,
+            warmup_completed_at: None,
+            last_input_handled: None,
             owned_life: None,
             owned_teleport: None,
             status: String::new(),
@@ -637,11 +664,10 @@ impl App {
             self.min_hp = self.min_hp.min(hud.resources.hp);
         }
         self.demo();
+        let frame_interval_ms = now.duration_since(self.last).as_secs_f64() * 1000.;
         let dt = now.duration_since(self.last).as_secs_f32().min(0.1);
         if self.record.is_some() {
-            self.profile
-                .frame_interval_ms
-                .add(now.duration_since(self.last).as_secs_f64() * 1000.);
+            self.profile.frame_interval_ms.add(frame_interval_ms);
         }
         self.last = now;
         let held = controls::Held {
@@ -832,10 +858,9 @@ impl App {
                 .draw(&mut ui, &self.atlas, self.view.inventory(), width, 720.);
         }
         let render_started = Instant::now();
+        let preparation_ms = started.elapsed().as_secs_f64() * 1000.;
         if self.record.is_some() {
-            self.profile
-                .preparation_ms
-                .add(started.elapsed().as_secs_f64() * 1000.);
+            self.profile.preparation_ms.add(preparation_ms);
         }
         let renderer = self.renderer.as_mut().unwrap();
         renderer.resize(size.width, size.height)?;
@@ -856,6 +881,94 @@ impl App {
                 renderer.last_timings,
                 present_started.elapsed().as_secs_f64() * 1000.,
             );
+            let frame = renderer.last_timings.frame;
+            self.profile
+                .measurements
+                .record(frame, "client_preparation_cpu_ms", preparation_ms);
+            self.profile
+                .measurements
+                .record(frame, "frame_interval_ms", frame_interval_ms);
+            if frame > self.profile.measurements.warmup_frames()
+                && self.warmup_completed_at.is_none()
+            {
+                self.warmup_completed_at = Some(render_started);
+            }
+            let observations = self.observer.drain();
+            self.profile.network_observations_omitted = observations.omitted;
+            self.latest_verified_snapshot = observations
+                .snapshot_verified_at
+                .or(self.latest_verified_snapshot);
+            for observation in observations.samples {
+                let (turnaround, delivery) = match observation.kind {
+                    "snapshot" => ("snapshot_turnaround_ms", "snapshot_verified_to_sample_ms"),
+                    "inventory" => ("inventory_turnaround_ms", "inventory_verified_to_sample_ms"),
+                    "events" => ("events_turnaround_ms", "events_verified_to_sample_ms"),
+                    _ => ("command_turnaround_ms", "command_verified_to_sample_ms"),
+                };
+                let request_phase = if self
+                    .warmup_completed_at
+                    .is_none_or(|end| observation.started_at < end)
+                {
+                    0
+                } else {
+                    frame
+                };
+                self.profile.measurements.record(
+                    request_phase,
+                    turnaround,
+                    observation.turnaround_ms,
+                );
+                self.profile.measurements.record(
+                    frame,
+                    delivery,
+                    observation.verified_at.elapsed().as_secs_f64() * 1000.,
+                );
+                for (name, count) in [
+                    ("pending_requests", observation.pending_requests),
+                    ("input_channel_depth", observation.queued_inputs),
+                    ("update_channel_depth", observation.queued_updates),
+                ] {
+                    self.profile.measurements.record(frame, name, count as f64);
+                }
+            }
+            if let Some(at) = self.latest_verified_snapshot {
+                self.profile.measurements.record(
+                    frame,
+                    "sdk_verified_snapshot_age_ms",
+                    at.elapsed().as_secs_f64() * 1000.,
+                );
+            }
+            if self.view.replica().latest().is_some() {
+                self.profile.measurements.record(
+                    frame,
+                    "rendered_snapshot_applied_age_ms",
+                    self.received_at.elapsed().as_secs_f64() * 1000.,
+                );
+            }
+            if let Some(at) = self.last_input_handled.take() {
+                self.profile.measurements.record(
+                    frame,
+                    "oldest_input_handler_to_next_submit_cpu_ms",
+                    at.elapsed().as_secs_f64() * 1000.,
+                );
+            }
+            let presentation = self.presenter.as_ref().unwrap().last_timings;
+            for (name, value) in [
+                ("surface_acquire_cpu_ms", presentation.acquire_ms),
+                ("surface_configure_cpu_ms", Some(presentation.configure_ms)),
+                ("presentation_encode_cpu_ms", presentation.encode_ms),
+                (
+                    "presentation_queue_submit_cpu_ms",
+                    presentation.queue_submit_ms,
+                ),
+                ("present_call_cpu_ms", presentation.present_call_ms),
+            ] {
+                if let Some(value) = value {
+                    self.profile
+                        .measurements
+                        .record(renderer.last_timings.frame, name, value);
+                }
+            }
             self.profile
                 .render_submission_ms
                 .add(render_started.elapsed().as_secs_f64() * 1000.);
@@ -974,7 +1087,7 @@ impl App {
             let dropped = recorder.dropped;
             let stats = recorder.finish()?;
             let options = self.record.as_ref().unwrap();
-            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","profile":self.profile.summary(),"frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"window_failure":self.error,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":(self.min_hp != i32::MAX).then_some(self.min_hp),"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"programmatic_movement":options.movement,"programmatic_movement_frames":options.movement_frames,"respawn_attempts":self.respawn_attempts,"owned_life_changes":self.owned_life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_inventory":self.view.inventory(),"final_state":self.view.replica().latest()});
+            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","profile":self.profile.summary(),"frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"capture_measurements":stats.timings,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"window_failure":self.error,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":(self.min_hp != i32::MAX).then_some(self.min_hp),"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"programmatic_movement":options.movement,"programmatic_movement_frames":options.movement_frames,"respawn_attempts":self.respawn_attempts,"owned_life_changes":self.owned_life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"device_profile":self.renderer.as_ref().map(|r|&r.device_profile),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_inventory":self.view.inventory(),"final_state":self.view.replica().latest()});
             std::fs::write(
                 options.output.with_extension("json"),
                 serde_json::to_vec_pretty(&proof)
@@ -1046,6 +1159,7 @@ impl ApplicationHandler for App {
     fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
         if let DeviceEvent::MouseMotion { delta } = event {
             if self.controlled() {
+                self.last_input_handled.get_or_insert_with(Instant::now);
                 self.controls
                     .motion([delta.0, delta.1], &mut self.yaw, &mut self.camera);
             }
@@ -1063,6 +1177,7 @@ impl ApplicationHandler for App {
                 ];
             }
             WindowEvent::KeyboardInput { event, .. } => {
+                self.last_input_handled.get_or_insert_with(Instant::now);
                 if let PhysicalKey::Code(key) = event.physical_key {
                     if event.state == ElementState::Released {
                         self.keys.remove(&key);
@@ -1154,6 +1269,7 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseInput { state, button, .. } if self.unlocked() => {
+                self.last_input_handled.get_or_insert_with(Instant::now);
                 let down = state == ElementState::Pressed;
                 let size = self.window.as_ref().unwrap().inner_size();
                 let width = 720. * size.width as f32 / size.height.max(1) as f32;

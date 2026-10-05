@@ -231,6 +231,11 @@ fn distant_population_keeps_steady_bytes_constant_and_records_cost() {
                 .actors
                 .len();
         }
+        assert_eq!(
+            sender.stats.encoded_bytes,
+            bytes.iter().sum::<usize>() as u64
+        );
+        assert_eq!(sender.stats.max_packet_bytes, *bytes.iter().max().unwrap());
         assert_eq!(sender.stats.deltas, 59);
         if let Some(expected) = &steady {
             assert_eq!(&bytes[1..], expected);
@@ -325,6 +330,9 @@ fn full_state_numeric_round_trip_preserves_canonical_digest() {
         String::new(),
     );
     assert_eq!(encode(&original).unwrap(), encode(&restored).unwrap());
+    let (value, bytes) = encode_parts(&original).unwrap();
+    assert_eq!(value, serde_json::from_slice::<Value>(&bytes).unwrap());
+    assert_eq!(bytes, encode(&original).unwrap());
 }
 
 #[test]

@@ -1,0 +1,18 @@
+{
+  "schema": "verse.source-fingerprints.v1",
+  "phase": "Integrated retained source after rebasing; excludes evidence and docs; these hashes do not attest the earlier workload binary.",
+  "files": {
+    "Cargo.lock": "f797a0dc5f5a02990750d02c0f8c0b732dbe9aaa34a107641f06912067f4bb6e",
+    "crates/verse-world/src/service/client.rs": "9352e3591ab07cebf9180309c8e37047e3783b20fdc2984b06dad6103bebe078",
+    "crates/verse-world/src/service/net.rs": "c0eeae60020b35bb6f733a73c1edde8af55748b3bd2953a232b9a3edd4959523",
+    "crates/verse-world/src/service/net/timing.rs": "e51b514a78b43c44f27591accfde330ecc3ee3e3ee435aeb6a4323aafd414589",
+    "crates/verse-world/src/service/worker.rs": "838e789a710e392470f74ef00cceb9035f75055dc403ddf56eeddcc58aa44163",
+    "crates/verse/Cargo.toml": "96b04367d22571b97ca91cbb774217aa89c205211f1b52593cc017b06392d7f2",
+    "crates/verse/examples/frame_profile.rs": "97266e145a2a76abad9cc90411b688b08e2969199595672150c09e5c52532adc",
+    "crates/verse/src/imported/mod.rs": "bb9c952bfa98164be031e4123e3c916c574f8aa9ec194a7469ead2f414c71514",
+    "crates/verse/src/imported/remote_record.rs": "458b3901ae82aa2063369ab92df678dd8aecad23afb671f7d051a969d6b054b0",
+    "crates/verse/src/imported/remote_window.rs": "048e118ea5a6a8e4aee8a171ea438f90630f24722bfe93bf4f4ae1f9a730006a",
+    "crates/verse/src/lib.rs": "afaa9313902fb57c90517164873561f4c91214391688c6d3e2791038c8dff606",
+    "crates/verse/src/profiling.rs": "c025cce61a5141839f427bdbab9e7f32671ed191eef9cc1e966340128586283d"
+  }
+}

@@ -106,8 +106,9 @@ fn fog_amount(p:vec3<f32>)->f32{
  return min(1.0-exp(-at_start*travel*shape),frame.fog_shape.w);
 }
 @fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{
+ // Sampled before any per-instance branch: WebGPU requires uniform control flow here.
+ let tex=textureSample(image,tex_sampler,v.uv);
  if pose.params.x>1.5 {
-  let tex=textureSample(image,tex_sampler,v.uv);
   let color=tex.rgb*1.6;
   return vec4(color*v.tint,tex.a*pose.params.y);
  }
@@ -118,7 +119,6 @@ fn fog_amount(p:vec3<f32>)->f32{
   let opacity=(0.04+rim*0.2)*turbulence*pose.params.y;
   return vec4(v.tint*2.0,opacity);
  }
- let tex=textureSample(image,tex_sampler,v.uv);
  // Unlit surfaces and lines: base color and tint, fogged and exposed, no lights.
  if material.emission.w>0.5 {
   let flat_alpha=tex.a*material.channels.z;

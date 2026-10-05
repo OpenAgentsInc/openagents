@@ -11,6 +11,49 @@ use crate::{Command, Intent, play::Ability};
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 
+/// Local measurements contain no principal, command content, or credentials.
+#[derive(Clone, Copy)]
+pub struct Observation {
+    pub kind: &'static str,
+    pub turnaround_ms: f64,
+    pub verified_at: Instant,
+    pub started_at: Instant,
+    pub accepted_snapshot: bool,
+    pub pending_requests: usize,
+    pub queued_inputs: usize,
+    pub queued_updates: usize,
+}
+#[derive(Default)]
+pub struct Observations {
+    pub samples: Vec<Observation>,
+    pub omitted: u64,
+    pub snapshot_verified_at: Option<Instant>,
+}
+/// Optional read-only telemetry; a full buffer never backpressures authority updates.
+#[derive(Clone, Default)]
+pub struct Observer(std::sync::Arc<std::sync::Mutex<Observations>>);
+impl Observer {
+    fn observe(&self, value: Observation) {
+        let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        if value.accepted_snapshot {
+            state.snapshot_verified_at = Some(value.verified_at);
+        }
+        if state.samples.len() < 256 {
+            state.samples.push(value);
+        } else {
+            state.omitted = state.omitted.saturating_add(1);
+        }
+    }
+    pub fn drain(&self) -> Observations {
+        let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        Observations {
+            samples: std::mem::take(&mut state.samples),
+            omitted: state.omitted,
+            snapshot_verified_at: state.snapshot_verified_at,
+        }
+    }
+}
+
 pub const INPUT_CAPACITY: usize = 32;
 pub const UPDATE_CAPACITY: usize = 8;
 /// Leaves request capacity for 30 Hz input refreshes and spell commands.
@@ -64,6 +107,43 @@ pub enum Update {
         binding: Result<crate::movement::frames::Frame, String>,
     },
     Outcome(Response),
+}
+
+struct ReadBackoff {
+    until: [tokio::time::Instant; 3],
+    since: [Option<tokio::time::Instant>; 3],
+}
+impl ReadBackoff {
+    fn new(now: tokio::time::Instant) -> Self {
+        Self {
+            until: [now; 3],
+            since: [None; 3],
+        }
+    }
+    fn ready(&self, class: usize, now: tokio::time::Instant) -> bool {
+        now >= self.until[class]
+    }
+    fn observe(
+        &mut self,
+        class: usize,
+        reply: &Reply,
+        now: tokio::time::Instant,
+    ) -> Result<bool, String> {
+        if let Reply::Refused { code, message, .. } = reply {
+            if code != "storage_busy" && code != "rate_limited" {
+                return Err(message.clone());
+            }
+            let started = *self.since[class].get_or_insert(now);
+            if now.duration_since(started) >= Duration::from_secs(10) {
+                return Err("Chamber read backpressure exceeded ten seconds".into());
+            }
+            self.until[class] = now + Duration::from_millis(100);
+            return Ok(true);
+        }
+        self.since[class] = None;
+        self.until[class] = now;
+        Ok(false)
+    }
 }
 
 // A verified lifecycle change fences every old interval; none can be replayed.
@@ -145,11 +225,43 @@ fn coalesce_movement(
 /// Shutdown cancels uncertain IO and closes the owned connection without replay.
 pub async fn run(
     client: Client,
+    cursor: Cursor,
+    cadence: Duration,
+    inputs: mpsc::Receiver<Input>,
+    updates: mpsc::Sender<Update>,
+    stop: oneshot::Receiver<()>,
+) -> Result<(), String> {
+    run_impl(client, cursor, cadence, inputs, updates, stop, None).await
+}
+/// Adds bounded local timing observations without changing dispatch or wire messages.
+pub async fn run_profiled(
+    client: Client,
+    cursor: Cursor,
+    cadence: Duration,
+    inputs: mpsc::Receiver<Input>,
+    updates: mpsc::Sender<Update>,
+    stop: oneshot::Receiver<()>,
+    observer: Observer,
+) -> Result<(), String> {
+    run_impl(
+        client,
+        cursor,
+        cadence,
+        inputs,
+        updates,
+        stop,
+        Some(observer),
+    )
+    .await
+}
+async fn run_impl(
+    client: Client,
     mut cursor: Cursor,
     cadence: Duration,
     mut inputs: mpsc::Receiver<Input>,
     updates: mpsc::Sender<Update>,
     stop: oneshot::Receiver<()>,
+    observer: Option<Observer>,
 ) -> Result<(), String> {
     if cursor.instance() != client.instance()
         || inputs.max_capacity() > INPUT_CAPACITY
@@ -176,6 +288,7 @@ pub async fn run(
         let mut refreshed = false;
         let mut barrier = false;
         let mut input_closed = false;
+        let mut read_backoff = ReadBackoff::new(tokio::time::Instant::now());
         loop {
             if !client.available() && client.pending() == 0 {
                 return Err("Chamber pipeline is disconnected".into());
@@ -214,7 +327,7 @@ pub async fn run(
                 if lifecycle && client.pending() > 0 {
                     staged = Some(input);
                 } else if !refreshed && !fresh_control(&input, client.control(), last_response) {
-                    if !snapshot_pending {
+                    if !snapshot_pending && read_backoff.ready(0, tokio::time::Instant::now()) {
                         client.send_snapshot()?;
                         snapshot_pending = true;
                     }
@@ -342,22 +455,40 @@ pub async fn run(
                     let (body,response) = response?;
                     last_response = Some(Instant::now());
                     let entry = matches!(&body,Body::BeginMovementFrames{..}).then(||response.clone());
+                    if let Some(observer) = &observer {
+                        let kind = match &body {
+                            Body::Replicate { .. } | Body::Snapshot {} => "snapshot",
+                            Body::Inventory {} => "inventory",
+                            Body::Events { .. } => "events",
+                            _ => "command",
+                        };
+                        observer.observe(Observation { kind,
+                            turnaround_ms: client.last_turnaround().unwrap_or_default().as_secs_f64() * 1000.,
+                            verified_at: Instant::now(),
+                            started_at: client.last_request_started().unwrap_or_else(Instant::now),
+                            accepted_snapshot: matches!(response.body, Reply::Snapshot { .. }),
+                            pending_requests: client.pending(),
+                            queued_inputs: inputs.len(), queued_updates: updates.max_capacity() - updates.capacity() });
+                    }
                     let update = match body {
                         Body::Snapshot {} | Body::Replicate {..} => {
                             snapshot_pending = false;
+                            if read_backoff.observe(0, &response.body, tokio::time::Instant::now())? {
+                                refreshed = false;
+                                continue;
+                            }
                             refreshed = staged.is_some();
-                            if let Reply::Refused { message, .. } = &response.body { return Err(message.clone()); }
                             Update::Snapshot(response)
                         }
                         Body::Events { after,limit } => {
                             events_pending = false;
-                            if let Reply::Refused { message, .. } = &response.body { return Err(message.clone()); }
+                            if read_backoff.observe(1, &response.body, tokio::time::Instant::now())? { continue; }
                             let delivery = cursor.admit(&response,after,limit)?;
                             Update::Events { delivery, checkpoint: cursor.checkpoint()? }
                         }
                         Body::Inventory {} => {
                             inventory_pending = false;
-                            if let Reply::Refused { message, .. } = &response.body { return Err(message.clone()); }
+                            if read_backoff.observe(2, &response.body, tokio::time::Instant::now())? { continue; }
                             inventory_life = client.control().map(|c| c.life);
                             next_inventory = tokio::time::Instant::now() + Duration::from_secs(1);
                             Update::Inventory(response)
@@ -387,16 +518,17 @@ pub async fn run(
                     // One outstanding request per read class bounds stale work and event cursors.
                     // A staged lifecycle action drains previous IO before changing its context.
                     if input_closed || barrier || staged.is_some() { continue; }
-                    if client.available() && !snapshot_pending {
+                    if client.available() && !snapshot_pending && read_backoff.ready(0, tokio::time::Instant::now()) {
                         client.send_snapshot()?;
                         snapshot_pending = true;
                     }
-                    if client.available() && !events_pending {
+                    if client.available() && !events_pending && read_backoff.ready(1, tokio::time::Instant::now()) {
                         client.send(Body::Events { after: cursor.after(), limit: 64 })?;
                         events_pending = true;
                     }
                     let life = client.control().map(|c| c.life);
                     if client.available() && !inventory_pending && life.is_some()
+                        && read_backoff.ready(2, tokio::time::Instant::now())
                         && (life != inventory_life || tokio::time::Instant::now() >= next_inventory) {
                         client.send(Body::Inventory {})?;
                         inventory_pending = true;
@@ -441,6 +573,196 @@ mod tests {
     use rustls::pki_types::ServerName;
     use tokio::time::timeout;
 
+    #[tokio::test]
+    async fn explicit_read_backpressure_retries_projections_without_replaying_commands() {
+        use crate::service::net::{read_frame, tests::gateway, write_frame};
+        use crate::service::wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request};
+        let keys = [key(208), key(209), key(210)];
+        let mut gateway = gateway(&keys);
+        let (client_socket, mut peer_socket) = tokio::io::duplex(1024 * 1024);
+        let (peer_stop, mut peer_stopped) = oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let (connection, hello) = gateway.open_json(0).unwrap();
+            write_frame(&mut peer_socket, &hello, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let started = Instant::now();
+            let mut refused = [false; 3];
+            let mut commands = 0;
+            loop {
+                let bytes = tokio::select! {
+                    _ = &mut peer_stopped => break,
+                    bytes = read_frame(&mut peer_socket, MAX_REQUEST_BYTES) => match bytes {
+                        Ok(bytes) => bytes,
+                        Err(_) => break,
+                    },
+                };
+                let request = Request::decode(&bytes).unwrap();
+                let class = match request.body {
+                    Body::Snapshot {} | Body::Replicate { .. } => Some(0),
+                    Body::Events { .. } => Some(1),
+                    Body::Inventory {} => Some(2),
+                    Body::Command { .. } => {
+                        commands += 1;
+                        None
+                    }
+                    _ => None,
+                };
+                let bytes = gateway
+                    .dispatch_json(connection, started.elapsed().as_millis() as u64, &bytes)
+                    .unwrap();
+                let mut response: Response = serde_json::from_slice(&bytes).unwrap();
+                if let Some(class) = class.filter(|class| !refused[*class]) {
+                    refused[class] = true;
+                    response.body = Reply::Refused {
+                        code: if class == 1 {
+                            "rate_limited"
+                        } else {
+                            "storage_busy"
+                        }
+                        .into(),
+                        message: "Transient read backpressure".into(),
+                    };
+                }
+                write_frame(
+                    &mut peer_socket,
+                    &serde_json::to_vec(&response).unwrap(),
+                    MAX_RESPONSE_BYTES,
+                )
+                .await
+                .unwrap();
+            }
+            (refused, commands)
+        });
+        let client = Client::connect_stream(Box::new(client_socket), 120, None, &keys[0])
+            .await
+            .unwrap();
+        let (input, inputs, updates, mut output) = channels();
+        let (stop, stopping) = oneshot::channel();
+        let task = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            NATIVE_CADENCE,
+            inputs,
+            updates,
+            stopping,
+        ));
+        input
+            .send(Input::Command(Intent::Move {
+                axes: [0.1, 0.],
+                yaw: 0.,
+            }))
+            .await
+            .unwrap();
+        let mut received = [false; 4];
+        timeout(Duration::from_secs(3), async {
+            while received.contains(&false) {
+                match output.recv().await.unwrap() {
+                    Update::Snapshot(_) => received[0] = true,
+                    Update::Events { .. } => received[1] = true,
+                    Update::Inventory(_) => received[2] = true,
+                    Update::Outcome(response) => {
+                        assert!(matches!(response.body, Reply::Accepted));
+                        received[3] = true;
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        stop.send(()).unwrap();
+        task.await.unwrap().unwrap();
+        let _ = peer_stop.send(());
+        let (refused, commands) = peer.await.unwrap();
+        assert_eq!(refused, [true; 3]);
+        assert_eq!(commands, 1);
+    }
+
+    #[test]
+    fn read_backoff_separates_classes_and_bounds_explicit_refusal_retries() {
+        let now = tokio::time::Instant::now();
+        let mut backoff = ReadBackoff::new(now);
+        let busy = Reply::Refused {
+            code: "storage_busy".into(),
+            message: "Busy".into(),
+        };
+        assert!(backoff.observe(0, &busy, now).unwrap());
+        assert!(!backoff.ready(0, now + Duration::from_millis(99)));
+        assert!(backoff.ready(1, now));
+        assert!(
+            backoff
+                .observe(0, &busy, now + Duration::from_secs(9))
+                .unwrap()
+        );
+        assert!(
+            backoff
+                .observe(0, &busy, now + Duration::from_secs(10))
+                .is_err()
+        );
+        assert!(
+            !backoff
+                .observe(0, &Reply::Accepted, now + Duration::from_secs(11))
+                .unwrap()
+        );
+        assert!(
+            backoff
+                .observe(0, &busy, now + Duration::from_secs(12))
+                .unwrap()
+        );
+        let semantic = Reply::Refused {
+            code: "not_owned".into(),
+            message: "Foreign life".into(),
+        };
+        assert_eq!(
+            backoff.observe(0, &semantic, now).unwrap_err(),
+            "Foreign life"
+        );
+    }
+    #[test]
+    fn optional_observations_remain_bounded_and_refusals_do_not_refresh_snapshots() {
+        let observer = Observer::default();
+        let at = Instant::now();
+        for n in 0..300 {
+            observer.observe(Observation {
+                kind: "snapshot",
+                turnaround_ms: 1.,
+                verified_at: at,
+                started_at: at,
+                accepted_snapshot: n == 0,
+                pending_requests: 0,
+                queued_inputs: 0,
+                queued_updates: 0,
+            });
+        }
+        let observations = observer.drain();
+        assert_eq!(observations.samples.len(), 256);
+        assert_eq!(observations.omitted, 44);
+        assert_eq!(observations.snapshot_verified_at, Some(at));
+        let later = at + Duration::from_secs(1);
+        observer.observe(Observation {
+            kind: "snapshot",
+            turnaround_ms: 1.,
+            verified_at: later,
+            started_at: at,
+            accepted_snapshot: false,
+            pending_requests: 0,
+            queued_inputs: 0,
+            queued_updates: 0,
+        });
+        assert_eq!(observer.drain().snapshot_verified_at, Some(at));
+        observer.observe(Observation {
+            kind: "snapshot",
+            turnaround_ms: 1.,
+            verified_at: later,
+            started_at: at,
+            accepted_snapshot: true,
+            pending_requests: 0,
+            queued_inputs: 0,
+            queued_updates: 0,
+        });
+        assert_eq!(observer.drain().snapshot_verified_at, Some(later));
+    }
     #[test]
     fn interval_recovery_requires_verified_lifecycle_change() {
         use crate::movement::frames::{Frame, Segment};
@@ -756,13 +1078,15 @@ mod tests {
         }
         drop(input);
         let (_stop, stopped) = oneshot::channel();
-        let worker = tokio::spawn(run(
+        let observer = Observer::default();
+        let worker = tokio::spawn(run_profiled(
             client,
             Cursor::new(120),
             NATIVE_CADENCE,
             inputs,
             updates,
             stopped,
+            observer.clone(),
         ));
         let mut bound = 0;
         let mut outcomes = 0;
@@ -791,6 +1115,16 @@ mod tests {
             .unwrap()
             .unwrap()
             .unwrap();
+        let observations = observer.drain();
+        assert!(observations.samples.len() >= 3);
+        assert!(
+            observations
+                .samples
+                .iter()
+                .all(|sample| sample.turnaround_ms.is_finite()
+                    && sample.turnaround_ms >= 0.
+                    && sample.started_at <= sample.verified_at)
+        );
         peer_stop.send(()).unwrap();
         peer.await.unwrap();
     }

@@ -1,0 +1,49 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "compiled_revisions": {
+    "host": "c06635d96d",
+    "headless_clients": "78c8d25abc937e868a03b92f5e4950b9ef1f6092",
+    "native_client": "8838dd1f4f58f0c54a086a9e06407864d0ae13a8"
+  },
+  "checks": {
+    "five_interval_authority_tests": "passed",
+    "host_build": "passed",
+    "all_process_exits": 0,
+    "headless_completions": 19,
+    "interval_snapshots_observed_by_all_headless": true,
+    "minimum_live_hostiles_all_headless": 40
+  },
+  "native": {
+    "frame_interval_ms": {
+      "samples": 3228,
+      "omitted": 0,
+      "median": 10.445124999999999,
+      "p95": 21.242,
+      "max": 5543.8175
+    },
+    "prediction_correction_meters": {
+      "samples": 197,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 1.406890869140625
+    },
+    "reset_reasons": {
+      "control_epoch": 31
+    },
+    "binding_to_outcome_ms": {
+      "samples": 549,
+      "omitted": 0,
+      "median": 155.973167,
+      "p95": 230.4705,
+      "max": 1351.341958
+    }
+  },
+  "observation": "Workers remain connected through observed deaths after unavailable-control fencing. Client frame/correction acceptance still fails.",
+  "limits": [
+    "Successful completion and interval snapshots do not prove uninterrupted interval control or respawn for every player.",
+    "Shared machine, persistence disabled, GPU timing disabled, and capture overhead prevent full scale acceptance.",
+    "Maximum frame interval includes startup. CPU submission is not GPU execution or input-to-display latency."
+  ]
+}

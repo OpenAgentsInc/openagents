@@ -79,6 +79,8 @@ impl Samples {
 }
 #[derive(Default)]
 pub(crate) struct Profile {
+    pub measurements: crate::profiling::FrameProfile,
+    pub network_observations_omitted: u64,
     pub preparation_ms: Samples,
     pub render_submission_ms: Samples,
     pub frame_interval_ms: Samples,
@@ -109,6 +111,10 @@ impl Profile {
     }
     pub fn render(&mut self, timing: super::FrameTimings, present_ms: f64) {
         self.gpu_health = timing.gpu_health;
+        if let Some(value) = timing.gpu_query_poll_cpu_ms {
+            self.measurements
+                .record(timing.frame, "gpu_query_poll_cpu_ms", value);
+        }
         for sample in timing.gpu_samples.into_iter().flatten() {
             for (name, value) in [
                 ("gpu_shadow_ms", sample.shadow_ms),
@@ -116,6 +122,7 @@ impl Profile {
                 ("gpu_overlay_ms", sample.overlay_ms),
                 ("gpu_total_ms", sample.total_ms),
             ] {
+                self.measurements.record(sample.frame, name, value);
                 self.renderer_phases.entry(name).or_default().add(value);
             }
         }
@@ -133,6 +140,7 @@ impl Profile {
             ("total_draw_ms", timing.total_ms),
             ("window_present_ms", present_ms),
         ] {
+            self.measurements.record(timing.frame, name, value);
             self.renderer_phases.entry(name).or_default().add(value);
         }
         for (name, value) in [
@@ -182,7 +190,11 @@ impl Profile {
         }
     }
     pub fn summary(&self) -> serde_json::Value {
-        serde_json::json!({"schema":"verse.remote.profile.v7",
+        serde_json::json!({"schema":"verse.remote.profile.v8",
+            "frame_measurements":self.measurements.summary(),
+            "network_observations_omitted":self.network_observations_omitted,
+            "input_to_display_ms":serde_json::Value::Null,
+            "one_way_network_age_ms":serde_json::Value::Null,
             "client_preparation_ms":self.preparation_ms.summary(),
             "render_submission_cpu_ms":self.render_submission_ms.summary(),
             "frame_interval_ms":self.frame_interval_ms.summary(),
@@ -201,7 +213,8 @@ impl Profile {
             "refusal_trace":self.refusal_trace,
             "omitted_refusals":self.omitted_refusals,
             "binding_to_outcome_ms":self.bound_to_outcome_ms.summary(),
-            "limits":["Render submission and renderer phases measure CPU elapsed time, including driver and presentation waits; GPU execution is not measured.",
+            "limits":["CPU spans include driver waits. Optional GPU pass spans use delayed device timestamps, whose frame IDs classify startup; availability and invalid/omitted results remain explicit. Legacy renderer_phase_ms includes startup.",
+            "Submission and present calls do not measure scanout or input-to-display completion; those metrics are unavailable without a platform display clock.",
             "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
             "Control discontinuities include life changes, epoch changes, and teleports; they are not proof of intentional movement.",
             "Samples retain the first 8192 observations per series; omitted observations are counted."]})
@@ -211,9 +224,10 @@ pub struct Stats {
     pub frames: u64,
     pub sampled: u64,
     pub duplicated: u64,
+    pub timings: serde_json::Value,
 }
 pub struct Recorder {
-    send: Option<mpsc::SyncSender<(PendingCapture, u64)>>,
+    send: Option<mpsc::SyncSender<(PendingCapture, u64, std::time::Instant)>>,
     thread: Option<thread::JoinHandle<Result<Stats, String>>>,
     pub dropped: u64,
 }
@@ -266,20 +280,29 @@ impl Recorder {
             .stdin
             .take()
             .ok_or("Remote encoder input unavailable")?;
-        let (send, receive) = mpsc::sync_channel::<(PendingCapture, u64)>(2);
+        let (send, receive) = mpsc::sync_channel::<(PendingCapture, u64, std::time::Instant)>(2);
         let thread = thread::spawn(move || {
             let result = (|| {
                 let mut stats = Stats {
                     frames: 0,
                     sampled: 0,
                     duplicated: 0,
+                    timings: serde_json::Value::Null,
                 };
+                let mut timing = crate::profiling::FrameProfile::default();
                 let mut previous: Option<Vec<u8>> = None;
-                for (capture, index) in receive {
+                for (capture, index, enqueued) in receive {
+                    let frame = capture.submission_timing().frame;
+                    timing.record(
+                        frame,
+                        "capture_queue_residence_ms",
+                        enqueued.elapsed().as_secs_f64() * 1000.,
+                    );
                     if index > 3600 {
                         return Err("Remote recording timeline exceeds bounds".into());
                     }
                     if let Some(previous) = &previous {
+                        let duplicate_started = std::time::Instant::now();
                         while stats.frames < index {
                             stdin
                                 .write_all(previous)
@@ -287,18 +310,43 @@ impl Recorder {
                             stats.frames += 1;
                             stats.duplicated += 1;
                         }
+                        timing.record(
+                            frame,
+                            "duplicate_pipe_write_cpu_ms",
+                            duplicate_started.elapsed().as_secs_f64() * 1000.,
+                        );
                     }
-                    let bytes = capture.finish()?;
+                    let (bytes, capture_timing) = capture.finish_profiled()?;
+                    for (name, value) in [
+                        (
+                            "capture_copy_submit_cpu_ms",
+                            capture_timing.copy_submit_cpu_ms,
+                        ),
+                        (
+                            "capture_fence_wait_cpu_ms",
+                            capture_timing.fence_wait_cpu_ms,
+                        ),
+                        ("capture_row_copy_cpu_ms", capture_timing.row_copy_cpu_ms),
+                    ] {
+                        timing.record(frame, name, value);
+                    }
                     if bytes.len() != width as usize * height as usize * 4 {
                         return Err("Remote recording frame dimensions changed".into());
                     }
+                    let write_started = std::time::Instant::now();
                     stdin
                         .write_all(&bytes)
                         .map_err(|_| "Remote encoder input failed")?;
+                    timing.record(
+                        frame,
+                        "encoder_pipe_write_cpu_ms",
+                        write_started.elapsed().as_secs_f64() * 1000.,
+                    );
                     stats.frames += 1;
                     stats.sampled += 1;
                     previous = Some(bytes);
                 }
+                stats.timings = timing.summary();
                 Ok(stats)
             })();
             drop(stdin);
@@ -317,7 +365,12 @@ impl Recorder {
         })
     }
     pub fn submit(&mut self, capture: PendingCapture, index: u64) -> Result<(), String> {
-        match self.send.as_ref().unwrap().try_send((capture, index)) {
+        match self
+            .send
+            .as_ref()
+            .unwrap()
+            .try_send((capture, index, std::time::Instant::now()))
+        {
             Ok(()) => Ok(()),
             Err(mpsc::TrySendError::Full(_)) => {
                 self.dropped += 1;
@@ -346,6 +399,90 @@ impl Drop for Recorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "requires a native GPU and ffmpeg; uses temporary original assets and video"]
+    fn native_capture_attributes_readback_and_encoder_queue() {
+        use super::super::{Renderer, chamber, lighting::Lighting, original};
+        use glam::{Mat4, Vec3};
+        let root = tempfile::tempdir().unwrap();
+        let pack = original::generate(root.path()).unwrap();
+        let instances = chamber::static_instances(&pack, Vec3::ZERO);
+        let mut renderer = Renderer::new(
+            pack,
+            root.path(),
+            320,
+            180,
+            &original::atlas().unwrap(),
+            &instances,
+        )
+        .unwrap();
+        let output = root.path().join("capture.mp4");
+        let options = Options {
+            output: output.clone(),
+            seconds: 1,
+            controller: false,
+            respawn: false,
+            movement: false,
+            movement_frames: false,
+        };
+        let mut recorder = Recorder::open(&options, [320, 180]).unwrap();
+        for frame in 1..=121 {
+            renderer
+                .draw_live(
+                    crate::render::View {
+                        view_proj: Mat4::IDENTITY,
+                        eye: Vec3::ZERO,
+                    },
+                    &instances,
+                    &crate::ui::UiBatch::default(),
+                    &Lighting::default(),
+                )
+                .unwrap();
+            if frame == 1 || frame == 121 {
+                recorder
+                    .submit(renderer.capture_submitted(), if frame == 1 { 0 } else { 3 })
+                    .unwrap();
+            }
+        }
+        assert_eq!(recorder.dropped, 0);
+        let stats = recorder.finish().unwrap();
+        assert_eq!((stats.frames, stats.sampled, stats.duplicated), (4, 2, 2));
+        for phase in ["startup", "steady"] {
+            for name in [
+                "capture_queue_residence_ms",
+                "capture_copy_submit_cpu_ms",
+                "capture_fence_wait_cpu_ms",
+                "capture_row_copy_cpu_ms",
+                "encoder_pipe_write_cpu_ms",
+            ] {
+                assert_eq!(stats.timings[phase][name]["samples"], 1);
+                assert!(
+                    stats.timings[phase][name]["maximum"]
+                        .as_f64()
+                        .unwrap()
+                        .is_finite()
+                );
+            }
+        }
+        let probe = Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-count_frames",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=nb_read_frames",
+                "-of",
+                "csv=p=0",
+            ])
+            .arg(&output)
+            .output()
+            .unwrap();
+        assert!(probe.status.success());
+        assert_eq!(String::from_utf8(probe.stdout).unwrap().trim(), "4");
+        println!("Capture timing evidence: {}", stats.timings);
+    }
     #[test]
     fn refusal_history_keeps_the_first_cause_and_counts_omissions() {
         let mut profile = Profile::default();

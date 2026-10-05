@@ -246,6 +246,27 @@ records sampled/duplicate/dropped counts, native dimensions, acknowledged cast
 commands, committed damage/dialogue counts, and final admitted state. It does not
 prove every acknowledged spell caused damage or establish gameplay frame budgets.
 Without `record`, the window remains in human-control mode.
+Profile version eight separates the first 120 submitted frames from steady
+measurements. Set `VERSE_GPU_TIMING=1` to request optional delayed GPU pass
+timestamps. Reports name the adapter, resolution, and sample count, and separate
+CPU preparation, encoding, submission, surface acquisition, present calls,
+capture queue residence, readback, and encoder pipe writes. A present call does
+not establish display completion. Input-to-display latency and one-way network
+age remain unavailable without platform feedback or synchronized clocks.
+
+For a scratch TLS workload with offscreen clients, run:
+
+```sh
+VERSE_GPU_TIMING=1 cargo run -p verse --no-default-features --features remote-chamber --example frame_profile -- profile.json 3 480 30
+```
+
+The final argument samples raw readback every 30 frames; use zero to disable it.
+The fixture uses temporary original assets and durable state, 1280 × 720 targets,
+four-sample antialiasing, and one shared adapter. It measures request turnaround
+and local snapshot age separately. It creates no display surface or video.
+See the [frame attribution evidence](../../bench/verse/2026-10-04/frame-attribution/run.json)
+for the measured workload and limits.
+
 Set `record.respawn` to `true` with `record.controller` to attempt authenticated
 respawn once per dead owned life. Spectators issue no commands. The capture proof
 records attempted lives and admitted owned-life changes; neither counter alone

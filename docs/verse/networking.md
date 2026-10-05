@@ -272,3 +272,13 @@ character IDs and inventory, and refuses the retired credential. Unrelated
 sessions remain live through admission, transfer, logout, and recovery.
 The [V09 audit](../audits/2026-10-04-verse-engine-audit.md#v09-persistent-accounts-and-characters-have-a-recovery-contract)
 records lifecycle, participation, recovery, and remaining operating limits.
+
+The SDK worker backs off snapshot, inventory, and event reads independently for
+100 ms after `storage_busy` or `rate_limited`, and stops after ten seconds of
+continuous refusal. It never replays a command. Optional `worker::Observer`
+telemetry retains at most 256 response observations and counts omissions without
+blocking authority updates. Request turnaround includes queues, TLS, server work,
+and validation; snapshot freshness starts at local verification. Neither is
+isolated network RTT or one-way network age. The
+[V10 audit](../audits/2026-10-04-verse-engine-audit.md#v10-frame-costs-have-separate-measurement-contracts)
+records the CPU, GPU, capture, and transport measurements and their limits.

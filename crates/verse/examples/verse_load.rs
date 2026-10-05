@@ -30,6 +30,8 @@ struct Config {
     keys: Vec<PathBuf>,
     seconds: u32,
     output: PathBuf,
+    #[serde(default)]
+    movement_frames: bool,
 }
 fn bounded(path: &std::path::Path, limit: usize) -> Result<Vec<u8>, String> {
     use std::io::Read;
@@ -69,6 +71,7 @@ async fn player(
     client: Client,
     index: usize,
     end: tokio::time::Instant,
+    movement_frames: bool,
 ) -> Result<serde_json::Value, String> {
     let instance = client.instance();
     let (send, inputs, updates, mut receive) = worker::channels();
@@ -86,11 +89,15 @@ async fn player(
     let mut state: Option<State> = None;
     let mut token = 0u64;
     let mut epoch = 0;
+    let mut frame_cursor = None;
+    let mut frame_entry = None;
+    let mut observed_frame_snapshots = 0u64;
     let mut pending = VecDeque::new();
     let mut latency = Vec::new();
     let mut omitted_latency = 0u64;
     let mut casts = BTreeMap::<String, u64>::new();
     let mut refused = 0;
+    let mut refusal_trace = Vec::new();
     let mut snapshots = 0;
     let mut snapshot_bytes = 0u64;
     let mut movement = 0;
@@ -135,8 +142,32 @@ async fn player(
      }
      token=token.checked_add(1).ok_or("Load input identities exhausted")?;
      let moving=matches!(intent,Intent::Move {..});
-     match send.try_send(Input::TrackedCommand {token,life:hud.life,epoch,intent}) {
-      Ok(())=>{if moving {movement+=1;}},
+     let input=if movement_frames && moving {
+      let Some(baseline)=state.movement else {continue};
+      let context=(baseline.life,baseline.epoch);
+      if baseline.profile!=verse_world::movement::Profile::Frames {
+       frame_cursor=None;
+       if baseline.character.support.is_some() && baseline.held.axes(baseline.physics_step)==[0.;2] && frame_entry!=Some(context) {
+        match send.try_send(Input::BeginMovementFrames {life:baseline.life,epoch:baseline.epoch}) {
+         Ok(())=>{frame_entry=Some(context);pending.push_back((tokio::time::Instant::now(),None));},
+         Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>pressure+=1,
+         Err(_)=>return Err("Load worker input closed".into()),
+        }
+       }
+       continue;
+      }
+      let start=match frame_cursor {Some((life,old_epoch,start)) if (life,old_epoch)==context=>start,_=>baseline.physics_step};
+      let limit=baseline.world_step.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
+      let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::MAX_STEPS)) as u32;
+      if steps<4 {continue;}
+      let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
+       segments:vec![verse_world::movement::frames::Segment {offset:0,axes,yaw:std::f32::consts::PI,until:start+verse_world::movement::HELD_STEPS,jump:false}]};
+      frame.validate_payload()?;
+      Input::MovementFrame {token,frame}
+     } else {Input::TrackedCommand {token,life:hud.life,epoch,intent}};
+     let proposed_end=match &input {Input::MovementFrame {frame,..}=>Some((frame.life,frame.epoch,frame.end()?)),_=>None};
+     match send.try_send(input) {
+      Ok(())=>{if let Some(cursor)=proposed_end {frame_cursor=Some(cursor);} if moving {movement+=1;}},
       Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>pressure+=1,
       Err(_)=>return Err("Load worker input closed".into()),
      }
@@ -146,6 +177,7 @@ async fn player(
       epoch=response.control.as_ref().ok_or("Load lost player control")?.epoch;
       snapshot_bytes+=serde_json::to_vec(&response).map_err(|_|"Cannot size load snapshot")?.len() as u64;
       let Reply::Snapshot {state:latest}=response.body else {return Err("Load snapshot refused".into())};
+      if latest.movement.is_some_and(|b|b.profile==verse_world::movement::Profile::Frames) {observed_frame_snapshots+=1;}
       snapshots+=1;max_actors=max_actors.max(latest.presentation.actors.len());
       max_players=max_players.max(latest.presentation.actors.iter().filter(|p|p.actor.model=="adventurer").count());
       max_live_hostiles=max_live_hostiles.max(latest.presentation.actors.iter().filter(|p|p.health>0 && !p.actor.friendly && p.actor.model!="adventurer").count());
@@ -157,16 +189,16 @@ async fn player(
      }
      Update::CommandBound {binding,..}=>match binding {
       Ok(command)=>{let ability=match command.intent {Intent::Cast {ability,..}=>Some(ability.label().to_string()),_=>None};pending.push_back((tokio::time::Instant::now(),ability));},
-      Err(_)=>refused+=1,
+      Err(message)=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"command_binding","message":message}));}},
      },
      Update::FrameBound {binding,..}=>match binding {
       Ok(_)=>pending.push_back((tokio::time::Instant::now(),None)),
-      Err(_)=>refused+=1,
+      Err(message)=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"frame_binding","message":message}));}},
      },
      Update::Outcome(response)=>{
       if let Some((started,ability))=pending.pop_front() {
        if !sample(&mut latency,started.elapsed().as_secs_f64()*1000.) {omitted_latency+=1;}
-       match response.body {Reply::Accepted=>{if let Some(ability)=ability {*casts.entry(ability).or_default()+=1;}},Reply::Refused {..}=>refused+=1,_=>{}}
+       match response.body {Reply::Accepted=>{if let Some(ability)=ability {*casts.entry(ability).or_default()+=1;}},Reply::Refused {message,code,..}=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"outcome","message":message,"code":code,"tick":response.tick,"control":response.control}));}},_=>{}}
       }
      }
      Update::Events {..}|Update::Inventory(_)|Update::MovementSuperseded {..}=>{},
@@ -177,6 +209,16 @@ async fn player(
  }.await;
     let _ = stop.send(());
     let worker_result = task.await;
+    let observation_error = result
+        .as_ref()
+        .err()
+        .map(|e| e.chars().take(2048).collect::<String>());
+    let worker_error = match &worker_result {
+        Err(e) => Some(e.to_string()),
+        Ok(Err(e)) => Some(e.clone()),
+        Ok(Ok(())) => None,
+    }
+    .map(|e| e.chars().take(2048).collect::<String>());
     let failure_stage = if result.is_err() {
         Some("observation")
     } else {
@@ -187,7 +229,7 @@ async fn player(
         }
     };
     Ok(
-        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":"legacy_commands","movement_inputs":movement,"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
+        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
     )
 }
 async fn run(config: Config) -> Result<(), String> {
@@ -253,7 +295,7 @@ async fn run(config: Config) -> Result<(), String> {
     let end = tokio::time::Instant::now() + Duration::from_secs(config.seconds as u64);
     let mut tasks = tokio::task::JoinSet::new();
     for (index, client) in clients.into_iter().enumerate() {
-        tasks.spawn(player(client, index, end));
+        tasks.spawn(player(client, index, end, config.movement_frames));
     }
     let mut rows = Vec::new();
     while let Some(result) = tasks.join_next().await {
@@ -269,7 +311,7 @@ async fn run(config: Config) -> Result<(), String> {
     }
     rows.sort_by_key(|r| r["player"].as_u64());
     let failed = rows.iter().any(|row| row["status"] != "complete");
-    let receipt = serde_json::json!({"schema":"verse.multiplayer.load.v2","status":if failed {"failed"} else {"complete"},"seconds":config.seconds,"players":rows,"limits":["Headless authenticated clients measure transport and authority load, not rendering.","Headless movement uses legacy commands; these results do not establish interval-based movement acceptance.","Binding-to-outcome includes server processing and client delivery, not isolated RTT.","Timing retains at most 8192 samples per player."]});
+    let receipt = serde_json::json!({"schema":"verse.multiplayer.load.v3","movement_frames_requested":config.movement_frames,"status":if failed {"failed"} else {"complete"},"seconds":config.seconds,"players":rows,"limits":["Headless authenticated clients measure transport and authority load, not rendering.","Headless intervals use confirmed server time plus the existing bounded authority lookahead, without native prediction or rendering; the receipt declares the requested movement mode.","Binding-to-outcome includes server processing and client delivery, not isolated RTT.","Timing retains at most 8192 samples per player."]});
     std::fs::write(
         config.output,
         serde_json::to_vec_pretty(&receipt).map_err(|_| "Cannot encode load receipt")?,

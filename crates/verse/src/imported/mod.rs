@@ -158,9 +158,11 @@ fn ground_lift(model: &verse_engine::assets::Model, palette: &Pose) -> f32 {
 }
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct FrameTimings {
+    pub frame: u64,
     pub gpu_samples: [Option<gpu_timing::Sample>; 3],
     pub gpu_health: Option<gpu_timing::Health>,
     pub gpu_timestamps_available: bool,
+    pub gpu_query_poll_cpu_ms: Option<f64>,
     pub prepare_ms: f64,
     pub encode_ms: f64,
     pub command_encode_ms: f64,
@@ -199,6 +201,7 @@ struct GpuContext {
     device: wgpu::Device,
     queue: wgpu::Queue,
     name: String,
+    details: serde_json::Value,
     id: verse_engine::residency::CatalogId,
 }
 /// A worker-safe snapshot of the GPU and the catalog a replacement must supersede.
@@ -286,6 +289,14 @@ impl ReloadSource {
             keep_playback,
         })
     }
+}
+/// Describes `adapter` for the device profile a frame report carries.
+fn adapter_details(adapter: &wgpu::Adapter) -> serde_json::Value {
+    let info = adapter.get_info();
+    serde_json::json!({"name":info.name,"vendor":info.vendor,"device":info.device,
+        "backend":format!("{:?}",info.backend),"device_type":format!("{:?}",info.device_type),
+        "driver":info.driver,"driver_info":info.driver_info,
+        "timestamp_feature_supported":adapter.features().contains(gpu_timing::FEATURES)})
 }
 /// Asks `adapter` for the device the renderer draws with.
 async fn request_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), String> {
@@ -411,8 +422,10 @@ pub struct Renderer {
     _ui_screen: wgpu::Buffer,
     ui_buffer: wgpu::Buffer,
     pub adapter_name: String,
+    pub device_profile: serde_json::Value,
     pub last_timings: FrameTimings,
     gpu_timer: Option<gpu_timing::Timer>,
+    submitted_frames: u64,
     /// The lights that held the cube shadow maps last frame, in map order.
     shadowed_lights: Vec<usize>,
 }
@@ -540,8 +553,17 @@ fn make_pose(pack: &Pack, instance: Option<&Instance>) -> Result<Pose, String> {
     }
     Ok(pose)
 }
-/// A submitted copy of the last rendered target; mapping can run off the render thread.
+/// CPU measurements of copying a rendered target; excludes isolated GPU copy duration.
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+pub struct CaptureTimings {
+    pub frame: u64,
+    pub copy_submit_cpu_ms: f64,
+    pub fence_wait_cpu_ms: f64,
+    pub row_copy_cpu_ms: f64,
+}
+/// A submitted target copy whose mapping can run off the render thread.
 pub struct PendingCapture {
+    timing: CaptureTimings,
     device: wgpu::Device,
     buffer: wgpu::Buffer,
     width: u32,
@@ -550,7 +572,15 @@ pub struct PendingCapture {
     submission: wgpu::SubmissionIndex,
 }
 impl PendingCapture {
+    pub fn submission_timing(&self) -> CaptureTimings {
+        self.timing
+    }
     pub fn finish(self) -> Result<Vec<u8>, String> {
+        self.finish_profiled().map(|(pixels, _)| pixels)
+    }
+    /// Measures CPU fence waiting and row copying separately from rendering.
+    pub fn finish_profiled(mut self) -> Result<(Vec<u8>, CaptureTimings), String> {
+        let wait_started = Instant::now();
         let slice = self.buffer.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |result| {
@@ -566,6 +596,8 @@ impl PendingCapture {
             .recv()
             .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?;
+        self.timing.fence_wait_cpu_ms = wait_started.elapsed().as_secs_f64() * 1000.;
+        let copy_started = Instant::now();
         let mapped = slice.get_mapped_range();
         let mut pixels = Vec::with_capacity((self.width * self.height * 4) as usize);
         for y in 0..self.height as usize {
@@ -575,7 +607,8 @@ impl PendingCapture {
         }
         drop(mapped);
         self.buffer.unmap();
-        Ok(pixels)
+        self.timing.row_copy_cpu_ms = copy_started.elapsed().as_secs_f64() * 1000.;
+        Ok((pixels, self.timing))
     }
 }
 
@@ -587,6 +620,7 @@ impl Renderer {
 
     /// Submit a copy without redrawing, GPU waiting, or PNG encoding on the render thread.
     pub fn capture_submitted(&self) -> PendingCapture {
+        let copy_started = Instant::now();
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Verse asynchronous capture"),
             size: self.row as u64 * self.height as u64,
@@ -617,6 +651,11 @@ impl Renderer {
         );
         let submission = self.queue.submit([encoder.finish()]);
         PendingCapture {
+            timing: CaptureTimings {
+                frame: self.last_timings.frame,
+                copy_submit_cpu_ms: copy_started.elapsed().as_secs_f64() * 1000.,
+                ..Default::default()
+            },
             device: self.device.clone(),
             buffer,
             width: self.width,
@@ -661,6 +700,7 @@ impl Renderer {
         let id = verse_engine::residency::Catalog::new(prepared.pack())?.id();
         let context = GpuContext {
             name: gpu.adapter_name(),
+            details: adapter_details(&gpu.adapter),
             instance: gpu.instance,
             adapter: gpu.adapter,
             device: gpu.device,
@@ -716,6 +756,7 @@ impl Renderer {
                 .map_err(|e| e.to_string())?;
                 let (device, queue) = pollster::block_on(request_device(&adapter))?;
                 let name = adapter.get_info().name;
+                let details = adapter_details(&adapter);
                 GpuContext {
                     #[cfg(feature = "imported-surface")]
                     instance,
@@ -724,6 +765,7 @@ impl Renderer {
                     name,
                     device,
                     queue,
+                    details,
                     id: catalog.id(),
                 }
             }
@@ -736,6 +778,7 @@ impl Renderer {
             device,
             queue,
             name: adapter_name,
+            details,
             id: gpu_id,
         } = context;
         let uniform = |binding| wgpu::BindGroupLayoutEntry {
@@ -922,6 +965,20 @@ impl Renderer {
             anisotropy_clamp: 4,
             ..Default::default()
         });
+        // WebGL cannot view an sRGB texture as linear; there the linear view
+        // is the sRGB view, and unlit surfaces read gamma-encoded texels.
+        #[cfg(feature = "imported-surface")]
+        let linear_views = adapter
+            .get_downlevel_capabilities()
+            .flags
+            .contains(wgpu::DownlevelFlags::VIEW_FORMATS);
+        #[cfg(not(feature = "imported-surface"))]
+        let linear_views = true;
+        let linear_formats: &[wgpu::TextureFormat] = if linear_views {
+            &[wgpu::TextureFormat::Rgba8Unorm]
+        } else {
+            &[]
+        };
         let mut texture_views = Vec::new();
         for (t, pixels) in pack.textures.iter().zip(&decoded) {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -932,7 +989,7 @@ impl Renderer {
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+                view_formats: linear_formats,
             });
             let (mut width, mut height) = (t.width, t.height);
             let mut rgba = pixels.rgba().to_vec();
@@ -978,7 +1035,7 @@ impl Renderer {
             }
             let srgb = tex.create_view(&Default::default());
             let linear = tex.create_view(&wgpu::TextureViewDescriptor {
-                format: Some(wgpu::TextureFormat::Rgba8Unorm),
+                format: linear_views.then_some(wgpu::TextureFormat::Rgba8Unorm),
                 ..Default::default()
             });
             texture_views.push((srgb, linear));
@@ -1185,6 +1242,11 @@ impl Renderer {
             .map(|(key, model)| (key.clone(), culling::BoneBounds::compile(model)))
             .collect();
         let gpu_timer = gpu_timing::Timer::new(&device, &queue);
+        let mut device_profile = details;
+        device_profile["timestamp_query_enabled"] =
+            device.features().contains(gpu_timing::FEATURES).into();
+        device_profile["timestamp_period_ns"] = f64::from(queue.get_timestamp_period()).into();
+        device_profile["multisample_count"] = 4.into();
         Ok(Self {
             #[cfg(feature = "imported-surface")]
             instance,
@@ -1241,8 +1303,10 @@ impl Renderer {
             grounding: HashMap::new(),
             bounds,
             adapter_name,
+            device_profile,
             last_timings: FrameTimings::default(),
             gpu_timer,
+            submitted_frames: 0,
             shadowed_lights: Vec::new(),
         })
     }
@@ -1342,6 +1406,7 @@ impl Renderer {
                 device: self.device.clone(),
                 queue: self.queue.clone(),
                 name: self.adapter_name.clone(),
+                details: self.device_profile.clone(),
                 id: self.gpu_id,
             },
             base: self.catalog.id(),
@@ -1778,20 +1843,28 @@ impl Renderer {
             }
         }
         let prepared = Instant::now();
+        self.submitted_frames = self.submitted_frames.saturating_add(1);
+        let frame_id = self.submitted_frames;
+        let gpu_poll_started = Instant::now();
         let (gpu_slot, gpu_samples) = self
             .gpu_timer
             .as_mut()
             .map(|timer| timer.begin(&self.device))
             .unwrap_or((None, [None; 3]));
+        let gpu_query_poll_cpu_ms = self
+            .gpu_timer
+            .as_ref()
+            .map(|_| gpu_poll_started.elapsed().as_secs_f64() * 1000.);
+        let encoding_started = Instant::now();
         let mut instance_cursor = 0u32;
         let mut shadow_draws = 0;
         let world_draws = std::cell::Cell::new(0usize);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let mut gpu_shadow_started = false;
         use verse_engine::render_graph::ChamberPass;
-        let mut shadows_encoded = prepared;
-        let mut world_encoded = prepared;
-        let mut overlay_encoded = prepared;
+        let mut shadows_encoded = encoding_started;
+        let mut world_encoded = encoding_started;
+        let mut overlay_encoded = encoding_started;
         for action in plan.actions() {
             match action {
                 ChamberPass::RefreshShadow { layer } => {
@@ -2175,13 +2248,18 @@ impl Renderer {
         let submitted = Instant::now();
         if !capture {
             self.last_timings = FrameTimings {
+                frame: frame_id,
                 gpu_samples,
+                gpu_query_poll_cpu_ms,
                 gpu_timestamps_available: self.gpu_timer.is_some(),
                 gpu_health: self.gpu_timer.as_ref().map(|timer| timer.health()),
                 prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
                 encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
-                command_encode_ms: encoded.duration_since(prepared).as_secs_f64() * 1000.,
-                shadow_encode_ms: shadows_encoded.duration_since(prepared).as_secs_f64() * 1000.,
+                command_encode_ms: encoded.duration_since(encoding_started).as_secs_f64() * 1000.,
+                shadow_encode_ms: shadows_encoded
+                    .duration_since(encoding_started)
+                    .as_secs_f64()
+                    * 1000.,
                 world_encode_ms: world_encoded.duration_since(shadows_encoded).as_secs_f64()
                     * 1000.,
                 overlay_encode_ms: overlay_encoded.duration_since(world_encoded).as_secs_f64()
@@ -2221,13 +2299,18 @@ impl Renderer {
         drop(mapped);
         self.readback.unmap();
         self.last_timings = FrameTimings {
+            frame: frame_id,
             gpu_samples,
+            gpu_query_poll_cpu_ms,
             gpu_timestamps_available: self.gpu_timer.is_some(),
             gpu_health: self.gpu_timer.as_ref().map(|timer| timer.health()),
             prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
             encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
-            command_encode_ms: encoded.duration_since(prepared).as_secs_f64() * 1000.,
-            shadow_encode_ms: shadows_encoded.duration_since(prepared).as_secs_f64() * 1000.,
+            command_encode_ms: encoded.duration_since(encoding_started).as_secs_f64() * 1000.,
+            shadow_encode_ms: shadows_encoded
+                .duration_since(encoding_started)
+                .as_secs_f64()
+                * 1000.,
             world_encode_ms: world_encoded.duration_since(shadows_encoded).as_secs_f64() * 1000.,
             overlay_encode_ms: overlay_encoded.duration_since(world_encoded).as_secs_f64() * 1000.,
             command_finish_ms: encoded.duration_since(finish_started).as_secs_f64() * 1000.,
@@ -2418,6 +2501,16 @@ mod tests {
     }
 }
 
+/// CPU surface spans; successful presentation does not establish scanout completion.
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+pub struct PresentationTimings {
+    pub acquire_ms: Option<f64>,
+    pub configure_ms: f64,
+    pub encode_ms: Option<f64>,
+    pub queue_submit_ms: Option<f64>,
+    pub present_call_ms: Option<f64>,
+    pub submitted: bool,
+}
 #[cfg(feature = "imported-surface")]
 pub struct WindowPresenter {
     surface: wgpu::Surface<'static>,
@@ -2430,6 +2523,7 @@ pub struct WindowPresenter {
     catalog: verse_engine::residency::CatalogId,
     presented_catalog: Option<verse_engine::residency::CatalogId>,
     presented_frames: u64,
+    pub last_timings: PresentationTimings,
     target_revision: u64,
 }
 #[cfg(feature = "imported-surface")]
@@ -2557,10 +2651,12 @@ impl Renderer {
             catalog: self.catalog.id(),
             presented_catalog: None,
             presented_frames: 0,
+            last_timings: PresentationTimings::default(),
             target_revision: self.target_revision,
         })
     }
     pub fn present_window(&self, p: &mut WindowPresenter, size: [u32; 2]) -> Result<(), String> {
+        p.last_timings = PresentationTimings::default();
         if p.gpu_id != self.gpu_id {
             return Err("Presenter belongs to another GPU device".into());
         }
@@ -2589,9 +2685,14 @@ impl Renderer {
         if p.config.width != size[0] || p.config.height != size[1] {
             p.config.width = size[0];
             p.config.height = size[1];
+            let configure_started = Instant::now();
             p.surface.configure(&self.device, &p.config);
+            p.last_timings.configure_ms += configure_started.elapsed().as_secs_f64() * 1000.;
         }
-        let texture = match p.surface.get_current_texture() {
+        let acquire_started = Instant::now();
+        let acquired = p.surface.get_current_texture();
+        p.last_timings.acquire_ms = Some(acquire_started.elapsed().as_secs_f64() * 1000.);
+        let texture = match acquired {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
@@ -2601,10 +2702,13 @@ impl Renderer {
                 return Err("Window surface validation failed".into());
             }
             _ => {
+                let configure_started = Instant::now();
                 p.surface.configure(&self.device, &p.config);
+                p.last_timings.configure_ms += configure_started.elapsed().as_secs_f64() * 1000.;
                 return Ok(());
             }
         };
+        let encode_started = Instant::now();
         let view = texture.texture.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
@@ -2625,8 +2729,15 @@ impl Renderer {
             pass.set_bind_group(0, &p.group, &[]);
             pass.draw(0..3, 0..1);
         }
-        self.queue.submit([encoder.finish()]);
+        let commands = encoder.finish();
+        p.last_timings.encode_ms = Some(encode_started.elapsed().as_secs_f64() * 1000.);
+        let submit_started = Instant::now();
+        self.queue.submit([commands]);
+        p.last_timings.queue_submit_ms = Some(submit_started.elapsed().as_secs_f64() * 1000.);
+        let present_started = Instant::now();
         texture.present();
+        p.last_timings.present_call_ms = Some(present_started.elapsed().as_secs_f64() * 1000.);
+        p.last_timings.submitted = true;
         p.presented_catalog = Some(self.catalog.id());
         p.presented_frames = p.presented_frames.saturating_add(1);
         Ok(())

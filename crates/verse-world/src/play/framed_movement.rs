@@ -68,9 +68,18 @@ impl Game {
         if admission.actor() != frame.life
             || admission.epoch() != frame.epoch
             || admission.controller() != sender
-            || self.player_snapshot(frame.life)?.player.hp == 0
-            || !self.unlocked()
         {
+            return Err("Movement interval control is stale or unavailable".into());
+        }
+        if self.player_snapshot(frame.life)?.player.hp == 0 || !self.unlocked() {
+            let active = if actor == self.player_actor() {
+                self.frame_clock.is_some()
+            } else {
+                self.additional_players[&actor].frame_clock.is_some()
+            };
+            if active {
+                self.handoff_player(frame.life, sender)?;
+            }
             return Err("Movement interval control is stale or unavailable".into());
         }
         let clock = if actor == self.player_actor() {
@@ -271,6 +280,19 @@ mod tests {
             let dead_frame = frame(&g, life, true);
             g.hostile_hit_player(life, 10000).unwrap();
             assert!(g.submit_movement_frame(owner, dead_frame.clone()).is_err());
+            let fenced_epoch = g.player_admission(life.actor).unwrap().epoch();
+            assert_eq!(fenced_epoch, dead_frame.epoch + 1);
+            assert!(g.movement_baseline(life).unwrap().is_none());
+            assert!(if secondary {
+                g.additional_players[&life.actor].frame_clock.is_none()
+            } else {
+                g.frame_clock.is_none()
+            });
+            assert!(g.submit_movement_frame(owner, dead_frame.clone()).is_err());
+            assert_eq!(
+                g.player_admission(life.actor).unwrap().epoch(),
+                fenced_epoch
+            );
             let next = g.respawn_controlled_player(owner, life).unwrap();
             assert_ne!(next, life);
             assert!(g.submit_movement_frame(owner, dead_frame).is_err());

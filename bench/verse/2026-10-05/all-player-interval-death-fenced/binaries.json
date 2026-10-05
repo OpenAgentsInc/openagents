@@ -1,0 +1,12 @@
+{
+  "compiled_revisions": {
+    "host": "c06635d96d",
+    "native_client": "8838dd1f4f58f0c54a086a9e06407864d0ae13a8",
+    "headless_clients": "78c8d25abc937e868a03b92f5e4950b9ef1f6092"
+  },
+  "sha256": {
+    "verse_host": "a86b321706f224cc524ae4cc2fae97dd6ce651614f79c20c0f0b221fa7645962",
+    "verse_remote": "b20c6f8eb35fba7c579b764307d10c52551eb82181ef0b9de080dc4f5f251f6e",
+    "verse_load": "d860519afad87adae51d2dcc342ac893d071f655aa881b440a79a88c0ece1853"
+  }
+}

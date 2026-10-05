@@ -48,3 +48,36 @@ impl Timing {
         None
     }
 }
+
+/// Startup and steady distributions use the first 120 observations of each stage.
+#[derive(Clone, Debug, Default)]
+pub struct Phases {
+    pub startup: Timing,
+    pub steady: Timing,
+}
+impl Phases {
+    pub const WARMUP_OBSERVATIONS: u64 = 120;
+    pub(super) fn record(&mut self, seconds: f64) {
+        if self.startup.count < Self::WARMUP_OBSERVATIONS {
+            self.startup.record(seconds);
+        } else {
+            self.steady.record(seconds);
+        }
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn startup_storage_and_tick_outliers_stay_out_of_steady_percentiles() {
+        let mut phases = super::Phases::default();
+        for _ in 0..super::Phases::WARMUP_OBSERVATIONS {
+            phases.record(0.7);
+        }
+        for _ in 0..100 {
+            phases.record(0.004);
+        }
+        assert_eq!(phases.startup.maximum_seconds, 0.7);
+        assert_eq!(phases.steady.percentile(0.99), Some(0.004));
+        assert_eq!(phases.steady.count, 100);
+    }
+}

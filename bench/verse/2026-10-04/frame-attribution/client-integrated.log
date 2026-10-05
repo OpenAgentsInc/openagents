@@ -1,0 +1,35 @@
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-d564df0283fefc2a)
+
+running 16 tests
+test service::client::tests::context_and_control_regressions_are_refused ... ok
+test service::client::tests::foreign_correlation_invalidates_transport_without_automatic_retry ... ok
+test service::client::tests::pipeline_foreign_correlation_closes_io_without_replay ... ok
+test service::client::tests::cancelling_an_uncertain_request_drops_transport ... ok
+test service::client::tests::pipeline_drop_closes_an_uncertain_request ... ok
+test service::client::tests::configured_content_mismatch_sends_no_authentication_request ... ok
+test service::client::tests::client_refuses_untrusted_certificates_and_foreign_instance_before_signing ... ok
+test service::client::tests::verified_clients_keep_owned_sequences_and_gameplay_refusals ... ok
+test service::client::tests::pipeline_sends_bounded_inputs_before_any_reply_and_preserves_partial_reads ... ok
+test service::client::tests::serial_commands_refresh_only_explicit_unconsumed_stale_ticks ... ok
+test service::client::tests::durable_claim_failure_withholds_receipt_and_recovers_ready_quest ... ok
+test service::client::tests::durable_item_use_withholds_failed_ack_and_retries_without_duplicate_recovery ... ok
+test service::client::tests::npc_quest_acceptance_is_durable_owned_and_withheld_on_storage_failure ... ok
+test service::client::tests::durable_outfit_change_is_replicated_and_survives_failed_commit_and_restart ... ok
+test service::client::tests::reward_overflow_stops_durable_host_without_saving_partial_death ... ok
+test service::client::tests::tls_combat_rewards_are_owned_and_survive_durable_host_restart ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 475 filtered out; finished in 2.60s
+

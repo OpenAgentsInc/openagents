@@ -1,0 +1,168 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1270:9
+     |
+1270 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:308:12
+    |
+ 91 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+308 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+319 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+  --> crates/verse/src/zones/everglade/draw.rs:92:15
+   |
+92 | pub(super) fn triangles() -> u64 {
+   |               ^^^^^^^^^
+
+warning: `verse-world` (lib) generated 1 warning
+warning: `verse` (lib) generated 3 warnings (run `cargo fix --lib -p verse` to apply 1 suggestion)
+warning: associated function `move_player` is never used
+   --> crates/verse/src/zones/everglade/mod.rs:319:12
+    |
+ 91 | impl Everglade {
+    | -------------- associated function in this implementation
+...
+319 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse` (lib test) generated 2 warnings (1 duplicate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 55.83s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-71a9dca49338e764)
+
+running 82 tests
+test imported::chamber::tests::capture_owned_outfit_models ... ignored, Explicit animated outfit GPU acceptance
+test imported::character_panel::tests::capture_character_panels ... ignored, Explicit GPU acceptance capture
+test imported::chamber::tests::explosions_light_the_room_then_fade_with_the_effect ... ok
+test imported::chamber::tests::many_effects_keep_the_brightest_local_lights_and_respect_the_gpu_bound ... ok
+test imported::character_panel::tests::gear_buttons_emit_owned_slot_changes_without_mutating_inventory ... ok
+test imported::character_panel::tests::panel_consumes_blank_rows_closes_and_pages_all_bounded_entries ... ok
+test imported::character_panel::tests::giver_quest_buttons_require_authoritative_acceptance_and_interaction ... ok
+test imported::character_panel::tests::quest_buttons_emit_only_ready_unclaimed_intents_without_changing_counters ... ok
+test imported::character_panel::tests::outfit_buttons_emit_equipping_and_base_selection_without_local_changes ... ok
+test imported::character_panel::tests::use_buttons_select_only_owned_authored_items_without_spending_locally ... ok
+test imported::characters::tests::material_coordinates_are_explicit ... ok
+test imported::culling::tests::cube_faces_keep_crossing_bounds_and_reject_only_separated_geometry ... ok
+test imported::culling::tests::bone_bounds_contain_weighted_skinning_and_refuse_unsafe_culling ... ok
+test imported::giver_panel::tests::capture_authored_giver_dialogue ... ignored, Explicit GPU quest dialogue acceptance capture
+test imported::gpu_timing::tests::native_timestamp_resolve_without_video_capture ... ignored, Requires a native GPU; run explicitly when diagnosing timestamp readback
+test imported::giver_panel::tests::dialogue_wrap_retains_words_and_long_tokens ... ok
+test imported::gpu_timing::tests::invalid_sample_reasons_are_counted_and_examples_are_bounded ... ok
+test imported::gpu_timing::tests::timestamp_units_and_invalid_order_are_explicit ... ok
+test imported::icons::tests::write_icon_sheet ... ignored, writes review evidence; run with VERSE_ICON_SHEET=path
+test imported::icons::tests::every_icon_is_credited ... ok
+test imported::icons::tests::every_ability_and_spell_slot_has_an_icon ... ok
+test imported::lighting::tests::all_cube_faces_look_outward_and_bad_lights_are_refused ... ok
+test imported::material_gpu::tests::shared_base_color_does_not_merge_distinct_materials ... ok
+test imported::lighting::tests::fog_packs_its_density_and_shape ... ok
+test imported::flat::tests::odd_line_indices_are_refused ... ok
+test imported::chamber::tests::simultaneous_impacts_keep_a_finite_deterministic_particle_budget ... ok
+test imported::lighting::tests::shadowed_lights_come_first_and_keep_their_flicker ... ok
+test imported::lighting::tests::uniform_capacity_admits_all_slots_and_refuses_overflow ... ok
+test imported::material_gpu::tests::lines_and_unlit_surfaces_keep_their_own_materials ... ok
+test imported::material_gpu::tests::packing_preserves_factors_and_presence_flags ... ok
+test imported::overlay::respawn_tests::respawn_hit_bounds_scale_with_the_visible_button ... ok
+test imported::overlay::action_tests::classic_hit_regions_keep_six_unit_gaps_at_every_ui_scale ... ok
+test imported::overlay::action_tests::clickable_slots_match_hotkeys_and_empty_slots_do_not_cast ... ok
+test imported::overlay::tests::combat_bursts_sum_health_loss_without_mixing_incoming_or_expired_hits ... ok
+test imported::instancing::tests::storage_shader_validates_and_reads_an_instance_index ... ok
+test imported::remote_record::tests::all_completed_gpu_samples_are_retained_in_one_render_update ... ok
+test imported::remote_record::tests::discontinuities_do_not_pollute_reconciliation_and_traces_are_bounded ... ok
+test imported::remote_record::tests::native_capture_attributes_readback_and_encoder_queue ... ignored, requires a native GPU and ffmpeg; uses temporary original assets and video
+test imported::remote_record::tests::profile_samples_are_bounded_and_percentiles_preserve_units ... ok
+test imported::remote_record::tests::recording_duration_and_output_are_explicitly_bounded ... ok
+test imported::instancing::tests::world_storage_shader_validates_independent_flat_pose_indices ... ok
+test imported::icons::tests::reverse_gravity_is_the_flipped_artwork ... ok
+test imported::remote_record::tests::refusal_history_keeps_the_first_cause_and_counts_omissions ... ok
+test imported::remote_record::tests::retirement_series_is_separate_and_bounded ... ok
+test imported::remote_record::tests::scripted_movement_turns_and_stops_on_a_local_clock ... ok
+test imported::remote_window::tests::automated_respawn_requires_dead_owned_life_and_never_retries_it ... ok
+test imported::remote_window::tests::native_keys_cover_only_the_shared_host_kit ... ok
+test imported::remote_window::tests::cinematic_camera_converts_scene_radians_to_native_degrees ... ok
+test imported::remote_window::tests::remote_casts_use_horizontal_directions_instead_of_world_aim_points ... ok
+test imported::shadow_cache::tests::exhaustion_refuses_without_relabeling_previous_pose ... ok
+test imported::shadow_cache::tests::face_keys_track_light_pose_caster_revision_and_removal ... ok
+test imported::shadow_cache::tests::pose_identity_and_eligibility_changes_remove_cached_casters ... ok
+test imported::tests::corpse_grounding_ignores_world_translation_but_tracks_skin_and_basis_changes ... ok
+test imported::tests::reload_motion_identity_ignores_source_paths_and_tracks_animation_changes ... ok
+test imported::tests::textured_skin_shader_validates ... ok
+test imported::remote_content::tests::equipment_preflight_requires_static_models_and_parent_sockets ... ok
+test imported::remote_content::tests::outfit_admission_refuses_missing_models_and_animation_states ... ok
+test imported::overlay::tests::friendly_nameplates_are_green_and_dead_plates_are_hidden ... ok
+test imported::overlay::tests::crowded_plates_stay_anchored_and_selected_target_has_priority ... ok
+test imported::chamber::tests::remote_scene_waits_for_admission_and_rejects_invalid_view_inputs ... ok
+test imported::remote_content::tests::identity_binds_scene_geometry_and_verified_texture_bytes ... ok
+test imported::icons::tests::icons_rasterize_deterministically_with_visible_artwork ... ok
+test imported::overlay::tests::quest_marker_draws_only_for_the_matching_living_friendly_life ... ok
+test imported::inventory::tests::procedural_inventory_is_complete_and_distributable ... ok
+test imported::overlay::tests::ritual_limits_hostile_bars_without_overlap_in_both_camera_shots ... ok
+test imported::chamber::tests::controlled_adventurers_keep_distinct_shield_and_light_projections ... ok
+test imported::overlay::tests::shared_damage_text_matches_local_rendering_and_preserves_colors_and_expiry ... ok
+test imported::remote_window::tests::native_prediction_binds_local_input_renders_it_and_retires_acknowledgments ... ok
+test imported::chamber::tests::local_and_read_only_prop_values_share_native_model_and_box_transforms ... ok
+test imported::chamber::tests::assembled_remote_sample_matches_local_native_world_consumers ... ok
+test imported::chamber::tests::local_and_read_only_blocker_bounds_share_native_transforms_and_table_proxy_rules ... ok
+test imported::original::tests::complete_pack_uses_only_generated_files_and_animated_actors ... ok
+test imported::flat::tests::lines_take_their_tint_and_fade_into_the_fog ... ok
+test imported::remote_window::tests::bounded_native_input_reports_pressure_and_closed_update_streams ... ok
+test imported::meteor_swarm::tests::the_busiest_playground_frame_stays_within_the_instance_budget ... ok
+test imported::overlay::action_tests::owned_hud_uses_shared_icons_resources_cast_and_respawn_geometry ... ok
+test imported::overlay::action_tests::exact_target_frame_reuses_portraits_health_and_hides_dead_or_stale_lives ... ok
+test imported::giver_panel::tests::authored_dialogue_buttons_follow_real_combat_and_retry_safe_turn_in ... ok
+test imported::original::tests::original_timeline_runs_the_full_kit_and_actual_defeat ... ok
+test imported::original::tests::original_presentation_survives_arbitrary_clip_ids ... ok
+test imported::props::tests::static_props_compile_with_provenance_and_admitted_collision ... ok
+test imported::characters::tests::standard_outfits_retarget_and_expose_runtime_states ... ok
+
+test result: ok. 76 passed; 0 failed; 6 ignored; 0 measured; 506 filtered out; finished in 42.20s
+
+     Running tests/gym_hall.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/gym_hall-41400ae6565fae83)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/presence.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/presence-93939b6307001aa5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/relay.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/relay-2f148982a06fe93f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/spectator.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/spectator-deab3d8e3375ff79)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
