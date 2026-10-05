@@ -129,18 +129,21 @@ pub fn air(day: &Daylight, sun: Vec3, d: Vec3) -> Vec3 {
     let horizon = Vec3::from(day.horizon);
     let tint = Vec3::from(day.sun);
     let up = d.y.max(0.0);
-    let haze = (1.0 - up).powi(5);
+    let glow = day.glow;
+    let haze = (1.0 - up).powf(5.0 + (3.5 - 5.0) * glow);
     let mut c = zenith.lerp(horizon, haze);
     let flat_d = (Vec3::new(d.x, 0.0, d.z) + Vec3::new(1e-4, 0.0, 0.0)).normalize();
     let flat_s = (Vec3::new(sun.x, 0.0, sun.z) + Vec3::new(1e-4, 0.0, 0.0)).normalize();
     let toward = flat_d.dot(flat_s) * 0.5 + 0.5;
     c *= 1.0 + 0.12 * haze * (toward - 0.5);
-    c = c.lerp(c * tint * 1.08, haze * toward * 0.35);
+    c = c.lerp(c * tint * 1.08, haze * toward * (0.35 + 0.5 * glow));
     let below = (-d.y * 4.0).clamp(0.0, 1.0);
     c = c.lerp(horizon * 0.94, below);
     let mu = d.dot(sun);
     let halo = mie_lobe(mu, 0.76);
+    let band = toward.powi(3) * (1.0 - up).powi(8) * (1.0 - below);
     c + tint * (0.025 * halo + 0.22 * mu.max(0.0).powf(48.0))
+        + tint * glow * (0.3 * mu.max(0.0).powi(6) + 0.08 * halo + 0.35 * band)
 }
 
 /// The share of the sky `fs_daylight` covers with cloud at cover `cover`:
@@ -172,8 +175,10 @@ pub fn sky(day: &Daylight, sun: Vec3, coverage: f32, d: Vec3) -> Vec3 {
     }
     let horizon = Vec3::from(day.horizon);
     let tint = Vec3::from(day.sun);
-    let shadowed = horizon * Vec3::new(0.80, 0.84, 0.95);
-    let sunlit = Vec3::new(0.97, 0.95, 0.92) * Vec3::ONE.lerp(tint, 0.35);
+    let glow = day.glow;
+    let shadowed =
+        (horizon * Vec3::new(0.80, 0.84, 0.95)).lerp(Vec3::from(day.zenith) * 1.3, glow * 0.6);
+    let sunlit = Vec3::new(0.97, 0.95, 0.92) * Vec3::ONE.lerp(tint, 0.35 + 0.5 * glow);
     let shade = shadowed.lerp(sunlit, CLOUD_LIT);
     let cloud = shade.lerp(c, (1.0 - up).powi(6) * 0.6);
     c.lerp(cloud, density * 0.92)
@@ -294,6 +299,7 @@ mod tests {
                 sun: [1.0, 0.86, 0.62],
                 clouds: 0.38,
                 ground: [0.12, 0.1, 0.05],
+                glow: 0.0,
             },
             sun: Vec3::new(-0.35, 0.8, -0.45).normalize(),
             sun_illuminance: 3.2,
@@ -388,5 +394,20 @@ mod tests {
         assert!((below - haze).abs().max_element() < 0.05, "{below}");
         let flat = Vec3::new(sun.x, 0.0, sun.z).normalize();
         assert!(luminance(air(&day, sun, flat)) > luminance(air(&day, sun, -flat)));
+    }
+
+    /// Dusk's glow brightens the sky toward a low Sun and its horizon, and
+    /// leaves the sky away from it nearly as it was.
+    #[test]
+    fn dusk_glows_toward_a_low_sun() {
+        let inputs = glade();
+        let day = inputs.daylight;
+        let dusk = Daylight { glow: 1.0, ..day };
+        let sun = Vec3::new(-0.6, 0.12, -0.79).normalize();
+        let toward = Vec3::new(sun.x, 0.05, sun.z).normalize();
+        assert!(luminance(air(&dusk, sun, toward)) > 1.3 * luminance(air(&day, sun, toward)));
+        let away = Vec3::new(-sun.x, 0.6, -sun.z).normalize();
+        let (a, b) = (air(&dusk, sun, away), air(&day, sun, away));
+        assert!((a - b).abs().max_element() < 0.12, "{a} {b}");
     }
 }

@@ -105,6 +105,9 @@ struct Frame {
     /// Per lamp: position and range (m), then pre-exposed color times
     /// candela.
     lamps: [[f32; 4]; 2 * super::MAX_LAMPS],
+    /// A neon stage's key light color (rgb), with w 1 when set; white
+    /// otherwise.
+    key_tint: [f32; 4],
 }
 
 impl Frame {
@@ -353,6 +356,18 @@ struct Pipelines {
     textured_shadow: wgpu::RenderPipeline,
     /// Masked textured meshes into the shadow map, testing alpha.
     textured_shadow_masked: wgpu::RenderPipeline,
+}
+
+/// How many of a stage's lamps a tier shades, first lamps first: each lamp
+/// costs every lit fragment a loop iteration, so phones and WebGL2 shade
+/// the stage's most important few and leave the rest out.
+#[must_use]
+pub fn lamp_budget(tier: Tier) -> usize {
+    match tier {
+        Tier::Low => 8,
+        Tier::Medium => 16,
+        Tier::High => super::MAX_LAMPS,
+    }
 }
 
 /// The high tier's depth prepass: the shadow casters' shaders drawn with the
@@ -2269,6 +2284,7 @@ impl Photo {
             uniform.sky_zenith = [day.zenith[0], day.zenith[1], day.zenith[2], 1.0];
             uniform.sky_horizon = [day.horizon[0], day.horizon[1], day.horizon[2], day.clouds];
             uniform.sky_sun = [day.sun[0], day.sun[1], day.sun[2], radius];
+            uniform.field[3] = day.glow;
         }
         let lit = neon.key.filter(|_| {
             world.lit.1 > 0
@@ -2297,10 +2313,17 @@ impl Photo {
                 .normalize()
                 .extend(key.rim_angular_radius)
                 .to_array();
-            uniform.earth_light = [rim, rim, rim, 0.0];
+            uniform.earth_light = [
+                rim * neon.rim_color[0],
+                rim * neon.rim_color[1],
+                rim * neon.rim_color[2],
+                0.0,
+            ];
+            uniform.key_tint = [neon.key_color[0], neon.key_color[1], neon.key_color[2], 1.0];
             uniform.lamp_params = [0.0, exposure, 0.0, 0.0];
             let mut count = 0;
-            for lamp in neon.lamps.iter().filter(|lamp| lamp.lit()) {
+            let budget = lamp_budget(self.capability.quality.tier);
+            for lamp in neon.lamps.iter().filter(|lamp| lamp.lit()).take(budget) {
                 let gain = lamp.intensity * exposure;
                 uniform.lamps[count * 2] = lamp.position.extend(lamp.range).to_array();
                 uniform.lamps[count * 2 + 1] = [
@@ -2334,7 +2357,12 @@ impl Photo {
             if self.sky_light.update(device, queue, &inputs, &quality) {
                 self.rebuild_groups(device);
             }
-            uniform.sky_light = [1.0, self.sky_light.max_lod, 0.0, 0.0];
+            let flash = if neon.sky_flash.is_finite() {
+                neon.sky_flash.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            uniform.sky_light = [1.0, self.sky_light.max_lod, flash, 0.0];
             uniform.sky_sh = self.sky_light.sh;
         }
         if let Some(fog) = neon.height_fog.filter(|fog| fog.validate().is_ok()) {
@@ -3056,6 +3084,13 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lower_tiers_shade_fewer_lamps() {
+        assert!(lamp_budget(Tier::Low) < lamp_budget(Tier::Medium));
+        assert!(lamp_budget(Tier::Medium) < lamp_budget(Tier::High));
+        assert_eq!(lamp_budget(Tier::High), super::super::MAX_LAMPS);
+    }
 
     #[test]
     fn the_tier_sets_the_shadow_filter_and_material_detail_constants() {

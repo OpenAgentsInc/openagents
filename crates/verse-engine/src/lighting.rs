@@ -844,6 +844,12 @@ pub struct Grade {
     pub contrast: f32,
     /// A per-channel color filter after contrast.
     pub gain: Vec3,
+    /// Split toning: per-channel gains on the shadows and on the
+    /// highlights, blended by luminance in log space about mid-grey, so a
+    /// look can push cool shadows against warm highlights. Ones leave the
+    /// color alone.
+    pub shadows: Vec3,
+    pub highlights: Vec3,
     pub curve: Curve,
     /// The display's highest value: 1 in standard range, the headroom over
     /// reference white on an extended-range display.
@@ -858,6 +864,8 @@ impl Grade {
         saturation: 1.0,
         contrast: 1.0,
         gain: Vec3::ONE,
+        shadows: Vec3::ONE,
+        highlights: Vec3::ONE,
         curve: Curve::Neutral,
         ceiling: 1.0,
     };
@@ -885,11 +893,17 @@ impl Grade {
             && self.saturation.is_finite()
             && self.contrast.is_finite()
             && self.gain.is_finite()
+            && self.shadows.is_finite()
+            && self.highlights.is_finite()
             && self.ceiling.is_finite();
         if !finite
             || self.exposure.abs() > 16.0
             || self.balance.min_element() <= 0.0
             || self.gain.min_element() < 0.0
+            || self.shadows.min_element() <= 0.0
+            || self.highlights.min_element() <= 0.0
+            || self.shadows.max_element() > 4.0
+            || self.highlights.max_element() > 4.0
             || self.saturation < 0.0
             || self.contrast <= 0.0
             || self.ceiling < 1.0
@@ -908,6 +922,8 @@ impl Grade {
             && self.saturation == other.saturation
             && self.contrast == other.contrast
             && self.gain == other.gain
+            && self.shadows == other.shadows
+            && self.highlights == other.highlights
     }
 
     /// The scene-referred grade of one linear color: the function the table
@@ -935,7 +951,16 @@ impl Grade {
             };
             Vec3::new(pivot(c.x), pivot(c.y), pivot(c.z))
         };
-        c * self.gain
+        let c = c * self.gain;
+        if self.shadows == Vec3::ONE && self.highlights == Vec3::ONE {
+            return c;
+        }
+        // From all shadow tint four stops under mid-grey to all highlight
+        // tint four stops over it.
+        let luma = c.dot(LUMA).max(1e-6);
+        let t = ((luma / MID_GREY).log2() / 8.0 + 0.5).clamp(0.0, 1.0);
+        let t = t * t * (3.0 - 2.0 * t);
+        c * self.shadows.lerp(self.highlights, t)
     }
 
     /// The full transform of one exposed scene color to display color,
@@ -1494,6 +1519,41 @@ mod tests {
         );
         let plain = Grade::NEUTRAL.display(Vec3::splat(0.18));
         assert!((plain.x - 0.14).abs() < 1e-6);
+    }
+
+    /// Split toning tints shadows and highlights apart, leaves mid-grey
+    /// between the two, and bakes into the table.
+    #[test]
+    fn split_toning_cools_shadows_and_warms_highlights() {
+        let split = Grade {
+            shadows: Vec3::new(0.9, 1.0, 1.1),
+            highlights: Vec3::new(1.1, 1.0, 0.9),
+            ..Grade::NEUTRAL
+        };
+        assert!(split.validate().is_ok());
+        let dark = split.scene(Vec3::splat(0.01));
+        assert!(dark.z > dark.x, "{dark}");
+        let bright = split.scene(Vec3::splat(3.0));
+        assert!(bright.x > bright.z, "{bright}");
+        let mid = split.scene(Vec3::splat(MID_GREY));
+        assert!(
+            (mid - Vec3::splat(MID_GREY)).abs().max_element() < 1e-5,
+            "{mid}"
+        );
+        assert!(!split.same_table(&Grade::NEUTRAL));
+        let table = split.bake();
+        let sampled = sample_grade_lut(&table, Vec3::splat(3.0));
+        assert!((sampled - bright).abs().max_element() < 0.02 * bright.max_element());
+        for bad in [Vec3::ZERO, Vec3::splat(5.0), Vec3::NAN] {
+            assert!(
+                Grade {
+                    shadows: bad,
+                    ..Grade::NEUTRAL
+                }
+                .validate()
+                .is_err()
+            );
+        }
     }
 
     #[test]

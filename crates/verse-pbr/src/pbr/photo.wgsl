@@ -49,7 +49,7 @@ struct Frame {
     // Neon stage: x fog start, y fog end (m), z line width (px), w mode
     // (0 space, 1 neon).
     neon: vec4<f32>,
-    // rgb field color; w unused.
+    // rgb field color; w the daylight sky's dusk glow from 0 to 1.
     field: vec4<f32>,
     // Neon stage daylight sky: rgb zenith, w 1 when the sky is drawn.
     sky_zenith: vec4<f32>,
@@ -58,7 +58,8 @@ struct Frame {
     // rgb Sun tint; w the disc's angular radius (rad).
     sky_sun: vec4<f32>,
     // Daylight sky light: x 1 when lit surfaces take it; y the reflection
-    // cube's last level, which roughness 1 reads.
+    // cube's last level, which roughness 1 reads; z lightning's flash on
+    // the sky, 0 to 1.
     sky_light: vec4<f32>,
     // The sky light's irradiance as order-two spherical harmonics (rgb), in
     // `sky_irradiance`'s order with each band's cosine weight folded in.
@@ -87,6 +88,8 @@ struct Frame {
     // Per lamp (`pbr::Lamp`): position and range (m), then pre-exposed color
     // times candela.
     lamps: array<vec4<f32>, 64>,
+    // rgb a neon stage's key light color; w 1 when set, white otherwise.
+    key_tint: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -263,22 +266,27 @@ fn mie_lobe(mu: f32, g: f32) -> f32 {
 fn daylight_air(d: vec3<f32>) -> vec3<f32> {
     let sun = f.sun.xyz;
     let up = max(d.y, 0.0);
-    // Optical depth grows toward the horizon; the haze band is narrow.
-    let haze = pow(1.0 - up, 5.0);
+    let glow = f.field.w;
+    // Optical depth grows toward the horizon; the haze band is narrow, and
+    // wider in the long light of dusk.
+    let haze = pow(1.0 - up, mix(5.0, 3.5, glow));
     var c = mix(f.sky_zenith.rgb, f.sky_horizon.rgb, haze);
     // The horizon is warmer and brighter on the Sun's side of the sky.
     let flat_d = normalize(vec3<f32>(d.x, 0.0, d.z) + vec3<f32>(1e-4, 0.0, 0.0));
     let flat_s = normalize(vec3<f32>(sun.x, 0.0, sun.z) + vec3<f32>(1e-4, 0.0, 0.0));
     let toward = dot(flat_d, flat_s) * 0.5 + 0.5;
     c = c * (1.0 + 0.12 * haze * (toward - 0.5));
-    c = mix(c, c * f.sky_sun.rgb * 1.08, haze * toward * 0.35);
+    c = mix(c, c * f.sky_sun.rgb * 1.08, haze * toward * (0.35 + 0.5 * glow));
     // Below the horizon the haze stays: distant fogged ground matches it.
     let below = clamp(-d.y * 4.0, 0.0, 1.0);
     c = mix(c, f.sky_horizon.rgb * 0.94, below);
-    // Forward scattering around the Sun: a wide halo and a tight glow.
+    // Forward scattering around the Sun: a wide halo and a tight glow, and
+    // at dusk a broad glow and a band of fire along the Sun's horizon.
     let mu = dot(d, sun);
     let halo = mie_lobe(mu, 0.76);
     c += f.sky_sun.rgb * (0.025 * halo + 0.22 * pow(max(mu, 0.0), 48.0));
+    let band = pow(toward, 3.0) * pow(1.0 - up, 8.0) * (1.0 - below);
+    c += f.sky_sun.rgb * glow * (0.3 * pow(max(mu, 0.0), 6.0) + 0.08 * halo + 0.35 * band);
     return c;
 }
 
@@ -338,12 +346,30 @@ fn fs_daylight(i: SkyOut) -> @location(0) vec4<f32> {
     let lee = sky_fbm(p + toward);
     let lit = clamp(0.62 + (n - lee) * 3.0, 0.0, 1.0);
     let mu = dot(d, sun);
-    let shade = mix(f.sky_horizon.rgb * vec3<f32>(0.80, 0.84, 0.95), vec3<f32>(0.97, 0.95, 0.92) * mix(vec3<f32>(1.0), f.sky_sun.rgb, 0.35), lit);
+    let glow = f.field.w;
+    // At dusk the shadowed undersides take the zenith's violet and the lit
+    // edges the Sun's fire.
+    let shadowed = mix(f.sky_horizon.rgb * vec3<f32>(0.80, 0.84, 0.95), f.sky_zenith.rgb * 1.3, glow * 0.6);
+    let sunlit = vec3<f32>(0.97, 0.95, 0.92) * mix(vec3<f32>(1.0), f.sky_sun.rgb, 0.35 + 0.5 * glow);
+    let shade = mix(shadowed, sunlit, lit);
     // Silver lining where thin cloud crosses the Sun's glow.
-    let rim = f.sky_sun.rgb * pow(max(mu, 0.0), 12.0) * (1.0 - density) * 0.6;
+    let rim = f.sky_sun.rgb * pow(max(mu, 0.0), 12.0 - 8.0 * glow) * (1.0 - density) * (0.6 + 1.2 * glow);
     // Distant clouds fade into the haze, as aerial perspective would.
     let cloud = mix(shade + rim, daylight_air(d), pow(1.0 - up, 6.0) * 0.6);
     c = mix(c, cloud, density * 0.92);
+    // Crepuscular rays at dusk: streaks in the Sun's glow, fanning out from
+    // it, brighter through the gaps between clouds.
+    if glow > 0.0 {
+        let side = normalize(cross(sun, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(1e-4, 0.0, 0.0));
+        let over = cross(side, sun);
+        let fan = atan2(dot(d, over), dot(d, side));
+        let streak = sky_noise(vec2<f32>(fan * 9.0, f.params.y * 0.03)) * sky_noise(vec2<f32>(fan * 23.0 + 7.0, 3.1));
+        let rays = smoothstep(0.12, 0.5, streak) - 0.35;
+        c += f.sky_sun.rgb * glow * rays * pow(max(mu, 0.0), 5.0) * (0.45 - 0.25 * density);
+    }
+    // Lightning lights the sky blue-white, the clouds most.
+    let flash = f.sky_light.z;
+    c += vec3<f32>(0.6, 0.68, 0.95) * flash * (0.6 + 1.2 * density);
     // The Sun's disc with a soft edge, dimmed but not hidden behind cloud.
     let r = max(f.sky_sun.w, 1e-3);
     let angle = acos(clamp(mu, -1.0, 1.0));
@@ -823,7 +849,7 @@ fn shade(i: Shading) -> vec3<f32> {
         var angular: f32;
         if k == 0 {
             l = f.sun.xyz;
-            e = vec3<f32>(f.sun.w);
+            e = vec3<f32>(f.sun.w) * select(vec3<f32>(1.0), f.key_tint.rgb, f.key_tint.w > 0.5);
             angular = f.sun_disc.x;
         } else {
             l = f.earth.xyz;

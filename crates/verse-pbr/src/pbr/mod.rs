@@ -301,6 +301,13 @@ pub struct Neon {
     pub lamps: [Lamp; MAX_LAMPS],
     /// The output pass's grade.
     pub grade: Grade,
+    /// The key and rim lights' linear colors, multiplied with their lux:
+    /// white for a studio, a warm low Sun against a cool sky at dusk.
+    pub key_color: [f32; 3],
+    pub rim_color: [f32; 3],
+    /// How brightly lightning lights the daylight sky this frame, 0 to 1.
+    /// The sky pass alone draws it; the sky light keeps its bake.
+    pub sky_flash: f32,
 }
 
 /// The most lamps one neon stage carries.
@@ -384,6 +391,10 @@ pub struct Daylight {
     /// The ground's diffuse albedo. The sky light treats everything below
     /// the horizon as this ground, lit by the key and the sky.
     pub ground: [f32; 3],
+    /// Dusk from 0 (day) to 1: a wider haze band, a broad glow and a band
+    /// of fire on the horizon under a low Sun, violet cloud undersides with
+    /// fiery edges, and crepuscular rays fanning from the Sun.
+    pub glow: f32,
 }
 
 impl Daylight {
@@ -398,6 +409,7 @@ impl Daylight {
             .chain(&self.ground)
             .all(|c| c.is_finite() && (0.0..=1.0).contains(c))
             && (0.0..=1.0).contains(&self.clouds)
+            && (0.0..=1.0).contains(&self.glow)
     }
 }
 
@@ -492,6 +504,9 @@ impl Neon {
             height_fog: None,
             lamps: [Lamp::OFF; MAX_LAMPS],
             grade: Grade::STAGE,
+            key_color: [1.0; 3],
+            rim_color: [1.0; 3],
+            sky_flash: 0.0,
         }
     }
 
@@ -606,8 +621,11 @@ mod tests {
             sun: [1.0, 0.9, 0.6],
             clouds: 0.4,
             ground: [0.1, 0.11, 0.07],
+            glow: 0.0,
         };
         assert!(day.valid());
+        assert!(Daylight { glow: 1.0, ..day }.valid());
+        assert!(!Daylight { glow: 1.5, ..day }.valid());
         assert!(!Daylight { clouds: 1.5, ..day }.valid());
         assert!(
             !Daylight {
