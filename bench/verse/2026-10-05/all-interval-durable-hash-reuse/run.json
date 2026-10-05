@@ -1,0 +1,17 @@
+{
+  "acceptance": "failed",
+  "reason": "All clients complete and observe interval movement, but storage pauses, server stalls, and snapshot age exceed responsiveness targets.",
+  "compiled_revisions": {
+    "host": "fc7f26e67c",
+    "native": "32323eeec7",
+    "load": "32323eeec7"
+  },
+  "steady_frame_p95_ms": 18.628667,
+  "steady_gpu_p95_ms": 9.927292,
+  "steady_snapshot_age_p95_ms": 3931.724417,
+  "limits": [
+    "Shared hardware, sampled observer overhead, and different combat trajectories prevent an isolated causal performance comparison.",
+    "Input-to-display remains unmeasured.",
+    "Inclusive stack counts overlap; they are not summed CPU percentages."
+  ]
+}
