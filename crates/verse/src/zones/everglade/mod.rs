@@ -371,10 +371,17 @@ impl Everglade {
         self.spells.slot(spell, player, &self.solids)
     }
 
-    /// The live spells as drawn around `player`.
+    /// The live spells as drawn around `player`, seen from its head.
     #[must_use]
     pub fn spell_mesh(&self, player: &PlayerController) -> Mesh {
-        self.spells.mesh(player)
+        self.spell_mesh_from(player, player.pos + Vec3::Y * 1.6)
+    }
+
+    /// The live spells as drawn around `player`, seen from `eye`: the
+    /// particles turn toward it.
+    #[must_use]
+    pub fn spell_mesh_from(&self, player: &PlayerController, eye: Vec3) -> Mesh {
+        self.spells.mesh(player, eye)
     }
 
     /// One step of the shared controller over the solids: the blockers the

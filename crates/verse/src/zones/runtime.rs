@@ -1553,11 +1553,12 @@ impl WorldRuntime {
             // The player, and the seats when the pack's character draws them.
             // In first person the player's own character is not drawn.
             mesh.extend(&everglade.player_mesh(&self.player, &self.gait, self.hides_avatar()));
-            // The live spells: stone panels, wind, the cylinder, feathers.
-            mesh.extend(&everglade.spell_mesh(&self.player));
+            let eye = self.view(1.0).eye;
+            // The live spells: stone panels, wind, the cylinder and its
+            // rising particles, feathers.
+            mesh.extend(&everglade.spell_mesh_from(&self.player, eye));
             // The studio's nameplates, lamps, marks, bubbles, particles, and
             // live boards, and boxy seats when there is no character.
-            let eye = self.view(1.0).eye;
             mesh.extend(
                 &self
                     .zone_state
