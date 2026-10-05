@@ -58,12 +58,16 @@ impl std::ops::BitOr for Flags {
     }
 }
 
-/// The rendition of a cell: colors and flags.
+/// The rendition of a cell: colors, flags, and the hyperlink it is part
+/// of.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Attrs {
     pub fg: Color,
     pub bg: Color,
     pub flags: Flags,
+    /// The OSC 8 hyperlink the cell belongs to, or 0 for none; the
+    /// terminal's `link` answers its target.
+    pub link: u16,
 }
 
 impl Attrs {
@@ -75,6 +79,7 @@ impl Attrs {
             fg: Color::Default,
             bg: self.bg,
             flags: Flags::empty(),
+            link: 0,
         }
     }
 }
@@ -135,12 +140,39 @@ impl Row {
         }
     }
 
+    /// Blanks the row in place at `cols` columns, keeping its allocation.
+    pub(crate) fn reset(&mut self, cols: usize, attrs: Attrs) {
+        let blank = Cell::blank(attrs);
+        if self.cells.len() == cols {
+            for cell in &mut self.cells {
+                cell.clone_from(&blank);
+            }
+        } else {
+            self.cells.clear();
+            self.cells.resize(cols, blank);
+        }
+        self.wrapped = false;
+    }
+
     /// The row's text, wide-character spacers skipped and trailing blanks
     /// trimmed.
     #[must_use]
     pub fn text(&self) -> String {
+        self.text_between(0, self.cells.len())
+    }
+
+    /// The text of columns `from` up to `to`, as [`Row::text`] reads it. A
+    /// wide character counts when either of its columns is in range.
+    #[must_use]
+    pub fn text_between(&self, from: usize, to: usize) -> String {
+        let to = to.min(self.cells.len());
         let mut text = String::new();
-        for cell in &self.cells {
+        let mut col = from;
+        // The right half of a wide character starts at its left half.
+        if col > 0 && col < to && self.cells[col].width == 0 {
+            col -= 1;
+        }
+        for cell in self.cells.get(col..to).unwrap_or_default() {
             if cell.width == 0 {
                 continue;
             }

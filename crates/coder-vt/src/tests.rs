@@ -572,3 +572,164 @@ fn arbitrary_output_keeps_the_grid_well_formed() {
         let _ = t.take_replies();
     }
 }
+
+#[test]
+fn mouse_tracking_modes_and_encodings() {
+    let mut t = term(10, 40);
+    let press = MouseEvent {
+        kind: MouseKind::Press(MouseButton::Left),
+        row: 2,
+        col: 5,
+        modifiers: Modifiers::NONE,
+    };
+    assert_eq!(t.mouse_mode(), MouseMode::Off);
+    assert_eq!(t.mouse(press), None);
+    // vim's `set mouse=a` under xterm: button-event tracking with SGR.
+    t.feed(b"\x1b[?1002h\x1b[?1006h");
+    assert_eq!(t.mouse_mode(), MouseMode::Drag);
+    assert_eq!(t.mouse(press).unwrap(), b"\x1b[<0;6;3M");
+    t.feed(b"\x1b[?1006l");
+    assert_eq!(t.mouse(press).unwrap(), b"\x1b[M\x20\x26\x23");
+    // Turning another mode off leaves this one; turning it off ends it.
+    t.feed(b"\x1b[?1000l");
+    assert_eq!(t.mouse_mode(), MouseMode::Drag);
+    t.feed(b"\x1b[?1002l");
+    assert_eq!(t.mouse(press), None);
+    t.feed(b"\x1b[?1003h\x1b[?1015h");
+    assert_eq!(t.mouse_mode(), MouseMode::Motion);
+    assert_eq!(t.mouse(press).unwrap(), b"\x1b[32;6;3M");
+    // A full reset turns reporting off.
+    t.feed(b"\x1bc");
+    assert_eq!(t.mouse_mode(), MouseMode::Off);
+}
+
+#[test]
+fn focus_events_and_cursor_style() {
+    let mut t = term(3, 10);
+    assert_eq!(t.focus(true), None);
+    t.feed(b"\x1b[?1004h");
+    assert_eq!(t.focus(true).unwrap(), b"\x1b[I");
+    assert_eq!(t.focus(false).unwrap(), b"\x1b[O");
+    assert_eq!(t.cursor_style(), CursorStyle::default());
+    t.feed(b"\x1b[6 q");
+    assert_eq!(
+        t.cursor_style(),
+        CursorStyle {
+            shape: CursorShape::Bar,
+            blink: false
+        }
+    );
+    t.feed(b"\x1b[3 q");
+    assert_eq!(t.cursor_style().shape, CursorShape::Underline);
+    assert!(t.cursor_style().blink);
+    t.feed(b"\x1b[?12l");
+    assert!(!t.cursor_style().blink);
+    // An unknown style changes nothing.
+    t.feed(b"\x1b[9 q");
+    assert_eq!(t.cursor_style().shape, CursorShape::Underline);
+}
+
+#[test]
+fn application_keypad_changes_what_keypad_keys_send() {
+    let mut t = term(2, 10);
+    assert_eq!(t.key(Key::Keypad('5'), Modifiers::NONE), b"5");
+    t.feed(b"\x1b=");
+    assert_eq!(t.key(Key::Keypad('5'), Modifiers::NONE), b"\x1bOu");
+    assert_eq!(t.key(Key::KeypadEnter, Modifiers::NONE), b"\x1bOM");
+    t.feed(b"\x1b>");
+    assert_eq!(t.key(Key::KeypadEnter, Modifiers::NONE), b"\r");
+}
+
+#[test]
+fn clipboard_writes_are_kept_and_reads_never_answered() {
+    let mut t = term(2, 10);
+    // "hello\nworld"
+    t.feed(b"\x1b]52;c;aGVsbG8Kd29ybGQ=\x07");
+    assert_eq!(t.take_clipboard().as_deref(), Some("hello\nworld"));
+    assert_eq!(t.take_clipboard(), None);
+    t.feed(b"\x1b]52;c;?\x07");
+    assert_eq!(t.take_clipboard(), None);
+    assert!(t.take_replies().is_empty());
+    // Not base64, or not UTF-8: ignored.
+    t.feed(b"\x1b]52;c;!!!\x07\x1b]52;c;/w==\x07");
+    assert_eq!(t.take_clipboard(), None);
+    // Control characters other than newline and tab are removed.
+    t.feed(b"\x1b]52;c;G1sybWE=\x07");
+    assert_eq!(t.take_clipboard().as_deref(), Some("[2ma"));
+}
+
+#[test]
+fn hyperlinks_mark_their_cells() {
+    let mut t = term(2, 30);
+    t.feed(b"see \x1b]8;id=1;https://example.com/a;b\x1b\\docs\x1b]8;;\x1b\\ now");
+    assert_eq!(line(&t, 0), "see docs now");
+    let id = attrs(&t, 0, 4).link;
+    assert_ne!(id, 0);
+    assert_eq!(attrs(&t, 0, 7).link, id);
+    assert_eq!(attrs(&t, 0, 8).link, 0);
+    assert_eq!(attrs(&t, 0, 3).link, 0);
+    assert_eq!(t.link(id), Some("https://example.com/a;b"));
+    assert_eq!(t.link(0), None);
+    // The same target shares its ID; an erase drops the link.
+    t.feed(b"\r\n\x1b]8;;https://example.com/a;b\x07x\x1b[K");
+    assert_eq!(attrs(&t, 1, 0).link, id);
+    assert_eq!(attrs(&t, 1, 1).link, 0);
+    // A title may contain a semicolon.
+    t.feed(b"\x1b]2;a;b\x07");
+    assert_eq!(t.title(), "a;b");
+}
+
+#[test]
+fn lines_keep_their_names_across_the_scrollback() {
+    let mut t = Terminal::new(2, 10, 3);
+    for i in 0..4 {
+        t.feed(format!("line{i}\r\n").as_bytes());
+    }
+    // line0 to line2 scrolled off; line3 and the blank line show.
+    assert_eq!(t.scrollback_len(), 3);
+    assert_eq!(t.history_dropped(), 0);
+    assert_eq!(t.line(0).unwrap().text(), "line0");
+    assert_eq!(t.line(3).unwrap().text(), "line3");
+    let name = t.history_dropped() + 3;
+    t.feed(b"more\r\nand more\r\n");
+    assert_eq!(t.history_dropped(), 2);
+    let index = (name - t.history_dropped()) as usize;
+    assert_eq!(t.line(index).unwrap().text(), "line3");
+    // Clearing the scrollback drops it all.
+    t.feed(b"\x1b[3J");
+    assert_eq!(t.history_dropped(), 5);
+    assert_eq!(t.scrollback_len(), 0);
+}
+
+#[test]
+fn row_text_between_columns_handles_wide_and_combining_characters() {
+    let t = fed(1, 12, "a世界e\u{301}z".as_bytes());
+    let row = t.row(0).unwrap();
+    assert_eq!(row.text(), "a世界e\u{301}z");
+    assert_eq!(row.text_between(1, 3), "世");
+    // Starting on a wide character's right half includes it.
+    assert_eq!(row.text_between(2, 3), "世");
+    assert_eq!(row.text_between(2, 4), "世界");
+    assert_eq!(row.text_between(5, 6), "e\u{301}");
+    assert_eq!(row.text_between(6, 40), "z");
+}
+
+#[test]
+fn scrolling_reuses_rows_without_changing_what_shows() {
+    let mut t = Terminal::new(3, 6, 2);
+    t.feed(b"\x1b[44m");
+    for i in 0..6 {
+        t.feed(format!("r{i}\r\n").as_bytes());
+    }
+    assert_eq!(t.text(), "r4\nr5\n");
+    assert_eq!(
+        t.scrollback().map(Row::text).collect::<Vec<_>>(),
+        ["r2", "r3"]
+    );
+    // The new line carries the erase background.
+    assert_eq!(attrs(&t, 2, 3).bg, Color::Indexed(4));
+    assert_eq!(t.row(2).unwrap().cells.len(), 6);
+    // Reverse index at the top scrolls down.
+    t.feed(b"\x1b[H\x1bM");
+    assert_eq!(t.text(), "\nr4\nr5");
+}

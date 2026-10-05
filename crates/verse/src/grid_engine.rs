@@ -313,6 +313,16 @@ impl GridEngine {
         Ok(())
     }
 
+    /// Uploads `atlas` again after glyphs were added to it. Returns false
+    /// when its size changed, which only a new engine can take.
+    pub fn update_atlas(&mut self, atlas: &Atlas) -> bool {
+        if !self.renderer.update_atlas(atlas) {
+            return false;
+        }
+        self.atlas = atlas.clone();
+        true
+    }
+
     /// Draws and presents one frame; returns the renderer's own time for it
     /// in milliseconds.
     pub fn draw(

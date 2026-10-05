@@ -4,6 +4,7 @@ use winit::keyboard::{Key as Logical, KeyCode, ModifiersState, NamedKey, SmolStr
 
 use super::layout::{self, Axis, Direction, GAP, Layout, Rect};
 use super::pty::Program;
+use super::select::{self, Point, Selection, Unit};
 use super::{KeyIn, Overlay};
 
 const AREA: Rect = Rect {
@@ -93,6 +94,7 @@ fn key(code: KeyCode, logical: Logical, text: Option<&str>) -> KeyIn {
         code,
         logical,
         text: text.map(str::to_owned),
+        plain: text.map(str::to_owned),
         pressed: true,
     }
 }
@@ -365,4 +367,519 @@ fn control_requests_open_split_type_and_read_panes() {
     );
     drop(newer);
     assert!(!socket.exists());
+}
+
+fn vt(rows: usize, cols: usize, bytes: &[u8]) -> coder_vt::Terminal {
+    let mut vt = coder_vt::Terminal::new(rows, cols, 100);
+    vt.feed(bytes);
+    vt
+}
+
+fn point(vt: &coder_vt::Terminal, index: usize, col: usize) -> Point {
+    Point {
+        line: select::absolute(vt, index),
+        col,
+    }
+}
+
+#[test]
+fn selected_text_keeps_wide_and_combining_characters_and_joins_wrapped_lines() {
+    // A 6-column grid: "ab世界cd" wraps after the wide characters.
+    let vt = vt(4, 6, "ab世界cde\u{301}\r\nnext  \r\nlast".as_bytes());
+    assert_eq!(vt.line(0).unwrap().text(), "ab世界");
+    assert!(vt.line(0).unwrap().wrapped);
+    let all = Selection {
+        anchor: point(&vt, 0, 0),
+        head: point(&vt, 3, 5),
+        unit: Unit::Char,
+    };
+    // The wrapped line joins; the next line ends with a newline and loses
+    // its trailing blanks.
+    assert_eq!(all.text(&vt), "ab世界cde\u{301}\nnext\nlast");
+    // Starting on a wide character's right half takes the whole character.
+    let half = Selection {
+        anchor: point(&vt, 0, 3),
+        head: point(&vt, 0, 4),
+        unit: Unit::Char,
+    };
+    assert_eq!(half.text(&vt), "世界");
+    // Backward drags read the same.
+    let back = Selection {
+        anchor: point(&vt, 1, 1),
+        head: point(&vt, 0, 4),
+        unit: Unit::Char,
+    };
+    assert_eq!(back.text(&vt), "界cd");
+}
+
+#[test]
+fn words_and_lines_grow_from_a_click() {
+    let vt = vt(3, 30, b"cargo test -p coder-vt\r\nok");
+    let word = Selection::at(point(&vt, 0, 16), Unit::Word);
+    assert_eq!(word.text(&vt), "coder-vt");
+    let flag = Selection::at(point(&vt, 0, 11), Unit::Word);
+    assert_eq!(flag.text(&vt), "-p");
+    let line = Selection::at(point(&vt, 0, 3), Unit::Line);
+    assert_eq!(line.text(&vt), "cargo test -p coder-vt");
+    // A triple-click takes the whole logical line, wrapped rows included.
+    let narrow = super::tests::vt(3, 8, b"0123456789abc\r\nz");
+    let line = Selection::at(point(&narrow, 1, 2), Unit::Line);
+    assert_eq!(line.text(&narrow), "0123456789abc");
+    assert_eq!(
+        line.columns(&narrow, select::absolute(&narrow, 0), 8),
+        Some((0, 8))
+    );
+}
+
+#[test]
+fn a_selection_follows_its_text_into_the_scrollback() {
+    let mut vt = coder_vt::Terminal::new(3, 10, 4);
+    vt.feed(b"one\r\ntwo\r\n");
+    let two = Selection {
+        anchor: point(&vt, 1, 0),
+        head: point(&vt, 1, 2),
+        unit: Unit::Char,
+    };
+    for i in 0..5 {
+        vt.feed(format!("more{i}\r\n").as_bytes());
+    }
+    // "two" scrolled into the scrollback, and two lines left its front.
+    assert_eq!(vt.history_dropped(), 1);
+    assert_eq!(two.text(&vt), "two");
+    vt.feed(b"x\r\ny\r\nz\r\n");
+    // Once its line is dropped, the selection reads nothing.
+    assert_eq!(two.text(&vt), "");
+}
+
+#[test]
+fn search_finds_matches_toward_older_and_newer_lines() {
+    let vt = vt(5, 20, b"error one\r\nfine\r\nan Error two\r\nfine\r\n");
+    let from = point(&vt, 4, 0);
+    let (start, end) = select::search(&vt, "error", from, true).unwrap();
+    assert_eq!((start, end), (point(&vt, 2, 3), point(&vt, 2, 7)));
+    let (older, _) = select::search(&vt, "error", start, true).unwrap();
+    assert_eq!(older, point(&vt, 0, 0));
+    assert!(select::search(&vt, "error", older, true).is_none());
+    // Uppercase in the query matches case.
+    assert_eq!(
+        select::search(&vt, "Error", from, true).unwrap().0,
+        point(&vt, 2, 3)
+    );
+    let (newer, _) = select::search(&vt, "fine", point(&vt, 0, 0), false).unwrap();
+    assert_eq!(newer, point(&vt, 1, 0));
+    // A wide character's match ends on its right half.
+    let wide = super::tests::vt(2, 10, "a世b".as_bytes());
+    let (s, e) = select::search(&wide, "世", point(&wide, 1, 0), true).unwrap();
+    assert_eq!((s.col, e.col), (1, 2));
+}
+
+fn modifiers(ctrl: bool, alt: bool, shift: bool) -> coder_vt::Modifiers {
+    coder_vt::Modifiers { ctrl, alt, shift }
+}
+
+#[test]
+fn option_sends_meta_on_macos_when_set() {
+    let vt = vt(2, 10, b"");
+    // Option+F composes "ƒ"; as Meta it sends Escape and "f".
+    let mut key = char_key(KeyCode::KeyF, "ƒ");
+    key.plain = Some("f".into());
+    let alt = modifiers(false, true, false);
+    assert_eq!(
+        super::keys::encode(&key, alt, &vt, true, true).unwrap(),
+        b"\x1bf"
+    );
+    assert_eq!(
+        super::keys::encode(&key, alt, &vt, false, true).unwrap(),
+        "ƒ".as_bytes()
+    );
+    // Shift with Option sends the shifted character.
+    let shifted = modifiers(false, true, true);
+    assert_eq!(
+        super::keys::encode(&key, shifted, &vt, true, true).unwrap(),
+        b"\x1bF"
+    );
+    // Without the platform's unmodified key, the physical key answers.
+    key.plain = None;
+    assert_eq!(
+        super::keys::encode(&key, alt, &vt, true, true).unwrap(),
+        b"\x1bf"
+    );
+    // Off macOS, Alt is always Meta.
+    let mut key = char_key(KeyCode::KeyB, "b");
+    key.plain = None;
+    assert_eq!(
+        super::keys::encode(&key, alt, &vt, false, false).unwrap(),
+        b"\x1bb"
+    );
+    // Ctrl+Option+B: Escape and Ctrl+B.
+    let ctrl_alt = modifiers(true, true, false);
+    key.text = Some("∫".into());
+    key.logical = Logical::Character(SmolStr::new("∫"));
+    assert_eq!(
+        super::keys::encode(&key, ctrl_alt, &vt, true, true).unwrap(),
+        b"\x1b\x02"
+    );
+}
+
+#[test]
+fn named_keypad_and_function_keys_encode_as_xterm() {
+    let mut vt = vt(2, 10, b"");
+    let none = modifiers(false, false, false);
+    let named = |n: NamedKey| key(KeyCode::F1, Logical::Named(n), None);
+    let enc =
+        |vt: &coder_vt::Terminal, k: &KeyIn, m| super::keys::encode(k, m, vt, true, true).unwrap();
+    assert_eq!(enc(&vt, &named(NamedKey::F12), none), b"\x1b[24~");
+    assert_eq!(enc(&vt, &named(NamedKey::F20), none), b"\x1b[19;2~");
+    assert_eq!(enc(&vt, &named(NamedKey::Home), none), b"\x1b[H");
+    assert_eq!(enc(&vt, &named(NamedKey::PageDown), none), b"\x1b[6~");
+    assert_eq!(
+        enc(
+            &vt,
+            &named(NamedKey::ArrowLeft),
+            modifiers(true, false, false)
+        ),
+        b"\x1b[1;5D"
+    );
+    assert_eq!(
+        enc(
+            &vt,
+            &named(NamedKey::ArrowRight),
+            modifiers(false, true, false)
+        ),
+        b"\x1b[1;3C"
+    );
+    let pad = key(
+        KeyCode::Numpad7,
+        Logical::Character(SmolStr::new("7")),
+        Some("7"),
+    );
+    assert_eq!(enc(&vt, &pad, none), b"7");
+    vt.feed(b"\x1b=");
+    assert_eq!(enc(&vt, &pad, none), b"\x1bOw");
+    let enter = key(KeyCode::NumpadEnter, Logical::Named(NamedKey::Enter), None);
+    assert_eq!(enc(&vt, &enter, none), b"\x1bOM");
+}
+
+#[test]
+fn fallback_glyphs_fill_the_atlas_and_shapes_need_none() {
+    let mut atlas = crate::ui::Atlas::new(16.0);
+    atlas.reserve_glyphs(256).unwrap();
+    let mut fallback = super::glyphs::Fallback::new();
+    // Fira Mono has these beyond the prebuilt set.
+    for c in ['λ', 'Ж', '→', '≠'] {
+        assert!(!atlas.has_glyph(c) || c == '→', "{c} was prebuilt");
+        assert!(fallback.ensure(&mut atlas, c), "{c} not rasterized");
+        assert!(atlas.has_glyph(c));
+    }
+    // Combining marks too.
+    assert!(fallback.ensure(&mut atlas, '\u{301}'));
+    let mark = atlas.glyph_box('\u{301}').unwrap();
+    assert!(mark.size[0] > 0.0, "{mark:?}");
+    let accented = vt(1, 4, "e\u{301}".as_bytes());
+    assert_eq!(accented.row(0).unwrap().cells[0].combining, ['\u{301}']);
+    let mut batch = crate::ui::UiBatch::default();
+    super::draw::grid(
+        &mut batch,
+        &atlas,
+        [0.0, 0.0],
+        &super::draw::Grid {
+            rows: vec![accented.row(0).unwrap()],
+        },
+    );
+    assert_eq!(batch.vertices.len(), 12, "the base and its mark");
+    // Box drawing, blocks, braille, and powerline separators are shapes.
+    for c in ['─', '█', '⣿', '⡀', '\u{e0b0}', '\u{e0b3}'] {
+        assert!(super::draw::shaped(c), "{c} is not a shape");
+    }
+    assert_eq!(super::draw::braille('⣿').unwrap().len(), 8);
+    assert_eq!(super::draw::braille('⡀').unwrap(), vec![(0, 3)]);
+    // A private-use character no font has is remembered as missing.
+    assert!(!fallback.ensure(&mut atlas, '\u{f8ff}') || atlas.has_glyph('\u{f8ff}'));
+    // This computer's fonts cover CJK, symbols, and emoji.
+    if cfg!(target_os = "macos") {
+        for c in ['世', '界', '✓', '😀', '⎇'] {
+            assert!(fallback.ensure(&mut atlas, c), "{c} not found");
+        }
+        let wide = atlas.glyph_box('世').unwrap();
+        assert!(wide.advance > atlas.advance * 1.5);
+    }
+}
+
+#[test]
+fn shapes_draw_without_question_marks() {
+    let atlas = crate::ui::Atlas::new(16.0);
+    let row = vt(1, 6, "⣿\u{e0b0}?".as_bytes());
+    let mut batch = crate::ui::UiBatch::default();
+    super::draw::grid(
+        &mut batch,
+        &atlas,
+        [0.0, 0.0],
+        &super::draw::Grid {
+            rows: vec![row.row(0).unwrap()],
+        },
+    );
+    // Eight dots, one triangle, and the one real '?'.
+    assert_eq!(batch.vertices.len(), 8 * 6 + 3 + 6);
+    // A wide character the atlas lacks still takes two columns, and a
+    // missing one shows '?'.
+    let mut batch = crate::ui::UiBatch::default();
+    let wide = vt(1, 6, "世".as_bytes());
+    super::draw::grid(
+        &mut batch,
+        &atlas,
+        [0.0, 0.0],
+        &super::draw::Grid {
+            rows: vec![wide.row(0).unwrap()],
+        },
+    );
+    assert_eq!(batch.vertices.len(), 6);
+}
+
+#[test]
+fn the_buttons_card_never_covers_the_open_overlay() {
+    let size = [1280.0, 800.0];
+    let overlay = Rect::new(45.0, 40.0, 1190.0, 616.0);
+    let button = Rect::new(900.0, 690.0, 44.0, 44.0);
+    let card = [560.0, 90.0];
+    let closed = Overlay::card_for(size, button, card, None);
+    assert!(closed.y + closed.h <= button.y);
+    let open = Overlay::card_for(size, button, card, Some(overlay));
+    assert!(open.y >= overlay.y + overlay.h, "{open:?}");
+    assert!(open.x >= button.x + button.w || open.x + open.w <= button.x);
+    assert!(open.x >= 0.0 && open.x + open.w <= size[0]);
+    // With no room on the right, the card goes left of the button.
+    let corner = Rect::new(1220.0, 690.0, 44.0, 44.0);
+    let left = Overlay::card_for(size, corner, card, Some(overlay));
+    assert!(left.x + left.w <= corner.x);
+}
+
+#[test]
+fn only_web_mail_and_file_links_open() {
+    use super::mouse::link_allowed;
+    assert!(link_allowed("https://openagents.com/docs"));
+    assert!(link_allowed("mailto:someone@example.com"));
+    assert!(link_allowed("file:///tmp/notes.txt"));
+    assert!(!link_allowed("javascript:alert(1)"));
+    assert!(!link_allowed("ssh://host"));
+    assert!(!link_allowed("https://x\n"));
+}
+
+fn sh(script: &str) -> Program {
+    Program::Command {
+        program: "/bin/sh".into(),
+        args: vec!["-c".into(), script.into()],
+        label: "sh".into(),
+    }
+}
+
+/// The point at the middle of cell (row, col) of the overlay's only pane.
+fn cell_point(overlay: &Overlay, row: usize, col: usize) -> [f32; 2] {
+    let inner = super::draw::inner(overlay.area, overlay.cell);
+    [
+        inner.x + (col as f32 + 0.5) * overlay.cell[0],
+        inner.y + (row as f32 + 0.5) * overlay.cell[1],
+    ]
+}
+
+#[cfg(unix)]
+#[test]
+fn a_drag_selects_and_copy_takes_the_selection() {
+    let root = tempfile::tempdir().unwrap();
+    let mut overlay = Overlay::with(
+        root.path(),
+        "/bin/sh".into(),
+        sh("printf 'alpha beta gamma\\n'; exec cat"),
+    );
+    overlay.open = true;
+    overlay.focused = true;
+    overlay.ensure_started();
+    let text = wait(&mut overlay, |t| t.contains("gamma"));
+    assert!(text.contains("alpha beta gamma"), "{text}");
+    // A drag from "beta" to "gam".
+    assert!(overlay.press(cell_point(&overlay, 0, 6)));
+    overlay.pointer(cell_point(&overlay, 0, 12));
+    assert!(overlay.release(cell_point(&overlay, 0, 12)));
+    assert_eq!(overlay.selected_text().as_deref(), Some("beta ga"));
+    overlay.modifiers(ModifiersState::SUPER | ModifiersState::CONTROL | ModifiersState::SHIFT);
+    // Cmd+C on macOS, Ctrl+Shift+C elsewhere.
+    if cfg!(target_os = "macos") {
+        overlay.modifiers(ModifiersState::SUPER);
+    } else {
+        overlay.modifiers(ModifiersState::CONTROL | ModifiersState::SHIFT);
+    }
+    assert!(overlay.key(&char_key(KeyCode::KeyC, "c")));
+    overlay.modifiers(ModifiersState::empty());
+    assert_eq!(overlay.copied.as_deref(), Some("beta ga"));
+    // A double-click takes a word, a triple-click the line.
+    overlay.press(cell_point(&overlay, 0, 13));
+    overlay.release(cell_point(&overlay, 0, 13));
+    overlay.press(cell_point(&overlay, 0, 13));
+    overlay.release(cell_point(&overlay, 0, 13));
+    assert_eq!(overlay.selected_text().as_deref(), Some("gamma"));
+    overlay.press(cell_point(&overlay, 0, 13));
+    overlay.release(cell_point(&overlay, 0, 13));
+    assert_eq!(overlay.selected_text().as_deref(), Some("alpha beta gamma"));
+    // A single click clears it.
+    std::thread::sleep(Duration::from_millis(450));
+    overlay.press(cell_point(&overlay, 0, 2));
+    overlay.release(cell_point(&overlay, 0, 2));
+    assert_eq!(overlay.selected_text(), None);
+    overlay.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn programs_that_ask_get_mouse_reports_focus_events_and_clipboard_writes() {
+    let root = tempfile::tempdir().unwrap();
+    // The terminal's own echo shows what reaches the program: Escape as ^[.
+    let mut overlay = Overlay::with(
+        root.path(),
+        "/bin/sh".into(),
+        sh(
+            "printf '\\033[?1000h\\033[?1006h\\033[?1004h\\033]52;c;Y29waWVk\\007ready\\n'; exec cat",
+        ),
+    );
+    overlay.open = true;
+    overlay.focused = true;
+    overlay.ensure_started();
+    let text = wait(&mut overlay, |t| t.contains("ready"));
+    assert!(text.contains("ready"), "{text}");
+    // The focused pane's clipboard write was honored.
+    assert_eq!(overlay.copied.as_deref(), Some("copied"));
+    // Focus changes are reported once the program asked: out to the
+    // world, and back in.
+    overlay.modifiers(ModifiersState::CONTROL);
+    overlay.key(&char_key(KeyCode::Backquote, "`"));
+    overlay.tick();
+    overlay.key(&char_key(KeyCode::Backquote, "`"));
+    overlay.modifiers(ModifiersState::empty());
+    let text = wait(&mut overlay, |t| t.contains("^[[O^[[I"));
+    assert!(text.contains("^[[O^[[I"), "{text}");
+    // A click is reported, not selected.
+    overlay.press(cell_point(&overlay, 2, 5));
+    overlay.release(cell_point(&overlay, 2, 5));
+    let text = wait(&mut overlay, |t| t.contains("^[[<0;6;3m"));
+    assert!(text.contains("^[[<0;6;3M^[[<0;6;3m"), "{text}");
+    assert_eq!(overlay.selected_text(), None);
+    // The wheel too.
+    overlay.wheel(cell_point(&overlay, 1, 1), 1.0);
+    let text = wait(&mut overlay, |t| t.contains("^[[<64;2;2M"));
+    assert!(text.contains("^[[<64;2;2M"), "{text}");
+    // Shift keeps the mouse for selection.
+    overlay.modifiers(ModifiersState::SHIFT);
+    overlay.press(cell_point(&overlay, 0, 0));
+    overlay.pointer(cell_point(&overlay, 0, 4));
+    overlay.release(cell_point(&overlay, 0, 4));
+    overlay.modifiers(ModifiersState::empty());
+    assert_eq!(overlay.selected_text().as_deref(), Some("ready"));
+    overlay.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_background_pane_cannot_write_the_clipboard() {
+    let root = tempfile::tempdir().unwrap();
+    let mut overlay = Overlay::with(root.path(), "/bin/sh".into(), sh("exec cat"));
+    overlay.open = true;
+    overlay.focused = true;
+    overlay.ensure_started();
+    overlay.split(
+        Axis::Columns,
+        &sh("sleep 0.3; printf '\\033]52;c;c2VjcmV0\\007written\\n'; exec cat"),
+    );
+    // Focus goes back to the first pane before the second one writes.
+    overlay.modifiers(ModifiersState::CONTROL);
+    overlay.key(&char_key(KeyCode::KeyB, "b"));
+    overlay.modifiers(ModifiersState::empty());
+    overlay.key(&key(
+        KeyCode::ArrowLeft,
+        Logical::Named(NamedKey::ArrowLeft),
+        None,
+    ));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while overlay.notice.is_none() && Instant::now() < deadline {
+        overlay.tick();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(overlay.copied, None);
+    assert!(
+        overlay.notice.as_deref().unwrap_or("").contains("refused"),
+        "{:?}",
+        overlay.notice
+    );
+    overlay.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_mode_moves_selects_searches_and_copies() {
+    let root = tempfile::tempdir().unwrap();
+    let mut overlay = Overlay::with(
+        root.path(),
+        "/bin/sh".into(),
+        sh("for i in 1 2 3 4 5 6 7 8 9; do echo line$i; done; echo needle here; exec cat"),
+    );
+    overlay.open = true;
+    overlay.focused = true;
+    overlay.ensure_started();
+    wait(&mut overlay, |t| t.contains("needle"));
+    let prefix = |overlay: &mut Overlay| {
+        overlay.modifiers(ModifiersState::CONTROL);
+        overlay.key(&char_key(KeyCode::KeyB, "b"));
+        overlay.modifiers(ModifiersState::empty());
+    };
+    // Search for "line3", then select to the end of the word and copy.
+    prefix(&mut overlay);
+    overlay.key(&char_key(KeyCode::Slash, "/"));
+    for c in ["l", "i", "n", "e", "3"] {
+        overlay.key(&char_key(KeyCode::KeyL, c));
+    }
+    overlay.key(&key(KeyCode::Enter, Logical::Named(NamedKey::Enter), None));
+    assert_eq!(overlay.selected_text().as_deref(), Some("line3"));
+    // v starts a selection at the match; j moves down a line.
+    overlay.key(&char_key(KeyCode::KeyV, "v"));
+    overlay.key(&char_key(KeyCode::KeyJ, "j"));
+    overlay.key(&char_key(KeyCode::KeyL, "l"));
+    assert_eq!(overlay.selected_text().as_deref(), Some("line3\nli"));
+    overlay.key(&char_key(KeyCode::KeyY, "y"));
+    assert_eq!(overlay.copied.as_deref(), Some("line3\nli"));
+    assert!(overlay.copy.is_none());
+    // Typing reaches the program again.
+    overlay.key(&char_key(KeyCode::KeyZ, "z"));
+    let text = wait(&mut overlay, |t| t.contains("here\nz") || t.ends_with('z'));
+    assert!(text.contains('z'), "{text}");
+    overlay.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_flood_of_output_is_applied_within_the_frame_budget() {
+    let root = tempfile::tempdir().unwrap();
+    let mut overlay = Overlay::with(root.path(), "/bin/sh".into(), sh("exec yes flood"));
+    overlay.open = true;
+    overlay.focused = true;
+    overlay.ensure_started();
+    overlay.split(Axis::Columns, &sh("exec yes second"));
+    overlay.stats.record = true;
+    // Let both fill their queues, then time frames.
+    std::thread::sleep(Duration::from_millis(300));
+    let mut worst = Duration::ZERO;
+    for _ in 0..20 {
+        let started = Instant::now();
+        overlay.tick();
+        worst = worst.max(started.elapsed());
+        overlay.frame_done(started);
+    }
+    // The budget plus one frame per pane and the resize checks.
+    assert!(
+        worst < super::UPDATE_BUDGET + Duration::from_millis(20),
+        "a tick took {worst:?}"
+    );
+    let most = overlay.stats.frames.iter().map(|f| f.bytes).max().unwrap();
+    assert!(most > 0);
+    assert!(
+        most <= 2 * (super::PANE_BYTES + coder_pty::wire::FRAME_MAX) as u64,
+        "{most} bytes in one frame"
+    );
+    overlay.shutdown();
 }

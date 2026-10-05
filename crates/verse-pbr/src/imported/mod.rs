@@ -417,6 +417,8 @@ pub struct Renderer {
     ui_pipeline: wgpu::RenderPipeline,
     ui_group: wgpu::BindGroup,
     _ui_screen: wgpu::Buffer,
+    /// The glyph atlas texture, rewritten when glyphs are added.
+    ui_texture: wgpu::Texture,
     ui_buffer: wgpu::Buffer,
     pub adapter_name: String,
     pub device_profile: serde_json::Value,
@@ -1244,8 +1246,10 @@ impl Renderer {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        let (_, ui_pipeline, ui_group, ui_screen) =
-            verse_gfx::ui_pipeline::ui_pipeline(&device, &queue, format, samples, atlas);
+        let (_, ui_pipeline, ui_group, ui_screen, ui_texture) =
+            verse_gfx::ui_pipeline::ui_pipeline_with_texture(
+                &device, &queue, format, samples, atlas,
+            );
         queue.write_buffer(
             &ui_screen,
             0,
@@ -1334,6 +1338,7 @@ impl Renderer {
             ui_pipeline,
             ui_group,
             _ui_screen: ui_screen,
+            ui_texture,
             ui_buffer,
             marker_events: Vec::new(),
             playback: HashMap::new(),
@@ -1455,6 +1460,12 @@ impl Renderer {
     }
     /// Recreate admitted resources from immutable source after device loss, between frames.
     /// Presentation adapters must attach a new presenter when this returns true.
+    /// Uploads `atlas` again after glyphs were added to it. Returns false
+    /// when its size changed, which only a new renderer can take.
+    pub fn update_atlas(&self, atlas: &Atlas) -> bool {
+        verse_gfx::ui_pipeline::write_atlas(&self.queue, &self.ui_texture, atlas)
+    }
+
     pub fn recover_if_lost(&mut self, atlas: &Atlas) -> Result<bool, String> {
         let Some(reason) = self.health.reason(&self.device) else {
             return Ok(false);

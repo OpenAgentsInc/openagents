@@ -18,7 +18,7 @@ capture = []
 panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 # The in-world terminal overlay: panes on PTYs of this computer, drawn
 # from a `coder-vt` grid. Native desktop only.
-terminal = ["dep:coder-pty", "dep:coder-vt", "dep:winit", "dep:arboard"]
+terminal = ["dep:coder-pty", "dep:coder-vt", "dep:winit", "dep:arboard", "dep:memmap2"]
 # The Agent Studio from a live host, over its same-user control socket.
 studio-host = ["dep:openagents-connect"]
 imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface", "verse-pbr/imported-desktop"]
@@ -112,6 +112,9 @@ gym-bridge = { path = "../gym-bridge", default-features = false }
 gym-leaderboard = { path = "../gym-leaderboard", default-features = false, features = ["client"] }
 libc = "0.2"
 coder-pty = { path = "../coder-pty", optional = true }
+# The terminal's fallback fonts, mapped rather than read: the system emoji
+# font is about 190 MB.
+memmap2 = { version = "0.9", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 tokio = { version = "1", features = ["rt", "time", "net", "sync", "macros"] }
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
@@ -249,3 +252,7 @@ required-features = ["imported-desktop", "remote-chamber"]
 [[example]]
 name = "frame_profile"
 required-features = ["remote-chamber"]
+
+[[example]]
+name = "terminal_stress"
+required-features = ["desktop"]

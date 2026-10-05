@@ -20,8 +20,23 @@ pub enum Key {
     PageDown,
     Insert,
     Delete,
-    /// A function key, F1 to F12.
+    /// A function key, F1 to F24. F13 to F24 send F1 to F12 with Shift,
+    /// as xterm does.
     F(u8),
+    /// A keypad key: a digit, `.`, `,`, `+`, `-`, `*`, `/`, or `=`. In the
+    /// application keypad mode (DECKPAM) it sends `ESC O` and a letter.
+    Keypad(char),
+    /// The keypad's Enter.
+    KeypadEnter,
+}
+
+/// The terminal modes that change what a key sends.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct KeyModes {
+    /// Cursor keys send `ESC O` (DECCKM, mode 1).
+    pub application_cursor: bool,
+    /// Keypad keys send `ESC O` (DECKPAM).
+    pub application_keypad: bool,
 }
 
 /// Modifier keys held with a key.
@@ -75,6 +90,20 @@ pub fn control(character: char) -> Option<u8> {
 /// mode (DECCKM), which full-screen programs such as `vim` turn on.
 #[must_use]
 pub fn encode_key(key: Key, modifiers: Modifiers, application_cursor: bool) -> Vec<u8> {
+    encode_key_in(
+        key,
+        modifiers,
+        KeyModes {
+            application_cursor,
+            application_keypad: false,
+        },
+    )
+}
+
+/// Encodes one key press under the terminal's key `modes`.
+#[must_use]
+pub fn encode_key_in(key: Key, modifiers: Modifiers, modes: KeyModes) -> Vec<u8> {
+    let application_cursor = modes.application_cursor;
     let mut out = Vec::new();
     match key {
         Key::Char(character) => {
@@ -119,9 +148,41 @@ pub fn encode_key(key: Key, modifiers: Modifiers, application_cursor: bool) -> V
             let code = [15, 17, 18, 19, 20, 21, 23, 24][usize::from(number - 5)];
             tilde(&mut out, code, modifiers);
         }
+        Key::F(number @ 13..=24) => {
+            let shifted = Modifiers {
+                shift: true,
+                ..modifiers
+            };
+            return encode_key_in(Key::F(number - 12), shifted, modes);
+        }
         Key::F(_) => {}
+        Key::Keypad(character) => match keypad_letter(character) {
+            Some(letter) if modes.application_keypad && !modifiers.any() => {
+                out.extend_from_slice(&[0x1b, b'O', letter]);
+            }
+            _ => return encode_key_in(Key::Char(character), modifiers, modes),
+        },
+        Key::KeypadEnter if modes.application_keypad && !modifiers.any() => {
+            out.extend_from_slice(b"\x1bOM");
+        }
+        Key::KeypadEnter => simple(&mut out, modifiers, b"\r"),
     }
     out
+}
+
+/// The final letter a keypad key sends in the application keypad mode.
+fn keypad_letter(character: char) -> Option<u8> {
+    Some(match character {
+        '0'..='9' => b'p' + (character as u8 - b'0'),
+        '*' => b'j',
+        '+' => b'k',
+        ',' => b'l',
+        '-' => b'm',
+        '.' => b'n',
+        '/' => b'o',
+        '=' => b'X',
+        _ => return None,
+    })
 }
 
 /// A key whose only modifier encoding is an escape prefix for Alt.
@@ -237,7 +298,69 @@ mod tests {
         assert_eq!(encode_key(Key::F(1), Modifiers::NONE, false), b"\x1bOP");
         assert_eq!(encode_key(Key::F(5), Modifiers::NONE, false), b"\x1b[15~");
         assert_eq!(encode_key(Key::F(12), Modifiers::NONE, false), b"\x1b[24~");
-        assert!(encode_key(Key::F(13), Modifiers::NONE, false).is_empty());
+        assert_eq!(encode_key(Key::F(13), Modifiers::NONE, false), b"\x1b[1;2P");
+        assert_eq!(
+            encode_key(Key::F(17), Modifiers::NONE, false),
+            b"\x1b[15;2~"
+        );
+        assert_eq!(
+            encode_key(Key::F(24), Modifiers::NONE, false),
+            b"\x1b[24;2~"
+        );
+        assert!(encode_key(Key::F(25), Modifiers::NONE, false).is_empty());
+    }
+
+    #[test]
+    fn modified_navigation_keys_carry_the_xterm_parameter() {
+        let alt = Modifiers {
+            alt: true,
+            ..Modifiers::NONE
+        };
+        let ctrl_shift = Modifiers {
+            ctrl: true,
+            shift: true,
+            alt: false,
+        };
+        assert_eq!(encode_key(Key::Right, Modifiers::CTRL, false), b"\x1b[1;5C");
+        assert_eq!(encode_key(Key::Left, alt, false), b"\x1b[1;3D");
+        assert_eq!(encode_key(Key::End, ctrl_shift, true), b"\x1b[1;6F");
+        assert_eq!(
+            encode_key(Key::PageUp, Modifiers::CTRL, false),
+            b"\x1b[5;5~"
+        );
+        assert_eq!(encode_key(Key::F(3), alt, false), b"\x1b[1;3R");
+    }
+
+    #[test]
+    fn keypad_keys_follow_the_keypad_mode() {
+        let normal = KeyModes::default();
+        let application = KeyModes {
+            application_cursor: false,
+            application_keypad: true,
+        };
+        let none = Modifiers::NONE;
+        assert_eq!(encode_key_in(Key::Keypad('7'), none, normal), b"7");
+        assert_eq!(
+            encode_key_in(Key::Keypad('7'), none, application),
+            b"\x1bOw"
+        );
+        assert_eq!(
+            encode_key_in(Key::Keypad('0'), none, application),
+            b"\x1bOp"
+        );
+        assert_eq!(
+            encode_key_in(Key::Keypad('+'), none, application),
+            b"\x1bOk"
+        );
+        assert_eq!(
+            encode_key_in(Key::Keypad('.'), none, application),
+            b"\x1bOn"
+        );
+        assert_eq!(encode_key_in(Key::KeypadEnter, none, normal), b"\r");
+        assert_eq!(
+            encode_key_in(Key::KeypadEnter, none, application),
+            b"\x1bOM"
+        );
     }
 
     #[test]

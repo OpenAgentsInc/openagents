@@ -120,24 +120,44 @@ fn promote_outcome_credit(result: DispatchReply, credit: Option<&Control>) -> Di
     let Some(credit) = credit else {
         return Ok((bytes, authenticated));
     };
+    let header: ResponseHeader =
+        serde_json::from_slice(&bytes).map_err(|_| "Invalid deferred chamber outcome")?;
+    if matches!(header.body.kind.as_str(), "snapshot" | "replicated")
+        || header.control.as_ref().is_none_or(|control| {
+            control.life != credit.life
+                || control.epoch != credit.epoch
+                || control.world_step >= credit.world_step
+        })
+    {
+        return Ok((bytes, authenticated));
+    }
     let mut response: Response =
         serde_json::from_slice(&bytes).map_err(|_| "Invalid deferred chamber outcome")?;
-    if !matches!(
-        response.body,
-        Reply::Snapshot { .. } | Reply::Replicated { .. }
-    ) {
-        if let Some(control) = &mut response.control {
-            if control.life == credit.life
-                && control.epoch == credit.epoch
-                && control.world_step < credit.world_step
-            {
-                control.world_step = credit.world_step;
-                return response.encode().map(|bytes| (bytes, authenticated));
-            }
-        }
-    }
-    Ok((bytes, authenticated))
+    response.control.as_mut().unwrap().world_step = credit.world_step;
+    response.encode().map(|bytes| (bytes, authenticated))
 }
+fn checkpoint_replies(
+    pending: &mut Vec<PendingReply>,
+    mut credits: BTreeMap<ConnectionId, Control>,
+) -> Result<Vec<(oneshot::Sender<DispatchReply>, DispatchReply)>, String> {
+    // A snapshot limits only earlier replies on its connection. Later replies
+    // can advertise the checkpoint's newer time without regressing that snapshot.
+    let mut replies = pending
+        .drain(..)
+        .rev()
+        .map(|pending| {
+            cap_outcome_snapshot_credit(&mut credits, std::slice::from_ref(&pending))?;
+            let PendingResponse::Outcome(result) = pending.response;
+            Ok((
+                pending.reply,
+                promote_outcome_credit(result, credits.get(&pending.id)),
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    replies.reverse();
+    Ok(replies)
+}
+
 struct CommitView {
     tick: u64,
     instance: u64,
@@ -543,18 +563,10 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         }
                     };
                     let capture = Instant::now();
-                    let mut credits = gateway.committed_controls();
-                    if let Err(error) = cap_outcome_snapshot_credit(&mut credits, &pending) {
-                        failure = Some(error);
-                        break;
-                    }
-                    let replies = pending.drain(..).map(|pending| {
-                        let result = match pending.response {
-                            PendingResponse::Outcome(result) => promote_outcome_credit(result, credits.get(&pending.id)),
-
-                        };
-                        (pending.reply, result)
-                    }).collect();
+                    let replies = match checkpoint_replies(&mut pending, gateway.committed_controls()) {
+                        Ok(replies) => replies,
+                        Err(error) => {failure = Some(error); break;}
+                    };
                     let copy = Instant::now();
                     let prepared = match super::save::Prepared::capture(&gateway) {
                         Ok(prepared) => prepared,
@@ -1454,6 +1466,42 @@ pub(super) mod tests {
                 .unwrap()
                 .0;
         assert_eq!(unchanged, snapshot.encode().unwrap());
+        let make_pending = |id, response: Response| {
+            let (reply, _) = oneshot::channel();
+            PendingReply {
+                id,
+                reply,
+                response: PendingResponse::Outcome(Ok((response.encode().unwrap(), true))),
+            }
+        };
+        let mut ordered = vec![
+            make_pending(first, acknowledgment.clone()),
+            make_pending(second, acknowledgment.clone()),
+            make_pending(first, snapshot.clone()),
+            make_pending(first, acknowledgment.clone()),
+        ];
+        let replies = checkpoint_replies(
+            &mut ordered,
+            BTreeMap::from([(first, current.clone()), (second, current.clone())]),
+        )
+        .unwrap();
+        let controls: Vec<_> = replies
+            .into_iter()
+            .map(|(_, result)| {
+                let response: Response = serde_json::from_slice(&result.unwrap().0).unwrap();
+                response.control.unwrap()
+            })
+            .collect();
+        assert_eq!(controls[0].world_step, old.world_step);
+        assert_eq!(controls[1].world_step, current.world_step);
+        assert_eq!(controls[2].world_step, old.world_step);
+        assert_eq!(controls[3].world_step, current.world_step);
+        assert!(
+            controls
+                .iter()
+                .all(|c| c.accepted_sequence == old.accepted_sequence)
+        );
+        assert!(ordered.is_empty());
         let Reply::Snapshot { state } = snapshot.body else {
             panic!("Expected owned snapshot");
         };

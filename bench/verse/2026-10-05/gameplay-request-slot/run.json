@@ -1,0 +1,47 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "published_revision": "cbed11fd6be9cab314410e67b91c52fedeed1a10",
+  "tested_base_revision": "aad0643554",
+  "source_patch_sha256": "a755602bee4869c7725868e51f78e7542fd86a342163fbeeab51751ab83752b3",
+  "target": "Linux x86_64",
+  "checks": {
+    "command": "cargo test -p verse-world --features service-net --lib -- service::worker:: service::net:: service::client::tests::context_and_control",
+    "passed": 39,
+    "failed": 0,
+    "runtime_seconds": 5.18
+  },
+  "regression": "Withheld TLS replies leave capacity for a sixth movement frame after five movement frames and periodic polling. All six bindings succeed without any delivered outcome.",
+  "bounds": {
+    "pipeline_capacity": 8,
+    "periodic_read_maximum_pending_before_send": 6,
+    "movement_send_steps": 6,
+    "movement_max_lag_steps": 32
+  },
+  "limitations": [
+    "Focused checks do not prove crowded performance acceptance.",
+    "The synthetic peer checks transmission and queue ordering, not authoritative acceptance of all proposed movement frames.",
+    "The crowded battle is a separate acceptance run."
+  ],
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "cbed11fd6be9cab314410e67b91c52fedeed1a10",
+      "verse_load": "cbed11fd6be9cab314410e67b91c52fedeed1a10"
+    },
+    "wire_version": 27,
+    "sha256": {
+      "verse_remote": "fd1bc513fafe793ade7f78d4617bcc82c91973fadc2ee1388085ea02cc9a40f6",
+      "verse_load": "390e3f8fc3f750be110fcb51c37b76419ce42b0724776e74466e22efe547afe2"
+    },
+    "client_platform": "macOS arm64",
+    "client_features": [
+      "imported-desktop",
+      "remote-chamber"
+    ],
+    "movement_send_steps": 6,
+    "authority_credit_source": "verified snapshots and control acknowledgments",
+    "periodic_reads_reserve_gameplay_slot": true,
+    "status": "complete",
+    "wall_seconds": 434
+  }
+}

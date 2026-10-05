@@ -59,6 +59,10 @@ pub const UPDATE_CAPACITY: usize = 8;
 /// Leaves request capacity for 30 Hz input refreshes and spell commands.
 pub const NATIVE_CADENCE: Duration = Duration::from_millis(50);
 
+fn periodic_read_room(pending: usize, queued: bool) -> bool {
+    !queued && pending < super::client::PIPELINE_CAPACITY - 1
+}
+
 /// Local input requests contain no principal, controller, or transport handle.
 pub enum Input {
     Command(Intent<Ability>),
@@ -458,6 +462,7 @@ async fn run_impl(
             tokio::select! {
                 _ = tokio::time::sleep_until(snapshot_due), if !input_closed && !barrier
                     && staged.is_none() && client.available() && !snapshot_pending
+                    && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
                     && last_snapshot_sent.is_some() && read_backoff.ready(0, tokio::time::Instant::now()) => {
                     client.send_snapshot()?;
                     last_snapshot_sent = Some(tokio::time::Instant::now());
@@ -537,12 +542,14 @@ async fn run_impl(
                         last_snapshot_sent = Some(tokio::time::Instant::now());
                         snapshot_pending = true;
                     }
-                    if client.available() && !events_pending && read_backoff.ready(1, tokio::time::Instant::now()) {
+                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
+                        && !events_pending && read_backoff.ready(1, tokio::time::Instant::now()) {
                         client.send(Body::Events { after: cursor.after(), limit: 64 })?;
                         events_pending = true;
                     }
                     let life = client.control().map(|c| c.life);
-                    if client.available() && !inventory_pending && life.is_some()
+                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
+                        && !inventory_pending && life.is_some()
                         && read_backoff.ready(2, tokio::time::Instant::now())
                         && (life != inventory_life || tokio::time::Instant::now() >= next_inventory) {
                         client.send(Body::Inventory {})?;
@@ -983,6 +990,125 @@ mod tests {
         let _ = host_stop.send(());
         host.await.unwrap();
     }
+    #[tokio::test]
+    async fn periodic_reads_leave_a_gameplay_slot_when_replies_are_withheld() {
+        use crate::service::net::{
+            read_frame,
+            tests::{gateway, tls},
+            write_frame,
+        };
+        use crate::service::wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request};
+        use tokio::net::TcpListener;
+        use tokio_rustls::TlsAcceptor;
+        let keys = [key(224), key(225), key(226)];
+        let mut gateway = gateway(&keys);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let (admitted, mut observed) = mpsc::channel(16);
+        let (peer_stop, peer_stopping) = oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = TlsAcceptor::from(server_tls).accept(socket).await.unwrap();
+            let (id, hello) = gateway.open_json(0).unwrap();
+            write_frame(&mut socket, &hello, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let auth = read_frame(&mut socket, MAX_REQUEST_BYTES).await.unwrap();
+            let response = gateway.dispatch_json(id, 0, &auth).unwrap();
+            write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            tokio::pin!(peer_stopping);
+            loop {
+                tokio::select! {
+                    _ = &mut peer_stopping => break,
+                    bytes = read_frame(&mut socket, MAX_REQUEST_BYTES) => {
+                        let Ok(bytes) = bytes else { break };
+                        let request = Request::decode(&bytes).unwrap();
+                        admitted.send(matches!(request.body, Body::MovementFrame { .. })).await.unwrap();
+                    }
+                }
+            }
+        });
+        let client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let control = client.control().unwrap().clone();
+        let frame_input = |token| Input::MovementFrame {
+            token,
+            frame: crate::movement::frames::Frame {
+                life: control.life.into(),
+                epoch: control.epoch,
+                sequence: 0,
+                tick: 0,
+                start: (token - 1) * 6,
+                steps: 6,
+                segments: vec![crate::movement::frames::Segment {
+                    offset: 0,
+                    axes: [0., 0.],
+                    yaw: 0.,
+                    until: (token - 1) * 6 + crate::movement::HELD_STEPS,
+                    jump: false,
+                }],
+            },
+        };
+        let (input, inputs, updates, mut output) = channels();
+        for token in 1..=5 {
+            input.send(frame_input(token)).await.unwrap();
+        }
+        let (stop, stopping) = oneshot::channel();
+        let task = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            NATIVE_CADENCE,
+            inputs,
+            updates,
+            stopping,
+        ));
+        let mut commands = 0;
+        timeout(Duration::from_secs(2), async {
+            while commands < 5 {
+                if observed.recv().await.unwrap() {
+                    commands += 1;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        // Polling has time to use the remaining observation slots while replies stay withheld.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        input.send(frame_input(6)).await.unwrap();
+        timeout(Duration::from_millis(300), async {
+            while commands < 6 {
+                if observed.recv().await.unwrap() {
+                    commands += 1;
+                }
+            }
+        })
+        .await
+        .expect("Periodic reads occupied the last gameplay slot");
+        let mut bound = 0;
+        while let Ok(update) = output.try_recv() {
+            let Update::FrameBound { binding, .. } = update else {
+                panic!("A withheld response was delivered")
+            };
+            assert!(binding.is_ok());
+            bound += 1;
+        }
+        assert_eq!(bound, 6);
+        let _ = stop.send(());
+        task.await.unwrap().unwrap();
+        let _ = peer_stop.send(());
+        peer.await.unwrap();
+    }
+
     #[tokio::test]
     async fn worker_pipelines_ordered_actions_before_command_acknowledgments() {
         use crate::service::net::{

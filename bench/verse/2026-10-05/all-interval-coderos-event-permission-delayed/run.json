@@ -1,0 +1,78 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "compiled_revision": "3bf2ac7230bf471f1bffe5c78eeca654bab67939",
+  "client_compiled_revision": "f6ed2aa223c7fed2c163c62da1cfd4255048a529",
+  "host_binary_sha256": "0ab85636c64fb202a1f45c8f5fff3df251d103b17caa15c417dd3a0672eaeceb",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "wire_version": 27,
+  "movement_send_steps": 6,
+  "timings": {
+    "frame_interval_ms": {
+      "samples": 4657,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 8.970832999999999,
+      "p95": 13.682667,
+      "p99": 16.748334,
+      "maximum": 22.275958
+    },
+    "gpu_total_ms": {
+      "samples": 4655,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 2.092792,
+      "p95": 8.337583,
+      "p99": 10.078042,
+      "maximum": 13.240708
+    },
+    "command_turnaround_ms": {
+      "samples": 313,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 209.52875,
+      "p95": 268.692208,
+      "p99": 380.27358300000003,
+      "maximum": 447.619041
+    },
+    "sdk_verified_snapshot_age_ms": {
+      "samples": 4657,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 104.639542,
+      "p95": 239.123375,
+      "p99": 359.761292,
+      "maximum": 461.311833
+    }
+  },
+  "movement_expiry": {
+    "total": 1205,
+    "admission": 106,
+    "primary_tick": 27,
+    "additional_tick": 1072,
+    "bootstrap": 98,
+    "omitted": 1173
+  },
+  "native_reset_reasons": {
+    "control_epoch": 82
+  },
+  "validation": [
+    "58 focused auth, wire, network, and worker checks pass.",
+    "Updated Linux host build passes.",
+    "Native, headless load, and host exit zero.",
+    "All 19 headless rows observe 20 players and at least 40 live hostiles throughout their battle samples.",
+    "Controlled delayed route retains failed movement acceptance."
+  ],
+  "limitations": [
+    "Shared machine load prevents causal attribution across successive runs.",
+    "Repeatability, impaired-network, input-to-display, and soak acceptance remain unproven.",
+    "One completed baseline does not establish full roadmap acceptance.",
+    "Proxy delay applies to ordered TCP chunks and does not simulate packet loss."
+  ],
+  "movement_inputs": 9265,
+  "producer_pressure": 0,
+  "delay_ms": 40,
+  "jitter_ms": 20
+}

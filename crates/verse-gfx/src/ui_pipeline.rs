@@ -15,16 +15,23 @@ pub fn ui_pipeline(
     wgpu::BindGroup,
     wgpu::Buffer,
 ) {
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("verse glyph atlas"),
-        size: extent(atlas.width, atlas.height),
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    });
+    let (pipeline, photo, group, screen, _) =
+        ui_pipeline_with_texture(device, queue, format, samples, atlas);
+    (pipeline, photo, group, screen)
+}
+
+/// Writes `atlas` again into `texture`, the atlas texture
+/// [`ui_pipeline_with_texture`] made, when it still has the texture's size.
+/// Returns false when the size changed and the pipeline must be rebuilt.
+pub fn write_atlas(queue: &wgpu::Queue, texture: &wgpu::Texture, atlas: &Atlas) -> bool {
+    if texture.width() != atlas.width || texture.height() != atlas.height {
+        return false;
+    }
+    upload(queue, texture, atlas);
+    true
+}
+
+fn upload(queue: &wgpu::Queue, texture: &wgpu::Texture, atlas: &Atlas) {
     let rgba = atlas.rgba.clone().unwrap_or_else(|| {
         atlas
             .pixels
@@ -34,7 +41,7 @@ pub fn ui_pipeline(
     });
     queue.write_texture(
         wgpu::TexelCopyTextureInfo {
-            texture: &texture,
+            texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
@@ -47,6 +54,34 @@ pub fn ui_pipeline(
         },
         extent(atlas.width, atlas.height),
     );
+}
+
+/// [`ui_pipeline`], and the atlas texture for [`write_atlas`].
+#[allow(clippy::type_complexity)]
+pub fn ui_pipeline_with_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    format: wgpu::TextureFormat,
+    samples: u32,
+    atlas: &Atlas,
+) -> (
+    wgpu::RenderPipeline,
+    wgpu::RenderPipeline,
+    wgpu::BindGroup,
+    wgpu::Buffer,
+    wgpu::Texture,
+) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("verse glyph atlas"),
+        size: extent(atlas.width, atlas.height),
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    upload(queue, &texture, atlas);
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         label: Some("verse glyph sampler"),
@@ -167,6 +202,7 @@ pub fn ui_pipeline(
         pipeline(1, false),
         bind_group,
         screen,
+        texture,
     )
 }
 

@@ -52,6 +52,37 @@ key|read|tab|zoom` is the client (`docs/cli/README.md`); `send` and `key`
 go through `coder_vt::Terminal::paste` and `key`, the same encoding as the
 keyboard, and nothing from the socket reaches NIP-MV, chat, or presence.
 
+Since the parity pass of October 5, 2026, the overlay behaves like a normal
+terminal:
+
+- **Copy.** A drag selects, a double-click selects a word, and a
+  triple-click selects the line, across the scrollback; Shift+click extends.
+  Cmd+C copies (Ctrl+Shift+C off macOS) and Cmd+V pastes, bracketed when
+  the program asked. The prefix, then `[`, enters copy mode (vi keys, `v`
+  and `V` select, `y` copies); the prefix, then `/`, searches the
+  scrollback, and `n` and `N` repeat the search.
+- **Programs.** Mouse reporting (modes 9, 1000, 1002, and 1003 in the
+  default, UTF-8, SGR, and urxvt encodings) reaches programs that ask, such
+  as `vim`, `less`, and `htop`; Shift keeps the mouse for selection. Focus
+  events, cursor shapes and blink, OSC 8 links (Cmd+click opens web, mail,
+  and file links), and OSC 52 clipboard writes from the focused pane work.
+  No program can read the clipboard, and a background pane cannot write
+  it. A bell lights the pane's title bar.
+- **Keys.** Option is Meta by default (the prefix, then `m`, toggles it),
+  and F1 to F24, the keypad in both modes, and modified navigation keys
+  send what xterm sends.
+- **Text.** Wide characters take two cells, combining marks draw over
+  their character, and characters Fira Mono's prebuilt set lacks are
+  rasterized on demand from Fira Mono and this computer's fonts (CJK,
+  symbols, and emoji as a grayscale mask in the white ladder). Box drawing,
+  blocks, braille, and powerline separators are drawn as shapes.
+- **Performance.** Each frame applies output for at most 3 ms and 256 KiB a
+  pane, focused pane first, so a pane printing without pause cannot stall
+  the world; the prefix, then `?`, shows frame, parse, and key-to-glyph
+  numbers and logs them each second. The `terminal_stress` example measures
+  the overlay over Everglade's town; the receipt is in
+  [verification/2026-10-05-terminal-performance](verification/2026-10-05-terminal-performance/README.md).
+
 ## Summary
 
 - The Coder terminal app (`crates/coder`, drawn with `crates/coder-terminal`)

@@ -15,6 +15,11 @@ use crate::palette;
 // The font stays in `crates/verse/assets` beside its license, where the
 // imported scenes read it too.
 const FONT: &[u8] = include_bytes!("../../verse/assets/FiraMono-Medium.ttf");
+/// Fira Mono Medium, the atlas's font, for callers that rasterize more of
+/// its glyphs on demand ([`Atlas::insert_glyph`]).
+pub const MONO_FONT: &[u8] = FONT;
+/// The sprite that holds glyphs added after the atlas was built.
+const DYNAMIC: &str = "glyphs:dynamic";
 /// The WGSL shader that draws a [`UiBatch`] and an overlay panel.
 pub const SHADER: &str = include_str!("ui.wgsl");
 const FIRST: u32 = 32;
@@ -51,6 +56,24 @@ struct Glyph {
     advance: f32,
 }
 
+/// A glyph's box in the atlas's layout units: its bitmap size, its left
+/// bearing and height above the baseline, and its advance.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct GlyphBox {
+    pub size: [f32; 2],
+    pub offset: [f32; 2],
+    pub advance: f32,
+}
+
+/// Where the next glyph goes in the reserved region, in pixels from its
+/// top-left: the pen and the current shelf's height.
+#[derive(Clone, Copy, Debug, Default)]
+struct Pen {
+    x: u32,
+    y: u32,
+    row: u32,
+}
+
 /// The rasterized font.
 #[derive(Clone)]
 pub struct Atlas {
@@ -64,6 +87,16 @@ pub struct Atlas {
     pub sprites: std::collections::BTreeMap<String, ([f32; 2], [f32; 2])>,
     fonts: std::collections::BTreeMap<String, Atlas>,
     glyphs: Vec<(char, Glyph)>,
+    /// Each glyph's place in `glyphs`.
+    index: std::collections::HashMap<char, u32>,
+    /// Changes whenever the bitmap or its layout changes, so a renderer
+    /// knows to upload it again.
+    revision: u64,
+    /// The pixel size the bitmaps were rasterized at.
+    pub raster_px: f32,
+    /// Bitmap pixels per layout unit ([`Atlas::use_logical_metrics`]).
+    density: f32,
+    pen: Pen,
     /// Default glyph advance in pixels; proportional glyphs retain their own metrics.
     pub advance: f32,
     /// Line height in pixels.
@@ -88,6 +121,11 @@ impl Atlas {
             rgba: None,
             sprites: self.sprites.clone(),
             fonts: Default::default(),
+            index: self.index.clone(),
+            revision: self.revision,
+            raster_px: self.raster_px,
+            density: self.density * scale,
+            pen: self.pen,
             glyphs: self
                 .glyphs
                 .iter()
@@ -121,6 +159,7 @@ impl Atlas {
         self.advance /= density;
         self.line /= density;
         self.ascent /= density;
+        self.density *= density;
         for font in self.fonts.values_mut() {
             font.use_logical_metrics(density);
         }
@@ -230,6 +269,11 @@ impl Atlas {
                 },
             ));
         }
+        let index = glyphs
+            .iter()
+            .enumerate()
+            .map(|(i, (c, _))| (*c, i as u32))
+            .collect();
         Ok(Self {
             width: ATLAS_WIDTH,
             height,
@@ -237,6 +281,11 @@ impl Atlas {
             rgba: None,
             sprites: Default::default(),
             fonts: Default::default(),
+            index,
+            revision: 0,
+            raster_px: px,
+            density: 1.0,
+            pen: Pen::default(),
             glyphs,
             advance,
             line: (lines.ascent + lines.descent + lines.leading).ceil(),
@@ -327,7 +376,121 @@ impl Atlas {
         );
         self.height = new;
         self.rgba = Some(rgba);
+        self.revision += 1;
         Ok(())
+    }
+
+    /// A counter that changes whenever the bitmap or its layout changes.
+    #[must_use]
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// Reserves `rows` full-width rows for glyphs added later with
+    /// [`Atlas::insert_glyph`]. Call it before a renderer uploads the
+    /// atlas, so later glyphs only rewrite its texture.
+    ///
+    /// # Errors
+    /// The atlas would grow past its limit.
+    pub fn reserve_glyphs(&mut self, rows: u32) -> Result<(), String> {
+        if self.sprites.contains_key(DYNAMIC) {
+            return Ok(());
+        }
+        let width = self.width;
+        self.add_sprite(DYNAMIC, width, rows, &vec![0; (width * rows * 4) as usize])
+    }
+
+    /// Whether the atlas has a glyph for `c`.
+    #[must_use]
+    pub fn has_glyph(&self, c: char) -> bool {
+        self.index.contains_key(&c)
+    }
+
+    /// `c`'s box, when the atlas has it.
+    #[must_use]
+    pub fn glyph_box(&self, c: char) -> Option<GlyphBox> {
+        self.glyph(c).map(|g| GlyphBox {
+            size: g.size,
+            offset: g.offset,
+            advance: g.advance,
+        })
+    }
+
+    /// Adds `c` from a coverage bitmap `width` by `height` pixels, rasterized
+    /// at [`Atlas::raster_px`], with its left bearing, its top above the
+    /// baseline, and its advance in those pixels. It goes into the rows
+    /// [`Atlas::reserve_glyphs`] kept. Returns false when there are none,
+    /// they are full, or the bitmap does not match its size.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_glyph(
+        &mut self,
+        c: char,
+        coverage: &[u8],
+        width: u32,
+        height: u32,
+        left: i32,
+        top: i32,
+        advance: f32,
+    ) -> bool {
+        if self.has_glyph(c) {
+            return true;
+        }
+        let Some((a, b)) = self.sprites.get(DYNAMIC).copied() else {
+            return false;
+        };
+        if coverage.len() != (width * height) as usize {
+            return false;
+        }
+        let (atlas_w, atlas_h) = (self.width as f32, self.height as f32);
+        let x0 = (a[0] * atlas_w).round() as u32;
+        let y0 = (a[1] * atlas_h).round() as u32;
+        let region_w = ((b[0] - a[0]) * atlas_w).round() as u32;
+        let region_h = ((b[1] - a[1]) * atlas_h).round() as u32;
+        let pad = 1;
+        let mut pen = self.pen;
+        if pen.x + width + pad > region_w {
+            pen.x = 0;
+            pen.y += pen.row + pad;
+            pen.row = 0;
+        }
+        if width + pad > region_w || pen.y + height > region_h {
+            return false;
+        }
+        let Some(rgba) = self.rgba.as_mut() else {
+            return false;
+        };
+        let (gx, gy) = (x0 + pen.x, y0 + pen.y);
+        for row in 0..height {
+            for col in 0..width {
+                let at = (((gy + row) * self.width + gx + col) * 4) as usize;
+                rgba[at..at + 4].copy_from_slice(&[
+                    255,
+                    255,
+                    255,
+                    coverage[(row * width + col) as usize],
+                ]);
+            }
+        }
+        pen.x += width + pad;
+        pen.row = pen.row.max(height);
+        self.pen = pen;
+        let d = self.density;
+        self.glyphs.push((
+            c,
+            Glyph {
+                uv0: [gx as f32 / atlas_w, gy as f32 / atlas_h],
+                uv1: [
+                    (gx + width) as f32 / atlas_w,
+                    (gy + height) as f32 / atlas_h,
+                ],
+                size: [width as f32 / d, height as f32 / d],
+                offset: [left as f32 / d, top as f32 / d],
+                advance: advance / d,
+            },
+        ));
+        self.index.insert(c, (self.glyphs.len() - 1) as u32);
+        self.revision += 1;
+        true
     }
 
     /// Packs another font into this atlas while retaining its own metrics.
@@ -360,7 +523,10 @@ impl Atlas {
     }
 
     fn glyph(&self, c: char) -> Option<&Glyph> {
-        self.glyphs.iter().find(|(g, _)| *g == c).map(|(_, g)| g)
+        self.index
+            .get(&c)
+            .and_then(|&i| self.glyphs.get(i as usize))
+            .map(|(_, g)| g)
     }
 
     /// Width of `text` in pixels.
@@ -477,6 +643,23 @@ impl UiBatch {
         let c = v(p1[0], p1[1], uv1[0], uv1[1]);
         let d = v(p0[0], p1[1], uv0[0], uv1[1]);
         self.vertices.extend_from_slice(&[a, b, c, a, c, d]);
+    }
+
+    /// A filled triangle.
+    pub fn triangle(
+        &mut self,
+        atlas: &Atlas,
+        a: [f32; 2],
+        b: [f32; 2],
+        c: [f32; 2],
+        color: [f32; 4],
+    ) {
+        let v = |pos: [f32; 2]| UiVertex {
+            pos,
+            uv: atlas.solid,
+            color,
+        };
+        self.vertices.extend_from_slice(&[v(a), v(b), v(c)]);
     }
 
     /// A filled rectangle.
@@ -733,6 +916,41 @@ mod tests {
             assert!(atlas.glyph(c).is_some(), "{c:?} missing");
         }
         assert!(atlas.pixels.iter().any(|&p| p > 200));
+    }
+
+    #[test]
+    fn glyphs_added_later_go_into_the_reserved_rows() {
+        let mut atlas = Atlas::new(16.0);
+        assert!(!atlas.insert_glyph('世', &[255; 4], 2, 2, 0, 2, 16.0));
+        atlas.reserve_glyphs(64).unwrap();
+        let height = atlas.height;
+        let revision = atlas.revision();
+        let a_uv = atlas.glyph('a').unwrap().uv0;
+        assert!(!atlas.has_glyph('世'));
+        assert!(!atlas.insert_glyph('世', &[255; 3], 2, 2, 0, 2, 16.0));
+        assert!(atlas.insert_glyph('世', &[255, 128, 64, 0], 2, 2, 1, 12, 16.0));
+        assert!(atlas.has_glyph('世'));
+        assert!(atlas.revision() > revision);
+        // Nothing moves: the texture keeps its size and old glyphs their UVs.
+        assert_eq!(atlas.height, height);
+        assert_eq!(atlas.glyph('a').unwrap().uv0, a_uv);
+        let glyph = atlas.glyph_box('世').unwrap();
+        assert_eq!(glyph.size, [2.0, 2.0]);
+        assert_eq!(glyph.offset, [1.0, 12.0]);
+        let uv = atlas.glyph('世').unwrap().uv0;
+        let (x, y) = (
+            (uv[0] * atlas.width as f32) as usize,
+            (uv[1] * atlas.height as f32) as usize,
+        );
+        let rgba = atlas.rgba.as_ref().unwrap();
+        let at = (y * atlas.width as usize + x) * 4;
+        assert_eq!(&rgba[at..at + 8], &[255, 255, 255, 255, 255, 255, 255, 128]);
+        // A full region refuses more.
+        let big = vec![0; 1024 * 70];
+        assert!(!atlas.insert_glyph('界', &big, 1024, 70, 0, 0, 16.0));
+        let mut batch = UiBatch::default();
+        batch.text(&atlas, 0.0, 0.0, "a世", [1.0; 4]);
+        assert_eq!(batch.vertices.len(), 12);
     }
 
     #[test]

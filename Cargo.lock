@@ -14945,6 +14945,7 @@ dependencies = [
  "gym-leaderboard",
  "knowledge",
  "libc",
+ "memmap2",
  "miniz_oxide 0.8.9",
  "naga",
  "nostr",
