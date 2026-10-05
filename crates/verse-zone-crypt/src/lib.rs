@@ -12,8 +12,9 @@
 //!
 //! [`solids`] is what a character runs into and stands on: the walls,
 //! pillars, props, and the dais, whose two steps are walkable. The vault
-//! is a ceiling, and [`keep_eye_inside`] keeps the third-person camera in
-//! the room. The heavy door at [`DOOR`] is the way out.
+//! is a ceiling. The third-person camera stays in the room by the shared
+//! camera-collision step over these solids (`verse::zones::sight`). The
+//! heavy door at [`DOOR`] is the way out.
 //!
 //! The `crypt_lab` capture in `crates/verse/examples` renders the same hall
 //! offline; `verse` re-exports this crate as `zones::crypt`.
@@ -57,8 +58,6 @@ pub const DOOR_REACH: f32 = 1.8;
 /// How far below the vault a character's feet stay, m: its height and a
 /// little air.
 const HEADROOM: f32 = 1.9;
-/// How far inside the walls and below the vault the camera stays, m.
-const EYE_MARGIN: f32 = 0.3;
 
 /// The fog and clear color of the hall: near black, a little warm.
 pub const FIELD: [f32; 3] = [0.006, 0.005, 0.0045];
@@ -188,8 +187,6 @@ const UNBLOCKING: &[&str] = &["cobweb", "ritual_rug"];
 /// The pillar stations along each long wall, z, and their x.
 pub const PILLARS_Z: [f32; 4] = [-5.6, -1.9, 1.9, 5.6];
 pub const PILLAR_X: f32 = HALF_X - 0.3;
-/// A pillar's radius at head height, with its capital's flare, m.
-const PILLAR_RADIUS: f32 = 0.45;
 
 /// Whether this build carries the hall's models inside it.
 pub const EMBEDDED: bool = cfg!(feature = "embedded");
@@ -685,63 +682,4 @@ pub fn solids() -> Result<Solids, String> {
         ridge: SPRING + RISE,
     });
     Ok(solids)
-}
-
-/// Pulls the camera's `eye` toward the player's `focus` so it stays in the
-/// hall: inside the walls, below the vault, above the floor, and short of
-/// any pillar between them.
-#[must_use]
-pub fn keep_eye_inside(focus: Vec3, eye: Vec3) -> Vec3 {
-    if !focus.is_finite() || !eye.is_finite() {
-        return eye;
-    }
-    let delta = eye - focus;
-    let mut t = 1.0_f32;
-    let (lo_x, hi_x) = (-HALF_X + EYE_MARGIN, HALF_X - EYE_MARGIN);
-    let (lo_z, hi_z) = (-HALF_Z + EYE_MARGIN, HALF_Z - EYE_MARGIN);
-    let limits = [
-        (focus.x, delta.x, lo_x, hi_x.max(lo_x)),
-        (focus.z, delta.z, lo_z, hi_z.max(lo_z)),
-        (focus.y, delta.y, EYE_MARGIN, f32::INFINITY),
-    ];
-    for (start, step, low, high) in limits {
-        if step > 0.0 && start + step > high {
-            t = t.min((high - start) / step);
-        } else if step < 0.0 && start + step < low {
-            t = t.min((low - start) / step);
-        }
-    }
-    // The pillars: the nearest crossing of a pillar's circle.
-    let (dx, dz) = (delta.x, delta.z);
-    let a = dx * dx + dz * dz;
-    if a > 1e-8 {
-        for sx in [-1.0, 1.0] {
-            for pz in PILLARS_Z {
-                let (cx, cz) = (sx * PILLAR_X, pz);
-                let (fx, fz) = (focus.x - cx, focus.z - cz);
-                let b = 2.0 * (fx * dx + fz * dz);
-                let c = fx * fx + fz * fz - PILLAR_RADIUS * PILLAR_RADIUS;
-                let disc = b * b - 4.0 * a * c;
-                if c <= 0.0 || disc < 0.0 {
-                    continue;
-                }
-                // A little short of the surface, so the near plane stays
-                // out of the stone.
-                let hit = (-b - disc.sqrt()) / (2.0 * a);
-                if (0.0..t).contains(&hit) {
-                    t = (hit - 0.1 / a.sqrt()).max(0.0);
-                }
-            }
-        }
-    }
-    // Under the vault, which curves down toward the walls: step the eye in
-    // until it clears.
-    let mut eye = focus + delta * t.clamp(0.0, 1.0);
-    let mut k = 0;
-    while eye.y > vault_height(eye.x) - EYE_MARGIN && k < 32 {
-        t *= 0.9;
-        eye = focus + delta * t.clamp(0.0, 1.0);
-        k += 1;
-    }
-    eye
 }

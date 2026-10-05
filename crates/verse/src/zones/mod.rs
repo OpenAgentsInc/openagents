@@ -19,6 +19,9 @@ mod crypt_tests;
 #[cfg(test)]
 mod lab_tests;
 mod runtime;
+mod sight;
+#[cfg(test)]
+mod sight_tests;
 #[cfg(test)]
 mod tests;
 
@@ -326,6 +329,9 @@ pub(crate) struct State {
     ritual: Option<std::path::PathBuf>,
     /// A RITUAL crossing the application has not taken yet.
     ritual_crossed: bool,
+    /// The tops of the world's blockers the camera sees ([`sight`]), and the
+    /// zone revision and blocker count they were measured for.
+    sight_tops: (u64, usize, Vec<f32>),
 }
 impl Default for State {
     fn default() -> Self {
@@ -351,6 +357,7 @@ impl Default for State {
             grid_portal: gate::GRID_PORTAL_OPEN,
             ritual: None,
             ritual_crossed: false,
+            sight_tops: (u64::MAX, 0, Vec::new()),
         }
     }
 }

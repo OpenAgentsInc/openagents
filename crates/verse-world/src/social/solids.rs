@@ -12,8 +12,11 @@
 
 use std::sync::Arc;
 
+use glam::Vec3;
+
 use super::columns::Columns;
 use super::controller::{Footprint, InputState, PlayerController, RADIUS, RUN_SPEED, SPRINT_MULT};
+use super::sight::{self, Reach, Sight};
 
 /// How far the feet may be below a surface and still step onto it, m.
 pub const STEP: f32 = 0.35;
@@ -40,6 +43,43 @@ impl Placed {
             .spans_at(x, z)
             .iter()
             .filter(move |s| self.stands(s.part))
+    }
+
+    /// Where the segment first meets a standing span, before `before`:
+    /// the columns near points stepped along it, each tested as a box.
+    fn sweep(&self, from: Vec3, to: Vec3, radius: f32, before: f32) -> Option<f32> {
+        let cell = self.grid.cell();
+        let length = from.distance(to);
+        let step = cell * 0.5;
+        let steps = ((length * before / step).ceil() as usize).clamp(1, 512);
+        let reach = radius + step;
+        let mut best: Option<f32> = None;
+        for k in 0..=steps {
+            let t = before * k as f32 / steps as f32;
+            if best.is_some_and(|b| b + step / length.max(1e-6) < t) {
+                break;
+            }
+            let p = from.lerp(to, t);
+            let Some((lo, hi)) = self.grid.window(p.x, p.z, reach) else {
+                continue;
+            };
+            for i in lo[0]..=hi[0] {
+                for j in lo[1]..=hi[1] {
+                    let square = self.grid.square([i, j]);
+                    for span in self.grid.at([i, j]) {
+                        if !self.stands(span.part) {
+                            continue;
+                        }
+                        if let Some(hit) =
+                            sight::column_hit(from, to, radius, &square, span.lo, span.hi)
+                        {
+                            best = Some(best.map_or(hit, |b: f32| b.min(hit)));
+                        }
+                    }
+                }
+            }
+        }
+        best
     }
 
     fn stands(&self, part: u32) -> bool {
@@ -79,6 +119,69 @@ impl Roof {
         (u.abs() <= self.half[0] && v.abs() <= self.half[1])
             .then(|| self.ridge - (self.ridge - self.eave) * u.abs() / self.half[0])
     }
+
+    /// Where, from 0 to 1, the segment from `from` to `to` first comes
+    /// within `radius` of the roof's surface from the side it starts on, or
+    /// `None` when it does not.
+    fn sweep(&self, from: Vec3, to: Vec3, radius: f32) -> Option<f32> {
+        let local = |p: Vec3| {
+            let (dx, dz) = (p.x - self.center[0], p.z - self.center[1]);
+            (
+                dx * self.across[0] + dz * self.across[1],
+                -dx * self.across[1] + dz * self.across[0],
+            )
+        };
+        let (u0, v0) = local(from);
+        let (u1, v1) = local(to);
+        let (du, dv) = (u1 - u0, v1 - v0);
+        let (mut lo, mut hi) = (0.0_f32, 1.0_f32);
+        for (o, d, limit) in [
+            (u0, du, self.half[0] + radius),
+            (v0, dv, self.half[1] + radius),
+        ] {
+            if d.abs() < 1e-9 {
+                if o.abs() > limit {
+                    return None;
+                }
+                continue;
+            }
+            let (a, b) = ((-limit - o) / d, (limit - o) / d);
+            lo = lo.max(a.min(b));
+            hi = hi.min(a.max(b));
+        }
+        if lo > hi {
+            return None;
+        }
+        let slope = (self.ridge - self.eave) / self.half[0].max(1e-6);
+        let gap = |t: f32| {
+            let u = u0 + du * t;
+            from.y + (to.y - from.y) * t - (self.ridge - slope * u.abs())
+        };
+        let start = gap(lo);
+        if start.abs() < radius {
+            // Entering the roof's skin through its edge, unless the segment
+            // starts there.
+            return (lo > 0.0).then_some(lo);
+        }
+        let above = start > 0.0;
+        let target = if above { radius } else { -radius };
+        let ridge = if du.abs() > 1e-9 { -u0 / du } else { -1.0 };
+        let mut pieces = [(lo, hi), (hi, hi)];
+        if ridge > lo && ridge < hi {
+            pieces = [(lo, ridge), (ridge, hi)];
+        }
+        for (a, b) in pieces {
+            if b <= a {
+                continue;
+            }
+            let (fa, fb) = (gap(a), gap(b));
+            let crossed = if above { fb < target } else { fb > target };
+            if crossed {
+                return Some(a + (fa - target) / (fa - fb) * (b - a));
+            }
+        }
+        None
+    }
 }
 
 /// A zone's solids over its ground.
@@ -96,6 +199,46 @@ pub struct Solids {
 impl Default for Solids {
     fn default() -> Self {
         Self::over(super::everglade::height)
+    }
+}
+
+impl Sight for Solids {
+    /// Sweeps over the ground, every block and spell-raised block up to its
+    /// top, every roof, and the standing parts of every model's columns.
+    fn sweep(&self, from: Vec3, to: Vec3, radius: f32) -> f32 {
+        let reach = Reach::of(from, to, radius);
+        let mut t = sight::ground_hit(from, to, radius, &self.ground).unwrap_or(1.0);
+        for block in self.blocks.iter().chain(&self.spell) {
+            if reach.meets(&block.footprint)
+                && let Some(hit) = sight::column_hit(
+                    from,
+                    to,
+                    radius,
+                    &block.footprint,
+                    f32::NEG_INFINITY,
+                    block.top,
+                )
+            {
+                t = t.min(hit);
+            }
+        }
+        for roof in &self.roofs {
+            if let Some(hit) = roof.sweep(from, to, radius) {
+                t = t.min(hit);
+            }
+        }
+        for placed in &self.columns {
+            if reach.meets(&placed.grid.bounds())
+                && let Some(hit) = placed.sweep(from, to, radius, t)
+            {
+                t = t.min(hit);
+            }
+        }
+        t
+    }
+
+    fn ground(&self, x: f32, z: f32) -> Option<f32> {
+        Some((self.ground)(x, z))
     }
 }
 

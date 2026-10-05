@@ -698,6 +698,13 @@ impl Everglade {
         mesh
     }
 
+    /// What a character runs into and stands on here, which the camera
+    /// also sees through.
+    #[must_use]
+    pub(crate) fn solids(&self) -> &solids::Solids {
+        &self.solids
+    }
+
     /// One step of the shared controller over the solids: the blockers the
     /// feet are not above, standing on the highest surface under them.
     fn move_on_solids(&self, player: &mut PlayerController, input: &InputState, dt: f32) {

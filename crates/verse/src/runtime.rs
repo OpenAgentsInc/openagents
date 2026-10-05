@@ -264,10 +264,10 @@ impl WorldRuntime {
     }
 
     /// The eye is at or near the player's head, so the local avatar is not
-    /// drawn.
+    /// drawn: in first person, or where a wall pulls the camera in close.
     #[must_use]
     pub fn hides_avatar(&self) -> bool {
-        self.camera.hides_avatar() && self.first_person_allowed()
+        (self.camera.hides_avatar() && self.first_person_allowed()) || self.framing().close
     }
 
     /// The plaza with its objects: not a zone and not the bare world.
@@ -449,6 +449,7 @@ impl WorldRuntime {
         }
         self.ruins_tick(dt, previous);
         self.walk_through_portals(previous.pos, dt);
+        self.track_camera(dt);
         self.gait
             .advance(self.player.speed, self.player.airborne(), dt);
         if follow_agent {
@@ -518,51 +519,20 @@ impl WorldRuntime {
         } else {
             1.0
         };
-        let mut eye = self.camera.eye(self.player.pos, self.player.yaw);
-        if self.zone == crate::zones::ZoneId::Lagrange1 {
-            // Free flight: no ground under the camera.
-            eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
-        } else if self.zone == crate::zones::ZoneId::Ruins {
-            eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
-            eye.y = eye
-                .y
-                .max(verse_ruins::scene::Terrain::bundled().height(eye.x, eye.z) + 0.4);
-        } else if self.zone == crate::zones::ZoneId::Grove {
-            eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
-            // A dragon's shape pulls the camera back along its view and
-            // up to its body, so the whole beast fits.
-            let pull = self.grove_camera();
-            if pull > 1.0 && self.camera.blend() <= 0.0 {
-                let focus = self.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT;
-                eye = focus + (eye - focus) * pull + Vec3::Y * (pull - 1.0);
-            }
-            eye.y = eye
-                .y
-                .max(crate::zones::everglade::height(eye.x, eye.z) + 0.4);
-            // A Thunderwave's jolt.
-            eye += self.grove_shake();
-        } else if self.zone == crate::zones::ZoneId::Everglade {
-            eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
-            eye.y = eye
-                .y
-                .max(crate::zones::everglade::height(eye.x, eye.z) + 0.4);
-            eye = crate::zones::everglade::keep_eye_inside(
-                self.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT,
-                eye,
-            );
-            // The demolition yard's meteors shake the camera.
-            eye += self.demolition_shake();
-        } else if self.zone == crate::zones::ZoneId::Crypt {
-            // The camera stays in the hall: a wall, a pillar, or the vault
-            // behind the player pulls it in.
-            eye = crate::zones::crypt::keep_eye_inside(
-                self.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT,
-                self.camera.unclamped_eye(self.player.pos, self.player.yaw),
-            );
-        }
+        // One camera-collision step for every zone: the eye stops short of
+        // the zone's solids (`zones::sight`).
+        let mut framing = self.framing();
+        // Meteor Swarm's blasts and a Thunderwave shake the camera.
+        framing.eye += match self.zone {
+            crate::zones::ZoneId::Grove => self.grove_shake(),
+            crate::zones::ZoneId::Everglade => self.demolition_shake(),
+            _ => Vec3::ZERO,
+        };
         View {
-            view_proj: self.camera.view_proj_from_eye(eye, self.player.yaw, aspect),
-            eye,
+            view_proj: self
+                .camera
+                .view_proj_framed(framing, self.player.yaw, aspect),
+            eye: framing.eye,
         }
     }
 

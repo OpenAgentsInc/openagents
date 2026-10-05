@@ -3295,7 +3295,9 @@ impl App {
         let Some((size, aspect)) = self.viewport() else {
             return;
         };
-        let view = view(&self.runtime.camera, &self.runtime.player, aspect);
+        // The runtime's view, which every surface shares: the eye stops
+        // short of the zone's walls, vaults, and roofs.
+        let view = self.runtime.view(aspect);
         if let Some(feed) = &mut self.feed {
             feed.tick(now);
             for v in &feed.visitors {

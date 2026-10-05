@@ -4,7 +4,8 @@
 //! The renderer-free pieces live here so Verse's zone and a hosted
 //! instance read one copy: the player [`controller`], ground
 //! [`nav`]igation, Everglade's heightfield and studio places
-//! ([`everglade`]), the zone's [`solids`], the studio [`seats`]' walk, and
+//! ([`everglade`]), the zone's [`solids`] and what the
+//! third-person camera sees through ([`sight`]), the studio [`seats`]' walk, and
 //! the social rules profile's authority ([`world`]). [`hosted`] builds the
 //! closed profile a chamber host serves Everglade under and feeds it the
 //! studio's seats. With the `studio`
@@ -17,6 +18,7 @@ pub mod everglade;
 pub mod hosted;
 pub mod nav;
 pub mod seats;
+pub mod sight;
 pub mod solids;
 #[cfg(feature = "studio")]
 pub mod studio;

@@ -136,24 +136,26 @@ fn the_vault_is_a_ceiling() {
 }
 
 #[test]
-fn the_camera_stays_in_the_hall() {
-    let focus = Vec3::new(0.0, 1.6, 7.5);
-    // Behind the player, out through the door.
-    let eye = keep_eye_inside(focus, Vec3::new(0.0, 3.0, 11.0));
-    assert!(eye.z <= HALF_Z - 0.29, "{eye}");
-    assert!(eye.z > focus.z);
+fn the_camera_sees_the_walls_the_vault_and_the_pillars() {
+    use verse_world::social::sight::Sight;
+    let solids = solids().unwrap();
+    let r = 0.12;
+    let stop = |from: Vec3, to: Vec3| from.lerp(to, solids.sweep(from, to, r));
+    // Behind the player, out through the door's wall.
+    let pivot = Vec3::new(0.0, 1.9, 7.5);
+    let eye = stop(pivot, Vec3::new(0.0, 3.0, 11.0));
+    assert!(eye.z < HALF_Z && eye.z > pivot.z, "{eye}");
     // Up through the vault near a wall.
-    let focus = Vec3::new(5.0, 1.6, 0.0);
-    let eye = keep_eye_inside(focus, Vec3::new(5.4, 9.0, 0.0));
-    assert!(eye.y <= vault_height(eye.x) - 0.29, "{eye}");
+    let pivot = Vec3::new(5.0, 1.9, 0.0);
+    let eye = stop(pivot, Vec3::new(5.4, 9.0, 0.0));
+    assert!(eye.y < vault_height(eye.x), "{eye}");
     // Behind a pillar.
-    let focus = Vec3::new(3.5, 1.6, 1.9);
-    let eye = keep_eye_inside(focus, Vec3::new(6.5, 2.0, 1.9));
-    assert!(eye.x < PILLAR_X - PILLAR_RADIUS, "{eye}");
-    // An eye already in the room is left alone.
-    let focus = Vec3::new(0.0, 1.6, 0.0);
-    let eye = Vec3::new(1.0, 2.5, 3.0);
-    assert_eq!(keep_eye_inside(focus, eye), eye);
+    let pivot = Vec3::new(3.5, 1.9, 1.9);
+    let eye = stop(pivot, Vec3::new(6.5, 2.0, 1.9));
+    assert!(eye.x < PILLAR_X - 0.3, "{eye}");
+    // Open floor in the middle of the hall is clear.
+    let pivot = Vec3::new(0.0, 1.9, 0.0);
+    assert_eq!(solids.sweep(pivot, Vec3::new(0.5, 3.0, 2.5), r), 1.0);
 }
 
 #[test]
