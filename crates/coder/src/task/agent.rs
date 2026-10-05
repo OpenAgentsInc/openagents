@@ -441,40 +441,124 @@ pub enum Effect {
 }
 
 /// The effect class of `command`, from the deny list and a closed list of
-/// read-only programs. Pipes and `&&` chains are read-only when every part
-/// is; redirection, substitution, background jobs, and `;` are not.
+/// read-only programs. Pipes and `&&`, `||`, and `;` chains are read-only
+/// when every part is; redirection, substitution, and background jobs are
+/// not.
 #[must_use]
 pub fn effect(command: &str) -> Effect {
     if let Some(why) = crate::shell::denied(command) {
         return Effect::Denied(why.to_string());
     }
-    let text = command.trim();
-    if text.is_empty() {
+    let commands = match simple_commands(command) {
+        Ok(commands) => commands,
+        Err(why) => return Effect::Approval(why),
+    };
+    if commands.is_empty() {
         return Effect::Approval("the command is empty".into());
     }
-    let text = text.replace("2>&1", " ");
-    for parts in text.split("&&") {
-        for part in parts.split('|') {
-            if let Some(why) = part_effect(part) {
-                return Effect::Approval(why);
-            }
+    for words in &commands {
+        if let Some(why) = part_effect(words) {
+            return Effect::Approval(why);
         }
     }
     Effect::ReadOnly
 }
 
-/// Why one pipeline part is not read-only, or `None` when it is.
-fn part_effect(part: &str) -> Option<String> {
-    if part
-        .chars()
-        .any(|c| matches!(c, '>' | '<' | '`' | ';' | '&' | '\n' | '\r'))
-        || part.contains("$(")
-    {
-        return Some(
-            "it redirects, substitutes, or chains commands in a way that can write".into(),
-        );
+/// `command` as its simple commands, split at unquoted `|`, `||`, `&&`, and
+/// `;`, each a list of unquoted words. An unquoted redirection other than
+/// `2>&1`, a background `&`, a newline, and a command substitution outside
+/// single quotes are refused, with why.
+fn simple_commands(command: &str) -> Result<Vec<Vec<String>>, String> {
+    let writes =
+        || "it redirects, substitutes, or runs in the background, which can write".to_string();
+    let end_word = |word: &mut String, quoted: &mut bool, words: &mut Vec<String>| {
+        if !word.is_empty() || *quoted {
+            words.push(std::mem::take(word));
+        }
+        *quoted = false;
+    };
+    let chars: Vec<char> = command.trim().chars().collect();
+    let mut commands: Vec<Vec<String>> = Vec::new();
+    let mut words: Vec<String> = Vec::new();
+    let mut word = String::new();
+    let mut quoted = false;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        match c {
+            '\'' => {
+                quoted = true;
+                i += 1;
+                while i < chars.len() && chars[i] != '\'' {
+                    word.push(chars[i]);
+                    i += 1;
+                }
+                if i == chars.len() {
+                    return Err("a quote is not closed".into());
+                }
+            }
+            '"' => {
+                quoted = true;
+                i += 1;
+                while i < chars.len() && chars[i] != '"' {
+                    match chars[i] {
+                        '`' => return Err(writes()),
+                        '$' if chars.get(i + 1) == Some(&'(') => return Err(writes()),
+                        '\\' if i + 1 < chars.len() => {
+                            i += 1;
+                            word.push(chars[i]);
+                        }
+                        other => word.push(other),
+                    }
+                    i += 1;
+                }
+                if i == chars.len() {
+                    return Err("a quote is not closed".into());
+                }
+            }
+            '\\' if i + 1 < chars.len() => {
+                i += 1;
+                word.push(chars[i]);
+            }
+            ' ' | '\t' => end_word(&mut word, &mut quoted, &mut words),
+            '2' if word.is_empty()
+                && !quoted
+                && chars[i + 1..].starts_with(&['>', '&', '1'])
+                && chars.get(i + 4).is_none_or(|c| c.is_whitespace()) =>
+            {
+                i += 3;
+            }
+            '|' | ';' | '&' => {
+                let double = chars.get(i + 1) == Some(&c);
+                if c == '&' && !double {
+                    return Err(writes());
+                }
+                if double {
+                    i += 1;
+                }
+                end_word(&mut word, &mut quoted, &mut words);
+                if !words.is_empty() {
+                    commands.push(std::mem::take(&mut words));
+                } else if c == '|' && !double {
+                    return Err("a pipe has nothing before it".into());
+                }
+            }
+            '>' | '<' | '`' | '\n' | '\r' => return Err(writes()),
+            '$' if chars.get(i + 1) == Some(&'(') => return Err(writes()),
+            other => word.push(other),
+        }
+        i += 1;
     }
-    let mut words = part.split_whitespace().peekable();
+    end_word(&mut word, &mut quoted, &mut words);
+    if !words.is_empty() {
+        commands.push(words);
+    }
+    Ok(commands)
+}
+
+/// Why one simple command is not read-only, or `None` when it is.
+fn part_effect(words: &[String]) -> Option<String> {
+    let mut words = words.iter().map(String::as_str).peekable();
     // Leading `NAME=value` assignments, without expansion.
     while let Some(word) = words.peek() {
         let assignment = word.split_once('=').is_some_and(|(name, value)| {
@@ -688,7 +772,10 @@ pub fn system(record: &Record) -> String {
          do what they ask by running shell commands in a terminal you drive on their \
          computer, in the working directory, where they watch you type. Your charter: \
          {charter} Each reply is one step: at most {COMMANDS_PER_STEP} commands to run next, \
-         and why. Each command is typed into an interactive zsh as written. Prefer read-only \
+         and why. Each command is typed into an interactive zsh as written. Take the most \
+         direct route: when the request names a command, a crate's tests, or a file, run \
+         that in the first step instead of exploring first; in a Cargo workspace a crate's \
+         tests are `cargo test -p NAME`. Prefer read-only \
          commands: listing and reading files, git status, log, and diff, and running builds \
          and tests. A command that changes files, the repository, or this computer waits \
          for the owner's approval, so propose one only when the request needs it. Never \

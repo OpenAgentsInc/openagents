@@ -130,11 +130,19 @@ fn read_only_commands_run_and_others_wait() {
         "find . -name '*.rs' -maxdepth 2",
         "sed -n 1,20p README.md",
         "cd crates/atif && cargo test",
+        "pwd; rg --files -g '*atif*' -g 'Cargo.toml'",
+        "cargo test -p atif || true",
+        "rg --files -g '!vendor/**' | rg '(^|/)atif[^/]*$'",
+        "echo 'a > b; $(not run)'",
         "git branch --show-current",
     ] {
         assert_eq!(effect(command), Effect::ReadOnly, "{command}");
     }
     for command in [
+        "echo \"$(whoami)\"",
+        "echo 'unclosed",
+        "| ls",
+        "ls 2>/dev/null",
         "rm -r target",
         "git push origin main",
         "git commit -am wip",
