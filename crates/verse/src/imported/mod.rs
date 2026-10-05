@@ -1531,7 +1531,8 @@ impl Renderer {
                     .filter(|b| b.blend < 2 && !b.emissive)
                     .count();
             }
-            if actor.shadow_count == 0 {
+            if actor.shadow_count == 0 || (self.instanced_shadows.is_some() && frozen[i].is_none())
+            {
                 continue;
             }
             for layer in 0..lighting.shadow_count() * 6 {
@@ -1586,7 +1587,8 @@ impl Renderer {
         }
         for (i, model) in resolved.models().iter().enumerate() {
             for blend in 0..4 {
-                if self.actors[i + 1].world_counts[blend] > 0
+                if (blend >= 2 || self.instanced_shadows.is_none())
+                    && self.actors[i + 1].world_counts[blend] > 0
                     && self.actors[i + 1].world_bundles[blend].is_none()
                 {
                     let bundle = self.world_bundle(
@@ -1639,8 +1641,15 @@ impl Renderer {
             bytemuck::bytes_of(&make_pose(&self.pack, None)?),
         );
         for (i, palette) in palettes.iter().enumerate() {
-            self.queue
-                .write_buffer(&self.actors[i + 1].buffer, 0, bytemuck::bytes_of(palette));
+            let actor = &self.actors[i + 1];
+            // Frozen shadow-cache draws and transparent effects retain uniform palettes.
+            if self.instanced_shadows.is_none()
+                || (frozen[i].is_some() && actor.shadow_count > 0)
+                || actor.world_counts[2..].iter().any(|count| *count > 0)
+            {
+                self.queue
+                    .write_buffer(&actor.buffer, 0, bytemuck::bytes_of(palette));
+            }
         }
         if let Some(instancing) = &self.instanced_shadows {
             if !palettes.is_empty() {
