@@ -1,7 +1,9 @@
 # Smart terminal: brainstorm, specification, and roadmap
 
-Status: proposal, October 5, 2026. This page implements nothing. It defines
-the smart terminal, decides its shape, and orders the work. Where it records
+Status: proposal, October 5, 2026, with the sheet and its input line
+implemented under the [design principles](design-principles.md), which are
+binding. It defines the smart terminal, decides its shape, and orders the
+work. Where it records
 a decision, the owner can overturn it; the open questions are
 [at the end](#open-questions-for-the-owner).
 
@@ -270,92 +272,80 @@ out of date or wrong.
 
 ## Specification
 
-### The input line
+### The sheet and its input line
 
-At a shell prompt, the line you type belongs to your shell. The shell's
-editor, history, completion, and keybindings work as they always have. The
-smart terminal adds three things: a *mode chip* at the start of the line, a
-decision at Enter, and an ask key that works anywhere.
+The [design principles](design-principles.md) bind this section. The
+terminal is one fixed sheet, 1200 by 800 points (3:2), that nobody resizes;
+the Grid draws the same sheet anchored at the center of the screen. From top
+to bottom it has a status area, the transcript with a scroll bar that is
+always drawn, one input line, and a key strip. Nothing floats over these
+regions, nothing moves, and every character is ASCII in the four whites.
+
+The input line belongs to the terminal, not to the shell's line editor. The
+shell runs underneath with its integration hook, and its blocks (a command,
+its output, and its exit status) appear in the transcript beside questions
+and answers, each as a plain block. While a command runs, keys go to it, and
+a full-screen program draws in the transcript region.
 
 #### How Enter decides
 
-A shell-integration hook (below) replaces the shell's accept-line action.
-At Enter, the hook passes the line to the terminal over an escape sequence
-and waits for one reply: run it, or hand it to a thread. The terminal
-decides in this order and stops at the first rule that applies:
+One caret, no prefix, and no mode key. At ENTER the terminal decides on this
+computer whether the line is a command or a question (`terminal_core::route`)
+and stops at the first rule that applies:
 
-1. **Explicit mode.** If you set the chip with the mode key, the chip
-   decides. The default mode key is `Ctrl+Space`; it cycles **auto**,
-   **shell**, and **ask** for this line only.
-2. **Explicit prefix.** A line that starts with `#` and a space is a
-   request. A shell treats it as a comment and would run nothing, so no
-   command is lost. The `#` is stripped before the router sees it.
-3. **Shell structure.** The terminal tokenizes the line as POSIX shell
-   (without running it) and resolves the first word against the shell's own
-   table: aliases, functions, and builtins the hook reports at each prompt,
-   and executables on the shell's `PATH`. Then:
-   - The first word resolves, and the line parses: **shell**, unless rule 4
-     applies.
-   - The first word does not resolve: **request**. The shell would only
-     have printed `command not found`. If the word is one edit from a
-     resolved command (`gti status`), the chip offers the corrected command
-     instead and never runs it unasked.
-   - The line does not parse, for example an unbalanced quote from an
-     apostrophe in "what's failing here": **request**.
-4. **Ambiguous lines.** The first word resolves, but the line could be prose
-   (`find the largest files here`, `make it faster`, `time to ship?`). Only
-   these lines go to a local decision model with one typed question
-   (`shell`, `request`, or `none`, with probabilities). The model runs on
-   this computer: Lev (`crates/lev`, Apple's on-device model) on macOS, or a
-   local Laya or Kev door where one is installed. If no local model is
-   available, or its confidence is below the threshold, the chip shows both
-   choices and Enter does what the chip shows, which defaults to **shell**
-   for a resolving first word. Jev is used for this question only if you opt
-   in, because it would send shell lines off the machine.
+1. **Structure.** A path (`./run.sh`, `~/bin/x`, `/usr/bin/env`) or an
+   assignment (`FOO=1 make`) is a command. A line whose quotes do not
+   balance, such as the apostrophe in "what's failing here", is a question.
+2. **The shell's table.** The hook reports the shell's `PATH` and its alias
+   and function names when they change; builtins and reserved words are
+   known. A first word that resolves nowhere is a question, unless the line
+   is built like a command (flags, paths, operators, or quotes), or is one
+   word, which is more likely a typo than a question.
+3. **Ambiguous lines.** The first word resolves, but the line could be prose
+   (`make it faster`, `find all TODOs in src`). A local score weighs shell
+   syntax, flags, and paths against question words, a final `?`, and
+   pronouns and determiners. The label shows the result with a `?` while
+   only the score decided. No local decision model answers this rule yet;
+   Lev, Laya, or Kev can replace the score here later, and no shell line
+   ever leaves the computer to be classified.
 
-The chip updates as you type, from rules 1 through 3, which are local and
-take microseconds. Rule 4 runs after a short pause in typing, so the chip
-already shows its answer when you press Enter. Enter always does what the
-chip shows; the decision is never a surprise.
-
-This is not word matching on intent. The terminal decides only whether a
-line is a command, from the shell's own grammar and command table. What a
-request means stays the chat router's decision (`chat-router-v1`,
-[chat router](../coder/design/2026-09-28-chat-router.md)), as
-[scope](scope.md) requires.
-
-Where routing never happens:
-
-- In a full-screen program (the alternate screen), in a program reading
-  input (no prompt mark is open), and in a shell without the hook, every key
-  goes to the program. The ask key still works.
-- In a pane whose typist is an agent or another device.
-
-#### The ask key
-
-`Ctrl+Space` held, or the prefix then `a`, opens an ask line over the
-focused pane at any time, including inside `vim` or over `ssh` to a computer
-with no hook. What you type there is always a request, with the pane as
-context.
+The label before the input line (`SHELL >` or `ASK   >`) updates as you
+type, so ENTER always does what it shows. What a question means stays the
+chat router's decision (`chat-router-v1`,
+[chat router](../coder/design/2026-09-28-chat-router.md)).
 
 #### Making mistakes cheap
 
-- **A request that should have been a command.** The thread's first line
-  offers **Run as a command** (one key). It puts the line back at the prompt
-  in shell mode. A request runs nothing by itself, so the cost of this
-  mistake is one reply.
-- **A command that should have been a request.** The structural rules make
-  this rare, because a line only runs as a command if its first word is a
-  real command. When it happens, the block shows **Ask about this
-  instead**, which opens a thread with the line and the block's output.
-- **Bias toward asking.** When the rules and the model disagree, the safe
-  side is the request, because a request runs nothing. Rule 4's default of
-  shell for an ambiguous line is the one exception, and only when the chip
-  showed it.
-- **Undo is honest.** The terminal can undo a routing decision, never a
-  shell command's effect. Coder's changes are undoable because they live in
-  a worktree; `coder-boundary` snapshots can cover proposals later, but the
-  terminal never claims to undo `rm`.
+- **F5** runs the input line as a command whatever its label says; **F6**
+  sends it as a question. UP recalls an earlier line, so a misrouted line is
+  one UP and one function key away.
+- After a command the shell did not find (exit 127), the status area says
+  so, and F6 on an empty line asks OpenAgents about it.
+- The terminal can undo a routing decision, never a command's effect.
+
+#### Questions, answers, and proposals
+
+A question goes to OpenAgents at ENTER with no preview: its text, the shell's
+directory, and, when the last command failed, that command's scrubbed output.
+The status area's `CONTEXT` row says what goes with the next question, and F2
+attaches or detaches it. A question asked while another runs queues; the
+status area counts the queue, and nothing blocks the input line.
+
+How to answer travels in the system instructions
+(`basic_coder::INSTRUCTIONS_TERMINAL`), never in the visible turn: plain
+ASCII, no Markdown, and at most one typed command plan on the reply's last
+line. The helper removes the plan from the answer's text, the terminal
+shows the answer as plain text, and the plan becomes one line:
+
+```text
+PROPOSED: cargo test   [ENTER] confirm  [ESC] reject
+```
+
+ENTER on an empty input line confirms it, and a command that may change
+files takes a second ENTER; ESC rejects it. A confirmed command runs in the
+shell as its own block, and its output returns to the same thread, whose
+answer follows in the transcript. Panes, tabs, and the thread view remain
+available behind F8; the default view never splits by itself.
 
 ### Blocks
 

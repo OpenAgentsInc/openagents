@@ -257,6 +257,10 @@ name = "terminal_capture"
 required-features = ["capture", "terminal"]
 
 [[example]]
+name = "terminal_sheet"
+required-features = ["capture", "terminal"]
+
+[[example]]
 name = "panel_capture"
 required-features = ["capture", "panels"]
 

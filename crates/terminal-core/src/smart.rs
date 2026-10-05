@@ -53,7 +53,16 @@ pub struct Smart {
     pub execution: Option<(PaneId, String, String, u64)>,
     pub proposal_scroll: usize,
     pub enter_down: bool,
+    /// A line put back at the prompt as a command: Enter runs it as typed.
+    pub shell_override: Option<(PaneId, String)>,
+    /// A command the shell did not find: Enter on the empty prompt asks.
+    pub offer_ask: Option<(PaneId, String)>,
+    offered: Option<(PaneId, u64)>,
 }
+
+/// The key the terminal sends instead of Enter for a line routed to a
+/// request; the zsh hook binds it to a widget that hands the line over.
+pub const ASK_KEY: &[u8] = b"\x1b[24242~";
 
 pub fn id() -> String {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -179,6 +188,21 @@ impl super::Overlay {
             }
             match key.code {
                 KeyCode::Escape => self.smart.draft = None,
+                KeyCode::ArrowUp => {
+                    // The routing guessed wrong: run the line as a command instead.
+                    let pane = draft.pane;
+                    let text = std::mem::take(&mut draft.text);
+                    self.smart.draft = None;
+                    if !text.trim().is_empty() {
+                        let bytes = self.panes.get(&pane).map(|p| p.session.vt.paste(&text));
+                        if let Some(bytes) = bytes {
+                            self.send_to(pane, &bytes);
+                        }
+                        self.smart.shell_override = Some((pane, text));
+                        self.notice =
+                            Some("Back at the prompt as a command; Enter runs it.".into());
+                    }
+                }
                 KeyCode::Backspace => {
                     draft.text.pop();
                 }
@@ -263,7 +287,107 @@ impl super::Overlay {
             // A pending proposal is a modal preview, so unrelated keys cannot edit the shell silently.
             return true;
         }
-        false
+        self.route_enter(key)
+    }
+
+    /// What Enter would do with the focused pane's prompt line, when the
+    /// shell hook reports one: run it, or hand it to a request.
+    #[must_use]
+    pub fn routing(&self, pane_id: PaneId) -> Option<crate::route::Decision> {
+        let pane = self.panes.get(&pane_id)?;
+        let blocks = &pane.session.blocks;
+        if !blocks.at_prompt || pane.session.vt.alternate_screen() {
+            return None;
+        }
+        let buffer = blocks.buffer.as_deref()?;
+        if buffer.trim().is_empty() {
+            return None;
+        }
+        if self
+            .smart
+            .shell_override
+            .as_ref()
+            .is_some_and(|(pane, line)| *pane == pane_id && line == buffer)
+        {
+            return Some(crate::route::Decision {
+                route: crate::route::Route::Shell,
+                sure: true,
+            });
+        }
+        let word = crate::route::Word::parse(blocks.word.as_deref().unwrap_or(""));
+        Some(crate::route::classify(buffer, word))
+    }
+
+    /// Enter at a prompt: a request goes to the hook's ask widget; a command
+    /// goes to the shell as typed.
+    fn route_enter(&mut self, key: &super::KeyIn) -> bool {
+        use crate::input::KeyCode;
+        let Some(pane_id) = self.focus_id() else {
+            return false;
+        };
+        let enter = matches!(key.code, KeyCode::Enter | KeyCode::NumpadEnter)
+            && !self.mods.control_key()
+            && !self.mods.alt_key()
+            && !self.mods.shift_key();
+        if !enter {
+            if self.smart.offer_ask.is_some() && !is_modifier_key(key.code) {
+                self.smart.offer_ask = None;
+            }
+            return false;
+        }
+        let at_empty_prompt = self.panes.get(&pane_id).is_some_and(|pane| {
+            pane.session.blocks.at_prompt
+                && !pane.session.vt.alternate_screen()
+                && pane
+                    .session
+                    .blocks
+                    .buffer
+                    .as_deref()
+                    .is_some_and(|buffer| buffer.trim().is_empty())
+        });
+        if at_empty_prompt
+            && let Some((pane, line)) = self.smart.offer_ask.take()
+            && pane == pane_id
+        {
+            self.ask(line);
+            return true;
+        }
+        self.smart.offer_ask = None;
+        match self.routing(pane_id) {
+            Some(decision) if decision.route == crate::route::Route::Ask => {
+                self.send_to(pane_id, ASK_KEY);
+                true
+            }
+            Some(_) => {
+                self.smart.shell_override = None;
+                false
+            }
+            None => false,
+        }
+    }
+
+    /// Offers a request once when the shell did not find a command.
+    fn offer_after_missing_command(&mut self) {
+        let Some(pane_id) = self.focus_id() else {
+            return;
+        };
+        let Some(block) = self
+            .panes
+            .get(&pane_id)
+            .and_then(|pane| pane.session.blocks.records.back())
+            .filter(|block| block.status == Some(127))
+        else {
+            return;
+        };
+        if self.smart.offered == Some((pane_id, block.id)) {
+            return;
+        }
+        self.smart.offered = Some((pane_id, block.id));
+        self.smart.offer_ask = Some((pane_id, block.command.clone()));
+        self.notice = Some(format!(
+            "`{}` is not a command here. Press Enter on the empty prompt to ask OpenAgents instead.",
+            block.command
+        ));
     }
 
     fn submit_draft(&mut self) {
@@ -338,10 +462,17 @@ impl super::Overlay {
                 }
             }
         }
+        let mut failed = 0;
         self.smart.workers.retain_mut(|worker| {
-            let ended = worker.ended().is_some();
-            !(worker.eof && ended)
+            let ended = worker.ended();
+            if worker.eof && ended == Some(false) {
+                failed += 1;
+            }
+            !(worker.eof && ended.is_some())
         });
+        if failed > 0 && self.paper.on {
+            self.paper_failed();
+        }
         for (pane_id, request, message) in messages {
             match message {
                 Message::Attached(thread) if thread == request.thread => {
@@ -349,40 +480,8 @@ impl super::Overlay {
                         let _ = self.smart.book.acknowledge(&key, &approval);
                         continue;
                     }
-                    if self.smart.threads.insert(pane_id, thread.clone()).is_none()
-                        && let Some(super::pty::Program::Command {
-                            program,
-                            mut args,
-                            label,
-                        }) = self.sessions().0.thread_program()
-                    {
-                        args.extend(["--thread".into(), thread, "--observe".into()]);
-                        let active = self.active;
-                        let focus = self.focus_id();
-                        let Some(source_tab) = self
-                            .tabs
-                            .iter()
-                            .position(|tab| tab.layout.panes().contains(&pane_id))
-                        else {
-                            continue;
-                        };
-                        self.active = source_tab;
-                        self.tabs[source_tab].layout.set_focus(pane_id);
-                        self.split(
-                            super::layout::Axis::Columns,
-                            &super::pty::Program::Command {
-                                program,
-                                args,
-                                label,
-                            },
-                        );
-                        self.active = active;
-                        if let Some(focus) = focus
-                            && let Some(tab) = self.tabs.get_mut(self.active)
-                        {
-                            tab.layout.set_focus(focus);
-                        }
-                    }
+                    // The thread stays with this pane; nothing opens beside it.
+                    self.smart.threads.insert(pane_id, thread);
                 }
                 Message::Proposal(proposal, effect)
                     if proposal.thread == request.thread
@@ -390,11 +489,20 @@ impl super::Overlay {
                         && proposal.binding == request.binding =>
                 {
                     self.smart.policy.0.insert(proposal.command.clone(), effect);
+                    let command = proposal.command.clone();
                     if let Ok(key) = self.smart.book.offer(proposal) {
                         self.smart.proposal_scroll = 0;
+                        if self.paper.on {
+                            self.paper_offered(&key, &command);
+                        }
                         self.smart.pending = Some((pane_id, key));
                         self.notice =
                             Some("Pending command: Enter approves; Esc dismisses.".into());
+                    }
+                }
+                message @ (Message::Answer(_) | Message::Door(_)) => {
+                    if self.paper.on {
+                        self.paper_message(&message);
                     }
                 }
                 _ => {}
@@ -409,6 +517,7 @@ impl super::Overlay {
         if let Some(request) = request {
             self.ask(request);
         }
+        self.offer_after_missing_command();
     }
 
     pub fn block_move(&mut self, previous: bool) {
@@ -533,9 +642,11 @@ impl super::Overlay {
             thread: proposal.thread.clone(),
             request: approval[..32].to_owned(),
             new: false,
+            // The request identity carries the approval; the visible turn
+            // reads as the person's own words.
             text: format!(
-                "Result of approved shell proposal {} revision {} (approval {}). Continue this same thread from its attached output; do not repeat the command.",
-                proposal.id, proposal.revision, approval
+                "I ran `{}` as you proposed; its output is attached. Tell me briefly what it shows.",
+                proposal.command
             ),
             context,
             binding,
@@ -556,4 +667,21 @@ impl super::Overlay {
             }
         }
     }
+}
+
+fn is_modifier_key(code: crate::input::KeyCode) -> bool {
+    use crate::input::KeyCode;
+    matches!(
+        code,
+        KeyCode::ShiftLeft
+            | KeyCode::ShiftRight
+            | KeyCode::ControlLeft
+            | KeyCode::ControlRight
+            | KeyCode::AltLeft
+            | KeyCode::AltRight
+            | KeyCode::SuperLeft
+            | KeyCode::SuperRight
+            | KeyCode::CapsLock
+            | KeyCode::Fn
+    )
 }

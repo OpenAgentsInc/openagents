@@ -1,11 +1,129 @@
-# Shared smart terminal: Linux checks and Mac handoff
+# Shared smart terminal: Mac run and Linux checks
 
-Status: implementation checked on Linux; macOS package publication and the live
-Grid/standalone demonstration are **not run**. The owner asked to switch to the Mac
-when ready. This receipt does not claim a signed package, public install, live model
-answer, Mac capture, or Mac performance pass.
+Status: on the Mac, the owner tested a local build and directed a refactor
+before release: Retina text, one smart input line, and the binding
+[design principles](../../../terminal/design-principles.md) (one fixed 3:2
+sheet, anchored regions, function keys, ASCII only, no Markdown). The
+refactor is implemented and checked below. **Signing, publication, the public
+install, and the Mac stress run are paused** until the owner approves the
+refactor; nothing was signed or published. The Linux checks and the original
+handoff follow.
 
-## Checked here
+## Mac, 2026-10-05: the sheet
+
+Machine: MacBook Pro, Apple silicon, built-in Liquid Retina XDR display
+(backing scale 2). Release builds with the pinned toolchain from this
+commit's tree. The local app for the owner to test is an ad hoc signed bundle
+of `openagents-terminal` with the matching `openagents` helper beside it.
+
+### What changed
+
+- **Retina.** Before the change, a 2x window capture showed the standalone
+  already drew text at the backing scale (glyph atlas at 16 x 2 px, surface in
+  physical pixels). Text now also draws unhinted at Retina densities, as macOS
+  draws text, and both surfaces rasterize again and refit when the scale
+  changes (moving between displays). The Grid's atlas previously stayed at
+  its first scale.
+- **One input line.** The terminal owns the input line. At ENTER it
+  classifies the line locally (`terminal_core::route`, from the shell's
+  `PATH`, aliases, functions, builtins, and the line's structure) as a
+  command or a question. The label before the line shows the decision as you
+  type. No `#` prefix or mode key is needed; F5 and F6 override.
+- **The sheet.** One fixed 1200 by 800 point window that cannot be resized;
+  the Grid draws the same sheet anchored at the screen's center. Regions: a
+  three-row status area, the transcript with a scroll bar always drawn, the
+  input line, and the key strip. No floating preview, no automatic thread
+  split, no blocking "finish or dismiss" line (a second question queues).
+- **No leaked instructions or JSON.** How to answer moved into the system
+  instructions (`basic_coder::INSTRUCTIONS_TERMINAL`, selected for OpenAgents
+  Terminal's caller); the visible turn carries only the question and its
+  attachment. The helper removes the typed plan from the answer, the terminal
+  removes any plan line again, translates Markdown to plain text, and maps
+  every character to ASCII. A plan shows as `PROPOSED: ...`, and ENTER and
+  ESC confirm or reject it. The confirmed command's result returns to the
+  same thread as "I ran `...` as you proposed; its output is attached."
+
+### Live flow on both surfaces
+
+[`terminal_sheet`](../../../../crates/verse/examples/terminal_sheet.rs) runs
+the shared terminal on a real zsh in a scratch home, with the release
+`openagents` helper answering live, and renders each stage offscreen at
+scale 2. Keys are key events delivered in that process, labeled simulated:
+the Mac was in use, so no window was brought to the front and no physical
+key was pressed. Each run used a fresh
+[`terminal-demo-fixture.sh`](../../../../scripts/release/terminal-demo-fixture.sh)
+repository and an external Cargo target; the scratch home, its device key,
+and its threads were deleted at the end, so nothing reached the owner's
+thread lists.
+
+| Stage | Standalone sheet | Grid sheet |
+| --- | --- | --- |
+| Idle | [window-idle.png](mac-sheet/window-idle.png) | |
+| `cargo test` failed, exit 101 | [window-failed.png](mac-sheet/window-failed.png) | |
+| `why did that fail`: answer and typed proposal | [window-asked.png](mac-sheet/window-asked.png) | |
+| First ENTER on a command that may change files | [window-confirm-again.png](mac-sheet/window-confirm-again.png) | |
+| Confirmed: new block and same-thread answer | [window-confirmed.png](mac-sheet/window-confirmed.png) | [grid-confirmed.png](mac-sheet/grid-confirmed.png) |
+| Full-screen program (`top`) in the transcript region | [window-program.png](mac-sheet/window-program.png) | [grid-program.png](mac-sheet/grid-program.png) |
+
+[window-run.json](mac-sheet/window-run.json) and
+[grid-run.json](mac-sheet/grid-run.json) retain each run's transcript
+entries and the scratch thread identities. In both runs the request carried
+block 2 (`cargo test`, exit 101), the live answer explained the failed
+assertion in plain ASCII, the proposal was `cat src/lib.rs`, the confirmed
+command ran as block 3, and the same thread answered from its output (the
+standalone run also proposed a fix, left pending). Requests went through the
+local in-process client (`DOOR local`).
+
+### Checks
+
+- `terminal-core`: 16 tests, including the example table for the input line
+  (`git status`, `ls -la`, `cargo test`, `./run.sh`, `cd ~/x`, `FOO=1 make`,
+  `make it faster`, `why did that fail`, `how do I undo my last commit`, `fix
+  the failing test`, `explain this error`, `find all TODOs in src`,
+  `echo "hi"`, and `python3 -c '...'`), ASCII output from programs and the
+  model, Markdown translation, the status area on every row of a 120 by 40
+  sheet, no instructions or JSON in the request or the transcript, CONFIRM
+  and REJECT, queued questions, and the earlier offline proposal flow.
+- `terminal-gfx`: 27 tests (the panes view); `terminal-app`: the fixed,
+  non-resizable 3:2 window; `openagents` helper: plan removal from the
+  visible answer and the existing plan and deny-list rules; `openagents-chat`
+  `basic_coder` tests; `verse-gfx` tests; release builds of the app, the
+  helper, Verse, and both terminal examples.
+
+### Latency
+
+Key-to-glyph on the input line, release build, 400 keys each:
+
+| Surface | p50 | p95 | max |
+| --- | --- | --- | --- |
+| Standalone sheet | 0.17 ms | 0.29 ms | 1.42 ms |
+| Grid sheet | 0.12 ms | 0.15 ms | 0.47 ms |
+
+The measure runs from the key event to the next frame's sheet drawn on the
+CPU, every vertex built, before GPU submission; presentation adds the
+display's refresh wait. The window build also records key-to-presented-frame
+times with `--latency-out FILE` for a visible run.
+
+### Release credentials found (not used)
+
+Signing and publishing were stopped by the owner's direction, not by a
+missing credential. On this Mac the login keychain holds a `Developer ID
+Application: OpenAgents, Inc.` identity, `~/work/.secrets/appstoreconnect.env`
+holds the `ASC_API_*` notary variables and `OA_DEVELOPER_ID_APPLICATION` (the
+desktop release's `--notary-env` file), and `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config`
+lists the release bucket, whose `openagents-terminal/` prefix is still empty.
+`native-terminal.py` needs Python 3.11 or later (`tomllib`); the system
+`python3` is 3.9, so use `~/.local/bin/python3.12`. A pre-refactor stage
+built from `fae8c18a22` was set aside unsigned and is not a release.
+
+### Not done on the Mac
+
+- Signing, notarization, publication, and the install from the public URL.
+- The shared stress workload (8 busy panes) and repeated startup samples:
+  both need a visible window on a computer someone is using.
+- A physical key press on a live window, and window captures from the screen.
+
+## Linux checks (before the Mac run)
 
 The Grid adapter and native window mount `terminal-core` and `terminal-gfx`.
 The standalone normal dependency graph contains no Verse application/world;

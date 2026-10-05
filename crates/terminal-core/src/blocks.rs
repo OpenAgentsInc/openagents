@@ -36,6 +36,10 @@ pub struct Blocks {
     pub records: VecDeque<Block>,
     pub cwd: Option<String>,
     pub buffer: Option<String>,
+    /// The shell's report on the buffer's first word, for routing.
+    pub word: Option<String>,
+    /// The shell's command table, as its hook last reported it.
+    pub table: Option<String>,
     pub at_prompt: bool,
     pub request: Option<String>,
     input: Option<Position>,
@@ -63,13 +67,16 @@ impl Blocks {
                 self.input = None;
                 self.command = None;
                 self.buffer = None;
+                self.word = None;
                 self.at_prompt = false;
                 self.request = None;
             }
             Event::Directory(cwd) => self.cwd = Some(cwd),
             Event::Buffer(buffer) if self.at_prompt => self.buffer = Some(buffer),
+            Event::Word(word) if self.at_prompt => self.word = Some(word),
+            Event::Table(table) => self.table = Some(table),
             Event::Request(request) if self.at_prompt => self.request = Some(request),
-            Event::Buffer(_) | Event::Request(_) => {}
+            Event::Buffer(_) | Event::Word(_) | Event::Request(_) => {}
             Event::Command(command) => self.command = Some(command),
             Event::Prompt => {
                 // A missing completion mark leaves an uncertain block, not a success.
@@ -77,12 +84,14 @@ impl Blocks {
                 self.input = None;
                 self.command = None;
                 self.buffer = None;
+                self.word = None;
                 self.at_prompt = true;
             }
             Event::Input => self.input = Some(point),
             Event::Output => {
                 self.at_prompt = false;
                 self.buffer = None;
+                self.word = None;
                 if self.active.is_some() {
                     return;
                 }
@@ -142,6 +151,20 @@ impl Blocks {
             false
         }
     }
+}
+
+/// What a running block has printed so far, up to the cursor.
+#[must_use]
+pub fn live(vt: &Terminal, block: &Block) -> String {
+    let (row, col) = vt.cursor();
+    let to = Position {
+        line: vt.history_dropped() + (vt.scrollback_len() + row) as u64,
+        col,
+    };
+    if to.line < block.start.line {
+        return String::new();
+    }
+    extract(vt, &block.start, &to).0
 }
 
 fn extract(vt: &Terminal, from: &Position, to: &Position) -> (String, bool) {

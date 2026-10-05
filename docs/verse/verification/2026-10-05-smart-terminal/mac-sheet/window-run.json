@@ -1,0 +1,58 @@
+{
+ "mount": "window",
+ "scale": 2.0,
+ "entries": [
+  "Block(1)",
+  "Block(2)",
+  "Ask { text: \"why did that fail\", attached: Some(\"block 2 `cargo test` exit 101\") }",
+  "Answer(\"The test named addition in src/lib.rs failed an assertion at line 3 because the calculated value was 4 but the test expected 5.\")",
+  "Proposal { key: \"589d5ee118e3c65b35f106c66a3866ecddaeb951aedcd9c1264748d82c25b5f8\", command: \"cat src/lib.rs\", verdict: Confirmed }",
+  "Block(3)",
+  "Answer(\"The file defines a unit test called addition that asserts 2 + 2 equals 5 instead of 4.\")",
+  "Proposal { key: \"7b3cd1ee572caebec0a71f2d5e29c981e9665f9f94816b411b18592770ea1839\", command: \"sed -i '' 's/2 + 2, 5/2 + 2, 4/' src/lib.rs\", verdict: Pending }",
+  "Block(4)"
+ ],
+ "door": "local",
+ "threads": [
+  "dd4591387ad00dacb01e5ad4a7408eab"
+ ],
+ "stages": [
+  {
+   "stage": "idle",
+   "png": "window-idle.png"
+  },
+  {
+   "measure": "key event handled to the next frame's sheet drawn (CPU), before GPU submission",
+   "samples": 400,
+   "p50_ms": 0.16699999999999998,
+   "p95_ms": 0.29120799999999997,
+   "max_ms": 1.4185
+  },
+  {
+   "stage": "failed",
+   "png": "window-failed.png"
+  },
+  {
+   "stage": "asked",
+   "png": "window-asked.png"
+  },
+  {
+   "stage": "confirm-again",
+   "png": "window-confirm-again.png"
+  },
+  {
+   "stage": "confirmed",
+   "png": "window-confirmed.png"
+  },
+  {
+   "stage": "help",
+   "png": "window-help.png"
+  },
+  {
+   "stage": "program",
+   "png": "window-program.png"
+  }
+ ],
+ "result": null,
+ "keys": "key events delivered in this process (not a keyboard)"
+}

@@ -1,0 +1,57 @@
+{
+ "mount": "grid",
+ "scale": 2.0,
+ "entries": [
+  "Block(1)",
+  "Block(2)",
+  "Ask { text: \"why did that fail\", attached: Some(\"block 2 `cargo test` exit 101\") }",
+  "Answer(\"The test named addition failed because an assertion at line 3 of src/lib.rs failed: left was 4 and right was 5. We can look at the test definition in that file to see what was being compared.\")",
+  "Proposal { key: \"3b6382838ca7a4dcb0e05588753f66ff7b6c07e99d64c1da83242de3bc5f4f70\", command: \"cat src/lib.rs\", verdict: Confirmed }",
+  "Block(3)",
+  "Answer(\"The file defines a unit test named addition that asserts 2 + 2 equals 5 instead of 4, which causes the assertion to fail when cargo test runs. Changing 5 to 4 will make the test pass.\")",
+  "Block(4)"
+ ],
+ "door": "local",
+ "threads": [
+  "2b7f114b3a55051fcb413e93e199d8d4"
+ ],
+ "stages": [
+  {
+   "stage": "idle",
+   "png": "grid-idle.png"
+  },
+  {
+   "measure": "key event handled to the next frame's sheet drawn (CPU), before GPU submission",
+   "samples": 400,
+   "p50_ms": 0.12025,
+   "p95_ms": 0.15437499999999998,
+   "max_ms": 0.46599999999999997
+  },
+  {
+   "stage": "failed",
+   "png": "grid-failed.png"
+  },
+  {
+   "stage": "asked",
+   "png": "grid-asked.png"
+  },
+  {
+   "stage": "confirm-again",
+   "png": "grid-confirm-again.png"
+  },
+  {
+   "stage": "confirmed",
+   "png": "grid-confirmed.png"
+  },
+  {
+   "stage": "help",
+   "png": "grid-help.png"
+  },
+  {
+   "stage": "program",
+   "png": "grid-program.png"
+  }
+ ],
+ "result": null,
+ "keys": "key events delivered in this process (not a keyboard)"
+}

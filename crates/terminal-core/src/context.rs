@@ -69,36 +69,9 @@ impl Context {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Mode {
-    #[default]
-    Shell,
-    Request,
-}
-
-/// Shell structure stays local. Ambiguous input remains shell input.
-pub fn mode(explicit: Option<Mode>, buffer: Option<&str>) -> Mode {
-    explicit.unwrap_or_else(|| {
-        if buffer.is_some_and(|buffer| buffer.starts_with("# ")) {
-            Mode::Request
-        } else {
-            Mode::Shell
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn ambiguous_input_stays_shell_and_explicit_modes_win() {
-        assert_eq!(mode(None, Some("why did that fail")), Mode::Shell);
-        assert_eq!(mode(None, Some("# why did that fail")), Mode::Request);
-        assert_eq!(mode(Some(Mode::Shell), Some("# why")), Mode::Shell);
-        assert_eq!(mode(Some(Mode::Request), None), Mode::Request);
-        assert_eq!(mode(None, None), Mode::Shell);
-    }
-
     #[test]
     fn removed_context_changes_approval_identity_and_sent_preview() {
         let mut context = Context {

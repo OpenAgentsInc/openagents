@@ -24,6 +24,10 @@ pub enum Event {
     Directory(String),
     Command(String),
     Buffer(String),
+    /// The shell's `whence -w` report on the line's first word.
+    Word(String),
+    /// The shell's command table: `PATH`, alias names, function names.
+    Table(String),
     Request(String),
     /// Metadata was lost. Consumers must abandon incomplete blocks.
     Gap,
@@ -71,6 +75,8 @@ pub(crate) fn parse(params: &[&[u8]]) -> Option<Event> {
             match *kind {
                 b"command" => Some(Event::Command(text)),
                 b"buffer" => Some(Event::Buffer(text)),
+                b"word" => Some(Event::Word(text)),
+                b"table" => decode_table(hex).map(Event::Table),
                 b"request" => Some(Event::Request(text)),
                 _ => None,
             }
@@ -91,6 +97,19 @@ fn digit(byte: u8) -> Option<u8> {
 fn printable(bytes: Vec<u8>) -> Option<String> {
     let text = String::from_utf8(bytes).ok()?;
     (!text.chars().any(char::is_control)).then_some(text)
+}
+
+/// A table keeps its newlines, which separate its parts.
+fn decode_table(hex: &[u8]) -> Option<String> {
+    if !hex.len().is_multiple_of(2) {
+        return None;
+    }
+    let bytes = hex
+        .chunks_exact(2)
+        .map(|pair| Some(digit(pair[0])? * 16 + digit(pair[1])?))
+        .collect::<Option<Vec<_>>>()?;
+    let text = String::from_utf8(bytes).ok()?;
+    (!text.chars().any(|c| c.is_control() && c != '\n')).then_some(text)
 }
 
 fn decode_hex(hex: &[u8]) -> Option<String> {

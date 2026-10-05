@@ -135,6 +135,8 @@ fn main() -> Result<(), String> {
             .unwrap_or_else(|| sh("ls -la /usr/bin | head -40; exec cat", "ls")),
     };
     let mut overlay = Overlay::with(&root, "/bin/sh".into(), first);
+    // This capture shows the panes view; `terminal_sheet` shows the sheet.
+    overlay.core.paper.on = false;
     let serve = scene.strip_prefix("serve").map(|rest| {
         rest.strip_prefix(':')
             .and_then(|s| s.parse().ok())

@@ -26,7 +26,20 @@ pub(super) async fn request(output: &Output, args: &Args) -> Result<u8, Failure>
         .message()
         .map_err(|why| Failure::Usage(why.into()))?;
     let mut printer = Printer::new(output);
-    let mut client = super::open(args, Some(&request.thread), request.new, &mut printer).await?;
+    let mut client = super::open_as(
+        args,
+        Some(&request.thread),
+        request.new,
+        &mut printer,
+        openagents_chat::router::Caller::TERMINAL,
+    )
+    .await?;
+    let door = match client.kind() {
+        openagents_chat::client::Kind::Host => "host",
+        openagents_chat::client::Kind::Computer => "computer",
+        _ => "local",
+    };
+    super::event(output, json!({"event":"door", "door":door}));
     let mut proposed = None;
     let mut effect = "local_write";
     let mut ordinary = None;
@@ -55,7 +68,10 @@ pub(super) async fn request(output: &Output, args: &Args) -> Result<u8, Failure>
                         proposed = Some(openagents_chat::router::Offer::command_line(argv));
                     }
                     Event::Reply { reply, .. } => {
-                        ordinary = shell_command(&reply.text);
+                        let (text, plan) = split_plan(&reply.text);
+                        ordinary = plan;
+                        // The visible answer never carries the typed plan.
+                        super::event(output, json!({"event":"answer", "text":text}));
                     }
                     _ => {}
                 }
@@ -83,6 +99,21 @@ pub(super) async fn request(output: &Output, args: &Args) -> Result<u8, Failure>
     Ok(super::code(ended))
 }
 
+/// The reply's text without its typed plan, and the plan's one command.
+/// Only a whole plan on the reply's last line, or a reply that is only a
+/// plan, becomes a proposal; prose and Markdown never become input.
+fn split_plan(text: &str) -> (String, Option<String>) {
+    let trimmed = text.trim_end();
+    let (before, last) = match trimmed.rfind('\n') {
+        Some(at) => (&trimmed[..at], &trimmed[at + 1..]),
+        None => ("", trimmed),
+    };
+    match shell_command(last.trim()) {
+        Some(command) => (before.trim_end().to_owned(), Some(command)),
+        None => (text.to_owned(), None),
+    }
+}
+
 /// Accepts a whole typed plan; display text and Markdown never become input.
 fn shell_command(text: &str) -> Option<String> {
     if !text.trim_start().starts_with('{')
@@ -108,6 +139,21 @@ mod tests {
         }
         assert!(coder::shell::denied("cargo test").is_none());
     }
+    #[test]
+    fn the_plan_leaves_the_visible_answer() {
+        let plan = r#"{"v":1,"commands":[{"command":"cargo test","why":"check"}]}"#;
+        let (text, command) = super::split_plan(&format!("The assertion is false.\n{plan}"));
+        assert_eq!(text, "The assertion is false.");
+        assert_eq!(command.as_deref(), Some("cargo test"));
+        let (text, command) = super::split_plan(plan);
+        assert_eq!(
+            (text.as_str(), command.as_deref()),
+            ("", Some("cargo test"))
+        );
+        let prose = "Run `cargo test` next.";
+        assert_eq!(super::split_plan(prose), (prose.to_owned(), None));
+    }
+
     #[test]
     fn ordinary_proposals_require_one_whole_typed_plan() {
         let plan = r#"{"v":1,"commands":[{"command":"cargo test","why":"check"}]}"#;

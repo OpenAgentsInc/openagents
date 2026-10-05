@@ -11,7 +11,7 @@ use pty::{Program, Session, Sessions};
 use select::Selection;
 
 /// The overlay's help line.
-pub const HELP: &str = "Ctrl+B a ask · j/k blocks · y copy · d collapse · r rerun   Ctrl+B then  % \" split · arrows focus · x close · z zoom · c n p tabs · o OpenAgents Terminal · [ copy · / search · ? stats · Esc world   Ctrl+` world";
+pub const HELP: &str = "Enter runs a command or asks OpenAgents   Ctrl+B then: j/k blocks · y copy · d collapse · r rerun · % \" split · arrows focus · x close · z zoom · c n p tabs · o OpenAgents Terminal · [ copy · / search · ? stats · Esc world   Ctrl+` world";
 
 /// The longest a frame spends applying output, across panes.
 pub const UPDATE_BUDGET: Duration = Duration::from_millis(3);
@@ -85,6 +85,8 @@ pub struct Application {
     pub focus_sent: Option<PaneId>,
     /// When a key last reached a pane, which restarts the cursor blink.
     pub typed: Instant,
+    /// The fixed sheet, the default view of a mount (`paper`).
+    pub paper: crate::paper::Paper,
 }
 
 impl std::fmt::Debug for Application {
@@ -127,6 +129,7 @@ impl Application {
             copy: None,
             focus_sent: None,
             typed: Instant::now(),
+            paper: crate::paper::Paper::default(),
         }
     }
 
@@ -391,6 +394,37 @@ impl Application {
                 self.send(&bytes);
                 Ok(serde_json::json!({ "key": name, "bytes": bytes.len() }))
             }
+            Request::Press { name } => {
+                use crate::input::{KeyCode, Logical, NamedKey};
+                let (code, named) = match name.as_str() {
+                    "enter" => (KeyCode::Enter, NamedKey::Enter),
+                    "up" => (KeyCode::ArrowUp, NamedKey::ArrowUp),
+                    "escape" => (KeyCode::Escape, NamedKey::Escape),
+                    _ => return Err(format!("press takes enter, up, or escape, not `{name}`")),
+                };
+                if self.smart.pending.is_some() {
+                    return Err("a pending proposal waits for a key on the keyboard".into());
+                }
+                let mut key = crate::KeyIn {
+                    code,
+                    logical: Logical::Named(named),
+                    text: None,
+                    plain: None,
+                    pressed: true,
+                    repeat: false,
+                    synthetic: false,
+                };
+                // The press goes to the focused pane even while the window
+                // is in the background.
+                let (open, focused) = (self.open, self.focused);
+                self.open = true;
+                self.focused = true;
+                self.key(&key);
+                key.pressed = false;
+                self.key(&key);
+                (self.open, self.focused) = (open, focused);
+                Ok(serde_json::json!({ "pressed": name }))
+            }
             Request::Read { pane } => {
                 let id = match pane {
                     Some(id) => *id,
@@ -409,6 +443,18 @@ impl Application {
                     "generation": pane.session.vt.generation(),
                     "cursor": [row, col],
                     "exited": pane.session.exited,
+                    "input": self.paper.on.then(|| &self.paper.input),
+                    "input_route": self.paper.on.then(|| match self.paper_route() {
+                        Some(crate::route::Route::Ask) => "ask",
+                        Some(crate::route::Route::Shell) => "shell",
+                        None => "empty",
+                    }),
+                    "running": self.paper_running(),
+                    // What Enter would do with the prompt line: shell or ask.
+                    "routing": self.routing(id).map(|decision| decision.label()),
+                    "notice": self.notice,
+                    "draft": self.smart.draft.as_ref().filter(|draft| draft.pane == id).map(|draft| &draft.text),
+                    "pending": self.smart.pending.as_ref().filter(|(pane, _)| *pane == id).map(|(_, key)| &self.smart.book.entries[key].proposal.command),
                 }))
             }
             Request::Tab { action } => {
@@ -653,6 +699,10 @@ impl Application {
     /// Types `text` into the focused pane as a paste, bracketed when its
     /// program asked (mode 2004).
     pub fn paste(&mut self, text: &str) {
+        if self.paper.on {
+            self.paper_paste(text);
+            return;
+        }
         let focus = self.focus_id();
         if let Some(draft) = &mut self.smart.draft {
             if Some(draft.pane) == focus {
@@ -757,6 +807,13 @@ impl Application {
             return true;
         }
         if is_modifier(key.code) {
+            return true;
+        }
+        if self.paper.on {
+            return self.paper_key(key);
+        }
+        if key.logical == Logical::Named(crate::input::NamedKey::F8) {
+            self.paper.on = true;
             return true;
         }
         if self.prefix {
@@ -975,10 +1032,21 @@ impl Application {
         }
         self.smart_tick();
         self.report_focus();
-        for (id, rect) in self.shown() {
-            let (rows, cols) = self.grid_size(rect);
-            if let (Some(pane), Some(sessions)) = (self.panes.get_mut(&id), &self.sessions) {
+        if self.paper.on {
+            // The sheet's transcript region is the program's whole grid.
+            self.paper_tick();
+            let (rows, cols) = self.paper.grid;
+            if let Some(id) = self.focus_id()
+                && let (Some(pane), Some(sessions)) = (self.panes.get_mut(&id), &self.sessions)
+            {
                 sessions.resize(&mut pane.session, rows, cols);
+            }
+        } else {
+            for (id, rect) in self.shown() {
+                let (rows, cols) = self.grid_size(rect);
+                if let (Some(pane), Some(sessions)) = (self.panes.get_mut(&id), &self.sessions) {
+                    sessions.resize(&mut pane.session, rows, cols);
+                }
             }
         }
         if measure {
@@ -1019,6 +1087,8 @@ impl Application {
     /// largest pane along its longer side, and focuses the first. A stress
     /// run uses it.
     pub fn open_grid(&mut self, programs: &[Program]) -> Vec<PaneId> {
+        // A grid of panes is the panes view, not the sheet.
+        self.paper.on = false;
         let mut ids = Vec::new();
         let Some((first, rest)) = programs.split_first() else {
             return ids;

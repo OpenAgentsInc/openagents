@@ -2,16 +2,15 @@
 
 ## Smart terminal Mac verification (#10642–#10644)
 
-The implementation and release tooling are ready for the Mac switch requested
-by the owner. Follow the [retained handoff](docs/verse/verification/2026-10-05-smart-terminal/README.md)
-to build the app and both helpers from current main, sign/notarize/staple, publish
-and read back the separate native package, install it with Verse absent, and
-capture the live failing-test/request/Enter/result flow on Grid and standalone.
-Retain both stress reports and repeated startup samples. No signed Mac package,
-public install, live model demonstration, or Mac performance verdict is claimed.
-The Linux debug stress result does not meet the unchanged 16.7 ms frame p95 target;
-the supported Mac release still needs measurement. Open a new issue for any defect
-found during the Mac run.
+The sheet refactor you asked for is implemented: Retina text, one smart input
+line, and the [design principles](docs/terminal/design-principles.md). Open the
+local build named in the coordinator's message and approve it or list what to
+change. Publication waits for that approval. After it, run the release from the
+[receipt](docs/verse/verification/2026-10-05-smart-terminal/README.md) (the
+credentials are on this Mac), install from the public URL with Verse absent, and
+run the stress workload and repeated startup samples in a visible window when
+the Mac is free. Pressing ENTER on a live proposal with a physical key, and a
+recorded video if you want one, remain yours.
 
 ## Shared Everglade on two devices (#10553)
 

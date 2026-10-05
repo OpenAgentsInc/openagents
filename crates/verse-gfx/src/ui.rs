@@ -187,7 +187,9 @@ impl Atlas {
         let lines = font.metrics(&[]).scale(px);
         let glyph_metrics = font.glyph_metrics(&[]).scale(px);
         let mut context = ScaleContext::new();
-        let mut scaler = context.builder(font).size(px).hint(true).build();
+        // Hinting snaps stems to whole pixels, which suits 1x displays; at Retina
+        // densities it distorts shapes, so they draw unhinted, as macOS draws text.
+        let mut scaler = context.builder(font).size(px).hint(px < 20.0).build();
         let chars: Vec<char> = (FIRST..=LAST)
             .chain(LATIN1)
             .filter_map(char::from_u32)

@@ -24,6 +24,10 @@ pub struct Options {
     seconds: Option<u32>,
     warmup: Option<u32>,
     startup_out: Option<PathBuf>,
+    /// Open behind the active app and keep drawing while covered, for
+    /// automated runs on a computer someone is using.
+    background: bool,
+    latency_out: Option<PathBuf>,
 }
 
 pub fn run() -> Result<(), String> {
@@ -65,7 +69,7 @@ pub fn run() -> Result<(), String> {
             }
             "--help" | "-h" => {
                 println!(
-                    "OpenAgents Terminal\nUsage: openagents-terminal [--root DIR] [--shell PATH] [--socket PATH]\n\nStarts your login shell. Ctrl+B a opens Ask; # selects a request in zsh.\nCtrl+B % or \" splits; Ctrl+B c opens a tab. Cmd+Q exits on macOS.\n--root isolates shell and helper HOME for a scratch run.\nThe native package supports macOS arm64; Linux is a development platform.\n--stress-out FILE runs the shared workload; --busy N --seconds S --warmup S configure it.\n--startup-out FILE records process entry to first presented frame."
+                    "OpenAgents Terminal\nUsage: openagents-terminal [--root DIR] [--shell PATH] [--socket PATH]\n\nStarts your login shell under one fixed sheet. Type a command or a question; ENTER runs or asks. F1 shows the keys.\nCtrl+B % or \" splits; Ctrl+B c opens a tab. Cmd+Q exits on macOS.\n--root isolates shell and helper HOME for a scratch run.\nThe native package supports macOS arm64; Linux is a development platform.\n--stress-out FILE runs the shared workload; --busy N --seconds S --warmup S configure it.\n--startup-out FILE records process entry to first presented frame.\n--background opens behind the active app and keeps drawing while covered.\n--latency-out FILE records key-to-frame times on the sheet until quit."
                 );
                 return Ok(());
             }
@@ -76,6 +80,11 @@ pub fn run() -> Result<(), String> {
                 }
                 return Ok(());
             }
+            "--background" => options.background = true,
+            "--latency-out" => {
+                options.latency_out =
+                    Some(args.next().ok_or("Expected a latency report path")?.into())
+            }
             "--root" => options.root = Some(args.next().ok_or("--root needs a directory")?.into()),
             "--shell" => options.shell = Some(args.next().ok_or("--shell needs a path")?.into()),
             "--socket" => options.socket = Some(args.next().ok_or("--socket needs a path")?.into()),
@@ -85,7 +94,14 @@ pub fn run() -> Result<(), String> {
     if options.root.as_ref().is_some_and(|root| !root.is_dir()) {
         return Err("the scratch root must be an existing directory".into());
     }
-    let event_loop = EventLoop::new().map_err(|error| error.to_string())?;
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
+    let mut builder = EventLoop::builder();
+    #[cfg(target_os = "macos")]
+    {
+        use winit::platform::macos::EventLoopBuilderExtMacOS;
+        builder.with_activate_ignoring_other_apps(!options.background);
+    }
+    let event_loop = builder.build().map_err(|error| error.to_string())?;
     let mut app = App {
         options,
         state: None,
@@ -139,6 +155,9 @@ impl App {
         );
         let presented = state.gpu.draw(&batch, &state.atlas)?;
         state.terminal.frame_done(start);
+        if presented {
+            state.terminal.core.paper.presented();
+        }
         if presented && !self.startup_recorded {
             self.startup_recorded = true;
             if let Some(path) = &self.options.startup_out {
@@ -157,6 +176,64 @@ impl App {
         Ok(())
     }
 }
+impl App {
+    /// Writes the key-to-frame latencies the sheet recorded, when asked.
+    fn write_latency(&self) {
+        let (Some(path), Some(state)) = (&self.options.latency_out, &self.state) else {
+            return;
+        };
+        let mut samples = state.terminal.core.paper.latencies.clone();
+        samples.sort_by(f64::total_cmp);
+        let at = |q: f64| {
+            samples
+                .get(((samples.len() as f64 - 1.0) * q).round().max(0.0) as usize)
+                .copied()
+        };
+        let report = serde_json::json!({"schema": "openagents.native-terminal.latency.v1",
+            "start": "key handled (input line edited)", "end": "next GPU frame submitted and presented",
+            "samples": samples.len(), "p50_ms": at(0.5), "p95_ms": at(0.95), "max_ms": samples.last(),
+            "version": env!("CARGO_PKG_VERSION"), "compiled_commit": option_env!("OPENAGENTS_BUILD_COMMIT")});
+        if let Ok(json) = serde_json::to_vec_pretty(&report) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+}
+
+/// The window: the sheet's fixed 3:2 size in points, which nobody resizes.
+#[must_use]
+pub fn attributes() -> winit::window::WindowAttributes {
+    let [w, h] = terminal_gfx::SHEET_POINTS;
+    Window::default_attributes()
+        .with_title("OpenAgents Terminal")
+        .with_inner_size(winit::dpi::LogicalSize::new(f64::from(w), f64::from(h)))
+        .with_resizable(false)
+        .with_enabled_buttons(
+            winit::window::WindowButtons::CLOSE | winit::window::WindowButtons::MINIMIZE,
+        )
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_window_is_a_fixed_three_by_two_sheet() {
+        let attributes = super::attributes();
+        assert!(!attributes.resizable);
+        assert_eq!(
+            attributes.inner_size,
+            Some(winit::dpi::Size::Logical(winit::dpi::LogicalSize::new(
+                1200.0, 800.0
+            )))
+        );
+        assert!(
+            !attributes
+                .enabled_buttons
+                .contains(winit::window::WindowButtons::MAXIMIZE)
+        );
+        let [w, h] = terminal_gfx::SHEET_POINTS;
+        assert!((w / h - 1.5).abs() < f32::EPSILON);
+    }
+}
+
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_some() {
@@ -165,11 +242,7 @@ impl ApplicationHandler for App {
         let result = (|| {
             let window = Arc::new(
                 event_loop
-                    .create_window(
-                        Window::default_attributes()
-                            .with_title("OpenAgents Terminal")
-                            .with_inner_size(winit::dpi::LogicalSize::new(1100.0, 760.0)),
-                    )
+                    .create_window(attributes())
                     .map_err(|error| error.to_string())?,
             );
             let scale = window.scale_factor() as f32;
@@ -250,9 +323,15 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => {
                 state.terminal.shutdown();
+                self.write_latency();
                 event_loop.exit();
             }
-            WindowEvent::Resized(size) => state.gpu.resize(size.width, size.height),
+            WindowEvent::Resized(size) => {
+                state.gpu.resize(size.width, size.height);
+                state
+                    .terminal
+                    .fit(&state.atlas, [size.width as f32, size.height as f32]);
+            }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 let mut atlas = Atlas::new(16.0 * scale_factor as f32);
                 if let Err(error) = atlas.reserve_glyphs(terminal_gfx::GLYPH_ROWS) {
@@ -261,9 +340,14 @@ impl ApplicationHandler for App {
                 }
                 state.atlas = atlas;
                 state.gpu.rebuild_atlas(&state.atlas);
+                // The cell size changed with the backing scale; refit the panes.
+                let size = state.window.inner_size();
+                state
+                    .terminal
+                    .fit(&state.atlas, [size.width as f32, size.height as f32]);
             }
             WindowEvent::Focused(focused) => state.terminal.focused = focused,
-            WindowEvent::Occluded(hidden) => self.hidden = hidden,
+            WindowEvent::Occluded(hidden) => self.hidden = hidden && !self.options.background,
             WindowEvent::ModifiersChanged(mods) => state.terminal.modifiers(mods.state()),
             WindowEvent::KeyboardInput {
                 event,
@@ -289,6 +373,12 @@ impl ApplicationHandler for App {
                         repeat: event.repeat,
                         synthetic: is_synthetic,
                     });
+                    if state.terminal.core.paper.quit {
+                        state.terminal.shutdown();
+                        self.write_latency();
+                        event_loop.exit();
+                        return;
+                    }
                 }
             }
             WindowEvent::Ime(winit::event::Ime::Commit(text)) => state.terminal.paste(&text),

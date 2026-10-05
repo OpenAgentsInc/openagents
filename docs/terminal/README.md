@@ -20,7 +20,9 @@ terminal and multiplexer for all work: today's target is the same application
 in the desktop Grid's `T` overlay and a separately installable window; the
 next pass connects it to Everglade's Agent Studio. This chat remains its
 thread view and the `openagents terminal` TTY command. The
-[smart terminal specification](smart-terminal.md) defines shell blocks,
+[design principles](design-principles.md) bind the terminal's interface: one
+fixed 3:2 sheet, anchored regions, function keys, ASCII only, and no
+Markdown. The [smart terminal specification](smart-terminal.md) defines shell blocks,
 requests, proposals, and durable sessions. Those roadmap additions are
 planned until their issues have retained release evidence.
 The [issue directory](issue-roadmap.md) maps the full plan to the public

@@ -30,6 +30,11 @@ pub enum Request {
     Send { text: String },
     /// Press a named key in the focused pane: `enter`, `ctrl-c`, `up`, ...
     Key { name: String },
+    /// Press `enter`, `up`, or `escape` through the terminal's own key
+    /// handling, as the keyboard would: Enter routes a prompt line or sends
+    /// an open request. It never approves a pending proposal, which takes a
+    /// key on the keyboard.
+    Press { name: String },
     /// The visible text of the focused pane, or of pane `pane`.
     Read {
         #[serde(default)]

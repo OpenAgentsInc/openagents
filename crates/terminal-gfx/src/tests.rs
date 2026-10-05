@@ -108,6 +108,8 @@ fn char_key(code: KeyCode, c: &str) -> KeyIn {
 #[test]
 fn a_focused_overlay_takes_every_key_and_a_hidden_one_none() {
     let mut overlay = Overlay::new();
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     let w = char_key(KeyCode::KeyW, "w");
     assert!(!overlay.key(&w));
     overlay.toggle();
@@ -151,6 +153,8 @@ fn a_focused_overlay_takes_every_key_and_a_hidden_one_none() {
 #[test]
 fn presses_inside_focus_and_outside_release() {
     let mut overlay = Overlay::new();
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     assert!(!overlay.press([10.0, 10.0]));
     overlay.toggle();
     overlay.focused = false;
@@ -189,6 +193,8 @@ fn a_pane_runs_a_program_on_a_pty_and_shows_its_output() {
             label: "sh".into(),
         },
     );
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     overlay.open = true;
     overlay.focused = true;
     overlay.ensure_started();
@@ -231,6 +237,8 @@ fn control_requests_open_split_type_and_read_panes() {
             label: "first".into(),
         },
     );
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     overlay.listen(&socket).unwrap();
     // Hidden, the overlay still answers.
     let status = overlay.apply(&Request::Status).unwrap();
@@ -692,6 +700,8 @@ fn a_drag_selects_and_copy_takes_the_selection() {
         "/bin/sh".into(),
         sh("printf 'alpha beta gamma\\n'; exec cat"),
     );
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     overlay.open = true;
     overlay.focused = true;
     overlay.ensure_started();
@@ -741,6 +751,8 @@ fn programs_that_ask_get_mouse_reports_focus_events_and_clipboard_writes() {
             "printf '\\033[?1000h\\033[?1006h\\033[?1004h\\033]52;c;Y29waWVk\\007ready\\n'; exec cat",
         ),
     );
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     overlay.open = true;
     overlay.focused = true;
     overlay.ensure_started();
@@ -782,6 +794,8 @@ fn programs_that_ask_get_mouse_reports_focus_events_and_clipboard_writes() {
 fn a_background_pane_cannot_write_the_clipboard() {
     let root = tempfile::tempdir().unwrap();
     let mut overlay = Overlay::with(root.path(), "/bin/sh".into(), sh("exec cat"));
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     overlay.open = true;
     overlay.focused = true;
     overlay.ensure_started();
@@ -821,6 +835,8 @@ fn copy_mode_moves_selects_searches_and_copies() {
         "/bin/sh".into(),
         sh("for i in 1 2 3 4 5 6 7 8 9; do echo line$i; done; echo needle here; exec cat"),
     );
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     overlay.open = true;
     overlay.focused = true;
     overlay.ensure_started();
@@ -858,6 +874,8 @@ fn copy_mode_moves_selects_searches_and_copies() {
 fn a_flood_of_output_is_applied_within_the_frame_budget() {
     let root = tempfile::tempdir().unwrap();
     let mut overlay = Overlay::with(root.path(), "/bin/sh".into(), sh("exec yes flood"));
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     overlay.open = true;
     overlay.focused = true;
     overlay.ensure_started();
@@ -899,6 +917,8 @@ fn zsh_hooks_keep_user_configuration_and_make_requests_pending() {
     let rc = "PROMPT='fixture> '\nalias fixture_greeting='print hello'\n";
     std::fs::write(root.path().join(".zshrc"), rc).unwrap();
     let mut overlay = Overlay::with(root.path(), shell, Program::Shell);
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     overlay.open = true;
     overlay.focused = true;
     overlay.ensure_started();
@@ -999,6 +1019,8 @@ fn a_live_shell_proposal_waits_for_exact_enter_and_destructive_confirmation() {
         .unwrap_or_else(|| "/bin/zsh".into());
     let root = tempfile::tempdir().unwrap();
     let mut overlay = Overlay::with(root.path(), shell, Program::Shell);
+    // These tests exercise the panes view.
+    overlay.core.paper.on = false;
     overlay.open = true;
     overlay.focused = true;
     overlay.ensure_started();

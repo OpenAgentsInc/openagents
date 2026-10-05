@@ -152,7 +152,7 @@ impl Fallback {
             if id == 0 {
                 continue;
             }
-            let mut scaler = self.context.builder(face).size(px).hint(true).build();
+            let mut scaler = self.context.builder(face).size(px).hint(px < 20.0).build();
             let Some(image) =
                 Render::new(&[Source::ColorBitmap(StrikeWith::BestFit), Source::Outline])
                     .format(Format::Alpha)

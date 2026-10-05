@@ -3640,6 +3640,7 @@ impl App {
                 .map(|v| v * self.scale)
         });
         self.terminal.button = Some(crate::terminal::Overlay::button_for(size, self.scale, tray));
+        self.terminal.scale = self.scale;
         // The terminal overlay draws over every other HUD element. It may
         // add fallback glyphs to the atlas, which the renderer then takes.
         match &mut self.atlas {
@@ -4003,21 +4004,7 @@ impl ApplicationHandler for App {
             }
         };
         self.scale = window.scale_factor() as f32;
-        let mut atlas = Atlas::new((14.0 * self.scale).round());
-        if let Err(error) = zones::everglade::hotbar::add_sprites(&mut atlas) {
-            eprintln!("verse: Everglade's hotbar has no icons: {error}");
-        }
-        if let Err(error) = zones::grove::hotbar::add_sprites(&mut atlas) {
-            eprintln!("verse: the Grove's hotbar has no icons: {error}");
-        }
-        if let Err(error) = zones::everglade::demolition::hotbar::add_sprites(&mut atlas) {
-            eprintln!("verse: the demolition yard's hotbar has no icons: {error}");
-        }
-        // Room for the terminal's fallback glyphs (CJK, emoji, symbols),
-        // rasterized when a pane first shows them.
-        if let Err(error) = atlas.reserve_glyphs(crate::terminal::GLYPH_ROWS) {
-            eprintln!("verse: the terminal has no room for fallback glyphs: {error}");
-        }
+        let atlas = ui_atlas(self.scale);
         self.atlas_revision = atlas.revision();
         if let Err(error) = self.open_surface(window.clone(), &atlas) {
             self.error = Some(error);
@@ -4233,7 +4220,25 @@ impl ApplicationHandler for App {
                 self.zone_press = None;
                 self.map.clear_contacts();
                 self.map_frame = None;
+                let changed = (self.scale - scale_factor as f32).abs() > f32::EPSILON;
                 self.scale = scale_factor as f32;
+                // Text is rasterized at the display's backing scale: moving
+                // between displays rasterizes it again, so it stays crisp.
+                if changed
+                    && let Some(window) = self.window.clone()
+                    && self.atlas.is_some()
+                {
+                    let atlas = ui_atlas(self.scale);
+                    if let Err(error) = self.open_surface(window, &atlas) {
+                        self.error = Some(error);
+                    }
+                    self.atlas_revision = atlas.revision();
+                    self.map_atlas = atlas.layout_at_scale(self.scale);
+                    if let Some((size, _)) = self.viewport() {
+                        self.terminal.fit(&atlas, size);
+                    }
+                    self.atlas = Some(atlas);
+                }
                 if let Some(window) = &self.window {
                     let size = window.inner_size();
                     if let Ok(viewport) = Viewport::new(size.width, size.height, self.scale)
@@ -4707,4 +4712,25 @@ mod tests {
         picker.choices.clear();
         assert!(picker.lines()[0].0.starts_with("No retained"));
     }
+}
+
+/// The HUD and terminal glyph atlas, rasterized at `scale` physical pixels
+/// per point so text is crisp on a Retina display.
+fn ui_atlas(scale: f32) -> Atlas {
+    let mut atlas = Atlas::new((14.0 * scale).round());
+    if let Err(error) = zones::everglade::hotbar::add_sprites(&mut atlas) {
+        eprintln!("verse: Everglade's hotbar has no icons: {error}");
+    }
+    if let Err(error) = zones::grove::hotbar::add_sprites(&mut atlas) {
+        eprintln!("verse: the Grove's hotbar has no icons: {error}");
+    }
+    if let Err(error) = zones::everglade::demolition::hotbar::add_sprites(&mut atlas) {
+        eprintln!("verse: the demolition yard's hotbar has no icons: {error}");
+    }
+    // Room for the terminal's fallback glyphs (CJK, emoji, symbols),
+    // rasterized when a pane first shows them.
+    if let Err(error) = atlas.reserve_glyphs(crate::terminal::GLYPH_ROWS) {
+        eprintln!("verse: the terminal has no room for fallback glyphs: {error}");
+    }
+    atlas
 }

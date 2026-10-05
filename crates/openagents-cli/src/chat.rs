@@ -507,6 +507,18 @@ pub(crate) async fn open(
     new: bool,
     printer: &mut Printer<'_>,
 ) -> Result<Client, Failure> {
+    open_as(args, thread, new, printer, Caller::CLI).await
+}
+
+/// [`open`] as `caller`: OpenAgents Terminal's live shell opens as
+/// [`Caller::TERMINAL`], so its turns carry the terminal's instructions.
+pub(crate) async fn open_as(
+    args: &Args,
+    thread: Option<&str>,
+    new: bool,
+    printer: &mut Printer<'_>,
+    caller: Caller,
+) -> Result<Client, Failure> {
     let place = if args.switch("scratch") {
         Place::Scratch
     } else if args.switch("local") {
@@ -516,7 +528,7 @@ pub(crate) async fn open(
             socket: args.option("socket").map(PathBuf::from),
         }
     };
-    let mut options = client::Options::new(Caller::CLI);
+    let mut options = client::Options::new(caller);
     options.place = place;
     options.interrupt = Arc::new(|| {
         Box::pin(async {

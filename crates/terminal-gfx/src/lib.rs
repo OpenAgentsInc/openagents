@@ -10,12 +10,18 @@ use layout::{PaneId, Rect};
 use pty::Program;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
-pub use terminal_core::{HELP, PANE_BYTES, UPDATE_BUDGET, copy, layout, mouse, select, stats};
+pub use terminal_core::{
+    HELP, PANE_BYTES, UPDATE_BUDGET, copy, layout, mouse, paper, select, stats,
+};
 use ui::{Atlas, UiBatch, UiVertex};
 pub use verse_gfx::ui;
 use winit::keyboard::{Key as Logical, KeyCode, ModifiersState};
 
 pub const GLYPH_ROWS: u32 = 1024;
+/// The sheet's size in points, fixed at compile time: 3:2, like a page.
+/// The standalone window is exactly this size and cannot be resized; the
+/// Grid draws the same sheet, anchored at the center of the screen.
+pub const SHEET_POINTS: [f32; 2] = [1200.0, 800.0];
 const BLINK: Duration = Duration::from_millis(530);
 const FLASH: Duration = Duration::from_millis(180);
 #[derive(Clone, Debug)]
@@ -50,6 +56,8 @@ pub enum Mount {
 
 pub struct Overlay {
     pub mount: Mount,
+    /// The display's backing scale, which the mount sets.
+    pub scale: f32,
     pub core: terminal_core::Application,
     fallback: Option<glyphs::Fallback>,
     cache: BTreeMap<PaneId, (CacheKey, Vec<UiVertex>)>,
@@ -86,8 +94,11 @@ impl Overlay {
         Self::mount(core)
     }
     pub fn mount(core: terminal_core::Application) -> Self {
+        let mut core = core;
+        core.paper.on = true;
         Self {
             mount: Mount::Overlay,
+            scale: 1.0,
             core,
             fallback: None,
             cache: BTreeMap::new(),
@@ -95,7 +106,14 @@ impl Overlay {
         }
     }
     pub fn key(&mut self, key: &KeyIn) -> bool {
-        self.core.key(&input(key))
+        let taken = self.core.key(&input(key));
+        // In the Grid, F10 puts the sheet away; the window's mount quits.
+        if self.mount == Mount::Overlay && self.core.paper.quit {
+            self.core.paper.quit = false;
+            self.core.open = false;
+            self.core.focused = false;
+        }
+        taken
     }
     pub fn modifiers(&mut self, mods: ModifiersState) {
         self.core.modifiers(modifiers(mods));
@@ -305,6 +323,10 @@ impl Overlay {
         if self.core.tabs.is_empty() {
             self.core.open = false;
             self.core.focused = false;
+            return;
+        }
+        if self.core.paper.on {
+            self.draw_paper(batch, atlas, size);
             return;
         }
         self.tick();
@@ -571,6 +593,21 @@ impl Overlay {
                         focused,
                     );
                 }
+                // The caret's live routing: a dim label at the end of its row.
+                if focused && let Some(decision) = self.core.routing(id) {
+                    let label = decision.label();
+                    let columns = (inner.w / cw).floor() as usize;
+                    let at = columns.saturating_sub(label.len() + 1);
+                    if at > col + 1 {
+                        batch.text(
+                            atlas,
+                            inner.x + at as f32 * cw,
+                            inner.y + row as f32 * ch,
+                            label,
+                            draw::white(Intensity::Half, 1.0),
+                        );
+                    }
+                }
             }
         }
     }
@@ -586,14 +623,13 @@ impl Overlay {
         if self.core.prefix {
             "prefix: waiting for a command".to_owned()
         } else if self.core.focused {
-            let mode = self
-                .focus_id()
-                .and_then(|id| self.core.panes.get(&id))
-                .map(|pane| {
-                    terminal_core::context::mode(None, pane.session.blocks.buffer.as_deref())
-                })
-                .unwrap_or_default();
-            format!("{mode:?} · Enter accepts · Ctrl+B a asks")
+            match self.focus_id().and_then(|id| self.core.routing(id)) {
+                Some(decision) if decision.route == terminal_core::route::Route::Ask => {
+                    "Enter asks OpenAgents · Up in the request runs it as a command".to_owned()
+                }
+                Some(_) => "Enter runs the command".to_owned(),
+                None => "Type a command or a question, then Enter".to_owned(),
+            }
         } else {
             match self.mount {
                 Mount::Overlay => "the world has focus: click a pane or press Ctrl+`",
@@ -876,3 +912,124 @@ pub mod keys {
 }
 
 pub mod stress;
+
+impl Overlay {
+    /// Where the sheet sits: the whole window, or in the Grid a fixed 3:2
+    /// frame at the center of the screen.
+    #[must_use]
+    pub fn sheet_rect(&self, size: [f32; 2]) -> Rect {
+        match self.mount {
+            Mount::Window => Rect::new(0.0, 0.0, size[0], size[1]),
+            Mount::Overlay => {
+                let mut w = SHEET_POINTS[0] * self.scale;
+                let mut h = SHEET_POINTS[1] * self.scale;
+                if w > size[0] * 0.96 || h > size[1] * 0.96 {
+                    let shrink = (size[0] * 0.96 / w).min(size[1] * 0.96 / h);
+                    w *= shrink;
+                    h *= shrink;
+                }
+                Rect::new(
+                    ((size[0] - w) / 2.0).round(),
+                    ((size[1] - h) / 2.0).round(),
+                    w,
+                    h,
+                )
+            }
+        }
+    }
+
+    /// Draws the sheet: every row of ASCII spans at its fixed cell, in the
+    /// four whites, with a steady caret.
+    fn draw_paper(&mut self, batch: &mut UiBatch, atlas: &mut Atlas, size: [f32; 2]) {
+        let [cw, ch] = draw::cell_size(atlas);
+        self.core.cell = [cw, ch];
+        let frame = self.sheet_rect(size);
+        let columns = (frame.w / cw).floor() as usize;
+        let rows = (frame.h / ch).floor() as usize;
+        // Keep the grid the program sees in step before reading output.
+        self.core.area = frame;
+        self.tick();
+        if !self.core.open {
+            return;
+        }
+        let sheet = self.core.paper_sheet(columns, rows, &clock(), &load());
+        let x0 = (frame.x + (frame.w - columns as f32 * cw) / 2.0).round();
+        let y0 = (frame.y + (frame.h - rows as f32 * ch) / 2.0).round();
+        batch.rect(atlas, frame.x, frame.y, frame.w, frame.h, draw::field(1.0));
+        for (r, spans) in sheet.rows.iter().enumerate() {
+            let y = y0 + r as f32 * ch;
+            let mut col = 0usize;
+            for span in spans {
+                let x = x0 + col as f32 * cw;
+                let width = span.text.len();
+                let color = match span.tone {
+                    terminal_core::paper::Tone::Reversed => {
+                        batch.rect(
+                            atlas,
+                            x,
+                            y,
+                            width as f32 * cw,
+                            ch,
+                            draw::white(Intensity::ThreeQuarters, 1.0),
+                        );
+                        draw::field(1.0)
+                    }
+                    tone => draw::white(intensity(tone), 1.0),
+                };
+                if !span.text.trim().is_empty() {
+                    batch.text(atlas, x, y, &span.text, color);
+                }
+                col += width;
+            }
+        }
+        if let Some((row, col)) = sheet.caret
+            && self.core.focused
+        {
+            let x = x0 + col as f32 * cw;
+            let y = y0 + row as f32 * ch;
+            batch.rect(atlas, x, y, cw, ch, draw::white(Intensity::Full, 1.0));
+            let under = sheet.rows[row]
+                .iter()
+                .flat_map(|span| span.text.chars())
+                .nth(col)
+                .filter(|c| *c != ' ');
+            if let Some(c) = under {
+                batch.text(atlas, x, y, &c.to_string(), draw::field(1.0));
+            }
+        }
+    }
+}
+
+fn intensity(tone: terminal_core::paper::Tone) -> Intensity {
+    use terminal_core::paper::Tone;
+    match tone {
+        Tone::Loud => Intensity::Full,
+        Tone::Present | Tone::Reversed => Intensity::ThreeQuarters,
+        Tone::Quiet => Intensity::Half,
+        Tone::Receded => Intensity::Quarter,
+    }
+}
+
+/// The local time as `HH:MM:SS`.
+fn clock() -> String {
+    // SAFETY: `time` and `localtime_r` fill the plain values passed.
+    unsafe {
+        let now = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        if libc::localtime_r(&now, &mut tm).is_null() {
+            return "--:--:--".into();
+        }
+        format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
+    }
+}
+
+/// The one-minute load average.
+fn load() -> String {
+    let mut loads = [0f64; 3];
+    // SAFETY: `getloadavg` writes at most the three values it is given.
+    let got = unsafe { libc::getloadavg(loads.as_mut_ptr(), 3) };
+    if got < 1 {
+        return "?".into();
+    }
+    format!("{:.2}", loads[0])
+}

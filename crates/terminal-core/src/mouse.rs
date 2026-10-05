@@ -284,6 +284,12 @@ impl Overlay {
     /// mouse, sends arrow keys on another program's alternate screen, and
     /// scrolls back otherwise. Returns whether it was the overlay's.
     pub fn wheel(&mut self, point: [f32; 2], lines: f32) -> bool {
+        if self.paper.on && self.open {
+            // The sheet scrolls its transcript, a whole line at a time.
+            let step = lines.round() as isize;
+            self.paper.scroll = self.paper.scroll.saturating_add_signed(step);
+            return true;
+        }
         if !self.open || !self.bounds().contains(point) {
             return false;
         }
