@@ -577,6 +577,16 @@ impl Gateway {
         self.chamber.connection(b.principal, b.session)?;
         Ok(())
     }
+    pub(super) fn check_events(&self, id: ConnectionId) -> Result<(), String> {
+        let b = self.binding(id)?;
+        if matches!(
+            self.chamber.connection(b.principal, b.session)?.rights,
+            super::Rights::Player(_)
+        ) {
+            self.chamber.admission(b.principal, b.session)?;
+        }
+        Ok(())
+    }
     pub fn admission(&self, id: ConnectionId) -> Result<Admission, String> {
         let b = self.binding(id)?;
         self.chamber.admission(b.principal, b.session)

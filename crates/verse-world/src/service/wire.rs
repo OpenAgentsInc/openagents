@@ -890,7 +890,7 @@ impl Gateway {
                 })
             }
             Body::Events { after, limit } => {
-                self.snapshot(id).map_err(|e| ("authentication", e))?;
+                self.check_events(id).map_err(|e| ("authentication", e))?;
                 if !(1..=64).contains(&limit) {
                     return Err(("cursor", "Event page limit must be between 1 and 64".into()));
                 }
@@ -1692,6 +1692,44 @@ mod tests {
             },
         };
         assert!(response.encode().is_err());
+    }
+
+    #[test]
+    fn event_permissions_preserve_player_control_and_spectator_access() {
+        let mut g = gateway();
+        let owner = key(213);
+        let observer = key(214);
+        g.enroll_primary(public(&owner)).unwrap();
+        g.enroll_spectator(public(&observer)).unwrap();
+        let player = join(&mut g, &owner);
+        let spectator = join(&mut g, &observer);
+        let (anonymous, _) = g.open(0).unwrap();
+        let events = || Body::Events {
+            after: 0,
+            limit: 64,
+        };
+        for id in [player, spectator] {
+            assert!(matches!(
+                send(&mut g, id, 2, events()).body,
+                Reply::Events { .. }
+            ));
+        }
+        assert!(
+            matches!(send(&mut g, anonymous, 2, events()).body, Reply::Refused { code, .. } if code == "authentication")
+        );
+        let life = g.admission(player).unwrap().actor();
+        g.chamber
+            .game
+            .handoff_player(life, crate::Controller(999))
+            .unwrap();
+        assert!(g.snapshot(player).is_err());
+        assert!(
+            matches!(send(&mut g, player, 3, events()).body, Reply::Refused { code, .. } if code == "authentication")
+        );
+        assert!(matches!(
+            send(&mut g, spectator, 3, events()).body,
+            Reply::Events { .. }
+        ));
     }
 
     #[test]
