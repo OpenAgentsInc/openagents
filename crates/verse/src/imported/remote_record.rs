@@ -125,6 +125,7 @@ impl Profile {
             ("instances", timing.instances),
             ("graph_instances", timing.graph_instances),
             ("shadow_draws", timing.shadow_draws),
+            ("world_draws", timing.world_draws),
             ("static_shadow_refreshes", timing.static_shadow_refreshes),
         ] {
             self.renderer_counts

@@ -208,7 +208,7 @@ mod tests {
                 .unwrap();
         assert!(
             adapter.features().contains(super::FEATURES),
-            "Adapter lacks encoder timestamps"
+            "Adapter lacks pass timestamps"
         );
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             required_features: super::FEATURES,
@@ -234,12 +234,12 @@ mod tests {
         });
         let view = texture.create_view(&Default::default());
         let mut encoder = device.create_command_encoder(&Default::default());
-        for first in [0, 2] {
+        for first in 0..4 {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 timestamp_writes: Some(wgpu::RenderPassTimestampWrites {
                     query_set: &timer.slots[slot.unwrap()].query,
                     beginning_of_pass_write_index: Some(first),
-                    end_of_pass_write_index: Some(first + 1),
+                    end_of_pass_write_index: None,
                 }),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,

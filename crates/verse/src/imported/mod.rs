@@ -152,6 +152,7 @@ pub struct FrameTimings {
     pub grounded_vertices: usize,
     pub readback: bool,
     pub shadow_draws: usize,
+    pub world_draws: usize,
     pub cached_shadow_casters: usize,
     pub static_shadow_refreshes: usize,
     pub marker_events: usize,
@@ -1681,6 +1682,7 @@ impl Renderer {
             .unwrap_or((None, None));
         let mut instance_cursor = 0u32;
         let mut shadow_draws = 0;
+        let world_draws = std::cell::Cell::new(0usize);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let mut gpu_shadow_started = false;
         use verse_engine::render_graph::ChamberPass;
@@ -1882,7 +1884,10 @@ impl Renderer {
                                         && batch
                                             .bounds
                                             .is_none_or(|bounds| bounds.visible(view.view_proj)))
-                                    .then_some(&self.static_world_bundles[index])
+                                    .then(|| {
+                                        world_draws.set(world_draws.get() + 1);
+                                        &self.static_world_bundles[index]
+                                    })
                                 });
                         if blend < 2
                             && let Some(instancing) = &self.instanced_shadows
@@ -1933,6 +1938,7 @@ impl Renderer {
                                         wgpu::IndexFormat::Uint32,
                                     );
                                     pass.draw_indexed(0..batch.count, 0, start..end);
+                                    world_draws.set(world_draws.get() + 1);
                                 }
                             }
                             continue;
@@ -1957,6 +1963,7 @@ impl Renderer {
                             {
                                 return None;
                             }
+                            world_draws.set(world_draws.get() + actor.world_counts[blend]);
                             Some(actor.world_bundles[blend].as_ref().unwrap())
                         });
                         pass.execute_bundles(static_bundles.chain(actor_bundles));
@@ -1993,7 +2000,7 @@ impl Renderer {
                         timestamp_writes: self
                             .gpu_timer
                             .as_ref()
-                            .and_then(|timer| timer.boundary(gpu_slot, Some(2), Some(3))),
+                            .and_then(|timer| timer.boundary(gpu_slot, Some(2), None)),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &self.target_view,
                             depth_slice: None,
@@ -2011,6 +2018,27 @@ impl Renderer {
                     pass.draw(0..world.overlay().vertices().len() as u32, 0..1);
 
                     drop(pass);
+                    // A trailing pass-start marker avoids stale pass-end counters.
+                    if let Some(timestamp_writes) = self
+                        .gpu_timer
+                        .as_ref()
+                        .and_then(|timer| timer.boundary(gpu_slot, Some(3), None))
+                    {
+                        let _marker = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("Verse GPU timing completion boundary"),
+                            timestamp_writes: Some(timestamp_writes),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: &self.target_view,
+                                depth_slice: None,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            ..Default::default()
+                        });
+                    }
                     overlay_encoded = Instant::now();
                 }
                 ChamberPass::Readback => {
@@ -2065,6 +2093,7 @@ impl Renderer {
                 grounded_vertices,
                 readback: false,
                 shadow_draws,
+                world_draws: world_draws.get(),
                 cached_shadow_casters: frozen.iter().filter(|revision| revision.is_some()).count(),
                 static_shadow_refreshes: refresh.iter().filter(|value| **value).count(),
                 marker_events: self.marker_events.len(),
@@ -2110,6 +2139,7 @@ impl Renderer {
             grounded_vertices,
             readback: true,
             shadow_draws,
+            world_draws: world_draws.get(),
             cached_shadow_casters: frozen.iter().filter(|revision| revision.is_some()).count(),
             static_shadow_refreshes: refresh.iter().filter(|value| **value).count(),
             marker_events: self.marker_events.len(),
