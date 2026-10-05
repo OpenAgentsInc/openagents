@@ -570,12 +570,12 @@ cargo test -p verse --lib gles
 | [`src/controller.rs`](../../crates/verse/src/controller.rs) | `InputState`, `PlayerController`, footprints, collision. |
 | [`verse-gfx/src/camera.rs`](../../crates/verse-gfx/src/camera.rs) | `FollowCamera`: orbit, mouselook, zoom, settle, view-projection. |
 | [`src/world.rs`](../../crates/verse/src/world.rs) | Seeded city, ground grid, pylon, quest board, replay landmarks, horizon. The same city every launch. |
-| [`src/avatar.rs`](../../crates/verse/src/avatar.rs) | The boxy line character and its distance-driven walk cycle. |
-| [`src/agent.rs`](../../crates/verse/src/agent.rs) | The floating spade agent: spring follow, bob, wobble, emotes, scan requests, and geometry. |
+| [`src/avatar.rs`](../../crates/verse-core/src/avatar.rs) | The boxy line character and its distance-driven walk cycle. |
+| [`src/agent.rs`](../../crates/verse-core/src/agent.rs) | The floating spade agent: spring follow, bob, wobble, emotes, scan requests, and geometry. |
 | [`verse-net/src/mv.rs`](../../crates/verse-net/src/mv.rs) | NIP-MV: kinds, frame, state, and gesture content, signing, cells, and validation. |
 | [`verse-net/src/net.rs`](../../crates/verse-net/src/net.rs) | The relay link: one websocket thread, reconnects, and replayed subscriptions. |
 | [`src/session.rs`](../../crates/verse/src/session.rs) | Sign-up, spawn or resume, publish cadence, scans, and leaving. |
-| [`src/crowd.rs`](../../crates/verse/src/crowd.rs) | Other players: buffered, interpolated poses, online and resting, and their meshes. |
+| [`src/crowd.rs`](../../crates/verse-core/src/crowd.rs) | Other players: buffered, interpolated poses, online and resting, and their meshes. |
 | [`verse-net/src/identity.rs`](../../crates/verse-net/src/identity.rs) | Profile keys under `~/.openagents/verse/`. |
 | [`verse-net/src/chat.rs`](../../crates/verse-net/src/chat.rs) | Channels, shortcut parsing, limits, zones, and the two chat windows' history. |
 | [`src/hud.rs`](../../crates/verse/src/hud.rs) | Chat windows, input line, name tags, and speech bubbles. |

@@ -232,7 +232,7 @@ boundary. See [EVAL](../../../nips/openagents/NIP-EVAL.md) and
 
 There is also a more immediate recovery gap. The Gym host persists launch
 intent and retains uncertain dispatch. But
-[`verse::gym::Board`](../../../crates/verse/src/gym.rs) keeps the pending client
+[`verse::gym::Board`](../../../crates/verse-gym/src/gym.rs) keeps the pending client
 launch identity in memory. Its same-ID retry does not survive app termination.
 Persist the exact logical request before publication and restore it before
 admitting another launch. Add a status query and an operator reconciliation

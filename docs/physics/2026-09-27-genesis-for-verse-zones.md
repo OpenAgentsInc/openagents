@@ -10,7 +10,7 @@ This comparison uses [Genesis v1.4.2 at `f5b2b41f6aa736e26ec4f8d9e9c31ae105c0c49
 
 ## What exists in Verse
 
-The [zone contract](../verse/zones.md) runs Lagrange locally on desktop and mobile. [`verse-lagrange`](../../crates/verse-lagrange/src/lib.rs) owns renderer-free physics; the [`Lagrange` adapter](../../crates/verse/src/zones/lagrange.rs) maps input and generates meshes; [`WorldRuntime`](../../crates/verse/src/zones/runtime.rs) enters, ticks, and drops the zone. The [L1 physics guide](../verse/lagrange-1.md) lists its approximations.
+The [zone contract](../verse/zones.md) runs Lagrange locally on desktop and mobile. [`verse-lagrange`](../../crates/verse-lagrange/src/lib.rs) owns renderer-free physics; the [`Lagrange` adapter](../../crates/verse-zone-lagrange/src/lib.rs) maps input and generates meshes; [`WorldRuntime`](../../crates/verse/src/zones/runtime.rs) enters, ticks, and drops the zone. The [L1 physics guide](../verse/lagrange-1.md) lists its approximations.
 
 | Scale | Implemented behavior | Limit for a construction scene |
 | --- | --- | --- |

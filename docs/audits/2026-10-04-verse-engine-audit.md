@@ -90,7 +90,7 @@ code. Counts describe scope, not coverage or quality.
 | [`verse-wow` at the original baseline](https://github.com/OpenAgentsInc/openagents/blob/e3d774841b39bca2a7a916ebe115e442bc7dffe2/crates/verse-wow/src/lib.rs) | Compatibility adapter | Imported snapshots, numeric motion bindings, and separation from original content. |
 | [`everglade-web`](../../crates/everglade-web/README.md) | 3 / 809 | Pinned pack fetching, local world mounting, input, and WebGPU/WebGL2 rendering. |
 | [Mobile surface](../../crates/coder-mobile/src/verse_app.rs) and [OpenAgents wrapper](../../crates/openagents-mobile/src/verse.rs) | Integration review | Rust-owned state, injected identity, native surface lifecycle, and feature boundaries. |
-| [Host example](../../crates/verse/examples/verse_host.rs), [remote client](../../crates/verse/src/imported/remote_window.rs), and [battle harness](../../scripts/bench/verse-battle-capture.py) | Execution-path review | Startup, content identity, configured rights, persistence selection, network workers, authenticated load, capture, and profiling. |
+| [Host example](../../crates/verse/examples/verse_host.rs), [remote client](../../crates/verse-imported/src/imported/remote_window.rs), and [battle harness](../../scripts/bench/verse-battle-capture.py) | Execution-path review | Startup, content identity, configured rights, persistence selection, network workers, authenticated load, capture, and profiling. |
 | [Assets](../../assets/verse) and [retained evidence](../../bench/verse) | Contract and receipt review | Original/retained content separation, manifests, character compilation, reloads, and measurement limitations. |
 
 Other OpenAgents account, payment, host, and agent systems are integration
@@ -1392,8 +1392,8 @@ character state; rollback never creates a second active writer.
 
 ### V20: Artists need tools over the runtime's own contracts
 
-[`original`](../../crates/verse/src/imported/original.rs),
-[`characters`](../../crates/verse/src/imported/characters.rs), and the
+[`original`](../../crates/verse-imported/src/imported/original.rs),
+[`characters`](../../crates/verse-imported/src/imported/characters.rs), and the
 [`Everglade compiler`](../../crates/verse/src/zones/everglade_pack/compile.rs)
 are useful Rust content pipelines. Scenes and catalogs can be authored as data,
 and validated reload exists. Geometry, collision profiles, layout, clip mapping,

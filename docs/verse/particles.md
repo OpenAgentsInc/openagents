@@ -16,8 +16,8 @@ the game.
 | Make sprites | `scripts/blender/fx/*.py`, one script per sheet | `scripts/blender/build-fx.sh [SHEET...]` |
 | Store sprites | `assets/verse/fx/*.png`, provenance in `assets/verse/fx/PROVENANCE.md` | Commit the PNGs with their scripts |
 | Describe effects | `assets/verse/fx/effects/*.toml` | Edit the file |
-| Register | `crates/verse/src/fx/library.rs` (`SOURCES`) and, for a new sheet, `crates/verse-pbr/src/fx/sheet.rs` (`SHEETS`) | Add one line |
-| Check | `crates/verse/src/fx/tests.rs` | `cargo test -p verse --lib -- fx` |
+| Register | `crates/verse-core/src/fx/library.rs` (`SOURCES`) and, for a new sheet, `crates/verse-pbr/src/fx/sheet.rs` (`SHEETS`) | Add one line |
+| Check | `crates/verse-core/src/fx/tests.rs` | `cargo test -p verse --lib -- fx` |
 | Preview | `crates/verse/examples/fx_preview.rs` | `cargo run --release -p verse --example fx_preview -- EFFECT OUT_DIR` |
 | Gallery | The same example | `cargo run --release -p verse --example fx_preview -- --all OUT_DIR` |
 | Tune live | The desktop build | `VERSE_FX_RELOAD=1 cargo run --release -p verse` |

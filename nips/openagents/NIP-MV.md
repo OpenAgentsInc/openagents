@@ -618,7 +618,7 @@ opening note whose own result is its author's. It SHOULD show text it renders
 from the cited results rather than the note's content, which exists for plain
 NIP-C7 clients. A sender MUST NOT put anything in a note that its trainer
 has not already published, and SHOULD bound how often it speaks; Verse's
-bounds are in `crates/verse/src/gym_notes.rs`.
+bounds are in `crates/verse-gym/src/gym_notes.rs`.
 
 ## Subscriptions
 

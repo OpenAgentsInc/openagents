@@ -43,7 +43,7 @@ Non-goals:
 
 | Piece | Where | What it does |
 | --- | --- | --- |
-| Gym building and boards | `crates/verse/src/gym.rs`, `crates/verse/src/hud/gym.rs` | Polls a connected host through `gym-bridge` every 5 s while the player is inside; shows `Run` rows (status, progress, cost, elapsed, up to 4 metric series). Being ported into the OpenAgents app's Grid now. |
+| Gym building and boards | `crates/verse-gym/src/gym.rs`, `crates/verse/src/hud/gym.rs` | Polls a connected host through `gym-bridge` every 5 s while the player is inside; shows `Run` rows (status, progress, cost, elapsed, up to 4 metric series). Being ported into the OpenAgents app's Grid now. |
 | Bridge contract | `crates/gym-bridge/src/protocol.rs` | `openagents.gym-board.v1`: at most 128 KiB, 64 runs, 16 recipes. Encrypted Nostr transport, kind 3188. A board isn't an evaluation publication. |
 | Measurement plane | `crates/gym` | `gym runs`, run cards, the `beats-winner` highlight rule, head-to-head replay. `gym publish` covers decision-model stores only; nothing is published for Terminal-Bench. |
 | Verse replays | [Run replays](README.md#run-replays) | Plays a retained Microcoder run as visits to world landmarks, beside a ghost of Fable's cheapest winning run. Desktop only. |
@@ -336,7 +336,7 @@ In the Grid, the **RESULTS** board is the right-hand plot panel beside the
 central board (`verse::world::GYM_RESULTS_BOARD`), lettered **RESULTS** and,
 for a host with the panel, **TAP TO OPEN** from within 6 m. Coder's plaza
 Gym keeps its empty plot panel. The panel's state is
-[`crates/verse/src/gym_results.rs`](../../crates/verse/src/gym_results.rs):
+[`crates/verse-gym/src/gym_results.rs`](../../crates/verse-gym/src/gym_results.rs):
 it starts `gym_leaderboard::client` on entering the Gym (a verified cached
 copy shows at once while the index is checked) and drops it on leaving,
 asks for a bundle only when a trace opens, and renders one screen at a
@@ -378,7 +378,7 @@ against a mirror.
    "unknown"), time against the bar, and the labels.
 
 An open trace also plays in the world as a replay
-([`crates/verse/src/gym_replay.rs`](../../crates/verse/src/gym_replay.rs)),
+([`crates/verse-gym/src/gym_replay.rs`](../../crates/verse-gym/src/gym_replay.rs)),
 with the landmark mapping in [Run replays](README.md#run-replays): the
 agent's commands and words at the workbench, the Jev decision at the
 oracle, retrieval at the library, and tests and the verifier at the

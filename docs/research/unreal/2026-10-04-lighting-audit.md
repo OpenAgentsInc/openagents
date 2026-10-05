@@ -78,7 +78,7 @@ gets.
 | --- | --- | --- |
 | Amber legacy | The plaza's lines and faces, the Ruins zone | `crates/verse/src/shader.wgsl`, `render.rs` |
 | Physical (`pbr`) | Lagrange 1 (a `Sky`), the plaza ball and Everglade (a `Neon` stage with a `Key` light), Physics Lab | `crates/verse/src/pbr/{gpu.rs,photo.wgsl,post.wgsl,bake.rs,textured.rs}` |
-| Chamber (`imported`) | The original summoning-lair scene with skinned characters and torches | `crates/verse/src/imported/{scene.wgsl,lighting.rs,shadow_cache.rs}`, `crates/verse-engine/src/lighting.rs` |
+| Chamber (`imported`) | The original summoning-lair scene with skinned characters and torches | `crates/verse-imported/src/imported/{scene.wgsl,lighting.rs,shadow_cache.rs}`, `crates/verse-engine/src/lighting.rs` |
 
 Feature by feature:
 

@@ -18,10 +18,10 @@ downloaded.
 
 | Part | Code |
 | --- | --- |
-| Scenarios: build, step, and readouts; no rendering | [`zones/lab/scenes.rs`](../../crates/verse/src/zones/lab/scenes.rs) |
-| Knobs, fixed-step clock, HUD text, and snapshot | [`zones/lab/mod.rs`](../../crates/verse/src/zones/lab/mod.rs) |
-| Hall, stage, bodies, and overlays | [`zones/lab/draw.rs`](../../crates/verse/src/zones/lab/draw.rs) |
-| Tests | [`zones/lab/tests.rs`](../../crates/verse/src/zones/lab/tests.rs) |
+| Scenarios: build, step, and readouts; no rendering | [`zones/lab/scenes.rs`](../../crates/verse-zone-lab/src/scenes.rs) |
+| Knobs, fixed-step clock, HUD text, and snapshot | [`zones/lab/mod.rs`](../../crates/verse-zone-lab/src/lib.rs) |
+| Hall, stage, bodies, and overlays | [`zones/lab/draw.rs`](../../crates/verse-zone-lab/src/draw.rs) |
+| Tests | [`zones/lab/tests.rs`](../../crates/verse-zone-lab/src/tests.rs) |
 | Offline capture | [`examples/lab_capture.rs`](../../crates/verse/examples/lab_capture.rs) |
 
 ## Enter and leave

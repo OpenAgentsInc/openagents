@@ -151,7 +151,7 @@ This is the most directly portable mechanism. For each axis the plugin computes 
 - Contact-force readout per body (`contact_force_go2.py`): normal and tangential impulse / dt, used by the HUD ("impact 340 N") and by tests.
 - IMU on the astronaut (`imu_franka.py`): specific force and angular rate from the solved state. Show g-load and spin rate on the HUD; they explain thruster and tether events to the player.
 - Raycast (`lidar_teleop.py`): used by GP-4 hit-point picking and a proximity readout to the nearest structure.
-- Debug overlay (`draw_debug.py`, `contact_manifold.py` markers): contact points, normals, manifold polygons, constraint anchors, tether line, and thruster vectors. Only in the renderer adapter [`zones/lagrange.rs`](../../crates/verse/src/zones/lagrange.rs); the physics crate emits data only.
+- Debug overlay (`draw_debug.py`, `contact_manifold.py` markers): contact points, normals, manifold polygons, constraint anchors, tether line, and thruster vectors. Only in the renderer adapter [`zones/lagrange.rs`](../../crates/verse-zone-lagrange/src/lib.rs); the physics crate emits data only.
 
 **Accept:** Sensor values match analytic cases: a thruster burn's acceleration, and a contact impulse in a head-on collision. The overlay can be toggled and costs nothing when off.
 

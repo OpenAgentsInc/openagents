@@ -38,7 +38,7 @@ belong in the [iOS](../../bins/coder-ios/README.md) and
 | Rules | Exploration and product interactions | `ruins.wizard-woods.v1`: retained real-time ECS | Construction sandbox: grab, carry, latch | Sandbox: choose a scenario and turn knobs | Exploration; the caption names the station in reach |
 | Assets | Built in | 6.6 MB verified pack, cached on disk | None | None | 13.4 MB verified pack, cached on disk |
 | Network | NIP-MV plaza presence; Gym connection | Local-only | Local-only | Local-only | Local-only |
-| Code | [`world.rs`](../../crates/verse/src/world.rs) | [`zones/ruins.rs`](../../crates/verse/src/zones/ruins.rs), [`verse-ruins`](../../crates/verse-ruins/) | [`zones/lagrange/`](../../crates/verse/src/zones/lagrange/mod.rs), [`pbr`](../../crates/verse-pbr/src/pbr/mod.rs), [`verse-lagrange`](../../crates/verse-lagrange/) | [`zones/lab/`](../../crates/verse/src/zones/lab/mod.rs), [`physics`](../../crates/physics/) | [`zones/everglade/`](../../crates/verse/src/zones/everglade/mod.rs) |
+| Code | [`world.rs`](../../crates/verse/src/world.rs) | [`zones/ruins.rs`](../../crates/verse-zone-ruins/src/lib.rs), [`verse-ruins`](../../crates/verse-ruins/) | [`zones/lagrange/`](../../crates/verse-zone-lagrange/src/lib.rs), [`pbr`](../../crates/verse-pbr/src/pbr/mod.rs), [`verse-lagrange`](../../crates/verse-lagrange/) | [`zones/lab/`](../../crates/verse-zone-lab/src/lib.rs), [`physics`](../../crates/physics/) | [`zones/everglade/`](../../crates/verse/src/zones/everglade/mod.rs) |
 
 The amber palette rule belongs to the plaza and Coder application UI, not to
 every world. Zone colors belong to Verse's zone implementation. Rust Native
@@ -76,7 +76,7 @@ third arch to the Grid, `RITUAL`, centered beyond the blocks. It pins an
 authoritative chamber the desktop trusts out of band: the host's address and
 instance, its DER certificate, and the local pack, scene, and asset directory
 whose content identity the host checks
-([`ritual.rs`](../../crates/verse/src/ritual.rs)). Walking through the arch
+([`ritual.rs`](../../crates/verse-imported/src/ritual.rs)). Walking through the arch
 opens the chamber in its own window, signed by the profile key, which a
 public host admits as a guest (`docs/cli/README.md`, "Public chambers").
 While that window is open the Grid's presence, chat, feed, XP, and board
@@ -235,7 +235,7 @@ these places:
    zone; free-flight zones use the unclamped eye. `set_spawn` requires a finite
    position inside `half_extent`.
 8. **Assets (only if needed).** A downloaded pack follows the Ruins pattern in
-   [`zones/assets.rs`](../../crates/verse/src/zones/assets.rs): a compiled
+   [`zones/assets.rs`](../../crates/verse-zone-ruins/src/assets.rs): a compiled
    SHA-256 and byte length, a content-addressed file name, a bounded decoder,
    and a manifest in `assets/verse/<zone>/zone.json` admitted by
    `Manifest::validate`. Keep every published digest file in the repository so
@@ -252,7 +252,7 @@ these places:
 
 ## Ruins asset loading and cache
 
-[`zones/assets.rs`](../../crates/verse/src/zones/assets.rs) loads one reviewed
+[`zones/assets.rs`](../../crates/verse-zone-ruins/src/assets.rs) loads one reviewed
 pack from an HTTPS locator. Its compiled content pin is:
 
 | Property | Value |

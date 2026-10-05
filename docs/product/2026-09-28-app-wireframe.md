@@ -2023,12 +2023,12 @@ narrate a reward the app can't give.
 | Need | Status | Where |
 | --- | --- | --- |
 | The Grid, plaza, ball, blocks, dominoes | EXISTS | `crates/verse` (`WorldRuntime::bare`), phone Verse tab |
-| Other players' avatars and name tags | EXISTS | Grid presence; `crates/verse/src/avatar.rs` |
-| The Gym building and board | EXISTS | `crates/verse/src/gym.rs`, `docs/verse/gym.md` |
-| Ghost figures replaying a run | EXISTS | `crates/verse/src/gym_replay.rs`, `replay.rs` |
+| Other players' avatars and name tags | EXISTS | Grid presence; `crates/verse-core/src/avatar.rs` |
+| The Gym building and board | EXISTS | `crates/verse-gym/src/gym.rs`, `docs/verse/gym.md` |
+| Ghost figures replaying a run | EXISTS | `crates/verse-gym/src/gym_replay.rs`, `replay.rs` |
 | A timed clock with play, seek, and speed | EXISTS | `replay::Clock`, `replay::Track` |
 | Third-person follow camera that swings back behind the player | EXISTS | `crates/verse/src/camera.rs` (`FollowCamera::settle`) |
-| The player's agent as a companion figure | PARTIAL | `crates/verse/src/agent.rs` (a floating spade on desktop; the Grid has no companion); the Coder figure is NEW |
+| The player's agent as a companion figure | PARTIAL | `crates/verse-core/src/agent.rs` (a floating spade on desktop; the Grid has no companion); the Coder figure is NEW |
 | The Lagrange 1 station in the sky | PARTIAL | `crates/verse-lagrange`; the portal is hidden on the phone |
 | Scripted camera path (keyframes, easing, crane, dolly) | NEW | Nothing in `crates/verse`. `three-effect` has no camera-path primitive, and the phone renderer is Rust, not `three-effect`. |
 | Subtitle band, end card, skip control | PARTIAL | The end card with **LET'S GO** exists (`crates/openagents-mobile/src/first_run.rs`); the subtitle band and skip control are NEW |

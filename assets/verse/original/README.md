@@ -1,7 +1,7 @@
 # Original ritual chamber
 
 The `verse_play` example generates the chamber, weapons, effects, and UI from
-`crates/verse/src/imported/original.rs`. Its default actors now use the retained
+`crates/verse-imported/src/imported/original.rs`. Its default actors now use the retained
 [CC0 Universal characters and fantasy outfits](../characters/quaternius/README.md).
 Use `--greybox` to generate the complete procedural character fixture. Neither
 mode reads a third-party game installation or its assets. The JSON timeline
