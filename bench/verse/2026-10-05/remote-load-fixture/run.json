@@ -38,6 +38,7 @@
     "Headless drivers and authority share Linux CPU and storage.",
     "Only the native client establishes rendering performance.",
     "Headless loopback delay and native delayed SSH forwarding are different routes.",
-    "Full remote capture and crowded performance acceptance remain pending."
-  ]
+    "Full remote capture completes and cleanup succeeds, but crowded performance acceptance fails with 34 expiries; see ../all-interval-coderos-remote-load-scheduled/run.json."
+  ],
+  "published_revision": "d22da831b0"
 }

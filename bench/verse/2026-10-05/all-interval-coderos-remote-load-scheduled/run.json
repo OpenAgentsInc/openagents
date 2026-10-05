@@ -1,0 +1,494 @@
+{
+  "schema": "verse.battle.acceptance.evidence.v1",
+  "acceptance": "failed",
+  "compiled_revisions": {
+    "host": "4a4a128cf8bd78fdfa014c88d6049e91686058f0",
+    "native_client": "07271e80dbf6b0403dce8ae05c1bfc29af825ace",
+    "headless_clients": "ff1ea1b394+patch-aaacc86744"
+  },
+  "wire_version": 28,
+  "workload": {
+    "players": 20,
+    "live_hostiles": 40,
+    "persistent": true,
+    "delay_mode": "scheduled",
+    "delay_ms": 40,
+    "jitter_ms": 20
+  },
+  "movement_expiry": {
+    "total": 34,
+    "admission": 1,
+    "primary_tick": 9,
+    "additional_tick": 24,
+    "bootstrap": 0,
+    "omitted": 2
+  },
+  "steady_measurements": {
+    "client_preparation_cpu_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.538291,
+      "p95": 1.92075,
+      "p99": 4.305167,
+      "maximum": 8.733333
+    },
+    "command_finish_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 6.099958,
+      "p95": 11.895584000000001,
+      "p99": 15.180625,
+      "maximum": 105.960917
+    },
+    "command_turnaround_ms": {
+      "samples": 675,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 153.375958,
+      "p95": 189.555125,
+      "p99": 218.34224999999998,
+      "maximum": 264.160167
+    },
+    "command_verified_to_sample_ms": {
+      "samples": 679,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 8.736041,
+      "p95": 21.307208000000003,
+      "p99": 98.43499999999999,
+      "maximum": 979.3602500000001
+    },
+    "events_turnaround_ms": {
+      "samples": 214,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 154.426083,
+      "p95": 181.240625,
+      "p99": 230.45679099999998,
+      "maximum": 532.2774999999999
+    },
+    "events_verified_to_sample_ms": {
+      "samples": 215,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 8.839958,
+      "p95": 23.348083,
+      "p99": 561.0661249999999,
+      "maximum": 979.3982500000001
+    },
+    "frame_interval_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 15.530125,
+      "p95": 26.402208,
+      "p99": 39.391042,
+      "maximum": 1023.820083
+    },
+    "gpu_overlay_ms": {
+      "samples": 2001,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.027792,
+      "p95": 0.969833,
+      "p99": 9.091375,
+      "maximum": 12.62125
+    },
+    "gpu_query_poll_cpu_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.014542000000000001,
+      "p95": 0.815208,
+      "p99": 1.646792,
+      "maximum": 10.162834
+    },
+    "gpu_shadow_ms": {
+      "samples": 2001,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 2.054333,
+      "p95": 4.335292,
+      "p99": 9.327083,
+      "maximum": 14.205708
+    },
+    "gpu_total_ms": {
+      "samples": 2001,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 3.884084,
+      "p95": 14.602375,
+      "p99": 17.08825,
+      "maximum": 21.445667
+    },
+    "gpu_world_ms": {
+      "samples": 2001,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.842083,
+      "p95": 11.680958,
+      "p99": 13.561459,
+      "maximum": 16.449041
+    },
+    "input_channel_depth": {
+      "samples": 1178,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 1.0,
+      "maximum": 7.0
+    },
+    "inventory_turnaround_ms": {
+      "samples": 38,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 156.21325,
+      "p95": 274.70775,
+      "p99": 532.868541,
+      "maximum": 532.868541
+    },
+    "inventory_verified_to_sample_ms": {
+      "samples": 38,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 8.8435,
+      "p95": 21.487040999999998,
+      "p99": 28.570083,
+      "maximum": 28.570083
+    },
+    "oldest_input_handler_to_next_submit_cpu_ms": {
+      "samples": 2,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 23.833792,
+      "p95": 23.833792,
+      "p99": 23.833792,
+      "maximum": 23.833792
+    },
+    "overlay_encode_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.002208,
+      "p95": 0.003792,
+      "p99": 0.005875,
+      "maximum": 0.16908299999999998
+    },
+    "pending_requests": {
+      "samples": 1178,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.0,
+      "p95": 5.0,
+      "p99": 6.0,
+      "maximum": 7.0
+    },
+    "prepare_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.372209,
+      "p95": 9.317166,
+      "p99": 12.515500000000001,
+      "maximum": 19.417292
+    },
+    "present_call_cpu_ms": {
+      "samples": 230,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.016791,
+      "p95": 0.030790999999999995,
+      "p99": 0.05725,
+      "maximum": 10.091417
+    },
+    "presentation_encode_cpu_ms": {
+      "samples": 230,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.14162499999999997,
+      "p95": 0.255625,
+      "p99": 0.745625,
+      "maximum": 7.29825
+    },
+    "presentation_queue_submit_cpu_ms": {
+      "samples": 230,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.050041999999999996,
+      "p95": 0.24816600000000003,
+      "p99": 0.8560840000000001,
+      "maximum": 1.173625
+    },
+    "queue_submit_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.822708,
+      "p95": 8.260917,
+      "p99": 22.665083,
+      "maximum": 267.729875
+    },
+    "rendered_snapshot_applied_age_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 92.927583,
+      "p95": 175.740792,
+      "p99": 260.70500000000004,
+      "maximum": 1117.532541
+    },
+    "sdk_verified_snapshot_age_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 86.641792,
+      "p95": 169.9965,
+      "p99": 275.64300000000003,
+      "maximum": 639.910667
+    },
+    "shadow_encode_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.6637909999999999,
+      "p95": 1.8285,
+      "p99": 3.83975,
+      "maximum": 9.407666
+    },
+    "snapshot_turnaround_ms": {
+      "samples": 245,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 160.92775,
+      "p95": 190.93474999999998,
+      "p99": 216.115791,
+      "maximum": 296.076417
+    },
+    "snapshot_verified_to_sample_ms": {
+      "samples": 246,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 8.506417,
+      "p95": 24.816917,
+      "p99": 661.718667,
+      "maximum": 979.4155420000001
+    },
+    "surface_acquire_cpu_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0305,
+      "p95": 0.091625,
+      "p99": 0.674,
+      "maximum": 1007.7892909999999
+    },
+    "surface_configure_cpu_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "maximum": 0.0
+    },
+    "total_draw_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 13.921542,
+      "p95": 24.070332999999998,
+      "p99": 37.317875,
+      "maximum": 278.876917
+    },
+    "update_channel_depth": {
+      "samples": 1178,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 2.0,
+      "p99": 4.0,
+      "maximum": 8.0
+    },
+    "window_present_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.031083,
+      "p95": 0.3095,
+      "p99": 1.121125,
+      "maximum": 1008.0896660000001
+    },
+    "world_encode_ms": {
+      "samples": 2485,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.1895,
+      "p95": 0.47612499999999996,
+      "p99": 1.3615000000000002,
+      "maximum": 6.934958
+    }
+  },
+  "reset_reasons": {
+    "control_epoch": 15
+  },
+  "prediction_correction_meters": {
+    "samples": 250,
+    "omitted": 0,
+    "median": 0.0,
+    "p95": 0.0,
+    "max": 0.0
+  },
+  "load_summary": {
+    "completed": 19,
+    "minimum_observed_maximum_players": 20,
+    "minimum_live_hostiles": 40,
+    "movement_inputs": 21256,
+    "input_pressure": 0
+  },
+  "proxy": {
+    "schema": "verse.delayed-route.v2",
+    "delay_ms": 40,
+    "jitter_ms": 20,
+    "delay_mode": "scheduled",
+    "delay_queue_capacity": 32,
+    "delay_queue_peak": 5,
+    "connections": 1,
+    "upstream_bytes": 346617,
+    "downstream_bytes": 7062701,
+    "forwarded_chunks": 2208,
+    "errors": 0,
+    "refused_connections": 0,
+    "error_details": [],
+    "omitted_error_details": 0,
+    "limits": [
+      "Delay applies to each TCP read chunk, not decrypted game messages.",
+      "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+      "Serial mode adds delay after each read and also limits chunk throughput.",
+      "TCP preserves byte order; this fixture does not simulate packet loss."
+    ],
+    "wall_seconds": 85.159255834
+  },
+  "exits": {
+    "clients": {
+      "primary": 0,
+      "load": 0
+    },
+    "host": 0,
+    "proxy": 0
+  },
+  "limitations": [
+    "Movement expiry target is not met.",
+    "A shared-load run cannot establish causality against earlier runs.",
+    "Input-to-display latency and one-way network age are not measured.",
+    "Only the native primary renders; headless players establish server workload, not multi-device rendering performance.",
+    "Histogram quantiles in host.log are upper bounds.",
+    "Headless drivers and authority share Linux CPU/storage; only the native client renders.",
+    "Headless clients use delayed loopback; the native client uses delayed SSH forwarding.",
+    "Four remote load-proxy errors are unclassified; the native proxy reports zero."
+  ],
+  "diagnosis": "The remote-load fixture completes and removes its remote scratch processes/data. Movement expiry acceptance still fails. Host storage maximum is 240.553 ms with 34 paused ticks, while simulation maximum is 13.349 ms. The primary has a 1023.820 ms frame maximum. Repeat the separated workload without persistence to investigate storage contribution; shared hardware and different transport routes prevent an isolated causal comparison to prior Mac-load captures.",
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "07271e80dbf6b0403dce8ae05c1bfc29af825ace",
+      "verse_load": "ff1ea1b394+patch-aaacc86744"
+    },
+    "wire_version": 28,
+    "sha256": {
+      "verse_remote": "42a5716f9f8ba77f2c65bf2be05ef2c193cea6ee110f96e067fe5d6b7687b7a2",
+      "verse_load": "dee1015f652016f2ef0e574c3f65eb73128fcb3f5ea7122ba98e8c80e0a51887"
+    },
+    "movement_send_steps": 6,
+    "authority_credit_source": "verified control.credit_step",
+    "periodic_reads_reserve_gameplay_slot": true,
+    "tracked_teleport_barrier": true,
+    "obsolete_inputs_retire_without_reads": true,
+    "independent_checkpoint_credit": true,
+    "bounded_interval_batch_steps": 12,
+    "casts_preserve_movement_production": true,
+    "producer_timing_window_capacity": 128,
+    "producer_transition_capacity": 8,
+    "credit_remainder_packets": true,
+    "single_budget_movement_packet": true,
+    "maximum_movement_packets_per_wake": 1,
+    "platforms": {
+      "verse_remote": "macOS arm64",
+      "verse_load": "Linux x86_64"
+    },
+    "features_by_binary": {
+      "verse_remote": [
+        "imported-desktop",
+        "remote-chamber"
+      ],
+      "verse_load": [
+        "remote-chamber"
+      ]
+    },
+    "linux_load_source": {
+      "tested_base_revision": "ff1ea1b39429ffee859063b15e9bda1b17b388bb",
+      "patch_sha256": "aaacc86744087c0a777f2dd58f47df60f55f7e7c891e78dacbcba2fec1e2c399"
+    }
+  },
+  "remote_load_proxy": {
+    "schema": "verse.delayed-route.v2",
+    "delay_ms": 40,
+    "jitter_ms": 20,
+    "delay_mode": "scheduled",
+    "delay_queue_capacity": 32,
+    "delay_queue_peak": 6,
+    "connections": 19,
+    "upstream_bytes": 10091258,
+    "downstream_bytes": 180304994,
+    "forwarded_chunks": 75611,
+    "errors": 4,
+    "refused_connections": 0,
+    "error_details": [
+      {
+        "elapsed_seconds": 83.2294007440214,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 104
+      },
+      {
+        "elapsed_seconds": 83.23069105600007,
+        "direction": "downstream",
+        "type": "ConnectionResetError",
+        "errno": 104
+      },
+      {
+        "elapsed_seconds": 83.2499160169973,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 104
+      },
+      {
+        "elapsed_seconds": 83.25547159399139,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 104
+      }
+    ],
+    "omitted_error_details": 0,
+    "limits": [
+      "Delay applies to each TCP read chunk, not decrypted game messages.",
+      "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+      "Serial mode adds delay after each read and also limits chunk throughput.",
+      "TCP preserves byte order; this fixture does not simulate packet loss."
+    ],
+    "wall_seconds": 84.34795997600304
+  },
+  "load_deployment": {
+    "schema": "verse.battle.remote-load.v1",
+    "compiled_revision": "ff1ea1b394+patch-aaacc86744",
+    "binary_sha256": "dee1015f652016f2ef0e574c3f65eb73128fcb3f5ea7122ba98e8c80e0a51887",
+    "native_route": "Mac delayed proxy to SSH-forwarded Linux authority",
+    "headless_route": "Linux delayed loopback proxy to Linux authority",
+    "limits": [
+      "Headless drivers and authority share Linux CPU and storage.",
+      "Only the native player renders.",
+      "Headless route has no SSH forwarding hop."
+    ]
+  }
+}
