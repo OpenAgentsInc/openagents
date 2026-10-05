@@ -167,6 +167,10 @@ struct State {
     link_ids: HashMap<String, u16>,
     shell: shell::Metadata,
     damage: Vec<bool>,
+    /// The Kitty keyboard flags programs pushed on the primary screen and on
+    /// the alternate screen; each screen has its own stack.
+    kitty_primary: Vec<u8>,
+    kitty_alternate: Vec<u8>,
 }
 
 /// A terminal emulator for one grid.
@@ -229,6 +233,8 @@ impl Terminal {
                 link_ids: HashMap::new(),
                 shell: shell::Metadata::default(),
                 damage: vec![true; rows],
+                kitty_primary: Vec::new(),
+                kitty_alternate: Vec::new(),
             },
             generation: 0,
         }
@@ -463,8 +469,16 @@ impl Terminal {
             KeyModes {
                 application_cursor: self.state.modes.application_cursor,
                 application_keypad: self.state.modes.application_keypad,
+                kitty: self.state.kitty_flags(),
             },
         )
+    }
+
+    /// The Kitty keyboard flags the program negotiated on the current
+    /// screen ([`input::kitty`]); 0 is the legacy xterm encoding.
+    #[must_use]
+    pub fn kitty_flags(&self) -> u8 {
+        self.state.kitty_flags()
     }
 
     /// Encodes a paste under the terminal's current bracketed paste mode.
@@ -980,6 +994,7 @@ impl State {
         if !self.alternate_active {
             self.damage.fill(true);
             self.alternate_active = true;
+            self.kitty_alternate.clear();
             if clear {
                 self.erase_rows(0, self.rows);
             }
@@ -989,6 +1004,61 @@ impl State {
     fn leave_alternate(&mut self) {
         self.damage.fill(true);
         self.alternate_active = false;
+        // A full-screen program's flags end with it; the shell's return.
+        self.kitty_alternate.clear();
+    }
+
+    /// The current screen's Kitty keyboard flags.
+    fn kitty_flags(&self) -> u8 {
+        let stack = if self.alternate_active {
+            &self.kitty_alternate
+        } else {
+            &self.kitty_primary
+        };
+        stack.last().copied().unwrap_or(0)
+    }
+
+    /// The Kitty keyboard requests (`CSI ? u`, `CSI > u`, `CSI < u`, and
+    /// `CSI = u`). Flags this terminal does not support are dropped, so a
+    /// query reports what keys will actually send.
+    fn kitty(&mut self, marker: u8, values: &[u16]) {
+        let flags = (arg(values, 0, 0).min(255) as u8) & input::kitty::SUPPORTED;
+        if marker == b'?' {
+            let answer = format!("\x1b[?{}u", self.kitty_flags());
+            self.reply(answer.as_bytes());
+            return;
+        }
+        let stack = if self.alternate_active {
+            &mut self.kitty_alternate
+        } else {
+            &mut self.kitty_primary
+        };
+        match marker {
+            b'>' => {
+                if stack.len() == input::kitty::STACK {
+                    stack.remove(0);
+                }
+                stack.push(flags);
+            }
+            b'<' => {
+                let count = arg(values, 0, 1).max(1);
+                stack.truncate(stack.len().saturating_sub(count));
+            }
+            b'=' => {
+                let current = stack.last().copied().unwrap_or(0);
+                let next = match arg(values, 1, 1) {
+                    1 => flags,
+                    2 => current | flags,
+                    3 => current & !flags,
+                    _ => return,
+                };
+                match stack.last_mut() {
+                    Some(top) => *top = next,
+                    None => stack.push(next),
+                }
+            }
+            _ => {}
+        }
     }
 
     fn set_mode(&mut self, private: bool, mode: u16, on: bool) {
@@ -1476,6 +1546,7 @@ impl vte::Perform for State {
             }
             ([], 's') => self.save_cursor(),
             ([], 'u') => self.restore_cursor(),
+            ([marker @ (b'?' | b'>' | b'<' | b'=')], 'u') => self.kitty(*marker, &values),
             ([b'!'], 'p') => self.soft_reset(),
             ([b' '], 'q') => {
                 let (shape, blink) = match arg(&values, 0, 0) {

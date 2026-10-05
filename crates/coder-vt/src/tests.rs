@@ -825,3 +825,57 @@ fn damage_tracks_edits_scrolls_resize_and_screen_switches() {
     t.feed(b"\x1b[?1049l");
     assert_eq!(t.take_damage(), vec![0, 1, 2, 3]);
 }
+
+#[test]
+fn kitty_keyboard_flags_are_negotiated_per_screen_and_bounded() {
+    use crate::input::kitty;
+    let mut t = term(4, 20);
+    let ctrl_i = |t: &Terminal| t.key(Key::Char('i'), Modifiers::CTRL);
+    // Unnegotiated: the xterm bytes, and a query answers 0.
+    assert_eq!(ctrl_i(&t), b"\t");
+    t.feed(b"\x1b[?u");
+    assert_eq!(t.take_replies(), b"\x1b[?0u");
+    // A push of every flag keeps only what is supported.
+    t.feed(b"\x1b[>31u\x1b[?u");
+    assert_eq!(
+        t.take_replies(),
+        format!("\x1b[?{}u", kitty::SUPPORTED).as_bytes()
+    );
+    assert_eq!(ctrl_i(&t), b"\x1b[105;5u");
+    // A full-screen program gets its own stack and leaves the shell's.
+    t.feed(b"\x1b[?1049h");
+    assert_eq!(t.kitty_flags(), 0);
+    assert_eq!(ctrl_i(&t), b"\t");
+    t.feed(b"\x1b[>1u");
+    assert_eq!(t.kitty_flags(), 1);
+    t.feed(b"\x1b[?1049l");
+    assert_eq!(t.kitty_flags(), 1);
+    t.feed(b"\x1b[?1049h");
+    assert_eq!(t.kitty_flags(), 0, "the alternate stack starts empty");
+    t.feed(b"\x1b[?1049l");
+    // Set, or, and and-not on the top entry; a pop past the bottom empties.
+    t.feed(b"\x1b[=0;1u");
+    assert_eq!(t.kitty_flags(), 0);
+    t.feed(b"\x1b[=1;2u");
+    assert_eq!(t.kitty_flags(), 1);
+    t.feed(b"\x1b[=1;3u");
+    assert_eq!(t.kitty_flags(), 0);
+    t.feed(b"\x1b[=1;9u");
+    assert_eq!(t.kitty_flags(), 0, "an unknown mode changes nothing");
+    t.feed(b"\x1b[<100u");
+    assert_eq!(t.kitty_flags(), 0);
+    // The stack is bounded: the oldest entries go.
+    for _ in 0..kitty::STACK + 4 {
+        t.feed(b"\x1b[>1u");
+    }
+    t.feed(format!("\x1b[<{}u", kitty::STACK - 1).as_bytes());
+    assert_eq!(t.kitty_flags(), 1);
+    t.feed(b"\x1b[<u");
+    assert_eq!(t.kitty_flags(), 0);
+    // A plain `CSI u` still restores the cursor, and a reset forgets the
+    // flags.
+    t.feed(b"ab\x1b[s\x1b[1;1Hx\x1b[u!");
+    assert_eq!(line(&t, 0).trim_end(), "xb!");
+    t.feed(b"\x1b[>1u\x1bc");
+    assert_eq!(t.kitty_flags(), 0);
+}

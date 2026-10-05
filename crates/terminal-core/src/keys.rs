@@ -212,10 +212,13 @@ pub fn encode(
             _ => None,
         }
         .or_else(|| unmodified(key, false))?;
+        // Under the Kitty protocol, Ctrl+Shift is its own chord; the
+        // xterm encoding has no room for Shift there.
+        let kitty = vt.kitty_flags() != 0;
         return Some(vt.key(
-            Key::Char(c),
+            Key::Char(if kitty { c.to_ascii_lowercase() } else { c }),
             Modifiers {
-                shift: false,
+                shift: kitty && modifiers.shift,
                 alt: meta,
                 ctrl: true,
             },

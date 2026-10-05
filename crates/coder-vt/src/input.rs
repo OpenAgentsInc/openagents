@@ -37,6 +37,29 @@ pub struct KeyModes {
     pub application_cursor: bool,
     /// Keypad keys send `ESC O` (DECKPAM).
     pub application_keypad: bool,
+    /// The Kitty keyboard flags the program negotiated ([`kitty`]); 0 keeps
+    /// the xterm encoding.
+    pub kitty: u8,
+}
+
+/// The Kitty keyboard protocol's progressive enhancement, as far as this
+/// terminal supports it: the program asks with `CSI > flags u` and the
+/// terminal keeps the flags it supports on a stack per screen.
+///
+/// Supported: flag 1, disambiguate escape codes. Escape, and any key with
+/// Ctrl or Alt, sends `CSI code ; modifiers u`, as do Enter, Tab, and
+/// Backspace with a modifier; text and the other keys send what they send
+/// without the protocol. Not supported: 2 (press, repeat, and release
+/// events), 4 (alternate keys), 8 (every key as an escape code), and 16
+/// (associated text). A query reports only the flags in effect.
+pub mod kitty {
+    /// Disambiguate escape codes.
+    pub const DISAMBIGUATE: u8 = 1;
+    /// Every flag this terminal honors.
+    pub const SUPPORTED: u8 = DISAMBIGUATE;
+    /// The most entries a screen's stack holds; a push past it drops the
+    /// oldest.
+    pub const STACK: usize = 16;
 }
 
 /// Modifier keys held with a key.
@@ -63,7 +86,8 @@ impl Modifiers {
         self.ctrl || self.alt || self.shift
     }
 
-    /// xterm's modifier parameter: 1 plus shift 1, alt 2, and control 4.
+    /// xterm's and Kitty's modifier parameter: 1 plus shift 1, alt 2, and
+    /// control 4.
     fn parameter(self) -> u8 {
         1 + u8::from(self.shift) + 2 * u8::from(self.alt) + 4 * u8::from(self.ctrl)
     }
@@ -96,6 +120,7 @@ pub fn encode_key(key: Key, modifiers: Modifiers, application_cursor: bool) -> V
         KeyModes {
             application_cursor,
             application_keypad: false,
+            kitty: 0,
         },
     )
 }
@@ -103,6 +128,11 @@ pub fn encode_key(key: Key, modifiers: Modifiers, application_cursor: bool) -> V
 /// Encodes one key press under the terminal's key `modes`.
 #[must_use]
 pub fn encode_key_in(key: Key, modifiers: Modifiers, modes: KeyModes) -> Vec<u8> {
+    if modes.kitty & kitty::DISAMBIGUATE != 0
+        && let Some(bytes) = disambiguated(key, modifiers)
+    {
+        return bytes;
+    }
     let application_cursor = modes.application_cursor;
     let mut out = Vec::new();
     match key {
@@ -168,6 +198,44 @@ pub fn encode_key_in(key: Key, modifiers: Modifiers, modes: KeyModes) -> Vec<u8>
         Key::KeypadEnter => simple(&mut out, modifiers, b"\r"),
     }
     out
+}
+
+/// A key as the Kitty protocol's disambiguate flag sends it, or `None` when
+/// it sends what it sends without the protocol.
+fn disambiguated(key: Key, modifiers: Modifiers) -> Option<Vec<u8>> {
+    let (code, modifiers) = match key {
+        Key::Escape => (27, modifiers),
+        Key::Enter if modifiers.any() => (13, modifiers),
+        Key::Tab if modifiers.any() => (9, modifiers),
+        Key::BackTab => (
+            9,
+            Modifiers {
+                shift: true,
+                ..modifiers
+            },
+        ),
+        Key::Backspace if modifiers.any() => (127, modifiers),
+        Key::Char(character) if modifiers.ctrl || modifiers.alt => {
+            // The key's own code is its unshifted character.
+            if character.is_ascii_uppercase() {
+                (
+                    u32::from(character.to_ascii_lowercase()),
+                    Modifiers {
+                        shift: true,
+                        ..modifiers
+                    },
+                )
+            } else {
+                (u32::from(character), modifiers)
+            }
+        }
+        _ => return None,
+    };
+    Some(if modifiers.any() {
+        format!("\x1b[{code};{}u", modifiers.parameter()).into_bytes()
+    } else {
+        format!("\x1b[{code}u").into_bytes()
+    })
 }
 
 /// The final letter a keypad key sends in the application keypad mode.
@@ -332,11 +400,62 @@ mod tests {
     }
 
     #[test]
+    fn kitty_disambiguation_sends_csi_u_only_where_the_flag_asks() {
+        let kitty = KeyModes {
+            kitty: kitty::DISAMBIGUATE,
+            ..KeyModes::default()
+        };
+        let none = Modifiers::NONE;
+        let ctrl = Modifiers::CTRL;
+        let alt = Modifiers {
+            alt: true,
+            ..Modifiers::NONE
+        };
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::NONE
+        };
+        let cases: [(Key, Modifiers, &[u8]); 14] = [
+            (Key::Escape, none, b"\x1b[27u"),
+            (Key::Escape, alt, b"\x1b[27;3u"),
+            (Key::Char('i'), ctrl, b"\x1b[105;5u"),
+            (Key::Char('I'), ctrl, b"\x1b[105;6u"),
+            (Key::Char('a'), alt, b"\x1b[97;3u"),
+            (Key::Char(' '), ctrl, b"\x1b[32;5u"),
+            (Key::Enter, shift, b"\x1b[13;2u"),
+            (Key::Tab, ctrl, b"\x1b[9;5u"),
+            (Key::BackTab, none, b"\x1b[9;2u"),
+            (Key::Backspace, alt, b"\x1b[127;3u"),
+            // Text, and Enter alone, and other keys are unchanged.
+            (Key::Char('A'), shift, b"A"),
+            (Key::Char('\u{e9}'), none, "\u{e9}".as_bytes()),
+            (Key::Enter, none, b"\r"),
+            (Key::Up, ctrl, b"\x1b[1;5A"),
+        ];
+        for (key, modifiers, bytes) in cases {
+            assert_eq!(
+                encode_key_in(key, modifiers, kitty),
+                bytes,
+                "{key:?} {modifiers:?}"
+            );
+        }
+        // Without the flag, the xterm bytes.
+        assert_eq!(
+            encode_key_in(Key::Escape, none, KeyModes::default()),
+            b"\x1b"
+        );
+        assert_eq!(
+            encode_key_in(Key::Char('i'), ctrl, KeyModes::default()),
+            b"\t"
+        );
+    }
+
+    #[test]
     fn keypad_keys_follow_the_keypad_mode() {
         let normal = KeyModes::default();
         let application = KeyModes {
-            application_cursor: false,
             application_keypad: true,
+            ..KeyModes::default()
         };
         let none = Modifiers::NONE;
         assert_eq!(encode_key_in(Key::Keypad('7'), none, normal), b"7");

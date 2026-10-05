@@ -742,6 +742,8 @@ mod bash_tests;
 #[cfg(test)]
 mod fish_tests;
 #[cfg(test)]
+mod kitty_tests;
+#[cfg(test)]
 mod tests;
 fn input(key: &KeyIn) -> terminal_core::KeyIn {
     use terminal_core::input as core;

@@ -20,7 +20,8 @@ replies are this crate's. See [the dependency review](../../docs/dependencies.md
 | Rendition | SGR bold, dim, italic, underline, blink, inverse, hidden, strike and their resets; 16, 256, and 24-bit colors in semicolon and colon forms |
 | Modes | Alternate screen (47, 1047, 1049), save cursor (1048), cursor visible (25), cursor blink (12) and style (DECSCUSR), application cursor keys (1) and keypad (DECKPAM, DECKPNM), bracketed paste (2004), focus events (1004), soft reset (DECSTR), full reset (RIS) |
 | Mouse | Tracking modes 9, 1000, 1002, and 1003 with the default, UTF-8 (1005), SGR (1006), and urxvt (1015) encodings; `Terminal::mouse` encodes an event |
-| Replies | Device status (`CSI 5 n`), cursor position (`CSI 6 n`), primary and secondary device attributes; bounded, taken with `take_replies` |
+| Replies | Device status (`CSI 5 n`), cursor position (`CSI 6 n`), primary and secondary device attributes, Kitty keyboard flags (`CSI ? u`); bounded, taken with `take_replies` |
+| Keyboard | Kitty keyboard protocol push, pop, and set (`CSI > u`, `CSI < u`, `CSI = u`), one bounded stack per screen; only flag 1 (disambiguate escape codes) is kept |
 | Other | Window title (OSC 0 and 2, bounded), hyperlinks (OSC 8, bounded table, `Attrs::link`), clipboard writes (OSC 52, bounded, never reads; `take_clipboard` leaves the decision to the client), bell count, bounded scrollback for the primary screen with stable line names (`history_dropped`) |
 
 `Terminal::mark` writes a client line, such as a note that the host discarded
@@ -30,7 +31,8 @@ the lost bytes would have finished.
 `input` encodes keys (characters with Ctrl and Alt, Enter, Tab, Shift-Tab,
 Backspace, Escape, arrows under the cursor key mode, Home, End, Page Up and
 Down, Insert, Delete, F1–F24, and the keypad under its mode, with xterm
-modifier parameters) and pastes:
+modifier parameters, or as `CSI code ; modifiers u` for Escape and Ctrl or Alt
+chords once a program pushes the Kitty disambiguate flag) and pastes:
 line endings become carriage returns, control characters other than tab are
 removed so a paste cannot close a bracketed paste early, and mode 2004 wraps
 it in the paste markers.
