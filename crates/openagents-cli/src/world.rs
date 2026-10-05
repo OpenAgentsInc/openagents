@@ -241,7 +241,10 @@ impl Context {
         let signer = identity.signer.clone();
         let world = args
             .option("world")
-            .map(str::to_owned)
+            .map(|name| {
+                verse::zones::ZoneId::from_name(name)
+                    .map_or_else(|| name.to_owned(), |zone| zone.world_id().to_owned())
+            })
             .unwrap_or_else(|| verse::session::WORLD.to_owned());
         if world.is_empty() || world.len() > 128 {
             return Err("--world is 1 to 128 bytes".into());

@@ -530,3 +530,23 @@ fn the_lines_wrap_the_structure_as_it_is_drawn() {
         assert!(nearest < 0.01, "{p} is {nearest} m from every solid");
     }
 }
+
+#[test]
+fn zone_names_resolve_to_their_shared_worlds() {
+    for (name, zone) in [
+        ("everglade", ZoneId::Everglade),
+        ("Everglade", ZoneId::Everglade),
+        ("verse-everglade", ZoneId::Everglade),
+        ("lagrange-1", ZoneId::Lagrange1),
+        ("Lagrange 1", ZoneId::Lagrange1),
+        ("verse-lagrange-1", ZoneId::Lagrange1),
+        ("plaza", ZoneId::Plaza),
+        ("physics-lab", ZoneId::PhysicsLab),
+        ("ruins-v1", ZoneId::Ruins),
+    ] {
+        assert_eq!(ZoneId::from_name(name), Some(zone), "{name}");
+    }
+    assert_eq!(ZoneId::from_name("verse-bare"), None);
+    assert_eq!(ZoneId::Everglade.world_id(), "verse-everglade");
+    assert_eq!(ZoneId::Lagrange1.world_id(), "verse-lagrange-1");
+}

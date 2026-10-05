@@ -236,7 +236,7 @@ fn bare_world_players_see_each_other_move_and_pausing_stops_publishing() {
 /// Lagrange 1 with a neutral panel; its button (or its arch) brings the
 /// player back in front of the portal, and presence rejoins `verse-bare`.
 #[test]
-fn the_grid_portal_pauses_presence_in_lagrange_1_and_the_return_rejoins() {
+fn the_grid_portal_moves_presence_to_lagrange_1_and_the_return_rejoins() {
     let relay = loopback_relay::LoopbackRelay::start();
     let clock = Instant::now();
     let mut scene = bare_scene(&relay.url);
@@ -282,30 +282,53 @@ fn the_grid_portal_pauses_presence_in_lagrange_1_and_the_return_rejoins() {
         "walking through the portal did not enter Lagrange 1"
     );
     assert_eq!(scene.world.zone, verse::zones::ZoneId::Lagrange1);
-    // The held stick was released by the crossing; presence paused.
+    // The held stick was released by the crossing; presence moved to the
+    // zone's own shared world, where the Grid's peer is not.
     assert!(scene.touches.is_empty());
     scene.pointer(1, PointerPhase::Up, sx, sy - 80.0).unwrap();
-    assert!(scene.session.is_none());
+    let zone_world = verse::zones::ZoneId::Lagrange1.world_id();
+    assert_eq!(
+        scene.session.as_ref().expect("zone presence").world(),
+        zone_world
+    );
     let packet = scene.packet();
-    assert_eq!(packet.connection.state, "local_zone");
+    assert_eq!(packet.connection.label, "Lagrange 1");
     assert_eq!(packet.remote_entities, 0);
-    let published = relay.published().len();
 
     // Inside a zone the app draws no zone panel.
     assert!(!scene.bare_zone_panel());
-    // Nothing more reaches the relay while the player is in the zone.
-    run(
+    // Another player in the zone's world appears; the Grid's peer does not.
+    let identity =
+        verse::identity::Identity::from_secret("zoned", verse::identity::random_secret()).unwrap();
+    let mut zoned = Session::start_presence(identity, &relay.url, zone_world).unwrap();
+    let mut zoned_player = PlayerController::new(scene.world.player.pos, 0.0);
+    let met = run(
         &mut scene,
-        &mut peer,
-        &mut peer_player,
+        &mut zoned,
+        &mut zoned_player,
         clock,
-        Duration::from_millis(500),
-        |_, _, _| false,
+        Duration::from_secs(8),
+        |scene, _, _| scene.packet().live_remote_entities == 1,
+    );
+    assert!(met, "the zone's other player never appeared");
+    assert!(
+        relay
+            .published()
+            .iter()
+            .filter(|event| event.pubkey == me)
+            .any(|event| event
+                .tags
+                .iter()
+                .any(|t| t.0.len() > 1 && t.0[0] == "w" && t.0[1] == zone_world)),
+        "the player's poses never named the zone's world"
     );
     assert!(
-        relay.published()[published..]
+        !zoned
+            .crowd
+            .shown(Instant::now())
             .iter()
-            .all(|event| event.pubkey != me)
+            .any(|e| e.pubkey == peer.pubkey()),
+        "the Grid's peer leaked into the zone"
     );
 
     // Leaving (as walking back through the zone's arch does) returns to
@@ -333,10 +356,10 @@ fn the_grid_portal_pauses_presence_in_lagrange_1_and_the_return_rejoins() {
 
 /// Walking through the Grid's arch to Everglade loads the zone's pinned pack
 /// with the zone panel's progress and Cancel on the Grid, enters Everglade
-/// with presence paused and movement controls drawn, and leaving comes back in front
-/// of the arch, where presence rejoins `verse-bare`.
+/// with presence in Everglade's shared world and movement controls drawn, and
+/// leaving comes back in front of the arch, where presence rejoins `verse-bare`.
 #[test]
-fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_return_rejoins() {
+fn the_everglade_arch_loads_its_pack_moves_presence_and_the_return_rejoins() {
     use verse::zones::everglade_pack::{PACK_DIRECTORY, PACK_EXTENSION, PACK_SHA256};
     use verse::zones::{Intent, ZoneId};
     let relay = loopback_relay::LoopbackRelay::start();
@@ -421,8 +444,11 @@ fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_return_rejoins() {
         scene.world.zone_snapshot(1.0).error
     );
     assert_eq!(scene.world.zone, ZoneId::Everglade);
-    assert!(scene.session.is_none());
-    assert_eq!(scene.packet().connection.state, "local_zone");
+    assert_eq!(
+        scene.session.as_ref().expect("zone presence").world(),
+        ZoneId::Everglade.world_id()
+    );
+    assert_eq!(scene.packet().connection.label, "Everglade");
 
     // At a station the app offers no studio panel until its host connects
     // the studio to a computer.

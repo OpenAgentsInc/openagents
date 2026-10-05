@@ -1119,14 +1119,12 @@ impl Scene {
     }
 
     fn start_session(&mut self) -> Result<(), String> {
-        if !self.plaza_online_allowed() {
-            return Err("This zone is local-only".into());
-        }
+        let world = self.presence_world().ok_or("The zone is still loading")?;
         let identity = verse::identity::Identity::from_secret("phone", self.secret)?;
         let relay = self.relay.as_deref().ok_or("No Verse relay selected")?;
         let intervals = verse::session::PublishIntervals::mobile();
-        let mut session = if self.world.is_bare() {
-            let mut session = Session::start_presence(identity, relay, verse::session::BARE_WORLD)?;
+        let mut session = if world != verse::session::WORLD {
+            let mut session = Session::start_presence(identity, relay, world)?;
             session.set_display_name(self.display_name.as_deref());
             // Every bare-world player publishes at this mobile cadence; draw
             // them one moving interval in the past so they walk continuously
@@ -2392,13 +2390,11 @@ impl Scene {
             .map_or(0, |session| session.crowd.live_len(Instant::now()));
         packet.presented_remote_vertices =
             self.presented_entities.faces.len() + self.presented_entities.lines.len();
-        if !self.plaza_online_allowed() {
+        if self.world.zone_loading() {
             packet.connection.state = "local_zone";
-            packet.connection.label = if self.world.zone_loading() {
-                "Loading zone"
-            } else {
-                self.world.zone_label()
-            };
+            packet.connection.label = "Loading zone";
+        } else if !self.world.is_plaza() {
+            packet.connection.label = self.world.zone_label();
         }
         packet.zone = ZonePacket {
             state: self.zone_snapshot(),
@@ -2800,12 +2796,36 @@ impl Scene {
         self.sync_gym_interest();
     }
 
+    /// The NIP-MV world presence joins where the player stands: the Grid's
+    /// or the plaza's world, or the zone's own shared world. `None` while
+    /// a zone loads, when nobody is anywhere yet.
+    fn presence_world(&self) -> Option<&'static str> {
+        if self.world.zone_loading() {
+            None
+        } else if !self.world.is_plaza() {
+            Some(self.world.zone.world_id())
+        } else if self.world.is_bare() {
+            Some(verse::session::BARE_WORLD)
+        } else {
+            Some(verse::session::WORLD)
+        }
+    }
+
     fn sync_zone_session(&mut self) -> Result<(), String> {
-        if !self.plaza_online_allowed() {
+        let wanted = self.presence_world();
+        if self
+            .session
+            .as_ref()
+            .is_some_and(|session| Some(session.world()) != wanted)
+        {
+            // Through an arch: the old world's presence ends before the new
+            // world's pose ticks, so nobody sees a player in two places.
             self.session = None;
+            self.presented_entities = verse::mesh::Mesh::default();
+        }
+        if wanted.is_none() {
             self.spawn_pending = false;
             self.restore_spawn = false;
-            self.presented_entities = verse::mesh::Mesh::default();
         } else if self.lifecycle.active()
             && self.session.is_none()
             && self.relay.is_some()

@@ -467,6 +467,9 @@ is `docs/audits/receipts/2026-10-05-grid-walkers-20-public-load.json`.
 
 `--relay` defaults to `wss://relay.openagents.com`, `--world` to
 `verse-plaza`, and `--as` names the profile key (default `default`).
+`--world` also takes a zone's name (`everglade`, `lagrange-1`, `plaza`),
+which stands for that zone's shared world (`verse-everglade`,
+`verse-lagrange-1`); `walkers` defaults to `verse-bare`, the Grid.
 
 ### Driving owned entities (`verse control`)
 

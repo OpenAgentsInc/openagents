@@ -50,13 +50,34 @@ pub enum ZoneId {
     Everglade,
 }
 impl ZoneId {
+    pub const ALL: [Self; 5] = [
+        Self::Plaza,
+        Self::Ruins,
+        Self::Lagrange1,
+        Self::PhysicsLab,
+        Self::Everglade,
+    ];
+
+    /// The zone a command line names, by world identifier or label
+    /// (`everglade`, `lagrange-1`, `physics-lab`, `ruins`, `plaza`).
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        let wanted = name.trim().to_ascii_lowercase().replace([' ', '_'], "-");
+        Self::ALL.into_iter().find(|zone| {
+            zone.world_id() == wanted
+                || zone.label().to_ascii_lowercase().replace(' ', "-") == wanted
+                || zone.world_id().trim_start_matches("verse-") == wanted
+                || zone.world_id().trim_end_matches("-v1") == wanted
+        })
+    }
+
     pub const fn world_id(self) -> &'static str {
         match self {
             Self::Plaza => "verse-plaza",
             Self::Ruins => "ruins-v1",
-            Self::Lagrange1 => "lagrange-1-v1",
+            Self::Lagrange1 => "verse-lagrange-1",
             Self::PhysicsLab => "physics-lab-v1",
-            Self::Everglade => "everglade-v1",
+            Self::Everglade => "verse-everglade",
         }
     }
     pub const fn label(self) -> &'static str {

@@ -196,7 +196,7 @@ fn a_canceled_load_stays_in_the_plaza() {
 
 #[test]
 fn identity_and_atmosphere_are_the_zones_own() {
-    assert_eq!(ZoneId::Everglade.world_id(), "everglade-v1");
+    assert_eq!(ZoneId::Everglade.world_id(), "verse-everglade");
     assert_eq!(ZoneId::Everglade.label(), "Everglade");
     assert_eq!(ZoneId::Everglade.sign(), "EVERGLADE");
     assert_eq!(

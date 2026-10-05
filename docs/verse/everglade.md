@@ -153,7 +153,7 @@ The zone renderer gains textured static meshes:
 
 ## The zone
 
-Everglade registers as `ZoneId::Everglade` with world id `everglade-v1`,
+Everglade registers as `ZoneId::Everglade` with world id `verse-everglade`,
 following [Build and register a new zone](zones.md#build-and-register-a-new-zone):
 its adapter, entry state, plaza arch, minimap landmark, intents, camera clamp,
 mobile zone identifiers, tests, and capture example. The ground is generated in
