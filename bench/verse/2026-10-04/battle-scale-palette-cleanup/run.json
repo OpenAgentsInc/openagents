@@ -1,0 +1,33 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": false,
+    "compiled_revisions": {
+      "host": "2f5322d87b",
+      "clients": "2f5322d87b"
+    },
+    "fixture_revision": "2f5322d87bdf4cc411b5debd5c744bb1a14ddb90",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "stability": "All twenty connections and all processes complete; occupancy remains forty live hostile NPCs; three blocked motor advances are contained.",
+  "limits": [
+    "Native frame p95 is 46.420 ms versus 45.774 ms in the preceding run; no frame-p95 improvement is established.",
+    "Preparation p95 is 8.103 ms versus 10.203 ms; CPU command finalization p95 remains 34.031 ms.",
+    "Server simulation p99 histogram upper bound is 16 ms, maximum 21.494 ms, with zero dropped elapsed seconds.",
+    "Prediction correction p95 is 1.125 m, maximum 3.610 m; movement acceptance remains failed.",
+    "Persistent storage is disabled; persistent workload acceptance remains failed.",
+    "Runs share contributor hardware and differ in trajectories; neither GPU execution nor input-to-display latency is measured.",
+    "Contained motor failures do not prove prompt recovery for every crowded actor."
+  ]
+}
