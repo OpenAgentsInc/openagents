@@ -127,6 +127,9 @@ fn fence(control: &Option<Control>) -> Option<(super::wire::Life, u64)> {
     control.as_ref().map(|c| (c.life, c.epoch))
 }
 fn encode(state: &State) -> Result<Vec<u8>, String> {
+    encode_parts(state).map(|(_, bytes)| bytes)
+}
+fn encode_parts(state: &State) -> Result<(Value, Vec<u8>), String> {
     let mut value =
         serde_json::to_value(state).map_err(|_| "Cannot normalize replication baseline")?;
     fn normalize_zero(value: &mut Value) {
@@ -153,7 +156,7 @@ fn encode(state: &State) -> Result<Vec<u8>, String> {
     if bytes.len() > MAX_BASELINE_BYTES {
         return Err("Replication baseline exceeds byte budget".into());
     }
-    Ok(bytes)
+    Ok((value, bytes))
 }
 fn id(revision: u64, tick: u64, bytes: &[u8]) -> Baseline {
     Baseline {
@@ -240,7 +243,7 @@ impl Sender {
     ) -> Result<Packet, String> {
         state.validate_control(instance, control)?;
         let began = std::time::Instant::now();
-        let bytes = encode(&state)?;
+        let (after, bytes) = encode_parts(&state)?;
         let revision = self
             .revision
             .checked_add(1)
@@ -259,8 +262,6 @@ impl Sender {
         if let Some(previous) = previous {
             let before = serde_json::from_slice(&previous.bytes)
                 .map_err(|_| "Invalid retained replication baseline")?;
-            let after =
-                serde_json::from_slice(&bytes).map_err(|_| "Invalid replication candidate")?;
             let mut edits = vec![];
             diff(&before, &after, &mut vec![], &mut edits);
             if edits.len() <= MAX_EDITS {

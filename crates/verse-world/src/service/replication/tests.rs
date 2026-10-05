@@ -330,6 +330,9 @@ fn full_state_numeric_round_trip_preserves_canonical_digest() {
         String::new(),
     );
     assert_eq!(encode(&original).unwrap(), encode(&restored).unwrap());
+    let (value, bytes) = encode_parts(&original).unwrap();
+    assert_eq!(value, serde_json::from_slice::<Value>(&bytes).unwrap());
+    assert_eq!(bytes, encode(&original).unwrap());
 }
 
 #[test]
