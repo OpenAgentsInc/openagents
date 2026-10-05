@@ -64,7 +64,6 @@
     "Updated Linux host build passes.",
     "Native, headless load, and host exit zero.",
     "All 19 headless rows observe 20 players and at least 40 live hostiles throughout their battle samples.",
-    "Controlled delayed route retains failed movement acceptance.",
     "Zero movement expiries in this no-impairment baseline."
   ],
   "limitations": [

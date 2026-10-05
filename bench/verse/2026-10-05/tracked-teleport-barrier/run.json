@@ -1,0 +1,41 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "published_revision": "9a23e0694b1ea6d7f1a567df6873fb037ed73658",
+  "tested_base_revision": "cbed11fd6be9cab314410e67b91c52fedeed1a10",
+  "source_patch_sha256": "581a799f48acd1b289a15a34b63ad2694b89c706984aef499bf6b5f2d3937ff6",
+  "target": "Linux x86_64",
+  "checks": {
+    "command": "cargo test -p verse-world --features service-net --lib -- service::worker:: service::net:: service::client::tests::context_and_control",
+    "passed": 40,
+    "failed": 0,
+    "runtime_seconds": 5.19
+  },
+  "regression": "An accepted tracked teleport holds following movement until its acknowledgment. The worker rejects queued old-epoch movement locally; the real TLS peer receives no subsequent request while withholding the teleport acknowledgment.",
+  "limitations": [
+    "Focused checks do not prove crowded performance acceptance.",
+    "The next crowded battle uses separately rebuilt clients."
+  ],
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "9a23e0694b1ea6d7f1a567df6873fb037ed73658",
+      "verse_load": "9a23e0694b1ea6d7f1a567df6873fb037ed73658"
+    },
+    "wire_version": 27,
+    "sha256": {
+      "verse_remote": "3bda0684c06050448d4490d4b8d368487c30860fc269d8229838c7d923ffb7d0",
+      "verse_load": "702c91f9f179522aa8e6b6b0748fa186528cb4920af4285264038b22cfd46bb5"
+    },
+    "client_platform": "macOS arm64",
+    "client_features": [
+      "imported-desktop",
+      "remote-chamber"
+    ],
+    "movement_send_steps": 6,
+    "authority_credit_source": "verified snapshots and control acknowledgments",
+    "periodic_reads_reserve_gameplay_slot": true,
+    "tracked_teleport_barrier": true,
+    "status": "complete",
+    "wall_seconds": 460
+  }
+}
