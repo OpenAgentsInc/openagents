@@ -128,6 +128,11 @@ async fn serve(config: Config) -> Result<(), String> {
         exit.stats.completed_connections,
         exit.stats.dropped_seconds
     );
+    println!(
+        "Admission: {}",
+        serde_json::to_string(&exit.stats.admission)
+            .map_err(|_| "Cannot encode chamber admission measurements")?
+    );
     if let Some(profile) = exit.gateway.game().query_profile() {
         println!(
             "Collision queries: {}",

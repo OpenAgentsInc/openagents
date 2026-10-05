@@ -10,7 +10,7 @@ use rustls::ServerConfig;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    sync::{Semaphore, mpsc, oneshot},
+    sync::{mpsc, oneshot},
     task::JoinSet,
     time::{MissedTickBehavior, timeout},
 };
@@ -28,7 +28,8 @@ use std::collections::BTreeMap;
 mod timing;
 pub use timing::Timing;
 
-const CONNECTIONS: usize = 128;
+pub(crate) mod admission;
+pub use admission::Stats as AdmissionStats;
 const QUEUE: usize = 128;
 const HANDSHAKE: Duration = Duration::from_secs(5);
 const WRITE: Duration = Duration::from_secs(10);
@@ -39,6 +40,7 @@ const REQUESTS_PER_SECOND: u32 = 120;
 /// Transport metrics; skipped elapsed time is not silently simulated later.
 #[derive(Clone, Debug, Default)]
 pub struct Stats {
+    pub admission: AdmissionStats,
     pub accepted_connections: u64,
     pub capacity_refusals: u64,
     pub completed_connections: u64,
@@ -316,7 +318,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
         }
         None
     };
-    let capacity = Arc::new(Semaphore::new(CONNECTIONS));
+    let limits = admission::Limits::new();
     let (send, mut receive) = mpsc::channel(QUEUE);
     let mut workers = JoinSet::new();
     let start = Instant::now();
@@ -340,27 +342,28 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
             }
             accepted = listener.accept() => {
                 match accepted {
-                    Ok((socket, _)) => {
-                        let Ok(permit) = capacity.clone().try_acquire_owned() else {
+                    Ok((socket, address)) => {
+                        let Ok(slot) = limits.open(address.ip()) else {
                             stats.capacity_refusals += 1;
                             continue;
                         };
                         stats.accepted_connections += 1;
                         let send = send.clone();
+                        let metrics = limits.clone();
                         match &listen {
                             Listen::Tls(acceptor) => {
                                 let acceptor = acceptor.clone();
                                 workers.spawn(async move {
-                                    let _permit = permit;
-                                    let _ = connection(socket, acceptor, send).await;
+                                    let result = connection(socket, acceptor, send, slot).await;
+                                    metrics.finish(&result);
                                 });
                             }
                             #[cfg(feature = "service-reach")]
                             Listen::Reach(admit) => {
                                 let admit = admit.clone();
                                 workers.spawn(async move {
-                                    let _permit = permit;
-                                    let _ = super::reach::connection(socket, admit, send).await;
+                                    let result = super::reach::connection(socket, admit, send, slot).await;
+                                    metrics.finish(&result);
                                 });
                             }
                         }
@@ -490,12 +493,18 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                     None => {failure = Some("Chamber dispatch queue closed".into()); break;}
                 }
             }
-            _ = workers.join_next(), if !workers.is_empty() => {stats.completed_connections += 1;}
+            result = workers.join_next(), if !workers.is_empty() => {
+                stats.completed_connections += 1;
+                if result.is_some_and(|r| r.is_err()) { limits.cancelled(); }
+            }
         }
     }
     workers.abort_all();
-    while workers.join_next().await.is_some() {
+    while let Some(result) = workers.join_next().await {
         stats.completed_connections += 1;
+        if result.is_err() {
+            limits.cancelled();
+        }
     }
     if let Some(writer) = &mut writer {
         while failure.is_none() && !fences.is_empty() {
@@ -567,6 +576,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
     }
     drop(writer);
     stats.replication = gateway.replication_stats();
+    stats.admission = limits.stats();
     Exit {
         gateway,
         stats,
@@ -578,6 +588,7 @@ pub(in crate::service) async fn connection(
     socket: TcpStream,
     acceptor: TlsAcceptor,
     send: mpsc::Sender<Event>,
+    slot: admission::Slot,
 ) -> Result<(), String> {
     socket
         .set_nodelay(true)
@@ -586,14 +597,61 @@ pub(in crate::service) async fn connection(
         .await
         .map_err(|_| "Chamber TLS handshake timed out")?
         .map_err(|_| "Chamber TLS handshake refused")?;
-    session(stream, None, send).await
+    session(stream, None, send, slot).await
+}
+
+// Retain only authority headers for local refusals; projected state can be large.
+#[derive(serde::Deserialize)]
+struct ResponseHeader {
+    version: u16,
+    request_id: u64,
+    instance: u64,
+    tick: u64,
+    control: Option<Control>,
+    body: ReplyHeader,
+}
+#[derive(serde::Deserialize)]
+struct ReplyHeader {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    code: Option<String>,
+}
+impl ResponseHeader {
+    fn refusal_template(self) -> Response {
+        Response {
+            version: self.version,
+            request_id: self.request_id,
+            instance: self.instance,
+            tick: self.tick,
+            control: self.control,
+            body: Reply::Accepted,
+        }
+    }
 }
 
 /// Serves chamber frames on one authenticated transport until it closes.
 pub(super) async fn session<S: Transport>(
+    stream: S,
+    guard: Option<Box<dyn Guard>>,
+    send: mpsc::Sender<Event>,
+    slot: admission::Slot,
+) -> Result<(), String> {
+    session_until(
+        stream,
+        guard,
+        send,
+        slot,
+        tokio::time::Instant::now() + AUTH,
+    )
+    .await
+}
+async fn session_until<S: Transport>(
     mut stream: S,
     guard: Option<Box<dyn Guard>>,
     send: mpsc::Sender<Event>,
+    mut slot: admission::Slot,
+    authentication_deadline: tokio::time::Instant,
 ) -> Result<(), String> {
     let (reply, receive) = oneshot::channel();
     let spectate = guard.as_ref().and_then(|guard| guard.device());
@@ -606,13 +664,17 @@ pub(super) async fn session<S: Transport>(
             .await
             .map_err(|_| "Chamber write timed out")??;
         let mut authenticated = false;
+        let mut last_response: Option<Response> = None;
         let mut window = Instant::now();
         let mut count = 0;
         loop {
-            let deadline = if authenticated { IDLE } else { AUTH };
-            let bytes = timeout(deadline, read_frame(&mut stream, MAX_REQUEST_BYTES))
-                .await
-                .map_err(|_| "Chamber read timed out")??;
+            if slot.retired() { return Err("Chamber connection was superseded".into()); }
+            let deadline = if authenticated { tokio::time::Instant::now() + IDLE } else { authentication_deadline };
+            let bytes = tokio::select! {
+                _ = slot.cancelled() => return Err("Chamber connection was superseded".into()),
+                read = tokio::time::timeout_at(deadline, read_frame(&mut stream, MAX_REQUEST_BYTES)) =>
+                    read.map_err(|_| if authenticated { "Chamber read timed out" } else { "Chamber authentication timed out" })??,
+            };
             if window.elapsed() >= Duration::from_secs(1) {
                 window = Instant::now();
                 count = 0;
@@ -624,17 +686,38 @@ pub(super) async fn session<S: Transport>(
             if let Some(guard) = &guard {
                 guard.admit(&bytes)?;
             }
+            let request = Request::decode(&bytes)?;
+            if !authenticated && !matches!(request.body, Body::Authenticate {..}) {
+                return Err("Chamber connection is not authenticated".into());
+            }
+            if authenticated && !slot.request(&request.body) {
+                let mut response = last_response.clone().ok_or("Chamber admission has no response")?;
+                response.request_id = request.request_id;
+                response.body = Reply::Refused {
+                    code: "rate_limited".into(),
+                    message: "Chamber request work budget exceeded; no operation was admitted".into(),
+                };
+                let refused = response.encode()?;
+                timeout(WRITE, write_frame(&mut stream, &refused, MAX_RESPONSE_BYTES)).await
+                    .map_err(|_| "Chamber write timed out")??;
+                continue;
+            }
+            let authenticate_key = match request.body { Body::Authenticate { public_key, .. } => Some(public_key), _ => None };
             let (reply, receive) = oneshot::channel();
             send.send(Event::Request { id, bytes, reply })
                 .await
                 .map_err(|_| "Chamber host stopped")?;
             let (bytes, admitted) = receive.await.map_err(|_| "Chamber host stopped")??;
+            let response: ResponseHeader = serde_json::from_slice(&bytes).map_err(|_| "Invalid chamber response")?;
+            let retry_admission = response.body.kind == "refused" && response.body.code.as_deref() == Some("storage_busy");
+            if admitted && !authenticated && response.body.kind == "accepted" {
+                slot.authenticate(authenticate_key.ok_or("Chamber authentication key unavailable")?)?;
+            }
+            last_response = Some(response.refusal_template());
             timeout(WRITE, write_frame(&mut stream, &bytes, MAX_RESPONSE_BYTES))
                 .await
                 .map_err(|_| "Chamber write timed out")??;
             authenticated = admitted;
-            let retry_admission = serde_json::from_slice::<Response>(&bytes).is_ok_and(|response|
-                matches!(response.body, Reply::Refused {code, ..} if code == "storage_busy"));
             if !authenticated && !retry_admission {
                 return Err("Chamber connection is not authenticated".into());
             }
@@ -814,6 +897,194 @@ pub(super) mod tests {
             panic!()
         };
         state
+    }
+
+    #[tokio::test]
+    async fn slow_tls_handshake_expires_and_releases_its_pending_slot() {
+        use crate::service::client::Client;
+        let keys = [key(177), key(178), key(179)];
+        let (address, connector, stop, task) = start(&keys).await;
+        let mut player = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let mut stalled = TcpStream::connect(address).await.unwrap();
+        let mut byte = [0];
+        assert_eq!(
+            timeout(HANDSHAKE + Duration::from_secs(2), stalled.read(&mut byte))
+                .await
+                .unwrap()
+                .unwrap(),
+            0
+        );
+        player.snapshot().await.unwrap();
+        assert!(matches!(
+            player
+                .command(crate::Intent::Move {
+                    axes: [0., 0.],
+                    yaw: 0.
+                })
+                .await
+                .unwrap()
+                .body,
+            Reply::Accepted
+        ));
+        player.close().await.unwrap();
+        stop.send(()).unwrap();
+        let exit = task.await.unwrap();
+        assert!(exit.failure.is_none());
+        assert_eq!(exit.stats.admission.handshake_timeouts, 1);
+        assert_eq!(
+            (exit.stats.admission.pending, exit.stats.admission.active),
+            (0, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn storage_busy_does_not_extend_the_authentication_deadline() {
+        let keys = [key(174), key(175), key(176)];
+        let mut gateway = gateway(&keys);
+        let (near, mut far) = tokio::io::duplex(16 * 1024);
+        let limits = admission::Limits::new();
+        let slot = limits.open([127, 0, 0, 1].into()).unwrap();
+        let (send, mut receive) = mpsc::channel(4);
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(250);
+        let session = tokio::spawn(session_until(near, None, send, slot, deadline));
+        let Event::Open { reply, .. } = receive.recv().await.unwrap() else {
+            panic!()
+        };
+        reply.send(gateway.open_json(0)).unwrap();
+        read_frame(&mut far, MAX_RESPONSE_BYTES).await.unwrap();
+        let request = Request {
+            version: VERSION,
+            request_id: 1,
+            body: Body::Authenticate {
+                public_key: public(&keys[0]),
+                signature: vec![0; 64],
+            },
+        };
+        write_frame(
+            &mut far,
+            &serde_json::to_vec(&request).unwrap(),
+            MAX_REQUEST_BYTES,
+        )
+        .await
+        .unwrap();
+        let Event::Request { id, bytes, reply } = receive.recv().await.unwrap() else {
+            panic!()
+        };
+        tokio::time::sleep_until(deadline + Duration::from_millis(10)).await;
+        reply
+            .send(CommitView::capture(&gateway).busy(id, &bytes))
+            .unwrap();
+        read_frame(&mut far, MAX_RESPONSE_BYTES).await.unwrap();
+        assert!(
+            timeout(
+                Duration::from_millis(100),
+                read_frame(&mut far, MAX_RESPONSE_BYTES)
+            )
+            .await
+            .unwrap()
+            .is_err()
+        );
+        assert!(matches!(receive.recv().await.unwrap(), Event::Close(_)));
+        let result = session.await.unwrap();
+        assert_eq!(
+            result.as_ref().unwrap_err(),
+            "Chamber authentication timed out"
+        );
+        limits.finish(&result);
+        assert_eq!(limits.stats().authentication_timeouts, 1);
+        assert_eq!(limits.stats().pending, 0);
+    }
+
+    #[tokio::test]
+    async fn overload_keeps_admitted_commands_live_and_reconnects_share_budgets() {
+        let keys = [key(171), key(172), key(173)];
+        let (address, connector, stop, task) = start(&keys).await;
+        let (mut player, mut owned) = join(address, &connector, &keys[0]).await;
+        let (mut flood, _) = join(address, &connector, &keys[2]).await;
+        // Sockets send no TLS bytes. They cannot occupy admitted-player slots.
+        let mut sockets = Vec::new();
+        for _ in 0..48 {
+            sockets.push(TcpStream::connect(address).await.unwrap());
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let mut refused = 0;
+        let mut admitted = 0;
+        for sequence in 1..=40 {
+            let response = send(&mut flood, sequence + 1, Body::Snapshot {}).await;
+            if matches!(response.body, Reply::Refused { ref code, .. } if code == "rate_limited") {
+                refused += 1;
+            } else {
+                assert!(matches!(response.body, Reply::Snapshot { .. }));
+            }
+            let control = owned.control.clone().unwrap();
+            owned = send(
+                &mut player,
+                sequence + 1,
+                Body::Command {
+                    command: Input {
+                        actor: control.life,
+                        epoch: control.epoch,
+                        sequence,
+                        tick: owned.tick,
+                        intent: Action::Move {
+                            axes: [0.5, 0.],
+                            yaw: 0.,
+                        },
+                    },
+                },
+            )
+            .await;
+            assert!(matches!(owned.body, Reply::Accepted), "{:?}", owned.body);
+            assert_eq!(owned.control.as_ref().unwrap().accepted_sequence, sequence);
+            admitted += 1;
+        }
+        assert!(refused > 0);
+        // Free pending IP slots before the legitimate reconnect.
+        drop(sockets);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let (mut reconnected, _) = join(address, &connector, &keys[2]).await;
+        let reply = send(&mut reconnected, 2, Body::Snapshot {}).await;
+        // Real elapsed time can refill credit; the deterministic budget test
+        // separately verifies that reconnection adds no credit.
+        assert!(
+            matches!(reply.body, Reply::Snapshot { .. })
+                || matches!(reply.body, Reply::Refused {code, ..} if code == "rate_limited")
+        );
+        assert!(
+            timeout(
+                Duration::from_secs(1),
+                read_frame(&mut flood, MAX_RESPONSE_BYTES)
+            )
+            .await
+            .unwrap()
+            .is_err()
+        );
+        drop(player);
+        drop(flood);
+        drop(reconnected);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        stop.send(()).unwrap();
+        let exit = task.await.unwrap();
+        assert!(exit.failure.is_none());
+        assert!(exit.stats.admission.ip_refusals > 0);
+        assert!(exit.stats.admission.principal_work_refusals > 0);
+        assert!(exit.stats.admission.retired_connections > 0);
+        assert_eq!(
+            (exit.stats.admission.pending, exit.stats.admission.active),
+            (0, 0)
+        );
+        eprintln!(
+            "{}",
+            serde_json::json!({"schema":"verse.admission.fixture.v1", "admitted_commands":admitted, "snapshot_refusals":refused, "stats":exit.stats.admission})
+        );
     }
 
     #[tokio::test]
@@ -1435,10 +1706,16 @@ pub(super) mod tests {
         );
         let (mut replacement, current) = join(address, &connector, &keys[0]).await;
         assert!(current.control.unwrap().epoch > ca.epoch);
-        assert!(matches!(
-            send(&mut a, 5, Body::Snapshot {}).await.body,
-            Reply::Refused { .. }
-        ));
+        // Supersession now releases transport capacity without another request.
+        assert!(
+            timeout(
+                Duration::from_secs(1),
+                read_frame(&mut a, MAX_RESPONSE_BYTES)
+            )
+            .await
+            .unwrap()
+            .is_err()
+        );
         assert!(matches!(
             send(&mut replacement, 2, Body::Command { command })
                 .await
@@ -1460,7 +1737,7 @@ pub(super) mod tests {
             .unwrap()
             .unwrap();
         assert!(exit.failure.is_none());
-        assert_eq!(exit.stats.requests, 15);
+        assert_eq!(exit.stats.requests, 14);
         assert!(exit.stats.ticks > 0);
         assert_eq!(
             exit.stats.accepted_connections,

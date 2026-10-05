@@ -36,7 +36,9 @@ spatial relevance, acknowledged deltas, and bounded snapshot scheduling. V06
 remediation in [#10593](https://github.com/OpenAgentsInc/openagents/issues/10593)
 adds independent instances, exclusive leases, and atomic character transfer. V07
 remediation in [#10596](https://github.com/OpenAgentsInc/openagents/issues/10596)
-adds explicit hosted social profiles and a shared native projection. Two
+adds explicit hosted social profiles and a shared native projection. V08
+remediation in [#10602](https://github.com/OpenAgentsInc/openagents/issues/10602)
+adds transport admission partitions and shared request budgets. Two
 findings still deserve
 immediate engineering attention:
 
@@ -147,7 +149,7 @@ Evidence labels:
 | V05 | P1 | Spatial replication bounds steady traffic in retained fixtures. | Recorded, code | World service replication | Complete ([#10591](https://github.com/OpenAgentsInc/openagents/issues/10591)) |
 | V06 | P1 | Independent realm instances have durable placement, leases, lifecycle, and transfer. | Code | World hosting | Complete ([#10593](https://github.com/OpenAgentsInc/openagents/issues/10593)) |
 | V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters | Complete: [#10596](https://github.com/OpenAgentsInc/openagents/issues/10596), bounded hosted profiles |
-| V08 | P1 | Admission needs production enrollment and overload policy. | Code, gap | World access and transport | Open |
+| V08 | P1 | Grant-based admission and transport work have bounded policies. | Code | World access and transport | Complete ([#10602](https://github.com/OpenAgentsInc/openagents/issues/10602)) |
 | V09 | P1 | Character identity and rewards remain chamber-scoped. | Code, gap | Persistent character domain | Open |
 | V10 | P1 | CPU submission measurements do not isolate GPU or input latency. | Code, recorded | Profiling and acceptance | Open |
 | V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities | Open |
@@ -632,31 +634,81 @@ authority before producing public Studio poses; this change grants none.
 The fixtures establish functional agreement, not crowded throughput, WAN latency,
 GPU quality, or a browser/phone multiplayer acceptance result.
 
-### V08: Production admission needs enrollment and overload controls
+### V08: Admission and request work have bounded policies
 
-[`auth::Gateway`](../../crates/verse-world/src/service/auth.rs) supplies signed,
-single-use, expiring challenges bound to host lifetime, instance, connection,
-key, and optional content identity. The configured example binds content.
-[`host::Config`](../../crates/verse-world/src/service/host.rs) enrolls a static
-key list; rights and revocation exist internally, but production world discovery
-and grant-based admission are not integrated.
+**Status:** Complete in [#10602](https://github.com/OpenAgentsInc/openagents/issues/10602).
 
-[`net`](../../crates/verse-world/src/service/net.rs) bounds sockets, queues,
-handshake/read/write deadlines, and requests per socket. It does not retain a
-principal/IP admission policy, aggregate work budget, or connection failure
-classification: worker results are discarded. Unauthenticated sockets can occupy
-the same finite capacity needed by enrolled players. This is an overload risk,
-not a demonstrated remote exploit.
+**Original finding:** The inspected host enrolled a static key list. Pending
+sockets shared admitted-player capacity, request limits applied only per socket,
+and worker outcomes disappeared. There was no principal/IP admission policy or
+aggregate work budget. This was an overload risk, not a demonstrated exploit.
 
-**Improve:** Implement the planned NIP-HOST/NIP-REACH integration with explicit
-world rights and revocation epochs. Add pre-auth capacity partitions, principal
-budgets, request cost classes, fair dispatch, and structured failure counters.
-Keep discovery, joining, viewing studio data, and executing agent work separate.
+**Remediation:** Upstream already connects the real binaries to NIP-HOST `world`
+grants, NIP-REACH channels, and owner-authorized world discovery. Grants bind a
+device, host generation, and revocation epoch. The transport checks them at the
+handshake, before every request, and while idle. A granted key outside the host's
+role table joins as a spectator. Chamber challenges remain signed, single-use,
+expiring, connection-bound, and optionally content-bound. World admission grants
+no Studio observation or agent execution right.
 
-**Acceptance:** Unauthorized joins, revoked grants, replayed challenges, slow
-handshakes, connection floods, and expensive snapshot requests cannot starve
-admitted players or grant studio execution rights. Public hosts identify their
-authority through the supported discovery flow.
+[`net::admission`](../../crates/verse-world/src/service/net/admission.rs) now
+limits total transport slots to 128, with at most 32 pending authentication and
+eight pending per IP; IPv4 and mapped IPv6 addresses share that budget. A shared handshake bucket permits a 64-connection burst
+and refills at 128 per second. Pending IP records disappear on promotion or
+closure. Thirty seconds is an absolute chamber authentication deadline; a
+`storage_busy` retry does not restart it. TLS handshakes retain their five-second
+deadline. Supersession wakes and closes the previous transport, including an idle
+one, and releases its capacity.
+
+Verified principals share buckets across reconnects. Commands cost one token,
+scoped replication eight, full snapshots 32, inventory eight, and events four.
+A principal has independent command and projection buckets: capacities/refills
+are 120/120 and 512/512 tokens per second. Aggregate buckets have capacities of
+256 commands and 2,048 projection tokens, refilling at 16,384 and 65,536 per second.
+Projection overload leaves command capacity available. At most 128 principal
+records retain credit for 120 seconds after use; active records remain pinned.
+Limits refuse new records when all records remain retained. Refused work never
+reaches authority dispatch and consumes no game operation or command sequence.
+The SDK receives `rate_limited` with its last acknowledged authority header.
+
+The existing bounded FIFO dispatch retains one request in flight per connection;
+principal supersession prevents one identity from multiplying current sockets.
+Standalone TLS/REACH and all realm listeners share the same admission policy,
+with realm limits shared across instances. Shutdown drains child tasks before
+capturing counters. Aggregate statistics classify handshake, authentication,
+grant, frame, rate, IO, supersession, and worker cancellation outcomes without
+retaining principal keys or IP addresses. The CLI's stopped record and the host
+example expose those counters.
+
+**Acceptance evidence:** The
+[admission receipt](../../bench/verse/2026-10-04/admission/run.json) retains source
+identity, checks, and scratch TLS evidence. Stalled unauthenticated connections
+and a snapshot flood leave accepted player commands live. Deterministic checks
+cover pending partitions, aggregate projection overload, command independence,
+and reconnect without credit refill. Transport checks cover the actual slow TLS
+deadline, absolute authentication expiry during a storage retry, immediate
+supersession, cleanup, and durable realm transfer. Grant fixtures refuse absent,
+narrow, expired, revoked, and stale-epoch grants; existing authentication tests
+refuse challenge replay and expiry. Native polling and quest flows pass under
+the declared budgets. After upstream integration, 468 world tests pass (two
+crash hooks are intentionally ignored). Four final admission tests, two real TLS
+realm tests, four native hosted tests, three CLI chamber tests, and the CLI REACH
+grant test pass. Host/migration examples compile, formatting passes, and document
+links resolve. The receipt preserves the earlier failed budget check and its
+correction; the final focused checks cover IPv4 mapping and adapter cleanup
+after the broad world suite.
+
+**Limits:** These are fixed process budgets and bounded functional acceptance.
+Token prices bound request counts rather than measured CPU cost; a single
+accepted request, world tick, or durable realm commit can still exceed a frame
+budget. Hardware capacity and hostile multi-principal load remain acceptance
+work under V10 and V18. Per-IP pending limits can refuse concurrent joins from a
+shared network; new admissions have no progress guarantee during a distributed
+connection flood. Principal retention and the existing role-table/character
+bounds are explicit; V09 owns persistent character capacity. Idle encrypted
+channel closure contributes to transport closure counters when the bridge does
+not expose a more specific reason. Reliable operations require explicit caller
+backoff after `rate_limited`; the SDK does not replay uncertain effects.
 
 ### V09: Persistent characters need identity outside an instance
 

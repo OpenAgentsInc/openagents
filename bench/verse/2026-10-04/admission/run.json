@@ -1,0 +1,200 @@
+{
+  "schema": "verse.admission.acceptance.v1",
+  "issue": 10602,
+  "status": "accepted_functional_scope",
+  "source_parent": "a5212ad0855561d55bcfa1c7e6b834818addf043",
+  "policy": {
+    "total_connections": 128,
+    "pre_auth": 32,
+    "pending_per_ip": 8,
+    "handshake_burst": 64,
+    "handshakes_per_second": 128,
+    "absolute_chamber_auth_seconds": 30,
+    "tls_handshake_seconds": 5,
+    "principal_records": 128,
+    "inactive_principal_retention_seconds": 120,
+    "principal_commands_burst": 120,
+    "principal_commands_per_second": 120,
+    "principal_projections_burst": 512,
+    "principal_projections_per_second": 512,
+    "aggregate_commands_burst": 256,
+    "aggregate_commands_per_second": 16384,
+    "aggregate_projections_burst": 2048,
+    "aggregate_projections_per_second": 65536,
+    "prices": {
+      "command": 1,
+      "snapshot": 32,
+      "replicate": 8,
+      "inventory": 8,
+      "events": 4
+    }
+  },
+  "checks": {
+    "affected_services": {
+      "command": "cargo test -p verse-world --features service-reach service:: -- --nocapture",
+      "passed": 176,
+      "failed": 0,
+      "ignored": 2,
+      "seconds": 67.72
+    }
+  },
+  "fixture": {
+    "admitted_commands": 40,
+    "schema": "verse.admission.fixture.v1",
+    "snapshot_refusals": 24,
+    "stats": {
+      "active": 0,
+      "active_peak": 3,
+      "aggregate_work_refusals": 0,
+      "authentication_refusals": 0,
+      "authentication_timeouts": 0,
+      "cancelled_workers": 0,
+      "capacity_refusals": 0,
+      "commands": 40,
+      "completed": 11,
+      "frame_failures": 0,
+      "grant_refusals": 0,
+      "handshake_rate_refusals": 0,
+      "handshake_refusals": 8,
+      "handshake_timeouts": 0,
+      "host_failures": 0,
+      "ip_refusals": 40,
+      "pending": 0,
+      "pending_peak": 8,
+      "pre_auth_refusals": 0,
+      "principal_capacity_refusals": 0,
+      "principal_records": 2,
+      "principal_work_refusals": 25,
+      "projections": 16,
+      "read_timeouts": 0,
+      "request_rate_failures": 0,
+      "retired_connections": 1,
+      "transport_closures": 2,
+      "write_failures": 0
+    }
+  },
+  "source_sha256": {
+    "Cargo.toml": "ee540d1fae9a6150471cf4b54c5bb487d0a8ca923ed5e0d8cc97889258dd6c93",
+    "Cargo.lock": "f7380c115e2f6fae9a2a0822188eafc5296e3bad3bc3dd15710ed790b35b493e",
+    "rust-toolchain.toml": "8e390d6a0838315f972690f46ef8bae8b7ecc9ee6c1ed70140ef852869c2482e",
+    "crates/verse-world/Cargo.toml": "94ba3bda921c8f6ff9685515708c54dbbd90a623977940324cba609c83089406",
+    "crates/verse-world/src/service/net/admission.rs": "dfe7b6f41b1b18e35f43438d7b0bfd23cc03a290fcb32615829555446a76206a",
+    "crates/verse-world/src/service/net.rs": "3d716ebd8ffffab9ae76ead5c33b175470ef47639d6e6d32b29b9bb068ac5d23",
+    "crates/verse-world/src/service/auth.rs": "627cf90140c1534f3e3364bb428aaa7617b8c6ecd2514389fe64e4d0849a1511",
+    "crates/verse-world/src/service/client.rs": "58e424f58a7c915dd27f0afb99129309c406d21883f6d15aff83a813f3f26692",
+    "crates/verse-world/src/service/realm.rs": "5298f1df67d1d21895d272fa8d7f16744ce998927998955d25ce58aa2e6668cb",
+    "crates/verse-world/src/service/realm/net.rs": "80f91b790c065bde5777585ca688c75239c8ab4d2190d3c96110807b4c582669",
+    "crates/verse-world/src/service/realm/tests.rs": "c2ae263b63e6942e920c97b979722041e506a762c44435c9e28f42d1258c0d77",
+    "crates/verse-world/src/service/reach.rs": "81a1fe9121bfdfceb652cd5dd39a01440ff98fe395b744370c9bcabcf1205b47",
+    "crates/verse-world/src/service/reach_tests.rs": "751cd9e8cc60c6431cc8a72119c5595d65e3a38badb6d64d1048e0f987760abe",
+    "crates/verse-world/src/service/wire.rs": "1ac4da786527175ce9a85eaf19b16a55d2114319075bd47eebdcd26eb0e3fd5c",
+    "crates/verse-world/src/service/worker.rs": "a118d4fdacc2896e0369abf9e7a688bd1ffa2912d25f92039cb88800a88d9de3",
+    "crates/openagents-cli/src/chamber.rs": "b3be32b9255f9903ea41050c55df34f2457e2412d7ae0303e5fd38ae5ebf4d54",
+    "crates/verse/examples/verse_host.rs": "4947858a4b9d41a9638a4be2b931290bcacd8b644f264212a3d22f16567456ce"
+  },
+  "initial_failures": {
+    "command": "cargo test -p verse-world --features service-reach",
+    "passed": 448,
+    "failed": 3,
+    "ignored": 2,
+    "resolved": [
+      "Projection credit increased to preserve native input refresh and quest polling.",
+      "Superseded socket closes immediately, so its old snapshot no longer increments authority request count."
+    ]
+  },
+  "limits": [
+    "Functional scratch fixtures, no owner hosts, live engines, production deployment, real WAN, or crowded hardware acceptance.",
+    "Token prices bound request counts rather than CPU time; single requests, world ticks, and durable commits remain non-preemptive.",
+    "Per-IP pending policy can refuse concurrent legitimate joins from a shared network. No progress guarantee for new admissions during a distributed connection flood.",
+    "World grants do not provide Studio observation or agent execution authority."
+  ],
+  "integration": {
+    "source_parent": "c713be878ac103fe037437779666c359f75efeca",
+    "checks": {
+      "world": {
+        "command": "cargo test -p verse-world --features service-reach",
+        "passed": 468,
+        "failed": 0,
+        "ignored": 2,
+        "seconds": 74.15
+      },
+      "final_admission": {
+        "command": "cargo test -p verse-world --features service-reach service::net::admission -- --nocapture",
+        "passed": 4,
+        "failed": 0
+      },
+      "final_realm_tls": {
+        "command": "cargo test -p verse-world --features service-reach real_tls_ -- --nocapture",
+        "passed": 2,
+        "failed": 0
+      },
+      "native_hosted": {
+        "command": "cargo test -p verse --no-default-features --features remote-chamber hosted -- --nocapture",
+        "passed": 4,
+        "failed": 0
+      },
+      "cli_chamber": {
+        "command": "cargo test -p openagents-cli chamber::tests",
+        "passed": 3,
+        "failed": 0
+      },
+      "cli_reach": {
+        "command": "cargo test -p openagents-cli --test chamber_reach",
+        "passed": 1,
+        "failed": 0
+      },
+      "examples": {
+        "command": "cargo check -p verse --no-default-features --features remote-chamber --example verse_host --example verse_migrate",
+        "passed": true
+      },
+      "formatting": {
+        "command": "cargo fmt -p verse-world -p verse -p openagents-cli --check",
+        "passed": true
+      }
+    },
+    "world_suite_source_sha256": {
+      "Cargo.toml": "ee540d1fae9a6150471cf4b54c5bb487d0a8ca923ed5e0d8cc97889258dd6c93",
+      "Cargo.lock": "52a3cb07ea1452b3da3cc14985c1c421caa1b04d172a5a07c6de74d00e4cd25d",
+      "rust-toolchain.toml": "8e390d6a0838315f972690f46ef8bae8b7ecc9ee6c1ed70140ef852869c2482e",
+      "crates/verse-world/Cargo.toml": "9b51e91614440c3791069a11a6ec6ca115071f29d5230a84da530b9ea97db38e",
+      "crates/verse-world/src/service/net/admission.rs": "dfe7b6f41b1b18e35f43438d7b0bfd23cc03a290fcb32615829555446a76206a",
+      "crates/verse-world/src/service/net.rs": "3d716ebd8ffffab9ae76ead5c33b175470ef47639d6e6d32b29b9bb068ac5d23",
+      "crates/verse-world/src/service/auth.rs": "627cf90140c1534f3e3364bb428aaa7617b8c6ecd2514389fe64e4d0849a1511",
+      "crates/verse-world/src/service/client.rs": "58e424f58a7c915dd27f0afb99129309c406d21883f6d15aff83a813f3f26692",
+      "crates/verse-world/src/service/realm.rs": "5298f1df67d1d21895d272fa8d7f16744ce998927998955d25ce58aa2e6668cb",
+      "crates/verse-world/src/service/realm/net.rs": "80f91b790c065bde5777585ca688c75239c8ab4d2190d3c96110807b4c582669",
+      "crates/verse-world/src/service/realm/tests.rs": "c2ae263b63e6942e920c97b979722041e506a762c44435c9e28f42d1258c0d77",
+      "crates/verse-world/src/service/reach.rs": "81a1fe9121bfdfceb652cd5dd39a01440ff98fe395b744370c9bcabcf1205b47",
+      "crates/verse-world/src/service/reach_tests.rs": "751cd9e8cc60c6431cc8a72119c5595d65e3a38badb6d64d1048e0f987760abe",
+      "crates/verse-world/src/service/wire.rs": "1ac4da786527175ce9a85eaf19b16a55d2114319075bd47eebdcd26eb0e3fd5c",
+      "crates/verse-world/src/service/worker.rs": "b7262f761d0e08666c23a9807a0ca9ecc0635f31df523fea5a8656aa7a659f75",
+      "crates/openagents-cli/src/chamber.rs": "b3be32b9255f9903ea41050c55df34f2457e2412d7ae0303e5fd38ae5ebf4d54",
+      "crates/verse/examples/verse_host.rs": "4947858a4b9d41a9638a4be2b931290bcacd8b644f264212a3d22f16567456ce"
+    },
+    "final_source_sha256": {
+      "Cargo.toml": "ee540d1fae9a6150471cf4b54c5bb487d0a8ca923ed5e0d8cc97889258dd6c93",
+      "Cargo.lock": "52a3cb07ea1452b3da3cc14985c1c421caa1b04d172a5a07c6de74d00e4cd25d",
+      "rust-toolchain.toml": "8e390d6a0838315f972690f46ef8bae8b7ecc9ee6c1ed70140ef852869c2482e",
+      "crates/verse-world/Cargo.toml": "9b51e91614440c3791069a11a6ec6ca115071f29d5230a84da530b9ea97db38e",
+      "crates/verse-world/src/service/net/admission.rs": "6fc86e16a940320e4d5c60f56407a54199e297f168584c94514a840f893b18f5",
+      "crates/verse-world/src/service/net.rs": "3d716ebd8ffffab9ae76ead5c33b175470ef47639d6e6d32b29b9bb068ac5d23",
+      "crates/verse-world/src/service/auth.rs": "627cf90140c1534f3e3364bb428aaa7617b8c6ecd2514389fe64e4d0849a1511",
+      "crates/verse-world/src/service/client.rs": "58e424f58a7c915dd27f0afb99129309c406d21883f6d15aff83a813f3f26692",
+      "crates/verse-world/src/service/realm.rs": "5298f1df67d1d21895d272fa8d7f16744ce998927998955d25ce58aa2e6668cb",
+      "crates/verse-world/src/service/realm/net.rs": "fb4c1b6339370b1f6227736b0c215d516ae53248884ea60f3b1f8c9537358f69",
+      "crates/verse-world/src/service/realm/tests.rs": "c2ae263b63e6942e920c97b979722041e506a762c44435c9e28f42d1258c0d77",
+      "crates/verse-world/src/service/reach.rs": "81a1fe9121bfdfceb652cd5dd39a01440ff98fe395b744370c9bcabcf1205b47",
+      "crates/verse-world/src/service/reach_tests.rs": "751cd9e8cc60c6431cc8a72119c5595d65e3a38badb6d64d1048e0f987760abe",
+      "crates/verse-world/src/service/wire.rs": "1ac4da786527175ce9a85eaf19b16a55d2114319075bd47eebdcd26eb0e3fd5c",
+      "crates/verse-world/src/service/worker.rs": "b7262f761d0e08666c23a9807a0ca9ecc0635f31df523fea5a8656aa7a659f75",
+      "crates/openagents-cli/src/chamber.rs": "b3be32b9255f9903ea41050c55df34f2457e2412d7ae0303e5fd38ae5ebf4d54",
+      "crates/verse/examples/verse_host.rs": "4947858a4b9d41a9638a4be2b931290bcacd8b644f264212a3d22f16567456ce"
+    },
+    "notes": [
+      "Preserved upstream interval and renderer-free social authority changes.",
+      "Full world suite passed before final mapped-IPv4 admission and realm adapter error-cleanup refinements; the four admission tests and two real TLS realm tests pass after those refinements.",
+      "Consumer checks cover hosted native projections, the real CLI REACH grant path, and host/migration example compilation.",
+      "These are functional checks. They do not establish 30 Hz, WAN, or crowded hardware acceptance."
+    ]
+  }
+}

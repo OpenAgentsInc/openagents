@@ -93,7 +93,7 @@ over big-endian u32-length-prefixed JSON. The host supplies a bound Tokio listen
 a Rustls certificate/key configuration, enrolled gateway, and shutdown future.
 One host loop owns commands and 30 Hz world stepping; socket workers never hold
 world authority during IO. Sockets and dispatch queues are bounded to 128, with
-5-second TLS handshakes, 30-second initial authentication reads, 60-second idle
+5-second TLS handshakes, a 30-second absolute chamber authentication deadline, 60-second idle
 reads, 10-second writes, and 120 requests per second per socket. Catch-up is
 bounded to 100 ms; transport statistics retain skipped elapsed time. Shutdown
 drains workers, parks controllers, and returns authority plus failure diagnostics.
@@ -103,6 +103,17 @@ over a NIP-REACH direct channel (TCP or WebSocket) with no certificate, admitted
 by a NIP-HOST grant with the `world` right, rechecked before every request and on
 a timer; a granted key outside the role table joins as a spectator. Client prediction, subscribed replication, durable deployment configuration,
 and native service integration remain.
+`service::net::AdmissionStats` retains aggregate admission/refusal and classified
+connection outcomes. The shared policy reserves at most 32 of 128 transport
+slots for pending authentication, with eight pending per IP. Principal request
+credit survives reconnects; supersession closes the previous transport at once.
+Commands and projections have independent principal and aggregate token buckets.
+Overload returns `rate_limited` before authority dispatch, with no operation or
+sequence consumed. Realm listeners share the policy across instances. These
+budgets bound work counts; they do not establish hardware throughput or a CPU
+frame-time guarantee. See [V08](../../docs/audits/2026-10-04-verse-engine-audit.md#v08-admission-and-request-work-have-bounded-policies)
+for token prices, limits, and retained acceptance evidence.
+
 `service::client::Client` connects with caller-configured Rustls trust and server
 name, verifies the opening instance/version, and signs with a caller-provided
 keypair without retaining it. Sequential requests validate correlation, host

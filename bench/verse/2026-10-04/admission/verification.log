@@ -1,0 +1,17 @@
+cargo test -p verse-world --features service-reach
+{"failed": 0, "ignored": 2, "passed": 468, "seconds": 74.15}
+cargo test -p verse-world --features service-reach service::net::admission -- --nocapture
+{"failed": 0, "passed": 4}
+cargo test -p verse-world --features service-reach real_tls_ -- --nocapture
+{"failed": 0, "passed": 2}
+cargo test -p verse --no-default-features --features remote-chamber hosted -- --nocapture
+{"failed": 0, "passed": 4}
+cargo test -p openagents-cli chamber::tests
+{"failed": 0, "passed": 3}
+cargo test -p openagents-cli --test chamber_reach
+{"failed": 0, "passed": 1}
+cargo check -p verse --no-default-features --features remote-chamber --example verse_host --example verse_migrate
+{"passed": true}
+cargo fmt -p verse-world -p verse -p openagents-cli --check
+{"passed": true}
+Documentation links, source digests, and git diff --check passed.

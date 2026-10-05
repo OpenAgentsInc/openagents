@@ -1,0 +1,20 @@
+test service::net::admission::tests::mapped_ipv4_connections_share_the_pending_ip_limit ... ok
+test service::net::admission::tests::pending_partitions_and_drop_leave_admitted_capacity ... ok
+test service::net::admission::tests::aggregate_projection_limit_preserves_other_principals_commands ... ok
+test service::net::admission::tests::reconnect_retires_old_connection_without_refilling_work ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 467 filtered out; finished in 0.00s
+social TLS acceptance: two profiles/viewers, seat/switch/Studio convergence, spectator refusal, stable character 3, transfer fencing; Stats { admission: Stats { capacity_refusals: 0, pre_auth_refusals: 0, ip_refusals: 0, handshake_rate_refusals: 0, principal_capacity_refusals: 0, principal_work_refusals: 0, aggregate_work_refusals: 0, projections: 11, commands: 5, pending_peak: 1, active_peak: 2, pending: 0, active: 0, principal_records: 2, completed: 2, handshake_timeouts: 0, handshake_refusals: 0, authentication_timeouts: 0, authentication_refusals: 2, grant_refusals: 0, retired_connections: 0, frame_failures: 0, read_timeouts: 0, write_failures: 0, request_rate_failures: 0, host_failures: 0, transport_closures: 0, cancelled_workers: 2 }, ticks: 44, requests: 20, queue_peak: 1, skipped_seconds: 0.0, work_peak_seconds: 0.058369631 }
+realm TLS acceptance: Stats { admission: Stats { capacity_refusals: 0, pre_auth_refusals: 0, ip_refusals: 0, handshake_rate_refusals: 0, principal_capacity_refusals: 0, principal_work_refusals: 0, aggregate_work_refusals: 0, projections: 4, commands: 1, pending_peak: 1, active_peak: 1, pending: 0, active: 0, principal_records: 1, completed: 1, handshake_timeouts: 0, handshake_refusals: 0, authentication_timeouts: 0, authentication_refusals: 1, grant_refusals: 0, retired_connections: 0, frame_failures: 0, read_timeouts: 0, write_failures: 0, request_rate_failures: 0, host_failures: 0, transport_closures: 0, cancelled_workers: 1 }, ticks: 24, requests: 7, queue_peak: 2, skipped_seconds: 0.0, work_peak_seconds: 0.062075458 }
+test service::realm::tests::real_tls_social_profiles_share_interactions_and_fence_zone_transfers ... ok
+test service::realm::tests::real_tls_listeners_route_transfer_and_reauthenticate_the_sdk ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 469 filtered out; finished in 1.06s
+test crowd::tests::hosted_presence_retains_discovery_without_spatial_authority ... ok
+test zones::everglade::studio::tests::viewers_of_a_hosted_instance_draw_the_authoritys_seats ... ok
+native social acceptance: two real framed SDK viewers agree, local movement/placement/transition/Studio operations refused, old source projection fenced, explicit destination/exit
+test hosted::tests::hosted_social_two_native_viewers_share_authority_and_reject_old_zone_updates ... ok
+test zones::everglade::tests::a_hosted_instance_walks_the_pinned_packs_content_under_the_social_rules ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 515 filtered out; finished in 0.97s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s

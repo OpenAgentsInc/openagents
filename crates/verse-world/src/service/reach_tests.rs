@@ -27,6 +27,7 @@ struct Grant {
     epoch: u64,
     revoked: bool,
     world: bool,
+    expired: bool,
 }
 
 /// A host grant store in memory. A grant without `world` refuses the way
@@ -50,6 +51,8 @@ impl GrantCheck for Grants {
             .ok_or(GrantRefusal::Unknown)?;
         if held.revoked {
             Err(GrantRefusal::Revoked)
+        } else if held.expired {
+            Err(GrantRefusal::Expired)
         } else if held.epoch != epoch {
             Err(GrantRefusal::EpochMismatch)
         } else if !held.world {
@@ -69,6 +72,7 @@ fn granted() -> Grant {
         epoch: 1,
         revoked: false,
         world: true,
+        expired: false,
     }
 }
 
@@ -210,6 +214,17 @@ async fn a_world_grant_admits_its_device_and_refuses_everyone_else() {
     grants.update(&unlisted, |grant| grant.epoch = 2);
     assert!(watcher.snapshot().await.is_err());
     let error = join_tcp(address, &unlisted, &host).await.err().unwrap();
+    assert!(error.contains(Refusal::Stale.as_str()), "{error}");
+
+    let expired = key(49);
+    grants.set(
+        &expired,
+        Grant {
+            expired: true,
+            ..granted()
+        },
+    );
+    let error = join_tcp(address, &expired, &host).await.err().unwrap();
     assert!(error.contains(Refusal::Stale.as_str()), "{error}");
 
     // Revocation drops the open connection at its next request and refuses

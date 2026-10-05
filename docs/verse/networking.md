@@ -240,3 +240,12 @@ this does not add join screens or convert imported artwork.
 The [V07 audit update](../audits/2026-10-04-verse-engine-audit.md#v07-hosted-social-authority-is-implemented)
 and [acceptance receipt](../../bench/verse/2026-10-04/social-authority/run.json)
 record the supported bounds and remaining platform/performance work.
+
+
+Chamber transport admission now partitions pending connections from admitted
+capacity and retains principal request credit across reconnects. Scoped/full
+projections and commands use separate bounded work buckets. Excess work returns
+`rate_limited` before authority dispatch; callers must back off and retain their
+operation identity. Standalone and realm listener statistics expose aggregate
+refusal and connection outcome counters. [V08](../audits/2026-10-04-verse-engine-audit.md#v08-admission-and-request-work-have-bounded-policies)
+records the policy, scratch acceptance evidence, and its throughput limits.

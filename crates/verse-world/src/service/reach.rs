@@ -154,9 +154,10 @@ pub(super) async fn connection(
     socket: TcpStream,
     admit: Arc<dyn Admit>,
     send: mpsc::Sender<Event>,
+    slot: net::admission::Slot,
 ) -> Result<(), String> {
     let (stream, guard) = admit.open(socket).await?;
-    net::session(stream, Some(guard), send).await
+    net::session(stream, Some(guard), send, slot).await
 }
 
 struct ChannelGuard<G> {

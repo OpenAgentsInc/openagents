@@ -1316,6 +1316,7 @@ async fn serve(output: Output, config: host::Config, access: WorldAccess) -> Res
             "ticks": exit.stats.ticks,
             "requests": exit.stats.requests,
             "connections": exit.stats.completed_connections,
+            "admission": exit.stats.admission,
             "dropped_seconds": exit.stats.dropped_seconds,
             "checkpoint_commits": exit.stats.checkpoint_commits,
             "failure": exit.failure,

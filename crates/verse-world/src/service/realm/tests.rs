@@ -625,6 +625,10 @@ async fn real_tls_listeners_route_transfer_and_reauthenticate_the_sdk() {
     assert!(exit.failure.is_none(), "{:?}", exit.failure);
     assert!(exit.stats.requests >= 7);
     assert!(exit.stats.queue_peak <= 128);
+    assert_eq!(
+        (exit.stats.admission.pending, exit.stats.admission.active),
+        (0, 0)
+    );
     assert!(
         exit.realm
             .manifest
@@ -989,6 +993,10 @@ async fn real_tls_social_profiles_share_interactions_and_fence_zone_transfers() 
     stop.send(()).unwrap();
     let exit = server.await.unwrap().unwrap();
     assert!(exit.failure.is_none(), "{:?}", exit.failure);
+    assert_eq!(
+        (exit.stats.admission.pending, exit.stats.admission.active),
+        (0, 0)
+    );
     println!(
         "social TLS acceptance: two profiles/viewers, seat/switch/Studio convergence, spectator refusal, stable character {character}, transfer fencing; {:?}",
         exit.stats

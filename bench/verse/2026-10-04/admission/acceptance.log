@@ -1,0 +1,15 @@
+test service::net::admission::tests::aggregate_projection_limit_preserves_other_principals_commands ... ok
+test service::net::admission::tests::pending_partitions_and_drop_leave_admitted_capacity ... ok
+test service::net::admission::tests::reconnect_retires_old_connection_without_refilling_work ... ok
+{"admitted_commands":40,"schema":"verse.admission.fixture.v1","snapshot_refusals":24,"stats":{"active":0,"active_peak":3,"aggregate_work_refusals":0,"authentication_refusals":0,"authentication_timeouts":0,"cancelled_workers":0,"capacity_refusals":0,"commands":40,"completed":11,"frame_failures":0,"grant_refusals":0,"handshake_rate_refusals":0,"handshake_refusals":8,"handshake_timeouts":0,"host_failures":0,"ip_refusals":40,"pending":0,"pending_peak":8,"pre_auth_refusals":0,"principal_capacity_refusals":0,"principal_records":2,"principal_work_refusals":25,"projections":16,"read_timeouts":0,"request_rate_failures":0,"retired_connections":1,"transport_closures":2,"write_failures":0}}
+test service::net::tests::overload_keeps_admitted_commands_live_and_reconnects_share_budgets ... ok
+test service::net::tests::storage_busy_does_not_extend_the_authentication_deadline ... ok
+test service::reach::tests::a_channel_carries_only_its_own_devices_key ... ok
+test service::reach::tests::a_websocket_client_joins_through_the_fallback ... ok
+test service::reach::tests::an_idle_revoked_connection_is_closed_by_the_recheck ... ok
+test service::reach::tests::a_world_grant_admits_its_device_and_refuses_everyone_else ... ok
+test service::reach::tests::a_channel_pair_carries_chamber_frames_both_ways_unchanged ... ok
+test service::worker::tests::native_polling_and_sustained_movement_fit_the_tls_request_budget ... ok
+test service::net::tests::slow_tls_handshake_expires_and_releases_its_pending_slot ... ok
+test service::view::tests::authored_friendly_giver_enrolls_over_tls_and_fences_quest_chain ... ok
+test result: ok. 176 passed; 0 failed; 2 ignored; 0 measured; 276 filtered out; finished in 67.72s

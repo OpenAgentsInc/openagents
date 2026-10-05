@@ -12,12 +12,12 @@ use std::{
 };
 use tokio::{
     net::TcpListener,
-    sync::{Semaphore, mpsc, oneshot},
+    sync::{mpsc, oneshot, watch},
     task::JoinSet,
 };
 use tokio_rustls::TlsAcceptor;
 const QUEUE: usize = 128;
-const CONNECTIONS: usize = 128;
+
 enum Operation {
     Studio {
         instance: u64,
@@ -131,6 +131,7 @@ enum Work {
 }
 #[derive(Default, Debug, Serialize)]
 pub struct Stats {
+    pub admission: transport::AdmissionStats,
     pub ticks: u64,
     pub requests: u64,
     pub queue_peak: usize,
@@ -354,31 +355,40 @@ pub async fn serve<F: Future<Output = ()>>(
     let pending_worker = pending_tick.clone();
     let worker =
         tokio::task::spawn_blocking(move || coordinator(realm, leases, receive, pending_worker));
-    let capacity = Arc::new(Semaphore::new(CONNECTIONS));
+    let limits = transport::admission::Limits::new();
     let mut adapters = JoinSet::new();
+    let (stop_adapters, adapter_stop) = watch::channel(false);
     for (lease, listener) in listeners {
         let send = send.clone();
-        let capacity = capacity.clone();
+        let limits = limits.clone();
         let acceptor = TlsAcceptor::from(tls.clone());
+        let mut stopped = adapter_stop.clone();
         adapters.spawn(async move {
             let (clients, mut events) = mpsc::channel(1);
             let mut connections = JoinSet::new();
-            loop {
-                tokio::select! {
+            let outcome = async {
+                loop {
+                    tokio::select! {
+                    _ = stopped.changed() => break,
                     accepted = listener.accept() => {
-                        let (socket, _) = accepted.map_err(|_| "Realm listener failed")?;
-                        if let Ok(permit) = capacity.clone().try_acquire_owned() {
+                        let (socket, address) = accepted.map_err(|_| "Realm listener failed")?;
+                        if let Ok(slot) = limits.open(address.ip()) {
                             let acceptor = acceptor.clone(); let clients = clients.clone();
-                            connections.spawn(async move { let _permit = permit; let _ = transport::connection(socket, acceptor, clients).await; });
+                            let metrics = limits.clone();
+                            connections.spawn(async move { let result = transport::connection(socket, acceptor, clients, slot).await; metrics.finish(&result); });
                         }
                     }
                     event = events.recv() => {
                         if let Some(event) = event { send.send(Work::Client(lease.instance, event)).await.map_err(|_| "Realm coordinator stopped")?; }
                     }
-                    _ = connections.join_next(), if !connections.is_empty() => {}
+                    result = connections.join_next(), if !connections.is_empty() => { if result.is_some_and(|r| r.is_err()) { limits.cancelled(); } }
                 }
             }
-            #[allow(unreachable_code)] Ok::<(), String>(())
+                Ok::<(), String>(())
+            }.await;
+            connections.abort_all();
+            while let Some(result) = connections.join_next().await { if result.is_err() { limits.cancelled(); } }
+            outcome
         });
     }
     let mut ticker = tokio::time::interval(Duration::from_secs_f64(1. / 30.));
@@ -399,13 +409,14 @@ pub async fn serve<F: Future<Output = ()>>(
             result = adapters.join_next(), if !adapters.is_empty() => { adapter_failure = Some(format!("Realm listener stopped: {result:?}")); break; }
         }
     }
-    adapters.abort_all();
+    let _ = stop_adapters.send(true);
     while adapters.join_next().await.is_some() {}
     let _ = send.send(Work::Stop).await;
     drop(send);
     let mut exit = worker
         .await
         .map_err(|_| "Realm coordinator failed; reopen its durable state to recover")?;
+    exit.stats.admission = limits.stats();
     if adapter_failure.is_some() {
         exit.failure = adapter_failure;
     }
