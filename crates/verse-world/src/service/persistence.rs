@@ -303,7 +303,15 @@ impl Store {
             let mut bytes = 0;
             if let Some(old) = &self.state {
                 if self.records < journal::INTERVAL {
-                    bytes += journal::append(&mut self.journal, revision, old, &state)?;
+                    // The retained parent and newly computed state digests bind these exact copies.
+                    bytes += journal::append(
+                        &mut self.journal,
+                        revision,
+                        old,
+                        &state,
+                        self.last_hash.ok_or("Committed chamber digest is absent")?,
+                        hash,
+                    )?;
                     self.records += 1;
                     #[cfg(test)]
                     self.boundary("after_journal");

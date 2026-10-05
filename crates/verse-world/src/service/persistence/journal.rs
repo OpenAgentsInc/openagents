@@ -171,14 +171,16 @@ pub(super) fn append(
     revision: u64,
     old: &Value,
     new: &Value,
+    parent_hash: [u8; 32],
+    state_hash: [u8; 32],
 ) -> Result<usize, String> {
     let mut changes = Vec::new();
     diff(old, new, &mut Vec::new(), &mut changes)?;
     let mut record = Record {
         version: 1,
         revision,
-        parent: hash(old)?,
-        state: hash(new)?,
+        parent: parent_hash,
+        state: state_hash,
         changes,
         digest: [0; 32],
     };
@@ -288,7 +290,15 @@ mod tests {
             .append(true)
             .open(&path)
             .unwrap();
-        append(&mut file, 2, &old, &new).unwrap();
+        append(
+            &mut file,
+            2,
+            &old,
+            &new,
+            hash(&old).unwrap(),
+            hash(&new).unwrap(),
+        )
+        .unwrap();
         let mut file = File::open(path).unwrap();
         let mut recovered = old;
         assert_eq!(replay(&mut file, 1, &mut recovered).unwrap(), 1);
