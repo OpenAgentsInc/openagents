@@ -202,3 +202,15 @@ Everglade, confirm you play the hooded ranger, it idles, walks, runs, and
 jumps with the stick, and no spade follows you. Return by the arch lettered
 THE GRID and by **The Grid**, and check you land beside the EVERGLADE arch
 with other players visible again. A second visit opens from the cache.
+
+## Phone studio panels on Android and a real phone (#10579)
+
+The iOS host builds and, in the simulator, enters Everglade and reports
+that no computer is online for the studio. To finish checking:
+
+1. Build the Android app (`bins/openagents-android/build.sh`): this Mac has
+   no Android SDK, so the Kotlin wiring (`VerseStudio.kt`, the JNI entries
+   in `crates/openagents-mobile/src/android.rs`) was never compiled.
+2. On a phone paired with a computer that runs the studio, walk into
+   Everglade, stand at the podium, tap Interact, and answer a decision;
+   then merge a finished task at the merge station.
