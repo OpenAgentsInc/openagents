@@ -18,6 +18,7 @@ pub mod controls;
 mod culling;
 #[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
 pub mod giver_panel;
+mod gpu_timing;
 pub mod icons;
 mod instancing;
 pub mod inventory;
@@ -133,6 +134,8 @@ fn ground_lift(model: &verse_engine::assets::Model, palette: &Pose) -> f32 {
 }
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct FrameTimings {
+    pub gpu_sample: Option<gpu_timing::Sample>,
+    pub gpu_timestamps_available: bool,
     pub prepare_ms: f64,
     pub encode_ms: f64,
     pub command_encode_ms: f64,
@@ -322,6 +325,7 @@ pub struct Renderer {
     ui_buffer: wgpu::Buffer,
     pub adapter_name: String,
     pub last_timings: FrameTimings,
+    gpu_timer: Option<gpu_timing::Timer>,
     /// The lights that held the cube shadow maps last frame, in map order.
     shadowed_lights: Vec<usize>,
 }
@@ -597,6 +601,11 @@ impl Renderer {
                     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
                         label: Some("Verse imported world"),
                         required_limits: adapter.limits(),
+                        required_features: if adapter.features().contains(gpu_timing::FEATURES) {
+                            gpu_timing::FEATURES
+                        } else {
+                            wgpu::Features::empty()
+                        },
                         ..Default::default()
                     }))
                     .map_err(|e| e.to_string())?;
@@ -1057,6 +1066,7 @@ impl Renderer {
             .iter()
             .map(|(key, model)| (key.clone(), culling::BoneBounds::compile(model)))
             .collect();
+        let gpu_timer = gpu_timing::Timer::new(&device, &queue);
         Ok(Self {
             #[cfg(feature = "imported-desktop")]
             instance,
@@ -1114,6 +1124,7 @@ impl Renderer {
             bounds,
             adapter_name,
             last_timings: FrameTimings::default(),
+            gpu_timer,
             shadowed_lights: Vec::new(),
         })
     }
@@ -1658,9 +1669,17 @@ impl Renderer {
             }
         }
         let prepared = Instant::now();
+        let (gpu_slot, gpu_sample) = self
+            .gpu_timer
+            .as_mut()
+            .map(|timer| timer.begin(&self.device))
+            .unwrap_or((None, None));
         let mut instance_cursor = 0u32;
         let mut shadow_draws = 0;
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        if let Some(timer) = &self.gpu_timer {
+            timer.mark(&mut encoder, gpu_slot, 0);
+        }
         use verse_engine::render_graph::ChamberPass;
         let mut shadows_encoded = prepared;
         let mut world_encoded = prepared;
@@ -1806,6 +1825,9 @@ impl Renderer {
                     }
                 }
                 ChamberPass::WorldResolve => {
+                    if let Some(timer) = &self.gpu_timer {
+                        timer.mark(&mut encoder, gpu_slot, 1);
+                    }
                     shadows_encoded = Instant::now();
 
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1943,6 +1965,9 @@ impl Renderer {
                         &mut self.output_targets,
                         &look,
                     );
+                    if let Some(timer) = &self.gpu_timer {
+                        timer.mark(&mut encoder, gpu_slot, 2);
+                    }
                     world_encoded = Instant::now();
                 }
                 ChamberPass::Overlay => {
@@ -1965,6 +1990,9 @@ impl Renderer {
                     pass.draw(0..world.overlay().vertices().len() as u32, 0..1);
 
                     drop(pass);
+                    if let Some(timer) = &self.gpu_timer {
+                        timer.mark(&mut encoder, gpu_slot, 3);
+                    }
                     overlay_encoded = Instant::now();
                 }
                 ChamberPass::Readback => {
@@ -1988,13 +2016,21 @@ impl Renderer {
                 }
             }
         }
+        if let Some(timer) = &self.gpu_timer {
+            timer.resolve(&mut encoder, gpu_slot);
+        }
         let finish_started = Instant::now();
         let commands = encoder.finish();
         let encoded = Instant::now();
         self.queue.submit([commands]);
+        if let Some(timer) = &mut self.gpu_timer {
+            timer.submitted(gpu_slot);
+        }
         let submitted = Instant::now();
         if !capture {
             self.last_timings = FrameTimings {
+                gpu_sample,
+                gpu_timestamps_available: self.gpu_timer.is_some(),
                 prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
                 encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
                 command_encode_ms: encoded.duration_since(prepared).as_secs_f64() * 1000.,
@@ -2037,6 +2073,8 @@ impl Renderer {
         drop(mapped);
         self.readback.unmap();
         self.last_timings = FrameTimings {
+            gpu_sample,
+            gpu_timestamps_available: self.gpu_timer.is_some(),
             prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
             encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
             command_encode_ms: encoded.duration_since(prepared).as_secs_f64() * 1000.,

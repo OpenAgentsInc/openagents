@@ -93,6 +93,20 @@ pub(crate) struct Profile {
 }
 impl Profile {
     pub fn render(&mut self, timing: super::FrameTimings, present_ms: f64) {
+        if let Some(sample) = timing.gpu_sample {
+            for (name, value) in [
+                ("gpu_shadow_ms", sample.shadow_ms),
+                ("gpu_world_ms", sample.world_ms),
+                ("gpu_overlay_ms", sample.overlay_ms),
+                ("gpu_total_ms", sample.total_ms),
+            ] {
+                self.renderer_phases.entry(name).or_default().add(value);
+            }
+        }
+        self.renderer_counts
+            .entry("gpu_timestamps_available")
+            .or_default()
+            .add(f64::from(timing.gpu_timestamps_available));
         for (name, value) in [
             ("prepare_ms", timing.prepare_ms),
             ("shadow_encode_ms", timing.shadow_encode_ms),
