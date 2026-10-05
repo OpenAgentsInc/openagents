@@ -2044,6 +2044,7 @@ impl Renderer {
             .map(|_| gpu_poll_started.elapsed().as_secs_f64() * 1000.);
         let encoding_started = Instant::now();
         let mut instance_cursor = 0u32;
+        let mut instance_indices = Vec::<u32>::new();
         let mut shadow_draws = 0;
         let world_draws = std::cell::Cell::new(0usize);
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -2173,14 +2174,8 @@ impl Renderer {
                                     "Shadow instance indices exceed the frame budget".into()
                                 );
                             }
-                            let indices: Vec<u32> =
-                                actors.iter().map(|actor| (*actor - 1) as u32).collect();
-                            upload_bytes += (indices.len() * 4) as u64;
-                            self.queue.write_buffer(
-                                &instancing.indices,
-                                u64::from(start) * 4,
-                                bytemuck::cast_slice(&indices),
-                            );
+                            instance_indices.extend(actors.iter().map(|actor| (*actor - 1) as u32));
+                            upload_bytes += (actors.len() * 4) as u64;
                             instance_cursor = end;
                             pass.set_pipeline(&instancing.pipeline);
                             pass.set_bind_group(2, &instancing.group, &[]);
@@ -2299,11 +2294,7 @@ impl Renderer {
                                     );
                                 }
                                 upload_bytes += (actors.len() * 4) as u64;
-                                self.queue.write_buffer(
-                                    &instancing.indices,
-                                    u64::from(start) * 4,
-                                    bytemuck::cast_slice(&actors),
-                                );
+                                instance_indices.extend_from_slice(&actors);
                                 instance_cursor = end;
                                 for batch in self.models[&model]
                                     .iter()
@@ -2442,6 +2433,16 @@ impl Renderer {
         }
         if let Some(timer) = &self.gpu_timer {
             timer.resolve(&mut encoder, gpu_slot, gpu_shadow_started);
+        }
+        // Every pass references a disjoint range of the same frame index buffer.
+        // Upload the complete ranges together before their command submission.
+        if !instance_indices.is_empty() {
+            let instancing = self.instanced_shadows.as_ref().unwrap();
+            self.queue.write_buffer(
+                &instancing.indices,
+                0,
+                bytemuck::cast_slice(&instance_indices),
+            );
         }
         let finish_started = Instant::now();
         let commands = encoder.finish();

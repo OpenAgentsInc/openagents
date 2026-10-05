@@ -1,0 +1,18 @@
+{
+  "schema": "verse.targeted.verification.v1",
+  "base_revision": "7e2b12b7e7c961f43a93b7b324d0f7f79e73d74e",
+  "patch_sha256": "a4504afcd4263ebc377744060eb9f4379e408cc2dff1a0e78610a3599d451e4b",
+  "platform": "macOS arm64",
+  "command": "cargo test -p verse-pbr --lib",
+  "passed": 78,
+  "failed": 0,
+  "ignored": 6,
+  "test_seconds": 1.75,
+  "build_duration": "10m 48s",
+  "formatting": "rustfmt --edition 2024 affected file; git diff --check passed",
+  "behavior": "Collect disjoint shadow and world instance-index ranges and upload their contiguous contents once before command submission. Draw ranges, capacity checks, geometry, and lighting remain identical.",
+  "limitations": [
+    "Native battle runtime verification is pending.",
+    "Ignored tests are not passing evidence."
+  ]
+}
