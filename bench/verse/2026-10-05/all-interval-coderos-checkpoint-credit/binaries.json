@@ -1,0 +1,18 @@
+{
+  "compiled_revisions": {
+    "verse_remote": "f6ed2aa223c7fed2c163c62da1cfd4255048a529",
+    "verse_load": "f6ed2aa223c7fed2c163c62da1cfd4255048a529"
+  },
+  "wire_version": 27,
+  "sha256": {
+    "verse_remote": "f4c31a44d0a0539cf7986402ebfac6921bf308793ee604bfd60b8feb6386aebc",
+    "verse_load": "e94bbeef096e0aa3a133b9ec2dc0bd7ccb7213ce9e00255b24ddf68e92462487"
+  },
+  "client_platform": "macOS arm64",
+  "client_features": [
+    "imported-desktop",
+    "remote-chamber"
+  ],
+  "movement_send_steps": 6,
+  "authority_credit_source": "verified snapshots and control acknowledgments"
+}

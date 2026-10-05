@@ -1,0 +1,72 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "compiled_revision": "746a240d450ff4935ca59d271d1eda887a8d69ed",
+  "client_compiled_revision": "f6ed2aa223c7fed2c163c62da1cfd4255048a529",
+  "host_binary_sha256": "ffe0730d4938906819cb096f9f47525a97ebb995907309edb274e22694e6b0cf",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "wire_version": 27,
+  "movement_send_steps": 6,
+  "timings": {
+    "frame_interval_ms": {
+      "samples": 2267,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 19.242124999999998,
+      "p95": 31.846167,
+      "p99": 39.904458,
+      "maximum": 390.517
+    },
+    "gpu_total_ms": {
+      "samples": 320,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 9.081709,
+      "p95": 22.901584,
+      "p99": 28.553291,
+      "maximum": 33.000083
+    },
+    "command_turnaround_ms": {
+      "samples": 736,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 96.99716699999999,
+      "p95": 187.739125,
+      "p99": 311.53170800000004,
+      "maximum": 496.589
+    },
+    "sdk_verified_snapshot_age_ms": {
+      "samples": 2267,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 43.130125,
+      "p95": 125.87320799999999,
+      "p99": 232.313667,
+      "maximum": 513.596042
+    }
+  },
+  "movement_expiry": {
+    "total": 419,
+    "admission": 15,
+    "primary_tick": 7,
+    "additional_tick": 397,
+    "bootstrap": 16,
+    "omitted": 387
+  },
+  "native_reset_reasons": {
+    "control_epoch": 15,
+    "teleport": 1
+  },
+  "validation": [
+    "22 focused network, delayed movement, and control checks pass.",
+    "Updated Linux host build passes.",
+    "Native, headless load, and host exit zero."
+  ],
+  "limitations": [
+    "Shared machine load prevents causal attribution across successive runs.",
+    "Crowded performance acceptance remains unmet.",
+    "No input-to-display or soak acceptance."
+  ]
+}
