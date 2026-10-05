@@ -13,6 +13,10 @@ remote-chamber = ["verse-world/service-auth", "verse-world/service-reach", "dep:
 # An in-process chamber host over memory streams, for other crates' tests.
 chamber-loopback = ["remote-chamber", "tokio/io-util"]
 imported-desktop = ["dep:winit", "verse-pbr/imported-desktop"]
+# The great crypt's models built into the binary for the cultist fight
+# (`verse --crypt-fight`): about 2.1 MB beside the crypt lab's props, which
+# it shares.
+crypt-fight = ["dep:verse-zone-crypt", "verse-zone-crypt/great-crypt"]
 
 [dependencies]
 glam = "0.30.10"
@@ -29,6 +33,7 @@ verse-gfx = { path = "../verse-gfx" }
 verse-net = { path = "../verse-net" }
 verse-pbr = { path = "../verse-pbr" }
 verse-world = { path = "../verse-world", features = ["studio"] }
+verse-zone-crypt = { path = "../verse-zone-crypt", optional = true }
 wgpu = "29.0.4"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
 

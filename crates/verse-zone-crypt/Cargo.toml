@@ -10,6 +10,9 @@ description = "Verse's crypt lab zone: the candlelit hall from scripts/blender/c
 # Builds the hall's 25 models into the binary (about 5.7 MB), so a desktop
 # build opens the zone without reading the repository.
 embedded = []
+# Adds the great crypt's four models (about 2.1 MB) for the cultist fight
+# (`verse --crypt-fight`), which reuses the hall's embedded props.
+great-crypt = ["embedded"]
 
 [dependencies]
 glam = "0.30.10"

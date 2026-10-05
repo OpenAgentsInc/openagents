@@ -18,6 +18,12 @@
 //!
 //! The `crypt_lab` capture in `crates/verse/examples` renders the same hall
 //! offline; `verse` re-exports this crate as `zones::crypt`.
+//!
+//! The `embedded` feature builds the hall's models into the binary. The
+//! `great-crypt` feature adds the great crypt's own models
+//! (`assets/verse/generated/great_crypt/`) for the cultist fight (`verse
+//! --crypt-fight`), which furnishes it with the same embedded props
+//! ([`great_crypt_glb`]).
 
 use std::f32::consts::FRAC_PI_2;
 use std::path::Path;
@@ -190,6 +196,31 @@ pub const PILLAR_X: f32 = HALF_X - 0.3;
 
 /// Whether this build carries the hall's models inside it.
 pub const EMBEDDED: bool = cfg!(feature = "embedded");
+
+/// Whether this build carries the great crypt's models inside it.
+pub const GREAT_CRYPT_EMBEDDED: bool = cfg!(feature = "great-crypt");
+
+/// The binary glTF file of the great crypt's model `name`
+/// (`verse_world::great_crypt::CRYPT_MODELS` or `CHAMBER_MODELS`), built
+/// into this binary. A chamber prop is the crypt lab's own embedded copy.
+/// Returns `None` for an unknown name, or when this build was made without
+/// the `great-crypt` feature.
+#[must_use]
+pub fn great_crypt_glb(name: &str) -> Option<&'static [u8]> {
+    #[cfg(feature = "great-crypt")]
+    {
+        embedded::GREAT_CRYPT
+            .iter()
+            .chain(embedded::MODELS)
+            .find(|(n, _)| *n == name)
+            .map(|(_, bytes)| *bytes)
+    }
+    #[cfg(not(feature = "great-crypt"))]
+    {
+        let _ = name;
+        None
+    }
+}
 
 /// The vault's inner surface height above `x`, m: an elliptical barrel
 /// from the springing line at the walls to the crown.

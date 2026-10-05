@@ -8,7 +8,7 @@ publish.workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:winit", "dep:arboard", "verse-zone-everglade/desktop", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host", "imported-desktop", "terminal", "crypt"]
+desktop = ["dep:winit", "dep:arboard", "verse-zone-everglade/desktop", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host", "imported-desktop", "terminal", "crypt", "crypt-fight"]
 model-host = ["dep:coder", "dep:coder-delegate", "verse-zone-everglade/model-host"]
 xp-host = ["dep:xp-ledger", "verse-net/xp"]
 replay-host = ["dep:gym", "dep:knowledge"]
@@ -16,6 +16,9 @@ capture = []
 # The crypt lab's models built into the binary (about 5.7 MB), which open
 # the zone and show its plaza arch. A build without them has neither.
 crypt = ["verse-zone-crypt/embedded"]
+# The great crypt's models built into the binary (about 2.1 MB more, sharing
+# the crypt lab's props), which `verse --crypt-fight` plays in.
+crypt-fight = ["crypt", "verse-imported/crypt-fight"]
 # Rust Native panels (the chat transcript and the diff pane) painted by
 # `rust-native-desktop` and composited over the world.
 panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
@@ -258,7 +261,7 @@ required-features = ["capture", "crypt"]
 
 [[example]]
 name = "crypt_fight_capture"
-required-features = ["capture"]
+required-features = ["capture", "crypt-fight"]
 
 [[example]]
 name = "terminal_capture"

@@ -180,3 +180,30 @@ fn the_embedded_models_build_the_same_hall() {
     let hall = Hall::embedded().unwrap();
     assert_eq!(hall.scene.placements.len(), LAYOUT.len());
 }
+
+#[cfg(feature = "great-crypt")]
+#[test]
+fn the_great_crypt_models_are_built_in_once() {
+    use verse_world::great_crypt::{CHAMBER_MODELS, CRYPT_MODELS, model_folder};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/generated");
+    for name in CRYPT_MODELS.iter().chain(CHAMBER_MODELS) {
+        let bytes = great_crypt_glb(name).unwrap();
+        let file = root.join(model_folder(name)).join(format!("{name}.glb"));
+        assert_eq!(bytes, std::fs::read(file).unwrap().as_slice(), "{name}");
+    }
+    // A prop is the hall's embedded copy, not a second one.
+    let (_, hall) = embedded::MODELS
+        .iter()
+        .find(|(n, _)| *n == "sarcophagus")
+        .unwrap();
+    assert!(std::ptr::eq(great_crypt_glb("sarcophagus").unwrap(), *hall));
+    assert!(great_crypt_glb("plaza").is_none());
+}
+
+#[cfg(not(feature = "great-crypt"))]
+#[test]
+fn a_build_without_the_great_crypt_carries_none_of_it() {
+    assert!(!GREAT_CRYPT_EMBEDDED);
+    assert!(great_crypt_glb("great_crypt_hall").is_none());
+    assert!(great_crypt_glb("sarcophagus").is_none());
+}

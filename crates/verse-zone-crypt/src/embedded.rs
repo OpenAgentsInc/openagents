@@ -1,4 +1,5 @@
-//! The hall's models, built into the binary (the `embedded` feature).
+//! The hall's models, built into the binary (the `embedded` feature), and
+//! the great crypt's own models (the `great-crypt` feature).
 
 macro_rules! model {
     ($name:literal) => {
@@ -14,8 +15,23 @@ macro_rules! model {
     };
 }
 
+#[cfg(feature = "great-crypt")]
+macro_rules! great_crypt {
+    ($name:literal) => {
+        (
+            $name,
+            include_bytes!(concat!(
+                "../../../assets/verse/generated/great_crypt/",
+                $name,
+                ".glb"
+            ))
+            .as_slice(),
+        )
+    };
+}
+
 /// Every model in [`crate::MODELS`], by name.
-pub(crate) const MODELS: &[(&str, &[u8])] = &[
+pub(crate) static MODELS: &[(&str, &[u8])] = &[
     model!("crypt_hall"),
     model!("slab_table"),
     model!("cauldron_green"),
@@ -41,4 +57,14 @@ pub(crate) const MODELS: &[(&str, &[u8])] = &[
     model!("barrel"),
     model!("iron_cage"),
     model!("sarcophagus"),
+];
+
+/// The great crypt's own models (`verse_world::great_crypt::CRYPT_MODELS`),
+/// by name. Its props are the hall's, in [`MODELS`].
+#[cfg(feature = "great-crypt")]
+pub(crate) static GREAT_CRYPT: &[(&str, &[u8])] = &[
+    great_crypt!("great_crypt_hall"),
+    great_crypt!("summoning_circle"),
+    great_crypt!("broken_pillar"),
+    great_crypt!("rubble_pile"),
 ];

@@ -189,9 +189,11 @@ throws three shadow bolts at once and, at half health, calls every chapel.
 Claude sleeps on the circle until the priest falls, the player strikes him, or
 the ritual completes, which wakes him empowered. Killing him ends the fight.
 The authority walks, paths, aims, and keeps the camera inside with the crypt's
-collision boxes and the props' footprints. The window reads the crypt's models
-from the repository's `assets/verse`, so it is desktop only; the browser build
-does not carry them. `crypt_fight_capture OUT_DIR` in `crates/verse/examples`
+collision boxes and the props' footprints. Desktop builds carry the crypt's
+models inside the binary (the `crypt-fight` feature, about 2.1 MB beside the
+crypt lab's props, which it shares), so the fight opens from any directory;
+the browser and phone builds do not carry them. The characters still come from
+the repository's `assets/verse/characters`. `crypt_fight_capture OUT_DIR` in `crates/verse/examples`
 renders the opening, the ritual, a fight, the boss, and a video of the run.
 
 ## Entry state

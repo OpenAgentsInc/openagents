@@ -9,9 +9,10 @@
 //! from the side chapels, and Claude asleep on the dais until the ritual
 //! completes.
 //!
-//! [`Fight::load`] builds the content pack (the original characters, two
-//! new cultist looks, and the crypt's models, read from the repository's
-//! `assets/verse`), [`Fight::compose`] assembles one frame for the shared
+//! [`Fight::load`] builds the content pack (the original characters, read
+//! from the repository's `assets/verse`, two new cultist looks, and the
+//! crypt's models, built into the binary by the `crypt-fight` feature),
+//! [`Fight::compose`] assembles one frame for the shared
 //! renderer, and [`run`] opens the window. The crypt's light is its own:
 //! warm candles and braziers that flicker, colored cauldrons, cold moonlight
 //! through the far window, and the circle's violet glow, which brightens as
@@ -27,11 +28,31 @@ use verse_engine::lighting::HeightFog;
 use verse_world::great_crypt as crypt;
 use verse_world::play::Game;
 
-/// The repository's `assets/verse`, which the fight's content comes from.
+/// The repository's Universal character sources, which the fight's
+/// characters come from.
 #[must_use]
-pub fn assets() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse")
+pub fn characters() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/characters/quaternius")
 }
+
+/// The binary glTF file of the great crypt's model `name`, built into this
+/// binary, or `None` when this build was made without the `crypt-fight`
+/// feature.
+#[must_use]
+pub fn model(name: &str) -> Option<&'static [u8]> {
+    #[cfg(feature = "crypt-fight")]
+    {
+        verse_zone_crypt::great_crypt_glb(name)
+    }
+    #[cfg(not(feature = "crypt-fight"))]
+    {
+        let _ = name;
+        None
+    }
+}
+
+/// Whether this build carries the great crypt's models.
+pub const EMBEDDED: bool = cfg!(feature = "crypt-fight");
 
 /// The loaded fight: its authority, content, and overlay atlas.
 pub struct Fight {
@@ -58,15 +79,12 @@ pub struct Composed {
 ///
 /// Returns a message when a source asset is missing or cannot be imported.
 pub fn pack(dir: &Path) -> Result<Pack, String> {
+    if !EMBEDDED {
+        return Err("This build does not carry the great crypt's models".into());
+    }
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let root = assets();
     let mut pack = super::original::generate(dir)?;
-    super::characters::install(
-        &mut pack,
-        dir,
-        &root.join("characters/quaternius"),
-        "male-ranger",
-    )?;
+    super::characters::install(&mut pack, dir, &characters(), "male-ranger")?;
     // The High Priest in crimson, the acolytes in ash-gray robes.
     for (name, base, tint) in [
         ("cultist-leader", "universal-male-ranger", [0.86, 0.2, 0.13]),
@@ -86,7 +104,7 @@ pub fn pack(dir: &Path) -> Result<Pack, String> {
         }
         pack.models.insert(name.into(), model);
     }
-    verse_content::compiler::great_crypt::install(&mut pack, dir, &root.join("generated"))?;
+    verse_content::compiler::great_crypt::install(&mut pack, dir, model)?;
     pack.source_revision = "verse-great-crypt-v1".into();
     pack.validate()?;
     Ok(pack)
@@ -426,5 +444,30 @@ mod tests {
             .unwrap()
             .progress = crypt::RITUAL_SECONDS * 0.9;
         assert!(circle_glow(&game) > early + 0.5);
+    }
+
+    #[cfg(feature = "crypt-fight")]
+    #[test]
+    fn the_fight_builds_from_the_embedded_models() {
+        let dir = tempfile::tempdir().unwrap();
+        let pack = pack(dir.path()).unwrap();
+        assert_eq!(pack.placements.len(), crypt::LAYOUT.len());
+        for name in crypt::CRYPT_MODELS.iter().chain(crypt::CHAMBER_MODELS) {
+            let model = &pack.models[&verse_content::compiler::great_crypt::model_name(name)];
+            assert!(
+                model.surfaces.iter().all(|s| !s.indices.is_empty()),
+                "{name}"
+            );
+        }
+    }
+
+    #[cfg(not(feature = "crypt-fight"))]
+    #[test]
+    fn a_build_without_the_models_refuses_the_fight() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            pack(dir.path()).unwrap_err(),
+            "This build does not carry the great crypt's models"
+        );
     }
 }

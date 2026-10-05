@@ -15241,6 +15241,7 @@ dependencies = [
  "verse-net",
  "verse-pbr",
  "verse-world",
+ "verse-zone-crypt",
  "wgpu",
  "winit",
 ]

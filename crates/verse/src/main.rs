@@ -34,8 +34,7 @@
 //! `--crypt` opens straight into the crypt lab, a candlelit laboratory hall;
 //! `F` at its door returns to the plaza. `--crypt-fight` opens the cultist
 //! fight in the great crypt in a window of its own, played alone with the
-//! ritual chamber's controls; it reads the crypt's models from the
-//! repository's `assets/verse`.
+//! ritual chamber's controls; the crypt's models are built into the binary.
 //! `--frame-times` prints one JSON line of frame times per second.
 //! `--everglade` opens straight into Everglade instead of the plaza, and
 //! `--studio-notice <text>` leads Everglade's caption with a notice;

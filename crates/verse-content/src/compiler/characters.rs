@@ -127,7 +127,7 @@ fn texture(
 fn material_image(
     pack: &mut Pack,
     dir: &Path,
-    path: &Path,
+    base: Option<&Path>,
     buffers: &[gltf::buffer::Data],
     cache: &mut BTreeMap<usize, usize>,
     source: gltf::image::Image<'_>,
@@ -137,7 +137,8 @@ fn material_image(
     }
     let bytes = match source.source() {
         gltf::image::Source::Uri { uri, .. } => {
-            std::fs::read(path.parent().unwrap().join(uri)).map_err(|e| e.to_string())?
+            let base = base.ok_or_else(|| format!("An in-memory model refers to {uri}"))?;
+            std::fs::read(base.join(uri)).map_err(|e| e.to_string())?
         }
         gltf::image::Source::View { view, .. } => {
             buffers[view.buffer().index()].0[view.offset()..view.offset() + view.length()].to_vec()
@@ -147,7 +148,7 @@ fn material_image(
     let index = if let Some(i) = pack.textures.iter().position(|t| t.file == file) {
         i
     } else {
-        let data = gltf::image::Data::from_source(source.source(), path.parent(), buffers)
+        let data = gltf::image::Data::from_source(source.source(), base, buffers)
             .map_err(|e| e.to_string())?;
         texture(pack, dir, &data, file)?
     };
@@ -162,9 +163,28 @@ fn material_uv(set: u32) -> Result<(), String> {
 }
 /// Imports skinned triangle meshes using their full rest hierarchy and inverse binds.
 pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String> {
-    let gltf = gltf::Gltf::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let buffers = gltf::import_buffers(&gltf.document, path.parent(), gltf.blob)
-        .map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    import_bytes(pack, dir, &name, &bytes, path.parent())
+}
+
+/// Imports a model from the glTF file `bytes`, named `name`, as [`import`]
+/// does. A buffer or image the file refers to by URI is read relative to
+/// `base`; a binary glTF file that carries its own needs none.
+///
+/// # Errors
+///
+/// Returns a message when the file cannot be parsed or imported.
+pub fn import_bytes(
+    pack: &mut Pack,
+    dir: &Path,
+    name: &str,
+    bytes: &[u8],
+    base: Option<&Path>,
+) -> Result<Model, String> {
+    let gltf = gltf::Gltf::from_slice(bytes).map_err(|e| format!("{name}: {e}"))?;
+    let buffers =
+        gltf::import_buffers(&gltf.document, base, gltf.blob).map_err(|e| e.to_string())?;
     let doc = gltf.document;
     let mut image_textures = BTreeMap::new();
     let nodes: Vec<_> = doc.nodes().collect();
@@ -210,14 +230,8 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
         graph: None,
         markers: Vec::new(),
         states: Default::default(),
-        source: format!(
-            "verse/interchange/{}",
-            path.file_name().unwrap().to_string_lossy()
-        ),
-        source_sha256: format!(
-            "{:x}",
-            Sha256::digest(std::fs::read(path).map_err(|e| e.to_string())?)
-        ),
+        source: format!("verse/interchange/{name}"),
+        source_sha256: format!("{:x}", Sha256::digest(bytes)),
         surfaces: vec![],
         bones: order
             .iter()
@@ -313,7 +327,7 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
             let color = material.pbr_metallic_roughness().base_color_factor();
             let pbr = material.pbr_metallic_roughness();
             let mut load =
-                |image| material_image(pack, dir, path, &buffers, &mut image_textures, image);
+                |image| material_image(pack, dir, base, &buffers, &mut image_textures, image);
             let texture = if let Some(t) = pbr.base_color_texture() {
                 material_uv(t.tex_coord())?;
                 load(t.texture().source())?

@@ -11,7 +11,7 @@
 use glam::{Mat4, Quat, Vec3};
 use std::path::Path;
 use verse_engine::assets::{Bone, Pack, Placement};
-use verse_world::great_crypt::{CHAMBER_MODELS, CRYPT_MODELS, LAYOUT, model_folder};
+use verse_world::great_crypt::{CHAMBER_MODELS, CRYPT_MODELS, LAYOUT};
 
 /// The pack name of a crypt model.
 #[must_use]
@@ -27,8 +27,8 @@ fn glow(strength: f32) -> f32 {
 
 /// Each primitive's emission strength, in the order the importer reads
 /// them: the document's nodes, then each mesh's primitives.
-fn strengths(path: &Path) -> Result<Vec<f32>, String> {
-    let gltf = gltf::Gltf::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+fn strengths(name: &str, glb: &[u8]) -> Result<Vec<f32>, String> {
+    let gltf = gltf::Gltf::from_slice(glb).map_err(|e| format!("{name}: {e}"))?;
     let mut out = Vec::new();
     for node in gltf.document.nodes() {
         if let Some(mesh) = node.mesh() {
@@ -40,20 +40,25 @@ fn strengths(path: &Path) -> Result<Vec<f32>, String> {
     Ok(out)
 }
 
-/// Imports every crypt model from `generated` (`assets/verse/generated`)
-/// into `pack` as a rigid model, with textures written to `dir`, and
-/// replaces the pack's placements with the great crypt's layout.
+/// Imports every crypt model into `pack` as a rigid model, with textures
+/// written to `dir`, and replaces the pack's placements with the great
+/// crypt's layout. `glb` gives each model's binary glTF file by name: the
+/// files built into the binary (`verse_zone_crypt::great_crypt_glb`), or
+/// files read from `assets/verse/generated`.
 ///
 /// # Errors
 ///
 /// Returns a message when a model is missing or cannot be imported.
-pub fn install(pack: &mut Pack, dir: &Path, generated: &Path) -> Result<(), String> {
+pub fn install<'a>(
+    pack: &mut Pack,
+    dir: &Path,
+    glb: impl Fn(&str) -> Option<&'a [u8]>,
+) -> Result<(), String> {
     for name in CRYPT_MODELS.iter().chain(CHAMBER_MODELS) {
-        let path = generated
-            .join(model_folder(name))
-            .join(format!("{name}.glb"));
-        let strengths = strengths(&path)?;
-        let mut model = super::characters::import(pack, dir, &path)?;
+        let bytes = glb(name).ok_or_else(|| format!("The great crypt has no model {name}"))?;
+        let strengths = strengths(name, bytes)?;
+        let mut model =
+            super::characters::import_bytes(pack, dir, &format!("{name}.glb"), bytes, None)?;
         if strengths.len() != model.surfaces.len() {
             return Err(format!("{name}: primitives and surfaces disagree"));
         }
@@ -103,7 +108,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut pack = crate::compiler::original::generate(dir.path()).unwrap();
         let generated = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/generated");
-        install(&mut pack, dir.path(), &generated).unwrap();
+        let files: std::collections::BTreeMap<&str, Vec<u8>> = CRYPT_MODELS
+            .iter()
+            .chain(CHAMBER_MODELS)
+            .map(|&name| {
+                let path = generated
+                    .join(verse_world::great_crypt::model_folder(name))
+                    .join(format!("{name}.glb"));
+                (name, std::fs::read(path).unwrap())
+            })
+            .collect();
+        install(&mut pack, dir.path(), |name| {
+            files.get(name).map(Vec::as_slice)
+        })
+        .unwrap();
         assert_eq!(pack.placements.len(), LAYOUT.len());
         let hall = &pack.models[&model_name("great_crypt_hall")];
         assert!(hall.surfaces.iter().all(|s| !s.indices.is_empty()));
@@ -120,5 +138,13 @@ mod tests {
         // A placement maps back to its world position through the basis.
         let world = crate::basis().transform_point3(Vec3::from(pack.placements[1].position));
         assert!(world.distance(Vec3::new(LAYOUT[1].1, LAYOUT[1].2, LAYOUT[1].3)) < 1e-3);
+    }
+
+    #[test]
+    fn a_missing_model_is_named() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut pack = crate::compiler::original::generate(dir.path()).unwrap();
+        let error = install(&mut pack, dir.path(), |_| None).unwrap_err();
+        assert_eq!(error, "The great crypt has no model great_crypt_hall");
     }
 }
