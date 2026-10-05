@@ -1425,6 +1425,15 @@ parity, larger realms, or multi-host operations. Matching wire-29 host/client
 deployment remains an owner step in `NEEDS_OWNER.md`. V19, V24, V25, and V27
 address the remaining operational, platform, MMO, and acceptance scope.
 
+A later [blocked-write soak](../../bench/verse/2026-10-05/battle-scale-blocked-write/soak-run.json)
+against an updated transport fails journal append/sync after 3,700 workload
+ticks and records eighteen movement expiries. The shared disk was observed at
+1.7 MiB free; exhaustion is a likely cause, not a proven errno attribution.
+Late flat memory after authority shutdown does not establish healthy sustained
+operation. The earlier accepted revision remains historical evidence; V28 must
+retain a healthy latest-revision rerun and resolve its movement expiries before
+claiming uninterrupted operation for that profile.
+
 ### V19: Live chamber diagnostics and verified recovery
 
 **Status:** Complete in [#10735](https://github.com/OpenAgentsInc/openagents/issues/10735).

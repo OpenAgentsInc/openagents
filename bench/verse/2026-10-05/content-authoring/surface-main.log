@@ -1,0 +1,215 @@
+    Checking bytemuck v1.25.2
+   Compiling thiserror-impl v2.0.20
+   Compiling syn v2.0.119
+    Checking thiserror v2.0.20
+    Checking log v0.4.34
+    Checking serde_json v1.0.151
+    Checking smallvec v1.16.1
+    Checking parking_lot_core v0.9.12
+    Checking wgpu-types v29.0.4
+   Compiling zerocopy-derive v0.8.57
+    Checking gpu-allocator v0.28.0
+    Checking wayland-sys v0.31.11
+    Checking parking_lot v0.12.5
+    Checking tree-sitter-highlight v0.27.0
+    Checking zerocopy v0.8.57
+    Checking font-types v0.12.5
+    Checking read-fonts v0.41.0
+    Checking half v2.7.1
+    Checking naga v29.0.4
+    Checking code-highlight v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/code-highlight)
+   Compiling gltf-derive v1.4.1
+    Checking rust-native v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/rust-native)
+    Checking skrifa v0.44.0
+    Checking physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+    Checking wgpu-naga-bridge v29.0.4
+    Checking wgpu-hal v29.0.4
+    Checking verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+    Checking wgpu-core-deps-windows-linux-android v29.0.4
+    Checking wgpu-core v29.0.4
+    Checking swash v0.2.10
+    Checking image v0.25.10
+    Checking wgpu v29.0.4
+    Checking verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+    Checking coder-ui v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-ui)
+    Checking gltf-json v1.4.1
+    Checking gltf v1.4.1
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `movement_confirmations` is never used
+  --> crates/verse-world/src/play/framed_movement.rs:49:19
+   |
+ 8 | impl Game {
+   | --------- method in this implementation
+...
+49 |     pub(crate) fn movement_confirmations(&self, life: LifeId) -> Vec<crate::movement::Baseline> {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple fields are never read
+   --> crates/verse-world/src/play/multiplayer.rs:134:5
+    |
+133 | pub(crate) struct PortablePlayer {
+    |                   -------------- fields in this struct
+134 |     definition: crate::content::Character,
+    |     ^^^^^^^^^^
+135 |     catalog_remaining: BTreeMap<u8, f32>,
+    |     ^^^^^^^^^^^^^^^^^
+136 |     dice: Option<crate::spells::Dice>,
+    |     ^^^^
+137 |     combat: crate::rules::transfer::Portable,
+    |     ^^^^^^
+138 |     controls: Controls,
+    |     ^^^^^^^^
+139 |     bow_remaining: f32,
+    |     ^^^^^^^^^^^^^
+140 |     time: f32,
+    |     ^^^^
+141 |     yaw: f32,
+    |     ^^^
+142 |     appearance: verse_engine::director::Actor,
+    |     ^^^^^^^^^^
+    |
+    = note: `PortablePlayer` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `take_transfer_player`, `take_resident_player`, and `put_transfer_player` are never used
+   --> crates/verse-world/src/play/multiplayer.rs:145:19
+    |
+144 | impl Game {
+    | --------- methods in this implementation
+145 |     pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+154 |     pub(crate) fn take_resident_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+284 |     pub(crate) fn put_transfer_player(
+    |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:426:19
+     |
+ 332 | impl Game {
+     | --------- methods in this implementation
+...
+ 426 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1396 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: method `live_hostiles` is never used
+    --> crates/verse-world/src/rules.rs:1113:19
+     |
+ 225 | impl Simulation {
+     | --------------- method in this implementation
+...
+1113 |     pub(crate) fn live_hostiles(&self) -> usize {
+     |                   ^^^^^^^^^^^^^
+
+warning: fields `state` and `elapsed` are never read
+ --> crates/verse-world/src/rules/transfer.rs:5:5
+  |
+4 | pub(crate) struct Portable {
+  |                   -------- fields in this struct
+5 |     state: PlayerState,
+  |     ^^^^^
+6 |     elapsed: f32,
+  |     ^^^^^^^
+  |
+  = note: `Portable` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `defeated` is never used
+ --> crates/verse-world/src/rules/transfer.rs:9:19
+  |
+8 | impl Portable {
+  | ------------- method in this implementation
+9 |     pub(crate) fn defeated(&self) -> bool {
+  |                   ^^^^^^^^
+
+warning: method `put_player` is never used
+  --> crates/verse-world/src/rules/transfer.rs:58:19
+   |
+13 | impl Simulation {
+   | --------------- method in this implementation
+...
+58 |     pub(crate) fn put_player(&mut self, id: u32, mut portable: Portable) -> Result<(), String> {
+   |                   ^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, `quest_log`, and `configure_rewards` are never used
+   --> crates/verse-world/src/service.rs:150:8
+    |
+100 | impl Chamber {
+    | ------------ methods in this implementation
+...
+150 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+258 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+309 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+...
+405 |     fn configure_rewards(&mut self, policies: Vec<rewards::Policy>) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: method `validate_use` is never used
+  --> crates/verse-world/src/service/items.rs:54:19
+   |
+27 | impl Catalog {
+   | ------------ method in this implementation
+...
+54 |     pub(super) fn validate_use(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^
+
+warning: method `validate_change` is never used
+  --> crates/verse-world/src/service/outfits.rs:70:19
+   |
+33 | impl Catalog {
+   | ------------ method in this implementation
+...
+70 |     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^^^^
+
+warning: method `progress` is never used
+   --> crates/verse-world/src/service/progression.rs:193:19
+    |
+142 | impl Config {
+    | ----------- method in this implementation
+...
+193 |     pub(super) fn progress(&self, actor: u64, _instance: u64, ledger: &Ledger) -> Vec<Progress> {
+    |                   ^^^^^^^^
+
+warning: methods `revision` and `transactions` are never used
+   --> crates/verse-world/src/service/rewards.rs:246:19
+    |
+216 | impl Ledger {
+    | ----------- methods in this implementation
+...
+246 |     pub(super) fn revision(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+392 |     pub(super) fn transactions(&self) -> Vec<Transaction> {
+    |                   ^^^^^^^^^^^^
+
+warning: method `transfer_cooldowns` is never used
+  --> crates/verse-world/src/utilities.rs:58:19
+   |
+57 | impl Controls {
+   | ------------- method in this implementation
+58 |     pub(crate) fn transfer_cooldowns(&self, source_time: f32, destination_time: f32) -> Self {
+   |                   ^^^^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib) generated 15 warnings
+    Checking verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+    Checking verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 15.25s

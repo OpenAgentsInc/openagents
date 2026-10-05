@@ -49,11 +49,16 @@ It does not establish a device frame-time target, a windowed 3D editor, compress
 texture formats, arbitrary geometry import, author productivity, or production
 art quality.
 
-The main integration changes only `service/net/session_pipeline.rs` among the
-254 recorded source inputs. `source-before-main.json` and its patch retain the
+The main integrations change `service/net/session_pipeline.rs` and add host
+texture presentation behind `imported-surface` in `verse-pbr::imported`, among
+the 254 recorded source inputs. `source-before-main.json` and its patch retain the
 pre-integration source. `source.json` records the rebased implementation, and
 `host-main.log` passes both integration tests against that transport. The final
 checks pass 141 engine tests, ten authoring tests, one CLI workflow, four host
 unit tests, two host integrations, 78 renderer tests, and one native mip
 readback. Six other renderer tests remain ignored. Formatting and local
 documentation links pass.
+
+`surface-main.log` checks the merged `imported-surface` feature. Its new
+presentation code does not change the archive upload paths exercised by the
+renderer readback.
