@@ -1,0 +1,31 @@
+{
+  "acceptance": "failed",
+  "reason": "Steady frame and simulation budgets pass this capture, but actual movement-clock expiry is frequent and corrections have outliers.",
+  "steady_frame_p95_ms": 14.388458,
+  "steady_frame_max_ms": 37.934166999999995,
+  "steady_snapshot_age_p95_ms": 180.949375,
+  "steady_gpu_p95_ms": 10.07225,
+  "server_simulation_max_ms": 23.059,
+  "storage_paused_seconds": 0.904805,
+  "storage_paused_ticks": 28,
+  "storage_refused_requests": 97,
+  "movement_expiries": {
+    "total": 933,
+    "admission": 4,
+    "primary_tick": 19,
+    "additional_tick": 910,
+    "bootstrap": 19,
+    "omitted": 901
+  },
+  "retained_samples_empty_queue": true,
+  "remote_scratch_removed": true,
+  "limits": [
+    "Server includes integrated physics indexing; shared hardware and trajectories differ, so this is not an isolated causal comparison.",
+    "The first 32 expiry samples are retained; they do not characterize all 933 expiries.",
+    "Linux CPU and Mac client CPU remain shared; SSH forwarding adds transport overhead.",
+    "Histogram upper bounds are not exact percentiles.",
+    "No injected delay or jitter; impaired-network acceptance remains separate.",
+    "One out-of-order GPU result is excluded; input-to-display remains unmeasured.",
+    "Ordinary correction p95 is zero, maximum 0.534937 m. Native death and respawn are not exercised."
+  ]
+}

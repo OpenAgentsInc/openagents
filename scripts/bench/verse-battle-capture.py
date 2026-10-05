@@ -105,6 +105,20 @@ def remote(command, **kwargs):
     return subprocess.run(['ssh','-o','BatchMode=yes','-o','ConnectTimeout=10',args.ssh_host,
                            'runuser -u '+shlex.quote(args.remote_user)+' -- sh -c '+shlex.quote(command)],
                           check=True, **kwargs)
+def transfer_files(source, names, destination):
+    flags=['--no-xattrs','--no-mac-metadata'] if sys.platform=='darwin' else []
+    archive=subprocess.Popen(['tar',*flags,'-cf','-', '-C',str(source),*names],
+                             stdout=subprocess.PIPE,env={**os.environ,'COPYFILE_DISABLE':'1'})
+    try:
+        remote('tar -xf - -C '+shlex.quote(destination),stdin=archive.stdout)
+    finally:
+        archive.stdout.close()
+        try:
+            archive.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            archive.kill();archive.wait()
+    if archive.returncode:
+        raise RuntimeError('Fixture archive failed with exit '+str(archive.returncode))
 def stop_host():
     if hostp is None or hostp.poll() is not None:
         return
@@ -129,12 +143,7 @@ try:
             raise RuntimeError('Unexpected remote scratch path')
         remote_root=candidate
         remote('mkdir '+shlex.quote(remote_root+'/assets')+' '+shlex.quote(remote_root+'/home'))
-        tar_flags=['--no-xattrs','--no-mac-metadata'] if sys.platform=='darwin' else []
-        with tempfile.TemporaryFile() as bundle:
-            subprocess.run(['tar',*tar_flags,'-cf','-', '-C',str(assets),'.'],stdout=bundle,check=True,
-                           env={**os.environ,'COPYFILE_DISABLE':'1'})
-            bundle.seek(0)
-            remote('tar -xf - -C '+shlex.quote(remote_root+'/assets'),stdin=bundle)
+        transfer_files(assets,['.'],remote_root+'/assets')
         port_script='import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'
         remote_port=int(remote('python3 -c '+shlex.quote(port_script),capture_output=True,text=True).stdout)
         remote_config=dict(host)
@@ -145,11 +154,7 @@ try:
         if args.persistent:
             remote_config['state_dir']=remote_root+'/state'
         (root/'remote-host.json').write_text(json.dumps(remote_config))
-        with tempfile.TemporaryFile() as bundle:
-            subprocess.run(['tar',*tar_flags,'-cf','-', '-C',str(root),'battle.json','cert.der','tls.der','remote-host.json'],stdout=bundle,check=True,
-                           env={**os.environ,'COPYFILE_DISABLE':'1'})
-            bundle.seek(0)
-            remote('tar -xf - -C '+shlex.quote(remote_root),stdin=bundle)
+        transfer_files(root,['battle.json','cert.der','tls.der','remote-host.json'],remote_root)
         command=("trap 'kill -TERM \"$fixture_pid\" 2>/dev/null; wait \"$fixture_pid\"' EXIT; "
                  +'HOME='+shlex.quote(remote_root+'/home')+' '+shlex.quote(args.remote_binary)+' '+shlex.quote(remote_root+'/remote-host.json')
                  +' </dev/null & fixture_pid=$!; cat >/dev/null; kill -TERM "$fixture_pid"; wait "$fixture_pid"; result=$?; trap - EXIT; exit "$result"')
