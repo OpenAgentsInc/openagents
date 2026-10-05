@@ -379,3 +379,35 @@ fn lightning_bolt_chips_the_tower_where_its_line_meets_it() {
         "the bolt chipped the tower"
     );
 }
+
+#[test]
+fn the_dragons_fire_breath_breaks_the_tower() {
+    // The dragon stands before the tower's south face, close enough for its
+    // cone to reach.
+    let mut runtime = before_tower(9.0);
+    cast(&mut runtime, Spell::Shapechange);
+    idle(
+        &mut runtime,
+        super::dragon::SWAP + super::dragon::GROW + 0.1,
+    );
+    // The dragon's attacks take the beast row while it holds the shape.
+    let breath = slots::slot_of(
+        Spell::FireBreath,
+        grove(&runtime).form(),
+        grove(&runtime).land(),
+    )
+    .expect("the dragon's row holds Fire Breath");
+    for _ in 0..3 {
+        runtime
+            .zone_intent(Intent::GroveSlot(breath as u8))
+            .expect("the breath");
+        idle(&mut runtime, 1.2);
+    }
+    assert_eq!(grove(&runtime).form(), Some(super::shape::Form::Dragon));
+    let site = town(&runtime).site();
+    let broken = pieces(&runtime)
+        .iter()
+        .filter(|(i, _)| site.pieces()[*i].status == Status::Broken)
+        .count();
+    assert!(broken > 0, "the breath broke the tower's blocks");
+}

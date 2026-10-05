@@ -34,6 +34,9 @@ pub const BREATH_END: f32 = 1.6;
 /// Where the jaws are in a breath, at the dragon's modeled size: ahead of
 /// its feet and above them, m.
 const MOUTH: [f32; 2] = [5.0, 3.1];
+/// What each of Fire Breath's ten flame lines does to a structure it meets:
+/// big, so a few breaths gut a wall or bring the tower down.
+const BREATH_STRUCTURE_DAMAGE: i32 = 140;
 /// How far the breath tilts down from level, radians, so it reaches the
 /// ground about its length ahead.
 const BREATH_TILT: f32 = 0.22;
@@ -482,6 +485,22 @@ impl Grove {
         };
         let half = 0.5f32.atan();
         let reach = length + MOUTH[0];
+        // The fire also scorches the tower: lines fanned across the cone at
+        // the jaws' height and a little lower each blast what they meet.
+        let scale = Form::Dragon.scale();
+        let jaws = feet + forward * (MOUTH[0] * scale) + Vec3::Y * (MOUTH[1] * scale);
+        for k in -2..=2 {
+            for pitch in [0.0f32, -0.12] {
+                let yaw = glam::Quat::from_rotation_y(half * 0.9 * k as f32 / 2.0);
+                let dir = (yaw * forward + Vec3::Y * pitch).normalize_or(forward);
+                self.chips.push(super::Chip::Line {
+                    from: jaws,
+                    toward: dir,
+                    length: length,
+                    damage: BREATH_STRUCTURE_DAMAGE,
+                });
+            }
+        }
         for i in 0..self.dummies.len() {
             let d = &self.dummies[i];
             let to = d.center() - feet;
