@@ -1,0 +1,35 @@
+{
+  "schema": "verse.blocked.reply.regression.v1",
+  "issue": 10559,
+  "base_revision": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "source_sha256": "39e5e806a91e711c57541e84edd00fc685376f3f94e47e7f651d5473f9f00a95",
+  "before": {
+    "result": "failed",
+    "log": "before.log",
+    "failure": "Blocked reply write stopped movement admission",
+    "production": "Unchanged coordinator; only regression test added"
+  },
+  "after": {
+    "result": "passed",
+    "log": "after.log",
+    "transport_tests": 27,
+    "delayed_client_tests": 4,
+    "checks": [
+      "Admission continues during a blocked 16 KiB response over a 1 KiB duplex transport.",
+      "The partial frame resumes without duplicated bytes, and replies stay ordered.",
+      "The in-flight write counts toward the unchanged eight-request admission bound.",
+      "Known authentication loss stops admission while its denial reply is still blocked.",
+      "Durable fencing, storage-pause recovery, monitored draining, and delayed client pressure fixtures pass."
+    ]
+  },
+  "limits": [
+    "The blocked-write regression isolates the transport coordinator with a channel representing authority; it does not simulate a full battle or prove zero movement expiries.",
+    "One Linux build job and a persistent target are used. An intermediate compiler run failed because the shared disk filled; no test verdict is inferred from it.",
+    "The high-resolution battle must still be measured with this change."
+  ],
+  "artifact_sha256": {
+    "before.log": "220a2cf0d6b188f6c28498fdd303f5075ae9bb727fbd5bfa3c688fdd218164f6",
+    "disk-full.log": "1450935d03bdf352debff45e0f86ae6aaba7a105ca4ef6e8facc83a5f7e1ddc3",
+    "after.log": "c6600a7422ba8047f73d0489448dbe7e7db6d3eaa6149a0d0cc8f9c52a2cf98f"
+  }
+}

@@ -1,0 +1,31 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/verse-battle-host-agent1/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2872:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2872 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized] target(s) in 1m 57s
+
+running 1 test
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-verse-battle-agent1/debug/deps/verse_world-5115cbce0f3ef316)
+test service::net::session_pipeline::tests::blocked_reply_write_keeps_movement_admission_live_and_bounded ... FAILED
+
+failures:
+
+failures:
+    service::net::session_pipeline::tests::blocked_reply_write_keeps_movement_admission_live_and_bounded
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 581 filtered out; finished in 1.21s
+
+
+thread 'service::net::session_pipeline::tests::blocked_reply_write_keeps_movement_admission_live_and_bounded' (4131928) panicked at crates/verse-world/src/service/net/session_pipeline.rs:450:18:
+Blocked reply write stopped movement admission: Elapsed(())
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `-p verse-world --lib`
