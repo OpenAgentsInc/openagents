@@ -665,7 +665,11 @@ impl App {
                 }
             }
         }
-        if self.controlled() && now >= self.next_move && self.input.capacity() > 0 {
+        if self.controlled()
+            && self.prediction.movement_profile() == Some(verse_world::movement::Profile::Frames)
+            && now >= self.next_move
+            && self.input.capacity() > 0
+        {
             self.send(Input::Command(Intent::Move {
                 axes,
                 yaw: self.yaw,
