@@ -1150,9 +1150,9 @@ pub const SCRATCH_SCHEMA: &str = "openagents.coder.studio-sim-host.v1";
 pub const WORKSPACE: &str = LABEL;
 /// How often a scratch host's [`Engine`] looks for a turn to end.
 pub const ENGINE_EVERY: Duration = Duration::from_millis(250);
-/// What a worker's conflict follow-up asks it to run, as the coordinator
-/// words it ([`studio::flow`]): `(`git merge TARGET`)`.
-const MERGE_HINT: &str = "(`git merge ";
+/// How a worker's conflict follow-up names the branch the host merged in,
+/// as the coordinator words it ([`studio::flow`]): `has merged `TARGET``.
+const MERGE_HINT: &str = "has merged `";
 
 /// The marker a scratch host's root holds: the task store and checkout a
 /// [`Scratch`] made.
@@ -1588,8 +1588,10 @@ fn host_turn(part: &Part, task: &Task, workspace: &Path) -> Result<owner::Script
     })
 }
 
-/// A conflict follow-up: merge the branch the coordinator names into the
-/// worktree, write the seat's scripted resolution, and commit the merge.
+/// A conflict follow-up: the host has started merging the branch the
+/// coordinator names into the worktree; write the seat's scripted
+/// resolution over the markers and leave it for the host to commit, as a
+/// real seat does.
 fn resolve_conflict(
     key: &str,
     seat: &str,
@@ -1602,21 +1604,23 @@ fn resolve_conflict(
     }
     let target = prompt
         .split_once(MERGE_HINT)
-        .and_then(|(_, rest)| rest.split_once("`)"))
+        .and_then(|(_, rest)| rest.split_once('`'))
         .map(|(target, _)| target.trim())
         .filter(|target| !target.is_empty() && !target.starts_with('-'))
         .unwrap_or(BRANCH)
         .to_owned();
-    // A merge that conflicts leaves markers the resolution replaces.
-    seat_git(workspace, &["merge", "--no-edit", &target], seat, false)?;
+    // The host's merge left markers the resolution replaces. An older
+    // follow-up that left the merge to the seat starts it here.
+    if !merge_in_progress(workspace, seat) {
+        seat_git(
+            workspace,
+            &["merge", "--no-edit", "--no-commit", &target],
+            seat,
+            false,
+        )?;
+    }
     for (path, text) in files {
         write(workspace, path, text).map_err(|error| error.to_string())?;
-    }
-    seat_git(workspace, &["add", "-A"], seat, true)?;
-    let pending = seat_git(workspace, &["status", "--porcelain"], seat, true)?;
-    let message = format!("Merge {target} and resolve the conflict");
-    if !pending.trim().is_empty() || merge_in_progress(workspace, seat) {
-        seat_git(workspace, &["commit", "-q", "-m", &message], seat, true)?;
     }
     let names: Vec<&str> = files.iter().map(|(path, _)| *path).collect();
     Ok(format!(

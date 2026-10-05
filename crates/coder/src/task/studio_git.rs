@@ -344,6 +344,79 @@ pub fn prepare(
 ///
 /// # Errors
 /// The task has no worktree here, or its record cannot be kept.
+/// Merge `target` into task `task`'s worktree as the host, for a seat sent
+/// back to resolve a conflict: the seat's run cannot write the common Git
+/// directory, so the host commits the seat's uncommitted work on its
+/// branch and starts the merge, which leaves Git's conflict markers in the
+/// working tree. Returns the conflicting files; the seat resolves them by
+/// editing, and the merge's commit keeps `target` as its second parent.
+pub fn resolve_conflict(store: &Path, task: &str, target: &str) -> Result<Vec<String>, String> {
+    let record = retire::ensure(store, task)
+        .ok()
+        .flatten()
+        .ok_or("the task has no worktree")?;
+    let worktree = PathBuf::from(&record.worktree);
+    let seat = seat_of(store, task).unwrap_or_else(|| "worker".into());
+    let (name, email) = identity(&seat);
+    let who = [
+        ("GIT_AUTHOR_NAME", name.as_str()),
+        ("GIT_AUTHOR_EMAIL", email.as_str()),
+        ("GIT_COMMITTER_NAME", name.as_str()),
+        ("GIT_COMMITTER_EMAIL", email.as_str()),
+    ];
+    if out(&worktree, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_ok() {
+        // A merge is already under way; leave it for the seat.
+        return Ok(Vec::new());
+    }
+    let dirty = out(&worktree, &["status", "--porcelain"])?;
+    if !dirty.is_empty() {
+        let added = run(&worktree, &["add", "-A"], &who)?;
+        if !added.status.success() {
+            return Err(format!(
+                "Git cannot stage the task's work: {}",
+                reason(&added)
+            ));
+        }
+        let message = format!("Work of studio task {}", &task[..task.len().min(12)]);
+        let committed = run(
+            &worktree,
+            &[
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-q",
+                "--no-verify",
+                "-m",
+                &message,
+            ],
+            &who,
+        )?;
+        if !committed.status.success() {
+            return Err(format!(
+                "Git cannot commit the task's work: {}",
+                reason(&committed)
+            ));
+        }
+    }
+    let merged = run(
+        &worktree,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "merge",
+            "--no-ff",
+            "--no-commit",
+            target,
+        ],
+        &who,
+    )?;
+    let conflicted = out(&worktree, &["diff", "--name-only", "--diff-filter=U"])?;
+    if !merged.status.success() && conflicted.is_empty() {
+        return Err(format!("Git cannot merge {target}: {}", reason(&merged)));
+    }
+    Ok(conflicted.lines().map(str::to_owned).collect())
+}
+
 pub fn merge(store: &Path, task: &str, reviewed: &Reviewed) -> Result<Publication, Refusal> {
     let _one = MERGING
         .lock()
@@ -473,16 +546,17 @@ fn land(
             "Uncommitted work of studio task {}",
             &task[..task.len().min(12)]
         );
+        // A merge the host started for a conflict (`resolve_conflict`) and
+        // the seat resolved keeps the merged branch as its second parent.
+        let merging = out(worktree, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).ok();
+        let mut arguments = vec!["commit-tree", &reviewed.head, "-p", &reviewed.head_commit];
+        if let Some(other) = &merging {
+            arguments.extend(["-p", other.as_str()]);
+        }
+        arguments.extend(["-m", &message]);
         let output = run(
             worktree,
-            &[
-                "commit-tree",
-                &reviewed.head,
-                "-p",
-                &reviewed.head_commit,
-                "-m",
-                &message,
-            ],
+            &arguments,
             &[
                 ("GIT_AUTHOR_NAME", name.as_str()),
                 ("GIT_AUTHOR_EMAIL", email.as_str()),

@@ -503,7 +503,7 @@ fn a_conflicting_merge_goes_back_to_the_worker_who_merges_the_branch_in() {
     let task = bench.task("docs");
     assert_eq!(task.status, Status::Queued);
     let told = &task.follow_ups.last().unwrap().prompt;
-    assert!(told.contains(&format!("git merge {BRANCH}")), "{told}");
+    assert!(told.contains(&format!("has merged `{BRANCH}`")), "{told}");
     assert!(told.contains("README.md"), "{told}");
     let flow = bench.flow("docs");
     assert_eq!((flow.stage, flow.conflicts), (Stage::Work, 1));

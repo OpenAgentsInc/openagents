@@ -1066,11 +1066,28 @@ impl Studio {
         } else {
             format!(" in {files}")
         };
-        let prompt = format!(
-            "Merging your change into `{target}` would conflict{place}. Merge `{target}` into \
-             your branch in this worktree (`git merge {target}`), resolve the conflicts, run the \
-             checks, and commit the merge. Do not push."
-        );
+        // The host starts the merge: the seat's run cannot write the common
+        // Git directory. The seat resolves the markers by editing files.
+        let prompt = match git::resolve_conflict(&self.store, &task.task_id, &target) {
+            Ok(files) => {
+                let place = if files.is_empty() {
+                    place.clone()
+                } else {
+                    format!(" in {}", files.join(", "))
+                };
+                format!(
+                    "Merging your change into `{target}` would conflict. The host has merged \
+                     `{target}` into this worktree, and Git left conflict markers{place}. Resolve \
+                     them by editing the files, run the checks, and leave the result in the \
+                     working tree: the host commits the merge. Do not run Git commands that write."
+                )
+            }
+            Err(why) => format!(
+                "Merging your change into `{target}` would conflict{place}, and the host could \
+                 not start the merge in this worktree ({why}). Explain what you see; do not run \
+                 Git commands that write."
+            ),
+        };
         self.push_memory(
             MemoryKind::Note,
             Party::Seat { name: seat.clone() },

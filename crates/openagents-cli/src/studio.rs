@@ -26,7 +26,7 @@ use coder::cli_route::tree::{Declared, Effect};
 pub(crate) const USAGE: &str = "usage: openagents studio COMMAND [OPTIONS]
   up [--repo PATH] [--workspace LABEL] [--team TEAM] [--sim]
      [--no-verse] [--no-host] [--controller PATH] [--coder PATH]
-     [--verse PATH] [--control-socket PATH]
+     [--verse PATH] [--control-socket PATH] [--full-access]
                   Launch the studio on a repository: admit it as a host
                   workspace, turn auto-start on for the team's routes,
                   seat a team, start the host if none runs, and open
@@ -35,7 +35,9 @@ pub(crate) const USAGE: &str = "usage: openagents studio COMMAND [OPTIONS]
                   NAME=ROUTE,NAME=ROUTE,... with the lead first, ROUTE
                   being PROVIDER:MODEL or a provider alone. --sim opens
                   the simulated team on a scratch repository with no
-                  model spend. Options are remembered for the next up.
+                  model spend. --full-access gives the team's runs the
+                  host user's reads and network, which session and sdk
+                  seats need. Options are remembered for the next up.
   down            Stop and undo only what up started and changed.
   seat set NAME --route ROUTE [--role ROLE] [--look LOOK] [--desk N]
                   Add a seat or change one: a lead plans goals, a worker

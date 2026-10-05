@@ -1802,7 +1802,9 @@ impl Studio {
                 let item = &goal.plan[entry];
                 prompt.push_str(&format!(
                     "You are seat `{}` on an Agent Studio team. Do this task in this \
-                     checkout and commit your change. Do not push or land it.\n\n\
+                     checkout and leave your change in the working tree: the host \
+                     commits it when it lands, so do not run git commit, merge, push, \
+                     or any other Git command that writes.\n\n\
                      Task: {}\n",
                     seat.name, item.title
                 ));

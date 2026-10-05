@@ -1332,7 +1332,7 @@ fn a_session_seat_under_the_boundary_is_refused_with_the_reason() {
 #[test]
 fn only_claude_and_codex_seats_name_an_engine() {
     assert!(parse_route("grok/session:default").is_err());
-    let unknown = parse_route("claude/sdk:claude-opus-5-5").unwrap_err();
+    let unknown = parse_route("claude/acp:claude-opus-5-5").unwrap_err();
     assert!(unknown.to_string().contains("session or loop"), "{unknown}");
     let scratch = scratch();
     let mut studio = Studio::open(&scratch.store).unwrap();

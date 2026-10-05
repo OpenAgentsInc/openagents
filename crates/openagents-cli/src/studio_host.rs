@@ -585,7 +585,7 @@ fn render_decision(decision: &Decision) -> String {
     }
     if let Some(step) = &decision.approval {
         out.push_str(&format!(
-            "\n    step: {} `{}` in {} ({} risk)",
+            "\n    step: {} `{}` in {} ({})",
             step.tool,
             step.command,
             step.cwd,

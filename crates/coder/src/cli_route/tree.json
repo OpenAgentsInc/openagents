@@ -6461,7 +6461,7 @@
               "up"
             ],
             "usage": [
-              "up [--repo PATH] [--workspace LABEL] [--team TEAM] [--sim] [--no-verse] [--no-host] [--controller PATH] [--coder PATH] [--verse PATH] [--control-socket PATH]"
+              "up [--repo PATH] [--workspace LABEL] [--team TEAM] [--sim] [--no-verse] [--no-host] [--controller PATH] [--coder PATH] [--verse PATH] [--control-socket PATH] [--full-access]"
             ],
             "forms": [
               {
@@ -6533,11 +6533,16 @@
                     "value": "PATH",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "full-access",
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Launch the studio on a repository: admit it as a host workspace, turn auto-start on for the team's routes, seat a team, start the host if none runs, and open Verse in Everglade. The default team is a lead and two workers on the signed-in coding agents; TEAM is NAME=ROUTE,NAME=ROUTE,... with the lead first, ROUTE being PROVIDER:MODEL or a provider alone. --sim opens the simulated team on a scratch repository with no model spend. Options are remembered for the next up.",
+            "summary": "Launch the studio on a repository: admit it as a host workspace, turn auto-start on for the team's routes, seat a team, start the host if none runs, and open Verse in Everglade. The default team is a lead and two workers on the signed-in coding agents; TEAM is NAME=ROUTE,NAME=ROUTE,... with the lead first, ROUTE being PROVIDER:MODEL or a provider alone. --sim opens the simulated team on a scratch repository with no model spend. --full-access gives the team's runs the host user's reads and network, which session and sdk seats need. Options are remembered for the next up.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -7757,6 +7762,12 @@
           "name": "control-socket",
           "value": "PATH",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "full-access",
           "optional": true,
           "repeated": true
         },

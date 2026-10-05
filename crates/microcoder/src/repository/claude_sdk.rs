@@ -306,10 +306,15 @@ pub(crate) fn step(tool: &str, input: &Value, cwd: &Path) -> interaction::Step {
 /// The turn's reply when it stops to ask: the request in words, and the
 /// step in a fenced block when it is a valid one.
 pub(crate) fn approval_reply(step: &interaction::Step) -> String {
-    let mut reply = format!(
-        "Claude Code asks to run {} outside this task's worktree. May it go ahead?",
-        step.tool
-    );
+    // Every command asks; a file tool asks only outside the worktree.
+    let mut reply = if step.tool == "Bash" {
+        "Claude Code asks to run a command. May it go ahead?".to_owned()
+    } else {
+        format!(
+            "Claude Code asks to use {} outside this task's worktree. May it go ahead?",
+            step.tool
+        )
+    };
     if step.valid()
         && let Ok(block) = serde_json::to_string_pretty(step)
     {
@@ -466,7 +471,7 @@ impl Transcript<'_> {
                     format!("The host refused Claude Code's {tool}: the person denied it.")
                 }
                 Decision::Asked => format!(
-                    "Claude Code asked to run {tool} outside the worktree; the turn ends asking the person."
+                    "Claude Code asked to use {tool} where the host asks first; the turn ends asking the person."
                 ),
                 Decision::Waiting => format!(
                     "The host refused Claude Code's {tool}: the turn is ending to ask the person."

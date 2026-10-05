@@ -250,6 +250,9 @@ pub(crate) struct Plan<'a> {
     /// Whether a provider's coding agent can sign in here.
     pub connected: &'a dyn Fn(Provider) -> bool,
     pub now: u64,
+    /// `--full-access`: the policy gives runs the host user's reads and
+    /// network, which `session` and `sdk` seats need.
+    pub full_access: bool,
 }
 
 /// `openagents studio up`. Returns the exit code.
@@ -297,6 +300,7 @@ fn up_inner(output: &Output, args: &Args, paths: &Paths) -> Result<(), String> {
             controller: args.option("controller").map(PathBuf::from),
             connected: &probe,
             now: record.at,
+            full_access: args.switch("full-access"),
         },
         &mut record,
     )?;
@@ -716,6 +720,9 @@ fn policy_for(
         }
     };
     policy.enabled = true;
+    if plan.full_access {
+        policy.engine.access = coder::task::adapter::Access::Full;
+    }
     policy.engine.model = first.model.clone();
     policy.engine.routes = routes;
     policy.changed_at = plan.now;
@@ -1271,6 +1278,7 @@ mod tests {
             controller: Some(scratch.controller.clone()),
             connected,
             now: 1_800_000_000,
+            full_access: false,
         }
     }
 
@@ -1592,4 +1600,4 @@ mod tests {
 
 /// The switches `openagents studio` takes; every other `--name` takes a
 /// value.
-pub(crate) const SWITCHES: &[&str] = &["sim", "no-verse", "no-host"];
+pub(crate) const SWITCHES: &[&str] = &["sim", "no-verse", "no-host", "full-access"];

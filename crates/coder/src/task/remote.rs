@@ -119,7 +119,16 @@ impl Inbox {
             let Ok(task) = store.show(&item.task) else {
                 continue;
             };
-            if let Some(label) = super::commands::label_for(&self.workspaces, &task) {
+            // A studio task works in its own worktree; its later turns
+            // belong to the workspace of the checkout that worktree came from.
+            let label = super::commands::label_for(&self.workspaces, &task).or_else(|| {
+                let record = super::local::record(&self.store, &item.task)?;
+                self.workspaces
+                    .iter()
+                    .find(|(_, root)| root.to_string_lossy() == record.checkout)
+                    .map(|(label, _)| label.as_str())
+            });
+            if let Some(label) = label {
                 autostart.eligible_turn(&item.task, &item.device, label, item.turn);
                 any = true;
             }
