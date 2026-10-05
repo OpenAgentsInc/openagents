@@ -1,0 +1,36 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "host_revision": "797ec5267b",
+  "client_revision": "a1a05de003",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "movement_send_steps": 6,
+  "wire_version": 26,
+  "timings": {
+    "frame_p95_ms": 16.154334,
+    "frame_max_ms": 29.481,
+    "gpu_p95_ms": 10.612125,
+    "verified_snapshot_age_p95_ms": 154.564833,
+    "verified_snapshot_age_max_ms": 391.962375,
+    "command_turnaround_p95_ms": 211.898916,
+    "command_turnaround_max_ms": 633.844166,
+    "movement_expiries": 640,
+    "native_control_epoch_resets": 8,
+    "storage_paused_seconds": 3.290228,
+    "storage_commit_max_ms": 1056.679
+  },
+  "limitations": [
+    "Dedicated host package and dependency feature set differ from prior example host; no isolated causal comparison.",
+    "Shared Linux CPU includes another rustc process; shared Mac CPU and different battle trajectories.",
+    "No injected network impairment, no input-to-display measurement, and no soak acceptance.",
+    "Frame p95 meets 16.7 ms in this sample; network delays and movement expiries still fail the smooth battle target."
+  ],
+  "validation": [
+    "All client and host exits zero.",
+    "Every headless worker observed 20 players and minimum 40 live hostiles.",
+    "12947 headless movement inputs.",
+    "35 save/persistence tests passed before building this host, including crash recovery and exact representation equivalence."
+  ]
+}
