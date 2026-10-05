@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.terminal.verification.v1",
+  "base_commit": "916329e292873702efad3e5b0b6760ed68d404b2",
+  "build": "Linux x86_64 debug; changes for issue 10644 applied above the base commit",
+  "executable_sha256": "c4714dabef8dfcc5c6c21476e57c5f72016f13bea712ae1c71b26cda4242b0cd",
+  "source_sha256": {
+    "crates/terminal-app/src/window.rs": "d90970543e8a6b05a4e6a0c20fa8605ce0bfa9b27c753fedf40661824254a6fb",
+    "crates/terminal-gfx/src/stress.rs": "d0b9869ac2f8e5e0e19cba17b847397ddd4967f066ca3f9da670155a87bb293a",
+    "crates/terminal-core/src/application.rs": "cfb8eac1077063b591e25dc67017095259a5a61f4fde02eb6b6a86eb5d7d071f",
+    "crates/terminal-core/src/smart.rs": "9cfd51c09ed95bc99a0bc5fa0b77efbed2d4a095177f6bf65a39011be441da46",
+    "crates/terminal-core/src/application_tests.rs": "a1ef0e5bd6a0718ade480333958446ef02f517d221c249ac0dbe1b2bd2319132"
+  },
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "native_release_platform": "macOS arm64",
+  "linux_standalone_window": "passed",
+  "offline_typed_bridge_fixture": "passed",
+  "mac_signing_notarization_gatekeeper": "not-run",
+  "public_artifact_readback": "not-run",
+  "published_package_install": "not-run",
+  "grid_live_request_and_capture": "not-run",
+  "standalone_live_request_and_capture": "not-run",
+  "mac_both_surface_performance": "not-run",
+  "linux_frame_p95_target_ms": 16.7,
+  "linux_frame_p95_ms": 17.224964,
+  "linux_frame_p95_target_met": false,
+  "startup_target_frozen_before_measurement_ms": 2000,
+  "linux_startup_ms": 375.355364
+}

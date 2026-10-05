@@ -1,0 +1,10 @@
+{
+  "compiled_commit": null,
+  "elapsed_ms": 375.355364,
+  "end": "first GPU frame submitted and presented",
+  "schema": "openagents.native-terminal.startup.v1",
+  "start": "process entry before argument parsing",
+  "target_met": true,
+  "target_ms": 2000,
+  "version": "1.0.0-rc.2"
+}

@@ -208,7 +208,23 @@ impl Driver {
         std::fs::write(&log, text).map_err(|e| e.to_string())?;
         let sh = |script: String, label: &str| Program::Command {
             program: "/bin/sh".into(),
-            args: vec!["-c".into(), script],
+            args: vec![
+                "-c".into(),
+                if label == "typing" {
+                    script
+                } else {
+                    let command = script
+                        .bytes()
+                        .map(|byte| format!("{byte:02x}"))
+                        .collect::<String>();
+                    format!(
+                        "printf '\\033]7;file://{}\\007\\033]133;A\\007\\033]777;openagents;command;{}\\007\\033]133;C\\007'; {}",
+                        self.root.display(),
+                        command,
+                        script
+                    )
+                },
+            ],
             label: label.into(),
         };
         let workloads = [
@@ -222,7 +238,15 @@ impl Driver {
                 "build log",
             ),
             sh("while :; do seq 1 10000000; done".into(), "seq"),
-            sh("exec top -s 1 -o cpu".into(), "top"),
+            sh(
+                if cfg!(target_os = "linux") {
+                    "exec top -d 1 -o %CPU"
+                } else {
+                    "exec top -s 1 -o cpu"
+                }
+                .into(),
+                "top",
+            ),
         ];
         let mut programs = vec![sh("stty -icanon; exec cat".into(), "typing")];
         programs.extend((0..self.plan.busy).map(|i| workloads[i % workloads.len()].clone()));

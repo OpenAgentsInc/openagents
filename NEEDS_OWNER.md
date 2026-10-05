@@ -2,14 +2,16 @@
 
 ## Smart terminal Mac verification (#10642–#10644)
 
-Build the native package on macOS arm64 with `scripts/release/native-terminal.py
-build --commit origin/main` and an absolute reusable `CARGO_TARGET_DIR`. The GUI
-and both helpers are archived from one commit; Linux does not establish a signed
-Mac package. After the standalone package is ready, run the Grid and standalone failing-test,
-request-preview, Enter-approval, and same-thread result flow on the Mac. Retain
-both surfaces' captures and the terminal stress workload's p95 receipt under
-#10644. Linux checks cover zsh hooks, proposal approval, shared-client identity,
-and PTY output budgets; they do not establish the Mac rendering or release verdict.
+The implementation and release tooling are ready for the Mac switch requested
+by the owner. Follow the [retained handoff](docs/verse/verification/2026-10-05-smart-terminal/README.md)
+to build the app and both helpers from current main, sign/notarize/staple, publish
+and read back the separate native package, install it with Verse absent, and
+capture the live failing-test/request/Enter/result flow on Grid and standalone.
+Retain both stress reports and repeated startup samples. No signed Mac package,
+public install, live model demonstration, or Mac performance verdict is claimed.
+The Linux debug stress result does not meet the unchanged 16.7 ms frame p95 target;
+the supported Mac release still needs measurement. Open a new issue for any defect
+found during the Mac run.
 
 ## Shared Everglade on two devices (#10553)
 

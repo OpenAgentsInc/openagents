@@ -23,13 +23,19 @@ pub struct Options {
     busy: Option<usize>,
     seconds: Option<u32>,
     warmup: Option<u32>,
+    startup_out: Option<PathBuf>,
 }
 
 pub fn run() -> Result<(), String> {
+    let started = Instant::now();
     let mut options = Options::default();
     let mut args = std::env::args().skip(1);
     while let Some(argument) = args.next() {
         match argument.as_str() {
+            "--startup-out" => {
+                options.startup_out =
+                    Some(args.next().ok_or("Expected a startup report path")?.into())
+            }
             "--stress-out" => {
                 options.stress_out = Some(args.next().ok_or("Expected a report path")?.into())
             }
@@ -59,7 +65,7 @@ pub fn run() -> Result<(), String> {
             }
             "--help" | "-h" => {
                 println!(
-                    "OpenAgents Terminal\nUsage: openagents-terminal [--root DIR] [--shell PATH] [--socket PATH]\n\nStarts your login shell. Ctrl+B a opens Ask; # selects a request in zsh.\nCtrl+B % or \" splits; Ctrl+B c opens a tab. Cmd+Q exits on macOS.\n--root isolates shell and helper HOME for a scratch run.\nThe native package supports macOS arm64; Linux is a development platform."
+                    "OpenAgents Terminal\nUsage: openagents-terminal [--root DIR] [--shell PATH] [--socket PATH]\n\nStarts your login shell. Ctrl+B a opens Ask; # selects a request in zsh.\nCtrl+B % or \" splits; Ctrl+B c opens a tab. Cmd+Q exits on macOS.\n--root isolates shell and helper HOME for a scratch run.\nThe native package supports macOS arm64; Linux is a development platform.\n--stress-out FILE runs the shared workload; --busy N --seconds S --warmup S configure it.\n--startup-out FILE records process entry to first presented frame."
                 );
                 return Ok(());
             }
@@ -86,6 +92,8 @@ pub fn run() -> Result<(), String> {
         error: None,
         point: [0.0; 2],
         hidden: false,
+        started,
+        startup_recorded: false,
     };
     event_loop
         .run_app(&mut app)
@@ -106,6 +114,8 @@ struct App {
     error: Option<String>,
     point: [f32; 2],
     hidden: bool,
+    started: Instant,
+    startup_recorded: bool,
 }
 impl App {
     fn fail(&mut self, event_loop: &ActiveEventLoop, error: String) {
@@ -127,8 +137,23 @@ impl App {
             &mut state.atlas,
             [size.width as f32, size.height as f32],
         );
-        state.gpu.draw(&batch, &state.atlas)?;
+        let presented = state.gpu.draw(&batch, &state.atlas)?;
         state.terminal.frame_done(start);
+        if presented && !self.startup_recorded {
+            self.startup_recorded = true;
+            if let Some(path) = &self.options.startup_out {
+                let elapsed_ms = self.started.elapsed().as_secs_f64() * 1000.0;
+                let report = serde_json::json!({"schema": "openagents.native-terminal.startup.v1", "elapsed_ms": elapsed_ms,
+                    "start": "process entry before argument parsing", "end": "first GPU frame submitted and presented",
+                    "target_ms": 2000, "target_met": elapsed_ms <= 2000.0, "version": env!("CARGO_PKG_VERSION"),
+                    "compiled_commit": option_env!("OPENAGENTS_BUILD_COMMIT")});
+                std::fs::write(
+                    path,
+                    serde_json::to_vec_pretty(&report).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+            }
+        }
         Ok(())
     }
 }
@@ -510,7 +535,7 @@ impl Gpu {
         self.atlas = texture;
         self.atlas_revision = atlas.revision();
     }
-    fn draw(&mut self, batch: &UiBatch, atlas: &Atlas) -> Result<(), String> {
+    fn draw(&mut self, batch: &UiBatch, atlas: &Atlas) -> Result<bool, String> {
         if self.atlas_revision != atlas.revision() {
             if !verse_gfx::ui_pipeline::write_atlas(&self.queue, &self.atlas, atlas) {
                 self.rebuild_atlas(atlas);
@@ -522,10 +547,10 @@ impl Gpu {
             | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
             wgpu::CurrentSurfaceTexture::Outdated => {
                 self.surface.configure(&self.device, &self.config);
-                return Ok(());
+                return Ok(false);
             }
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                return Ok(());
+                return Ok(false);
             }
             _ => return Err("the window surface was lost".into()),
         };
@@ -591,6 +616,6 @@ impl Gpu {
         }
         self.queue.submit(Some(encoder.finish()));
         frame.present();
-        Ok(())
+        Ok(true)
     }
 }

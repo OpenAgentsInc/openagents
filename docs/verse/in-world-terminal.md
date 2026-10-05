@@ -79,7 +79,8 @@ absolute, reusable `CARGO_TARGET_DIR` outside the checkout. It bundles the GUI,
 `openagents`, and `microcoder` from that commit under `OpenAgents Terminal.app`.
 The separate `openagents-terminal/` release prefix does not change the existing
 seven-platform TUI channel. Signing, notarization, publication, and both-surface
-Mac verification remain owner steps under #10644.
+Mac verification remain owner steps in the
+[handoff receipt](verification/2026-10-05-smart-terminal/README.md).
 
 The overlay also listens on a control socket,
 `~/.openagents/verse/terminal.sock` (`VERSE_TERMINAL_SOCKET` overrides it;

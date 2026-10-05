@@ -1,0 +1,6 @@
+{
+  "fixture": "scripts/release/terminal-demo-fixture.sh",
+  "actual_exit_code": 101,
+  "home": "temporary fixture directory",
+  "bridge": "offline typed transport fixture; no live model request"
+}
