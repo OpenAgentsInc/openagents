@@ -85,6 +85,39 @@ kit's pieces. Low-poly animals with a simple rig and a few keyed actions
 (idle, walk, attack) are within reach of scripts. Detailed organic models are
 not; those come from CC0 packs.
 
+## Built models
+
+On October 5, the first models were built and staged in
+`assets/verse/generated/`, outside every zone pack until each is admitted.
+`assets/verse/generated/PROVENANCE.md` records each model's script, triangle
+count, clips, and, for the converted creatures, the source archive's digest
+and its CC0 license.
+
+| Model | Script | Clips |
+| --- | --- | --- |
+| Giant spider, rat, frog, snake, wasp | `enemy_pack.py` (with `convert_fbx.py`) | The pack's clips, renamed to `idle`, `walk`, `run`, `fly`, `attack`, `jump`, and `death` |
+| Sledgehammer | `sledgehammer.py` | |
+| Fountain | `fountain.py` | |
+| Observatory | `observatory.py` | |
+| Bandshell | `bandshell.py` | |
+| Market stalls, red and blue | `market_stall.py` | |
+| Training dummies: straw, armored, warded | `training_dummy.py` | |
+| Bear, wolf, eagle | `animals.py` | `idle` and `walk`; the eagle has `idle` and `flap` |
+
+The scripts share `scripts/blender/kit.py` for solids, materials, rigs, and
+export. To rebuild every model and render the gallery, run:
+
+```sh
+scripts/blender/build-models.sh [GALLERY_DIR]
+```
+
+Set `GALLERY_ONLY=1` to render the gallery from the committed models alone.
+`BLENDER` overrides Blender's path, and `ENEMY_PACK` overrides the enemy
+pack's path (default: `~/Downloads`). The gallery (`gallery.py`) writes
+`gallery.png`, a labeled grid of every model posed on its `idle` clip;
+`previews/<name>.png`, one model each; and `contact_sheet.png`, the previews
+in one image.
+
 ## How an agent makes a model
 
 1. Write `scripts/blender/<name>.py` that builds the model from primitives,
