@@ -30,6 +30,34 @@ pub struct Surface {
     pub emissive: bool,
     #[serde(default = "white")]
     pub tint: [f32; 3],
+    /// How `indices` group `vertices`: triangles, or line segments drawn
+    /// one pixel wide without lighting or shadows.
+    #[serde(default, skip_serializing_if = "Topology::is_triangles")]
+    pub topology: Topology,
+    /// Draws the base color and tint as-is: no lights, no shadows, only fog.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unlit: bool,
+}
+
+/// The primitive a surface's index list describes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Topology {
+    #[default]
+    Triangles,
+    Lines,
+}
+impl Topology {
+    pub fn is_triangles(&self) -> bool {
+        *self == Self::Triangles
+    }
+    /// Vertices per primitive.
+    pub fn stride(self) -> usize {
+        match self {
+            Self::Triangles => 3,
+            Self::Lines => 2,
+        }
+    }
 }
 
 impl Surface {
@@ -233,7 +261,7 @@ impl Pack {
                     || surface.texture >= self.textures.len()
                     || surface.blend > 3
                     || surface.tint.iter().any(|v| !v.is_finite())
-                    || surface.indices.len() % 3 != 0
+                    || surface.indices.len() % surface.topology.stride() != 0
                     || surface
                         .indices
                         .iter()

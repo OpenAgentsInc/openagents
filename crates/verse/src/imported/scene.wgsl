@@ -119,6 +119,14 @@ fn fog_amount(p:vec3<f32>)->f32{
   return vec4(v.tint*2.0,opacity);
  }
  let tex=textureSample(image,tex_sampler,v.uv);
+ // Unlit surfaces and lines: base color and tint, fogged and exposed, no lights.
+ if material.emission.w>0.5 {
+  let flat_alpha=tex.a*material.channels.z;
+  if material.params.y==1.0 && flat_alpha<material.channels.w{discard;}
+  let flat=tex.rgb*v.tint+select(vec3(0.0),tex.rgb*v.tint*0.7,material.params.x>0.5);
+  let flat_fog=fog_amount(v.pos);
+  return vec4(min(mix(flat,frame.fog.rgb,flat_fog)*frame.ambient.w,vec3(60000.0)),select(flat_alpha,1.0,material.params.y==0.0));
+ }
  let geometric=normalize(select(-v.normal,v.normal,front));let n=surface_normal(v,geometric);
  var roughness=material.params.z;var metallic=material.params.w;
  if material.maps.y>0.5 {

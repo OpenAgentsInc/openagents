@@ -105,6 +105,8 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path) -> Result<(), String> {
             texture: 0,
             blend: 0,
             emissive: true,
+            topology: Default::default(),
+            unlit: false,
             tint,
         });
     }
@@ -139,6 +141,8 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path) -> Result<(), String> {
         texture: 0,
         blend: 0,
         emissive: true,
+        topology: Default::default(),
+        unlit: false,
         tint: [0.03, 0.9, 0.13],
     }];
     pack.models.insert("prop/ritual-liquid".into(), liquid);
@@ -192,6 +196,8 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path) -> Result<(), String> {
         texture: 0,
         blend: 0,
         emissive: true,
+        topology: Default::default(),
+        unlit: false,
         tint: [0.45, 0.055, 0.9],
     }];
     pack.models.insert("prop/summoning-seal".into(), seal);

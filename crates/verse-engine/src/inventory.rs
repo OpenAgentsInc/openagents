@@ -341,6 +341,8 @@ mod tests {
                 texture: 0,
                 blend: 0,
                 emissive: false,
+                topology: Default::default(),
+                unlit: false,
                 tint: [1.; 3],
             }],
         };
