@@ -3,6 +3,10 @@
 //! the Grid's engine surface draws it, signed by the phone's world identity
 //! unless the chamber's configuration names a key file. Suspend stops the
 //! worker; resume connects again to the same instance.
+//!
+//! A visit opened from a configuration file writes `chamber-frames.json`
+//! beside it: the frame intervals and actor count the phone saw while
+//! joined, the retained measurement for the chamber's frame-time receipts.
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -35,6 +39,70 @@ pub(crate) struct Play {
     pub frames: u64,
     /// Whether the content changed since the host last opened a surface.
     pub content_revision: u64,
+    /// Frame intervals while joined.
+    pub timing: Timing,
+    /// Where the timing is written, beside the configuration.
+    receipt: Option<PathBuf>,
+}
+
+/// Frames the phone drew while joined: their intervals and how many actors
+/// the chamber showed.
+#[derive(Default)]
+pub(crate) struct Timing {
+    last: Option<Instant>,
+    /// Intervals in milliseconds, up to [`Timing::LIMIT`].
+    intervals: Vec<f32>,
+    pub frames: u64,
+    pub actors: usize,
+    pub snapshots: u64,
+}
+
+impl Timing {
+    /// About ten minutes at 60 Hz.
+    const LIMIT: usize = 36_000;
+
+    fn frame(&mut self, session: &Session) {
+        let now = Instant::now();
+        if let Some(last) = self.last
+            && self.intervals.len() < Self::LIMIT
+        {
+            self.intervals
+                .push(now.duration_since(last).as_secs_f32() * 1000.0);
+        }
+        self.last = Some(now);
+        self.frames += 1;
+        self.snapshots = session.snapshots;
+        if let Some(state) = session.view().replica().latest() {
+            self.actors = self.actors.max(state.presentation.actors.len());
+        }
+    }
+
+    /// A gap in play: the next frame starts a new interval.
+    fn pause(&mut self) {
+        self.last = None;
+    }
+
+    /// The receipt: interval percentiles in milliseconds and the counts.
+    pub fn summary(&self) -> serde_json::Value {
+        let mut sorted = self.intervals.clone();
+        sorted.sort_by(f32::total_cmp);
+        let at = |q: f32| {
+            (!sorted.is_empty()).then(|| sorted[((sorted.len() - 1) as f32 * q).round() as usize])
+        };
+        let mean = (!sorted.is_empty()).then(|| sorted.iter().sum::<f32>() / sorted.len() as f32);
+        serde_json::json!({
+            "schema": "openagents.verse.phone-chamber-frames.v1",
+            "frames": self.frames,
+            "intervals": sorted.len(),
+            "interval_ms": {
+                "mean": mean, "p50": at(0.5), "p95": at(0.95), "p99": at(0.99),
+                "max": sorted.last(),
+            },
+            "over_33ms": sorted.iter().filter(|ms| **ms > 33.4).count(),
+            "actors_max": self.actors,
+            "snapshots": self.snapshots,
+        })
+    }
 }
 
 /// What the joined session draws with.
@@ -48,7 +116,10 @@ pub(crate) struct Content {
 impl Play {
     /// Starts connecting to the chamber `config` names as `profile`.
     pub fn open(config: PathBuf, secret: secp256k1::SecretKey) -> Self {
-        Self::open_with(Arc::new(move || ritual::connect_as(&config, secret)))
+        let receipt = config.with_file_name("chamber-frames.json");
+        let mut play = Self::open_with(Arc::new(move || ritual::connect_as(&config, secret)));
+        play.receipt = Some(receipt);
+        play
     }
 
     /// Starts connecting through `connector`, which each resume calls again.
@@ -60,6 +131,8 @@ impl Play {
             started: Instant::now(),
             frames: 0,
             content_revision: 0,
+            timing: Timing::default(),
+            receipt: None,
         };
         play.connect();
         play
@@ -99,8 +172,21 @@ impl Play {
         }
     }
 
+    /// Writes the timing beside the configuration, when there is one.
+    fn record(&self) {
+        if let Some(path) = &self.receipt
+            && self.timing.frames > 0
+            && let Ok(bytes) = serde_json::to_vec_pretty(&self.timing.summary())
+        {
+            // The measurement is best effort; play goes on without it.
+            let _ = std::fs::write(path, bytes);
+        }
+    }
+
     /// The surface goes inactive: stop the worker, keep the content.
     pub fn suspend(&mut self) {
+        self.timing.pause();
+        self.record();
         match std::mem::replace(&mut self.stage, Stage::Suspended) {
             Stage::Joined(session) => {
                 session.stop();
@@ -175,6 +261,10 @@ impl Play {
         if let Err(message) = session.step(&content.scene, held) {
             self.stage = Stage::Failed(message);
             return false;
+        }
+        self.timing.frame(session);
+        if self.timing.frames % 600 == 0 {
+            self.record();
         }
         true
     }
@@ -274,6 +364,10 @@ mod tests {
         assert!(joined(&mut play));
         assert_eq!(play.session().unwrap().owned_life(), life);
         assert_eq!(play.content_revision, 2);
+        let summary = play.timing.summary();
+        assert!(summary["frames"].as_u64().unwrap() > 1);
+        assert!(summary["actors_max"].as_u64().unwrap() >= 14);
+        assert!(summary["interval_ms"]["p95"].as_f64().unwrap() > 0.0);
     }
 
     #[test]
