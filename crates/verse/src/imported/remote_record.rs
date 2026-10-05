@@ -19,11 +19,16 @@ pub struct Options {
     pub respawn: bool,
     #[serde(default)]
     pub movement: bool,
+    #[serde(default)]
+    pub movement_frames: bool,
 }
 impl Options {
     pub fn validate(&self) -> Result<(), String> {
         if !(1..=120).contains(&self.seconds) || self.output.as_os_str().is_empty() {
             return Err("Invalid remote recording duration or output".into());
+        }
+        if self.movement_frames && !self.movement {
+            return Err("Interval recording requires scripted movement".into());
         }
         if self.movement && !self.controller {
             return Err("Scripted movement requires the recording controller".into());
@@ -418,6 +423,7 @@ mod tests {
             controller: true,
             respawn: false,
             movement: false,
+            movement_frames: false,
         };
         options.validate().unwrap();
         options.movement = true;
