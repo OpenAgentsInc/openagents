@@ -1,0 +1,724 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "compiled_revisions": {
+    "host": "8838dd1f4f58f0c54a086a9e06407864d0ae13a8",
+    "headless_clients": "78c8d25abc937e868a03b92f5e4950b9ef1f6092",
+    "native_client": "8838dd1f4f58f0c54a086a9e06407864d0ae13a8"
+  },
+  "failed_players": [
+    {
+      "player": 16,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Movement interval refused; reconnect before sending another interval: Movement interval control is stale or unavailable",
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 630,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 633,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 635,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 659,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 659,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 661,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 683,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 684,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 705,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval clock expired at world step 500, confirmed step 464",
+          "code": "command",
+          "tick": 725,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 730,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 730,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 752,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 13,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval clock expired at world step 688, confirmed step 652",
+          "code": "command",
+          "tick": 772,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 15,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 799,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 17,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 819,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 19,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 132,
+      "snapshot_bytes": 9080898,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 47,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "confirmed_time_intervals",
+      "observed_frame_snapshots": 25,
+      "movement_inputs": 33,
+      "input_pressure": 0,
+      "refusals": 23,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 8,
+      "binding_to_outcome_ms": {
+        "samples": 38,
+        "p95": 351.591875,
+        "max": 361.136375
+      }
+    },
+    {
+      "player": 17,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Movement interval refused; reconnect before sending another interval: Movement interval control is stale or unavailable",
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 630,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 633,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 635,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 659,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 659,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 661,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 683,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 684,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 7,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 705,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval clock expired at world step 500, confirmed step 464",
+          "code": "command",
+          "tick": 725,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 730,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 730,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 11,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 752,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 13,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval clock expired at world step 688, confirmed step 652",
+          "code": "command",
+          "tick": 772,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 15,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 804,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 17,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 806,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 17,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval clock expired at world step 908, confirmed step 868",
+          "code": "command",
+          "tick": 827,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 19,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 832,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 19,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 832,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 19,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval clock expired at world step 1000, confirmed step 964",
+          "code": "command",
+          "tick": 850,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 21,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Command refused: StaleControl",
+          "code": "command",
+          "tick": 852,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 21,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 883,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 23,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 243,
+      "snapshot_bytes": 17273716,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 160,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "confirmed_time_intervals",
+      "observed_frame_snapshots": 88,
+      "movement_inputs": 119,
+      "input_pressure": 0,
+      "refusals": 86,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Shield": 2
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 145,
+        "p95": 315.317375,
+        "max": 383.29941699999995
+      }
+    }
+  ],
+  "observation": "Two workers stop on same-context stale-or-unavailable movement interval refusals. Death/control fencing is a candidate cause requiring a focused reproduction.",
+  "limits": [
+    "No causal performance comparison, persistence disabled, GPU timing disabled.",
+    "Refusal traces retain the first 32 observations; terminal worker errors are retained separately.",
+    "All-player interval entry is observed but full lifecycle and continuous movement acceptance fail."
+  ]
+}
