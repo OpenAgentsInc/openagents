@@ -266,12 +266,18 @@ fn coordinator(
                         };
                         let _ = reply.send(result);
                     }
-                    Event::Request { id, bytes, reply } => {
+                    Event::Request {
+                        id,
+                        bytes,
+                        reply,
+                        progress,
+                    } => {
                         stats.requests += 1;
                         let result = realm.dispatch(lease, id, clock, &bytes).map(|bytes| {
                             let admitted = realm.games[&instance].authenticated(id);
                             (bytes, admitted)
                         });
+                        crate::service::net::dispatch_progress(progress, &result);
                         let _ = reply.send(result);
                     }
                     Event::Close(id) => {

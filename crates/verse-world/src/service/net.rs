@@ -25,6 +25,7 @@ use super::{
     },
 };
 use std::collections::BTreeMap;
+mod session_pipeline;
 mod timing;
 pub use timing::{Phases, Timing};
 
@@ -83,7 +84,11 @@ struct PendingReply {
 }
 enum PendingResponse {
     Outcome(DispatchReply),
-    Read { id: ConnectionId, bytes: Vec<u8> },
+    Read {
+        id: ConnectionId,
+        bytes: Vec<u8>,
+        progress: Option<oneshot::Sender<RequestProgress>>,
+    },
 }
 struct CommitView {
     tick: u64,
@@ -169,6 +174,31 @@ pub(super) trait Guard: Send + Sync {
     fn device(&self) -> Option<[u8; 32]>;
 }
 
+pub(super) enum RequestProgress {
+    Queued { authenticated: bool },
+    Busy,
+    Failed(String),
+}
+/// Internal admission progress never acknowledges durability to a peer.
+pub(super) fn dispatch_progress(
+    progress: Option<oneshot::Sender<RequestProgress>>,
+    result: &DispatchReply,
+) {
+    if let Some(progress) = progress {
+        let state = match result {
+            Ok((_, authenticated)) => RequestProgress::Queued {
+                authenticated: *authenticated,
+            },
+            Err(error) => RequestProgress::Failed(error.clone()),
+        };
+        let _ = progress.send(state);
+    }
+}
+fn busy_progress(progress: Option<oneshot::Sender<RequestProgress>>) {
+    if let Some(progress) = progress {
+        let _ = progress.send(RequestProgress::Busy);
+    }
+}
 pub(super) enum Event {
     Open {
         /// A transport-admitted key the chamber does not yet know joins as a
@@ -180,6 +210,7 @@ pub(super) enum Event {
         id: ConnectionId,
         bytes: Vec<u8>,
         reply: oneshot::Sender<DispatchReply>,
+        progress: Option<oneshot::Sender<RequestProgress>>,
     },
     Close(ConnectionId),
 }
@@ -446,8 +477,12 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                     let replies = pending.drain(..).map(|pending| {
                         let result = match pending.response {
                             PendingResponse::Outcome(result) => result,
-                            PendingResponse::Read {id, bytes} => gateway.dispatch_json(id, now, &bytes)
-                                .map(|bytes| (bytes, gateway.authenticated(id))),
+                            PendingResponse::Read {id, bytes, progress} => {
+                                let result = gateway.dispatch_json(id, now, &bytes)
+                                    .map(|bytes| (bytes, gateway.authenticated(id)));
+                                dispatch_progress(progress, &result);
+                                result
+                            },
                         };
                         (pending.reply, result)
                     }).collect();
@@ -480,7 +515,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         let result = joined.and_then(|_| gateway.open_json(now));
                         if let Err(Ok((id, _))) = reply.send(result) {let _ = gateway.close(id);}
                     }
-                    Some(Event::Request {id, bytes, reply}) => {
+                    Some(Event::Request {id, bytes, reply, progress}) => {
                         stats.requests += 1;
                         if let Some(writer) = &writer {
                             let room = pending.len() < QUEUE && fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0;
@@ -493,33 +528,42 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                                     let fence = entry.get_mut();
                                     if fence.replies.len() >= QUEUE {
                                         stats.storage_refusals += 1;
+                                        busy_progress(progress);
                                         let _ = reply.send(committed.busy(id, &bytes));
                                     } else {
                                         let result = gateway.dispatch_json(id, now, &bytes)
                                             .map(|bytes| (bytes, gateway.authenticated(id)));
+                                        dispatch_progress(progress, &result);
                                         fence.replies.push((reply, result));
                                     }
                                 } else {
                                     // The current authority state is already committed.
                                     let result = gateway.dispatch_json(id, now, &bytes)
                                         .map(|bytes| (bytes, gateway.authenticated(id)));
+                                    dispatch_progress(progress, &result);
                                     let _ = reply.send(result);
                                 }
                                 continue;
                             }
                             if !room || !history {
                                 stats.storage_refusals += 1;
+                                busy_progress(progress);
                                 let _ = reply.send(committed.busy(id, &bytes));
                                 continue;
                             }
                             let response = if mutating {
                                 dirty = true;
-                                PendingResponse::Outcome(gateway.dispatch_json(id, now, &bytes)
-                                    .map(|bytes| (bytes, gateway.authenticated(id))))
-                            } else {PendingResponse::Read {id, bytes}};
+                                let result = gateway.dispatch_json(id, now, &bytes)
+                                    .map(|bytes| (bytes, gateway.authenticated(id)));
+                                dispatch_progress(progress, &result);
+                                PendingResponse::Outcome(result)
+                            } else {
+                                PendingResponse::Read {id, bytes, progress}
+                            };
                             pending.push(PendingReply {reply, response});
                         } else {
                             let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
+                            dispatch_progress(progress, &result);
                             let _ = reply.send(result);
                         }
                     }
@@ -667,7 +711,7 @@ impl ResponseHeader {
 }
 
 /// Serves chamber frames on one authenticated transport until it closes.
-pub(super) async fn session<S: Transport>(
+pub(super) async fn session<S: Transport + 'static>(
     stream: S,
     guard: Option<Box<dyn Guard>>,
     send: mpsc::Sender<Event>,
@@ -682,7 +726,7 @@ pub(super) async fn session<S: Transport>(
     )
     .await
 }
-async fn session_until<S: Transport>(
+async fn session_until<S: Transport + 'static>(
     mut stream: S,
     guard: Option<Box<dyn Guard>>,
     send: mpsc::Sender<Event>,
@@ -751,6 +795,10 @@ async fn session_until<S: Transport>(
                 .await
                 .map_err(|_| "Chamber write timed out")??;
             authenticated = admitted;
+            if authenticated {
+                return session_pipeline::run(stream, &guard, &send, &mut slot, id,
+                    last_response.take().unwrap(), window, count).await;
+            }
             if !authenticated && !retry_admission {
                 return Err("Chamber connection is not authenticated".into());
             }
@@ -784,6 +832,7 @@ async fn request_with_storage_backpressure(
             id,
             bytes: bytes.clone(),
             reply,
+            progress: None,
         })
         .await
         .map_err(|_| "Chamber host stopped")?;
@@ -1052,6 +1101,7 @@ pub(super) mod tests {
                         id: actual,
                         bytes,
                         reply,
+                        ..
                     } = receive.recv().await.unwrap()
                     else {
                         panic!()
@@ -1143,7 +1193,10 @@ pub(super) mod tests {
         )
         .await
         .unwrap();
-        let Event::Request { id, bytes, reply } = receive.recv().await.unwrap() else {
+        let Event::Request {
+            id, bytes, reply, ..
+        } = receive.recv().await.unwrap()
+        else {
             panic!()
         };
         tokio::time::sleep_until(deadline + Duration::from_millis(10)).await;

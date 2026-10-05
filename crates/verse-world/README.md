@@ -491,11 +491,16 @@ batch. Mutation replies and reads of new state wait for their ordered commit;
 reads can share an existing commit or use already committed state. A failed
 commit stops the host and withholds those replies. The copy contains no
 connection challenges or dispatch interface, and later world mutations cannot
-change it.
+change it. Authenticated connections admit at most eight ordered requests while
+durable replies are pending. A deferred read holds later admission until its
+projection is captured; reply delivery still follows request order and commit
+completion. Partial frame reads have a separate bounded reader.
 
 When storage fills the queue or reward-history staging capacity, the host pauses
 simulation and returns `storage_busy` for new requests using the last committed
-control and tick. Retry with the same operation identity. Paused wall time is
+control and tick. Ordered pipelined delivery uses the last delivered durable
+control and tick for a storage refusal so its header cannot regress. Retry with
+the same operation identity. Paused wall time is
 counted separately and is not simulated later. Sequential client helpers retry
 explicit storage refusals for up to ten seconds with the same operation fields;
 raw requests and pipelined clients expose each refusal. Neither path retries
