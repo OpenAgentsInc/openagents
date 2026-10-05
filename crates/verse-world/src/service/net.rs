@@ -93,11 +93,6 @@ struct PendingReply {
 }
 enum PendingResponse {
     Outcome(DispatchReply),
-    Read {
-        id: ConnectionId,
-        bytes: Vec<u8>,
-        progress: Option<oneshot::Sender<RequestProgress>>,
-    },
 }
 // Outcome snapshots retain their admitted body time. Earlier acknowledgments on that
 // connection cannot advertise credit beyond that body before it is delivered.
@@ -109,7 +104,7 @@ fn cap_outcome_snapshot_credit(
         if let PendingResponse::Outcome(Ok((bytes, _))) = &pending.response {
             let response: ResponseHeader =
                 serde_json::from_slice(bytes).map_err(|_| "Invalid deferred chamber outcome")?;
-            if response.body.kind == "snapshot" {
+            if matches!(response.body.kind.as_str(), "snapshot" | "replicated") {
                 if let (Some(snapshot), Some(credit)) =
                     (response.control, controls.get_mut(&pending.id))
                 {
@@ -548,7 +543,6 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         }
                     };
                     let capture = Instant::now();
-                    let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                     let mut credits = gateway.committed_controls();
                     if let Err(error) = cap_outcome_snapshot_credit(&mut credits, &pending) {
                         failure = Some(error);
@@ -557,14 +551,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                     let replies = pending.drain(..).map(|pending| {
                         let result = match pending.response {
                             PendingResponse::Outcome(result) => promote_outcome_credit(result, credits.get(&pending.id)),
-                            PendingResponse::Read {id, bytes, progress} => {
-                                let projection = Instant::now();
-                                let result = gateway.dispatch_json(id, now, &bytes)
-                                    .map(|bytes| (bytes, gateway.authenticated(id)));
-                                stats.deferred_read_projection.record(projection.elapsed().as_secs_f64());
-                                dispatch_progress(progress, &result);
-                                result
-                            },
+
                         };
                         (pending.reply, result)
                     }).collect();
@@ -642,7 +629,14 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                                 dispatch_progress(progress, &result);
                                 PendingResponse::Outcome(result)
                             } else {
-                                PendingResponse::Read {id, bytes, progress}
+                                // Freeze the read before admitting later commands on this connection.
+                                // Its reply still waits for the ordered checkpoint, but admission can proceed.
+                                let projection = Instant::now();
+                                let result = gateway.dispatch_json(id, now, &bytes)
+                                    .map(|bytes| (bytes, gateway.authenticated(id)));
+                                stats.deferred_read_projection.record(projection.elapsed().as_secs_f64());
+                                dispatch_progress(progress, &result);
+                                PendingResponse::Outcome(result)
                             };
                             pending.push(PendingReply {id, reply, response});
                         } else {
