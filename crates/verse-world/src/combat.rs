@@ -72,7 +72,7 @@ pub struct Encounter {
     pub positions: BTreeMap<u64, Vec3>,
     pub casts: Vec<EnemyCast>,
     pub released: BTreeMap<u64, f32>,
-    ready: BTreeMap<u64, f32>,
+    pub(crate) ready: BTreeMap<u64, f32>,
     pub used: BTreeMap<String, u32>,
     pub damage: i32,
     pub absorbed: i32,
@@ -86,6 +86,10 @@ pub struct Encounter {
     pub boss_remaining: u32,
     pub boss_max: u32,
     pub kills: u32,
+    /// The great crypt's ritual, in that fight only
+    /// ([`crate::great_crypt`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ritual: Option<crate::great_crypt::Ritual>,
 }
 
 impl Game {
@@ -98,12 +102,18 @@ impl Game {
             .encounter
             .as_ref()
             .map_or_else(Definition::default, |e| e.definition.clone());
+        let ritual = self.encounter.as_ref().is_some_and(|e| e.ritual.is_some());
         let mut fresh = Self::combat_authored_definition(
             self.scene.clone(),
             agent,
             self.player_life().instance,
             definition,
         )?;
+        if ritual {
+            if let Some(encounter) = fresh.encounter.as_mut() {
+                encounter.ritual = Some(crate::great_crypt::Ritual::new());
+            }
+        }
         fresh.adopt_restart_fences(self)?;
         fresh.rebuild_players_after_restart(self)?;
         fresh.time = fresh.scene.cut_at - if agent { 3. } else { 0. };
@@ -143,7 +153,7 @@ impl Game {
     pub fn combat_authored_in(scene: Scene, agent: bool, instance: u64) -> Result<Self, String> {
         Self::combat_authored_definition(scene, agent, instance, Definition::default())
     }
-    fn combat_authored_definition(
+    pub(crate) fn combat_authored_definition(
         mut scene: Scene,
         agent: bool,
         instance: u64,
@@ -195,6 +205,9 @@ impl Game {
 impl Encounter {
     pub fn validate(&self, game: &Game) -> Result<(), String> {
         self.definition.validate()?;
+        if let Some(ritual) = &self.ritual {
+            ritual.validate()?;
+        }
         if self.casts.len() > 128
             || self.positions.len() > 256
             || self.ready.len() > 256
@@ -296,6 +309,11 @@ impl Encounter {
             .into();
             return Ok(());
         }
+        if let Some(mut ritual) = self.ritual.take() {
+            ritual.step(&mut self.ready, game, &frame, dt);
+            self.ritual = Some(ritual);
+        }
+        let empowered = self.ritual.as_ref().is_some_and(|r| r.empowered);
         let enraged = boss.health * 4 < self.boss_max;
         if enraged && self.enrage.is_none() {
             self.enrage = Some(game.time);
@@ -451,7 +469,9 @@ impl Encounter {
             .filter(|a| a.actor.nameplate && !a.actor.friendly && a.health > 0)
         {
             let boss = actor.actor.model == "claude";
-            if game.navigation_directed(actor.actor.id) {
+            if game.navigation_directed(actor.actor.id)
+                || crate::great_crypt::held(self, actor.actor.id)
+            {
                 continue;
             }
             let Some((target_life, target_position)) =
@@ -503,13 +523,39 @@ impl Encounter {
             if !game.attack_clear(origin, target_position + Vec3::Y * 1.4) {
                 continue;
             }
+            let life = game
+                .actor_life(actor.actor.id)
+                .ok_or("Missing hostile life")?;
+            // The great crypt's High Priest throws three shadow bolts at
+            // once, spread across the player's path.
+            if self.ritual.is_some() && actor.actor.id == crate::great_crypt::LEADER {
+                let release = game.time + 1.2;
+                let across = Vec3::new(delta.z, 0.0, -delta.x).normalize_or_zero();
+                for spread in [-1.7, 0.0, 1.7] {
+                    self.casts.push(EnemyCast {
+                        actor: actor.actor.id,
+                        life,
+                        target_life,
+                        position: None,
+                        origin,
+                        target: target_position + across * spread,
+                        started: game.time,
+                        release,
+                        impact: release + 0.75,
+                        damage: if enraged || empowered { 12 } else { 9 },
+                        radius: 1.7,
+                        boss: false,
+                    });
+                }
+                self.enemy_casts += 1;
+                self.ready.insert(actor.actor.id, game.time + 4.5);
+                continue;
+            }
             let windup = if boss { 1.3 } else { 1.0 };
             let release = game.time + windup;
             self.casts.push(EnemyCast {
                 actor: actor.actor.id,
-                life: game
-                    .actor_life(actor.actor.id)
-                    .ok_or("Missing hostile life")?,
+                life,
                 target_life,
                 position: None,
                 origin,
@@ -518,12 +564,25 @@ impl Encounter {
                 release,
                 impact: release + if boss { 0.65 } else { 0.8 },
                 damage: if boss {
-                    if enraged { 45 } else { 18 }
+                    if enraged {
+                        45
+                    } else if empowered {
+                        // The great crypt's completed ritual.
+                        27
+                    } else {
+                        18
+                    }
                 } else {
                     8
                 },
                 radius: if boss {
-                    if enraged { 4.5 } else { 3.2 }
+                    if enraged {
+                        4.5
+                    } else if empowered {
+                        3.8
+                    } else {
+                        3.2
+                    }
                 } else {
                     1.6
                 },
@@ -534,7 +593,13 @@ impl Encounter {
                 actor.actor.id,
                 game.time
                     + if boss {
-                        if enraged { 2.4 } else { 4.4 }
+                        if enraged {
+                            2.4
+                        } else if empowered {
+                            3.2
+                        } else {
+                            4.4
+                        }
                     } else {
                         6.5 + (actor.actor.id % 3) as f32
                     },

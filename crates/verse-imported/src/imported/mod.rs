@@ -10,6 +10,7 @@ pub mod character_panel;
 pub mod characters;
 pub mod combat;
 pub mod controls;
+pub mod crypt_fight;
 #[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
 pub mod giver_panel;
 pub mod icons;

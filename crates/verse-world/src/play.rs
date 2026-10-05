@@ -1918,6 +1918,24 @@ impl Game {
                                 .unwrap_or_else(|| (-direction.x).atan2(-direction.z));
                         }
                     }
+                    // In the great crypt, acolytes chant around the circle
+                    // and those still waiting hold their authored pose.
+                    if let Some(ritual) = self.encounter.as_ref().and_then(|e| e.ritual.as_ref()) {
+                        if ritual.chanting(a.actor.id) {
+                            a.animation = State::Cast.into();
+                            a.animation_time = self.time + a.actor.id as f32 * 0.37;
+                            let to = crate::great_crypt::CIRCLE - a.actor.position;
+                            a.actor.yaw = (-to.x).atan2(-to.z);
+                        } else if ritual.holds(a.actor.id) {
+                            a.animation = State::Idle.into();
+                            a.animation_time = self.time + a.actor.id as f32 * 0.19;
+                            if let Some(authored) =
+                                self.scene.actors.iter().find(|s| s.id == a.actor.id)
+                            {
+                                a.actor.yaw = authored.yaw;
+                            }
+                        }
+                    }
                     if self.encounter.is_none() && self.navigation_directed(a.actor.id) {
                         a.animation = if self
                             .npc_motion
@@ -2749,6 +2767,12 @@ impl Game {
             *e.used.entry(ability.label().into()).or_default() += 1;
         }
     }
+    /// Wounds a scene actor directly, as a test's stand-in for a hit.
+    #[cfg(test)]
+    pub(crate) fn wound(&mut self, actor: u64, damage: i32) -> Result<(), String> {
+        let id = *self.ids.get(&actor).ok_or("Unknown scene actor")?;
+        self.simulation.bow_impact(id, damage)
+    }
     pub fn hostile_held(&self, id: u64) -> bool {
         self.ids.get(&id).is_some_and(|source| {
             self.primary.controls.held(*source)
@@ -3386,7 +3410,11 @@ impl Game {
         self.primary.player_trajectory.clear();
         self.primary.character = character;
         self.primary.yaw = yaw;
-        self.camera = Default::default();
+        // Behind the revived character, looking where it faces.
+        self.camera = super::controls::Camera {
+            yaw,
+            ..Default::default()
+        };
         self.primary.pending_movement = None;
         self.primary.held_movement = Default::default();
         self.primary.pending_jump = false;

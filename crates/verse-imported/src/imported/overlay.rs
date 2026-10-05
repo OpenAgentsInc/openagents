@@ -1212,7 +1212,7 @@ fn shared_target_frame(
     );
     image(
         ui,
-        if target.actor.model == "claude" {
+        if target.actor.model == "claude" || target.actor.model == "cultist-leader" {
             "elite-frame"
         } else {
             "unit-frame"

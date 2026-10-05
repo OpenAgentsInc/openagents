@@ -90,6 +90,7 @@ pub fn profile_colliders(profile: Option<&str>) -> Result<Vec<physics::kinematic
         None => Ok(vec![]),
         Some("original-chamber-v1") => Ok(colliders()),
         Some(crate::playground::PROFILE) => Ok(crate::playground::hall()?.colliders()),
+        Some(crate::great_crypt::PROFILE) => crate::great_crypt::colliders(),
         Some(_) => Err("Unsupported scene collision profile".into()),
     }
 }
@@ -133,6 +134,7 @@ pub fn profile_navigation(
     match profile {
         Some("original-chamber-v1") => navigation(instance).map(Some),
         Some(crate::playground::PROFILE) => playground_navigation(instance).map(Some),
+        Some(crate::great_crypt::PROFILE) => crate::great_crypt::navigation(instance).map(Some),
         _ => Ok(None),
     }
 }

@@ -253,6 +253,10 @@ name = "crypt_capture"
 required-features = ["capture", "crypt"]
 
 [[example]]
+name = "crypt_fight_capture"
+required-features = ["capture"]
+
+[[example]]
 name = "terminal_capture"
 required-features = ["capture", "terminal"]
 

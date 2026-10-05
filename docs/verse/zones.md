@@ -166,6 +166,34 @@ heavy door, facing the hall. At the door, **F** (or **Plaza** on the panel
 that shows there) opens it and returns to the plaza. Builds without the models,
 such as the phones and the browser, have neither the arch nor the zone.
 
+### The great crypt fight
+
+`verse --crypt-fight` opens the ritual chamber's cultist fight, played alone,
+in a crypt about four times the lab's floor:
+[`great_crypt.py`](../../scripts/blender/great_crypt.py)'s nave, aisles,
+gallery, four side chapels, entrance landing and stairs, and a dais under a
+barred window, furnished with the lab's props
+([`verse_world::great_crypt`](../../crates/verse-world/src/great_crypt.rs)).
+The rules, the abilities, the action bar and its tooltips, health and mana,
+the enemy AI, and respawn are the chamber's (`verse_world::play::Game`), and so
+are the controls: W, A, S, D, Q, and E move, the mouse buttons steer and orbit,
+**1** to **0** cast, Shift with a digit casts the second row, Tab and a click
+target, Space jumps, the wheel zooms, **F1** restarts the fight, **F2**
+restarts it with the chamber's combat agent playing, and Enter or the death
+screen's button returns to the landing.
+
+Six acolytes chant around the summoning circle while the ritual's bar fills;
+each one that falls or leaves the circle slows it. Guards hold the nave,
+pairs of cultists come out of the chapels in two waves, and the High Priest
+throws three shadow bolts at once and, at half health, calls every chapel.
+Claude sleeps on the circle until the priest falls, the player strikes him, or
+the ritual completes, which wakes him empowered. Killing him ends the fight.
+The authority walks, paths, aims, and keeps the camera inside with the crypt's
+collision boxes and the props' footprints. The window reads the crypt's models
+from the repository's `assets/verse`, so it is desktop only; the browser build
+does not carry them. `crypt_fight_capture OUT_DIR` in `crates/verse/examples`
+renders the opening, the ritual, a fight, the boss, and a video of the run.
+
 ## Entry state
 
 ```mermaid

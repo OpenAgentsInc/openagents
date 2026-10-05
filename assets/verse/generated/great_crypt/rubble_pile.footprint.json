@@ -1,0 +1,20 @@
+{
+  "model": "rubble_pile.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 276,
+  "boxes": [
+    {
+      "name": "rubble_pile",
+      "center": [
+        0.0,
+        0.688,
+        0.0
+      ],
+      "half_extents": [
+        1.2,
+        0.688,
+        0.91
+      ]
+    }
+  ]
+}

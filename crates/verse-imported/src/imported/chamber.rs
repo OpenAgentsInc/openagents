@@ -480,13 +480,23 @@ pub fn lighting_from_visuals(
     playground: bool,
     focus: Vec3,
 ) -> super::lighting::Lighting {
-    use super::lighting::{Light, MAX_LIGHTS};
-    use verse_world::utilities::Utility;
-    let mut lighting = if playground {
+    let base = if playground {
         playground_lighting()
     } else {
         lighting(origin)
     };
+    lighting_over(base, visuals, focus)
+}
+/// Adds the combat effects' light (flames, spells, impacts, shields, and
+/// hostile casts) to a scene's own `base` light, nearest `focus` first.
+pub fn lighting_over(
+    base: super::lighting::Lighting,
+    visuals: &verse_world::visuals::Combat,
+    focus: Vec3,
+) -> super::lighting::Lighting {
+    use super::lighting::{Light, MAX_LIGHTS};
+    use verse_world::utilities::Utility;
+    let mut lighting = base;
     lighting.time = visuals.time;
     let mut fire_lights = Vec::new();
     for flame in &visuals.flames {
@@ -914,6 +924,8 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
         "cultist-female",
         "cultist-peasant",
         "cultist-peasant-female",
+        "cultist-acolyte",
+        "cultist-leader",
         "claude",
     ] {
         if !pack.models.contains_key(name) {

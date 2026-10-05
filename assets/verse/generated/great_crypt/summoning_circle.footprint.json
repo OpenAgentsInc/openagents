@@ -1,0 +1,20 @@
+{
+  "model": "summoning_circle.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 2240,
+  "boxes": [
+    {
+      "name": "summoning_circle",
+      "center": [
+        0.0,
+        0.035,
+        0.0
+      ],
+      "half_extents": [
+        2.45,
+        0.035,
+        2.45
+      ]
+    }
+  ]
+}

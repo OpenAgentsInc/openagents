@@ -242,6 +242,7 @@ pub mod content;
 pub mod controls;
 pub mod events;
 pub mod feather_fall;
+pub mod great_crypt;
 pub mod gust;
 pub mod hud;
 pub mod levitate;

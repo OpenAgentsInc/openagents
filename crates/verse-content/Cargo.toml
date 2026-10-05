@@ -17,7 +17,7 @@ physics = { path = "../physics" }
 glam = "0.30.10"
 serde_json = "1"
 sha2 = "0.10"
-gltf = { version = "1.4.1", features = ["import", "utils", "names"], optional = true }
+gltf = { version = "1.4.1", features = ["import", "utils", "names", "KHR_materials_emissive_strength"], optional = true }
 libm = { version = "0.2.16", optional = true }
 png = { version = "0.18.1", optional = true }
 resvg = { version = "0.48.1", default-features = false, optional = true }

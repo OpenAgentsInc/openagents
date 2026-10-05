@@ -1,0 +1,20 @@
+{
+  "model": "broken_pillar.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 532,
+  "boxes": [
+    {
+      "name": "broken_pillar",
+      "center": [
+        0.0,
+        1.251,
+        0.0
+      ],
+      "half_extents": [
+        1.159,
+        1.251,
+        1.075
+      ]
+    }
+  ]
+}

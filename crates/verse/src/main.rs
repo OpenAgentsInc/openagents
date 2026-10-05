@@ -32,7 +32,10 @@
 //! the podium, and merge decisions from the merge station.
 //! `--grove` opens straight into the Grove, the druid training field.
 //! `--crypt` opens straight into the crypt lab, a candlelit laboratory hall;
-//! `F` at its door returns to the plaza.
+//! `F` at its door returns to the plaza. `--crypt-fight` opens the cultist
+//! fight in the great crypt in a window of its own, played alone with the
+//! ritual chamber's controls; it reads the crypt's models from the
+//! repository's `assets/verse`.
 //! `--frame-times` prints one JSON line of frame times per second.
 //! `--everglade` opens straight into Everglade instead of the plaza, and
 //! `--studio-notice <text>` leads Everglade's caption with a notice;
@@ -61,6 +64,15 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--seed-rooms") {
         return seed(&args[1..]);
+    }
+    if args.first().map(String::as_str) == Some("--crypt-fight") {
+        return match verse::imported::crypt_fight::run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("verse: {e}");
+                ExitCode::FAILURE
+            }
+        };
     }
     if args.first().map(String::as_str) == Some("--chamber") {
         return match chamber(&args[1..]) {

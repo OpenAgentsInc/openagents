@@ -1,0 +1,917 @@
+{
+  "model": "great_crypt_hall.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 21784,
+  "boxes": [
+    {
+      "name": "floor",
+      "center": [
+        0.0,
+        -0.3,
+        -2.0
+      ],
+      "half_extents": [
+        14.5,
+        0.3,
+        20.5
+      ]
+    },
+    {
+      "name": "wall_east_0",
+      "center": [
+        11.0,
+        14.75,
+        -15.475
+      ],
+      "half_extents": [
+        0.5,
+        15.25,
+        7.025
+      ]
+    },
+    {
+      "name": "wall_east_2",
+      "center": [
+        11.0,
+        14.75,
+        0.0
+      ],
+      "half_extents": [
+        0.5,
+        15.25,
+        5.05
+      ]
+    },
+    {
+      "name": "wall_east_4",
+      "center": [
+        11.0,
+        14.75,
+        13.475
+      ],
+      "half_extents": [
+        0.5,
+        15.25,
+        5.025
+      ]
+    },
+    {
+      "name": "wall_east_over_-6.75",
+      "center": [
+        11.0,
+        17.25,
+        -6.75
+      ],
+      "half_extents": [
+        0.5,
+        12.75,
+        1.7
+      ]
+    },
+    {
+      "name": "wall_east_over_6.75",
+      "center": [
+        11.0,
+        17.25,
+        6.75
+      ],
+      "half_extents": [
+        0.5,
+        12.75,
+        1.7
+      ]
+    },
+    {
+      "name": "wall_chapel_east_-6.75_a",
+      "center": [
+        12.6,
+        14.75,
+        -8.7
+      ],
+      "half_extents": [
+        1.5,
+        15.25,
+        0.25
+      ]
+    },
+    {
+      "name": "wall_chapel_east_-6.75_b",
+      "center": [
+        12.6,
+        14.75,
+        -4.8
+      ],
+      "half_extents": [
+        1.5,
+        15.25,
+        0.25
+      ]
+    },
+    {
+      "name": "wall_chapel_back_east_-6.75",
+      "center": [
+        14.4,
+        14.75,
+        -6.75
+      ],
+      "half_extents": [
+        0.3,
+        15.25,
+        2.2
+      ]
+    },
+    {
+      "name": "ceiling_chapel_east_-6.75",
+      "center": [
+        12.6,
+        4.75,
+        -6.75
+      ],
+      "half_extents": [
+        1.5,
+        0.15,
+        1.7
+      ]
+    },
+    {
+      "name": "wall_chapel_east_6.75_a",
+      "center": [
+        12.6,
+        14.75,
+        4.8
+      ],
+      "half_extents": [
+        1.5,
+        15.25,
+        0.25
+      ]
+    },
+    {
+      "name": "wall_chapel_east_6.75_b",
+      "center": [
+        12.6,
+        14.75,
+        8.7
+      ],
+      "half_extents": [
+        1.5,
+        15.25,
+        0.25
+      ]
+    },
+    {
+      "name": "wall_chapel_back_east_6.75",
+      "center": [
+        14.4,
+        14.75,
+        6.75
+      ],
+      "half_extents": [
+        0.3,
+        15.25,
+        2.2
+      ]
+    },
+    {
+      "name": "ceiling_chapel_east_6.75",
+      "center": [
+        12.6,
+        4.75,
+        6.75
+      ],
+      "half_extents": [
+        1.5,
+        0.15,
+        1.7
+      ]
+    },
+    {
+      "name": "wall_west_0",
+      "center": [
+        -11.0,
+        14.75,
+        -15.475
+      ],
+      "half_extents": [
+        0.5,
+        15.25,
+        7.025
+      ]
+    },
+    {
+      "name": "wall_west_2",
+      "center": [
+        -11.0,
+        14.75,
+        0.0
+      ],
+      "half_extents": [
+        0.5,
+        15.25,
+        5.05
+      ]
+    },
+    {
+      "name": "wall_west_4",
+      "center": [
+        -11.0,
+        14.75,
+        13.475
+      ],
+      "half_extents": [
+        0.5,
+        15.25,
+        5.025
+      ]
+    },
+    {
+      "name": "wall_west_over_-6.75",
+      "center": [
+        -11.0,
+        17.25,
+        -6.75
+      ],
+      "half_extents": [
+        0.5,
+        12.75,
+        1.7
+      ]
+    },
+    {
+      "name": "wall_west_over_6.75",
+      "center": [
+        -11.0,
+        17.25,
+        6.75
+      ],
+      "half_extents": [
+        0.5,
+        12.75,
+        1.7
+      ]
+    },
+    {
+      "name": "wall_chapel_west_-6.75_a",
+      "center": [
+        -12.6,
+        14.75,
+        -8.7
+      ],
+      "half_extents": [
+        1.5,
+        15.25,
+        0.25
+      ]
+    },
+    {
+      "name": "wall_chapel_west_-6.75_b",
+      "center": [
+        -12.6,
+        14.75,
+        -4.8
+      ],
+      "half_extents": [
+        1.5,
+        15.25,
+        0.25
+      ]
+    },
+    {
+      "name": "wall_chapel_back_west_-6.75",
+      "center": [
+        -14.4,
+        14.75,
+        -6.75
+      ],
+      "half_extents": [
+        0.3,
+        15.25,
+        2.2
+      ]
+    },
+    {
+      "name": "ceiling_chapel_west_-6.75",
+      "center": [
+        -12.6,
+        4.75,
+        -6.75
+      ],
+      "half_extents": [
+        1.5,
+        0.15,
+        1.7
+      ]
+    },
+    {
+      "name": "wall_chapel_west_6.75_a",
+      "center": [
+        -12.6,
+        14.75,
+        4.8
+      ],
+      "half_extents": [
+        1.5,
+        15.25,
+        0.25
+      ]
+    },
+    {
+      "name": "wall_chapel_west_6.75_b",
+      "center": [
+        -12.6,
+        14.75,
+        8.7
+      ],
+      "half_extents": [
+        1.5,
+        15.25,
+        0.25
+      ]
+    },
+    {
+      "name": "wall_chapel_back_west_6.75",
+      "center": [
+        -14.4,
+        14.75,
+        6.75
+      ],
+      "half_extents": [
+        0.3,
+        15.25,
+        2.2
+      ]
+    },
+    {
+      "name": "ceiling_chapel_west_6.75",
+      "center": [
+        -12.6,
+        4.75,
+        6.75
+      ],
+      "half_extents": [
+        1.5,
+        0.15,
+        1.7
+      ]
+    },
+    {
+      "name": "wall_entrance",
+      "center": [
+        0.0,
+        14.75,
+        18.0
+      ],
+      "half_extents": [
+        11.5,
+        15.25,
+        0.5
+      ]
+    },
+    {
+      "name": "wall_far",
+      "center": [
+        0.0,
+        14.75,
+        -22.0
+      ],
+      "half_extents": [
+        11.5,
+        15.25,
+        0.5
+      ]
+    },
+    {
+      "name": "pillar_w_-18.0",
+      "center": [
+        -5.0,
+        1.3,
+        -18.0
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_w_-13.5",
+      "center": [
+        -5.0,
+        1.3,
+        -13.5
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_w_-9.0",
+      "center": [
+        -5.0,
+        1.3,
+        -9.0
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_w_-4.5",
+      "center": [
+        -5.0,
+        1.3,
+        -4.5
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_w_0.0",
+      "center": [
+        -5.0,
+        1.3,
+        0.0
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_w_4.5",
+      "center": [
+        -5.0,
+        1.3,
+        4.5
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_w_9.0",
+      "center": [
+        -5.0,
+        1.3,
+        9.0
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_w_13.5",
+      "center": [
+        -5.0,
+        1.3,
+        13.5
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "ceiling_aisle_w",
+      "center": [
+        -7.575,
+        4.7,
+        -2.0
+      ],
+      "half_extents": [
+        2.925,
+        0.1,
+        19.5
+      ]
+    },
+    {
+      "name": "parapet_w",
+      "center": [
+        -5.0,
+        4.49,
+        -2.25
+      ],
+      "half_extents": [
+        0.4,
+        1.43,
+        16.45
+      ]
+    },
+    {
+      "name": "ceiling_gallery_w",
+      "center": [
+        -7.9,
+        18.35,
+        -2.0
+      ],
+      "half_extents": [
+        3.2,
+        11.65,
+        19.5
+      ]
+    },
+    {
+      "name": "pillar_e_-18.0",
+      "center": [
+        5.0,
+        1.3,
+        -18.0
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_e_-13.5",
+      "center": [
+        5.0,
+        1.3,
+        -13.5
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_e_-9.0",
+      "center": [
+        5.0,
+        1.3,
+        -9.0
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_e_-4.5",
+      "center": [
+        5.0,
+        1.3,
+        -4.5
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_e_0.0",
+      "center": [
+        5.0,
+        1.3,
+        0.0
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_e_4.5",
+      "center": [
+        5.0,
+        1.3,
+        4.5
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_e_9.0",
+      "center": [
+        5.0,
+        1.3,
+        9.0
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "pillar_e_13.5",
+      "center": [
+        5.0,
+        1.3,
+        13.5
+      ],
+      "half_extents": [
+        0.55,
+        1.8,
+        0.55
+      ]
+    },
+    {
+      "name": "ceiling_aisle_e",
+      "center": [
+        7.575,
+        4.7,
+        -2.0
+      ],
+      "half_extents": [
+        2.925,
+        0.1,
+        19.5
+      ]
+    },
+    {
+      "name": "parapet_e",
+      "center": [
+        5.0,
+        4.49,
+        -2.25
+      ],
+      "half_extents": [
+        0.4,
+        1.43,
+        16.45
+      ]
+    },
+    {
+      "name": "ceiling_gallery_e",
+      "center": [
+        7.9,
+        18.35,
+        -2.0
+      ],
+      "half_extents": [
+        3.2,
+        11.65,
+        19.5
+      ]
+    },
+    {
+      "name": "ceiling_nave",
+      "center": [
+        0.0,
+        19.45,
+        -2.0
+      ],
+      "half_extents": [
+        5.5,
+        10.55,
+        20.5
+      ]
+    },
+    {
+      "name": "landing",
+      "center": [
+        0.0,
+        0.5,
+        15.1
+      ],
+      "half_extents": [
+        4.4,
+        1.0,
+        2.6
+      ]
+    },
+    {
+      "name": "stair_1",
+      "center": [
+        0.0,
+        -0.125,
+        9.8
+      ],
+      "half_extents": [
+        2.0,
+        0.375,
+        0.3
+      ]
+    },
+    {
+      "name": "stair_2",
+      "center": [
+        0.0,
+        0.0,
+        10.4
+      ],
+      "half_extents": [
+        2.0,
+        0.5,
+        0.3
+      ]
+    },
+    {
+      "name": "stair_3",
+      "center": [
+        0.0,
+        0.125,
+        11.0
+      ],
+      "half_extents": [
+        2.0,
+        0.625,
+        0.3
+      ]
+    },
+    {
+      "name": "stair_4",
+      "center": [
+        0.0,
+        0.25,
+        11.6
+      ],
+      "half_extents": [
+        2.0,
+        0.75,
+        0.3
+      ]
+    },
+    {
+      "name": "stair_5",
+      "center": [
+        0.0,
+        0.375,
+        12.2
+      ],
+      "half_extents": [
+        2.0,
+        0.875,
+        0.3
+      ]
+    },
+    {
+      "name": "stair_side_-1",
+      "center": [
+        -2.15,
+        0.775,
+        11.0
+      ],
+      "half_extents": [
+        0.15,
+        1.275,
+        1.5
+      ]
+    },
+    {
+      "name": "parapet_landing_front_-1",
+      "center": [
+        -3.2,
+        1.975,
+        12.65
+      ],
+      "half_extents": [
+        1.2,
+        0.475,
+        0.15
+      ]
+    },
+    {
+      "name": "parapet_landing_side_-1",
+      "center": [
+        -4.25,
+        1.975,
+        15.0
+      ],
+      "half_extents": [
+        0.15,
+        0.475,
+        2.5
+      ]
+    },
+    {
+      "name": "stair_side_1",
+      "center": [
+        2.15,
+        0.775,
+        11.0
+      ],
+      "half_extents": [
+        0.15,
+        1.275,
+        1.5
+      ]
+    },
+    {
+      "name": "parapet_landing_front_1",
+      "center": [
+        3.2,
+        1.975,
+        12.65
+      ],
+      "half_extents": [
+        1.2,
+        0.475,
+        0.15
+      ]
+    },
+    {
+      "name": "parapet_landing_side_1",
+      "center": [
+        4.25,
+        1.975,
+        15.0
+      ],
+      "half_extents": [
+        0.15,
+        0.475,
+        2.5
+      ]
+    },
+    {
+      "name": "dais_0",
+      "center": [
+        0.0,
+        -0.125,
+        -17.3
+      ],
+      "half_extents": [
+        4.6,
+        0.375,
+        4.3
+      ]
+    },
+    {
+      "name": "dais_1",
+      "center": [
+        0.0,
+        0.0,
+        -17.7
+      ],
+      "half_extents": [
+        4.0,
+        0.5,
+        3.9
+      ]
+    },
+    {
+      "name": "dais_2",
+      "center": [
+        0.0,
+        0.125,
+        -18.1
+      ],
+      "half_extents": [
+        3.4,
+        0.625,
+        3.5
+      ]
+    },
+    {
+      "name": "obelisk_-1",
+      "center": [
+        -2.9,
+        1.925,
+        -20.9
+      ],
+      "half_extents": [
+        0.4,
+        2.425,
+        0.4
+      ]
+    },
+    {
+      "name": "obelisk_1",
+      "center": [
+        2.9,
+        1.925,
+        -20.9
+      ],
+      "half_extents": [
+        0.4,
+        2.425,
+        0.4
+      ]
+    }
+  ],
+  "plan": {
+    "nave_half_width": 5.0,
+    "wall": 10.5,
+    "entrance": 17.5,
+    "far": -21.5,
+    "landing": {
+      "front": 12.5,
+      "top": 1.5,
+      "half_width": 4.4
+    },
+    "spring": 7.0,
+    "rise": 3.0
+  }
+}
