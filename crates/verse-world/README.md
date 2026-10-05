@@ -405,8 +405,10 @@ owned baseline identifies `profile`, confirmed character `physics_step`, applied
 frame sequence, and observed `world_step`. Prediction retires only the confirmed
 prefix and replays original event times. The native adapter groups completed
 steps into 12-substep (100 ms) packets without dropping intervals or input changes;
-local prediction still updates each rendered frame, and the worker binds packets
-to the shared command sequence before transmission. Legacy CLI and headless movement retains the
+local prediction still updates each rendered frame. Transmission waits when a
+packet would exceed the last verified `world_step` plus the existing 12-substep
+authority credit; local elapsed time cannot grant credit during storage pauses.
+The worker binds packets to the shared command sequence before transmission. Legacy CLI and headless movement retains the
 arrival-time profile. Version-21 peers must upgrade both host and client.
 
 The serial SDK retries an explicit `stale_tick` refusal only when its verified

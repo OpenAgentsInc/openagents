@@ -8,11 +8,14 @@ impl Local {
     pub fn movement_profile(&self) -> Option<Profile> {
         self.baseline.map(|b| b.profile)
     }
-    /// Proposes only completed local steps; the authority separately bounds world-time credit.
+    /// Caps completed local steps by the latest verified authority world-time credit.
     pub fn movement_frame_limit(&self) -> Option<u64> {
         self.baseline
             .filter(|b| b.profile == Profile::Frames)
-            .map(|_| self.step)
+            .map(|b| {
+                self.step
+                    .min(b.world_step.saturating_add(u64::from(MAX_STEPS)))
+            })
     }
     pub fn physics_step(&self) -> u64 {
         self.step

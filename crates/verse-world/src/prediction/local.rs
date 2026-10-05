@@ -521,6 +521,28 @@ mod tests {
         }
     }
     #[test]
+    fn interval_transmission_waits_for_verified_credit_while_prediction_advances() {
+        let (mut local, mut baseline, source) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        baseline.world_step = 4;
+        local.observe(baseline, &source, 2, 2).unwrap();
+        local.advance(12. / 120.).unwrap();
+        local.advance(12. / 120.).unwrap();
+        assert_eq!(local.physics_step(), 24);
+        assert_eq!(local.movement_frame_limit(), Some(16));
+        // Repeated observations during a storage pause grant no wall-time credit.
+        local.observe(baseline, &source, 3, 3).unwrap();
+        local.advance(12. / 120.).unwrap();
+        assert_eq!(local.physics_step(), 36);
+        assert_eq!(local.movement_frame_limit(), Some(16));
+        baseline.world_step = 20;
+        local.observe(baseline, &source, 4, 4).unwrap();
+        assert_eq!(local.movement_frame_limit(), Some(32));
+        assert_eq!(local.physics_step(), 36);
+    }
+
+    #[test]
     fn delayed_baselines_do_not_extend_the_clock_or_renew_unacknowledged_holds() {
         let (mut local, mut baseline, geometry) = setup();
         local.queue(1, movement()).unwrap();

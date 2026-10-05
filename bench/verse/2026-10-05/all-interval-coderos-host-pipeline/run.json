@@ -1,0 +1,12 @@
+{
+  "acceptance": "failed",
+  "reason": "Native interval producer exceeded authority world-time credit after host pipelining; primary exits 1. No steady capture percentile claim.",
+  "server_revision": "1b0f4baf73",
+  "client_revision": "c91a3c972d",
+  "limits": [
+    "Shared Linux CPU includes another compiler; this capture is not an isolated causal comparison.",
+    "Native prediction used local completed time without capping transmission by the last verified world-time credit.",
+    "Server credit limits and exact movement expiry rules remain unchanged.",
+    "The harness stopped the owned server successfully; remote cleanup completed before process-failure reporting."
+  ]
+}
