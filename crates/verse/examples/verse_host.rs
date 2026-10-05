@@ -163,6 +163,11 @@ async fn serve(config: Config) -> Result<(), String> {
     for (label, timing) in [
         ("Simulation", &exit.stats.simulation),
         ("Persistence capture", &exit.stats.capture),
+        (
+            "Deferred read projection",
+            &exit.stats.deferred_read_projection,
+        ),
+        ("Running checkpoint copy", &exit.stats.checkpoint_copy),
         ("Storage commit", &exit.stats.commits),
     ] {
         println!(

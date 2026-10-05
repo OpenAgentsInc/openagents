@@ -529,7 +529,9 @@ while the host is stopped.
 
 The host reports lifetime simulation, persistence capture, and commit latency
 histograms with p50/p95/p99 bucket upper bounds, plus backlog, refusals, paused
-time, committed bytes, and storage duration. `Store::commit` remains a synchronous
+time, committed bytes, and storage duration. Deferred read projection and running
+checkpoint-copy timings separate those two costs within capture; they exclude
+startup, shutdown, and reads dispatched outside the capture batch. `Store::commit` remains a synchronous
 API for callers that manage their own scheduling. The original
 [durable host fixture](../../bench/verse/2026-10-04/durable-host/run.json) records
 the earlier synchronous implementation; the

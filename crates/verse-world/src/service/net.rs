@@ -60,6 +60,8 @@ pub struct Stats {
     pub checkpoint_seconds: f64,
     pub simulation: Timing,
     pub capture: Timing,
+    pub deferred_read_projection: Timing,
+    pub checkpoint_copy: Timing,
     pub commits: Timing,
     pub simulation_phases: Phases,
     pub capture_phases: Phases,
@@ -478,18 +480,22 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         let result = match pending.response {
                             PendingResponse::Outcome(result) => result,
                             PendingResponse::Read {id, bytes, progress} => {
+                                let projection = Instant::now();
                                 let result = gateway.dispatch_json(id, now, &bytes)
                                     .map(|bytes| (bytes, gateway.authenticated(id)));
+                                stats.deferred_read_projection.record(projection.elapsed().as_secs_f64());
                                 dispatch_progress(progress, &result);
                                 result
                             },
                         };
                         (pending.reply, result)
                     }).collect();
+                    let copy = Instant::now();
                     let prepared = match super::save::Prepared::capture(&gateway) {
                         Ok(prepared) => prepared,
                         Err(error) => {failure = Some(error); break;}
                     };
+                    stats.checkpoint_copy.record(copy.elapsed().as_secs_f64());
                     token = match token.checked_add(1) {
                         Some(token) => token,
                         None => {failure = Some("Chamber storage tokens exhausted".into()); break;}
