@@ -1,0 +1,59 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 45,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "native_movement_frames_requested": true,
+    "compiled_revisions": {
+      "host": "18ebb04259baad6263e14ff39f5ef6e6995d6a5c",
+      "clients": "18ebb04259baad6263e14ff39f5ef6e6995d6a5c"
+    },
+    "fixture_revision": "fb87a48d415adbbe4ced953d259364c5365e4e73",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "checks": {
+    "recorder_tests": 6,
+    "native_example_builds": "passed",
+    "format": "passed"
+  },
+  "observation": "All clients complete, but native interval movement repeatedly resets its control epoch. Final status overwrites earlier refusals, so refusal history is needed.",
+  "native": {
+    "frame_interval_ms": {
+      "samples": 3949,
+      "omitted": 0,
+      "median": 10.229708,
+      "p95": 19.50825,
+      "max": 3744.9068749999997
+    },
+    "correction_meters": {
+      "samples": 183,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.5906458497047424
+    },
+    "reset_reasons": {
+      "control_epoch": 22
+    },
+    "final_status": "Movement interval control changed before transmission",
+    "window_failure": null
+  },
+  "headless_completed": 19,
+  "limits": [
+    "Persistence and GPU timestamps are disabled.",
+    "Headless clients use legacy movement, not interval movement.",
+    "Shared hardware and startup stalls prevent isolated steady-state latency claims.",
+    "A requested interval mode and zero correction p95 do not prove continuous interval control."
+  ]
+}
