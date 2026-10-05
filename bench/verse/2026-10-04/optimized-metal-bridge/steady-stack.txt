@@ -1,0 +1,192 @@
+Three-second steady-state native CPU sample; collapsed stack summaries only. Loaded-image inventory omitted.
+
+Total number in stack (recursive counted multiple, when >=5):
+        81       _RNvNtNtCs5sbFwVJunqb_5objc27runtime16message_receiver14msg_send_check  (in verse_remote) + 100  [0x1052287e8]
+        58       _RNvNtNtCs5sbFwVJunqb_5objc27runtime16message_receiver14msg_send_check  (in verse_remote) + 76  [0x1052287d0]
+        55       _RNvXs_NtNtCs5sbFwVJunqb_5objc27runtime20method_encoding_iterNtB4_18MethodEncodingIterNtNtNtNtCsgtPOCBgevO_4core4iter6traits8iterator8Iterator4next  (in verse_remote) + 52  [0x10522a610]
+        55       method_t* getMethodFromListArray<method_list_t**>(method_list_t**, unsigned int, objc_selector*)  (in libobjc.A.dylib) + 0  [0x1865fa7a4]
+        52       class_getInstanceMethod  (in libobjc.A.dylib) + 64  [0x1865dcb10]
+        40       _RNvMNtCslyfensQill8_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 0  [0x10522b2d8]
+        35       lookUpImpOrForward  (in libobjc.A.dylib) + 420  [0x1865d6010]
+        30       _RNvMNtCslyfensQill8_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 132  [0x10522b35c]
+        30       _RNvMs5_NtCslyfensQill8_12objc2_encode5parseNtB5_6Parser11parse_inner  (in verse_remote) + 0  [0x10522d650]
+        29       _platform_memmove  (in libsystem_platform.dylib) + 0  [0x186a393c0]
+        28       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 60  [0x10522713c]
+        28       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 856  [0x105227458]
+        27       _RNvXs_NtNtCs5sbFwVJunqb_5objc27runtime20method_encoding_iterNtB4_18MethodEncodingIterNtNtNtNtCsgtPOCBgevO_4core4iter6traits8iterator8Iterator4next  (in verse_remote) + 0  [0x10522a5dc]
+        26       _RINvMNtCsgtPOCBgevO_4core3stre18trim_start_matchesNCNvNtNtCs5sbFwVJunqb_5objc27runtime20method_encoding_iter18parse_stack_layout0EBU_  (in verse_remote) + 0  [0x1052267e0]
+        26       _RNvXs_NtNtCs5sbFwVJunqb_5objc27runtime20method_encoding_iterNtB4_18MethodEncodingIterNtNtNtNtCsgtPOCBgevO_4core4iter6traits8iterator8Iterator4next  (in verse_remote) + 132  [0x10522a660]
+        25       class_getInstanceMethod  (in libobjc.A.dylib) + 124  [0x1865dcb4c]
+        24       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 1100  [0x10522754c]
+        22       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 556  [0x10522732c]
+        20       _RINvNtCslyfensQill8_12objc2_encode6helper17compare_encodingsNtNtB4_8encoding8EncodingNtNtB4_12encoding_box11EncodingBoxEB4_  (in verse_remote) + 48  [0x10522afd0]
+        20       _RNvMs4_NtCslyfensQill8_12objc2_encode6helperNtB5_6Helper3new  (in verse_remote) + 0  [0x10522bd58]
+        20       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 76  [0x10522714c]
+        20       _xzm_xzone_malloc_tiny  (in libsystem_malloc.dylib) + 0  [0x186851ed4]
+        19       _xzm_free  (in libsystem_malloc.dylib) + 0  [0x18684d06c]
+        18       _RINvNtCslyfensQill8_12objc2_encode6helper17compare_encodingsNtNtB4_8encoding8EncodingNtNtB4_12encoding_box11EncodingBoxEB4_  (in verse_remote) + 0  [0x10522afa0]
+        18       _RNvMs2_NtCs5sbFwVJunqb_5objc27runtimeNtB5_3Sel19number_of_arguments  (in verse_remote) + 0  [0x105229fac]
+        18       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 256  [0x105227200]
+        17       objc_msgSend  (in libobjc.A.dylib) + 0  [0x1865d5800]
+        17       start_wqthread  (in libsystem_pthread.dylib) + 8  [0x186a2ac10]
+        16       _RNvMsm_NtCs5sbFwVJunqb_5objc27runtimeNtB5_6Method5types  (in verse_remote) + 52  [0x10522a130]
+        16       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 0  [0x105227100]
+        16       lookUpImpOrForward  (in libobjc.A.dylib) + 392  [0x1865d5ff4]
+        16       mach_msg2_internal  (in libsystem_kernel.dylib) + 76  [0x1869fe574]
+        16       mach_msg2_trap  (in libsystem_kernel.dylib) + 0  [0x1869ebc2c]
+        15       _RNvNtNtCsgtPOCBgevO_4core3str8converts9from_utf8  (in verse_remote) + 0  [0x105276d98]
+        15       _platform_memset  (in libsystem_platform.dylib) + 0  [0x186a390f0]
+        15       _pthread_wqthread  (in libsystem_pthread.dylib) + 292  [0x186a2bec0]
+        13       _RNvMs5_NtCslyfensQill8_12objc2_encode6helperINtB5_6HelperNtNtB7_12encoding_box11EncodingBoxE8from_box  (in verse_remote) + 0  [0x10522c050]
+        13       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 532  [0x105227314]
+        13       io_connect_method  (in IOKit) + 520  [0x18ad88ff4]
+        12       _RINvNtCslyfensQill8_12objc2_encode6helper17compare_encodingsNtNtB4_8encoding8EncodingNtNtB4_12encoding_box11EncodingBoxEB4_  (in verse_remote) + 60  [0x10522afdc]
+        12       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 272  [0x105227210]
+        12       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 812  [0x10522742c]
+        12       _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x18685c674]
+        12       _realloc  (in libsystem_malloc.dylib) + 452  [0x18685ce90]
+        12       lookUpImpOrForward  (in libobjc.A.dylib) + 0  [0x1865d5e6c]
+        12       objc_release  (in libobjc.A.dylib) + 0  [0x1865d4004]
+        11       _platform_strlen  (in libsystem_platform.dylib) + 0  [0x186a36ae0]
+        11       _xzm_xzone_malloc  (in libsystem_malloc.dylib) + 0  [0x18684c8c0]
+        11       getMethodNoSuper_nolock(objc_class*, objc_selector*)  (in libobjc.A.dylib) + 0  [0x1865d2a08]
+        10       -[IOGPUMetalResource initWithDevice:remoteStorageResource:options:args:argsSize:]  (in IOGPU) + 484  [0x1abb1890c]
+        10       IOConnectCallMethod  (in IOKit) + 236  [0x18ad88dc0]
+        10       IOGPUResourceCreate  (in IOGPU) + 248  [0x1abb1f878]
+        10       _RNvMs2_NtNtCs7KG7guuTqRS_4wgpu3api5queueNtB5_5Queue12write_buffer  (in verse_remote) + 56  [0x1047f0f88]
+        10       _RNvMs6_NtNtCsbOxEz13Rqtu_9wgpu_core6device5queueNtNtB9_6global6Global18queue_write_buffer  (in verse_remote) + 148  [0x1048e5e8c]
+        10       _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote) + 908  [0x10522748c]
+        10       _RNvXNtNtCs5JbJZP5IFwA_8wgpu_hal7dynamic6deviceNtNtB6_5metal6DeviceNtB2_9DynDevice13create_bufferCsbOxEz13Rqtu_9wgpu_core  (in verse_remote) + 32  [0x1049313fc]
+        10       _dispatch_event_loop_poke  (in libdispatch.dylib) + 336  [0x186896eb0]
+        10       _dispatch_kq_poll  (in libdispatch.dylib) + 220  [0x186897a64]
+        10       _dispatch_workloop_worker_thread  (in libdispatch.dylib) + 720  [0x186887734]
+        10       dyld4::APIs::_dyld_objc_class_count()  (in dyld) + 0  [0x186663b38]
+        10       kevent_id  (in libsystem_kernel.dylib) + 0  [0x1869eda6c]
+        9       -[AGXBuffer initWithDevice:length:alignment:options:isSuballocDisabled:pinnedGPULocation:]  (in AGXMetalG17X) + 32  [0x116575a50]
+        9       -[AGXBuffer(Internal) initWithDevice:length:alignment:options:isSuballocDisabled:resourceInArgs:pinnedGPULocation:]  (in AGXMetalG17X) + 44  [0x116575f6c]
+        9       _RINvNtCsgU1JRSzxDji_16objc2_foundation6string13init_with_strNtNtNtB4_9generated10___NSString8NSStringEB4_  (in verse_remote) + 252  [0x105222e30]
+        9       _RINvXNtNtCs5sbFwVJunqb_5objc215___macro_helpers17msg_send_retainedINtNtB5_13method_family12MethodFamilyKh3_EINtB3_7MsgSendINtNtNtB7_2rc22allocated_partial_init9AllocatedNtNtNtCsgU1JRSzxDji_16objc2_foundation9generated10___NSString8NSStringEINtNtB21_8retained8RetainedB2H_EE12send_messageTPNtNtCsgtPOCBgevO_4core3ffi6c_voidjjEEB2N_  (in verse_remote) + 184  [0x10521de18]
+        9       _RNvMs0_NtCsgU1JRSzxDji_16objc2_foundation6stringNtNtNtB7_9generated10___NSString8NSString8from_str  (in verse_remote) + 44  [0x105225224]
+        9       _RNvMs5_NtNtCsbOxEz13Rqtu_9wgpu_core6device5queueNtB5_5Queue12write_buffer  (in verse_remote) + 344  [0x10494354c]
+        9       _RNvMsl_NtCsbOxEz13Rqtu_9wgpu_core8resourceNtB5_13StagingBuffer3new  (in verse_remote) + 104  [0x104877bf4]
+        9       _RNvXNtNtCs5JbJZP5IFwA_8wgpu_hal7dynamic7commandNtNtB6_5metal14CommandEncoderNtB2_17DynCommandEncoder21copy_buffer_to_bufferCsbOxEz13Rqtu_9wgpu_core  (in verse_remote) + 316  [0x104933fe8]
+        9       _RNvXs_NtNtCs5JbJZP5IFwA_8wgpu_hal5metal6deviceNtB6_6DeviceNtB8_6Device13create_buffer  (in verse_remote) + 308  [0x104964700]
+        9       _dispatch_root_queue_drain_deferred_wlh  (in libdispatch.dylib) + 284  [0x186887e34]
+        9       lookUpImpOrForward  (in libobjc.A.dylib) + 676  [0x1865d6110]
+        9       objc_retainAutoreleasedReturnValue  (in libobjc.A.dylib) + 0  [0x1865da350]
+        8       -[AGXG17XFamilyBlitContext copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:]  (in AGXMetalG17X) + 432  [0x1165de344]
+        8       _RINvYONtNtCs5sbFwVJunqb_5objc27runtime9AnyObjectNtNtB6_16message_receiver15MessageReceiver12send_messageTPNtNtCsgtPOCBgevO_4core3ffi6c_voidjjEONtNtNtCsgU1JRSzxDji_16objc2_foundation9generated10___NSString8NSStringEB2n_  (in verse_remote) + 172  [0x10521f0b8]
+        8       _RNvMs5_NtNtCsbOxEz13Rqtu_9wgpu_core6device5queueNtB5_5Queue12write_buffer  (in verse_remote) + 808  [0x10494371c]
+        8       _RNvMs5_NtNtCsbOxEz13Rqtu_9wgpu_core6device5queueNtB5_5Queue25write_staging_buffer_impl  (in verse_remote) + 628  [0x104944ed0]
+        8       _RNvMsm_NtCs5sbFwVJunqb_5objc27runtimeNtB5_6Method5types  (in verse_remote) + 20  [0x10522a110]
+        8       _RNvNtNtCs5sbFwVJunqb_5objc27runtime16message_receiver14msg_send_check  (in verse_remote) + 0  [0x105228784]
+        8       __CFSimpleMergeSort  (in CoreFoundation) + 248  [0x186ad1e24]
+        8       std::__function::__func<-[AGXG17XFamilyBlitContext copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:]::$_8, void (AGX::LegacyBlitContext<AGX::HAL300::Encoders, AGX::HAL300::Classes, AGX::HAL300::ObjClasses>*&)>::operator()(AGX::LegacyBlitContext<AGX::HAL300::Encoders, AGX::HAL300::Classes, AGX::HAL300::ObjClasses>*&)  (in AGXMetalG17X) + 76  [0x1165de490]
+        7       _RINvXsn_NtCs5sbFwVJunqb_5objc26encodeTPNtNtCsgtPOCBgevO_4core3ffi6c_voidjjENtB6_15EncodeArguments8___invokeONtNtNtCsgU1JRSzxDji_16objc2_foundation9generated10___NSString8NSStringEB1O_  (in verse_remote) + 80  [0x105221aec]
+        7       _RINvYONtNtCs5sbFwVJunqb_5objc27runtime9AnyObjectNtNtB6_16message_receiver15MessageReceiver12send_messageTPNtNtCsgtPOCBgevO_4core3ffi6c_voidjjEONtNtNtCsgU1JRSzxDji_16objc2_foundation9generated10___NSString8NSStringEB2n_  (in verse_remote) + 224  [0x10521f0ec]
+        7       _RNvMs3_NtCsd7PRkiMu9MO_5verse8importedNtB5_8Renderer10draw_frame  (in verse_remote) + 0  [0x1044cd10c]
+        7       _RNvMs4_NtCslJsSqIQKwiA_5alloc7raw_vecNtB5_11RawVecInner11finish_growCsbOxEz13Rqtu_9wgpu_core  (in verse_remote) + 168  [0x1052957b4]
+        7       _RNvMsm_NtCs5sbFwVJunqb_5objc27runtimeNtB5_6Method5types  (in verse_remote) + 32  [0x10522a11c]
+        7       _dispatch_lane_invoke  (in libdispatch.dylib) + 392  [0x18687db2c]
+        7       _dispatch_lane_serial_drain  (in libdispatch.dylib) + 332  [0x18687ce98]
+        7       _dyld_objc_class_count  (in libdyld.dylib) + 0  [0x18662a1e8]
+        7       mach_absolute_time  (in libsystem_kernel.dylib) + 0  [0x1869ec0a0]
+        7       os_unfair_lock_unlock  (in libsystem_platform.dylib) + 0  [0x186a368e4]
+        7       xzm_realloc  (in libsystem_malloc.dylib) + 852  [0x18684ce48]
+        6       -[AGXG17XFamilyCommandQueue commandBuffer]  (in AGXMetalG17X) + 44  [0x116602afc]
+        6       _RNvMs2_NtCs5sbFwVJunqb_5objc27runtimeNtB5_3Sel19number_of_arguments  (in verse_remote) + 24  [0x105229fc4]
+        6       _RNvXs2_NtNtCs5JbJZP5IFwA_8wgpu_hal5metal7commandNtB7_14CommandEncoderNtB9_14CommandEncoder14begin_encoding  (in verse_remote) + 480  [0x10495ec84]
+        6       __workq_kernreturn  (in libsystem_kernel.dylib) + 0  [0x1869ed9e8]
+        6       _pthread_wqthread  (in libsystem_pthread.dylib) + 368  [0x186a2bf0c]
+        6       class_getInstanceMethod  (in libobjc.A.dylib) + 0  [0x1865dcad0]
+        6       method_t::imp(bool) const  (in libobjc.A.dylib) + 236  [0x1865f6884]
+        5       -[AGXBuffer(Internal) initWithDevice:length:alignment:pointerTag:options:isSuballocDisabled:resourceInArgs:pinnedGPULocation:]  (in AGXMetalG17X) + 336  [0x116575e2c]
+        5       -[AGXBuffer(Internal) initWithDevice:length:alignment:pointerTag:options:isSuballocDisabled:resourceInArgs:pinnedGPULocation:]  (in AGXMetalG17X) + 388  [0x116575e60]
+        5       -[AGXBuffer(Internal) initWithDevice:length:alignment:pointerTag:options:isSuballocDisabled:resourceInArgs:pinnedGPULocation:]  (in AGXMetalG17X) + 460  [0x116575ea8]
+        5       -[AGXG17XFamilyCommandBuffer initWithQueue:retainedReferences:]  (in AGXMetalG17X) + 64  [0x1165fe6c8]
+        5       -[IOGPUMetalBuffer initWithDevice:pointer:length:alignment:options:sysMemSize:gpuAddress:gpuTag:args:argsSize:deallocator:]  (in IOGPU) + 60  [0x1abb03c04]
+        5       -[IOGPUMetalBuffer initWithDevice:pointer:length:alignment:options:sysMemSize:gpuAddress:gpuTag:placementSparsePageSize:placementSparseResidencyBytes:args:argsSize:deallocator:]  (in IOGPU) + 480  [0x1abb03e38]
+        5       -[IOGPUMetalBuffer initWithPrimaryBuffer:heapIndex:bufferIndex:bufferOffset:length:args:argsSize:gpuTag:]  (in IOGPU) + 276  [0x1abb041cc]
+        5       -[IOGPUMetalDevice allocBufferSubDataWithLength:options:alignment:heapIndex:bufferIndex:bufferOffset:parentAddress:parentLength:]  (in IOGPU) + 112  [0x1abb0c4c4]
+        5       AGX::BlitDispatchContext<AGX::HAL300::Encoders, AGX::HAL300::Classes, AGX::HAL300::ObjClasses>::blitCDMBuffer(IOGPUMetalResource const*, unsigned long long, IOGPUMetalResource const*, unsigned long long, unsigned long, void const*, unsigned long)  (in AGXMetalG17X) + 320  [0x1165e8af8]
+        5       _CFRelease  (in CoreFoundation) + 308  [0x186bbf8f4]
+        5       _RINvNtCsgtPOCBgevO_4core3ptr9drop_glueNtNtCslyfensQill8_12objc2_encode12encoding_box11EncodingBoxECs5sbFwVJunqb_5objc2  (in verse_remote) + 0  [0x105226a7c]
+        5       _RNvMs0_NtNtCs5JbJZP5IFwA_8wgpu_hal5metal7commandNtB7_14CommandEncoder23update_bind_group_state  (in verse_remote) + 0  [0x104955b08]
+        5       _RNvMs0_NtNtCs5JbJZP5IFwA_8wgpu_hal5metal7commandNtB7_14CommandEncoder23update_bind_group_state  (in verse_remote) + 428  [0x104955cb4]
+        5       _RNvMs4_NtCslJsSqIQKwiA_5alloc7raw_vecNtB5_11RawVecInner11finish_growCsd7PRkiMu9MO_5verse  (in verse_remote) + 168  [0x105283c98]
+        5       _RNvMs_NtNtCs5JbJZP5IFwA_8wgpu_hal5metal7commandNtB4_7Encoder10set_buffer  (in verse_remote) + 272  [0x1049808d8]
+        5       _RNvNtCs5sbFwVJunqb_5objc26verify25relaxed_equivalent_to_box  (in verse_remote) + 0  [0x10522768c]
+        5       _RNvXs_NtNtCs5JbJZP5IFwA_8wgpu_hal5metal6deviceNtB6_6DeviceNtB8_6Device13create_buffer  (in verse_remote) + 288  [0x1049646ec]
+        5       _dispatch_client_callout  (in libdispatch.dylib) + 16  [0x18688e4b0]
+        5       _platform_memcmp  (in libsystem_platform.dylib) + 0  [0x186a36f30]
+        5       _xzm_malloc_large_huge  (in libsystem_malloc.dylib) + 456  [0x18684c3c8]
+        5       iokit_user_client_trap  (in IOKit) + 0  [0x18ada4ad8]
+        5       method_t::types() const  (in libobjc.A.dylib) + 0  [0x1865f183c]
+        5       objc_retain  (in libobjc.A.dylib) + 0  [0x1865d390c]
+        5       start_wqthread  (in libsystem_pthread.dylib) + 0  [0x186a2ac08]
+
+Sort by top of stack, same collapsed (when >= 5):
+        __workq_kernreturn  (in libsystem_kernel.dylib)        9513
+        mach_msg2_trap  (in libsystem_kernel.dylib)        2954
+        write  (in libsystem_kernel.dylib)        1867
+        kevent  (in libsystem_kernel.dylib)        1864
+        start_wqthread  (in libsystem_pthread.dylib)        589
+        _platform_memmove  (in libsystem_platform.dylib)        296
+        method_t* getMethodFromListArray<method_list_t**>(method_list_t**, unsigned int, objc_selector*)  (in libobjc.A.dylib)        108
+        iokit_user_client_trap  (in IOKit)        90
+        kevent_id  (in libsystem_kernel.dylib)        66
+        _platform_memset  (in libsystem_platform.dylib)        46
+        _RNvMNtCslyfensQill8_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote)        45
+        _RINvXs0_NtNtNtCsgtPOCBgevO_4core4iter8adapters3mapINtB6_3MapINtNtB8_9enumerate9EnumerateINtNtNtBc_5slice4iter4IterNtNtCshdIy2VA85zy_12verse_engine6assets4BoneEENCNvNtB1S_9animation6samples0_0ENtNtNtBa_6traits8iterator8Iterator4folduNCINvNvB34_8for_each4callNtB2C_5LocalNCINvMsj_NtCslJsSqIQKwiA_5alloc3vecINtB4s_3VecB47_E14extend_trustedBM_E0E0EB1S_  (in verse_remote)        33
+        _RNvMs5_NtCslyfensQill8_12objc2_encode5parseNtB5_6Parser11parse_inner  (in verse_remote)        33
+        _RINvMNtCsgtPOCBgevO_4core3stre18trim_start_matchesNCNvNtNtCs5sbFwVJunqb_5objc27runtime20method_encoding_iter18parse_stack_layout0EBU_  (in verse_remote)        32
+        _RNvMs2_NtCs5sbFwVJunqb_5objc27runtimeNtB5_3Sel19number_of_arguments  (in verse_remote)        30
+        _RNvXs_NtNtCs5sbFwVJunqb_5objc27runtime20method_encoding_iterNtB4_18MethodEncodingIterNtNtNtNtCsgtPOCBgevO_4core4iter6traits8iterator8Iterator4next  (in verse_remote)        29
+        _xzm_xzone_malloc_tiny  (in libsystem_malloc.dylib)        26
+        __CFRunLoopDoTimer  (in CoreFoundation)        24
+        _xzm_free  (in libsystem_malloc.dylib)        23
+        objc_msgSend  (in libobjc.A.dylib)        23
+        _RNvNtNtCsgtPOCBgevO_4core3str8converts9from_utf8  (in verse_remote)        21
+        _RNvMs4_NtCslyfensQill8_12objc2_encode6helperNtB5_6Helper3new  (in verse_remote)        20
+        _RNvMs_NtNtCsd7PRkiMu9MO_5verse8imported7cullingNtB4_10BoneBounds5posed  (in verse_remote)        19
+        _RNvNtCs5sbFwVJunqb_5objc26verify23verify_method_signature  (in verse_remote)        19
+        mach_absolute_time  (in libsystem_kernel.dylib)        19
+        _RINvNtCslyfensQill8_12objc2_encode6helper17compare_encodingsNtNtB4_8encoding8EncodingNtNtB4_12encoding_box11EncodingBoxEB4_  (in verse_remote)        18
+        madvise  (in libsystem_kernel.dylib)        18
+        objc_release  (in libobjc.A.dylib)        17
+        -[AGXG17XFamilyRenderContext initWithCommandBuffer:descriptor:subEncoderIndex:framebuffer:]  (in AGXMetalG17X)        15
+        <deduplicated_symbol>  (in verse_remote)        15
+        _RNvMs5_NtCslyfensQill8_12objc2_encode6helperINtB5_6HelperNtNtB7_12encoding_box11EncodingBoxE8from_box  (in verse_remote)        15
+        _RNvNtCshdIy2VA85zy_12verse_engine9animation8matrices  (in verse_remote)        15
+        AGX::ContextCommon<AGX::HAL300::Encoders, AGX::HAL300::Classes, AGX::HAL300::ObjClasses, AGX::HAL300::DataBufferAllocator>::newCommand(unsigned long, bool)  (in AGXMetalG17X)        14
+        _RNvMs3_NtCsd7PRkiMu9MO_5verse8importedNtB5_8Renderer10draw_frame  (in verse_remote)        13
+        _RNvNtCsd7PRkiMu9MO_5verse8imported9make_pose  (in verse_remote)        13
+        _RNvMs0_NtNtCs5JbJZP5IFwA_8wgpu_hal5metal7commandNtB7_14CommandEncoder23update_bind_group_state  (in verse_remote)        12
+        _xzm_xzone_malloc  (in libsystem_malloc.dylib)        12
+        getMethodNoSuper_nolock(objc_class*, objc_selector*)  (in libobjc.A.dylib)        12
+        lookUpImpOrForward  (in libobjc.A.dylib)        12
+        AGX::BlitDispatchContext<AGX::HAL300::Encoders, AGX::HAL300::Classes, AGX::HAL300::ObjClasses>::checkDependentBlits(GPUVirtualAddressRange const&, GPUVirtualAddressRange const&, GPUVirtualAddressRange const&, GPUVirtualAddressRange const&)  (in AGXMetalG17X)        11
+        _platform_strlen  (in libsystem_platform.dylib)        11
+        dyld4::APIs::_dyld_objc_class_count()  (in dyld)        11
+        objc_retainAutoreleasedReturnValue  (in libobjc.A.dylib)        10
+        _RINvNtCsgtPOCBgevO_4core3ptr9drop_glueNtNtCslyfensQill8_12objc2_encode12encoding_box11EncodingBoxECs5sbFwVJunqb_5objc2  (in verse_remote)        9
+        AGX::ESLInstructionEncoderGen3<AGX::HAL300::Encoders>::AGX3EncodedInstr<AGXIotoInstruction_SPECLM_0>::AGX3EncodedInstr(AGX::ESLInstructionEncoderGen3<AGX::HAL300::Encoders>::AGX3Instr<AGXIotoInstruction_SPECLM_0> const&)  (in AGXMetalG17X)        8
+        _RNvNtNtCs5sbFwVJunqb_5objc27runtime16message_receiver14msg_send_check  (in verse_remote)        8
+        _dyld_objc_class_count  (in libdyld.dylib)        8
+        _RNvMNtNtCsd7PRkiMu9MO_5verse8imported7cullingNtB2_6Bounds7visible  (in verse_remote)        7
+        _RNvMs1_NtNtCsbOxEz13Rqtu_9wgpu_core5track6bufferNtB5_16BufferUsageScope17merge_usage_scope  (in verse_remote)        7
+        __CFNumberHash  (in CoreFoundation)        7
+        os_unfair_lock_unlock  (in libsystem_platform.dylib)        7
+        _RINvNtCshdIy2VA85zy_12verse_engine9animation4pairKj4_EB4_  (in verse_remote)        6
+        _RNvNtNtCsbOxEz13Rqtu_9wgpu_core7command6render18encode_render_pass  (in verse_remote)        6
+        _platform_memcmp  (in libsystem_platform.dylib)        6
+        class_getInstanceMethod  (in libobjc.A.dylib)        6
+        <deduplicated_symbol>  (in libobjc.A.dylib)        5
+        _RNvMNtCshdIy2VA85zy_12verse_engine7overlayNtB2_15ResolvedOverlay7extract  (in verse_remote)        5
+        _RNvMsi_NtNtNtCslJsSqIQKwiA_5alloc11collections5btree3mapINtB5_8BTreeMapjNtNtB7_7set_val9SetValZSTE6insertCshdIy2VA85zy_12verse_engine  (in verse_remote)        5
+        _RNvNtCs5sbFwVJunqb_5objc26verify25relaxed_equivalent_to_box  (in verse_remote)        5
+        _dispatch_lane_serial_drain  (in libdispatch.dylib)        5
+        cache_getImp  (in libobjc.A.dylib)        5
+        method_t::types() const  (in libobjc.A.dylib)        5
+        objc_retain  (in libobjc.A.dylib)        5
+

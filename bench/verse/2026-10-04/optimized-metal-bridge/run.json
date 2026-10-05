@@ -1,0 +1,81 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": true,
+    "compiled_revisions": {
+      "host": "5706bcfdab",
+      "clients": "5706bcfdab"
+    },
+    "fixture_revision": "5706bcfdab464b7f698165e6f9285c5a0ada8487",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "build": {
+    "cargo_profile": "dev",
+    "added_package_opt_level_3": [
+      "objc2",
+      "objc2-encode"
+    ],
+    "debug_assertions": "retained",
+    "validation": "Native host, remote, and load examples build successfully; sixty-second twenty-connection run completes."
+  },
+  "measurements": {
+    "frame_interval_ms": {
+      "samples": 4450,
+      "omitted": 0,
+      "median": 13.407666,
+      "p95": 18.22975,
+      "max": 8188.850541000001
+    },
+    "command_finish_ms": {
+      "samples": 4450,
+      "omitted": 0,
+      "median": 5.436833,
+      "p95": 6.585667,
+      "max": 19.63175
+    },
+    "gpu_total_ms": {
+      "samples": 4448,
+      "omitted": 0,
+      "median": 2.256583,
+      "p95": 9.135417,
+      "max": 25.381125
+    },
+    "gpu_sample_health": {
+      "issued": 4450,
+      "valid": 4448,
+      "zero_duration": 0,
+      "out_of_order": 0,
+      "invalid_period": 0,
+      "map_errors": 0,
+      "busy_frames": 0,
+      "batched_completions": 702,
+      "invalid_examples": [
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  },
+  "limits": [
+    "Native frame p95 18.230 ms remains above the 16.7 ms target; startup maximum remains in the distribution.",
+    "CPU command finalization p95 6.586 ms versus earlier 19.152 ms; current revisions and trajectories differ, so this is not an isolated causal comparison.",
+    "GPU p95 9.135 ms; all 4448 completed samples retained, zero invalid results, two outstanding.",
+    "Server simulation p99 histogram upper bound 125 ms, maximum 125.611 ms, 4.111 dropped seconds: thirty-Hz acceptance fails.",
+    "Storage is disabled; headless movement remains legacy, and input-to-display latency is unmeasured.",
+    "One native client, nineteen headless clients, host, and three-second CPU sampler share hardware.",
+    "No persistent battle or full-roadmap completion is claimed."
+  ]
+}
