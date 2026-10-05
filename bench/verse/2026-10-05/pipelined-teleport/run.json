@@ -1,0 +1,27 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "tested_base_revision": "67088edded499495339219436d43a3ac6e6e8c67",
+  "source_patch_sha256": "f4d07383f87767efa30d8a4cd3628a578e9f9664022615b7a4717f343e733c3e",
+  "published_revision": "62b1515f90d18d9c74256aa7d49ff4c21826aa29",
+  "wire_version": 28,
+  "checks": {
+    "worker": {
+      "command": "cargo test -p verse-world --features service-net --lib -- service::worker::tests:: --quiet",
+      "passed": 18,
+      "failed": 0,
+      "runtime_seconds": 3.17,
+      "build_wall_seconds": 875
+    }
+  },
+  "regressions": [
+    "The extended TLS regression times out before the fix when an earlier accepted movement reply is withheld.",
+    "After the fix, teleport reaches the authority behind that frame without its reply.",
+    "Following inputs remain blocked until the teleport reply, then obsolete inputs retire locally despite withheld background reads."
+  ],
+  "contract": "Sequenced teleports follow earlier requests on the ordered connection without draining their replies. The post-send lifecycle barrier, exact control-context checks, monotonic sequences, freshness checks, and drain for nonsequenced lifecycle requests remain.",
+  "limitations": [
+    "Focused tests pass; a new persistent delayed 20/40 battle is still required.",
+    "This reproduces a queue stall, not an isolated cause of all observed battle expiries."
+  ]
+}
