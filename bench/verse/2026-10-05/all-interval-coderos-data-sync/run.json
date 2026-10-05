@@ -1,0 +1,37 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "host_revision": "194613eba2",
+  "client_revision": "a1a05de003",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "movement_send_steps": 6,
+  "wire_version": 26,
+  "timings": {
+    "frame_p95_ms": 16.087459,
+    "gpu_p95_ms": 10.440875,
+    "verified_snapshot_age_p95_ms": 135.082417,
+    "command_turnaround_p95_ms": 177.268916,
+    "movement_expiries": 736,
+    "native_control_epoch_resets": 11,
+    "storage_paused_seconds": 1.700079,
+    "storage_commit_max_ms": 212.43,
+    "journal_write_max_ms": 2.302,
+    "journal_sync_max_ms": 209.722,
+    "journal_sync_total_seconds": 22.642926,
+    "snapshot_compaction_max_ms": 93.385
+  },
+  "limits": [
+    "Shared host and disk conditions vary; no isolated causal comparison.",
+    "Stage counters exclude the initial synchronous commit; durations include scheduling.",
+    "Frame p95 meets the initial target in this sample, but network delay and control resets fail smooth battle acceptance.",
+    "No impaired-network, input-to-display, or soak acceptance."
+  ],
+  "validation": [
+    "All client and host exits zero.",
+    "Every headless worker observed 20 players and minimum 40 live hostiles.",
+    "12324 headless movement inputs.",
+    "44 selected Linux checks passed before building the host; syscall identity was traced."
+  ]
+}

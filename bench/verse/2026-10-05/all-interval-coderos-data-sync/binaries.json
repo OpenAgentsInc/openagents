@@ -1,0 +1,24 @@
+{
+  "compiled_revisions": {
+    "verse_remote": "a1a05de0033de601447afae6ed5bde47d0690f62",
+    "verse_load": "a1a05de0033de601447afae6ed5bde47d0690f62"
+  },
+  "wire_version": 26,
+  "sha256": {
+    "verse_remote": "05c5ed8fbec417fbc0a29efbca59ab575e1af566b4adc73558fa99a5585e99e5",
+    "verse_load": "130b53853e14aaec6a69f7c4d5a7fe68956dd798b4e365e509b78ff5325a901f"
+  },
+  "client_platform": "macOS arm64",
+  "client_features": [
+    "imported-desktop",
+    "remote-chamber"
+  ],
+  "movement_send_steps": 6,
+  "host": {
+    "revision": "194613eba24a92c1ab2fa0f5f582e39bd8d19c97",
+    "sha256": "8674bdde05b717b6409f6b8b8e96e9e16068c1d694aa9fcbc354ce869b544338",
+    "package": "verse-host",
+    "cargo_profile_dev_debug": 0,
+    "journal_sync": "Linux fdatasync"
+  }
+}
