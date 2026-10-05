@@ -1,0 +1,336 @@
+Three-second host CPU sample during crowded play; collapsed summaries only. Loaded-image inventory omitted.
+
+Total number in stack (recursive counted multiple, when >=5):
+        67       _RNvXs5_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceReadNtB5_4Read9parse_str  (in verse_host) + 40  [0x100c540b8]
+        66       _platform_memmove  (in libsystem_platform.dylib) + 0  [0x186a393c0]
+        54       _RINvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB6_9SliceRead15parse_str_byteseINvB6_6as_strBD_EEB8_  (in verse_host) + 88  [0x100c4f6e8]
+        49       _RNvXs_NtCs61F2TY4yojp_4zmij7privatedNtB4_6Sealed20write_to_zmij_buffer  (in verse_host) + 28  [0x100c6dfc8]
+        46       _xzm_free  (in libsystem_malloc.dylib) + 0  [0x18684d06c]
+        46       _xzm_xzone_malloc_tiny  (in libsystem_malloc.dylib) + 0  [0x186851ed4]
+        44       _RINvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB6_9SliceRead15parse_str_byteseINvB6_6as_strBD_EEB8_  (in verse_host) + 1280  [0x100c4fb90]
+        43       _RNvYINvNtCs6TNIXVaeDJm_10serde_json4read6as_strNtB5_9SliceReadEINtNtNtCsgtPOCBgevO_4core3ops8function6FnOnceTRBJ_RShEE9call_onceB7_  (in verse_host) + 40  [0x100c59b84]
+        40       _RINvNtCs6TNIXVaeDJm_10serde_json4read6as_strNtB2_9SliceReadEB4_  (in verse_host) + 60  [0x100c50b34]
+        40       _RNvNtNtCsgtPOCBgevO_4core3str8converts9from_utf8  (in verse_host) + 0  [0x100cb3150]
+        33       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceRead14skip_to_escape  (in verse_host) + 364  [0x100c52434]
+        30       _RNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPu13is_aligned_toCsbSwtvVX6JwZ_6memchr  (in verse_host) + 0  [0x100c66d98]
+        30       _RNvNvNtNtCsgtPOCBgevO_4core5slice3raw14from_raw_parts18precondition_checkCsbSwtvVX6JwZ_6memchr  (in verse_host) + 64  [0x100c68440]
+        29       _RINvCs61F2TY4yojp_4zmij5writedEB2_  (in verse_host) + 1024  [0x100c6a0f8]
+        29       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceRead14skip_to_escape  (in verse_host) + 0  [0x100c522c8]
+        29       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceRead14skip_to_escape  (in verse_host) + 440  [0x100c52480]
+        29       _RNvXs0_Cs61F2TY4yojp_4zmijdNtB5_11FloatTraits9to_digitsB5_  (in verse_host) + 28  [0x100c6dccc]
+        28       _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner22fallible_with_capacityNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 260  [0x100c42830]
+        28       _RNvXs3_NtNtCsgtPOCBgevO_4core4hash3sipINtB5_6HasherNtB5_11Sip13RoundsENtB7_6Hasher5writeCs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x1009b02b0]
+        26       <deduplicated_symbol>  (in libsystem_malloc.dylib) + 0  [0x18684c0d4]
+        26       _RNvMNtCsgtPOCBgevO_4core5sliceSh12chunks_exactCs6TNIXVaeDJm_10serde_json  (in verse_host) + 156  [0x100c5ee6c]
+        26       _RNvMNtCsgtPOCBgevO_4core5sliceSh18split_at_uncheckedCsbSwtvVX6JwZ_6memchr  (in verse_host) + 108  [0x100c66bf8]
+        25       _RNvXs1q_NtNtCsgtPOCBgevO_4core5slice4iterINtB6_11ChunksExacthENtNtNtNtBa_4iter6traits8iterator8Iterator4nextCs6TNIXVaeDJm_10serde_json  (in verse_host) + 152  [0x100c53578]
+        23       _RINvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB6_9SliceRead15parse_str_byteseINvB6_6as_strBD_EEB8_  (in verse_host) + 0  [0x100c4f690]
+        23       _RINvXs4_NtCs6TNIXVaeDJm_10serde_json6numberNtB6_6NumberNtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtB8_3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_host) + 336  [0x10091c330]
+        23       _RNvNvNtNtCsgtPOCBgevO_4core5slice3raw14from_raw_parts18precondition_checkCsbSwtvVX6JwZ_6memchr  (in verse_host) + 0  [0x100c68400]
+        22       _RNvMs_NtCs1D5hTPqbNzf_8indexmap5innerINtB4_4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE11insert_fullCs6QdLU3ngKge_11verse_world  (in verse_host) + 1716  [0x10085dfc4]
+        21       _RNvMNtCsgtPOCBgevO_4core5sliceSh18split_at_uncheckedCsbSwtvVX6JwZ_6memchr  (in verse_host) + 180  [0x100c66c40]
+        20       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeQINtNtB7_2de12DeserializerNtNtB7_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 424  [0x100774db8]
+        20       _RNvCs61F2TY4yojp_4zmij12to_digits_64B1_  (in verse_host) + 40  [0x100c6c460]
+        20       _RNvMs_NtCs1D5hTPqbNzf_8indexmap5innerINtB4_4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE11insert_fullCs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x10085d910]
+        20       _malloc_zone_realloc  (in libsystem_malloc.dylib) + 148  [0x18685c674]
+        20       _realloc  (in libsystem_malloc.dylib) + 452  [0x18685ce90]
+        19       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 1716  [0x100cd0510]
+        19       _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner14prepare_resizeNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 144  [0x100c42294]
+        19       _RINvYNtNtNtCsa9BKTri5B3M_3std4hash6random11RandomStateNtNtCsgtPOCBgevO_4core4hash11BuildHasher8hash_oneRNtNtCslJsSqIQKwiA_5alloc6string6StringECs6QdLU3ngKge_11verse_world  (in verse_host) + 80  [0x1009b01d4]
+        19       _RNvXNtCs61F2TY4yojp_4zmij7privatefNtB2_6Sealed20write_to_zmij_buffer  (in verse_host) + 28  [0x100c6dc84]
+        18       _RINvCs61F2TY4yojp_4zmij5writedEB2_  (in verse_host) + 276  [0x100c69e0c]
+        18       _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner17new_uninitializedNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 212  [0x100c4248c]
+        18       _RNvMNtCsgtPOCBgevO_4core5sliceSh18split_at_uncheckedCsbSwtvVX6JwZ_6memchr  (in verse_host) + 0  [0x100c66b8c]
+        18       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner14num_ctrl_bytesCs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c44bcc]
+        18       _RNvXs1q_NtNtCsgtPOCBgevO_4core5slice4iterINtB6_11ChunksExacthENtNtNtNtBa_4iter6traits8iterator8Iterator4nextCs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c534e0]
+        17       _RINvNtCs6TNIXVaeDJm_10serde_json3ser18format_escaped_strQINtNtCslJsSqIQKwiA_5alloc3vec3VechENtB2_16CompactFormatterECs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x10070e998]
+        17       _RNvMNtCs6TNIXVaeDJm_10serde_json3mapINtB2_3MapNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtB4_5value5ValueE13with_capacityB4_  (in verse_host) + 32  [0x100c4c600]
+        17       _RNvMs0_NtCs1D5hTPqbNzf_8indexmap3mapINtB5_8IndexMapNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE13with_capacityB1t_  (in verse_host) + 56  [0x100c51f8c]
+        17       _RNvMs1_NtCs1D5hTPqbNzf_8indexmap3mapINtB5_8IndexMapNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE24with_capacity_and_hasherB1t_  (in verse_host) + 72  [0x100c520b8]
+        17       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner4ctrlCs6TNIXVaeDJm_10serde_json  (in verse_host) + 36  [0x100c456dc]
+        17       _RNvXs_NtNtCs6TNIXVaeDJm_10serde_json5value3serNtB4_10SerializerNtNtCs95MRL9ERuTW_10serde_core3ser10Serializer13serialize_map  (in verse_host) + 48  [0x100c4a940]
+        17       _RNvXs_NtNtCs6TNIXVaeDJm_10serde_json5value3serNtB4_10SerializerNtNtCs95MRL9ERuTW_10serde_core3ser10Serializer16serialize_struct  (in verse_host) + 88  [0x100c4aa70]
+        17       _malloc_zone_malloc  (in libsystem_malloc.dylib) + 0  [0x18685c038]
+        16       _RINvCs61F2TY4yojp_4zmij5writedEB2_  (in verse_host) + 0  [0x100c69cf8]
+        16       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeQINtNtB7_2de12DeserializerNtNtB7_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x100774c10]
+        16       _RNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPu13is_aligned_toCs61F2TY4yojp_4zmij  (in verse_host) + 0  [0x100c6ce94]
+        15       <deduplicated_symbol>  (in verse_host) + 0  [0x100bdebb8]
+        15       _RNvMNtCscU38ZATHvsJ_9hashbrown5tableINtB2_9HashTablejE13with_capacityCs6TNIXVaeDJm_10serde_json  (in verse_host) + 28  [0x100c5ecb8]
+        15       _RNvMs5_NtCscU38ZATHvsJ_9hashbrown3rawINtB5_8RawTablejE13with_capacityCs6TNIXVaeDJm_10serde_json  (in verse_host) + 20  [0x100c43f5c]
+        15       _RNvMs_NtCs1D5hTPqbNzf_8indexmap5innerINtB4_4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE13with_capacityB1q_  (in verse_host) + 32  [0x100c447b8]
+        15       _xzm_xzone_malloc  (in libsystem_malloc.dylib) + 0  [0x18684c8c0]
+        15       mach_absolute_time  (in libsystem_kernel.dylib) + 0  [0x1869ec0a0]
+        14       _RINvCs61F2TY4yojp_4zmij5writedEB2_  (in verse_host) + 1192  [0x100c6a1a0]
+        14       _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner13with_capacityNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 52  [0x100c421d4]
+        14       _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner17new_uninitializedNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 152  [0x100c42450]
+        14       _RINvNtCsgtPOCBgevO_4core3ptr9drop_glueINtNtCs1D5hTPqbNzf_8indexmap5inner4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueEECs6QdLU3ngKge_11verse_world  (in verse_host) + 160  [0x1009524c8]
+        14       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 1280  [0x1008dcf98]
+        14       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json2deINtB5_12DeserializerNtNtB7_4read9SliceReadE13parse_integerCs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x100843968]
+        14       _RNvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB5_8RawTablejE16with_capacity_inCs6TNIXVaeDJm_10serde_json  (in verse_host) + 48  [0x100c4401c]
+        13       _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner22fallible_with_capacityNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 380  [0x100c428a8]
+        13       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 1160  [0x1008dcf20]
+        13       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 1416  [0x1008dd020]
+        13       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 60  [0x1008dcad4]
+        13       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 856  [0x1008dcdf0]
+        13       _RINvYNtNtNtCsa9BKTri5B3M_3std4hash6random11RandomStateNtNtCsgtPOCBgevO_4core4hash11BuildHasher8hash_oneRNtNtCslJsSqIQKwiA_5alloc6string6StringECs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x1009b0184]
+        13       _RNvNtCsG1osKCWFNu_7physics7queries12segment_pair  (in verse_host) + 924  [0x100bbc140]
+        12       _RINvNtNtCscU38ZATHvsJ_9hashbrown5alloc5inner8do_allocNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 144  [0x100c42f00]
+        12       _RINvNvXs9_NtCs6TNIXVaeDJm_10serde_json2deINtB8_9MapAccesspENtNtCs95MRL9ERuTW_10serde_core2de9MapAccess13next_key_seed12has_next_keyNtNtBa_4read9SliceReadECs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x100773fa4]
+        12       _RINvXs4_NtNtCs6TNIXVaeDJm_10serde_json5value3serNtB6_12SerializeMapNtNtCs95MRL9ERuTW_10serde_core3ser12SerializeMap13serialize_keyeECs6QdLU3ngKge_11verse_world  (in verse_host) + 92  [0x1006b693c]
+        12       _RINvXs6_NtNtCs95MRL9ERuTW_10serde_core2de5implsNtNtCslJsSqIQKwiA_5alloc6string6StringNtB8_11Deserialize11deserializeINtNtCs6TNIXVaeDJm_10serde_json2de6MapKeyNtNtB1V_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 68  [0x10089aab0]
+        12       _RINvXs9_NtCs6TNIXVaeDJm_10serde_json2deINtB6_9MapAccessNtNtB8_4read9SliceReadENtNtCs95MRL9ERuTW_10serde_core2de9MapAccess13next_key_seedNtNtNtB8_5value2de13KeyClassifierECs6QdLU3ngKge_11verse_world  (in verse_host) + 120  [0x1008321e0]
+        12       _RNvCs61F2TY4yojp_4zmij12to_digits_64B1_  (in verse_host) + 216  [0x100c6c510]
+        12       _RNvMNtCsgtPOCBgevO_4core5sliceSh12chunks_exactCs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c5edd0]
+        12       _RNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPu13is_aligned_toCslDXu29chPst_8foldhash  (in verse_host) + 0  [0x100c717ec]
+        12       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceRead14skip_to_escape  (in verse_host) + 400  [0x100c52458]
+        11       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 0  [0x100ccfe5c]
+        11       _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner17new_uninitializedNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c423b8]
+        11       _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner22fallible_with_capacityNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 384  [0x100c428ac]
+        11       _RINvNtCsgtPOCBgevO_4core3ptr9drop_glueINtCs1D5hTPqbNzf_8indexmap6BucketNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueEECs6QdLU3ngKge_11verse_world  (in verse_host) + 100  [0x100951cd4]
+        11       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeQINtNtB7_2de12DeserializerNtNtB7_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 1216  [0x1007750d0]
+        11       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value3serNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtB7_3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_host) + 696  [0x10070f040]
+        11       _RINvYQINtNtCs6TNIXVaeDJm_10serde_json3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEENtNtCs95MRL9ERuTW_10serde_core3ser10Serializer11collect_seqRIBR_NtNtB9_5value5ValueEECs6QdLU3ngKge_11verse_world  (in verse_host) + 204  [0x100725184]
+        11       _RNvCs61F2TY4yojp_4zmij20to_unshuffled_digitsB1_  (in verse_host) + 448  [0x100c6cb28]
+        11       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceRead14skip_to_escape  (in verse_host) + 500  [0x100c524bc]
+        11       _RNvMs4_NtCslJsSqIQKwiA_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs6QdLU3ngKge_11verse_world  (in verse_host) + 168  [0x100cc1df8]
+        11       _RNvMs7_NtCsG1osKCWFNu_7physics7queriesNtB5_5Scene5sweep  (in verse_host) + 0  [0x100bb8c00]
+        11       _RNvMs_NtCs1D5hTPqbNzf_8indexmap5innerINtB4_4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE11insert_fullCs6QdLU3ngKge_11verse_world  (in verse_host) + 1220  [0x10085ddd4]
+        11       _RNvNtNtNtNtCsgtPOCBgevO_4core9core_arch7aarch644neon9generated7vld1_u8Cs6TNIXVaeDJm_10serde_json  (in verse_host) + 40  [0x100c58d0c]
+        11       _RNvYSINtNtNtCsgtPOCBgevO_4core3mem12maybe_uninit11MaybeUninitNtNtNtCscU38ZATHvsJ_9hashbrown7control3tag3TagENtBZ_11TagSliceExt10fill_emptyCs6TNIXVaeDJm_10serde_json  (in verse_host) + 32  [0x100c59f18]
+        11       _xzm_xzone_malloc_freelist_outlined  (in libsystem_malloc.dylib) + 324  [0x18685377c]
+        11       xzm_realloc  (in libsystem_malloc.dylib) + 780  [0x18684ce00]
+        10       _RINvCs61F2TY4yojp_4zmij10to_decimaldyEB2_  (in verse_host) + 1360  [0x100c68cf8]
+        10       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 1960  [0x100cd0604]
+        10       _RINvNtCsgtPOCBgevO_4core3ptr14read_unalignedNtNtNtNtB4_9core_arch10arm_shared4neon9uint8x8_tECscU38ZATHvsJ_9hashbrown  (in verse_host) + 92  [0x100c70ff8]
+        10       _RINvNtCsgtPOCBgevO_4core3ptr15write_unalignedNtNtNtNtB4_9core_arch10arm_shared4neon10uint16x8_tECs61F2TY4yojp_4zmij  (in verse_host) + 88  [0x100c6bce0]
+        10       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeQINtNtB7_2de12DeserializerNtNtB7_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 824  [0x100774f48]
+        10       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 1360  [0x1008dcfe8]
+        10       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 708  [0x1008dcd5c]
+        10       _RNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPh11offset_fromCsbSwtvVX6JwZ_6memchr  (in verse_host) + 0  [0x100c66d50]
+        10       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceRead14skip_to_escape  (in verse_host) + 1096  [0x100c52710]
+        10       _RNvMs4_NtCslJsSqIQKwiA_5alloc7raw_vecNtB5_11RawVecInner15try_allocate_inCsjevKHkJAzVy_5gimli  (in verse_host) + 156  [0x100ca63c0]
+        10       _RNvNtCsG1osKCWFNu_7physics7queries12segment_pair  (in verse_host) + 0  [0x100bbbda4]
+        10       _RNvNtCsG1osKCWFNu_7physics7queries12segment_pair  (in verse_host) + 116  [0x100bbbe18]
+        10       _RNvNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPp6offset18precondition_checkCs61F2TY4yojp_4zmij  (in verse_host) + 0  [0x100c6d738]
+        10       _platform_memset  (in libsystem_platform.dylib) + 0  [0x186a390f0]
+        10       _xzm_free  (in libsystem_malloc.dylib) + 1048  [0x18684d484]
+        9       _RINvCs61F2TY4yojp_4zmij5writefEB2_  (in verse_host) + 0  [0x100c6ab38]
+        9       _RINvMs2_NtCsG1osKCWFNu_7physics7queriesNtB6_4Mesh5visitNCNvMs7_B6_NtB6_5Scene5sweeps_0EB8_  (in verse_host) + 668  [0x100ba08bc]
+        9       _RINvXs6_NtNtCs95MRL9ERuTW_10serde_core2de5implsNtNtCslJsSqIQKwiA_5alloc6string6StringNtB8_11Deserialize11deserializeINtNtCs6TNIXVaeDJm_10serde_json2de6MapKeyNtNtB1V_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 140  [0x10089aaf8]
+        9       _RINvYNtNtNtCsa9BKTri5B3M_3std4hash6random11RandomStateNtNtCsgtPOCBgevO_4core4hash11BuildHasher8hash_oneRNtNtCslJsSqIQKwiA_5alloc6string6StringECs6QdLU3ngKge_11verse_world  (in verse_host) + 104  [0x1009b01ec]
+        9       _RINvYQINtNtCs6TNIXVaeDJm_10serde_json3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEENtNtCs95MRL9ERuTW_10serde_core3ser10Serializer11collect_seqRIBR_NtNtB9_5value5ValueEECs6QdLU3ngKge_11verse_world  (in verse_host) + 108  [0x100725124]
+        9       _RNvMNtCsgtPOCBgevO_4core5sliceSh18split_at_uncheckedCsbSwtvVX6JwZ_6memchr  (in verse_host) + 72  [0x100c66bd4]
+        9       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json2deINtB5_12DeserializerNtNtB7_4read9SliceReadE12parse_numberCs6QdLU3ngKge_11verse_world  (in verse_host) + 468  [0x100843940]
+        9       _RNvMs4_NtCslJsSqIQKwiA_5alloc7raw_vecNtB5_11RawVecInner16with_capacity_inCs6TNIXVaeDJm_10serde_json  (in verse_host) + 68  [0x100c63488]
+        9       _RNvMs7_NtCsG1osKCWFNu_7physics7queriesNtB5_5Scene5sweep  (in verse_host) + 3108  [0x100bb9824]
+        9       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner4ctrlCs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c456b8]
+        9       _RNvMsh_NtNtCsgtPOCBgevO_4core9core_arch4simdINtB5_4SimdaKj10_E3newCs61F2TY4yojp_4zmij  (in verse_host) + 0  [0x100c6d2a8]
+        9       _RNvNtCslJsSqIQKwiA_5alloc5alloc5allocCs6TNIXVaeDJm_10serde_json  (in verse_host) + 44  [0x100c58c78]
+        9       _RNvNtNtNtNtCsgtPOCBgevO_4core9core_arch7aarch644neon9generated9vcgtzq_s8Cs61F2TY4yojp_4zmij  (in verse_host) + 96  [0x100c6d710]
+        9       _RNvNvMNtCsgtPOCBgevO_4core5sliceSp18split_at_unchecked18precondition_checkCsbSwtvVX6JwZ_6memchr  (in verse_host) + 0  [0x100c68060]
+        9       _RNvXsJ_NtCsgtPOCBgevO_4core6optionINtB5_6OptionjENtNtNtB7_3ops9try_trait3Try6branchCsbSwtvVX6JwZ_6memchr  (in verse_host) + 0  [0x100c68648]
+        8       DYLD-STUB$$memcpy  (in verse_host) + 0  [0x100cd6d54]
+        8       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 2836  [0x100cd0970]
+        8       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value3serNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtB7_3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_host) + 528  [0x10070ef98]
+        8       _RINvXsc_NtNtNtCs3hpU3YFzeVT_4glam8features10impl_serde3f64NtNtNtBc_3f645dvec35DVec3NtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtCs6TNIXVaeDJm_10serde_json3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_host) + 440  [0x100889abc]
+        8       _RINvYINtNtCs6TNIXVaeDJm_10serde_json3ser8CompoundQINtNtCslJsSqIQKwiA_5alloc3vec3VechENtB6_16CompactFormatterENtNtCs95MRL9ERuTW_10serde_core3ser12SerializeMap15serialize_entryefECs6QdLU3ngKge_11verse_world  (in verse_host) + 324  [0x1007244dc]
+        8       _RNvCs61F2TY4yojp_4zmij10to_bcd_4x4  (in verse_host) + 0  [0x100c6c0a8]
+        8       _RNvMs1_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_11TableLayout20calculate_layout_forCs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c43b84]
+        8       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceRead14skip_to_escape  (in verse_host) + 232  [0x100c523b0]
+        8       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner10ctrl_slice  (in verse_host) + 60  [0x100c7113c]
+        8       _RNvNtCsG1osKCWFNu_7physics7queries14sweep_triangle  (in verse_host) + 640  [0x100bbcc80]
+        8       _RNvXs4_NtCslJsSqIQKwiA_5alloc6stringNtB5_6StringNtNtCsgtPOCBgevO_4core5clone5Clone5clone  (in verse_host) + 48  [0x100cacf0c]
+        8       _RNvXs5_NtNtCsgtPOCBgevO_4core5slice5indexINtNtNtB9_3ops5range9RangeFromjEINtB5_10SliceIndexShE5indexCsbSwtvVX6JwZ_6memchr  (in verse_host) + 0  [0x100c68590]
+        7       <deduplicated_symbol>  (in verse_host) + 336  [0x100bded08]
+        7       _RINvMs2_NtCsG1osKCWFNu_7physics7queriesNtB6_4Mesh5visitNCNvMs7_B6_NtB6_5Scene5sweeps_0EB8_  (in verse_host) + 1452  [0x100ba0bcc]
+        7       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 1732  [0x100cd0520]
+        7       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 1980  [0x100cd0618]
+        7       _RINvMs8_NtNtCsgtPOCBgevO_4core3ops5rangeINtB6_14RangeInclusivelE8containslECs61F2TY4yojp_4zmij  (in verse_host) + 32  [0x100c6bbe0]
+        7       _RINvNtCsgtPOCBgevO_4core3ptr9drop_glueINtNtCscU38ZATHvsJ_9hashbrown10scopeguard10ScopeGuardNtNtBF_3raw13RawTableInnerNCINvMsa_B1t_B1r_14prepare_resizeNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalE0EECs6TNIXVaeDJm_10serde_json  (in verse_host) + 24  [0x100c550b0]
+        7       _RINvNtNtCsgtPOCBgevO_4core5slice3raw18from_raw_parts_mutINtNtNtB6_3mem12maybe_uninit11MaybeUninitNtNtNtCscU38ZATHvsJ_9hashbrown7control3tag3TagEEB1D_  (in verse_host) + 64  [0x100c71078]
+        7       _RINvNvXs7_NtCs6TNIXVaeDJm_10serde_json2deINtB8_9SeqAccesspENtNtCs95MRL9ERuTW_10serde_core2de9SeqAccess17next_element_seed16has_next_elementNtNtBa_4read9SliceReadECs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x100773ca4]
+        7       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeQINtNtB7_2de12DeserializerNtNtB7_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 628  [0x100774e84]
+        7       _RINvXsc_NtNtNtCs3hpU3YFzeVT_4glam8features10impl_serde3f64NtNtNtBc_3f645dvec35DVec3NtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtCs6TNIXVaeDJm_10serde_json3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_host) + 200  [0x1008899cc]
+        7       _RINvYQINtNtCs6TNIXVaeDJm_10serde_json2de12DeserializerNtNtB9_4read9SliceReadENtNtCs95MRL9ERuTW_10serde_core2de12Deserializer24___deserialize_content_v1NtNtNtNtCseM0go9keaNd_5serde7private2de7content14ContentVisitorECse80Tm2cucel_10verse_host  (in verse_host) + 436  [0x100630c9c]  mod.rs:1264
+        7       _RNvCs61F2TY4yojp_4zmij7umul128  (in verse_host) + 0  [0x100c6cde8]
+        7       _RNvMs3_NtCslJsSqIQKwiA_5alloc7raw_vecINtB5_6RawVecNtNtCsG1osKCWFNu_7physics8walkable4CellE8grow_oneBQ_  (in verse_host) + 60  [0x100ccace4]
+        7       _RNvMs4_NtCslJsSqIQKwiA_5alloc7raw_vecNtB5_11RawVecInner11finish_growCsG1osKCWFNu_7physics  (in verse_host) + 168  [0x100ccb028]
+        7       _RNvMs4_NtCslJsSqIQKwiA_5alloc7raw_vecNtB5_11RawVecInner14grow_amortizedCsjevKHkJAzVy_5gimli  (in verse_host) + 108  [0x100ca62f0]
+        7       _RNvNtCsG1osKCWFNu_7physics7queries24closest_segment_triangle  (in verse_host) + 688  [0x100bbd1c0]
+        7       _RNvNtCsG1osKCWFNu_7physics9character6ground  (in verse_host) + 144  [0x100bb43bc]
+        7       _RNvNvNtCsgtPOCBgevO_4core3ptr19copy_nonoverlapping18precondition_checkCscU38ZATHvsJ_9hashbrown  (in verse_host) + 0  [0x100c71348]
+        7       _RNvXs1_NtCscU38ZATHvsJ_9hashbrown10scopeguardINtB5_10ScopeGuardNtNtB7_3raw13RawTableInnerNCINvMsa_B11_BZ_14prepare_resizeNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalE0ENtNtNtCsgtPOCBgevO_4core3ops4drop4Drop4dropCs6TNIXVaeDJm_10serde_json  (in verse_host) + 32  [0x100c4e838]
+        7       _RNvXse_NtCs1D5hTPqbNzf_8indexmap3mapINtB5_8IndexMapNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueENtNtCsgtPOCBgevO_4core3cmp9PartialEq2eqCs6QdLU3ngKge_11verse_world  (in verse_host) + 124  [0x1006f7ebc]
+        7       _RNvXse_NtCs1D5hTPqbNzf_8indexmap3mapINtB5_8IndexMapNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueENtNtCsgtPOCBgevO_4core3cmp9PartialEq2eqCs6QdLU3ngKge_11verse_world  (in verse_host) + 200  [0x1006f7f08]
+        7       _free  (in libsystem_malloc.dylib) + 0  [0x18685cc4c]
+        7       xzm_realloc  (in libsystem_malloc.dylib) + 876  [0x18684ce60]
+        6       _RINvCs61F2TY4yojp_4zmij10to_decimaldyEB2_  (in verse_host) + 0  [0x100c687a8]
+        6       _RINvCs61F2TY4yojp_4zmij5writedEB2_  (in verse_host) + 52  [0x100c69d2c]
+        6       _RINvCs61F2TY4yojp_4zmij5writefEB2_  (in verse_host) + 1040  [0x100c6af48]
+        6       _RINvMNtCsgtPOCBgevO_4core5sliceSINtNtNtB5_3mem12maybe_uninit11MaybeUninithE13get_uncheckedINtNtNtB5_3ops5range9RangeFromjEECs2sw7CroeKnC_4itoa  (in verse_host) + 56  [0x100c6e464]
+        6       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 2880  [0x100cd099c]
+        6       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 3028  [0x100cd0a30]
+        6       _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner12free_bucketsNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 56  [0x100c42128]
+        6       _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner22fallible_with_capacityNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c4272c]
+        6       _RINvNtCsgtPOCBgevO_4core3ptr15write_unalignedNtNtNtNtB4_9core_arch10arm_shared4neon10uint16x8_tECs61F2TY4yojp_4zmij  (in verse_host) + 0  [0x100c6bc88]
+        6       _RINvNtCsgtPOCBgevO_4core3ptr9drop_glueINtCs1D5hTPqbNzf_8indexmap6BucketNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueEECs6QdLU3ngKge_11verse_world  (in verse_host) + 172  [0x100951d1c]
+        6       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeQINtNtB7_2de12DeserializerNtNtB7_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 788  [0x100774f24]
+        6       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x1008dca98]
+        6       _RINvXs9_NtCs6TNIXVaeDJm_10serde_json2deINtB6_9MapAccessNtNtB8_4read9SliceReadENtNtCs95MRL9ERuTW_10serde_core2de9MapAccess13next_key_seedNtNtNtB8_5value2de13KeyClassifierECs6QdLU3ngKge_11verse_world  (in verse_host) + 240  [0x100832258]
+        6       _RINvXsj_NtNtNtCseM0go9keaNd_5serde7private2de7contentNtB6_14ContentVisitorNtNtCs95MRL9ERuTW_10serde_core2de7Visitor9visit_mapINtNtCs6TNIXVaeDJm_10serde_json2de9MapAccessNtNtB24_4read9SliceReadEECse80Tm2cucel_10verse_host  (in verse_host) + 336  [0x100649e18]  de.rs:497
+        6       _RNCINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB8_13RawTableInner14prepare_resizeNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalE0Cs6TNIXVaeDJm_10serde_json  (in verse_host) + 76  [0x100c43570]
+        6       _RNvCs2sw7CroeKnC_4itoa19slice_buffer_to_str  (in verse_host) + 40  [0x100c6e4dc]
+        6       _RNvCs9wFQrvczXsK_7___rustc35___rust_no_alloc_shim_is_unstable_v2  (in verse_host) + 0  [0x1006977b8]
+        6       _RNvMNtNtNtCscU38ZATHvsJ_9hashbrown7control5group4neonNtB2_5Group12load_alignedCs6TNIXVaeDJm_10serde_json  (in verse_host) + 148  [0x100c3e968]
+        6       _RNvMNtNtNtCscU38ZATHvsJ_9hashbrown7control5group4neonNtB2_5Group4loadCs6TNIXVaeDJm_10serde_json  (in verse_host) + 40  [0x100c3eb48]
+        6       _RNvMs2_NtCs6QdLU3ngKge_11verse_world5rulesNtB5_10Simulation12snapshot_for  (in verse_host) + 184  [0x10087ccd8]
+        6       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json2deINtB5_12DeserializerNtNtB7_4read9SliceReadE12parse_numberCs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x10084376c]
+        6       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json2deINtB5_12DeserializerNtNtB7_4read9SliceReadE14f64_from_partsCs6QdLU3ngKge_11verse_world  (in verse_host) + 72  [0x100843b2c]
+        6       _RNvMs4_NtCslJsSqIQKwiA_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs6QdLU3ngKge_11verse_world  (in verse_host) + 228  [0x100cc1e34]
+        6       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner10bucket_ptrCs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c4498c]
+        6       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner11num_bucketsCs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c44acc]
+        6       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner16fix_insert_indexCs6TNIXVaeDJm_10serde_json  (in verse_host) + 36  [0x100c44d64]
+        6       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner17find_insert_indexCs6TNIXVaeDJm_10serde_json  (in verse_host) + 208  [0x100c44f68]
+        6       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner17find_insert_indexCs6TNIXVaeDJm_10serde_json  (in verse_host) + 76  [0x100c44ee4]
+        6       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner20prepare_insert_indexCs6TNIXVaeDJm_10serde_json  (in verse_host) + 36  [0x100c45014]
+        6       _RNvNtCsG1osKCWFNu_7physics7queries24closest_segment_triangle  (in verse_host) + 600  [0x100bbd168]
+        6       _RNvNtCsG1osKCWFNu_7physics7queries24closest_segment_triangle  (in verse_host) + 820  [0x100bbd244]
+        6       _RNvXNtNtCslJsSqIQKwiA_5alloc3vec14spec_from_iterINtB4_3VecNtNtCs6QdLU3ngKge_11verse_world5rules5ActorEINtB2_12SpecFromIterBU_INtNtNtNtCsgtPOCBgevO_4core4iter8adapters6cloned6ClonedINtNtNtNtB6_11collections5btree3map6ValuesmBU_EEE9from_iterBY_  (in verse_host) + 152  [0x100752348]
+        6       _RNvXs4_NtCsgtPOCBgevO_4core7convertRShINtB5_7TryIntoAhj8_E8try_intoCs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c53b00]
+        6       _RNvXs4_NtCsgtPOCBgevO_4core7convertRShINtB5_7TryIntoAhj8_E8try_intoCs6TNIXVaeDJm_10serde_json  (in verse_host) + 28  [0x100c53b1c]
+        6       _RNvXs5_NtCsgtPOCBgevO_4core5arrayAhj8_INtNtB7_7convert7TryFromRShE8try_fromCs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c65a10]
+        6       _RNvXs_Cs61F2TY4yojp_4zmijfNtB4_11FloatTraits9to_digitsB4_  (in verse_host) + 28  [0x100c6dfa0]
+        6       _RNvXse_NtCs1D5hTPqbNzf_8indexmap3mapINtB5_8IndexMapNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueENtNtCsgtPOCBgevO_4core3cmp9PartialEq2eqCs6QdLU3ngKge_11verse_world  (in verse_host) + 384  [0x1006f7fc0]
+        6       _RNvXsu_Cs2sw7CroeKnC_4itoayNtB5_8Unsigned3fmt  (in verse_host) + 0  [0x100c7072c]
+        6       _xzm_free  (in libsystem_malloc.dylib) + 352  [0x18684d1cc]
+        5       <deduplicated_symbol>  (in verse_host) + 0  [0x100bd1fdc]
+        5       <deduplicated_symbol>  (in verse_host) + 224  [0x100724918]
+        5       DYLD-STUB$$free  (in verse_host) + 0  [0x100cd6cac]
+        5       _RINvCs61F2TY4yojp_4zmij5writedEB2_  (in verse_host) + 1568  [0x100c6a318]
+        5       _RINvCs61F2TY4yojp_4zmij5writedEB2_  (in verse_host) + 40  [0x100c69d20]
+        5       _RINvMs2_NtCsG1osKCWFNu_7physics7queriesNtB6_4Mesh5visitNCNvMs7_B6_NtB6_5Scene5sweeps_0EB8_  (in verse_host) + 84  [0x100ba0674]
+        5       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 1848  [0x100cd0594]
+        5       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 1864  [0x100cd05a4]
+        5       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 2648  [0x100cd08b4]
+        5       _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host) + 2916  [0x100cd09c0]
+        5       _RINvNtCs6TNIXVaeDJm_10serde_json4read6as_strNtB2_9SliceReadEB4_  (in verse_host) + 0  [0x100c50af8]
+        5       _RINvNtCsgtPOCBgevO_4core3ptr9drop_glueNtNtCs6TNIXVaeDJm_10serde_json5value5ValueECs6QdLU3ngKge_11verse_world  (in verse_host) + 396  [0x10096569c]
+        5       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value3serNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtB7_3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_host) + 0  [0x10070ed88]
+        5       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 1120  [0x1008dcef8]
+        5       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host) + 784  [0x1008dcda8]
+        5       _RINvXs4_NtCs6TNIXVaeDJm_10serde_json6numberNtB6_6NumberNtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtB8_3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_host) + 104  [0x10091c248]
+        5       _RINvXs4_NtCs6TNIXVaeDJm_10serde_json6numberNtB6_6NumberNtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtB8_3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_host) + 416  [0x10091c380]
+        5       _RINvXs_NtNtNtCsgtPOCBgevO_4core4iter8adapters6clonedINtB5_6ClonedINtNtNtNtCslJsSqIQKwiA_5alloc11collections5btree3map6ValuesmNtNtCs6QdLU3ngKge_11verse_world5rules5ActorEENtNtNtB9_6traits8iterator8Iterator4folduNCINvNvB2I_8for_each4callB1Z_NCINvMsj_NtB1a_3vecINtB3Y_3VecB1Z_E14extend_trustedBO_E0E0EB23_  (in verse_host) + 120  [0x100709864]
+        5       _RINvXsc_NtNtNtCs3hpU3YFzeVT_4glam8features10impl_serde3f64NtNtNtBc_3f645dvec35DVec3NtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtCs6TNIXVaeDJm_10serde_json3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_host) + 680  [0x100889bac]
+        5       _RINvYINtNtNtCsgtPOCBgevO_4core3ops5range14RangeInclusivelEINtB6_11RangeBoundslE8containslECs61F2TY4yojp_4zmij  (in verse_host) + 0  [0x100c6befc]
+        5       _RINvYQINtNtCs6TNIXVaeDJm_10serde_json2de12DeserializerNtNtB9_4read9SliceReadENtNtCs95MRL9ERuTW_10serde_core2de12Deserializer24___deserialize_content_v1NtNtNtNtCseM0go9keaNd_5serde7private2de7content14ContentVisitorECse80Tm2cucel_10verse_host  (in verse_host) + 628  [0x100630d5c]  mod.rs:1264
+        5       _RNvCs61F2TY4yojp_4zmij10to_bcd_4x4  (in verse_host) + 272  [0x100c6c1b8]
+        5       _RNvMNtCslJsSqIQKwiA_5alloc3vecINtB2_3VecINtCs1D5hTPqbNzf_8indexmap6BucketNtNtB4_6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueEE13with_capacityB1y_  (in verse_host) + 40  [0x100c61e40]
+        5       _RNvMs1_Cs61F2TY4yojp_4zmijNtB5_21Pow10SignificandTable13get_uncheckedB5_  (in verse_host) + 148  [0x100c6cfb0]
+        5       _RNvMs1_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_11TableLayout20calculate_layout_forCs6TNIXVaeDJm_10serde_json  (in verse_host) + 544  [0x100c43da4]
+        5       _RNvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceRead14skip_to_escape  (in verse_host) + 128  [0x100c52348]
+        5       _RNvMs_NtCs1D5hTPqbNzf_8indexmap5innerINtB4_4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE13with_capacityB1q_  (in verse_host) + 44  [0x100c447c4]
+        5       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner14is_bucket_fullCs6TNIXVaeDJm_10serde_json  (in verse_host) + 92  [0x100c44bb8]
+        5       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner15allocation_infoCs6TNIXVaeDJm_10serde_json  (in verse_host) + 84  [0x100c44c8c]
+        5       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner17find_insert_indexCs6TNIXVaeDJm_10serde_json  (in verse_host) + 92  [0x100c44ef4]
+        5       _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner26find_insert_index_in_groupCs6TNIXVaeDJm_10serde_json  (in verse_host) + 52  [0x100c453a4]
+        5       _RNvNtCs6TNIXVaeDJm_10serde_json4read9is_escape  (in verse_host) + 0  [0x100c53174]
+        5       _RNvNtCsG1osKCWFNu_7physics7queries24closest_segment_triangle  (in verse_host) + 536  [0x100bbd128]
+        5       _RNvNtCsG1osKCWFNu_7physics7queries24closest_segment_triangle  (in verse_host) + 544  [0x100bbd130]
+        5       _RNvNtNtCs6QdLU3ngKge_11verse_world7service11replication4diff  (in verse_host) + 292  [0x1006fd0f4]
+        5       _RNvNtNtNtNtCsgtPOCBgevO_4core9core_arch10arm_shared4neon9generated11vmlaq_n_s16Cs61F2TY4yojp_4zmij  (in verse_host) + 0  [0x100c6d428]
+        5       _RNvNvNtCsgtPOCBgevO_4core3ptr19copy_nonoverlapping18precondition_checkCs61F2TY4yojp_4zmij  (in verse_host) + 0  [0x100c6d898]
+        5       _RNvNvNtCsgtPOCBgevO_4core3ptr19copy_nonoverlapping18precondition_checkCs6TNIXVaeDJm_10serde_json  (in verse_host) + 280  [0x100c460ec]
+        5       _RNvNvNtCsgtPOCBgevO_4core3ptr19copy_nonoverlapping18precondition_checkCscU38ZATHvsJ_9hashbrown  (in verse_host) + 124  [0x100c713c4]
+        5       _RNvNvNtCsgtPOCBgevO_4core9ub_checks23maybe_is_nonoverlapping7runtimeCs6TNIXVaeDJm_10serde_json  (in verse_host) + 0  [0x100c46590]
+        5       _RNvXs0_NtNtCscU38ZATHvsJ_9hashbrown7control3tagSINtNtNtCsgtPOCBgevO_4core3mem12maybe_uninit11MaybeUninitNtB5_3TagENtB5_11TagSliceExt8fill_tagCs6TNIXVaeDJm_10serde_json  (in verse_host) + 108  [0x100c592e4]
+        5       _RNvXs0_NtNtCscU38ZATHvsJ_9hashbrown7control3tagSINtNtNtCsgtPOCBgevO_4core3mem12maybe_uninit11MaybeUninitNtB5_3TagENtB5_11TagSliceExt8fill_tagCs6TNIXVaeDJm_10serde_json  (in verse_host) + 124  [0x100c592f4]
+        5       _RNvXse_NtCs1D5hTPqbNzf_8indexmap3mapINtB5_8IndexMapNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueENtNtCsgtPOCBgevO_4core3cmp9PartialEq2eqCs6QdLU3ngKge_11verse_world  (in verse_host) + 224  [0x1006f7f20]
+        5       _RNvXsf3_NtNtCsgtPOCBgevO_4core3ops3bityINtB6_3ShrlE3shrCs61F2TY4yojp_4zmij  (in verse_host) + 0  [0x100c6e024]
+        5       xzm_realloc  (in libsystem_malloc.dylib) + 0  [0x18684caf4]
+
+Sort by top of stack, same collapsed (when >= 5):
+        kevent  (in libsystem_kernel.dylib)        168
+        _RNvNtNtCsgtPOCBgevO_4core3str8converts9from_utf8  (in verse_host)        89
+        _platform_memmove  (in libsystem_platform.dylib)        72
+        _xzm_free  (in libsystem_malloc.dylib)        57
+        _RNvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceRead14skip_to_escape  (in verse_host)        56
+        _xzm_xzone_malloc_tiny  (in libsystem_malloc.dylib)        50
+        _RNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPu13is_aligned_toCsbSwtvVX6JwZ_6memchr  (in verse_host)        36
+        _RNvNtCs8X0dR9AbciR_4sha26sha25611compress256  (in verse_host)        34
+        _RNvXs3_NtNtCsgtPOCBgevO_4core4hash3sipINtB5_6HasherNtB5_11Sip13RoundsENtB7_6Hasher5writeCs6QdLU3ngKge_11verse_world  (in verse_host)        33
+        _RINvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB6_9SliceRead15parse_str_byteseINvB6_6as_strBD_EEB8_  (in verse_host)        32
+        <deduplicated_symbol>  (in verse_host)        31
+        _RNvMs_NtCs1D5hTPqbNzf_8indexmap5innerINtB4_4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE11insert_fullCs6QdLU3ngKge_11verse_world  (in verse_host)        30
+        <deduplicated_symbol>  (in libsystem_malloc.dylib)        28
+        _RNvXs1q_NtNtCsgtPOCBgevO_4core5slice4iterINtB6_11ChunksExacthENtNtNtNtBa_4iter6traits8iterator8Iterator4nextCs6TNIXVaeDJm_10serde_json  (in verse_host)        28
+        _RNvNvNtNtCsgtPOCBgevO_4core5slice3raw14from_raw_parts18precondition_checkCsbSwtvVX6JwZ_6memchr  (in verse_host)        27
+        _RINvCs61F2TY4yojp_4zmij5writedEB2_  (in verse_host)        25
+        _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeQINtNtB7_2de12DeserializerNtNtB7_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host)        25
+        _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner14num_ctrl_bytesCs6TNIXVaeDJm_10serde_json  (in verse_host)        24
+        mach_absolute_time  (in libsystem_kernel.dylib)        23
+        _RINvNtCs6TNIXVaeDJm_10serde_json3ser18format_escaped_strQINtNtCslJsSqIQKwiA_5alloc3vec3VechENtB2_16CompactFormatterECs6QdLU3ngKge_11verse_world  (in verse_host)        22
+        _RNvMNtCsgtPOCBgevO_4core5sliceSh18split_at_uncheckedCsbSwtvVX6JwZ_6memchr  (in verse_host)        21
+        _RNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPu13is_aligned_toCs61F2TY4yojp_4zmij  (in verse_host)        18
+        _malloc_zone_malloc  (in libsystem_malloc.dylib)        18
+        _xzm_xzone_malloc  (in libsystem_malloc.dylib)        16
+        _RINvNvXs9_NtCs6TNIXVaeDJm_10serde_json2deINtB8_9MapAccesspENtNtCs95MRL9ERuTW_10serde_core2de9MapAccess13next_key_seed12has_next_keyNtNtBa_4read9SliceReadECs6QdLU3ngKge_11verse_world  (in verse_host)        15
+        _RINvYNtNtNtCsa9BKTri5B3M_3std4hash6random11RandomStateNtNtCsgtPOCBgevO_4core4hash11BuildHasher8hash_oneRNtNtCslJsSqIQKwiA_5alloc6string6StringECs6QdLU3ngKge_11verse_world  (in verse_host)        15
+        _RNvMs3_NtCs6TNIXVaeDJm_10serde_json2deINtB5_12DeserializerNtNtB7_4read9SliceReadE13parse_integerCs6QdLU3ngKge_11verse_world  (in verse_host)        15
+        _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner17new_uninitializedNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host)        14
+        _RNvMNtCsgtPOCBgevO_4core5sliceSh12chunks_exactCs6TNIXVaeDJm_10serde_json  (in verse_host)        14
+        _RINvMs6_NtCscU38ZATHvsJ_9hashbrown3rawINtB6_8RawTablejE14reserve_rehashNCINvNtCs1D5hTPqbNzf_8indexmap5inner8get_hashNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE0EB2w_  (in verse_host)        13
+        _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_host)        13
+        _RNvMs7_NtCsG1osKCWFNu_7physics7queriesNtB5_5Scene5sweep  (in verse_host)        13
+        _RNvNvNtCsgtPOCBgevO_4core3ptr19copy_nonoverlapping18precondition_checkCscU38ZATHvsJ_9hashbrown  (in verse_host)        13
+        _RNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPu13is_aligned_toCslDXu29chPst_8foldhash  (in verse_host)        12
+        _RNvNtCsG1osKCWFNu_7physics7queries12segment_pair  (in verse_host)        12
+        _RNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPh11offset_fromCsbSwtvVX6JwZ_6memchr  (in verse_host)        11
+        _RNvMsh_NtNtCsgtPOCBgevO_4core9core_arch4simdINtB5_4SimdaKj10_E3newCs61F2TY4yojp_4zmij  (in verse_host)        11
+        _platform_memset  (in libsystem_platform.dylib)        11
+        _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner10bucket_ptrCs6TNIXVaeDJm_10serde_json  (in verse_host)        10
+        _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner4ctrlCs6TNIXVaeDJm_10serde_json  (in verse_host)        10
+        _RNvNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPp6offset18precondition_checkCs61F2TY4yojp_4zmij  (in verse_host)        10
+        _RNvXsJ_NtCsgtPOCBgevO_4core6optionINtB5_6OptionjENtNtNtB7_3ops9try_trait3Try6branchCsbSwtvVX6JwZ_6memchr  (in verse_host)        10
+        _free  (in libsystem_malloc.dylib)        10
+        _RINvCs61F2TY4yojp_4zmij5writefEB2_  (in verse_host)        9
+        _RNvMs1_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_11TableLayout20calculate_layout_forCs6TNIXVaeDJm_10serde_json  (in verse_host)        9
+        _RNvNvMNtCsgtPOCBgevO_4core5sliceSp18split_at_unchecked18precondition_checkCsbSwtvVX6JwZ_6memchr  (in verse_host)        9
+        _RNvNvNtCsgtPOCBgevO_4core9ub_checks23maybe_is_nonoverlapping7runtimeCs6TNIXVaeDJm_10serde_json  (in verse_host)        9
+        xzm_realloc  (in libsystem_malloc.dylib)        9
+        DYLD-STUB$$memcpy  (in verse_host)        8
+        _RINvCs61F2TY4yojp_4zmij10to_decimaldyEB2_  (in verse_host)        8
+        _RNvCs61F2TY4yojp_4zmij10to_bcd_4x4  (in verse_host)        8
+        _RNvMsg_NtNtCsgtPOCBgevO_4core9core_arch4simdINtB5_4SimdaKj8_E3newCs6TNIXVaeDJm_10serde_json  (in verse_host)        8
+        _RNvXs5_NtCsgtPOCBgevO_4core5arrayAhj8_INtNtB7_7convert7TryFromRShE8try_fromCs6TNIXVaeDJm_10serde_json  (in verse_host)        8
+        _RNvXs5_NtNtCsgtPOCBgevO_4core5slice5indexINtNtNtB9_3ops5range9RangeFromjEINtB5_10SliceIndexShE5indexCsbSwtvVX6JwZ_6memchr  (in verse_host)        8
+        _RINvNvXs7_NtCs6TNIXVaeDJm_10serde_json2deINtB8_9SeqAccesspENtNtCs95MRL9ERuTW_10serde_core2de9SeqAccess17next_element_seed16has_next_elementNtNtBa_4read9SliceReadECs6QdLU3ngKge_11verse_world  (in verse_host)        7
+        _RNvCs61F2TY4yojp_4zmij7umul128  (in verse_host)        7
+        _RNvMs3_NtCs6TNIXVaeDJm_10serde_json2deINtB5_12DeserializerNtNtB7_4read9SliceReadE12parse_numberCs6QdLU3ngKge_11verse_world  (in verse_host)        7
+        _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner11num_bucketsCs6TNIXVaeDJm_10serde_json  (in verse_host)        7
+        _RNvNvNtCsgtPOCBgevO_4core9ub_checks23maybe_is_nonoverlapping7runtimeCscU38ZATHvsJ_9hashbrown  (in verse_host)        7
+        _RNvXsu_Cs2sw7CroeKnC_4itoayNtB5_8Unsigned3fmt  (in verse_host)        7
+        writev  (in libsystem_kernel.dylib)        7
+        _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner22fallible_with_capacityNtNtNtNtCs48YPQhNwVks_14allocator_api26stable5alloc6global6GlobalECs6TNIXVaeDJm_10serde_json  (in verse_host)        6
+        _RINvNtCs6TNIXVaeDJm_10serde_json4read6as_strNtB2_9SliceReadEB4_  (in verse_host)        6
+        _RINvNtCsgtPOCBgevO_4core3ptr15write_unalignedNtNtNtNtB4_9core_arch10arm_shared4neon10uint16x8_tECs61F2TY4yojp_4zmij  (in verse_host)        6
+        _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value3serNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtB7_3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_host)        6
+        _RNvCs9wFQrvczXsK_7___rustc35___rust_no_alloc_shim_is_unstable_v2  (in verse_host)        6
+        _RNvNtCs6TNIXVaeDJm_10serde_json4read9is_escape  (in verse_host)        6
+        _RNvNtNtNtNtCsgtPOCBgevO_4core9core_arch10arm_shared4neon9generated11vmlaq_n_s16Cs61F2TY4yojp_4zmij  (in verse_host)        6
+        _RNvNvNtCsgtPOCBgevO_4core3ptr19copy_nonoverlapping18precondition_checkCs61F2TY4yojp_4zmij  (in verse_host)        6
+        _RNvXs4_NtCsgtPOCBgevO_4core7convertRShINtB5_7TryIntoAhj8_E8try_intoCs6TNIXVaeDJm_10serde_json  (in verse_host)        6
+        DYLD-STUB$$free  (in verse_host)        5
+        _RINvMs2_NtCsG1osKCWFNu_7physics7queriesNtB6_4Mesh5visitNCNvMs7_B6_NtB6_5Scene7overlaps_0EB8_  (in verse_host)        5
+        _RINvMs_NtCscU38ZATHvsJ_9hashbrown5tableINtB5_9HashTablejE4findNCINvNtCs1D5hTPqbNzf_8indexmap5inner10equivalentNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueB1K_E0ECs6QdLU3ngKge_11verse_world  (in verse_host)        5
+        _RINvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB6_13RawTableInner6bucketjECs6TNIXVaeDJm_10serde_json  (in verse_host)        5
+        _RINvNtCsgtPOCBgevO_4core3ptr14read_unalignedNtNtNtNtB4_9core_arch10arm_shared4neon9uint8x8_tECscU38ZATHvsJ_9hashbrown  (in verse_host)        5
+        _RINvYINtNtNtCsgtPOCBgevO_4core3ops5range14RangeInclusivelEINtB6_11RangeBoundslE8containslECs61F2TY4yojp_4zmij  (in verse_host)        5
+        _RNvMs7_NtCsgtPOCBgevO_4core3numy13from_le_bytesCs6TNIXVaeDJm_10serde_json  (in verse_host)        5
+        _RNvMs9_NtCsgtPOCBgevO_4core3numj11checked_addCs6TNIXVaeDJm_10serde_json  (in verse_host)        5
+        _RNvMsa_NtCscU38ZATHvsJ_9hashbrown3rawNtB5_13RawTableInner14is_bucket_fullCs6TNIXVaeDJm_10serde_json  (in verse_host)        5
+        _RNvNtCsG1osKCWFNu_7physics7queries24closest_segment_triangle  (in verse_host)        5
+        _RNvNvNtCsgtPOCBgevO_4core3ptr19copy_nonoverlapping18precondition_checkCs6TNIXVaeDJm_10serde_json  (in verse_host)        5
+        _RNvNvNtNtCs6QdLU3ngKge_11verse_world7service11replication6encode14normalize_zero  (in verse_host)        5
+        _RNvXsf3_NtNtCsgtPOCBgevO_4core3ops3bityINtB6_3ShrlE3shrCs61F2TY4yojp_4zmij  (in verse_host)        5
+

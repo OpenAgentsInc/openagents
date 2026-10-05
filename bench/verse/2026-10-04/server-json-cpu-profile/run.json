@@ -1,0 +1,39 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 45,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "compiled_revisions": {
+      "host": "5706bcfdab",
+      "clients": "5706bcfdab"
+    },
+    "fixture_revision": "4291f4a209a59d34826fe291c7030868381c5232",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "observation": "Host stacks repeatedly enter serde_json string parsing, JSON Value construction/serialization, memchr scans, and zmij number formatting.",
+  "frame_interval_ms": {
+    "samples": 4372,
+    "omitted": 0,
+    "median": 9.232707999999999,
+    "p95": 16.440084000000002,
+    "max": 6447.735041
+  },
+  "limits": [
+    "CPU sample is a short shared-hardware observation, not a complete stage-cost decomposition.",
+    "Dependency compilation overlaps the latter part of the run.",
+    "Storage is disabled; nineteen headless connections use legacy movement.",
+    "GPU timestamps are disabled for this server-focused run.",
+    "No persistent battle, no-lag, or full-roadmap acceptance is claimed."
+  ]
+}
