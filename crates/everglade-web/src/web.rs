@@ -3,6 +3,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use js_sys::{Reflect, Uint8Array};
+use verse::grid_engine::GridEngine;
+use verse::grid_frame;
+use verse::imported::Gpu;
 use verse::render::{DrawStatus, RenderOptions, Renderer};
 use verse::runtime::{Action, WorldRuntime};
 use verse::ui::Atlas;
@@ -101,6 +104,55 @@ async fn open(
     .await
 }
 
+/// The Grid on the engine renderer, drawing into `canvas` through
+/// `backends`, with the pinned pack built into the module.
+async fn open_grid(
+    canvas: &HtmlCanvasElement,
+    backends: wgpu::Backends,
+    atlas: &Atlas,
+    width: u32,
+    height: u32,
+) -> Result<GridEngine, String> {
+    let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(WebDisplay));
+    descriptor.backends = backends;
+    let instance = wgpu::util::new_instance_with_webgpu_detection(descriptor).await;
+    let surface = instance
+        .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
+        .map_err(|e| format!("cannot draw on the canvas: {e}"))?;
+    let gpu = Gpu::open_async(instance, &surface).await?;
+    GridEngine::on_surface(gpu, surface, atlas, width, height)
+}
+
+/// What draws the page: the Grid through the engine renderer, Everglade and
+/// the Grove through the legacy renderer until their own migration.
+enum Draw {
+    Legacy(Renderer),
+    Grid(GridEngine),
+}
+
+impl Draw {
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
+        match self {
+            Self::Legacy(renderer) => renderer.resize(width, height),
+            Self::Grid(engine) => engine.resize(width, height),
+        }
+    }
+
+    fn aspect(&self) -> f32 {
+        match self {
+            Self::Legacy(renderer) => renderer.aspect(),
+            Self::Grid(engine) => engine.aspect(),
+        }
+    }
+
+    fn size(&self) -> [f32; 2] {
+        match self {
+            Self::Legacy(renderer) => renderer.size(),
+            Self::Grid(engine) => engine.size(),
+        }
+    }
+}
+
 /// The browser's display, for wgpu's WebGL2 backend.
 #[derive(Debug)]
 struct WebDisplay;
@@ -124,7 +176,7 @@ fn first_line(error: &str) -> String {
 struct Page {
     canvas: HtmlCanvasElement,
     runtime: WorldRuntime,
-    renderer: Renderer,
+    renderer: Draw,
     input: Input,
     rendered_revision: u64,
     /// Device pixels per CSS pixel.
@@ -170,6 +222,17 @@ async fn run() -> Result<(), String> {
             .split('&')
             .any(|part| part.eq_ignore_ascii_case("zone=grove"))
     });
+    // `?zone=grid` opens the shared Grid, the spawn plaza, on the engine
+    // renderer with the pack built into this module; nothing downloads.
+    let grid = window.location().search().is_ok_and(|query| {
+        query
+            .trim_start_matches('?')
+            .split('&')
+            .any(|part| part.eq_ignore_ascii_case("zone=grid"))
+    });
+    if grid {
+        return run_grid(window, document, canvas).await;
+    }
     let bytes = download(&window).await?;
     let mut runtime = WorldRuntime::new();
     // `?demolition` opens the demolition yard: two kit cottages to knock
@@ -259,7 +322,58 @@ async fn run() -> Result<(), String> {
         canvas,
         rendered_revision: runtime.zone_revision,
         runtime,
-        renderer,
+        renderer: Draw::Legacy(renderer),
+        input: Input::default(),
+        scale,
+        last: None,
+        stopped: false,
+        layout: atlas.layout_at_scale(scale),
+        climb: None,
+        pressed_at: None,
+        hover: None,
+        slot_tip: verse::tooltip::Dwell::default(),
+        slot_touch: None,
+        now: 0.0,
+    }));
+    listen(&window, &page)?;
+    animate(window, page);
+    Ok(())
+}
+
+/// Opens the Grid: the bare plaza drawn through the engine renderer.
+async fn run_grid(
+    window: Window,
+    document: Document,
+    canvas: HtmlCanvasElement,
+) -> Result<(), String> {
+    status("Opening the Grid…");
+    let mut runtime = WorldRuntime::bare();
+    runtime.interact_hint = verse::runtime::InteractHint::None;
+    let scale = (window.device_pixel_ratio() as f32).clamp(1.0, 3.0);
+    let (width, height) = drawing_size(&canvas, scale);
+    canvas.set_width(width);
+    canvas.set_height(height);
+    let force_gl = window
+        .location()
+        .search()
+        .is_ok_and(|query| query.split(['?', '&']).any(|part| part == "gl"));
+    let backends = if force_gl {
+        wgpu::Backends::GL
+    } else {
+        wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL
+    };
+    let atlas = Atlas::new((14.0 * scale).round());
+    let engine = open_grid(&canvas, backends, &atlas, width, height).await?;
+    web_sys::console::info_1(&JsValue::from_str(&format!(
+        "Grid: engine renderer on {}",
+        engine.adapter_name()
+    )));
+    hide_status(&document);
+    let page = Rc::new(RefCell::new(Page {
+        canvas,
+        rendered_revision: runtime.zone_revision,
+        runtime,
+        renderer: Draw::Grid(engine),
         input: Input::default(),
         scale,
         last: None,
@@ -370,16 +484,26 @@ impl Page {
         }
         self.runtime.zone_tick();
         if self.runtime.zone_revision != self.rendered_revision {
-            let replaced = self
-                .renderer
-                .replace_world(&self.runtime.world.mesh)
-                .and_then(|()| {
-                    self.renderer
-                        .set_atmosphere(zones::atmosphere(self.runtime.zone))
-                });
-            if let Err(error) = replaced {
-                self.fail(&error);
-                return;
+            match &mut self.renderer {
+                Draw::Legacy(renderer) => {
+                    let replaced =
+                        renderer
+                            .replace_world(&self.runtime.world.mesh)
+                            .and_then(|()| {
+                                renderer.set_atmosphere(zones::atmosphere(self.runtime.zone))
+                            });
+                    if let Err(error) = replaced {
+                        self.fail(&error);
+                        return;
+                    }
+                }
+                Draw::Grid(_) => {
+                    self.fail(
+                        "The browser Grid's arches lead nowhere yet: open Everglade from the \
+                         page without ?zone, or the Grove with ?zone=grove",
+                    );
+                    return;
+                }
             }
             self.rendered_revision = self.runtime.zone_revision;
         }
@@ -397,6 +521,15 @@ impl Page {
 
         let aspect = self.renderer.aspect();
         let view = self.runtime.view(aspect);
+        if let Draw::Grid(engine) = &mut self.renderer {
+            let dynamic = grid_frame::dynamic(&self.runtime, &[], &[]);
+            let lighting = grid_frame::lighting(&self.runtime.atmosphere());
+            let ui = verse::ui::UiBatch::default();
+            if let Err(error) = engine.draw(view, &dynamic, &ui, &lighting) {
+                self.fail(&error);
+            }
+            return;
+        }
         let dynamic = self.runtime.dynamic_mesh();
         // No zone panel over the world (owner, 2026-10-04): the glade and
         // its hotbar, laid out in CSS pixels and drawn in device pixels.
@@ -429,7 +562,9 @@ impl Page {
         for vertex in &mut ui.vertices {
             vertex.pos = vertex.pos.map(|v| v * self.scale);
         }
-        if let DrawStatus::Error(error) = self.renderer.draw(view, &dynamic, &ui) {
+        if let Draw::Legacy(renderer) = &mut self.renderer
+            && let DrawStatus::Error(error) = renderer.draw(view, &dynamic, &ui)
+        {
             self.fail(&error);
         }
     }

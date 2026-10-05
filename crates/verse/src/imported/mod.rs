@@ -39,15 +39,18 @@ pub mod remote_record;
 pub mod remote_window;
 mod shadow_cache;
 use lighting::{Frame, Lighting};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
 use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
-    time::Instant,
 };
 use verse_engine::{
     animation,
     assets::{Pack, Vertex},
 };
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 use wgpu::util::DeviceExt;
 
 pub use verse_engine::presentation::{Instance, ResolvedInstances};
@@ -199,9 +202,9 @@ pub struct MarkerEvent {
 
 #[derive(Clone)]
 struct GpuContext {
-    #[cfg(feature = "imported-desktop")]
+    #[cfg(feature = "imported-surface")]
     instance: wgpu::Instance,
-    #[cfg(feature = "imported-desktop")]
+    #[cfg(feature = "imported-surface")]
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -297,11 +300,80 @@ impl ReloadSource {
         })
     }
 }
+/// Describes `adapter` for the device profile a frame report carries.
+fn adapter_details(adapter: &wgpu::Adapter) -> serde_json::Value {
+    let info = adapter.get_info();
+    serde_json::json!({"name":info.name,"vendor":info.vendor,"device":info.device,
+        "backend":format!("{:?}",info.backend),"device_type":format!("{:?}",info.device_type),
+        "driver":info.driver,"driver_info":info.driver_info,
+        "timestamp_feature_supported":adapter.features().contains(gpu_timing::FEATURES)})
+}
+/// Asks `adapter` for the device the renderer draws with.
+async fn request_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), String> {
+    adapter
+        .request_device(&wgpu::DeviceDescriptor {
+            label: Some("Verse imported world"),
+            required_limits: adapter.limits(),
+            required_features: if std::env::var_os("VERSE_GPU_TIMING")
+                .is_some_and(|value| value == "1")
+                && adapter.features().contains(gpu_timing::FEATURES)
+            {
+                gpu_timing::FEATURES
+            } else {
+                wgpu::Features::empty()
+            },
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| e.to_string())
+}
+/// A GPU opened against a surface the caller made, ready for
+/// [`Renderer::from_prepared_on`] and [`Renderer::attach_surface`].
+#[cfg(feature = "imported-surface")]
+pub struct Gpu {
+    pub instance: wgpu::Instance,
+    pub adapter: wgpu::Adapter,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+}
+#[cfg(feature = "imported-surface")]
+impl Gpu {
+    /// Opens an adapter that can present to `surface`, and its device. A
+    /// browser must await this; native code may block on it with [`Gpu::open`].
+    pub async fn open_async(
+        instance: wgpu::Instance,
+        surface: &wgpu::Surface<'static>,
+    ) -> Result<Self, String> {
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                compatible_surface: Some(surface),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| format!("no GPU adapter can present to this surface: {e}"))?;
+        let (device, queue) = request_device(&adapter).await?;
+        Ok(Self {
+            instance,
+            adapter,
+            device,
+            queue,
+        })
+    }
+    pub fn open(
+        instance: wgpu::Instance,
+        surface: &wgpu::Surface<'static>,
+    ) -> Result<Self, String> {
+        pollster::block_on(Self::open_async(instance, surface))
+    }
+    pub fn adapter_name(&self) -> String {
+        self.adapter.get_info().name
+    }
+}
 /// Persistent offscreen renderer; frames come directly from owned GPU passes.
 pub struct Renderer {
-    #[cfg(feature = "imported-desktop")]
+    #[cfg(feature = "imported-surface")]
     instance: wgpu::Instance,
-    #[cfg(feature = "imported-desktop")]
+    #[cfg(feature = "imported-surface")]
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -628,6 +700,38 @@ impl Renderer {
     ) -> Result<Self, String> {
         Self::build(prepared, width, height, atlas, static_instances, None)
     }
+    /// Uploads an admitted pack onto a GPU the caller opened, for a surface
+    /// the caller made: a phone's layer or window, or a browser canvas.
+    #[cfg(feature = "imported-surface")]
+    pub fn from_prepared_on(
+        gpu: Gpu,
+        prepared: verse_engine::loading::Prepared,
+        width: u32,
+        height: u32,
+        atlas: &Atlas,
+        static_instances: &[Instance],
+    ) -> Result<Self, String> {
+        let id = verse_engine::residency::Catalog::new(prepared.pack())?.id();
+        let context = GpuContext {
+            name: gpu.adapter_name(),
+            details: adapter_details(&gpu.adapter),
+            admission: admission::Admission::probe(&gpu.adapter)?,
+            health: crate::gpu_lifecycle::Health::attach(&gpu.device),
+            instance: gpu.instance,
+            adapter: gpu.adapter,
+            device: gpu.device,
+            queue: gpu.queue,
+            id,
+        };
+        Self::build(
+            prepared,
+            width,
+            height,
+            atlas,
+            static_instances,
+            Some(context),
+        )
+    }
     fn build(
         prepared: verse_engine::loading::Prepared,
         width: u32,
@@ -667,38 +771,20 @@ impl Renderer {
                     instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
                 )
                 .map_err(|e| e.to_string())?;
+                let (device, queue) = pollster::block_on(request_device(&adapter))?;
+                let name = adapter.get_info().name;
+                let details = adapter_details(&adapter);
+                let details = adapter_details(&adapter);
                 let admission = admission::Admission::probe(&adapter)?;
-                let info = adapter.get_info();
-                let adapter_name = info.name.clone();
-                let details = serde_json::json!({"name":info.name,"vendor":info.vendor,"device":info.device,
-                    "backend":format!("{:?}",info.backend),"device_type":format!("{:?}",info.device_type),
-                    "driver":info.driver,"driver_info":info.driver_info,
-                    "timestamp_feature_supported":adapter.features().contains(gpu_timing::FEATURES)});
-                let (device, queue) = pollster::block_on(
-                    adapter.request_device(&wgpu::DeviceDescriptor {
-                        label: Some("Verse imported world"),
-                        required_limits: adapter.limits(),
-                        required_features: if std::env::var_os("VERSE_GPU_TIMING")
-                            .is_some_and(|value| value == "1")
-                            && adapter.features().contains(gpu_timing::FEATURES)
-                        {
-                            gpu_timing::FEATURES
-                        } else {
-                            wgpu::Features::empty()
-                        },
-                        ..Default::default()
-                    }),
-                )
-                .map_err(|e| e.to_string())?;
                 let health = crate::gpu_lifecycle::Health::attach(&device);
                 GpuContext {
-                    #[cfg(feature = "imported-desktop")]
+                    #[cfg(feature = "imported-surface")]
                     instance,
-                    #[cfg(feature = "imported-desktop")]
+                    #[cfg(feature = "imported-surface")]
                     adapter,
+                    name,
                     device,
                     queue,
-                    name: adapter_name,
                     details,
                     admission,
                     health,
@@ -707,9 +793,9 @@ impl Renderer {
             }
         };
         let GpuContext {
-            #[cfg(feature = "imported-desktop")]
+            #[cfg(feature = "imported-surface")]
             instance,
-            #[cfg(feature = "imported-desktop")]
+            #[cfg(feature = "imported-surface")]
             adapter,
             device,
             queue,
@@ -956,6 +1042,20 @@ impl Renderer {
             anisotropy_clamp: 4,
             ..Default::default()
         });
+        // WebGL cannot view an sRGB texture as linear; there the linear view
+        // is the sRGB view, and unlit surfaces read gamma-encoded texels.
+        #[cfg(feature = "imported-surface")]
+        let linear_views = adapter
+            .get_downlevel_capabilities()
+            .flags
+            .contains(wgpu::DownlevelFlags::VIEW_FORMATS);
+        #[cfg(not(feature = "imported-surface"))]
+        let linear_views = true;
+        let linear_formats: &[wgpu::TextureFormat] = if linear_views {
+            &[wgpu::TextureFormat::Rgba8Unorm]
+        } else {
+            &[]
+        };
         let mut texture_views = Vec::new();
         for (t, pixels) in pack.textures.iter().zip(&decoded) {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -966,7 +1066,7 @@ impl Renderer {
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+                view_formats: linear_formats,
             });
             let (mut width, mut height) = (t.width, t.height);
             let mut rgba = pixels.rgba().to_vec();
@@ -1012,7 +1112,7 @@ impl Renderer {
             }
             let srgb = tex.create_view(&Default::default());
             let linear = tex.create_view(&wgpu::TextureViewDescriptor {
-                format: Some(wgpu::TextureFormat::Rgba8Unorm),
+                format: linear_views.then_some(wgpu::TextureFormat::Rgba8Unorm),
                 ..Default::default()
             });
             texture_views.push((srgb, linear));
@@ -1232,9 +1332,9 @@ impl Renderer {
         device_profile["budget"] =
             serde_json::to_value(admission.quality.budget()).map_err(|e| e.to_string())?;
         Ok(Self {
-            #[cfg(feature = "imported-desktop")]
+            #[cfg(feature = "imported-surface")]
             instance,
-            #[cfg(feature = "imported-desktop")]
+            #[cfg(feature = "imported-surface")]
             adapter,
             device,
             queue,
@@ -1430,9 +1530,9 @@ impl Renderer {
     pub fn reload_source(&self) -> ReloadSource {
         ReloadSource {
             context: GpuContext {
-                #[cfg(feature = "imported-desktop")]
+                #[cfg(feature = "imported-surface")]
                 instance: self.instance.clone(),
-                #[cfg(feature = "imported-desktop")]
+                #[cfg(feature = "imported-surface")]
                 adapter: self.adapter.clone(),
                 device: self.device.clone(),
                 queue: self.queue.clone(),
@@ -2893,7 +2993,7 @@ pub struct PresentationTimings {
     pub present_call_ms: Option<f64>,
     pub submitted: bool,
 }
-#[cfg(feature = "imported-desktop")]
+#[cfg(feature = "imported-surface")]
 pub struct WindowPresenter {
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
@@ -2908,7 +3008,7 @@ pub struct WindowPresenter {
     pub last_timings: PresentationTimings,
     target_revision: u64,
 }
-#[cfg(feature = "imported-desktop")]
+#[cfg(feature = "imported-surface")]
 impl WindowPresenter {
     pub fn current_frame_presented(&self, renderer: &Renderer) -> bool {
         self.gpu_id == renderer.gpu_id && self.presented_catalog == Some(renderer.catalog.id())
@@ -2928,8 +3028,20 @@ impl Renderer {
             .instance
             .create_surface(window)
             .map_err(|e| e.to_string())?;
+        self.attach_surface(surface, [size.width, size.height])
+    }
+}
+#[cfg(feature = "imported-surface")]
+impl Renderer {
+    /// Presents frames on a surface made from the instance this renderer's
+    /// GPU was opened on: a window, a phone's layer, or a canvas.
+    pub fn attach_surface(
+        &self,
+        surface: wgpu::Surface<'static>,
+        size: [u32; 2],
+    ) -> Result<WindowPresenter, String> {
         let mut config = surface
-            .get_default_config(&self.adapter, size.width.max(1), size.height.max(1))
+            .get_default_config(&self.adapter, size[0].max(1), size[1].max(1))
             .ok_or("Unsupported imported scene surface")?;
         config.present_mode = wgpu::PresentMode::Fifo;
         surface.configure(&self.device, &config);

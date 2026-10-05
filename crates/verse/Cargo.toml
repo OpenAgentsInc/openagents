@@ -18,14 +18,17 @@ capture = []
 panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 # The Agent Studio from a live host, over its same-user control socket.
 studio-host = ["dep:openagents-connect"]
-imported-desktop = ["dep:winit", "capture", "native-audio"]
+imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface"]
+# The engine renderer presenting on a surface the host made (a phone's
+# layer or window, a browser canvas); no window library.
+imported-surface = []
 native-audio = ["dep:cpal"]
 hosted-social = ["verse-world/service-auth"]
 remote-chamber = ["hosted-social", "verse-world/service-reach", "tokio/signal"]
 # The browser build (`wasm32-unknown-unknown`), used without default
 # features: WebGL2 as well as WebGPU. Network, threads, processes, and disk
 # are native-only by target, so this feature only adds what the web needs.
-web = ["wgpu/webgl"]
+web = ["wgpu/webgl", "imported-surface"]
 
 [dependencies]
 # The studio review's copy-path key, on the desktop.
@@ -91,6 +94,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 webpki-roots = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# `Instant` from `performance.now()`; `std::time::Instant` has no clock in a browser.
+web-time = "1.1.0"
 # The browser's `crypto.getRandomValues` for key generation; the
 # `getrandom_backend` flag is set in `.cargo/config.toml`.
 getrandom = { version = "0.3", features = ["wasm_js"] }

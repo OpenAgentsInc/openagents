@@ -106,27 +106,9 @@ fn fog_amount(p:vec3<f32>)->f32{
  return min(1.0-exp(-at_start*travel*shape),frame.fog_shape.w);
 }
 @fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{
- if pose.params.x>1.5 {
-  let tex=textureSample(image,tex_sampler,v.uv);
-  let color=tex.rgb*1.6;
-  return vec4(color*v.tint,tex.a*pose.params.y);
- }
- if pose.params.x>0.5 {
-  let facing=abs(dot(normalize(v.normal),normalize(frame.eye.xyz-v.pos)));
-  let rim=pow(1.0-facing,1.5);
-  let turbulence=0.7+0.3*sin(v.pos.x*17.0+v.pos.y*23.0+v.pos.z*19.0-pose.params.z*24.0);
-  let opacity=(0.04+rim*0.2)*turbulence*pose.params.y;
-  return vec4(v.tint*2.0,opacity);
- }
+ // Samples and derivatives come before any per-instance branch: WebGPU
+ // requires uniform control flow for them.
  let tex=textureSample(image,tex_sampler,v.uv);
- // Unlit surfaces and lines: base color and tint, fogged and exposed, no lights.
- if material.emission.w>0.5 {
-  let flat_alpha=tex.a*material.channels.z;
-  if material.params.y==1.0 && flat_alpha<material.channels.w{discard;}
-  let flat=tex.rgb*v.tint+select(vec3(0.0),tex.rgb*v.tint*0.7,material.params.x>0.5);
-  let flat_fog=fog_amount(v.pos);
-  return vec4(min(mix(flat,frame.fog.rgb,flat_fog)*frame.ambient.w,vec3(60000.0)),select(flat_alpha,1.0,material.params.y==0.0));
- }
  let geometric=normalize(select(-v.normal,v.normal,front));let n=surface_normal(v,geometric);
  var roughness=material.params.z;var metallic=material.params.w;
  if material.maps.y>0.5 {
@@ -138,6 +120,25 @@ fn fog_amount(p:vec3<f32>)->f32{
  if material.maps.z>0.5 {ao=mix(1.0,textureSample(occlusion_image,tex_sampler,v.uv).r,material.channels.y);}
  var emission=material.emission.rgb;
  if material.maps.w>0.5 {emission*=textureSample(emission_image,tex_sampler,v.uv).rgb;}
+ if pose.params.x>1.5 {
+  let color=tex.rgb*1.6;
+  return vec4(color*v.tint,tex.a*pose.params.y);
+ }
+ if pose.params.x>0.5 {
+  let facing=abs(dot(normalize(v.normal),normalize(frame.eye.xyz-v.pos)));
+  let rim=pow(1.0-facing,1.5);
+  let turbulence=0.7+0.3*sin(v.pos.x*17.0+v.pos.y*23.0+v.pos.z*19.0-pose.params.z*24.0);
+  let opacity=(0.04+rim*0.2)*turbulence*pose.params.y;
+  return vec4(v.tint*2.0,opacity);
+ }
+ // Unlit surfaces and lines: base color and tint, fogged and exposed, no lights.
+ if material.emission.w>0.5 {
+  let flat_alpha=tex.a*material.channels.z;
+  if material.params.y==1.0 && flat_alpha<material.channels.w{discard;}
+  let flat=tex.rgb*v.tint+select(vec3(0.0),tex.rgb*v.tint*0.7,material.params.x>0.5);
+  let flat_fog=fog_amount(v.pos);
+  return vec4(min(mix(flat,frame.fog.rgb,flat_fog)*frame.ambient.w,vec3(60000.0)),select(flat_alpha,1.0,material.params.y==0.0));
+ }
  let alpha=tex.a*material.channels.z;
  if material.params.y==1.0 && alpha<material.channels.w{discard;}
  let albedo=tex.rgb*v.tint;

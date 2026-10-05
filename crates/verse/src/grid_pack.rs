@@ -117,6 +117,28 @@ pub fn load_pinned() -> Result<Pack, String> {
     Pack::read(&pinned_dir().join(MANIFEST))
 }
 
+/// The pinned manifest, built into the binary for hosts without the
+/// repository: phones and browsers.
+const EMBEDDED_MANIFEST: &str = include_str!("../../../assets/verse/grid/pack.json");
+/// The pinned pack's one texture file, the white texel.
+const EMBEDDED_WHITE: (&str, &[u8]) = (
+    "verse-flat-white.png",
+    include_bytes!("../../../assets/verse/grid/verse-flat-white.png"),
+);
+
+/// Validates the pinned pack built into the binary.
+pub fn embedded() -> Result<Pack, String> {
+    let pack: Pack = serde_json::from_str(EMBEDDED_MANIFEST).map_err(|e| e.to_string())?;
+    pack.validate()?;
+    Ok(pack)
+}
+
+/// Admits the built-in pack for a renderer, with no file system: the same
+/// digests and budgets the directory load checks.
+pub fn prepare_embedded() -> Result<verse_engine::loading::Prepared, String> {
+    verse_engine::loading::Prepared::from_bytes(embedded()?, &[EMBEDDED_WHITE], Default::default())
+}
+
 /// Compiles the Grid into `dir`: the white texel, every model, the floor
 /// and Gym placements, and the manifest. Arches are placed per frame by
 /// [`gates`], because the runtime decides which portals stand. Returns the admitted pack.
@@ -611,6 +633,29 @@ mod tests {
         }
         assert_eq!(pack.placements.len(), 3);
         verse_engine::loading::Prepared::load(pack, &pinned_dir(), Default::default()).unwrap();
+    }
+
+    #[test]
+    fn the_built_in_pack_is_the_pinned_one() {
+        let pinned = load_pinned().unwrap();
+        let built_in = embedded().unwrap();
+        assert_eq!(
+            serde_json::to_string(&built_in).unwrap(),
+            serde_json::to_string(&pinned).unwrap()
+        );
+        let from_dir =
+            verse_engine::loading::Prepared::load(pinned, &pinned_dir(), Default::default())
+                .unwrap();
+        let from_memory = prepare_embedded().unwrap();
+        assert_eq!(
+            from_memory.receipt().manifest_sha256,
+            from_dir.receipt().manifest_sha256
+        );
+        assert_eq!(
+            from_memory.receipt().encoded_bytes,
+            from_dir.receipt().encoded_bytes
+        );
+        assert_eq!(from_memory.textures().len(), 1);
     }
 
     #[test]

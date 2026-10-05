@@ -127,40 +127,18 @@ impl AndroidVerse {
         if self.window.is_some() || self.handle.renderer.is_some() {
             return Err(error("The native Verse surface is already attached"));
         }
-        let viewport =
-            rust_native::surface::Viewport::new(config.width, config.height, config.scale)
-                .map_err(|message| error(&message.to_string()))?;
-        if !viewport.drawable() || config.width > 4096 || config.height > 4096 {
-            return Err(error("Native Verse surface dimensions exceed their bounds"));
-        }
-        self.handle.scene.activate(false)?;
         let window = NativeWindow::acquire(env, surface)?;
         // SAFETY: this acquired window is moved into the same owner after the
         // renderer, and is released only after the renderer has been dropped.
-        let renderer = unsafe {
-            verse::render::Renderer::from_android_window(
+        unsafe {
+            self.handle.attach_android(
                 window.0.as_ptr().cast(),
                 config.width,
                 config.height,
-                &self.handle.scene.world.world.mesh,
-                &self.handle.scene.atlas,
-                verse::render::RenderOptions {
-                    sample_count: 1,
-                    max_extent: 4096,
-                    hdr: false,
-                },
+                config.scale,
             )
-        }?;
-        self.handle
-            .scene
-            .lifecycle
-            .resize(viewport)
-            .map_err(|message| error(&message.to_string()))?;
-        self.handle
-            .scene
-            .action(crate::verse_app::Request::ResetMotion)?;
-        self.handle.renderer = Some(renderer);
-        self.handle.rendered_zone_revision = u64::MAX;
+        }
+        .map_err(|message| error(&message))?;
         self.window = Some(window);
         Ok(())
     }
@@ -299,6 +277,7 @@ pub extern "system" fn Java_com_openagents_coder_CoderNative_createVerse<'local>
                         scene,
                         renderer: None,
                         rendered_zone_revision: u64::MAX,
+                        layer: std::ptr::null_mut(),
                     },
                     window: None,
                 };
