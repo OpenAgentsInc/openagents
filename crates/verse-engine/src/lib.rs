@@ -15,6 +15,7 @@ pub mod lighting;
 pub mod loading;
 pub mod markers;
 pub mod material;
+pub mod mips;
 pub mod motion;
 pub mod overlay;
 pub mod presentation;

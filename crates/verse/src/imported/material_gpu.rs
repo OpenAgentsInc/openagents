@@ -40,6 +40,17 @@ impl Key {
             .map(f32::to_bits),
         }
     }
+    pub fn base_role(self) -> verse_engine::mips::Role {
+        if self.blend == 1 {
+            verse_engine::mips::Role::masked(
+                f32::from_bits(self.values[5]),
+                f32::from_bits(self.values[4]),
+            )
+            .expect("validated material factors")
+        } else {
+            verse_engine::mips::Role::Color
+        }
+    }
     /// Four aligned vec4 values, shared with the WGSL Material declaration.
     pub fn uniform(self) -> [[f32; 4]; 4] {
         let v = self.values.map(f32::from_bits);
@@ -72,6 +83,30 @@ mod tests {
             tint: [1.; 3],
             material: Default::default(),
         }
+    }
+    #[test]
+    fn shared_source_has_separate_channel_and_effective_cutoff_variants() {
+        use verse_engine::mips::Role;
+        let mut value = surface();
+        value.material.normal_texture = Some(0);
+        value.material.metallic_roughness_texture = Some(0);
+        value.material.occlusion_texture = Some(0);
+        value.material.emissive_texture = Some(0);
+        let opaque = Key::from_surface(&value);
+        assert_eq!(opaque.base_variant().role, Role::Color);
+        assert_eq!(opaque.map_variant(0).role, Role::Normal);
+        assert_eq!(opaque.map_variant(1).role, Role::Linear);
+        assert_eq!(opaque.map_variant(2), opaque.map_variant(1));
+        assert_eq!(opaque.map_variant(3), opaque.base_variant());
+        value.blend = 1;
+        value.material.alpha_cutoff = 0.4;
+        let masked = Key::from_surface(&value);
+        value.material.opacity = 0.5;
+        let faded = Key::from_surface(&value);
+        assert_eq!(faded.base_role(), Role::masked(0.8, 1.).unwrap());
+        assert_ne!(masked.base_variant(), faded.base_variant());
+        assert_ne!(masked.base_variant(), opaque.base_variant());
+        assert_eq!(masked.map_variant(0), faded.map_variant(0));
     }
     #[test]
     fn shared_base_color_does_not_merge_distinct_materials() {

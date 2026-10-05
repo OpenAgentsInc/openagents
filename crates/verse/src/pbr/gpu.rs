@@ -1326,13 +1326,20 @@ impl Photo {
         vertex_usage: wgpu::BufferUsages,
     ) -> TexturedGpu {
         let max = device.limits().max_texture_dimension_2d;
-        let images: Vec<wgpu::TextureView> = scene
-            .images
-            .iter()
-            .enumerate()
-            .map(|(i, image)| {
-                let levels = textured::mip_chain(image, scene.mask_cutoff(i), max);
-                upload_levels(device, queue, &image.name, &levels)
+        let images: std::collections::BTreeMap<_, wgpu::TextureView> = scene
+            .mip_variants()
+            .into_iter()
+            .map(|variant| {
+                let image = &scene.images[variant.texture];
+                let levels = verse_engine::mips::cook(
+                    image.width,
+                    image.height,
+                    &image.rgba,
+                    variant.role,
+                    max,
+                )
+                .expect("admitted image and material");
+                (variant, upload_levels(device, queue, &image.name, &levels))
             })
             .collect();
         let white = upload_levels(
@@ -1350,7 +1357,12 @@ impl Photo {
                     contents: bytemuck::bytes_of(&textured::uniform(material)),
                     usage: wgpu::BufferUsages::UNIFORM,
                 });
-                let view = material.image.map_or(&white, |i| &images[i]);
+                let view = material.image.map_or(&white, |texture| {
+                    &images[&verse_engine::mips::Variant {
+                        texture,
+                        role: textured::material_role(material),
+                    }]
+                });
                 device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("verse textured material"),
                     layout: &self.material_layout,

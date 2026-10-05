@@ -1,0 +1,33 @@
+{
+  "schema": "openagents.verse.mip-evidence.v1",
+  "recorded_at_utc": "2026-10-05T06:51:43.431539+00:00",
+  "public_base_commit": "5f50febfa6ec07dc8ccfb0f5f3f3bec97552a798",
+  "implementation_files_sha256": {
+    "crates/verse-engine/src/mips.rs": "850d4b93ebab6aecaffffd2adc90dbf943db65615f0f4769cf2e344ad29f57cf",
+    "crates/verse-engine/src/lib.rs": "ec769725325aa3bf8aee665c6877b092255b435a91b3d0851eab2c12c8ee796f",
+    "crates/verse/src/imported/mod.rs": "5f5ef4c1070c84990e7673c8154bb14468ac91a9bffbd2ff86af2d25811dc816",
+    "crates/verse/src/imported/material_gpu.rs": "1897636e89b56d74644217066f3724085991f785ca6226b43a551dde5797d993",
+    "crates/verse/src/imported/texture_gpu.rs": "8a69fd9aff07b69e600d286c85c3bcf2cdb7bac4bdca2ad515a7bf1835af5f2e",
+    "crates/verse/src/imported/mip_tests.rs": "427b8267e2ec863d14707100bee92d052a3a3324544780dc7114a0af4c2cda6b",
+    "crates/verse/src/imported/mip_probe.wgsl": "44d459397e7ca9eb090524dc52c3f88cbf16012a1cbe193c3e4ee173170bd1fb",
+    "crates/verse/src/pbr/gpu.rs": "ee392e2c28af250cee7549e04ab7c07fafc7b69eb4e2be7183aec0680d2476de",
+    "crates/verse/src/pbr/textured.rs": "be92f8bba0899b9fa1f2dd35e3e09a87bb6c72ff4174ab5e6c5a60168ce7fa72",
+    "crates/verse/src/render.rs": "e6c64dd7fe7655842e743bb154fb99e8ad176848d2831449a15347261fd9a885"
+  },
+  "executable_sha256": "2f2ba4090550fa47919182ce46dea0e4a96a1b1838d41b0ce4028d98289a3b3e",
+  "gpu_command": [
+    "verse-c55e33d3e300cfd5",
+    "uploaded_roles_and_material_bindings",
+    "--ignored",
+    "--nocapture"
+  ],
+  "library_command": "cargo test -p verse -p verse-engine --no-default-features --lib",
+  "consumer_command": "cargo check -p openagents-desktop -p coder-mobile --lib",
+  "web_command": "cargo check -p verse --no-default-features --features web --target wasm32-unknown-unknown",
+  "library_results": {
+    "verse_passed": 579,
+    "verse_ignored": 14,
+    "engine_passed": 136
+  },
+  "gpu_passed": 1
+}

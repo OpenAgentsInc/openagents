@@ -69,3 +69,11 @@ Vertex colors hold the baked result; runtime performs no lighting bake. Animated
 packs and full physical materials keep their existing loading paths. Managed
 payload accounting excludes bounded manifest metadata, render targets, platform
 allocation padding, and shader-private storage.
+
+`mips` cooks RGBA8 chains by material role. Color and emission filter in linear
+light; scalar maps stay linear; normal texels and reductions normalize vectors.
+Mask variants include the material's effective alpha cutoff and calibrate coarse
+alpha contrast against bilinear coverage. Both native rendering paths use these
+recipes and reserve every distinct chain before upload. Fractional coverage at a
+single texel, authored compressed chains, and vertex-varying alpha remain content
+production limits.

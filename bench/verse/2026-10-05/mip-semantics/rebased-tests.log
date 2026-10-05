@@ -1,0 +1,576 @@
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `combat`, `controls`, `bow_remaining`, `time`, `yaw`, and `appearance` are never read
+   --> crates/verse-world/src/play/multiplayer.rs:120:5
+    |
+119 | pub(crate) struct PortablePlayer {
+    |                   -------------- fields in this struct
+120 |     combat: crate::rules::transfer::Portable,
+    |     ^^^^^^
+121 |     controls: Controls,
+    |     ^^^^^^^^
+122 |     bow_remaining: f32,
+    |     ^^^^^^^^^^^^^
+123 |     time: f32,
+    |     ^^^^
+124 |     yaw: f32,
+    |     ^^^
+125 |     appearance: verse_engine::director::Actor,
+    |     ^^^^^^^^^^
+    |
+    = note: `PortablePlayer` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `take_transfer_player`, `take_resident_player`, and `put_transfer_player` are never used
+   --> crates/verse-world/src/play/multiplayer.rs:128:19
+    |
+127 | impl Game {
+    | --------- methods in this implementation
+128 |     pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+137 |     pub(crate) fn take_resident_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+251 |     pub(crate) fn put_transfer_player(
+    |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:381:19
+     |
+ 289 | impl Game {
+     | --------- methods in this implementation
+...
+ 381 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1264 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: fields `state` and `elapsed` are never read
+ --> crates/verse-world/src/rules/transfer.rs:5:5
+  |
+4 | pub(crate) struct Portable {
+  |                   -------- fields in this struct
+5 |     state: PlayerState,
+  |     ^^^^^
+6 |     elapsed: f32,
+  |     ^^^^^^^
+  |
+  = note: `Portable` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `defeated` is never used
+ --> crates/verse-world/src/rules/transfer.rs:9:19
+  |
+8 | impl Portable {
+  | ------------- method in this implementation
+9 |     pub(crate) fn defeated(&self) -> bool {
+  |                   ^^^^^^^^
+
+warning: method `put_player` is never used
+  --> crates/verse-world/src/rules/transfer.rs:58:19
+   |
+13 | impl Simulation {
+   | --------------- method in this implementation
+...
+58 |     pub(crate) fn put_player(&mut self, id: u32, mut portable: Portable) -> Result<(), String> {
+   |                   ^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, `quest_log`, and `configure_rewards` are never used
+   --> crates/verse-world/src/service.rs:148:8
+    |
+ 98 | impl Chamber {
+    | ------------ methods in this implementation
+...
+148 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+256 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+307 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+...
+403 |     fn configure_rewards(&mut self, policies: Vec<rewards::Policy>) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: method `validate_use` is never used
+  --> crates/verse-world/src/service/items.rs:54:19
+   |
+27 | impl Catalog {
+   | ------------ method in this implementation
+...
+54 |     pub(super) fn validate_use(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^
+
+warning: method `validate_change` is never used
+  --> crates/verse-world/src/service/outfits.rs:70:19
+   |
+33 | impl Catalog {
+   | ------------ method in this implementation
+...
+70 |     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^^^^
+
+warning: method `progress` is never used
+   --> crates/verse-world/src/service/progression.rs:193:19
+    |
+142 | impl Config {
+    | ----------- method in this implementation
+...
+193 |     pub(super) fn progress(&self, actor: u64, _instance: u64, ledger: &Ledger) -> Vec<Progress> {
+    |                   ^^^^^^^^
+
+warning: methods `revision` and `transactions` are never used
+   --> crates/verse-world/src/service/rewards.rs:235:19
+    |
+205 | impl Ledger {
+    | ----------- methods in this implementation
+...
+235 |     pub(super) fn revision(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+381 |     pub(super) fn transactions(&self) -> Vec<Transaction> {
+    |                   ^^^^^^^^^^^^
+
+warning: method `transfer_cooldowns` is never used
+  --> crates/verse-world/src/utilities.rs:58:19
+   |
+57 | impl Controls {
+   | ------------- method in this implementation
+58 |     pub(crate) fn transfer_cooldowns(&self, source_time: f32, destination_time: f32) -> Self {
+   |                   ^^^^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib) generated 13 warnings
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `details`
+   --> crates/verse/src/imported/mod.rs:783:21
+    |
+783 |                 let details = adapter_details(&adapter);
+    |                     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_details`
+
+warning: associated function `move_player` is never used
+   --> crates/verse/src/zones/everglade/mod.rs:334:12
+    |
+ 92 | impl Everglade {
+    | -------------- associated function in this implementation
+...
+334 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse` (lib test) generated 3 warnings (run `cargo fix --lib -p verse --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.44s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-c55e33d3e300cfd5)
+
+running 13 tests
+test pbr::textured::tests::a_mirroring_placement_keeps_front_faces_counterclockwise ... ok
+test pbr::textured::tests::double_sided_materials_draw_both_faces ... ok
+test pbr::textured::tests::blended_cells_draw_last_from_far_to_near ... ok
+test pbr::textured::tests::mip_chains_skip_levels_above_the_device_limit ... ok
+test pbr::textured::tests::frustum_culling_keeps_boxes_in_view_and_drops_boxes_behind ... ok
+test pbr::textured::tests::only_masked_cells_discard_and_only_blended_cells_skip_depth_and_shadows ... ok
+test pbr::textured::tests::mips_average_color_in_linear_light ... ok
+test pbr::textured::tests::invalid_scenes_are_refused ... ok
+test pbr::textured::tests::placements_merge_into_cells_per_material ... ok
+test pbr::textured::tests::the_cutoff_keeps_alpha_at_or_above_it ... ok
+test pbr::textured::tests::masked_mips_keep_their_alpha_coverage_at_the_cutoff ... ok
+test pbr::textured::tests::oversized_mask_fitting_preserves_coverage_before_runtime_cooking ... ok
+test pbr::textured::tests::the_quaternius_props_import_with_shared_trim_sheets ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 580 filtered out; finished in 0.62s
+
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `combat`, `controls`, `bow_remaining`, `time`, `yaw`, and `appearance` are never read
+   --> crates/verse-world/src/play/multiplayer.rs:120:5
+    |
+119 | pub(crate) struct PortablePlayer {
+    |                   -------------- fields in this struct
+120 |     combat: crate::rules::transfer::Portable,
+    |     ^^^^^^
+121 |     controls: Controls,
+    |     ^^^^^^^^
+122 |     bow_remaining: f32,
+    |     ^^^^^^^^^^^^^
+123 |     time: f32,
+    |     ^^^^
+124 |     yaw: f32,
+    |     ^^^
+125 |     appearance: verse_engine::director::Actor,
+    |     ^^^^^^^^^^
+    |
+    = note: `PortablePlayer` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `take_transfer_player`, `take_resident_player`, and `put_transfer_player` are never used
+   --> crates/verse-world/src/play/multiplayer.rs:128:19
+    |
+127 | impl Game {
+    | --------- methods in this implementation
+128 |     pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+137 |     pub(crate) fn take_resident_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+251 |     pub(crate) fn put_transfer_player(
+    |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:381:19
+     |
+ 289 | impl Game {
+     | --------- methods in this implementation
+...
+ 381 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1264 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: fields `state` and `elapsed` are never read
+ --> crates/verse-world/src/rules/transfer.rs:5:5
+  |
+4 | pub(crate) struct Portable {
+  |                   -------- fields in this struct
+5 |     state: PlayerState,
+  |     ^^^^^
+6 |     elapsed: f32,
+  |     ^^^^^^^
+  |
+  = note: `Portable` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `defeated` is never used
+ --> crates/verse-world/src/rules/transfer.rs:9:19
+  |
+8 | impl Portable {
+  | ------------- method in this implementation
+9 |     pub(crate) fn defeated(&self) -> bool {
+  |                   ^^^^^^^^
+
+warning: method `put_player` is never used
+  --> crates/verse-world/src/rules/transfer.rs:58:19
+   |
+13 | impl Simulation {
+   | --------------- method in this implementation
+...
+58 |     pub(crate) fn put_player(&mut self, id: u32, mut portable: Portable) -> Result<(), String> {
+   |                   ^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, `quest_log`, and `configure_rewards` are never used
+   --> crates/verse-world/src/service.rs:148:8
+    |
+ 98 | impl Chamber {
+    | ------------ methods in this implementation
+...
+148 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+256 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+307 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+...
+403 |     fn configure_rewards(&mut self, policies: Vec<rewards::Policy>) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: method `validate_use` is never used
+  --> crates/verse-world/src/service/items.rs:54:19
+   |
+27 | impl Catalog {
+   | ------------ method in this implementation
+...
+54 |     pub(super) fn validate_use(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^
+
+warning: method `validate_change` is never used
+  --> crates/verse-world/src/service/outfits.rs:70:19
+   |
+33 | impl Catalog {
+   | ------------ method in this implementation
+...
+70 |     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^^^^
+
+warning: method `progress` is never used
+   --> crates/verse-world/src/service/progression.rs:193:19
+    |
+142 | impl Config {
+    | ----------- method in this implementation
+...
+193 |     pub(super) fn progress(&self, actor: u64, _instance: u64, ledger: &Ledger) -> Vec<Progress> {
+    |                   ^^^^^^^^
+
+warning: methods `revision` and `transactions` are never used
+   --> crates/verse-world/src/service/rewards.rs:235:19
+    |
+205 | impl Ledger {
+    | ----------- methods in this implementation
+...
+235 |     pub(super) fn revision(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+381 |     pub(super) fn transactions(&self) -> Vec<Transaction> {
+    |                   ^^^^^^^^^^^^
+
+warning: method `transfer_cooldowns` is never used
+  --> crates/verse-world/src/utilities.rs:58:19
+   |
+57 | impl Controls {
+   | ------------- method in this implementation
+58 |     pub(crate) fn transfer_cooldowns(&self, source_time: f32, destination_time: f32) -> Self {
+   |                   ^^^^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib) generated 13 warnings
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `details`
+   --> crates/verse/src/imported/mod.rs:783:21
+    |
+783 |                 let details = adapter_details(&adapter);
+    |                     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_details`
+
+warning: associated function `move_player` is never used
+   --> crates/verse/src/zones/everglade/mod.rs:334:12
+    |
+ 92 | impl Everglade {
+    | -------------- associated function in this implementation
+...
+334 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse` (lib test) generated 3 warnings (run `cargo fix --lib -p verse --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.31s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-c55e33d3e300cfd5)
+
+running 4 tests
+test imported::material_gpu::tests::packing_preserves_factors_and_presence_flags ... ok
+test imported::material_gpu::tests::lines_and_unlit_surfaces_keep_their_own_materials ... ok
+test imported::material_gpu::tests::shared_base_color_does_not_merge_distinct_materials ... ok
+test imported::material_gpu::tests::shared_source_has_separate_channel_and_effective_cutoff_variants ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 589 filtered out; finished in 0.00s
+
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `combat`, `controls`, `bow_remaining`, `time`, `yaw`, and `appearance` are never read
+   --> crates/verse-world/src/play/multiplayer.rs:120:5
+    |
+119 | pub(crate) struct PortablePlayer {
+    |                   -------------- fields in this struct
+120 |     combat: crate::rules::transfer::Portable,
+    |     ^^^^^^
+121 |     controls: Controls,
+    |     ^^^^^^^^
+122 |     bow_remaining: f32,
+    |     ^^^^^^^^^^^^^
+123 |     time: f32,
+    |     ^^^^
+124 |     yaw: f32,
+    |     ^^^
+125 |     appearance: verse_engine::director::Actor,
+    |     ^^^^^^^^^^
+    |
+    = note: `PortablePlayer` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `take_transfer_player`, `take_resident_player`, and `put_transfer_player` are never used
+   --> crates/verse-world/src/play/multiplayer.rs:128:19
+    |
+127 | impl Game {
+    | --------- methods in this implementation
+128 |     pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+137 |     pub(crate) fn take_resident_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+251 |     pub(crate) fn put_transfer_player(
+    |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:381:19
+     |
+ 289 | impl Game {
+     | --------- methods in this implementation
+...
+ 381 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1264 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: fields `state` and `elapsed` are never read
+ --> crates/verse-world/src/rules/transfer.rs:5:5
+  |
+4 | pub(crate) struct Portable {
+  |                   -------- fields in this struct
+5 |     state: PlayerState,
+  |     ^^^^^
+6 |     elapsed: f32,
+  |     ^^^^^^^
+  |
+  = note: `Portable` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `defeated` is never used
+ --> crates/verse-world/src/rules/transfer.rs:9:19
+  |
+8 | impl Portable {
+  | ------------- method in this implementation
+9 |     pub(crate) fn defeated(&self) -> bool {
+  |                   ^^^^^^^^
+
+warning: method `put_player` is never used
+  --> crates/verse-world/src/rules/transfer.rs:58:19
+   |
+13 | impl Simulation {
+   | --------------- method in this implementation
+...
+58 |     pub(crate) fn put_player(&mut self, id: u32, mut portable: Portable) -> Result<(), String> {
+   |                   ^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, `quest_log`, and `configure_rewards` are never used
+   --> crates/verse-world/src/service.rs:148:8
+    |
+ 98 | impl Chamber {
+    | ------------ methods in this implementation
+...
+148 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+256 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+307 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+...
+403 |     fn configure_rewards(&mut self, policies: Vec<rewards::Policy>) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: method `validate_use` is never used
+  --> crates/verse-world/src/service/items.rs:54:19
+   |
+27 | impl Catalog {
+   | ------------ method in this implementation
+...
+54 |     pub(super) fn validate_use(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^
+
+warning: method `validate_change` is never used
+  --> crates/verse-world/src/service/outfits.rs:70:19
+   |
+33 | impl Catalog {
+   | ------------ method in this implementation
+...
+70 |     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^^^^
+
+warning: method `progress` is never used
+   --> crates/verse-world/src/service/progression.rs:193:19
+    |
+142 | impl Config {
+    | ----------- method in this implementation
+...
+193 |     pub(super) fn progress(&self, actor: u64, _instance: u64, ledger: &Ledger) -> Vec<Progress> {
+    |                   ^^^^^^^^
+
+warning: methods `revision` and `transactions` are never used
+   --> crates/verse-world/src/service/rewards.rs:235:19
+    |
+205 | impl Ledger {
+    | ----------- methods in this implementation
+...
+235 |     pub(super) fn revision(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+381 |     pub(super) fn transactions(&self) -> Vec<Transaction> {
+    |                   ^^^^^^^^^^^^
+
+warning: method `transfer_cooldowns` is never used
+  --> crates/verse-world/src/utilities.rs:58:19
+   |
+57 | impl Controls {
+   | ------------- method in this implementation
+58 |     pub(crate) fn transfer_cooldowns(&self, source_time: f32, destination_time: f32) -> Self {
+   |                   ^^^^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib) generated 13 warnings
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `details`
+   --> crates/verse/src/imported/mod.rs:783:21
+    |
+783 |                 let details = adapter_details(&adapter);
+    |                     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_details`
+
+warning: associated function `move_player` is never used
+   --> crates/verse/src/zones/everglade/mod.rs:334:12
+    |
+ 92 | impl Everglade {
+    | -------------- associated function in this implementation
+...
+334 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse` (lib test) generated 3 warnings (run `cargo fix --lib -p verse --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-c55e33d3e300cfd5)
+
+running 1 test
+test render::tests::material_cutoff_variants_are_reserved_before_texture_upload ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 592 filtered out; finished in 0.00s
+

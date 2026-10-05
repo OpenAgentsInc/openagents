@@ -1,0 +1,164 @@
+{
+  "device": {
+    "name": "NVIDIA GeForce RTX 4080",
+    "vendor": 4318,
+    "device": 9988,
+    "backend": "Vulkan",
+    "device_type": "DiscreteGpu",
+    "driver": "NVIDIA",
+    "driver_info": "595.71.05",
+    "timestamp_feature_supported": true,
+    "timestamp_query_enabled": false,
+    "timestamp_period_ns": 1.0,
+    "multisample_count": 4,
+    "quality": "high",
+    "scene_format": "Rgba16Float",
+    "shadow_views": 24,
+    "mip_recipe_version": 1,
+    "mip_variants": 13,
+    "shadow_size": 512,
+    "budget": {
+      "instances": 1024,
+      "optional_effects": 768,
+      "surfaces": 16384,
+      "target_bytes": 1073741824,
+      "geometry_bytes": 1073741824,
+      "texture_bytes": 1073741824,
+      "buffer_bytes": 1073741824,
+      "cpu_frame_ms": 16.666666666666668,
+      "gpu_frame_ms": 16.666666666666668
+    }
+  },
+  "mips": [
+    {
+      "role": {
+        "role": "color"
+      },
+      "mip1": [
+        188,
+        188,
+        188,
+        128,
+        188,
+        188,
+        188,
+        128,
+        188,
+        188,
+        188,
+        128,
+        188,
+        188,
+        188,
+        128
+      ]
+    },
+    {
+      "role": {
+        "role": "linear"
+      },
+      "mip1": [
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128
+      ]
+    },
+    {
+      "role": {
+        "role": "normal"
+      },
+      "mip1": [
+        128,
+        128,
+        255,
+        128,
+        128,
+        128,
+        255,
+        128,
+        128,
+        128,
+        255,
+        128,
+        128,
+        128,
+        255,
+        128
+      ]
+    },
+    {
+      "role": {
+        "role": "mask",
+        "cutoff_bits": 1056964608
+      },
+      "mip1": [
+        188,
+        188,
+        188,
+        255,
+        188,
+        188,
+        188,
+        255,
+        188,
+        188,
+        188,
+        0,
+        188,
+        188,
+        188,
+        0
+      ]
+    }
+  ],
+  "binding_samples": [
+    [
+      128,
+      128,
+      128,
+      128
+    ],
+    [
+      128,
+      128,
+      255,
+      128
+    ],
+    [
+      128,
+      128,
+      128,
+      128
+    ],
+    [
+      128,
+      128,
+      128,
+      128
+    ],
+    [
+      128,
+      128,
+      128,
+      128
+    ]
+  ],
+  "mask_coverage": 0.5,
+  "device_recoveries": 1,
+  "sources_deleted_before_recovery": true,
+  "channels_sha256": "577391a8f83e6771d2f6ce7dd567c4f7cbd98102147b40381d347e79e57e7640",
+  "mask_sha256": "425c103bd85e716d8f4acc44acddfe2f437c109b7278ccdea71466840153ab16"
+}

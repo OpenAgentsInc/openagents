@@ -424,17 +424,28 @@ impl TexturedScene {
         Ok(())
     }
 
-    /// The smallest cutoff among masked materials that use image `image`,
-    /// which its mip chain preserves coverage at.
-    pub(crate) fn mask_cutoff(&self, image: usize) -> Option<f32> {
-        self.materials
+    /// Distinct image/cutoff recipes; an opaque user never inherits another material's mask.
+    pub(crate) fn mip_variants(&self) -> std::collections::BTreeSet<verse_engine::mips::Variant> {
+        use verse_engine::mips::{Role, Variant};
+        let mut variants: std::collections::BTreeSet<_> = self
+            .materials
             .iter()
-            .filter(|m| m.image == Some(image))
-            .filter_map(|m| match m.alpha {
-                AlphaMode::Mask { cutoff } if cutoff > 0.0 => Some(cutoff),
-                _ => None,
+            .filter_map(|material| {
+                material.image.map(|texture| Variant {
+                    texture,
+                    role: material_role(material),
+                })
             })
-            .reduce(f32::min)
+            .collect();
+        for texture in 0..self.images.len() {
+            if !variants.iter().any(|v| v.texture == texture) {
+                variants.insert(Variant {
+                    texture,
+                    role: Role::Color,
+                });
+            }
+        }
+        variants
     }
 
     /// Merges every placement into world-space cells, one per pass,
@@ -612,6 +623,19 @@ impl TexturedScene {
             return Ok(index);
         }
         let pbr = material.pbr_metallic_roughness();
+        let alpha = match material.alpha_mode() {
+            gltf::material::AlphaMode::Opaque => AlphaMode::Opaque,
+            gltf::material::AlphaMode::Mask => AlphaMode::Mask {
+                cutoff: material.alpha_cutoff().unwrap_or(0.5),
+            },
+            gltf::material::AlphaMode::Blend => AlphaMode::Blend,
+        };
+        let role = match alpha {
+            AlphaMode::Mask { cutoff } => {
+                verse_engine::mips::Role::masked(cutoff, pbr.base_color_factor()[3])?
+            }
+            _ => verse_engine::mips::Role::Color,
+        };
         let image = match pbr.base_color_texture() {
             Some(info) if info.tex_coord() != 0 => {
                 return Err(format!(
@@ -619,15 +643,8 @@ impl TexturedScene {
                     path.display()
                 ));
             }
-            Some(info) => Some(self.import_image(path, buffers, info.texture().source())?),
+            Some(info) => Some(self.import_image(path, buffers, info.texture().source(), role)?),
             None => None,
-        };
-        let alpha = match material.alpha_mode() {
-            gltf::material::AlphaMode::Opaque => AlphaMode::Opaque,
-            gltf::material::AlphaMode::Mask => AlphaMode::Mask {
-                cutoff: material.alpha_cutoff().unwrap_or(0.5),
-            },
-            gltf::material::AlphaMode::Blend => AlphaMode::Blend,
         };
         let metallic = if pbr.metallic_roughness_texture().is_some() {
             0.0
@@ -655,6 +672,7 @@ impl TexturedScene {
         path: &Path,
         buffers: &[gltf::buffer::Data],
         image: gltf::image::Image<'_>,
+        role: verse_engine::mips::Role,
     ) -> Result<usize, String> {
         let name = match image.source() {
             gltf::image::Source::Uri { uri, .. } => {
@@ -674,7 +692,13 @@ impl TexturedScene {
                 format!("{}#image{}", path.display(), image.index())
             }
         };
-        if let Some(index) = self.images.iter().position(|i| i.name == name) {
+        let recipe_name = match role {
+            verse_engine::mips::Role::Mask { cutoff } => {
+                format!("{name} [mask cutoff {cutoff:08x}]")
+            }
+            _ => name.clone(),
+        };
+        if let Some(index) = self.images.iter().position(|i| i.name == recipe_name) {
             return Ok(index);
         }
         let bytes = match image.source() {
@@ -690,12 +714,13 @@ impl TexturedScene {
         let (width, height, rgba) = decode_png(&bytes).map_err(|e| format!("{name}: {e}"))?;
         let image = fit(
             BaseColorImage {
-                name,
+                name: recipe_name,
                 width,
                 height,
                 rgba,
             },
             MAX_IMAGE_SIZE,
+            role,
         );
         Ok(self.add_image(image))
     }
@@ -944,135 +969,53 @@ pub(crate) fn uniform(material: &TexturedMaterial) -> [[f32; 4]; 2] {
     ]
 }
 
-/// The sRGB transfer function's decoding of each 8-bit value.
 pub(crate) fn srgb_to_linear() -> &'static [f32; 256] {
     static TABLE: std::sync::OnceLock<[f32; 256]> = std::sync::OnceLock::new();
-    TABLE.get_or_init(|| {
-        std::array::from_fn(|i| {
-            let c = i as f32 / 255.0;
-            if c <= 0.04045 {
-                c / 12.92
-            } else {
-                ((c + 0.055) / 1.055).powf(2.4)
-            }
-        })
-    })
+    TABLE.get_or_init(|| std::array::from_fn(|i| verse_engine::mips::srgb_to_linear()[i] as f32))
 }
-
-fn linear_to_srgb(linear: f32) -> u8 {
-    let c = linear.clamp(0.0, 1.0);
-    let encoded = if c <= 0.003_130_8 {
-        c * 12.92
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    };
-    (encoded * 255.0).round() as u8
-}
-
-/// Halves an RGBA8 image with a 2×2 box filter: color averaged in linear
-/// light, alpha averaged as is. Odd edges repeat their last texel.
-fn halve(width: u32, height: u32, rgba: &[u8]) -> (u32, u32, Vec<u8>) {
-    let table = srgb_to_linear();
-    let (w, h) = ((width / 2).max(1), (height / 2).max(1));
-    let mut out = Vec::with_capacity(w as usize * h as usize * 4);
-    for y in 0..h {
-        for x in 0..w {
-            let texels = [(0, 0), (1, 0), (0, 1), (1, 1)].map(|(dx, dy)| {
-                let sx = (2 * x + dx).min(width - 1) as usize;
-                let sy = (2 * y + dy).min(height - 1) as usize;
-                (sy * width as usize + sx) * 4
-            });
-            for c in 0..3 {
-                let sum: f32 = texels.iter().map(|&t| table[rgba[t + c] as usize]).sum();
-                out.push(linear_to_srgb(sum * 0.25));
-            }
-            let alpha: u32 = texels.iter().map(|&t| u32::from(rgba[t + 3])).sum();
-            out.push(((alpha + 2) / 4) as u8);
+pub(crate) fn material_role(material: &TexturedMaterial) -> verse_engine::mips::Role {
+    match material.alpha {
+        AlphaMode::Mask { cutoff } => {
+            verse_engine::mips::Role::masked(cutoff, material.base_color[3])
+                .expect("validated material factors")
         }
+        _ => verse_engine::mips::Role::Color,
     }
-    (w, h, out)
 }
-
-/// Halves `image` until both sides are at most `max` texels.
-fn fit(mut image: BaseColorImage, max: u32) -> BaseColorImage {
-    while image.width > max || image.height > max {
-        let (width, height, rgba) = halve(image.width, image.height, &image.rgba);
-        image = BaseColorImage {
-            width,
-            height,
-            rgba,
-            ..image
-        };
+/// Fit admitted image data with the same area/color recipe used for uploads.
+fn fit(image: BaseColorImage, max: u32, role: verse_engine::mips::Role) -> BaseColorImage {
+    if image.width <= max && image.height <= max {
+        return image;
     }
-    image
+    let levels = verse_engine::mips::cook(image.width, image.height, &image.rgba, role, max)
+        .expect("decoded image extent");
+    let (width, height, rgba) = levels.into_iter().next().unwrap();
+    BaseColorImage {
+        width,
+        height,
+        rgba,
+        ..image
+    }
 }
-
-/// The fraction of texels whose alpha, scaled by `scale`, reaches `cutoff`.
+#[cfg(test)]
 fn coverage(rgba: &[u8], cutoff: f32, scale: f32) -> f32 {
-    let texels = rgba.len() / 4;
-    if texels == 0 {
-        return 0.0;
-    }
-    let kept = rgba
-        .chunks_exact(4)
-        .filter(|t| f32::from(t[3]) / 255.0 * scale >= cutoff)
-        .count();
-    kept as f32 / texels as f32
+    rgba.chunks_exact(4)
+        .filter(|p| f32::from(p[3]) / 255. * scale >= cutoff)
+        .count() as f32
+        / (rgba.len() / 4) as f32
 }
-
-/// Scales a mip level's alpha by the smallest factor that brings its
-/// coverage at `cutoff` up to `wanted` (Castaño, "Computing Alpha Mipmaps",
-/// 2010), so masked foliage keeps its density with distance instead of
-/// thinning out as averaged alpha falls below the cutoff.
-fn preserve_coverage(rgba: &mut [u8], cutoff: f32, wanted: f32) {
-    if wanted <= 0.0 || coverage(rgba, cutoff, 1.0) >= wanted {
-        return;
-    }
-    // Coverage only grows with the scale, and at 256 every nonzero alpha
-    // passes any cutoff up to 1.
-    let (mut low, mut high) = (1.0f32, 256.0f32);
-    for _ in 0..24 {
-        let middle = (low + high) * 0.5;
-        if coverage(rgba, cutoff, middle) >= wanted {
-            high = middle;
-        } else {
-            low = middle;
-        }
-    }
-    for texel in rgba.chunks_exact_mut(4) {
-        texel[3] = (f32::from(texel[3]) * high).ceil().min(255.0) as u8;
-    }
-}
-
-/// An image's mip chain, largest first, down to one texel, without levels
-/// wider or taller than `max`. With a mask `cutoff`, each level keeps the
-/// full image's alpha coverage at that cutoff.
+/// Cook sRGB color with the material's effective mask comparison.
+#[cfg(test)]
 pub(crate) fn mip_chain(
     image: &BaseColorImage,
     cutoff: Option<f32>,
     max: u32,
-) -> Vec<(u32, u32, Vec<u8>)> {
-    let wanted = cutoff.map(|cutoff| (cutoff, coverage(&image.rgba, cutoff, 1.0)));
-    let mut levels = Vec::new();
-    let mut current = (image.width, image.height, image.rgba.clone());
-    loop {
-        let (width, height) = (current.0, current.1);
-        let next = (width > 1 || height > 1).then(|| {
-            let mut next = halve(width, height, &current.2);
-            if let Some((cutoff, wanted)) = wanted {
-                preserve_coverage(&mut next.2, cutoff, wanted);
-            }
-            next
-        });
-        if width <= max && height <= max {
-            levels.push(current);
-        }
-        match next {
-            Some(next) => current = next,
-            None => break,
-        }
-    }
-    levels
+) -> Vec<verse_engine::mips::Level> {
+    let role = cutoff.map_or(verse_engine::mips::Role::Color, |cutoff| {
+        verse_engine::mips::Role::masked(cutoff, 1.).expect("validated cutoff")
+    });
+    verse_engine::mips::cook(image.width, image.height, &image.rgba, role, max)
+        .expect("admitted image extent")
 }
 
 /// Decodes a PNG into RGBA8, expanding gray, palette, and 16-bit images.
@@ -1144,6 +1087,28 @@ mod tests {
             .join(format!("{name}.gltf"))
     }
 
+    #[test]
+    fn oversized_mask_fitting_preserves_coverage_before_runtime_cooking() {
+        let source = BaseColorImage {
+            name: "thin stems".into(),
+            width: 16,
+            height: 16,
+            rgba: (0..256)
+                .flat_map(|i| [40, 120, 30, if i % 4 == 0 { 255 } else { 0 }])
+                .collect(),
+        };
+        let color = fit(source.clone(), 4, verse_engine::mips::Role::Color);
+        let masked = fit(
+            source,
+            4,
+            verse_engine::mips::Role::masked(0.6, 1.).unwrap(),
+        );
+        assert_eq!((masked.width, masked.height), (4, 4));
+        assert_eq!(coverage(&color.rgba, 0.6, 1.), 0.);
+        assert_eq!(coverage(&masked.rgba, 0.6, 1.), 0.25);
+        let levels = mip_chain(&masked, Some(0.6), 4);
+        assert_eq!(coverage(&levels[1].2, 0.6, 1.), 0.25);
+    }
     #[test]
     fn the_cutoff_keeps_alpha_at_or_above_it() {
         let mask = AlphaMode::Mask { cutoff: 0.5 };
@@ -1380,7 +1345,7 @@ mod tests {
         let chain = mip_chain(&image, None, 2);
         let sizes: Vec<(u32, u32)> = chain.iter().map(|l| (l.0, l.1)).collect();
         assert_eq!(sizes, [(2, 1), (1, 1)]);
-        let fitted = fit(image, 4);
+        let fitted = fit(image, 4, verse_engine::mips::Role::Color);
         assert_eq!((fitted.width, fitted.height), (4, 2));
     }
 

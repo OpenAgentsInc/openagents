@@ -27,6 +27,8 @@ pub mod inventory;
 pub mod lighting;
 mod material_gpu;
 mod meteor_swarm;
+#[cfg(test)]
+mod mip_tests;
 pub mod original;
 pub mod overlay;
 pub mod play;
@@ -38,6 +40,7 @@ pub mod remote_record;
 #[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
 pub mod remote_window;
 mod shadow_cache;
+mod texture_gpu;
 use lighting::{Frame, Lighting};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -413,6 +416,10 @@ pub struct Renderer {
     instanced_shadows: Option<instancing::Shadows>,
     pose_layout: wgpu::BindGroupLayout,
     materials: BTreeMap<material_gpu::Key, wgpu::BindGroup>,
+    #[cfg(test)]
+    texture_variants: BTreeMap<verse_engine::mips::Variant, texture_gpu::Image>,
+    #[cfg(test)]
+    material_layout: wgpu::BindGroupLayout,
     shadow_materials: BTreeMap<material_gpu::Key, wgpu::BindGroup>,
     pipelines: Vec<wgpu::RenderPipeline>,
     catalog: verse_engine::residency::Catalog,
@@ -828,6 +835,17 @@ impl Renderer {
                         .sum::<u64>()
                 })
                 .sum::<u64>();
+        let variants = verse_engine::mips::pack_variants(&pack)?;
+        let mip_bytes = variants.iter().try_fold(0u64, |sum, variant| {
+            let texture = &pack.textures[variant.texture];
+            let bytes = verse_engine::mips::bytes(
+                texture.width,
+                texture.height,
+                device.limits().max_texture_dimension_2d,
+            )?;
+            sum.checked_add(bytes)
+                .ok_or_else(|| "Mip storage extent overflow".to_owned())
+        })?;
         let resources = verse_engine::quality::Resources {
             target_bytes: admission.target_bytes(width, height),
             geometry_bytes,
@@ -836,25 +854,7 @@ impl Renderer {
                 + u64::from(instancing::INDEX_CAPACITY) * 4
                 + 4 * 1024 * 1024
                 + 25 * std::mem::size_of::<lighting::Frame>() as u64,
-            texture_bytes: pack_receipt
-                .textures
-                .iter()
-                .map(|texture| {
-                    let mut w = texture.width;
-                    let mut h = texture.height;
-                    let mut total = 0;
-                    loop {
-                        total += u64::from(w) * u64::from(h) * 4;
-                        if w == 1 && h == 1 {
-                            break;
-                        }
-                        w = (w / 2).max(1);
-                        h = (h / 2).max(1);
-                    }
-                    total
-                })
-                .sum::<u64>()
-                + u64::from(atlas.width) * u64::from(atlas.height) * 4,
+            texture_bytes: mip_bytes + u64::from(atlas.width) * u64::from(atlas.height) * 4,
             retained_source_bytes: pack_receipt.manifest_bytes + pack_receipt.rgba_bytes,
         };
         admission.quality.budget().admit(resources)?;
@@ -1042,81 +1042,22 @@ impl Renderer {
             anisotropy_clamp: 4,
             ..Default::default()
         });
-        // WebGL cannot view an sRGB texture as linear; there the linear view
-        // is the sRGB view, and unlit surfaces read gamma-encoded texels.
-        #[cfg(feature = "imported-surface")]
-        let linear_views = adapter
-            .get_downlevel_capabilities()
-            .flags
-            .contains(wgpu::DownlevelFlags::VIEW_FORMATS);
-        #[cfg(not(feature = "imported-surface"))]
-        let linear_views = true;
-        let linear_formats: &[wgpu::TextureFormat] = if linear_views {
-            &[wgpu::TextureFormat::Rgba8Unorm]
-        } else {
-            &[]
-        };
-        let mut texture_views = Vec::new();
-        for (t, pixels) in pack.textures.iter().zip(&decoded) {
-            let tex = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(&t.file),
-                size: extent(t.width, t.height),
-                mip_level_count: 32 - t.width.max(t.height).leading_zeros(),
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: linear_formats,
-            });
-            let (mut width, mut height) = (t.width, t.height);
-            let mut rgba = pixels.rgba().to_vec();
-            for level in 0..tex.mip_level_count() {
-                queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &tex,
-                        mip_level: level,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &rgba,
-                    wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(width * 4),
-                        rows_per_image: Some(height),
-                    },
-                    extent(width, height),
-                );
-                if level + 1 < tex.mip_level_count() {
-                    let (next_width, next_height) = ((width / 2).max(1), (height / 2).max(1));
-                    let mut next = Vec::with_capacity((next_width * next_height * 4) as usize);
-                    for y in 0..next_height {
-                        for x in 0..next_width {
-                            let mut sum = [0u32; 4];
-                            let mut count = 0;
-                            for sy in y * height / next_height..(y + 1) * height / next_height {
-                                for sx in x * width / next_width..(x + 1) * width / next_width {
-                                    let offset = ((sy * width + sx) * 4) as usize;
-                                    for channel in 0..4 {
-                                        sum[channel] += u32::from(rgba[offset + channel]);
-                                    }
-                                    count += 1;
-                                }
-                            }
-                            next.extend(sum.map(|value| ((value + count / 2) / count) as u8));
-                        }
-                    }
-                    rgba = next;
-                    width = next_width;
-                    height = next_height;
-                }
-            }
-            let srgb = tex.create_view(&Default::default());
-            let linear = tex.create_view(&wgpu::TextureViewDescriptor {
-                format: linear_views.then_some(wgpu::TextureFormat::Rgba8Unorm),
-                ..Default::default()
-            });
-            texture_views.push((srgb, linear));
-        }
+        let texture_views = variants
+            .iter()
+            .map(|variant| {
+                let t = &pack.textures[variant.texture];
+                texture_gpu::upload(
+                    &device,
+                    &queue,
+                    &t.file,
+                    t.width,
+                    t.height,
+                    decoded[variant.texture].rgba(),
+                    variant.role,
+                )
+                .map(|image| (*variant, image))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
         let keys: std::collections::BTreeSet<_> = pack
             .models
             .values()
@@ -1134,7 +1075,9 @@ impl Renderer {
             let mut entries = vec![
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_views[key.texture].0),
+                    resource: wgpu::BindingResource::TextureView(
+                        &texture_views[&key.base_variant()].view,
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -1153,15 +1096,12 @@ impl Renderer {
                     entries: &entries,
                 }),
             );
-            for (channel, slot) in key.maps.into_iter().enumerate() {
-                let views = &texture_views[slot.unwrap_or(key.texture)];
+            for channel in 0..4 {
                 entries.push(wgpu::BindGroupEntry {
                     binding: channel as u32 + 3,
-                    resource: wgpu::BindingResource::TextureView(if channel == 3 {
-                        &views.0
-                    } else {
-                        &views.1
-                    }),
+                    resource: wgpu::BindingResource::TextureView(
+                        &texture_views[&key.map_variant(channel)].view,
+                    ),
                 });
             }
             materials.insert(
@@ -1328,6 +1268,8 @@ impl Renderer {
         device_profile["quality"] = admission.quality.tier.name().into();
         device_profile["scene_format"] = format!("{:?}", admission.scene).into();
         device_profile["shadow_views"] = shadow_layer_count.into();
+        device_profile["mip_recipe_version"] = verse_engine::mips::RECIPE_VERSION.into();
+        device_profile["mip_variants"] = variants.len().into();
         device_profile["shadow_size"] = shadow_size.into();
         device_profile["budget"] =
             serde_json::to_value(admission.quality.budget()).map_err(|e| e.to_string())?;
@@ -1369,6 +1311,10 @@ impl Renderer {
             instanced_shadows,
             pose_layout,
             materials,
+            #[cfg(test)]
+            texture_variants: texture_views,
+            #[cfg(test)]
+            material_layout: texture_layout,
             shadow_materials,
             pipelines,
             catalog,

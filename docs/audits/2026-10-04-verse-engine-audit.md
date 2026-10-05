@@ -156,7 +156,7 @@ Evidence labels:
 | V10 | P1 | CPU, GPU, capture, and transport costs have separate measurement contracts. | Code, recorded | Profiling and acceptance | Complete ([#10619](https://github.com/OpenAgentsInc/openagents/issues/10619)) |
 | V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities | Complete ([#10623](https://github.com/OpenAgentsInc/openagents/issues/10623)) |
 | V12 | P1 | Cooked static chunks have bounded native streaming residency. | Code, recorded | Content loading and residency | Complete ([#10625](https://github.com/OpenAgentsInc/openagents/issues/10625)), static-content profile |
-| V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload | Open |
+| V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload | Complete ([#10629](https://github.com/OpenAgentsInc/openagents/issues/10629)) |
 | V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics | Open |
 | V15 | P1 | Navigation needs tiled content and scheduled crowd work. | Code, gap | Navigation and AI | Open |
 | V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters | Open |
@@ -1014,25 +1014,47 @@ fault containment, and phone/browser streaming acceptance remain V20–V22, V18,
 and V24. This fixture does not establish networked population or physical
 scanout performance.
 
-### V13: Mipmap generation has a concrete color-space defect
+### V13: Material-role mip cooking and uploads
 
-[`Renderer::build`](../../crates/verse/src/imported/mod.rs) averages texture RGBA
-bytes into each mip level, then offers sRGB and linear views of the same image.
-For base color and emissive RGB, averaging encoded sRGB values does not compute
-the correct linear-light average. The same universal filter does not normalize
-normal maps or preserve alpha-test coverage. The material contract already
-distinguishes these channel roles.
+**Completed:** [#10629](https://github.com/OpenAgentsInc/openagents/issues/10629).
+The imported renderer previously averaged encoded color and data bytes with one
+universal filter and reused an sRGB image through a linear view. The physical
+textured renderer already filtered color in linear light, but selected one
+coverage recipe per source image and omitted material opacity from that recipe.
 
-**Improve:** Cook role-specific mip chains: decode/filter/re-encode sRGB color,
-retain linear scalar maps, renormalize normals, and preserve cutout coverage.
-Declare when one source image requires distinct cooked variants. The
-[glTF material specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#materials)
-defines the different color and data-texture semantics. This is a correctness
-fix before higher-resolution art, not a request for a new rendering dependency.
+[`verse_engine::mips`](../../crates/verse-engine/src/mips.rs) now provides a shared
+versioned RGBA8 recipe. Color and emissive RGB decode to linear light before area
+filtering and return to sRGB; scalar maps retain linear values. Normal texels and
+each normal reduction normalize vectors, with a forward fallback for cancellation.
+Fractional area weights retain the edges of odd-sized images. These channel roles
+follow the [glTF material specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#materials).
 
-**Acceptance:** Black/white color averaging matches linear-light reference
-values, normal mips remain normalized, and distant cutout silhouettes retain
-coverage. Tests exercise actual cooked/uploaded mip bytes and material roles.
+A mask variant includes the material's effective cutoff (`cutoff / opacity`). Each
+reduction targets the original image's covered texel fraction, selects the nearest
+representable count, and calibrates alpha contrast against a fixed bilinear-repeat
+sampling grid. Corrections do not feed later reductions. An opaque material,
+different cutoffs, and normal or scalar users of the same source receive distinct
+chains. Both native paths reserve those variants before upload. The imported path
+uses explicit sRGB color and linear data textures without view reinterpretation;
+its shadow bindings use the same mask chain as the color pass.
+
+**Evidence:** [Retained mip checks](../../bench/verse/2026-10-05/mip-semantics/README.md)
+include real RTX 4080 Vulkan readbacks and material-binding probes. Black/white
+color reduces to RGB 188, scalar data to 128, and opposed normals to the forward
+fallback. Five channel bindings return their expected linear samples. The masked
+checker retains 50% rendered coverage at mip level 1. Portable tests also cover
+odd image sizes, thin stems, effective-cutoff variants, malformed inputs, and
+variant resource accounting. Native consumer and browser compilation checks pass.
+
+**Limits:** This is a CPU cooker used during upload, with a portable API for
+content tools. Persisted compressed or authored mip chains remain V20. Coverage
+is approximate: one coarse texel cannot represent a fraction, so a nonempty mask
+retains one visible texel; contrast calibration cannot guarantee every cutoff,
+view angle, anisotropic filter, trilinear transition, or vertex-alpha multiplier.
+Ranking ties can change coarse silhouette shape. The physical glTF loader also
+uses the material recipe when fitting oversized sources to its 2048-texel limit.
+The hardware check uses a scratch generated fixture and does not establish phone or browser image
+quality, frame latency, or production art acceptance.
 
 ### V14: Physics acceleration is incomplete at the scene level
 

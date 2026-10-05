@@ -1305,16 +1305,9 @@ fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resources, Strin
                 .map(primitive_bytes)
                 .sum::<u64>();
         }
-        for image in &scene.images {
-            let (mut width, mut height) = (image.width, image.height);
-            loop {
-                result.texture_bytes += u64::from(width) * u64::from(height) * 4;
-                if width == 1 && height == 1 {
-                    break;
-                }
-                width = (width / 2).max(1);
-                height = (height / 2).max(1);
-            }
+        for variant in scene.mip_variants() {
+            let image = &scene.images[variant.texture];
+            result.texture_bytes += verse_engine::mips::bytes(image.width, image.height, u32::MAX)?;
         }
     }
     result.retained_source_bytes = result.geometry_bytes + result.texture_bytes;
@@ -2558,6 +2551,40 @@ fn write(device: &wgpu::Device, queue: &wgpu::Queue, batch: &mut Batch, vertices
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn material_cutoff_variants_are_reserved_before_texture_upload() {
+        use crate::pbr::textured::{AlphaMode, BaseColorImage, TexturedMaterial, TexturedScene};
+        let mut scene = TexturedScene::default();
+        scene.images.push(BaseColorImage {
+            name: "shared".into(),
+            width: 4,
+            height: 4,
+            rgba: vec![255; 64],
+        });
+        for (alpha, opacity) in [
+            (AlphaMode::Opaque, 1.),
+            (AlphaMode::Mask { cutoff: 0.4 }, 1.),
+            (AlphaMode::Mask { cutoff: 0.4 }, 0.5),
+            (AlphaMode::Mask { cutoff: 0.8 }, 1.),
+        ] {
+            scene.materials.push(TexturedMaterial {
+                image: Some(0),
+                alpha,
+                base_color: [1., 1., 1., opacity],
+                ..Default::default()
+            });
+        }
+        // The last two materials share the same effective cutoff. Opaque stays separate.
+        assert_eq!(scene.mip_variants().len(), 3);
+        let mesh = Mesh {
+            textured: Some(scene.into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            mesh_resources(&mesh).unwrap().texture_bytes,
+            3 * (64 + 16 + 4)
+        );
+    }
     #[cfg(all(feature = "imported-desktop", target_os = "linux"))]
     #[test]
     #[ignore = "requires a scratch X11 display; run separately from other window tests"]
