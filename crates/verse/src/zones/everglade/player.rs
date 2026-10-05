@@ -660,6 +660,23 @@ impl Cast {
             vertices: self.vertices.clone(),
         }
     }
+
+    /// As [`Self::figure`], with the player's own character collapsed to a
+    /// point, so it neither draws nor casts a shadow. The seats still draw.
+    #[must_use]
+    pub fn figure_without_player(&self) -> Figure {
+        let mut vertices = self.vertices.as_ref().clone();
+        let player = self.rig.template.len().min(vertices.len());
+        if let Some(point) = vertices.first().map(|v| v.pos) {
+            for vertex in &mut vertices[..player] {
+                vertex.pos = point;
+            }
+        }
+        Figure {
+            scene: self.scene.clone(),
+            vertices: Arc::new(vertices),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1409,7 +1409,8 @@ impl WorldRuntime {
             // Carries the lit stage the textured glade draws on.
             mesh.extend(everglade.dynamic());
             // The player, and the seats when the pack's character draws them.
-            mesh.extend(&everglade.player_mesh(&self.player, &self.gait));
+            // In first person the player's own character is not drawn.
+            mesh.extend(&everglade.player_mesh(&self.player, &self.gait, self.hides_avatar()));
             // The live spells: stone panels, wind, the cylinder, feathers.
             mesh.extend(&everglade.spell_mesh(&self.player));
             // The studio's nameplates, lamps, marks, bubbles, particles, and

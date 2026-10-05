@@ -8,6 +8,10 @@
 //! - The wheel zooms.
 //! - While the character moves and the left button is up, the orbit
 //!   swings back behind it.
+//!
+//! Where the world allows it, zooming in past the nearest orbit glides the
+//! eye into the character's head for a first-person view, and zooming back
+//! out glides it back to the nearest orbit.
 
 use glam::{Mat4, Vec3};
 
@@ -29,6 +33,23 @@ pub const FOV_Y: f32 = 1.0;
 /// camera from the nearest orbit into first person, or back out. The
 /// margin keeps a pinch's small reversals from flipping the view.
 pub const FIRST_PERSON_PUSH: f32 = 0.15;
+/// Height of the first-person eye above the feet, in meters: just under
+/// the top of the character's head.
+pub const EYE_HEIGHT: f32 = crate::controller::AVATAR_HEIGHT - 0.1;
+/// Seconds the eye takes to glide between the nearest orbit and first
+/// person.
+pub const TRANSITION_SECONDS: f32 = 0.25;
+/// How far into the glide, from 0 to 1, the player's own avatar is hidden:
+/// by then the eye is within half a meter of the head.
+pub const HIDE_AVATAR_AT: f32 = 0.8;
+/// Near clip plane in meters for the third-person orbit.
+pub const NEAR: f32 = 0.1;
+/// Near clip plane in meters while the eye is in or gliding toward the
+/// head. The player's collision radius keeps walls far beyond the corners
+/// of this plane, so a wall beside the player is not cut open.
+pub const FIRST_PERSON_NEAR: f32 = 0.05;
+/// Far clip plane in meters.
+pub const FAR: f32 = 2000.0;
 
 /// The orbit around the player, relative to the player's facing.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -45,6 +66,9 @@ pub struct FollowCamera {
     /// Zoom accumulated past the nearest orbit (or, in first person, back
     /// out), toward [`FIRST_PERSON_PUSH`].
     push: f32,
+    /// Progress of the glide into first person: 0 at the orbit, 1 at the
+    /// head. [`Self::advance`] moves it toward `first_person`.
+    blend: f32,
 }
 
 impl Default for FollowCamera {
@@ -55,6 +79,7 @@ impl Default for FollowCamera {
             distance: 9.0,
             first_person: false,
             push: 0.0,
+            blend: 0.0,
         }
     }
 }
@@ -135,6 +160,44 @@ impl FollowCamera {
         self.push = 0.0;
     }
 
+    /// Glides the eye toward first person or back out over `dt` seconds.
+    pub fn advance(&mut self, dt: f32) {
+        if !dt.is_finite() || dt <= 0.0 {
+            return;
+        }
+        let target = if self.first_person { 1.0 } else { 0.0 };
+        let step = dt / TRANSITION_SECONDS;
+        self.blend = if self.blend < target {
+            (self.blend + step).min(target)
+        } else {
+            (self.blend - step).max(target)
+        };
+    }
+
+    /// Progress of the glide into first person, from 0 at the orbit to 1
+    /// at the head.
+    #[must_use]
+    pub fn blend(&self) -> f32 {
+        self.blend
+    }
+
+    /// The eye is close enough to the head that the player's own avatar
+    /// would fill the view, so it is not drawn.
+    #[must_use]
+    pub fn hides_avatar(&self) -> bool {
+        self.blend >= HIDE_AVATAR_AT
+    }
+
+    /// The near clip plane for this frame.
+    #[must_use]
+    pub fn near(&self) -> f32 {
+        if self.blend > 0.0 {
+            FIRST_PERSON_NEAR
+        } else {
+            NEAR
+        }
+    }
+
     /// Swings the orbit back behind a moving character.
     pub fn settle(&mut self, dt: f32) {
         self.yaw_offset *= 0.02f32.powf(dt);
@@ -154,12 +217,14 @@ impl FollowCamera {
 
     /// Orbit position before applying the active world's ground clearance.
     pub(crate) fn unclamped_eye(&self, feet: Vec3, player_yaw: f32) -> Vec3 {
-        if self.first_person {
-            return focus(feet);
-        }
         let yaw = player_yaw + self.yaw_offset;
         let back = -crate::controller::forward(yaw) * self.pitch.cos();
-        focus(feet) + (back + Vec3::Y * self.pitch.sin()) * self.distance
+        let orbit = focus(feet) + (back + Vec3::Y * self.pitch.sin()) * self.distance;
+        if self.blend <= 0.0 {
+            return orbit;
+        }
+        let t = self.blend.clamp(0.0, 1.0);
+        orbit.lerp(head(feet), t * t * (3.0 - 2.0 * t))
     }
 
     /// The combined projection and view matrix.
@@ -176,13 +241,19 @@ impl FollowCamera {
         // Looking back at the shoulders after clamping the eye would prevent
         // looking up, especially when the camera is zoomed out.
         let view = Mat4::look_to_rh(eye, direction, Vec3::Y);
-        let proj = Mat4::perspective_rh(FOV_Y, aspect.max(0.01), 0.1, 2000.0);
+        let proj = Mat4::perspective_rh(FOV_Y, aspect.max(0.01), self.near(), FAR);
         proj * view
     }
 }
 
 fn focus(feet: Vec3) -> Vec3 {
     feet + Vec3::Y * FOCUS_HEIGHT
+}
+
+/// The first-person eye of a player standing at `feet`.
+#[must_use]
+pub fn head(feet: Vec3) -> Vec3 {
+    feet + Vec3::Y * EYE_HEIGHT
 }
 
 #[cfg(test)]
@@ -300,7 +371,20 @@ mod tests {
         }
         assert!(cam.first_person);
         let feet = Vec3::new(3.0, 0.0, -2.0);
-        assert!(cam.eye(feet, 0.4).distance(focus(feet)) < 1e-6);
+        // The eye glides in rather than jumping, and the avatar hides
+        // once the eye is close to the head.
+        let orbit = cam.eye(feet, 0.4);
+        assert!(orbit.distance(focus(feet)) > MIN_DISTANCE - 1e-4);
+        assert!(!cam.hides_avatar());
+        cam.advance(TRANSITION_SECONDS * 0.5);
+        let midway = cam.eye(feet, 0.4);
+        assert!(midway.distance(head(feet)) < orbit.distance(head(feet)));
+        assert!(midway.distance(head(feet)) > 0.1);
+        assert!(!cam.hides_avatar());
+        cam.advance(TRANSITION_SECONDS);
+        assert!(cam.hides_avatar());
+        assert!(cam.eye(feet, 0.4).distance(head(feet)) < 1e-6);
+        assert_eq!(cam.near(), FIRST_PERSON_NEAR);
         // It looks where the orbit looked: along the heading, at its pitch.
         let inverse = cam.view_proj(feet, 0.4, 0.6).inverse();
         let near = inverse.project_point3(Vec3::ZERO);
@@ -312,16 +396,40 @@ mod tests {
         cam.zoom_by(2.0, true);
         cam.zoom_by(0.95, true);
         assert!(cam.first_person);
-        // Zooming out leaves it at the nearest orbit, then keeps going.
+        // Zooming out leaves it at the nearest orbit, gliding back out,
+        // then keeps going.
         cam.zoom_by(0.9, true);
         assert!(!cam.first_person);
         assert_eq!(cam.distance, MIN_DISTANCE);
+        assert!(cam.hides_avatar(), "the avatar returns as the eye leaves");
+        cam.advance(TRANSITION_SECONDS * 0.5);
+        assert!(!cam.hides_avatar());
+        cam.advance(TRANSITION_SECONDS);
+        assert_eq!(cam.blend(), 0.0);
+        assert_eq!(cam.near(), NEAR);
+        assert!(cam.eye(feet, 0.4).distance(focus(feet)) > MIN_DISTANCE - 1e-4);
         cam.zoom_by(0.5, true);
         assert!((cam.distance - MIN_DISTANCE * 2.0).abs() < 1e-4);
         // A world that no longer allows it drops first person at once.
         cam.first_person = true;
         cam.zoom_by(1.1, false);
         assert!(!cam.first_person && cam.distance == MIN_DISTANCE);
+    }
+
+    #[test]
+    fn the_first_person_near_plane_stays_clear_of_walls_at_arms_length() {
+        // A wall can come no nearer the eye than the player's collision
+        // radius. The near plane's farthest corner, at the widest aspect a
+        // window or phone allows, must sit well inside that.
+        let aspect = 3.0;
+        let half_h = (FOV_Y * 0.5).tan() * FIRST_PERSON_NEAR;
+        let corner = Vec3::new(half_h * aspect, half_h, FIRST_PERSON_NEAR).length();
+        assert!(
+            corner < crate::controller::RADIUS * 0.5,
+            "{corner} m reaches toward a wall {} m away",
+            crate::controller::RADIUS
+        );
+        assert!(EYE_HEIGHT < crate::controller::AVATAR_HEIGHT && EYE_HEIGHT > FOCUS_HEIGHT);
     }
 
     #[test]

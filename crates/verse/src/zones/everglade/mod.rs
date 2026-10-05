@@ -380,11 +380,21 @@ impl Everglade {
     }
 
     /// The player and the seats as drawn: the posed characters, or the
-    /// plaza's avatar when the pack has no character.
-    pub fn player_mesh(&self, at: &PlayerController, gait: &crate::avatar::Gait) -> Mesh {
+    /// plaza's avatar when the pack has no character. With `hide_player`,
+    /// the player's own character is left out, as first person needs.
+    pub fn player_mesh(
+        &self,
+        at: &PlayerController,
+        gait: &crate::avatar::Gait,
+        hide_player: bool,
+    ) -> Mesh {
         match &self.cast {
             Some(cast) => {
-                let mut figure = cast.figure();
+                let mut figure = if hide_player {
+                    cast.figure_without_player()
+                } else {
+                    cast.figure()
+                };
                 // Characters take the baked probes' light, so they darken
                 // under the roof and the canopy as the ground does.
                 if let Some(probes) = &self.probes {
@@ -397,6 +407,7 @@ impl Everglade {
                     ..Mesh::default()
                 }
             }
+            None if hide_player => Mesh::default(),
             None => crate::avatar::mesh(at, gait),
         }
     }
