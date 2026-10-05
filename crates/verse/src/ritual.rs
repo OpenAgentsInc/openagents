@@ -103,13 +103,25 @@ fn bounded(path: &Path, limit: usize) -> Result<Vec<u8>, String> {
     std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// Runs the chamber window on this thread until it closes.
+/// A connected chamber client and the content it was admitted with, ready
+/// for a window or a phone surface to mount.
+#[cfg(feature = "remote-chamber")]
+pub struct Opened {
+    pub client: verse_world::service::client::Client,
+    pub runtime: tokio::runtime::Runtime,
+    pub pack: verse_engine::assets::Pack,
+    pub atlas: crate::ui::Atlas,
+    pub scene: verse_engine::director::Scene,
+    pub dir: PathBuf,
+}
+
+/// Reads `config`, loads its pack and scene, and connects to the chamber
+/// host as `profile`'s identity (or the config's key file).
 ///
 /// # Errors
-/// The configuration is invalid, the host refuses the key or the content,
-/// or this build has no chamber client.
-#[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
-pub fn run(config: &Path, profile: &str) -> Result<(), String> {
+/// The configuration is invalid, or the host refuses the key or the content.
+#[cfg(feature = "remote-chamber")]
+pub fn connect(config: &Path, profile: &str) -> Result<Opened, String> {
     use std::sync::Arc;
     let config = Config::read(config)?;
     let pack = verse_engine::assets::Pack::read(&config.pack)?;
@@ -162,7 +174,32 @@ pub fn run(config: &Path, profile: &str) -> Result<(), String> {
         Some(content),
         &key,
     ))?;
-    crate::imported::remote_window::run(client, runtime, pack, atlas, scene, config.dir)
+    Ok(Opened {
+        client,
+        runtime,
+        pack,
+        atlas,
+        scene,
+        dir: config.dir,
+    })
+}
+
+/// Connects to the chamber `config` names and runs the desktop window for it.
+///
+/// # Errors
+/// The configuration is invalid, the host refuses the key or the content,
+/// or this build has no chamber client.
+#[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
+pub fn run(config: &Path, profile: &str) -> Result<(), String> {
+    let opened = connect(config, profile)?;
+    crate::imported::remote_window::run(
+        opened.client,
+        opened.runtime,
+        opened.pack,
+        opened.atlas,
+        opened.scene,
+        opened.dir,
+    )
 }
 
 /// This build has no chamber client.

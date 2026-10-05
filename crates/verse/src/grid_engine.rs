@@ -25,6 +25,59 @@ pub struct GridEngine {
     size: [u32; 2],
     reattach: Reattach,
     atlas: Atlas,
+    content: Kind,
+}
+
+/// Which pack the engine holds: the pinned Grid, or a chamber's runtime
+/// pack the host admitted the player to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Grid,
+    Chamber,
+}
+
+/// A pack admitted for the engine, with the static instances drawn under
+/// every frame.
+pub struct Content {
+    pub prepared: verse_engine::loading::Prepared,
+    pub statics: Vec<Instance>,
+    pub kind: Kind,
+}
+
+impl Content {
+    /// The built-in Grid pack.
+    ///
+    /// # Errors
+    /// The embedded pack cannot be admitted.
+    pub fn grid() -> Result<Self, String> {
+        let prepared = grid_pack::prepare_embedded()?;
+        let statics = grid_frame::statics(prepared.pack());
+        Ok(Self {
+            prepared,
+            statics,
+            kind: Kind::Grid,
+        })
+    }
+
+    /// A chamber's pack read from `dir`, with its scene's static placements
+    /// around `origin`.
+    ///
+    /// # Errors
+    /// The pack's assets cannot be read or admitted.
+    #[cfg(feature = "remote-chamber")]
+    pub fn chamber(
+        pack: verse_engine::assets::Pack,
+        dir: &std::path::Path,
+        origin: glam::Vec3,
+    ) -> Result<Self, String> {
+        let statics = crate::imported::chamber::static_instances(&pack, origin);
+        let prepared = verse_engine::loading::Prepared::load(pack, dir, Default::default())?;
+        Ok(Self {
+            prepared,
+            statics,
+            kind: Kind::Chamber,
+        })
+    }
 }
 
 /// How the engine gets a presenter back after the GPU device is lost.
@@ -64,6 +117,7 @@ impl GridEngine {
             size,
             reattach: Reattach::Window(window),
             atlas: atlas.clone(),
+            content: Kind::Grid,
         })
     }
 
@@ -77,11 +131,28 @@ impl GridEngine {
         width: u32,
         height: u32,
     ) -> Result<Self, String> {
-        let prepared = grid_pack::prepare_embedded()?;
-        let statics = grid_frame::statics(prepared.pack());
+        Self::on_surface_with(gpu, surface, Content::grid()?, atlas, width, height)
+    }
+
+    /// Admits `content` onto `gpu`, opened against `surface`, and presents
+    /// on that surface.
+    pub fn on_surface_with(
+        gpu: Gpu,
+        surface: wgpu::Surface<'static>,
+        content: Content,
+        atlas: &Atlas,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, String> {
         let size = [width.max(1), height.max(1)];
-        let renderer =
-            Renderer::from_prepared_on(gpu, prepared, size[0], size[1], atlas, &statics)?;
+        let renderer = Renderer::from_prepared_on(
+            gpu,
+            content.prepared,
+            size[0],
+            size[1],
+            atlas,
+            &content.statics,
+        )?;
         let presenter = renderer.attach_surface(surface, size)?;
         Ok(Self {
             renderer,
@@ -89,7 +160,14 @@ impl GridEngine {
             size,
             reattach: Reattach::Host,
             atlas: atlas.clone(),
+            content: content.kind,
         })
+    }
+
+    /// Which pack this engine holds.
+    #[must_use]
+    pub fn kind(&self) -> Kind {
+        self.content
     }
 
     /// Opens the engine renderer on an Apple host's `CAMetalLayer`.
@@ -100,6 +178,23 @@ impl GridEngine {
     #[cfg(target_vendor = "apple")]
     pub unsafe fn from_metal_layer(
         layer: *mut core::ffi::c_void,
+        atlas: &Atlas,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, String> {
+        // SAFETY: the caller's contract is this function's.
+        unsafe { Self::from_metal_layer_with(layer, Content::grid()?, atlas, width, height) }
+    }
+
+    /// Opens the engine renderer with `content` on an Apple host's
+    /// `CAMetalLayer`.
+    ///
+    /// # Safety
+    /// As [`Self::from_metal_layer`].
+    #[cfg(target_vendor = "apple")]
+    pub unsafe fn from_metal_layer_with(
+        layer: *mut core::ffi::c_void,
+        content: Content,
         atlas: &Atlas,
         width: u32,
         height: u32,
@@ -115,7 +210,7 @@ impl GridEngine {
         }
         .map_err(|e| format!("cannot create a Metal surface: {e}"))?;
         let gpu = Gpu::open(instance, &surface)?;
-        Self::on_surface(gpu, surface, atlas, width, height)
+        Self::on_surface_with(gpu, surface, content, atlas, width, height)
     }
 
     /// Opens the engine renderer on an acquired Android `ANativeWindow`,
@@ -131,8 +226,26 @@ impl GridEngine {
         width: u32,
         height: u32,
     ) -> Result<Self, String> {
+        // SAFETY: the caller's contract is this function's.
+        unsafe { Self::from_android_window_with(window, Content::grid()?, atlas, width, height) }
+    }
+
+    /// Opens the engine renderer with `content` on an acquired Android
+    /// `ANativeWindow`.
+    ///
+    /// # Safety
+    /// As [`Self::from_android_window`].
+    #[cfg(target_os = "android")]
+    pub unsafe fn from_android_window_with(
+        window: *mut core::ffi::c_void,
+        content: Content,
+        atlas: &Atlas,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, String> {
         let window = std::ptr::NonNull::new(window).ok_or("native Android window is null")?;
         let mut failures = Vec::new();
+        let mut content = Some(content);
         for backends in crate::render::android::backends() {
             let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
             descriptor.backends = backends;
@@ -149,10 +262,18 @@ impl GridEngine {
             let result = surface
                 .map_err(|error| format!("cannot create an Android surface: {error}"))
                 .and_then(|surface| Gpu::open(instance, &surface).map(|gpu| (gpu, surface)))
-                .and_then(|(gpu, surface)| Self::on_surface(gpu, surface, atlas, width, height));
+                .and_then(|(gpu, surface)| {
+                    let content = content.take().ok_or("content was consumed")?;
+                    Self::on_surface_with(gpu, surface, content, atlas, width, height)
+                });
             match result {
                 Ok(engine) => return Ok(engine),
-                Err(error) => failures.push(format!("{backends:?}: {error}")),
+                Err(error) => {
+                    failures.push(format!("{backends:?}: {error}"));
+                    if content.is_none() {
+                        break;
+                    }
+                }
             }
         }
         Err(failures.join("; "))

@@ -42,6 +42,7 @@ fn scene() -> Scene {
         bare: false,
         xp_preview: false,
         gym_notes: false,
+        ritual: None,
     })
     .unwrap()
 }
@@ -390,6 +391,7 @@ fn the_native_json_path_carries_the_studio_view() {
         scene: in_everglade(station("task_wall")),
         renderer: None,
         rendered_zone_revision: 0,
+        rendered_chamber_revision: 0,
         layer: std::ptr::null_mut(),
     };
     let call = |handle: &mut VerseHandle, request: &str| -> serde_json::Value {

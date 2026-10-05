@@ -277,6 +277,7 @@ pub extern "system" fn Java_com_openagents_coder_CoderNative_createVerse<'local>
                         scene,
                         renderer: None,
                         rendered_zone_revision: u64::MAX,
+                        rendered_chamber_revision: 0,
                         layer: std::ptr::null_mut(),
                     },
                     window: None,

@@ -120,6 +120,7 @@ pub(crate) fn bare_config_with_gym(
         bare: true,
         xp_preview: gym.xp_preview,
         gym_notes: gym.notes,
+        ritual: None,
     }
 }
 
@@ -128,6 +129,8 @@ pub struct VerseHandle {
     pub(crate) scene: Scene,
     pub(crate) renderer: Option<Surface>,
     pub(crate) rendered_zone_revision: u64,
+    /// The chamber content the engine holds; 0 while it holds the Grid.
+    pub(crate) rendered_chamber_revision: u64,
     /// The native layer or window the renderer draws on, kept by the host
     /// for as long as this handle is attached; a zone change reopens it.
     pub(crate) layer: *mut c_void,
@@ -163,6 +166,28 @@ impl Surface {
 /// Whether the scene's zone is the Grid, which draws through the engine.
 fn on_grid(scene: &Scene) -> bool {
     scene.world.is_bare() && scene.world.is_plaza()
+}
+
+/// The engine content the scene draws: the chamber's pack while the
+/// player is joined to one, the Grid otherwise.
+fn engine_content(scene: &Scene) -> Result<verse::grid_engine::Content, String> {
+    if let Some(content) = scene.chamber.as_ref().and_then(|c| c.content.as_ref()) {
+        return verse::grid_engine::Content::chamber(
+            content.pack.clone(),
+            &content.dir,
+            verse_engine::source_position(content.scene.origin),
+        );
+    }
+    verse::grid_engine::Content::grid()
+}
+
+/// The chamber content revision the engine was opened with; 0 is the Grid.
+fn chamber_revision(scene: &Scene) -> u64 {
+    scene
+        .chamber
+        .as_ref()
+        .filter(|c| c.content.is_some())
+        .map_or(0, |c| c.content_revision)
 }
 
 /// The initial surface projection, before a world is mounted.
@@ -229,6 +254,7 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
         scene,
         renderer: None,
         rendered_zone_revision: u64::MAX,
+        rendered_chamber_revision: 0,
         layer,
     };
     handle.open_renderer()?;
@@ -245,9 +271,12 @@ impl VerseHandle {
         self.renderer = None;
         // The FFI contract keeps the native layer alive for this renderer's mount.
         let renderer = if on_grid(&self.scene) {
+            let content = engine_content(&self.scene)?;
+            self.rendered_chamber_revision = chamber_revision(&self.scene);
             Surface::Grid(unsafe {
-                verse::grid_engine::GridEngine::from_metal_layer(
+                verse::grid_engine::GridEngine::from_metal_layer_with(
                     self.layer,
+                    content,
                     &self.scene.atlas,
                     width,
                     height,
@@ -288,6 +317,7 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
         scene,
         renderer: None,
         rendered_zone_revision: u64::MAX,
+        rendered_chamber_revision: 0,
         layer: ptr::null_mut(),
     };
     // SAFETY: the caller's contract is the same as `attach_android`'s.
@@ -340,9 +370,12 @@ impl VerseHandle {
         self.renderer = None;
         // SAFETY: the caller keeps the window alive past the renderer.
         let renderer = if on_grid(&self.scene) {
+            let content = engine_content(&self.scene)?;
+            self.rendered_chamber_revision = chamber_revision(&self.scene);
             Surface::Grid(unsafe {
-                verse::grid_engine::GridEngine::from_android_window(
+                verse::grid_engine::GridEngine::from_android_window_with(
                     self.layer,
+                    content,
                     &self.scene.atlas,
                     width,
                     height,
@@ -488,7 +521,10 @@ impl VerseHandle {
         let Some(renderer) = &self.renderer else {
             return Ok(false);
         };
-        if renderer.is_grid() == on_grid(&self.scene) || self.layer.is_null() {
+        if self.layer.is_null()
+            || (renderer.is_grid() == on_grid(&self.scene)
+                && self.rendered_chamber_revision == chamber_revision(&self.scene))
+        {
             return Ok(false);
         }
         #[cfg(target_os = "ios")]
@@ -609,12 +645,32 @@ impl VerseHandle {
                 let Some(dt) = self.scene.update(timestamp)? else {
                     return Ok(());
                 };
-                if self.rendered_zone_revision != self.scene.world.zone_revision {
+                if self.rendered_zone_revision != self.scene.world.zone_revision
+                    || self.rendered_chamber_revision != chamber_revision(&self.scene)
+                {
                     self.reopen_for_zone()?;
                 }
                 match self.renderer.as_mut() {
                     Some(Surface::Grid(engine)) => {
                         self.rendered_zone_revision = self.scene.world.zone_revision;
+                        if self.scene.in_chamber() {
+                            let [w, h] = engine.size();
+                            if let Some(frame) = self.scene.chamber_frame([w as u32, h as u32])? {
+                                let mut ui = frame.ui;
+                                ui.vertices.extend(self.scene.map_ui().vertices);
+                                engine.draw(frame.view, &frame.instances, &ui, &frame.lighting)?;
+                            } else {
+                                // Connecting: the Grid stays up behind the notice.
+                                let dynamic =
+                                    verse::grid_frame::dynamic(&self.scene.world, &[], &[]);
+                                let lighting =
+                                    verse::grid_frame::lighting(&self.scene.world.atmosphere());
+                                let view = self.scene.world.view(engine.aspect());
+                                engine.draw(view, &dynamic, &self.scene.map_ui(), &lighting)?;
+                            }
+                            self.scene.frames = self.scene.frames.saturating_add(1);
+                            return Ok(());
+                        }
                         let now = std::time::Instant::now();
                         let peers = self
                             .scene
@@ -744,12 +800,14 @@ mod tests {
             bare: false,
             xp_preview: false,
             gym_notes: false,
+            ritual: None,
         })
         .unwrap();
         let mut handle = VerseHandle {
             scene,
             renderer: None,
             rendered_zone_revision: 0,
+            rendered_chamber_revision: 0,
             layer: ptr::null_mut(),
         };
         let credits: serde_json::Value =

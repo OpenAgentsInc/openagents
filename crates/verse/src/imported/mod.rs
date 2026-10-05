@@ -12,6 +12,8 @@ use glam::{Mat4, Vec3};
 mod admission;
 pub mod chamber;
 #[cfg(feature = "remote-chamber")]
+pub mod chamber_session;
+#[cfg(feature = "remote-chamber")]
 pub mod character_panel;
 pub mod characters;
 pub mod combat;
