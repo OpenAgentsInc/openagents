@@ -738,6 +738,8 @@ fn visible(vt: &coder_vt::Terminal, scroll: usize) -> Vec<&coder_vt::Row> {
 }
 
 #[cfg(test)]
+mod bash_tests;
+#[cfg(test)]
 mod tests;
 fn input(key: &KeyIn) -> terminal_core::KeyIn {
     use terminal_core::input as core;

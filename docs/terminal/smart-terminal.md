@@ -353,7 +353,12 @@ available behind F8; the default view never splits by itself.
 
 The terminal injects a small hook into zsh, bash, and fish when it starts a
 shell, the way Ghostty and iTerm2 do (for zsh, a `ZDOTDIR` that sources your
-own files first). The host injects it for NIP-TERM shells too, since
+own files first; for bash, an `--rcfile` that sources your login profile or
+`~/.bashrc` first, in `crates/terminal-core/src/bash.rs`). bash hooks need
+bash 4.4 or later; an older bash, such as the 3.2 in macOS, starts without
+them. bash reports no line as you type, so Enter always reaches it and a
+line starting with `# ` is the explicit request. The host injects it for
+NIP-TERM shells too, since
 `coder-pty` starts them. The hook emits:
 
 - OSC 133 `A` (prompt start), `B` (prompt end, input start), `C` (command

@@ -192,14 +192,22 @@ impl Local {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| root.to_path_buf())
         });
-        let integration = if shell.file_name().is_some_and(|name| name == "zsh") {
-            super::integration::Integration::create().ok()
-        } else {
-            None
+        let name = shell.file_name().and_then(|name| name.to_str());
+        let integration = match name {
+            Some("zsh") => super::integration::Integration::create()
+                .ok()
+                .inspect(|hooks| config.base_env.extend(hooks.environment(&home))),
+            Some("bash") => super::integration::Integration::bash()
+                .ok()
+                .inspect(|hooks| {
+                    // `--rcfile` holds for an interactive shell that is not a
+                    // login shell, so the file reads the login profile itself.
+                    let (args, env) = hooks.bash_start(true);
+                    config.shell_args = args;
+                    config.base_env.extend(env);
+                }),
+            _ => None,
         };
-        if let Some(hooks) = &integration {
-            config.base_env.extend(hooks.environment(&home));
-        }
         config.wrap = Some(Arc::new(Plain {
             _integration: integration,
         }));

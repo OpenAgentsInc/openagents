@@ -70,13 +70,17 @@ pub(crate) fn parse(params: &[&[u8]]) -> Option<Event> {
             let path = decode_percent(&uri[slash..])?;
             Some(Event::Directory(path))
         }
+        // A table keeps the newlines that separate its parts, which the
+        // other kinds refuse, so it decodes on its own.
+        [b"777", b"openagents", b"table", hex] if hex.len() <= MAX_TEXT * 2 => {
+            decode_table(hex).map(Event::Table)
+        }
         [b"777", b"openagents", kind, hex] if hex.len() <= MAX_TEXT * 2 => {
             let text = decode_hex(hex)?;
             match *kind {
                 b"command" => Some(Event::Command(text)),
                 b"buffer" => Some(Event::Buffer(text)),
                 b"word" => Some(Event::Word(text)),
-                b"table" => decode_table(hex).map(Event::Table),
                 b"request" => Some(Event::Request(text)),
                 _ => None,
             }

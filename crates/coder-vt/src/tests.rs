@@ -794,6 +794,20 @@ fn directory_and_buffer_marks_preserve_unicode_and_reject_controls() {
 }
 
 #[test]
+fn a_command_table_keeps_its_newlines_and_nothing_else() {
+    let mut t = term(2, 20);
+    // "p:/bin\na:ll\nf:greet"
+    t.feed(b"\x1b]777;openagents;table;703a2f62696e0a613a6c6c0a663a6772656574\x07");
+    assert_eq!(
+        t.take_shell_marks()[0].event,
+        shell::Event::Table("p:/bin\na:ll\nf:greet".into())
+    );
+    // A tab is still refused.
+    t.feed(b"\x1b]777;openagents;table;703a0961\x07");
+    assert!(t.take_shell_marks().is_empty());
+}
+
+#[test]
 fn damage_tracks_edits_scrolls_resize_and_screen_switches() {
     let mut t = term(3, 10);
     assert_eq!(t.take_damage(), vec![0, 1, 2]);
