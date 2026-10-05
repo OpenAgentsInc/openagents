@@ -38,6 +38,20 @@ impl Local {
     pub fn physics_step(&self) -> u64 {
         self.step
     }
+    /// Recovers elapsed authority time in one bounded prediction batch.
+    pub fn recover_world_credit(&mut self) -> Result<(), String> {
+        if self.movement_profile() != Some(Profile::Frames) {
+            return Ok(());
+        }
+        let steps = self
+            .world_credit
+            .saturating_sub(self.step)
+            .min(u64::from(MAX_STEPS));
+        if steps > 0 {
+            self.advance(steps as f64 / 120.)?;
+        }
+        Ok(())
+    }
     /// An unbound proposal has sequence zero; the transport must bind it before submission.
     pub fn movement_frame(&self, start: u64, steps: u32) -> Result<Frame, String> {
         let baseline = self

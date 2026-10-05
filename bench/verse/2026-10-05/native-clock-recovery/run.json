@@ -1,0 +1,42 @@
+{
+  "schema": "verse.targeted.verification.v1",
+  "base_revision": "beb37cc5980692caa052d2de7bc17f459e1b5e03",
+  "patch_sha256": "78aabab11eed9babdc75e3f068f10efaddfa123183298be4adc223525e7cd6b9",
+  "platform": "macOS arm64",
+  "checks": [
+    {
+      "command": "cargo test -p verse-world --no-default-features prediction::local::tests::verified_credit_recovers_stalled_prediction_in_bounded_batches",
+      "passed": 1,
+      "failed": 0,
+      "build_seconds": 398
+    },
+    {
+      "command": "verse_world-6ded498070bd5010",
+      "passed": 332,
+      "failed": 0,
+      "seconds": 14.75,
+      "note": "Full previously compiled crate test executable; waiting Cargo invocation was terminated before running this executable."
+    },
+    {
+      "command": "cargo test -p verse-imported --features remote-chamber chamber_session_tests",
+      "build_seconds": 493,
+      "tests_matched": 0,
+      "note": "Build succeeded; filter did not match module names."
+    },
+    {
+      "command": "verse_imported-52a06f5cbaf80fbb imported::chamber_session::tests",
+      "passed": 6,
+      "failed": 0,
+      "seconds": 0.96
+    },
+    {
+      "command": "rustfmt --edition 2024 affected files; git diff --check",
+      "status": "passed"
+    }
+  ],
+  "limitations": [
+    "Fresh native battle capture remains pending.",
+    "Movement production still shares the render thread."
+  ],
+  "behavior": "Recover up to twelve already verified authority steps before recording new frame controls; retain existing input history and authority lag and transmission bounds."
+}

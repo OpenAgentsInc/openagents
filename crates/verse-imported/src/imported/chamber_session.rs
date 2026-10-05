@@ -913,6 +913,8 @@ impl Session {
     ) -> Result<(), String> {
         let now = Instant::now();
         let controlled = self.controlled(scene);
+        // Recover elapsed history before recording this frame's new controls.
+        self.prediction.recover_world_credit()?;
         if controlled && self.pending.is_empty() {
             if let Some(baseline) = self.view.replica().latest().and_then(|s| s.movement) {
                 let context = (baseline.life, baseline.epoch);

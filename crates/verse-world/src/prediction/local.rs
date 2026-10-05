@@ -567,6 +567,43 @@ mod tests {
     }
 
     #[test]
+    fn verified_credit_recovers_stalled_prediction_in_bounded_batches() {
+        let (mut local, mut baseline, source) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        baseline.world_step = 4;
+        local.observe(baseline, &source, 2, 2).unwrap();
+        local
+            .queue(
+                1,
+                Intent::Move {
+                    axes: [0., 1.],
+                    yaw: 0.,
+                },
+            )
+            .unwrap();
+        local.advance(0.1).unwrap();
+        local
+            .grant_world_credit(baseline.life, baseline.epoch, 40)
+            .unwrap();
+        for expected in [24, 36, 40, 40] {
+            local.recover_world_credit().unwrap();
+            assert_eq!(local.physics_step(), expected);
+            assert!(local.contains(1));
+        }
+        let frame = local.movement_frame(28, 12).unwrap();
+        assert_eq!(frame.segments[0].axes, [0., 1.]);
+        assert_eq!(local.movement_frame_limit(), Some(40));
+        assert!(
+            local
+                .grant_world_credit(baseline.life, baseline.epoch + 1, 100)
+                .is_err()
+        );
+        local.recover_world_credit().unwrap();
+        assert_eq!(local.physics_step(), 40);
+    }
+
+    #[test]
     fn interval_transmission_waits_for_verified_credit_while_prediction_advances() {
         let (mut local, mut baseline, source) = setup();
         baseline.profile = movement::Profile::Frames;
