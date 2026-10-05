@@ -1,0 +1,214 @@
+diff --git a/crates/verse/examples/battle_scale.rs b/crates/verse/examples/battle_scale.rs
+index d34c164b29..a968f4575d 100644
+--- a/crates/verse/examples/battle_scale.rs
++++ b/crates/verse/examples/battle_scale.rs
+@@ -1,5 +1,7 @@
+ //! Isolated original-world capacity checks with the actual authority and TLS worker.
+ //! Usage: battle_scale authority|network|combined OUTPUT.json SECONDS
++//! VERSE_BATTLE_RESOLUTION=2560x1440 selects the offscreen dimensions.
++//! VERSE_BATTLE_PACK selects a local licensed pack; its files stay outside Git.
+ #[path = "common/battle_acceptance.rs"]
+ mod battle_acceptance;
+ #[path = "common/battle_native_player.rs"]
+@@ -136,6 +138,14 @@ fn make_world(
+         );
+         actor.health = 20000;
+     }
++    if pack.source_revision == "verse-bestiary-ritual-v1" {
++        let claude = scene
++            .actors
++            .iter_mut()
++            .find(|actor| actor.model == "claude")
++            .unwrap();
++        claude.scale = 6. / (pack.models["claude"].height * 0.9144);
++    }
+     scene.validate()?;
+     let content = verse_content::remote_content::identity(pack, &scene, directory)?;
+     let mut game = Game::combat_authored_in(scene.clone(), false, INSTANCE)?;
+@@ -179,7 +189,11 @@ fn make_world(
+                 name: "Capacity fixture hat".into(),
+                 slot: equipment::Slot::Head,
+                 model: "gear-hat".into(),
+-                offset: [0, 0, 230],
++                offset: if pack.source_revision == "verse-bestiary-ritual-v1" {
++                    [0; 3]
++                } else {
++                    [0, 0, 230]
++                },
+                 health: 100,
+                 mana: 20,
+             }],
+@@ -284,10 +298,121 @@ async fn connect(
+         }
+     }
+ }
+-async fn run(mode: &str, seconds: u32, report: &mut serde_json::Value) -> Result<(), String> {
++fn fixture_pack(
++    directory: &std::path::Path,
++    report: &mut serde_json::Value,
++) -> Result<Pack, String> {
++    use sha2::{Digest, Sha256};
++    let mut pack = original::generate(directory)?;
++    let Some(path) = std::env::var_os("VERSE_BATTLE_PACK") else {
++        report["asset_profile"] = serde_json::json!({"kind":"procedural"});
++        return Ok(pack);
++    };
++    let path = std::path::PathBuf::from(path);
++    let mut loaded = Pack::read(&path)?;
++    let root = path
++        .parent()
++        .ok_or("Asset pack requires a parent directory")?
++        .canonicalize()
++        .map_err(|e| e.to_string())?;
++    let offset = pack.textures.len();
++    let mut copied = 0u64;
++    for (index, texture) in loaded.textures.iter_mut().enumerate() {
++        let source = root
++            .join(&texture.file)
++            .canonicalize()
++            .map_err(|e| e.to_string())?;
++        if !source.starts_with(&root) {
++            return Err("Fixture texture escapes the selected asset directory".into());
++        }
++        let bytes = source.metadata().map_err(|e| e.to_string())?.len();
++        copied = copied
++            .checked_add(bytes)
++            .ok_or("Fixture texture size overflow")?;
++        if bytes > 64 * 1024 * 1024 || copied > 512 * 1024 * 1024 {
++            return Err("Fixture texture copy exceeds its byte budget".into());
++        }
++        let name = format!("battle-licensed-{index}.png");
++        std::fs::copy(&source, directory.join(&name)).map_err(|e| e.to_string())?;
++        texture.file = name;
++    }
++    let mut derived_head_sockets = 0;
++    for model in loaded.models.values_mut() {
++        if !model
++            .attachments
++            .iter()
++            .any(|attachment| attachment.id == 5)
++        {
++            if let Some(skin) = &model.skin {
++                if let Some(bone) = skin.names.iter().position(|name| name == "Head") {
++                    // Older compiled rigs predate the equipment socket. Derive
++                    // it from retained rest transforms, as the current compiler does.
++                    let mut globals = Vec::<glam::Mat4>::with_capacity(model.bones.len());
++                    for (index, node) in model.bones.iter().enumerate() {
++                        let rest = skin.rest[index];
++                        let local = glam::Mat4::from_scale_rotation_translation(
++                            rest.scale.into(),
++                            glam::Quat::from_array(rest.rotation),
++                            rest.translation.into(),
++                        );
++                        globals.push(if node.parent < 0 {
++                            local
++                        } else {
++                            globals[node.parent as usize] * local
++                        });
++                    }
++                    let position = (glam::Mat4::from_cols_array(&skin.basis) * globals[bone])
++                        .transform_point3(Vec3::ZERO);
++                    model.attachments.push(verse_engine::assets::Attachment {
++                        id: 5,
++                        bone,
++                        position: position.to_array(),
++                    });
++                    derived_head_sockets += 1;
++                }
++            }
++        }
++        for surface in &mut model.surfaces {
++            surface.texture += offset;
++            for slot in [
++                &mut surface.material.normal_texture,
++                &mut surface.material.metallic_roughness_texture,
++                &mut surface.material.occlusion_texture,
++                &mut surface.material.emissive_texture,
++            ] {
++                if let Some(index) = slot {
++                    *index += offset;
++                }
++            }
++        }
++    }
++    report["asset_profile"] = serde_json::json!({
++        "kind":"licensed_with_procedural_battle_equipment",
++        "source_revision":loaded.source_revision,
++        "manifest_sha256":format!("{:x}",Sha256::digest(std::fs::read(&path).map_err(|e|e.to_string())?)),
++        "loaded_models":loaded.models.len(),"loaded_textures":loaded.textures.len(),
++        "loaded_placements":loaded.placements.len(),"copied_texture_bytes":copied,
++        "derived_head_sockets":derived_head_sockets
++    });
++    pack.source_revision = loaded.source_revision;
++    pack.models.extend(loaded.models);
++    pack.textures.extend(loaded.textures);
++    pack.placements = loaded.placements;
++    // The authority fixture supplies its own equipment catalog, including the
++    // generated hat. The source pack's authoring inventory covers only its models.
++    pack.inventory = None;
++    pack.validate()?;
++    Ok(pack)
++}
++async fn run(
++    mode: &str,
++    seconds: u32,
++    resolution: (u32, u32),
++    report: &mut serde_json::Value,
++) -> Result<(), String> {
+     let assets = tempfile::tempdir().map_err(|e| e.to_string())?;
+     let state = tempfile::tempdir().map_err(|e| e.to_string())?;
+-    let pack = original::generate(assets.path())?;
++    let pack = fixture_pack(assets.path(), report)?;
+     let (scene, mut gateway, keys) = make_world(&pack, assets.path())?;
+     let content = gateway.content().ok_or("Missing fixture content")?;
+     report["content"] = serde_json::json!(content);
+@@ -524,9 +649,9 @@ async fn run(mode: &str, seconds: u32, report: &mut serde_json::Value) -> Result
+         Some(Renderer::new(
+             pack.clone(),
+             assets.path(),
+-            1280,
+-            720,
+-            &original::atlas()?,
++            resolution.0,
++            resolution.1,
++            &chamber::original_portrait_atlas(assets.path(), &pack)?,
+             &chamber::static_instances(&pack, scene.origin.into()),
+         )?)
+     } else {
+@@ -714,6 +839,18 @@ fn executable_digest() -> Result<String, String> {
+     }
+     Ok(format!("{:x}", digest.finalize()))
+ }
++fn resolution() -> Result<(u32, u32), String> {
++    let value = std::env::var("VERSE_BATTLE_RESOLUTION").unwrap_or_else(|_| "1280x720".into());
++    let (width, height) = value
++        .split_once('x')
++        .ok_or("Expected WIDTHxHEIGHT resolution")?;
++    let width: u32 = width.parse().map_err(|_| "Invalid render width")?;
++    let height: u32 = height.parse().map_err(|_| "Invalid render height")?;
++    if !(64..=4096).contains(&width) || !(64..=4096).contains(&height) {
++        return Err("Render dimensions must be between 64 and 4096".into());
++    }
++    Ok((width, height))
++}
+ fn main() -> Result<(), String> {
+     let args: Vec<_> = std::env::args().skip(1).collect();
+     if args.len() != 3 {
+@@ -726,6 +863,8 @@ fn main() -> Result<(), String> {
+         return Err("Invalid capacity mode or duration".into());
+     }
+     let mut report = serde_json::json!({"schema":"verse.battle.capacity.v1","mode":args[0],"seconds":seconds,"players":PLAYERS,"native_sessions":1,"headless_workers":19,"hostile_npcs":HOSTILES,"cultist_health":20000,"frontline_player":19,"frontline_initial_position":[-6.,0.,-8.],"frontline_initial_life_recipe":"approach the nearest hostile and cast only Fire Bolt; defer inventory, healing, crowd control, Shield, and Misty Step until the first actual respawn","delay_profile":"pipeline","delay_ms_per_chunk":40,"jitter_ms_per_chunk":20,"wire_version":verse_world::service::wire::VERSION,"debug_assertions":cfg!(debug_assertions),"status":"running","budgets":{"simulation_p99_upper_bound_ms":1000./30.,"render_cpu_p95_ms":1000./60.,"render_gpu_p95_ms":1000./60.,"snapshot_age_p95_ms":400.,"minimum_live_hostiles":HOSTILES,"minimum_authority_tick_fraction":0.98,"battle_framed_snapshot_fraction":0.8,"prediction_correction_p95_meters":0.25,"prediction_correction_maximum_meters":1.,"checkpoint_bytes":1048576,"request_queue_peak":128,"writer_queue_peak":2,"held_reply_bytes_peak":33554432,"steady_rss_growth_bytes":67108864},"limits":["Scratch authority and clients share this process and machine.","Offscreen rendering has no display surface, capture, or physical input-to-display measurement.","Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.","GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."]});
++    let resolution = resolution()?;
++    report["render_resolution"] = serde_json::json!({"width":resolution.0,"height":resolution.1});
+     use sha2::{Digest, Sha256};
+     report["implementation"] = serde_json::json!({
+         "base_revision":option_env!("VERSE_BENCH_SOURCE_REVISION").unwrap_or("unrecorded"),
+@@ -754,7 +893,7 @@ fn main() -> Result<(), String> {
+         .enable_all()
+         .build()
+         .map_err(|e| e.to_string())?;
+-    let result = runtime.block_on(run(&args[0], seconds, &mut report));
++    let result = runtime.block_on(run(&args[0], seconds, resolution, &mut report));
+     report["status"] = serde_json::json!(if result.is_ok() { "complete" } else { "failed" });
+     report["error"] = serde_json::json!(result.as_ref().err());
+     let failures = battle_acceptance::failures(&report);

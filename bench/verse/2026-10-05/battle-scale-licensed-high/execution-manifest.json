@@ -1,0 +1,146 @@
+{
+  "schema": "verse.battle.licensed.execution.v1",
+  "issue": 10559,
+  "source": {
+    "base_revision": "15cbe7df22a0b57977f312198e2ddb453ad40096",
+    "final_patch": "implementation.patch",
+    "final_patch_sha256": "e6d0cb9db31d4413caafca6df30f69a7eaf035be2da29bd2af37f182429edf6e",
+    "pre_atlas_patch": "implementation-sockets.patch",
+    "pre_atlas_patch_sha256": "652679259576bd8f607e2010c5515b4e0de617605473fe051045ecfa13ae1f33"
+  },
+  "environment": {
+    "HOME": "private scratch home; owner home not used",
+    "TMPDIR": "private scratch directory on /dev/nvme0n1p2",
+    "XDG_RUNTIME_DIR": "private scratch directory, mode 0700",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "VERSE_BATTLE_PACK": "private hash-verified retained licensed pack; source assets are not published",
+    "VERSE_BATTLE_RESOLUTION": "2560x1440",
+    "VERSE_QUALITY": "high",
+    "VERSE_GPU_TIMING": "1",
+    "LD_LIBRARY_PATH": "/nix/store/baw82sps59binavc16lfp7drj1g7nw9n-vulkan-loader-1.4.341.0/lib:/run/opengl-driver/lib",
+    "VK_DRIVER_FILES": "/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json"
+  },
+  "build": {
+    "command": "cargo build -p verse --no-default-features --features remote-chamber --example battle_scale",
+    "build_jobs": 1,
+    "debug_info": 0,
+    "source_revision_environment": "15cbe7df22",
+    "target": "/home/christopherdavid/work/openagents-target-verse-battle-agent1"
+  },
+  "runs": [
+    {
+      "receipt": "combined-high-01.json",
+      "receipt_sha256": "05da0cfdcb4e07193ccdd94e7c56dba8b2a7cfd1d38adbfecc338cdd8907fe5e",
+      "status": "failed",
+      "declared_acceptance": "failed",
+      "error": "Inventory does not cover the complete pack",
+      "executable_sha256": "17cd6280ea35b02f452ebe2178c7101824b7a48af306c093d4e92c94da8e514a"
+    },
+    {
+      "receipt": "combined-high-02.json",
+      "receipt_sha256": "8ebb9f5bc60279545ab01f1a3bded4a7c7e14ceb73cbbd9ced86b22443a8cba0",
+      "status": "failed",
+      "declared_acceptance": "failed",
+      "error": "Equipment parent rig is missing a required socket",
+      "executable_sha256": "480c76094baf20b713ad245b5ded51fab5fd3e434783f530e8d4413bb8e5f194"
+    },
+    {
+      "receipt": "combined-high-03.json",
+      "receipt_sha256": "025d57386a4cf6f2122da30e420ee049a46e449e838f2a065634676228a3ff5f",
+      "status": "failed",
+      "declared_acceptance": "failed",
+      "error": "No suitable graphics adapter found; noop support not compiled in, vulkan drivers/libraries could not be loaded, metal support not compiled in, dx12 support not compiled in, gl drivers/libraries could not be loaded, webgpu support not compiled in",
+      "executable_sha256": "b222bbd7017dcc6b4490fe1f7154531c19173700528ceefe0b3b5afa6b0fb3af"
+    },
+    {
+      "receipt": "combined-high-04.json",
+      "receipt_sha256": "9dda1d49e1a06083d844efe273d57e80c97975ce269332c8c6eb747b80904091",
+      "status": "failed",
+      "declared_acceptance": "failed",
+      "error": "No suitable graphics adapter found; noop support not compiled in, vulkan drivers/libraries could not be loaded, metal support not compiled in, dx12 support not compiled in, gl drivers/libraries could not be loaded, webgpu support not compiled in",
+      "executable_sha256": "b222bbd7017dcc6b4490fe1f7154531c19173700528ceefe0b3b5afa6b0fb3af"
+    },
+    {
+      "receipt": "combined-high-05.json",
+      "receipt_sha256": "1498b447d4006b1de10bf54d4d962fa0867cb3de3725cc4fdb5c16b79d20aeb8",
+      "status": "complete",
+      "declared_acceptance": "passed",
+      "error": null,
+      "executable_sha256": "b222bbd7017dcc6b4490fe1f7154531c19173700528ceefe0b3b5afa6b0fb3af",
+      "movement_expiries": 15,
+      "primary_expiries": 2,
+      "workload_ticks": 1799,
+      "frame_cpu_p95_ms": 6.58874,
+      "gpu_p95_ms": 7.159808,
+      "snapshot_age_p95_ms": 206.002713,
+      "storage_paused_seconds": 0.0,
+      "route_error_count": 16,
+      "route_error_elapsed_seconds": [
+        40.38666382798692,
+        40.38780281197978,
+        40.38813743100036,
+        40.39402455900563,
+        40.4185315539944,
+        70.4152631299803,
+        70.41529460198944,
+        70.4164432589896,
+        70.42537051800173,
+        70.42712891398696,
+        70.42754496296402,
+        70.42760023399023,
+        70.42760631698184,
+        70.42770066001685,
+        70.42774100002134,
+        70.45254614000442
+      ],
+      "disconnect_boundaries_seconds": [
+        40.422302352,
+        70.422302352
+      ]
+    },
+    {
+      "receipt": "combined-high-06.json",
+      "receipt_sha256": "1fcd00bc827e6fe9fd66003011c118341d649122d9803a8374a3f0f1d24ea159",
+      "status": "complete",
+      "declared_acceptance": "passed",
+      "error": null,
+      "executable_sha256": "c07db75b7b4537ac742d5537ef33b0a53fe67192569e4fd66966480361304a66",
+      "movement_expiries": 30,
+      "primary_expiries": 1,
+      "workload_ticks": 1797,
+      "frame_cpu_p95_ms": 7.186795,
+      "gpu_p95_ms": 7.201792,
+      "snapshot_age_p95_ms": 219.350229,
+      "storage_paused_seconds": 0.099981726,
+      "route_error_count": 10,
+      "route_error_elapsed_seconds": [
+        40.36816054198425,
+        40.38807905797148,
+        40.41261325997766,
+        40.42153757298365,
+        70.37096278497484,
+        70.38290982495528,
+        70.38294078595936,
+        70.38295744400239,
+        70.38575091498205,
+        70.40001914097229
+      ],
+      "disconnect_boundaries_seconds": [
+        40.396845219,
+        70.396845219
+      ]
+    }
+  ],
+  "limits": [
+    "The authority, one rendered native session, and nineteen headless clients share a machine and process. Rendering is offscreen; display pacing and physical input-to-display latency are not measured.",
+    "Another agent compiler was observed before run 05 and at the start of run 06; these are shared-machine measurements, not isolated acceptance. No own compilation ran during either workload.",
+    "The retained pack was compiled on October 4. Thirteen missing head sockets are derived from saved rig rest transforms using the current compiler method. The battle fixture supplies its own equipment catalog, rather than the source authoring inventory.",
+    "Run 05 uses a renderer portrait atlas that differs from the projection atlas. Its numerical capacity results do not prove correct HUD rendering. Run 06 shares the same atlas between projection and rendering.",
+    "Runs 01 and 02 fail fixture admission; runs 03 and 04 fail Vulkan setup, including a 32-bit loader selected for a 64-bit executable in run 04. They do not establish battle performance.",
+    "Runs 05 and 06 pass the existing declared capacity gates, which do not require zero movement expiries. Fifteen and thirty expiries respectively leave uninterrupted movement unproven.",
+    "Observed route resets cluster around the declared disconnect boundaries. Their raw times, types, and errno values remain in each receipt; the fixture simulates delay and jitter, not packet loss.",
+    "No long-duration memory soak or actual desktop window run is covered by these sixty-second pilots.",
+    "Restricted assets remain private; asset-source-manifest.json contains only source digests and counts."
+  ]
+}

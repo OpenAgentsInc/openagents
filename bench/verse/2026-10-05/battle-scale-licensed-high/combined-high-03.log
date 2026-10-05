@@ -1,0 +1,2 @@
+b222bbd7017dcc6b4490fe1f7154531c19173700528ceefe0b3b5afa6b0fb3af  /home/christopherdavid/work/verse-battle-licensed-ready-agent1-aeM0u85t/battle_scale-sockets-fixed
+Error: "No suitable graphics adapter found; noop support not compiled in, vulkan drivers/libraries could not be loaded, metal support not compiled in, dx12 support not compiled in, gl drivers/libraries could not be loaded, webgpu support not compiled in"

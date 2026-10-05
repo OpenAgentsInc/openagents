@@ -1,0 +1,38 @@
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2872:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2872 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+warning: function `triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `stream_triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: `verse-zone-everglade` (lib) generated 2 warnings
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-imported` (lib) generated 1 warning (run `cargo fix --lib -p verse-imported` to apply 1 suggestion)
+   Compiling verse v0.1.0 (/home/christopherdavid/work/verse-battle-host-agent1/crates/verse)
+    Finished `dev` profile [unoptimized] target(s) in 19.66s

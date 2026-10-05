@@ -5,10 +5,7 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot};
 use verse::{
-    imported::{
-        chamber_session::{Frame, Note, Session},
-        original,
-    },
+    imported::chamber_session::{Frame, Note, Session},
     profiling::FrameProfile,
 };
 use verse_engine::{assets::Pack, director::Scene};
@@ -35,6 +32,7 @@ pub async fn player(
     scene: Scene,
     pack: Pack,
     tap: Option<mpsc::Sender<Tap>>,
+    atlas: Option<std::sync::Arc<verse::ui::Atlas>>,
 ) -> Result<serde_json::Value, String> {
     let instance = client.instance();
     let (input, inputs, updates, mut output) = worker::channels();
@@ -52,11 +50,6 @@ pub async fn player(
     ));
     let mut session = Session::attached(View::new(instance, 10., 0)?, input, projection);
     session.observe();
-    let atlas = if tap.is_some() {
-        Some(original::atlas()?)
-    } else {
-        None
-    };
     let mut measurements = FrameProfile::new(120);
     let mut window = FrameProfile::new(0);
     let mut windows = Vec::new();
