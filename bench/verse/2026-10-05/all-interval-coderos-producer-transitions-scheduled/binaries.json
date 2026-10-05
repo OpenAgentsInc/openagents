@@ -1,0 +1,28 @@
+{
+  "compiled_revisions": {
+    "verse_remote": "17b90b1eddc46b936c91a0d40128429846c010ac",
+    "verse_load": "4bfb10d7779a172fe0c5e627184c186fb043a818"
+  },
+  "wire_version": 28,
+  "sha256": {
+    "verse_remote": "8d57fa91b0d79e8dc7d2bd9a7c3514c2469e2f0f14a73fa6d4bbb3f8359d0f23",
+    "verse_load": "58b9fe5d269472e134871632e83879cb643168a4b38bf5d3d0e59b6bc6af1d7e"
+  },
+  "client_platform": "macOS arm64",
+  "client_features": [
+    "imported-desktop",
+    "remote-chamber"
+  ],
+  "movement_send_steps": 6,
+  "authority_credit_source": "verified control.credit_step",
+  "periodic_reads_reserve_gameplay_slot": true,
+  "tracked_teleport_barrier": true,
+  "obsolete_inputs_retire_without_reads": true,
+  "independent_checkpoint_credit": true,
+  "bounded_interval_batch_steps": 12,
+  "casts_preserve_movement_production": true,
+  "producer_timing_window_capacity": 128,
+  "tested_load_base": "f10424a9fd255f5ca903a5f2f21eff5f791e7177",
+  "load_patch_sha256": "1b3c8aed1691a165d855022898e23dc96e20c0d1959986d1de0002e505fe466c",
+  "producer_transition_capacity": 8
+}
