@@ -111,7 +111,10 @@ fn diff(
             }
         }
         // Signed zero compares equal, but its persisted representation and digest differ.
-        (Value::Number(old), Value::Number(new)) if old.to_string() == new.to_string() => {}
+        (Value::Number(old), Value::Number(new))
+            if old == new
+                && (!old.is_f64()
+                    || old.as_f64().map(f64::to_bits) == new.as_f64().map(f64::to_bits)) => {}
         _ if old == new && !old.is_number() => {}
         _ => changes.push(Change::Put {
             path: path.clone(),
@@ -277,6 +280,38 @@ pub(super) fn replay(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn numeric_diff_matches_serialized_representation_without_rounding_integers() {
+        let numbers = [
+            "0",
+            "0.0",
+            "-0.0",
+            "1",
+            "1.0",
+            "-1",
+            "-1.0",
+            "1.25",
+            "1.2500000000000002",
+            "9007199254740992",
+            "9007199254740993",
+            "18446744073709551615",
+            "-9223372036854775808",
+        ];
+        for old in numbers {
+            for new in numbers {
+                let old: Value = serde_json::from_str(old).unwrap();
+                let new: Value = serde_json::from_str(new).unwrap();
+                let mut changes = Vec::new();
+                diff(&old, &new, &mut Vec::new(), &mut changes).unwrap();
+                assert_eq!(changes.is_empty(), old.to_string() == new.to_string());
+                let mut restored = old;
+                for change in changes {
+                    apply(&mut restored, change).unwrap();
+                }
+                assert_eq!(hash(&restored).unwrap(), hash(&new).unwrap());
+            }
+        }
+    }
     #[test]
     fn journal_preserves_signed_zero_inside_otherwise_equal_containers() {
         let old = serde_json::json!({"positions":[{"x":-0.0}]});
