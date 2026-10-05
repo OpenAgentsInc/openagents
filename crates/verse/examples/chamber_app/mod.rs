@@ -198,17 +198,21 @@ impl App {
                     at.elapsed().as_secs_f64()
                 });
             let look = age % 15. < 1. && self.game.casting.is_none();
+            let mut yaw = self.game.yaw;
             self.controls
-                .button(true, look, &mut self.game.yaw, &self.game.camera);
+                .button(true, look, &mut yaw, &self.game.camera);
+            self.game.yaw = yaw;
             if look {
+                let mut yaw = self.game.yaw;
                 self.controls.motion(
                     [
                         -elapsed * 24. * if (age / 15.) as u64 % 2 == 0 { 1. } else { -1. },
                         elapsed * 10. * age.sin(),
                     ],
-                    &mut self.game.yaw,
+                    &mut yaw,
                     &mut self.game.camera,
                 );
+                self.game.yaw = yaw;
             }
         }
         let key = |k| self.keys.contains(&k);
@@ -224,12 +228,12 @@ impl App {
         self.interpolation = batch.interpolation;
         for _ in 0..batch.steps {
             let movement = if self.game.unlocked() && !self.game.agent_controlled {
-                self.controls.step(
-                    held,
-                    batch.seconds,
-                    &mut self.game.yaw,
-                    &mut self.game.camera,
-                )
+                let mut yaw = self.game.yaw;
+                let movement =
+                    self.controls
+                        .step(held, batch.seconds, &mut yaw, &mut self.game.camera);
+                self.game.yaw = yaw;
+                movement
             } else {
                 [0.0; 2]
             };
@@ -278,8 +282,9 @@ impl App {
             return;
         }
         self.dragged += delta[0].abs() + delta[1].abs();
-        self.controls
-            .motion(delta, &mut self.game.yaw, &mut self.game.camera);
+        let mut yaw = self.game.yaw;
+        self.controls.motion(delta, &mut yaw, &mut self.game.camera);
+        self.game.yaw = yaw;
     }
     fn capture_frame(&mut self) -> Result<Vec<u8>, String> {
         let proof = self.proof.take();
@@ -716,8 +721,10 @@ impl ApplicationHandler for App {
                         if down {
                             self.pending_select = false;
                         }
+                        let mut yaw = self.game.yaw;
                         self.controls
-                            .button(true, down, &mut self.game.yaw, &self.game.camera);
+                            .button(true, down, &mut yaw, &self.game.camera);
+                        self.game.yaw = yaw;
                     }
                     MouseButton::Left => {
                         if down
@@ -758,8 +765,10 @@ impl ApplicationHandler for App {
                             }
                             self.pending_select = false;
                         }
+                        let mut yaw = self.game.yaw;
                         self.controls
-                            .button(false, down, &mut self.game.yaw, &self.game.camera);
+                            .button(false, down, &mut yaw, &self.game.camera);
+                        self.game.yaw = yaw;
                     }
                     MouseButton::Back if down => self.controls.autorun = !self.controls.autorun,
                     _ => {}
