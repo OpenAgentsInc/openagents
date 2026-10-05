@@ -14971,6 +14971,7 @@ dependencies = [
  "tokio-tungstenite 0.30.0",
  "toml",
  "verse-content",
+ "verse-core",
  "verse-engine",
  "verse-gfx",
  "verse-host",
@@ -15000,6 +15001,20 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "verse-engine",
+ "verse-world",
+]
+
+[[package]]
+name = "verse-core"
+version = "0.1.0"
+dependencies = [
+ "coder-ui",
+ "glam",
+ "serde",
+ "toml",
+ "verse-engine",
+ "verse-gfx",
+ "verse-pbr",
  "verse-world",
 ]
 

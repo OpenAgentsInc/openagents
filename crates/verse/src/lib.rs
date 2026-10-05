@@ -12,7 +12,7 @@ pub mod agent;
 pub mod app;
 #[cfg(feature = "native-audio")]
 pub mod audio_native;
-pub mod avatar;
+pub use verse_core::avatar;
 pub mod ball;
 pub mod blocks;
 pub use verse_net::blocklist;
@@ -25,9 +25,9 @@ pub mod crowd;
 pub mod doors;
 #[cfg(all(target_os = "macos", feature = "desktop"))]
 pub mod edr;
+pub use verse_core::fx;
 pub use verse_gfx::gles;
 pub use verse_net::feed;
-pub mod fx;
 #[cfg(test)]
 mod gles_tests;
 pub use verse_gfx::gpu_lifecycle;
@@ -75,7 +75,7 @@ pub use verse_pbr::streaming;
 pub mod terminal;
 #[cfg(unix)]
 pub mod terminal_control;
-pub mod tooltip;
+pub use verse_core::tooltip;
 pub use verse_gfx::ui;
 pub mod world;
 #[cfg(feature = "xp-host")]

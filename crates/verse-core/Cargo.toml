@@ -1,0 +1,20 @@
+[package]
+name = "verse-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "What Verse's zones share: the static world, zone controls and atmosphere, the avatar figure, particle effects, tooltips, and scene labels."
+
+[dependencies]
+coder-ui = { path = "../coder-ui" }
+glam = "0.30.10"
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+verse-engine = { path = "../verse-engine" }
+verse-gfx = { path = "../verse-gfx" }
+verse-pbr = { path = "../verse-pbr" }
+verse-world = { path = "../verse-world" }
+
+[lints]
+workspace = true

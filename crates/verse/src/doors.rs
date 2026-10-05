@@ -10,8 +10,8 @@ pub mod store;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use mesh::label as scene_label;
 pub use mesh::{geometry, held_mesh};
+pub use verse_core::label::label as scene_label;
 
 pub const RANGE: f32 = 5.0;
 pub const REACTION_SECONDS: f32 = 0.8;

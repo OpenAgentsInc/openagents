@@ -95,19 +95,7 @@ pub enum Action {
 }
 
 /// State shared by every Verse surface. Services remain separate owners.
-/// How a device opens the panel at a station, so a caption names the
-/// control the person actually has.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum InteractHint {
-    /// A keyboard: the interact key, F.
-    #[default]
-    Key,
-    /// A touchscreen: the zone panel's button for the station.
-    Tap,
-    /// No panel opens here (the OpenAgents app's Grid, the web page), so no
-    /// caption offers one and the zone panel shows no station button.
-    None,
-}
+pub use verse_core::zone::InteractHint;
 
 pub struct WorldRuntime {
     #[cfg(feature = "hosted-social")]

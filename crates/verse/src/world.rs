@@ -223,14 +223,7 @@ pub const HORIZON: f32 = 900.0;
 const SEED: u64 = 0x5eed_7a55_ad0a;
 const LOTS: i32 = 10;
 
-/// The static world: its geometry and what the player cannot walk through.
-#[derive(Clone, Debug, Default)]
-pub struct World {
-    /// Lines and faces uploaded once.
-    pub mesh: Mesh,
-    /// Building and pylon footprints.
-    pub blockers: Vec<Footprint>,
-}
+pub use verse_core::world::World;
 
 /// Builds the world.
 #[must_use]

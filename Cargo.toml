@@ -59,6 +59,8 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.verse-content]
 opt-level = 3
+[profile.dev.package.verse-core]
+opt-level = 3
 [profile.dev.package.verse-host]
 opt-level = 3
 [profile.dev.package.verse-engine]

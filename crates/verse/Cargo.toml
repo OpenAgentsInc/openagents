@@ -52,6 +52,10 @@ verse-net = { path = "../verse-net" }
 # The PBR pipelines, the world mesh, and streamed content residency;
 # `verse` re-exports each module under its old path.
 verse-pbr = { path = "../verse-pbr" }
+# The static world, zone controls and atmosphere, the avatar, particle
+# effects, tooltips, and scene labels the zones share; `verse` re-exports
+# each under its old path.
+verse-core = { path = "../verse-core" }
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
 coder-delegate = { path = "../coder-delegate", optional = true }

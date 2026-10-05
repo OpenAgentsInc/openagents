@@ -7,7 +7,7 @@ use crate::controller::PlayerController;
 use crate::mesh::Mesh;
 
 /// Leg-swing cycles per meter travelled.
-pub(crate) const STRIDE: f32 = 0.55;
+pub const STRIDE: f32 = 0.55;
 
 /// The avatar's walk cycle, advanced by distance rather than time so the
 /// feet keep pace with the ground.
