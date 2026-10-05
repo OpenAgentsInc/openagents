@@ -37,10 +37,11 @@ use verse_world::meteor_swarm::{self as srd, Damage};
 
 /// The mana pool the yard's caster has.
 pub const MAX_MANA: f32 = 100.0;
-/// Mana a cast spends, s of cooldown, and s of cast bar: the combat
-/// model's level 9 tier (75+ mana, 90 to 180 s, 2.5 s).
-pub const COST: f32 = 75.0;
-pub const COOLDOWN: f32 = 90.0;
+/// Mana a cast spends, s of cooldown, and s of cast bar. The yard is a
+/// playground, so casts are free and can follow each other at once; the
+/// cast bar stays.
+pub const COST: f32 = 0.0;
+pub const COOLDOWN: f32 = 0.0;
 pub const CAST: f32 = 2.5;
 /// Mana regained a second once [`REST`] seconds pass without a cast.
 pub const REGEN: f32 = 4.0;
@@ -305,7 +306,11 @@ impl Swarm {
             ready: self.cooldown <= 0.0 && self.mana >= COST && self.casting.is_none(),
             targeting: self.targeting,
             casting: self.casting.map(|c| (c.elapsed / CAST).clamp(0.0, 1.0)),
-            cooldown: (self.cooldown / COOLDOWN).clamp(0.0, 1.0),
+            cooldown: if COOLDOWN > 0.0 {
+                (self.cooldown / COOLDOWN).clamp(0.0, 1.0)
+            } else {
+                0.0
+            },
         }
     }
 

@@ -296,7 +296,7 @@ fn the_yard_builds_from_the_pack_and_draws_with_the_character() {
 use super::super::player;
 
 mod meteor_swarm {
-    use super::super::meteor::{self, COOLDOWN, COST, MAX_MANA, RANGE, Swarm};
+    use super::super::meteor::{self, MAX_MANA, RANGE, Swarm};
     use super::*;
 
     /// The caster, south of the west cottage.
@@ -417,26 +417,18 @@ mod meteor_swarm {
     }
 
     #[test]
-    fn a_cast_spends_mana_and_starts_the_cooldown() {
+    fn casts_follow_each_other_at_once() {
         let mut site = site();
         let mut swarm = Swarm::default();
         assert!(swarm.status().ready);
         strike(&mut site, &mut swarm, Vec3::new(-6.0, 0.0, -16.0), 0.0);
+        // Free and without a cooldown: the next cast can be aimed at once.
         let status = swarm.status();
-        assert!(
-            (status.mana - (MAX_MANA - COST)).abs() < 1e-3,
-            "{}",
-            status.mana
-        );
-        assert!(swarm.cooldown_left() > COOLDOWN - 5.0);
-        assert!(!status.ready);
-        // On cooldown and short of mana, it refuses to aim.
-        assert!(swarm.target().is_err());
-        assert!(!swarm.targeting());
-        // The yard's rebuild refills it.
-        swarm.reset();
-        assert!(swarm.status().ready);
-        assert_eq!(swarm.status().mana, MAX_MANA);
+        assert_eq!(status.mana, MAX_MANA);
+        assert_eq!(swarm.cooldown_left(), 0.0);
+        assert!(status.ready);
+        assert!(swarm.target().is_ok());
+        assert!(swarm.targeting());
     }
 
     #[test]
