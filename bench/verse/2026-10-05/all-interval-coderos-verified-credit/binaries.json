@@ -1,0 +1,19 @@
+{
+  "compiled_revisions": {
+    "verse_host": "1b0f4baf73",
+    "verse_remote": "af7345d277",
+    "verse_load": "c91a3c972d"
+  },
+  "sha256": {
+    "verse_remote": "3d087f54bae898b22073f2c0425d53ff40d70c20ba035186394cf8ef85881679",
+    "verse_load": "7406d178202c374189d2f2d74098969dc09af6a6a41a584cf36ea1162d7d78d2",
+    "verse_host": "1d0bd0a3746aa3059bc3ab33a032df9057117a2b54792666d5da035398d101a6"
+  },
+  "remote_host_binary": "/home/christopherdavid/work/verse-battle-binaries-agent1/verse_host-1b0f4baf73",
+  "host_platform": "Linux x86_64",
+  "client_platform": "macOS arm64",
+  "client_features": [
+    "imported-desktop",
+    "remote-chamber"
+  ]
+}

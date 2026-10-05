@@ -1,0 +1,37 @@
+{
+  "acceptance": "failed",
+  "reason": "All processes complete, but movement expiries remain frequent and frame p95 exceeds 16.7 ms.",
+  "steady_frame_p95_ms": 18.115708,
+  "steady_frame_max_ms": 31.0115,
+  "steady_snapshot_age_p95_ms": 142.99520900000002,
+  "steady_command_turnaround_p95_ms": 174.975958,
+  "steady_gpu_p95_ms": 9.625958,
+  "prediction_correction_meters": {
+    "samples": 368,
+    "omitted": 0,
+    "median": 0.0,
+    "p95": 0.016654416918754578,
+    "max": 0.9601197242736816
+  },
+  "native_reset_reasons": {
+    "control_epoch": 26,
+    "teleport": 1
+  },
+  "movement_expiries": {
+    "total": 588,
+    "admission": 1,
+    "primary_tick": 12,
+    "additional_tick": 575,
+    "bootstrap": 2,
+    "omitted": 556
+  },
+  "remote_scratch_removed": true,
+  "limits": [
+    "Shared Linux and Mac hardware, integrated upstream source changes, and differing trajectories prevent an isolated causal comparison.",
+    "First 32 expiry samples only; remaining observations are counted but not characterized.",
+    "GPU out-of-order completions are excluded; three issued queries remain in flight.",
+    "Server histograms report bucket upper bounds, not exact percentiles.",
+    "No injected delay or jitter; impaired-network and native death/respawn acceptance remain separate.",
+    "Input-to-display is unmeasured."
+  ]
+}
