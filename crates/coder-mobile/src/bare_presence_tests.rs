@@ -122,11 +122,12 @@ fn bare_world_players_see_each_other_move_and_pausing_stops_publishing() {
     );
     assert!(entities.lit.is_empty() && entities.glow.is_empty() && entities.neon.is_none());
 
-    // The peer walks for three seconds, publishing a pose each second, and
-    // stops. The scene draws it walking continuously between those poses,
-    // one mobile interval in the past, and finally where it stopped.
+    // The peer walks for three seconds, publishing poses at the Grid's
+    // 5 Hz moving rate (#10582), and stops. The scene draws it walking
+    // continuously between those poses, behind by the crowd's delay, and
+    // finally where it stopped.
     peer.set_publish_intervals(verse::session::PublishIntervals {
-        moving: Duration::from_secs(1),
+        moving: Duration::from_millis(200),
         idle: Duration::from_secs(2),
         state: Duration::from_secs(30),
     })
