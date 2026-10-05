@@ -14,23 +14,32 @@
 //! - Select Graphic Rendition: bold, dim, italic, underline, blink,
 //!   inverse, hidden, strike, and 16, 256, and 24-bit colors.
 //! - The alternate screen (modes 47, 1047, and 1049), cursor visibility,
-//!   application cursor keys, and bracketed paste (mode 2004).
+//!   style, and blink (DECSCUSR, mode 12), application cursor keys and
+//!   keypad, bracketed paste (mode 2004), focus events (mode 1004), and
+//!   mouse reporting (modes 9, 1000, 1002, and 1003 with the 1005, 1006,
+//!   and 1015 encodings; [`Terminal::mouse`]).
 //! - Device status, cursor position, and device attribute replies, queued
 //!   for the client to send back as input ([`Terminal::take_replies`]).
+//! - The window title (OSC 0 and 2), hyperlinks (OSC 8;
+//!   [`Attrs::link`] and [`Terminal::link`]), and clipboard writes (OSC
+//!   52; [`Terminal::take_clipboard`]), which the client may refuse.
 //!
-//! Output is untrusted. Operating-system commands other than the window
-//! title are ignored; in particular a program cannot read or write the
-//! client's clipboard. Every string and count is bounded.
+//! Output is untrusted. A program can ask to write the client's clipboard
+//! but never to read it; other operating-system commands are ignored.
+//! Every string and count is bounded.
 //!
-//! [`input`] encodes keys and pastes the way xterm does.
+//! [`input`] encodes keys and pastes the way xterm does, and [`mouse`]
+//! encodes mouse reports.
 
 mod cell;
 pub mod input;
+pub mod mouse;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 pub use cell::{Attrs, Cell, Color, Flags, Row, Run};
-pub use input::{Key, Modifiers, encode_key, encode_paste};
+pub use input::{Key, KeyModes, Modifiers, encode_key, encode_key_in, encode_paste};
+pub use mouse::{MouseButton, MouseEncoding, MouseEvent, MouseKind, MouseMode, encode_mouse};
 
 /// The largest grid a terminal accepts, in each dimension. NIP-TERM bounds
 /// sizes the same way.
@@ -41,6 +50,29 @@ pub const MAX_TITLE: usize = 256;
 pub const MAX_REPLIES: usize = 4096;
 /// The most times one repeat request (`REP`) repeats a character.
 const MAX_REPEAT: usize = 4096;
+/// The most bytes of one OSC 52 clipboard write, as base64.
+pub const MAX_CLIPBOARD: usize = 1 << 20;
+/// The most distinct hyperlinks a terminal keeps; later ones show as
+/// plain text.
+pub const MAX_LINKS: usize = 4096;
+/// The longest hyperlink target kept, in bytes.
+pub const MAX_LINK: usize = 2048;
+
+/// The cursor's shape.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum CursorShape {
+    #[default]
+    Block,
+    Underline,
+    Bar,
+}
+
+/// How the program asked the cursor to look (DECSCUSR and mode 12).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct CursorStyle {
+    pub shape: CursorShape,
+    pub blink: bool,
+}
 
 /// A character set a terminal can designate.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -78,6 +110,10 @@ struct Modes {
     application_keypad: bool,
     cursor_visible: bool,
     bracketed_paste: bool,
+    focus_events: bool,
+    mouse: MouseMode,
+    mouse_encoding: MouseEncoding,
+    cursor_style: CursorStyle,
 }
 
 impl Default for Modes {
@@ -91,6 +127,10 @@ impl Default for Modes {
             application_keypad: false,
             cursor_visible: true,
             bracketed_paste: false,
+            focus_events: false,
+            mouse: MouseMode::Off,
+            mouse_encoding: MouseEncoding::Default,
+            cursor_style: CursorStyle::default(),
         }
     }
 }
@@ -117,6 +157,13 @@ struct State {
     title: String,
     bells: u64,
     replies: Vec<u8>,
+    /// Lines that left the front of the scrollback, ever.
+    dropped: u64,
+    /// The last clipboard write a program asked for, not yet taken.
+    clipboard: Option<String>,
+    /// Hyperlink targets; [`Attrs::link`] `n` is `links[n - 1]`.
+    links: Vec<String>,
+    link_ids: HashMap<String, u16>,
 }
 
 /// A terminal emulator for one grid.
@@ -173,6 +220,10 @@ impl Terminal {
                 title: String::new(),
                 bells: 0,
                 replies: Vec::new(),
+                dropped: 0,
+                clipboard: None,
+                links: Vec::new(),
+                link_ids: HashMap::new(),
             },
             generation: 0,
         }
@@ -272,6 +323,83 @@ impl Terminal {
         self.state.scrollback.iter()
     }
 
+    /// Lines in the scrollback.
+    #[must_use]
+    pub fn scrollback_len(&self) -> usize {
+        self.state.scrollback.len()
+    }
+
+    /// Line `index` of the scrollback followed by the screen: 0 is the
+    /// oldest scrollback line, and the screen's top row follows the
+    /// newest.
+    #[must_use]
+    pub fn line(&self, index: usize) -> Option<&Row> {
+        let back = self.state.scrollback.len();
+        if index < back {
+            self.state.scrollback.get(index)
+        } else {
+            self.state.grid().get(index - back)
+        }
+    }
+
+    /// How many lines ever left the front of the scrollback. A line's
+    /// index in [`Terminal::line`] plus this count names it for as long as
+    /// it is kept, however much output follows.
+    #[must_use]
+    pub fn history_dropped(&self) -> u64 {
+        self.state.dropped
+    }
+
+    /// The cursor's shape and blink.
+    #[must_use]
+    pub fn cursor_style(&self) -> CursorStyle {
+        self.state.modes.cursor_style
+    }
+
+    /// Which mouse events the program asked for.
+    #[must_use]
+    pub fn mouse_mode(&self) -> MouseMode {
+        self.state.modes.mouse
+    }
+
+    /// The report a mouse event sends to the program, or `None` when it
+    /// did not ask for it.
+    #[must_use]
+    pub fn mouse(&self, event: MouseEvent) -> Option<Vec<u8>> {
+        encode_mouse(
+            event,
+            self.state.modes.mouse,
+            self.state.modes.mouse_encoding,
+        )
+    }
+
+    /// The report a focus change sends, when the program asked for focus
+    /// events (mode 1004).
+    #[must_use]
+    pub fn focus(&self, focused: bool) -> Option<Vec<u8>> {
+        self.state.modes.focus_events.then(|| {
+            if focused {
+                b"\x1b[I".to_vec()
+            } else {
+                b"\x1b[O".to_vec()
+            }
+        })
+    }
+
+    /// The text of the last clipboard write the program asked for (OSC
+    /// 52), if any. Taking it clears it; the client decides whether to
+    /// honor it. A program can never read the clipboard.
+    pub fn take_clipboard(&mut self) -> Option<String> {
+        self.state.clipboard.take()
+    }
+
+    /// The target of hyperlink `id` ([`Attrs::link`]).
+    #[must_use]
+    pub fn link(&self, id: u16) -> Option<&str> {
+        let index = usize::from(id).checked_sub(1)?;
+        self.state.links.get(index).map(String::as_str)
+    }
+
     /// The cursor's row and column.
     #[must_use]
     pub fn cursor(&self) -> (usize, usize) {
@@ -315,10 +443,18 @@ impl Terminal {
         self.state.bells
     }
 
-    /// Encodes a key under the terminal's current cursor key mode.
+    /// Encodes a key under the terminal's current cursor and keypad key
+    /// modes.
     #[must_use]
     pub fn key(&self, key: Key, modifiers: Modifiers) -> Vec<u8> {
-        encode_key(key, modifiers, self.state.modes.application_cursor)
+        encode_key_in(
+            key,
+            modifiers,
+            KeyModes {
+                application_cursor: self.state.modes.application_cursor,
+                application_keypad: self.state.modes.application_keypad,
+            },
+        )
     }
 
     /// Encodes a paste under the terminal's current bracketed paste mode.
@@ -411,10 +547,6 @@ impl State {
 
     fn blank(&self) -> Cell {
         Cell::blank(self.cursor.attrs.erased())
-    }
-
-    fn blank_row(&self) -> Row {
-        Row::blank(self.cols, self.cursor.attrs.erased())
     }
 
     fn reply(&mut self, bytes: &[u8]) {
@@ -511,9 +643,13 @@ impl State {
         if col >= self.cols {
             return;
         }
+        let width = self.grid()[row].cells[col].width;
+        if width == 1 {
+            return;
+        }
         let blank = self.blank();
         let cells = &mut self.grid_mut()[row].cells;
-        match cells[col].width {
+        match width {
             0 if col > 0 => cells[col - 1] = blank,
             2 if col + 1 < cells.len() => cells[col + 1] = blank,
             _ => {}
@@ -606,34 +742,47 @@ impl State {
 
     /// Scrolls the region up by `count` lines. Lines leaving the top of a
     /// whole-screen region on the primary screen go to the scrollback.
+    ///
+    /// Rows are rotated rather than reallocated, and a full scrollback
+    /// gives its oldest row's allocation to the new blank line.
     fn scroll_up(&mut self, count: usize) {
-        let (top, bottom) = (self.top, self.bottom);
+        let (top, bottom, cols) = (self.top, self.bottom, self.cols);
         let count = count.min(bottom - top + 1);
         let to_scrollback = top == 0 && !self.alternate_active && self.scrollback_max > 0;
-        let blank = self.blank_row();
-        let grid = self.grid_mut();
-        let removed: Vec<Row> = grid.drain(top..top + count).collect();
-        for _ in 0..count {
-            grid.insert(bottom + 1 - count, blank.clone());
-        }
-        if to_scrollback {
-            for row in removed {
-                self.scrollback.push_back(row);
-            }
-            while self.scrollback.len() > self.scrollback_max {
-                self.scrollback.pop_front();
+        let erased = self.cursor.attrs.erased();
+        let grid = if self.alternate_active {
+            &mut self.alternate
+        } else {
+            &mut self.primary
+        };
+        grid[top..=bottom].rotate_left(count);
+        for row in &mut grid[bottom + 1 - count..=bottom] {
+            if to_scrollback {
+                let fresh = if self.scrollback.len() >= self.scrollback_max {
+                    self.dropped += 1;
+                    self.scrollback.pop_front().map(|mut old| {
+                        old.reset(cols, erased);
+                        old
+                    })
+                } else {
+                    None
+                };
+                let fresh = fresh.unwrap_or_else(|| Row::blank(cols, erased));
+                self.scrollback.push_back(std::mem::replace(row, fresh));
+            } else {
+                row.reset(cols, erased);
             }
         }
     }
 
     fn scroll_down(&mut self, count: usize) {
-        let (top, bottom) = (self.top, self.bottom);
+        let (top, bottom, cols) = (self.top, self.bottom, self.cols);
         let count = count.min(bottom - top + 1);
-        let blank = self.blank_row();
+        let erased = self.cursor.attrs.erased();
         let grid = self.grid_mut();
-        grid.drain(bottom + 1 - count..=bottom);
-        for _ in 0..count {
-            grid.insert(top, blank.clone());
+        grid[top..=bottom].rotate_right(count);
+        for row in &mut grid[top..top + count] {
+            row.reset(cols, erased);
         }
     }
 
@@ -684,9 +833,9 @@ impl State {
     }
 
     fn erase_rows(&mut self, from: usize, to: usize) {
-        let blank = self.blank_row();
+        let (cols, erased) = (self.cols, self.cursor.attrs.erased());
         for row in &mut self.grid_mut()[from..to] {
-            *row = blank.clone();
+            row.reset(cols, erased);
         }
     }
 
@@ -731,6 +880,7 @@ impl State {
             2 => self.erase_rows(0, self.rows),
             3 => {
                 self.erase_rows(0, self.rows);
+                self.dropped += self.scrollback.len() as u64;
                 self.scrollback.clear();
             }
             _ => {}
@@ -822,6 +972,33 @@ impl State {
                 self.modes.autowrap = on;
                 self.cursor.pending_wrap = false;
             }
+            9 | 1000 | 1002 | 1003 => {
+                let mode = match mode {
+                    9 => MouseMode::Press,
+                    1000 => MouseMode::Click,
+                    1002 => MouseMode::Drag,
+                    _ => MouseMode::Motion,
+                };
+                if on {
+                    self.modes.mouse = mode;
+                } else if self.modes.mouse == mode {
+                    self.modes.mouse = MouseMode::Off;
+                }
+            }
+            1005 | 1006 | 1015 => {
+                let encoding = match mode {
+                    1005 => MouseEncoding::Utf8,
+                    1006 => MouseEncoding::Sgr,
+                    _ => MouseEncoding::Urxvt,
+                };
+                if on {
+                    self.modes.mouse_encoding = encoding;
+                } else if self.modes.mouse_encoding == encoding {
+                    self.modes.mouse_encoding = MouseEncoding::Default;
+                }
+            }
+            1004 => self.modes.focus_events = on,
+            12 => self.modes.cursor_style.blink = on,
             25 => self.modes.cursor_visible = on,
             47 => {
                 if on {
@@ -890,9 +1067,25 @@ impl State {
     fn full_reset(&mut self) {
         let (rows, cols, scrollback, bells) =
             (self.rows, self.cols, self.scrollback_max, self.bells);
+        let dropped = self.dropped + self.scrollback.len() as u64;
         let fresh = Terminal::new(rows, cols, scrollback).state;
         *self = fresh;
         self.bells = bells;
+        self.dropped = dropped;
+    }
+
+    /// The hyperlink ID for `target`, adding it while there is room.
+    fn link_id(&mut self, target: &str) -> u16 {
+        if let Some(&id) = self.link_ids.get(target) {
+            return id;
+        }
+        if self.links.len() >= MAX_LINKS {
+            return 0;
+        }
+        self.links.push(target.to_owned());
+        let id = self.links.len() as u16;
+        self.link_ids.insert(target.to_owned(), id);
+        id
     }
 
     fn resize(&mut self, rows: usize, cols: usize) {
@@ -918,6 +1111,7 @@ impl State {
                 self.scrollback.extend(removed);
                 while self.scrollback.len() > self.scrollback_max {
                     self.scrollback.pop_front();
+                    self.dropped += 1;
                 }
             }
             self.alternate.drain(..excess.min(self.alternate.len()));
@@ -1086,14 +1280,46 @@ impl vte::Perform for State {
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
-        if let [code, title, ..] = params
-            && matches!(*code, b"0" | b"2")
-        {
-            self.title = String::from_utf8_lossy(title)
-                .chars()
-                .filter(|c| !c.is_control())
-                .take(MAX_TITLE)
-                .collect();
+        // The parser splits at every `;`, which a title or a link target
+        // may contain; join the rest back.
+        let rest = |from: usize| params.get(from..).unwrap_or_default().join(&b';');
+        match params.first().copied() {
+            Some(b"0" | b"2") if params.len() > 1 => {
+                self.title = String::from_utf8_lossy(&rest(1))
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .take(MAX_TITLE)
+                    .collect();
+            }
+            Some(b"8") if params.len() > 2 => {
+                let target = rest(2);
+                self.cursor.attrs.link = match std::str::from_utf8(&target) {
+                    Ok(target)
+                        if !target.is_empty()
+                            && target.len() <= MAX_LINK
+                            && !target.chars().any(char::is_control) =>
+                    {
+                        self.link_id(target)
+                    }
+                    _ => 0,
+                };
+            }
+            // Writes only: a query (`?`) is never answered.
+            Some(b"52") if params.len() > 2 => {
+                let data = rest(2);
+                if data.len() <= MAX_CLIPBOARD
+                    && data != b"?"
+                    && let Some(bytes) = base64(&data)
+                    && let Ok(text) = String::from_utf8(bytes)
+                {
+                    self.clipboard = Some(
+                        text.chars()
+                            .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))
+                            .collect(),
+                    );
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1198,6 +1424,18 @@ impl vte::Perform for State {
             ([], 's') => self.save_cursor(),
             ([], 'u') => self.restore_cursor(),
             ([b'!'], 'p') => self.soft_reset(),
+            ([b' '], 'q') => {
+                let (shape, blink) = match arg(&values, 0, 0) {
+                    0 | 1 => (CursorShape::Block, true),
+                    2 => (CursorShape::Block, false),
+                    3 => (CursorShape::Underline, true),
+                    4 => (CursorShape::Underline, false),
+                    5 => (CursorShape::Bar, true),
+                    6 => (CursorShape::Bar, false),
+                    _ => return,
+                };
+                self.modes.cursor_style = CursorStyle { shape, blink };
+            }
             _ => {}
         }
     }
@@ -1240,6 +1478,30 @@ impl vte::Perform for State {
             _ => {}
         }
     }
+}
+
+/// Decodes standard base64, padding optional; `None` for anything else.
+fn base64(data: &[u8]) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(data.len() / 4 * 3);
+    let mut buffer = 0u32;
+    let mut bits = 0;
+    for &byte in data.iter().take_while(|&&b| b != b'=') {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        };
+        buffer = (buffer << 6) | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+        }
+    }
+    Some(out)
 }
 
 fn charset(designator: u8) -> Charset {
