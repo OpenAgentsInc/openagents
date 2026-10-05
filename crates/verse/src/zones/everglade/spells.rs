@@ -658,7 +658,7 @@ mod tests {
     fn wind_wall_needs_level_ground() {
         // Walking around the clearing's edge, so the wall would run up the
         // rising ground toward the tree ring.
-        let at = Vec3::new(0.0, super::super::height(0.0, 40.0), 40.0);
+        let at = Vec3::new(0.0, super::super::height(0.0, 74.0), 74.0);
         let player = PlayerController::new(at, std::f32::consts::FRAC_PI_2);
         let Err(refusal) = Spells::default().admit(Spell::WindWall, &player, &Solids::default())
         else {

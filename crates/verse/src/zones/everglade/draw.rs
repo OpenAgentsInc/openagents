@@ -8,9 +8,11 @@
 //! - The grass: an opaque grid over the whole walkable square, with a tiling
 //!   detail texture generated here and a per-vertex tint that darkens from
 //!   grass into forest floor toward the tree ring.
-//! - The dirt: a blended sheet just above the grass over the yard and the
-//!   approach path. Its image holds the dirt's color and a smooth mask in
+//! - The dirt: a blended sheet just above the grass over the town: the
+//!   yard, the approach path, the roads (`layout::ROADS`), and the ponds'
+//!   muddy banks. Its image holds the dirt's color and a smooth mask in
 //!   alpha, so the edge against the grass is soft at any grid size.
+//! - The water: a still, glossy disc over each pond (`layout::PONDS`).
 //!
 //! The pinned pack has no tiling ground texture (its `Grass` image is a
 //! strip atlas for grass cards, and `PathRocks_Diffuse` is a stone atlas),
@@ -46,12 +48,21 @@ const ROUGHNESS: f32 = 0.95;
 
 /// The dirt sheet's extent, min and max x and z, m. It lies on the grass
 /// grid, so its triangles run parallel to the grass under them, and it
-/// reaches past the yard and the path so its mask fades to nothing before
-/// its border.
-const DIRT_MIN: [f32; 2] = [-15.0, -35.0];
-const DIRT_MAX: [f32; 2] = [15.0, 3.0];
-/// The dirt image's size, texels: about 12 cm by 7 cm on the ground.
-const DIRT_SIZE: [u32; 2] = [256, 512];
+/// reaches past the yard, the path, and the roads so its mask fades to
+/// nothing before its border.
+const DIRT_MIN: [f32; 2] = [-47.0, -49.0];
+const DIRT_MAX: [f32; 2] = [55.0, 55.0];
+/// The dirt image's size, texels: about 10 cm on the ground.
+const DIRT_SIZE: [u32; 2] = [1024, 1024];
+/// Height of the water above the ground, m, and its look: dark, slightly
+/// green, and glossy, so it takes the sky's reflection.
+pub(super) const WATER_LIFT: f32 = 0.05;
+const WATER: [f32; 4] = [0.02, 0.05, 0.05, 1.0];
+const WATER_ROUGHNESS: f32 = 0.06;
+/// Segments around a pond's rim.
+const WATER_SEGMENTS: u32 = 32;
+/// Width of a pond's muddy bank beyond its water, m.
+const BANK: f32 = 1.2;
 /// Height of the dirt sheet above the grass, m: below the hall's and the
 /// strongroom's floors, which sit 0.02 m up.
 pub(super) const DIRT_LIFT: f32 = 0.015;
@@ -75,12 +86,14 @@ pub(crate) fn shade(color: [f32; 3], a: Vec3, b: Vec3, c: Vec3) -> [f32; 3] {
     color.map(|v| v * k)
 }
 
-/// Triangles the ground adds to the zone: the grass grid and the dirt sheet.
+/// Triangles the ground adds to the zone: the grass grid, the dirt sheet,
+/// and the ponds' water.
 #[must_use]
 pub(super) fn triangles() -> u64 {
     let dirt =
         ((DIRT_MAX[0] - DIRT_MIN[0]) / CELL) as u64 * ((DIRT_MAX[1] - DIRT_MIN[1]) / CELL) as u64;
     2 * (CELLS as u64 * CELLS as u64 + dirt)
+        + super::layout::PONDS.len() as u64 * u64::from(WATER_SEGMENTS)
 }
 
 /// Adds the ground to `scene`: its two images and materials, a grass mesh
@@ -89,8 +102,8 @@ pub(super) fn ground(scene: &mut TexturedScene) {
     ground_with(scene, true);
 }
 
-/// Adds the grass to `scene`, and the dirt sheet over the yard and the
-/// approach path when `dirt` is set.
+/// Adds the grass to `scene`, and the dirt sheet over the town and the
+/// ponds' water when `dirt` is set.
 pub(crate) fn ground_with(scene: &mut TexturedScene, dirt: bool) {
     let grass_image = scene.add_image(grass_image());
     let grass = scene.add_material(TexturedMaterial {
@@ -142,6 +155,48 @@ pub(crate) fn ground_with(scene: &mut TexturedScene, dirt: bool) {
         mesh,
         Mat4::from_translation(Vec3::new(DIRT_MIN[0], 0.0, DIRT_MIN[1])),
     );
+    let water = scene.add_material(TexturedMaterial {
+        base_color: WATER,
+        roughness: WATER_ROUGHNESS,
+        ..TexturedMaterial::default()
+    });
+    for ([cx, cz], r) in super::layout::PONDS {
+        let mesh = scene.add_mesh(pond(cx, cz, r, water));
+        scene.place(mesh, Mat4::from_translation(Vec3::new(cx, 0.0, cz)));
+    }
+}
+
+/// A pond's water: a disc of radius `r` around `(cx, cz)`,
+/// [`WATER_LIFT`] above the ground, in coordinates relative to its center.
+fn pond(cx: f32, cz: f32, r: f32, material: usize) -> TexturedMesh {
+    let vertex = |dx: f32, dz: f32| {
+        let (x, z) = (cx + dx, cz + dz);
+        TexturedVertex {
+            pos: [dx, height(x, z) + WATER_LIFT, dz],
+            normal: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+            color: [255; 4],
+            light: UNBAKED,
+        }
+    };
+    let mut vertices = vec![vertex(0.0, 0.0)];
+    for k in 0..WATER_SEGMENTS {
+        let angle = k as f32 / WATER_SEGMENTS as f32 * std::f32::consts::TAU;
+        vertices.push(vertex(angle.cos() * r, angle.sin() * r));
+    }
+    let mut indices = Vec::with_capacity(3 * WATER_SEGMENTS as usize);
+    for k in 0..WATER_SEGMENTS {
+        let (a, b) = (1 + k, 1 + (k + 1) % WATER_SEGMENTS);
+        // Counterclockwise seen from above, so the face points up.
+        indices.extend_from_slice(&[0, b, a]);
+    }
+    TexturedMesh {
+        primitives: vec![Primitive {
+            vertices,
+            indices,
+            material,
+        }],
+    }
 }
 
 /// The world x and z of grid point `(i, j)`.
@@ -322,9 +377,10 @@ fn rounded_rect(center: [f32; 2], half: [f32; 2], radius: f32, x: f32, z: f32) -
     qx.max(0.0).hypot(qz.max(0.0)) + qx.max(qz).min(0.0) - radius
 }
 
-/// How much of the yard's and the path's dirt covers `(x, z)`, 0 to 1 each.
-/// Each fades smoothly over [`FADE`] meters centered on its edge, and the
-/// edge wanders a little so it does not read as a ruled line.
+/// How much of the yard's and the paths' dirt covers `(x, z)`, 0 to 1 each.
+/// The paths are the approach, the roads, and the ponds' banks. Each fades
+/// smoothly over [`FADE`] meters centered on its edge, and the edge wanders
+/// a little so it does not read as a ruled line.
 #[must_use]
 pub(super) fn dirt_cover(x: f32, z: f32) -> (f32, f32) {
     let wander = WANDER * (2.0 * value_noise(x * 0.7, z * 0.7, 1 << 12, 53) - 1.0);
@@ -340,7 +396,15 @@ pub(super) fn dirt_cover(x: f32, z: f32) -> (f32, f32) {
         x,
         z,
     );
-    (cover(yard), cover(path))
+    let road = super::layout::ROADS
+        .iter()
+        .map(|&(a, b, half)| super::layout::segment_distance(a, b, x, z) - half)
+        .fold(f32::INFINITY, f32::min);
+    let bank = super::layout::PONDS
+        .iter()
+        .map(|&([cx, cz], r)| (cx - x).hypot(cz - z) - r - BANK)
+        .fold(f32::INFINITY, f32::min);
+    (cover(yard), cover(path.min(road).min(bank)))
 }
 
 /// The dirt sheet's image: the yard's and the path's dirt with gravel
@@ -416,9 +480,20 @@ mod tests {
             .iter()
             .position(|m| m.alpha == AlphaMode::Opaque)
             .unwrap();
+        let water = scene
+            .materials
+            .iter()
+            .position(|m| m.roughness == WATER_ROUGHNESS)
+            .unwrap();
         let mut extent = 0.0_f32;
         for (pos, normals, material) in &all {
-            let lift = if *material == grass { 0.0 } else { DIRT_LIFT };
+            let lift = if *material == grass {
+                0.0
+            } else if *material == water {
+                WATER_LIFT
+            } else {
+                DIRT_LIFT
+            };
             for p in pos {
                 assert!((p.y - lift - height(p.x, p.z)).abs() < 1e-4, "{p}");
                 extent = extent.max(p.x.abs()).max(p.z.abs());
@@ -441,7 +516,10 @@ mod tests {
         assert!(dirt_cover(0.0, -25.0).1 > 0.99);
         assert!(dirt_cover(0.0, -6.5).0 > 0.99);
         assert_eq!(dirt_cover(6.0, -25.0), (0.0, 0.0));
-        assert_eq!(dirt_cover(0.0, 30.0), (0.0, 0.0));
+        assert_eq!(dirt_cover(0.0, 20.0), (0.0, 0.0));
+        // The roads are dirt too.
+        assert!(dirt_cover(-11.0, 30.0).1 > 0.99);
+        assert!(dirt_cover(20.0, 46.0).1 > 0.99);
         // Crossing the path's edge passes through partial cover over more
         // than one sample 5 cm apart, never jumping.
         let mut partial = 0;

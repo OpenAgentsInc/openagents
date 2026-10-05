@@ -340,6 +340,7 @@ fn prop_bounds_become_navigation_blockers() {
         .iter()
         .flat_map(|p| p.footprints(pack().model(p.model).unwrap().bounds()))
         .chain(layout::board_blockers())
+        .chain(layout::pond_blockers())
         .collect();
     assert_eq!(world().blockers, expected);
     for placement in &placements {
@@ -381,6 +382,13 @@ fn no_blocker_covers_a_path() {
         assert!(
             crate::nav::segment_clear(a, b, blockers, HALF_EXTENT),
             "{a:?} to {b:?} is blocked"
+        );
+    }
+    // Every road of the town is walkable along its length.
+    for (a, b, _) in layout::ROADS {
+        assert!(
+            crate::nav::segment_clear(a, b, blockers, HALF_EXTENT),
+            "the road {a:?} to {b:?} is blocked"
         );
     }
     // The paths start at the return portal and reach both doorways.
@@ -551,7 +559,7 @@ fn the_map_lists_the_return_portal_and_the_studio_stations() {
 fn walking_and_jumping_follow_the_slope_and_the_camera_stays_above_it() {
     let mut runtime = entered();
     // On the rise, facing outward toward the tree ring.
-    let at = Vec3::new(0.0, 0.0, -40.0);
+    let at = Vec3::new(0.0, 0.0, -76.0);
     runtime
         .set_spawn(at.with_y(height(at.x, at.z)), std::f32::consts::PI)
         .unwrap();
@@ -1150,4 +1158,32 @@ fn a_hosted_instance_walks_the_pinned_packs_content_under_the_social_rules() {
     let at = world.avatar(life).unwrap().pos;
     assert!(at.z < HALL.0[1] - HALL.1[1], "{at}");
     assert!(at.z > 0.0, "{at}");
+}
+
+#[test]
+fn the_town_is_four_times_the_glade_and_every_door_opens_from_the_spawn() {
+    // The clearing the town stands in has four times the area of the
+    // 34 m glade it grew from, and the town stays inside it.
+    assert!(CLEARING_RADIUS * CLEARING_RADIUS >= 4.0 * 34.0 * 34.0);
+    let blockers = &world().blockers;
+    let spawn = [Everglade::spawn().x, Everglade::spawn().z];
+    for (name, outside, inside) in layout::DOORS {
+        let route = crate::nav::plan(spawn, outside, blockers, HALF_EXTENT);
+        assert!(route.is_ok(), "{name}: {route:?}");
+        assert!(
+            crate::nav::segment_clear(outside, inside, blockers, HALF_EXTENT),
+            "{name}'s doorway is blocked"
+        );
+        assert!(outside[0].hypot(outside[1]) < CLEARING_RADIUS, "{name}");
+    }
+    // The ponds stop the player at their banks, and their water draws.
+    for ([x, z], _) in layout::PONDS {
+        assert!(blockers.iter().any(|b| b.contains(x, z, 0.0)));
+    }
+    // Each district has its buildings: a few dozen roofs, not one hall.
+    let roofs = layout::placements()
+        .iter()
+        .filter(|p| p.model == "village/Roof_RoundTiles_8x10")
+        .count();
+    assert!(roofs >= 20, "{roofs}");
 }

@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -19,6 +19,12 @@
 //!   its cylinder after its particles have climbed and gathered.
 //! - `reverse-top`: the same cylinder from the caster hovering at its top,
 //!   looking down through the rising particles.
+//! - `overhead`: high above the approach, looking down over the whole town,
+//!   with the fog pushed back so the far districts show.
+//! - `town-north`: from the commons walk, north over Lantern Pond toward
+//!   Main Street.
+//! - `town-west`: from Stoop Lane, south past the homes toward Walden
+//!   Woods.
 //! - `studio-atrium`: inside the gate, at the goal board, with the goal
 //!   bar and its waiting badge over the view.
 //! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
@@ -82,12 +88,15 @@ fn main() -> Result<(), String> {
         // Reverse Gravity's caster on the approach.
         "reverse" | "reverse-top" => (glam::Vec3::new(0.0, 0.0, REVERSE_Z), 0.0, 0.0),
         "hall" | "studio-hall" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
+        "overhead" => (glam::Vec3::new(0.0, 0.0, -20.0), 0.0, 0.0),
+        "town-north" => (glam::Vec3::new(-11.0, 0.0, 14.0), 0.35, 30.0),
+        "town-west" => (glam::Vec3::new(-34.0, 0.0, 40.0), 2.9, 30.0),
         // Inside the gate, looking up at the goal board.
         "studio-atrium" => (glam::Vec3::new(2.8, 0.0, -13.3), 0.5, 10.0),
         other => {
             return Err(format!(
-                "unknown view `{other}`; use approach, sky, yard, hall, lane-east, lane-west, reverse, reverse-top, studio-yard, \
-                 studio-hall, studio-atrium, eyes, or hall-eyes"
+                "unknown view `{other}`; use approach, sky, yard, hall, lane-east, lane-west, reverse, reverse-top, \
+                 overhead, town-north, town-west, studio-yard, studio-hall, studio-atrium, eyes, or hall-eyes"
             ));
         }
     };
@@ -126,16 +135,36 @@ fn main() -> Result<(), String> {
     {
         let _ = verse::hud::studio_strip(&mut ui, &atlas, [1280.0, 800.0], 1.0, &summary, false);
     }
+    let mut shot = runtime.view(1.6);
+    let mut dynamic = runtime.dynamic_mesh();
+    let mut air = zones::atmosphere(runtime.zone);
+    if view == "overhead" {
+        // A camera high over the approach, looking down across the town,
+        // with the haze pushed back past the tree ring.
+        let eye = glam::Vec3::new(0.0, 95.0, -105.0);
+        let target = glam::Vec3::new(0.0, 0.0, 6.0);
+        shot.eye = eye;
+        shot.view_proj = glam::Mat4::perspective_rh(0.9, 1.6, 0.5, 2000.0)
+            * glam::Mat4::look_at_rh(eye, target, glam::Vec3::Y);
+        air.fog_start = 400.0;
+        air.fog_end = 900.0;
+        air.height_fog = None;
+        if let Some(neon) = dynamic.neon.as_mut() {
+            neon.fog_start = air.fog_start;
+            neon.fog_end = air.fog_end;
+            neon.height_fog = None;
+        }
+    }
     verse::render::capture_with_atmosphere(
         &output,
         1280,
         800,
         &runtime.world.mesh,
-        runtime.view(1.6),
-        &runtime.dynamic_mesh(),
+        shot,
+        &dynamic,
         &ui,
         &atlas,
-        zones::atmosphere(runtime.zone),
+        air,
     )
 }
 

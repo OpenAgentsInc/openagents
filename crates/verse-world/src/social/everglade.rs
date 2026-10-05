@@ -6,13 +6,20 @@
 use glam::Vec3;
 use std::f32::consts::FRAC_PI_2;
 
-/// Half the walkable square, m. The glade is about 120 m across; the square
-/// runs past the tree ring so its rising ground closes the view.
-pub const HALF_EXTENT: f32 = 75.0;
-/// Radius of the flat clearing around the workshop, m.
-pub const CLEARING_RADIUS: f32 = 34.0;
+/// Half the walkable square, m. The glade is about 240 m across, a small
+/// town around the workshop; the square runs past the tree ring so its
+/// rising ground closes the view. Navigation's 2 m grid starts at the
+/// square's edge, so an odd half extent puts grid lines through the hall's
+/// doorways at x = -1 and 1.
+pub const HALF_EXTENT: f32 = 135.0;
+/// Radius of the flat clearing the town stands in, m.
+pub const CLEARING_RADIUS: f32 = 68.0;
 /// Radius of the tree ring, where the ground finishes its rise, m.
-pub const RING_RADIUS: f32 = 58.0;
+pub const RING_RADIUS: f32 = 92.0;
+/// Half the square the studio's seats route in, m: every station, with
+/// room around them. Seats never walk into the rest of the town, so their
+/// routes search this smaller grid.
+pub const SEAT_EXTENT: f32 = 40.0;
 /// Height of the ground at the tree ring above the clearing, m.
 pub const RING_RISE: f32 = 5.0;
 /// Highest ground anywhere in the zone, m.

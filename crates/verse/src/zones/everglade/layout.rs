@@ -221,6 +221,92 @@ pub fn board_blockers() -> Vec<Footprint> {
     ]
 }
 
+/// The ponds the ground draws: center and water radius, m. Lantern Pond
+/// lies on the commons; Reed Pond in the long meadow by the Knowledge
+/// District.
+pub const PONDS: [([f32; 2], f32); 2] = [([-1.0, 29.0], 4.5), ([6.0, -42.0], 4.0)];
+
+/// Each pond's blockers: a cross of two boxes inside its water, so the
+/// player stops at the bank.
+#[must_use]
+pub fn pond_blockers() -> Vec<Footprint> {
+    PONDS
+        .iter()
+        .flat_map(|&([x, z], r)| {
+            let (long, short) = (0.85 * r, 0.5 * r);
+            [
+                Footprint {
+                    min: [x - long, z - short],
+                    max: [x + long, z + short],
+                },
+                Footprint {
+                    min: [x - short, z - long],
+                    max: [x + short, z + long],
+                },
+            ]
+        })
+        .collect()
+}
+
+/// The town's roads, drawn as trodden dirt: each a segment and its half
+/// width, m. Every road is a walked route that no blocker covers.
+pub const ROADS: [([f32; 2], [f32; 2], f32); 22] = [
+    // The commons walk, west of the hall, from the yard to Main Street.
+    ([-11.0, -2.0], [-11.0, 46.0], 1.4),
+    // Main Street, under the shops.
+    ([-34.0, 46.0], [44.0, 46.0], 1.6),
+    // Stoop Lane, past the homes, from Walden Woods to Main Street.
+    ([-34.0, -40.0], [-34.0, 46.0], 1.4),
+    // Hearth Road, from the yard to Stoop Lane.
+    ([-34.0, -4.0], [-13.0, -4.0], 1.3),
+    // Foundry Road, from the yard to the Server Barn's door.
+    ([13.5, 0.0], [45.0, 0.0], 1.2),
+    // Studio Road, from Main Street to the Makers' Hall.
+    ([43.0, 46.0], [43.0, 36.0], 1.2),
+    // Library Way, from the approach to the Knowledge District.
+    ([1.8, -29.0], [39.0, -29.0], 1.4),
+    ([31.0, -29.0], [31.0, -34.4], 1.2),
+    ([39.0, -29.0], [39.0, -25.6], 1.2),
+    // The Walden Woods path to the two cabins.
+    ([-34.0, -36.0], [-23.0, -36.0], 1.1),
+    ([-23.0, -36.0], [-23.0, -42.4], 1.1),
+    ([-34.0, -40.0], [-39.4, -40.0], 1.1),
+    // Each home's walk from Stoop Lane to its door.
+    ([-34.0, -16.0], [-37.4, -16.0], 1.0),
+    ([-34.0, 0.0], [-37.4, 0.0], 1.0),
+    ([-34.0, 16.0], [-37.4, 16.0], 1.0),
+    ([-34.0, 32.0], [-37.4, 32.0], 1.0),
+    // Each shop's step from Main Street to its door.
+    ([-25.0, 46.0], [-25.0, 49.4], 1.0),
+    ([-9.0, 46.0], [-9.0, 49.4], 1.0),
+    ([7.0, 46.0], [7.0, 49.4], 1.0),
+    ([23.0, 46.0], [23.0, 49.4], 1.0),
+    // The cottage's and the reading room's walks.
+    ([-13.0, 4.0], [-16.4, 4.0], 1.0),
+    ([21.0, 1.2], [21.0, 9.4], 1.0),
+];
+
+/// Each closed building's doorway: a point outside it on its walk and a
+/// point inside, m. The straight line between them passes the doorway.
+pub const DOORS: [(&str, [f32; 2], [f32; 2]); 16] = [
+    ("cottage", [-15.5, 4.0], [-19.0, 4.0]),
+    ("reading room", [21.0, 8.5], [21.0, 12.0]),
+    ("bakery", [-25.0, 48.5], [-25.0, 52.0]),
+    ("cafe", [-9.0, 48.5], [-9.0, 52.0]),
+    ("bookshop", [7.0, 48.5], [7.0, 52.0]),
+    ("grocer", [23.0, 48.5], [23.0, 52.0]),
+    ("makers hall", [43.0, 36.5], [43.0, 33.0]),
+    ("server barn", [44.5, 0.0], [48.0, 0.0]),
+    ("the stacks", [31.0, -33.5], [31.0, -37.0]),
+    ("old college", [39.0, -26.5], [39.0, -23.0]),
+    ("home 1", [-36.5, -16.0], [-40.0, -16.0]),
+    ("home 2", [-36.5, 0.0], [-40.0, 0.0]),
+    ("home 3", [-36.5, 16.0], [-40.0, 16.0]),
+    ("home 4", [-36.5, 32.0], [-40.0, 32.0]),
+    ("writing cabin", [-38.5, -40.0], [-42.0, -40.0]),
+    ("code cabin", [-23.0, -41.5], [-23.0, -45.0]),
+];
+
 /// The walked routes, as segments a player-wide body must pass along
 /// without touching a blocker: the approach from the return portal, the
 /// yard, and each doorway into the hall.
@@ -265,7 +351,13 @@ pub(crate) const TREES: [&str; 5] = [
     "nature/CommonTree_4",
 ];
 /// Trees in the ring.
+/// Trees in the Grove's ring, which keeps the first glade's ring.
 pub(crate) const RING_TREES: u32 = 22;
+/// Trees in the town's ring, which is twice as far out.
+const TOWN_RING_TREES: u32 = 30;
+/// Bushes tried around the clearing's edge; those on a road or a plot are
+/// left out.
+const EDGE_BUSHES: u32 = 12;
 /// Grass and clover clumps scattered in the clearing.
 pub(crate) const GRASS: [&str; 4] = [
     "nature/Grass_Common_Short",
@@ -273,7 +365,7 @@ pub(crate) const GRASS: [&str; 4] = [
     "nature/Clover_1",
     "nature/Grass_Common_Tall",
 ];
-const GRASS_CLUMPS: usize = 32;
+const GRASS_CLUMPS: usize = 80;
 /// Small plants at the clearing's edge.
 pub(crate) const PLANTS: [(&str, f32); 4] = [
     ("nature/Plant_1", 1.0),
@@ -281,7 +373,7 @@ pub(crate) const PLANTS: [(&str, f32); 4] = [
     ("nature/Plant_7_Big", 1.0),
     ("nature/Plant_1_Big", 0.5),
 ];
-const EDGE_PLANTS: usize = 12;
+const EDGE_PLANTS: usize = 36;
 
 /// A deterministic value in `0..1` for `n` in stream `salt`.
 pub(crate) fn noise(n: u32, salt: u32) -> f32 {
@@ -308,6 +400,79 @@ pub const COTTAGE: ([f32; 2], [f32; 2]) = ([-21.0, 4.0], [4.0, 5.0]);
 pub const PAVILION: ([f32; 2], [f32; 2]) = ([22.0, -7.0], [4.0, 5.0]);
 pub const READING_ROOM: ([f32; 2], [f32; 2]) = ([20.0, 15.0], [4.0, 5.0]);
 
+/// The town around the glade, after the map's districts. Each is (center,
+/// half extents), m, on the 2 m grid. Main Street's four shops face south
+/// onto it; the Makers' Hall is the Creative District's; the Server Barn
+/// and its fab yard are the Foundry's; the Stacks and the Old College are
+/// the Knowledge District's; four homes line Stoop Lane; two cabins stand
+/// in Walden Woods.
+pub const SHOPS: [([f32; 2], [f32; 2]); 4] = [
+    ([-24.0, 55.0], [4.0, 5.0]),
+    ([-8.0, 55.0], [4.0, 5.0]),
+    ([8.0, 55.0], [4.0, 5.0]),
+    ([24.0, 55.0], [4.0, 5.0]),
+];
+pub const MAKERS_HALL: ([f32; 2], [f32; 2]) = ([44.0, 30.0], [8.0, 5.0]);
+pub const SERVER_BARN: ([f32; 2], [f32; 2]) = ([50.0, 0.0], [4.0, 5.0]);
+pub const FAB_YARD: ([f32; 2], [f32; 2]) = ([51.0, -13.0], [4.0, 4.0]);
+pub const STACKS: ([f32; 2], [f32; 2]) = ([32.0, -40.0], [8.0, 5.0]);
+pub const OLD_COLLEGE: ([f32; 2], [f32; 2]) = ([40.0, -20.0], [4.0, 5.0]);
+pub const HOMES: [([f32; 2], [f32; 2]); 4] = [
+    ([-42.0, -16.0], [4.0, 5.0]),
+    ([-42.0, 0.0], [4.0, 5.0]),
+    ([-42.0, 16.0], [4.0, 5.0]),
+    ([-42.0, 32.0], [4.0, 5.0]),
+];
+pub const CABINS: [([f32; 2], [f32; 2]); 2] =
+    [([-44.0, -40.0], [4.0, 5.0]), ([-22.0, -48.0], [4.0, 5.0])];
+/// The commons' open bandstand, the community gardens, and the orchard.
+pub const BANDSHELL: ([f32; 2], [f32; 2]) = ([12.0, 32.0], [4.0, 5.0]);
+pub const GARDENS: ([f32; 2], [f32; 2]) = ([-22.0, 22.0], [6.0, 5.0]);
+pub const ORCHARD: ([f32; 2], [f32; 2]) = ([-22.0, 35.0], [6.0, 4.0]);
+
+/// Every reserved footprint: buildings, the yards, and the planted plots.
+fn reserved() -> Vec<([f32; 2], [f32; 2])> {
+    let mut out = vec![
+        HALL,
+        STRONGROOM,
+        COTTAGE,
+        PAVILION,
+        READING_ROOM,
+        MAKERS_HALL,
+        SERVER_BARN,
+        FAB_YARD,
+        STACKS,
+        OLD_COLLEGE,
+        BANDSHELL,
+        GARDENS,
+        ORCHARD,
+    ];
+    out.extend(SHOPS);
+    out.extend(HOMES);
+    out.extend(CABINS);
+    out
+}
+
+/// Distance from `(x, z)` to the segment from `a` to `b`, m.
+#[must_use]
+pub fn segment_distance(a: [f32; 2], b: [f32; 2], x: f32, z: f32) -> f32 {
+    let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+    let length = dx * dx + dz * dz;
+    let t = if length > 0.0 {
+        (((x - a[0]) * dx + (z - a[1]) * dz) / length).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (x - a[0] - t * dx).hypot(z - a[1] - t * dz)
+}
+
+/// Whether `(x, z)` lies on a road or within `margin` of one.
+fn on_road(x: f32, z: f32, margin: f32) -> bool {
+    ROADS
+        .iter()
+        .any(|&(a, b, half)| segment_distance(a, b, x, z) <= half + margin)
+}
+
 /// Where the lounge bench and the wagon stand.
 const BENCH: [f32; 2] = [-25.6, -20.0];
 const WAGON: [f32; 2] = [11.0, -23.0];
@@ -317,13 +482,11 @@ const WAGON: [f32; 2] = [11.0, -23.0];
 fn open_ground(x: f32, z: f32) -> bool {
     let path = x.abs() <= PATH_HALF_WIDTH + 0.8 && z <= YARD.0[1] - YARD.1[1] + 1.0;
     let near = |p: [f32; 2], r: f32| (p[0] - x).hypot(p[1] - z) < r;
-    !inside(HALL, x, z, 1.5)
-        && !inside(STRONGROOM, x, z, 1.5)
-        && !inside(COTTAGE, x, z, 1.5)
-        && !inside(PAVILION, x, z, 1.5)
-        && !inside(READING_ROOM, x, z, 1.5)
+    !reserved().iter().any(|r| inside(*r, x, z, 1.5))
         && !inside(YARD, x, z, 1.0)
         && !path
+        && !on_road(x, z, 0.8)
+        && !PONDS.iter().any(|(c, r)| near(*c, r + 1.8))
         && !near([RETURN_PORTAL.x, RETURN_PORTAL.z], 3.5)
         && !near(BENCH, 4.0)
         && !near([WAGON[0], WAGON[1] - 1.0], 4.5)
@@ -339,6 +502,7 @@ pub fn placements() -> Vec<Placement> {
     strongroom(&mut out);
     yard(&mut out);
     lane(&mut out);
+    town(&mut out);
     paths(&mut out);
     glade(&mut out);
     out
@@ -531,8 +695,9 @@ fn hall(out: &mut Vec<Placement>) {
 }
 
 /// A closed building on `rect` with `walls` listed south, north, west, east
-/// (each from west to east, or from south to north), an 8 x 10 round-tile
-/// roof with brick gables, corner posts, and an optional chimney.
+/// (each from west to east, or from south to north), a wood floor, an
+/// 8 x 10 round-tile roof with brick gables for every 8 m of its width,
+/// corner posts, and an optional chimney.
 fn house(
     out: &mut Vec<Placement>,
     rect: ([f32; 2], [f32; 2]),
@@ -562,35 +727,41 @@ fn house(
             Collision::None,
         ));
     }
+    for i in 0..(hx as i32) {
+        for j in 0..(hz as i32) {
+            let at = [west + 1.0 + 2.0 * i as f32, south + 1.0 + 2.0 * j as f32];
+            out.push(Placement::new("village/Floor_Brick", at, 0.0, Collision::None).lift(0.02));
+        }
+    }
     roof(out, rect);
     if let Some(at) = chimney {
         out.push(Placement::new("village/Prop_Chimney", at, 0.0, Collision::None).lift(4.9));
     }
 }
 
-/// An 8 x 10 round-tile roof over `rect` with brick gables at its south and
-/// north ends.
+/// An 8 x 10 round-tile roof for every 8 m of `rect`'s width, each with
+/// brick gables at its south and north ends.
 fn roof(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2])) {
-    let ([cx, cz], [_, hz]) = rect;
-    out.push(
-        Placement::new(
-            "village/Roof_RoundTiles_8x10",
-            [cx, cz],
-            0.0,
-            Collision::None,
-        )
-        .lift(WALL_TOP),
-    );
-    for (z, facing) in [(cz - hz, SOUTH), (cz + hz, NORTH)] {
+    let ([cx, cz], [hx, hz]) = rect;
+    let spans = ((2.0 * hx / 8.0).round() as i32).max(1);
+    for k in 0..spans {
+        let x = cx - hx + 4.0 + 8.0 * k as f32;
+        let x = if spans == 1 { cx } else { x };
         out.push(
             Placement::new(
-                "village/Roof_Front_Brick8",
-                [cx, z],
-                facing,
+                "village/Roof_RoundTiles_8x10",
+                [x, cz],
+                0.0,
                 Collision::None,
             )
             .lift(WALL_TOP),
         );
+        for (z, facing) in [(cz - hz, SOUTH), (cz + hz, NORTH)] {
+            out.push(
+                Placement::new("village/Roof_Front_Brick8", [x, z], facing, Collision::None)
+                    .lift(WALL_TOP),
+            );
+        }
     }
 }
 
@@ -699,6 +870,548 @@ fn lane(out: &mut Vec<Placement>) {
         1.0,
         Collision::Core(0.5),
     ));
+}
+
+/// Shorthand for a placement that blocks by its bounds.
+fn prop(out: &mut Vec<Placement>, model: &'static str, at: [f32; 2], yaw: f32) {
+    out.push(Placement::new(model, at, yaw, Collision::Bounds));
+}
+
+/// Shorthand for ground cover or dressing that does not block.
+fn dress(out: &mut Vec<Placement>, model: &'static str, at: [f32; 2], yaw: f32, scale: f32) {
+    out.push(Placement::new(model, at, yaw, Collision::None).scale(scale));
+}
+
+/// A tree with its trunk blocking.
+fn tree(out: &mut Vec<Placement>, model: &'static str, at: [f32; 2], yaw: f32, scale: f32) {
+    out.push(
+        Placement::new(model, at, yaw, Collision::Core(0.4))
+            .scale(scale)
+            .lift(-0.15),
+    );
+}
+
+/// A lantern on a wall facing `outward`, `along` meters from `center` along
+/// the wall.
+fn wall_lantern(out: &mut Vec<Placement>, center: [f32; 2], outward: f32, along: f32) {
+    let normal = crate::controller::forward(outward);
+    let side = crate::controller::forward(outward + FRAC_PI_2);
+    let at = [
+        center[0] + normal.x * 0.1 + side.x * along,
+        center[1] + normal.z * 0.1 + side.z * along,
+    ];
+    out.push(Placement::new("props/Lantern_Wall", at, outward, Collision::Bounds).lift(1.5));
+}
+
+/// The town around the glade (`docs/verse/everglade.md`, Layout): the
+/// commons, Main Street, the Creative District, the Foundry, the Knowledge
+/// District, Stoop Lane's homes, Walden Woods, the gardens, and the orchard.
+fn town(out: &mut Vec<Placement>) {
+    commons(out);
+    main_street(out);
+    makers_hall(out);
+    foundry(out);
+    knowledge(out);
+    homes(out);
+    woods(out);
+    gardens(out);
+}
+
+/// The commons: the great lawn north of the hall, with Lantern Pond, its
+/// reeds and stones, benches facing the water, and the open bandshell.
+fn commons(out: &mut Vec<Placement>) {
+    for (k, &(center, r)) in PONDS.iter().enumerate() {
+        let stones = 9 + 3 * k as u32;
+        for n in 0..stones {
+            let angle = (n as f32 + 0.5 * noise(n, 40 + k as u32)) / stones as f32 * TAU;
+            let at = [
+                center[0] + angle.cos() * (r + 0.4),
+                center[1] + angle.sin() * (r + 0.4),
+            ];
+            if n % 3 == 0 {
+                out.push(
+                    Placement::new(
+                        "nature/Rock_Medium_2",
+                        at,
+                        noise(n, 41) * TAU,
+                        Collision::None,
+                    )
+                    .scale(0.28),
+                );
+            } else {
+                let model = if n % 2 == 0 {
+                    "nature/Grass_Common_Tall"
+                } else {
+                    "nature/Fern_1"
+                };
+                let scale = if n % 2 == 0 { 1.1 } else { 0.35 };
+                dress(out, model, at, noise(n, 42) * TAU, scale);
+            }
+        }
+    }
+    let ([px, pz], r) = PONDS[0];
+    // Benches face the water from the south, the east, and the north.
+    for (at, yaw) in [
+        ([px, pz - r - 2.6], 0.0),
+        ([px + r + 2.6, pz], -FRAC_PI_2),
+        ([px, pz + r + 2.6], PI),
+    ] {
+        prop(out, "props/Bench", at, yaw + PI);
+    }
+    // The bandshell: an open roof on posts over a wood stage, facing the
+    // pond across the lawn.
+    let ([bx, bz], [bhx, bhz]) = BANDSHELL;
+    for corner in [
+        [bx - bhx, bz - bhz],
+        [bx + bhx, bz - bhz],
+        [bx - bhx, bz + bhz],
+        [bx + bhx, bz + bhz],
+        [bx - bhx, bz],
+        [bx + bhx, bz],
+    ] {
+        out.push(Placement::new(
+            "village/Corner_Exterior_Wood",
+            corner,
+            0.0,
+            Collision::Core(0.2),
+        ));
+    }
+    roof(out, BANDSHELL);
+    for i in 0..4 {
+        for j in 0..5 {
+            let at = [
+                bx - bhx + 1.0 + 2.0 * i as f32,
+                bz - bhz + 1.0 + 2.0 * j as f32,
+            ];
+            out.push(Placement::new("village/Floor_WoodDark", at, 0.0, Collision::None).lift(0.02));
+        }
+    }
+    prop(out, "props/Stool", [bx - 1.0, bz + 1.5], PI);
+    prop(out, "props/Stool", [bx + 1.2, bz + 1.0], PI);
+    prop(out, "props/BookStand", [bx, bz + 3.0], WEST);
+    for (i, at) in [[-6.0, 20.0], [5.0, 22.0], [-7.0, 38.0], [3.0, 40.0]]
+        .into_iter()
+        .enumerate()
+    {
+        let model = if i % 2 == 0 {
+            "nature/Flower_3_Group"
+        } else {
+            "nature/Flower_4_Group"
+        };
+        dress(out, model, at, noise(i as u32, 43) * TAU, 1.0);
+    }
+    tree(out, "nature/CommonTree_1", [-6.0, 41.0], 0.4, 1.0);
+    tree(out, "nature/CommonTree_3", [22.0, 38.0], 2.2, 0.9);
+}
+
+/// Main Street: four shops on its north side (a bakery, a café, a bookshop,
+/// and a grocer), market stalls and benches on its south side.
+fn main_street(out: &mut Vec<Placement>) {
+    use Piece::{Base, Door, Flat, Plain, Round, Timber};
+    let fronts: [[Piece; 4]; 4] = [
+        [Round, Door, Timber, Round],
+        [Flat, Door, Flat, Timber],
+        [Round, Door, Round, Plain],
+        [Timber, Door, Flat, Round],
+    ];
+    for (k, (rect, front)) in SHOPS.iter().zip(fronts).enumerate() {
+        let chimney = (k % 2 == 0).then(|| [rect.0[0] + 2.0, rect.0[1] + 2.5]);
+        house(
+            out,
+            *rect,
+            [
+                &front,
+                &[Plain, Flat, Flat, Plain],
+                &[Base, Timber, Plain, Timber, Base],
+                &[Base, Round, Timber, Plain, Base],
+            ],
+            chimney,
+        );
+        let ([cx, cz], [_, hz]) = *rect;
+        let south = cz - hz;
+        // A counter inside, seen through the door.
+        prop(out, "props/Table_Large", [cx, cz + 2.6], 0.0);
+        // What each shop sets out by its door.
+        match k {
+            0 => {
+                prop(out, "village/Prop_Crate", [cx + 2.2, south - 1.0], 0.3);
+                prop(out, "village/Prop_Crate", [cx + 3.2, south - 0.9], -0.2);
+            }
+            1 => {
+                prop(out, "props/Table_Large", [cx + 2.0, south - 1.6], 0.0);
+                for x in [cx + 0.2, cx + 3.8] {
+                    prop(out, "props/Stool", [x, south - 1.6], 0.0);
+                }
+            }
+            2 => {
+                prop(out, "props/BookStand", [cx + 2.0, south - 0.8], SOUTH);
+                out.push(
+                    Placement::new(
+                        "props/Book_Stack_1",
+                        [cx - 0.6, cz + 2.6],
+                        0.4,
+                        Collision::None,
+                    )
+                    .lift(0.81),
+                );
+            }
+            _ => {
+                prop(out, "village/Prop_Crate", [cx + 2.0, south - 1.0], 0.1);
+                prop(out, "village/Prop_Crate", [cx + 3.1, south - 1.1], 0.6);
+                out.push(
+                    Placement::new(
+                        "village/Prop_Crate",
+                        [cx + 2.0, south - 1.0],
+                        0.9,
+                        Collision::None,
+                    )
+                    .lift(1.06),
+                );
+            }
+        }
+    }
+    // Market stalls and benches across the street, by the commons.
+    for x in [4.0_f32, 18.0, 32.0] {
+        prop(out, "props/Table_Large", [x, 42.0], 0.0);
+        prop(out, "village/Prop_Crate", [x + 2.2, 41.6], 0.4);
+        out.push(
+            Placement::new("props/Scroll_1", [x - 0.5, 42.0], 0.7, Collision::None).lift(0.81),
+        );
+    }
+    for x in [-3.0_f32, 11.0, 25.0, 38.0] {
+        prop(out, "props/Bench", [x, 43.0], PI);
+    }
+}
+
+/// The Creative District's Makers' Hall: a long hall with double doors on
+/// Studio Road and workbenches, an anvil, and crates inside.
+fn makers_hall(out: &mut Vec<Placement>) {
+    use Piece::{Base, Door, Flat, Plain, Round, Timber};
+    house(
+        out,
+        MAKERS_HALL,
+        [
+            &[Base, Round, Timber, Round, Round, Timber, Round, Base],
+            &[Plain, Round, Timber, Door, Door, Timber, Round, Plain],
+            &[Base, Flat, Timber, Flat, Base],
+            &[Base, Flat, Timber, Flat, Base],
+        ],
+        Some([MAKERS_HALL.0[0] - 5.0, MAKERS_HALL.0[1] - 2.5]),
+    );
+    let ([cx, cz], [_, hz]) = MAKERS_HALL;
+    wall_lantern(out, [cx, cz + hz], NORTH, 0.0);
+    for x in [cx - 5.0, cx + 5.0] {
+        prop(out, "props/Workbench", [x, cz - 2.6], 0.0);
+        prop(out, "props/Stool", [x, cz - 1.4], 0.0);
+    }
+    prop(out, "props/Anvil", [cx + 2.0, cz - 2.0], 0.3);
+    prop(out, "props/Table_Large", [cx - 2.4, cz - 2.8], 0.0);
+    prop(out, "village/Prop_Crate", [cx + 6.8, cz + 3.4], 0.2);
+    out.push(Placement::new(
+        "nature/Bush_Common_Flowers",
+        [cx - 9.6, cz + 3.0],
+        1.3,
+        Collision::Core(0.5),
+    ));
+}
+
+/// The Foundry: the Server Barn, its racks of metal crates, and the fab
+/// yard's fenced bench, anvil, wagon, and stock.
+fn foundry(out: &mut Vec<Placement>) {
+    use Piece::{Base, Door, Timber};
+    house(
+        out,
+        SERVER_BARN,
+        [
+            &[Timber, Timber, Timber, Timber],
+            &[Timber, Base, Base, Timber],
+            &[Base, Timber, Door, Timber, Base],
+            &[Base, Timber, Timber, Timber, Base],
+        ],
+        Some([SERVER_BARN.0[0] + 2.0, SERVER_BARN.0[1] + 2.5]),
+    );
+    let ([cx, cz], _) = SERVER_BARN;
+    // The racks: metal crates stacked against the back wall.
+    prop(out, "props/Crate_Metal", [cx + 2.6, cz - 3.2], 0.0);
+    out.push(
+        Placement::new(
+            "props/Crate_Metal",
+            [cx + 2.6, cz - 3.2],
+            0.0,
+            Collision::None,
+        )
+        .lift(0.87),
+    );
+    prop(out, "village/Prop_Crate", [cx + 2.6, cz + 3.2], 0.3);
+    // The fab yard: a fence on three sides, open toward the barn.
+    let ([fx, fz], [fhx, fhz]) = FAB_YARD;
+    let (west, east, south) = (fx - fhx, fx + fhx, fz - fhz);
+    for i in 0..4 {
+        let model = if i % 2 == 0 {
+            "village/Prop_WoodenFence_Single"
+        } else {
+            "village/Prop_WoodenFence_Extension1"
+        };
+        let along = -fhx + 1.0 + 2.0 * i as f32;
+        prop(out, model, [fx + along, south], 0.0);
+        prop(out, model, [east, fz + along], FRAC_PI_2);
+        // The west side leaves a gate by the barn.
+        if i < 3 {
+            prop(out, model, [west, fz + along], FRAC_PI_2);
+        }
+    }
+    prop(out, "props/Workbench", [fx + 2.0, south + 1.2], PI);
+    prop(out, "props/Anvil", [fx - 1.2, south + 1.6], 0.5);
+    prop(out, "village/Prop_Wagon", [fx + 2.4, fz + 2.6], FRAC_PI_2);
+    prop(out, "props/Crate_Metal", [fx - 2.4, fz + 0.6], 0.2);
+    prop(out, "village/Prop_Crate", [fx - 2.6, fz - 0.8], 0.4);
+    prop(out, "village/Prop_Crate", [fx - 1.4, fz - 1.4], -0.3);
+}
+
+/// The Knowledge District: the Stacks, a long library with bookcases along
+/// its back wall, and the Old College beside Library Way.
+fn knowledge(out: &mut Vec<Placement>) {
+    use Piece::{Base, Door, Flat, Plain, Round, Timber};
+    house(
+        out,
+        STACKS,
+        [
+            &[Base, Plain, Plain, Plain, Plain, Plain, Plain, Base],
+            &[Base, Round, Round, Door, Door, Round, Round, Base],
+            &[Base, Flat, Timber, Flat, Base],
+            &[Base, Flat, Timber, Flat, Base],
+        ],
+        None,
+    );
+    let ([sx, sz], [_, shz]) = STACKS;
+    wall_lantern(out, [sx, sz + shz], NORTH, 0.0);
+    for x in [sx - 5.6, sx - 3.8, sx + 3.8, sx + 5.6] {
+        prop(out, "props/Bookcase_2", [x, sz - shz + 0.6], 0.0);
+    }
+    prop(out, "props/Table_Large", [sx + 3.0, sz - 0.4], 0.0);
+    out.push(
+        Placement::new(
+            "props/Book_Stack_1",
+            [sx + 2.4, sz - 0.4],
+            0.2,
+            Collision::None,
+        )
+        .lift(0.81),
+    );
+    out.push(
+        Placement::new("props/Scroll_1", [sx + 3.6, sz - 0.3], 1.1, Collision::None).lift(0.81),
+    );
+    prop(out, "props/BookStand", [sx - 4.0, sz + 0.2], 0.0);
+    house(
+        out,
+        OLD_COLLEGE,
+        [
+            &[Base, Door, Round, Base],
+            &[Timber, Flat, Flat, Timber],
+            &[Base, Round, Timber, Round, Base],
+            &[Base, Flat, Timber, Flat, Base],
+        ],
+        Some([OLD_COLLEGE.0[0] + 2.0, OLD_COLLEGE.0[1] + 2.5]),
+    );
+    let ([ox, oz], [_, ohz]) = OLD_COLLEGE;
+    prop(out, "props/Bookcase_2", [ox + 2.0, oz + ohz - 0.6], PI);
+    prop(
+        out,
+        "props/CandleStick_Triple",
+        [ox - 2.6, oz + ohz - 0.5],
+        PI,
+    );
+    out.push(Placement::new("village/Prop_Vine1", [ox - 4.1, oz], WEST, Collision::None).lift(2.8));
+}
+
+/// Stoop Lane: four homes facing the lane, each with a lantern by its door
+/// and a little garden.
+fn homes(out: &mut Vec<Placement>) {
+    use Piece::{Base, Door, Flat, Plain, Round, Timber};
+    let fronts: [[Piece; 5]; 4] = [
+        [Round, Timber, Door, Timber, Round],
+        [Flat, Plain, Door, Plain, Flat],
+        [Round, Plain, Door, Timber, Flat],
+        [Flat, Timber, Door, Plain, Round],
+    ];
+    for (k, (rect, front)) in HOMES.iter().zip(fronts).enumerate() {
+        house(
+            out,
+            *rect,
+            [
+                &[Plain, Flat, Flat, Plain],
+                &[Base, Round, Timber, Base],
+                &[Plain, Flat, Timber, Flat, Plain],
+                &front,
+            ],
+            Some([rect.0[0] - 2.0, rect.0[1] + 2.5]),
+        );
+        let ([cx, cz], [hx, _]) = *rect;
+        let door = [cx + hx, cz];
+        wall_lantern(out, door, EAST, 1.6);
+        let flowers = if k % 2 == 0 {
+            "nature/Bush_Common_Flowers"
+        } else {
+            "nature/Bush_Common"
+        };
+        out.push(Placement::new(
+            flowers,
+            [door[0] + 1.3, cz - 3.4],
+            k as f32,
+            Collision::Core(0.5),
+        ));
+        dress(
+            out,
+            "nature/Flower_3_Group",
+            [door[0] + 1.2, cz + 3.4],
+            k as f32 * 1.7,
+            0.8,
+        );
+        if k % 2 == 1 {
+            out.push(
+                Placement::new("village/Prop_Vine1", [cx, cz + 5.1], NORTH, Collision::None)
+                    .lift(2.8),
+            );
+        }
+    }
+}
+
+/// Walden Woods: two timber cabins among pines, with a bench and mushrooms.
+fn woods(out: &mut Vec<Placement>) {
+    use Piece::{Base, Door, Flat, Plain, Timber};
+    house(
+        out,
+        CABINS[0],
+        [
+            &[Timber, Flat, Timber, Plain],
+            &[Timber, Plain, Timber, Timber],
+            &[Timber, Plain, Flat, Plain, Timber],
+            &[Timber, Flat, Door, Timber, Timber],
+        ],
+        Some([CABINS[0].0[0] - 2.0, CABINS[0].0[1] - 2.5]),
+    );
+    house(
+        out,
+        CABINS[1],
+        [
+            &[Timber, Plain, Flat, Timber],
+            &[Base, Door, Flat, Timber],
+            &[Timber, Flat, Timber, Plain, Timber],
+            &[Timber, Plain, Flat, Timber, Timber],
+        ],
+        Some([CABINS[1].0[0] + 2.0, CABINS[1].0[1] - 2.5]),
+    );
+    for (i, (model, at, scale)) in [
+        ("nature/Pine_1", [-31.0, -48.0], 1.1),
+        ("nature/Pine_2", [-38.0, -51.0], 1.0),
+        ("nature/CommonTree_4", [-53.0, -33.0], 1.1),
+        ("nature/Pine_1", [-14.0, -53.0], 1.0),
+        ("nature/CommonTree_1", [-31.0, -58.0], 1.0),
+        ("nature/Pine_2", [-50.0, -48.0], 1.2),
+        ("nature/CommonTree_5", [-12.0, -61.0], 1.1),
+        ("nature/Pine_1", [-29.0, -29.0], 0.9),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        tree(out, model, at, noise(i as u32, 44) * TAU, scale);
+    }
+    prop(out, "props/Bench", [-28.0, -40.2], FRAC_PI_2);
+    for (i, at) in [
+        [-30.0, -46.5],
+        [-37.0, -49.6],
+        [-15.4, -52.0],
+        [-49.0, -46.6],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        dress(
+            out,
+            "nature/Mushroom_Common",
+            at,
+            i as f32 * 1.9,
+            1.3 + 0.2 * i as f32,
+        );
+    }
+    for (i, at) in [[-35.5, -45.0], [-26.5, -55.0], [-47.0, -30.0]]
+        .into_iter()
+        .enumerate()
+    {
+        dress(out, "nature/Fern_1", at, i as f32 * 2.3, 0.35);
+    }
+}
+
+/// The community gardens' fenced beds and the orchard's rows of young
+/// fruit trees between the commons walk and Stoop Lane.
+fn gardens(out: &mut Vec<Placement>) {
+    let ([gx, gz], [ghx, ghz]) = GARDENS;
+    let (west, east, south, north) = (gx - ghx, gx + ghx, gz - ghz, gz + ghz);
+    for i in 0..6 {
+        let x = west + 1.0 + 2.0 * i as f32;
+        prop(out, "village/Prop_WoodenFence_Single", [x, south], 0.0);
+        prop(out, "village/Prop_WoodenFence_Single", [x, north], 0.0);
+    }
+    for j in 0..5 {
+        let z = south + 1.0 + 2.0 * j as f32;
+        prop(
+            out,
+            "village/Prop_WoodenFence_Extension1",
+            [west, z],
+            FRAC_PI_2,
+        );
+        // A gate in the middle of the east side, toward the commons walk.
+        if j != 2 {
+            prop(
+                out,
+                "village/Prop_WoodenFence_Extension1",
+                [east, z],
+                FRAC_PI_2,
+            );
+        }
+    }
+    let beds: [(&str, f32); 4] = [
+        ("nature/Plant_7_Big", 1.0),
+        ("nature/Plant_1", 0.9),
+        ("nature/Grass_Common_Tall", 0.9),
+        ("nature/Plant_7", 1.3),
+    ];
+    for (row, (model, scale)) in beds.into_iter().enumerate() {
+        let z = south + 1.4 + 2.4 * row as f32;
+        for k in 0..5 {
+            let x = west + 1.6 + 2.0 * k as f32;
+            dress(
+                out,
+                model,
+                [x, z],
+                noise(k + 8 * row as u32, 45) * TAU,
+                scale,
+            );
+        }
+    }
+    let ([ox, oz], [ohx, ohz]) = ORCHARD;
+    for i in 0..3 {
+        for j in 0..2 {
+            let at = [
+                ox - ohx + 2.0 + 4.0 * i as f32,
+                oz - ohz + 2.0 + 4.0 * j as f32,
+            ];
+            let model = if (i + j) % 2 == 0 {
+                "nature/CommonTree_5"
+            } else {
+                "nature/CommonTree_3"
+            };
+            tree(out, model, at, noise(i * 2 + j, 46) * TAU, 0.6);
+        }
+    }
+    dress(
+        out,
+        "nature/Mushroom_Common",
+        [ox - 3.0, oz + 0.2],
+        0.4,
+        1.2,
+    );
+    dress(out, "nature/Clover_1", [ox + 1.0, oz - 0.3], 1.4, 1.0);
 }
 
 /// Furniture ahead of each station's standing point.
@@ -984,9 +1697,9 @@ fn paths(out: &mut Vec<Placement>) {
 /// The tree ring, the undergrowth at the clearing's edge, ground cover,
 /// and flowers along the approach.
 fn glade(out: &mut Vec<Placement>) {
-    for k in 0..RING_TREES {
-        let angle = (k as f32 + 0.4 * noise(k, 1)) / RING_TREES as f32 * TAU;
-        let r = 41.0 + (k % 3) as f32 * 5.0 + 2.0 * noise(k, 2);
+    for k in 0..TOWN_RING_TREES {
+        let angle = (k as f32 + 0.4 * noise(k, 1)) / TOWN_RING_TREES as f32 * TAU;
+        let r = 74.0 + (k % 3) as f32 * 7.0 + 3.0 * noise(k, 2);
         out.push(
             Placement::new(
                 TREES[k as usize % TREES.len()],
@@ -999,38 +1712,55 @@ fn glade(out: &mut Vec<Placement>) {
             .lift(-0.15),
         );
     }
-    // Bushes around the clearing's edge, clear of the approach (270°), the
-    // lounge (220°), and the wagon (290°).
-    for (i, degrees) in [15.0_f32, 50.0, 95.0, 130.0, 165.0, 195.0, 245.0, 330.0]
-        .into_iter()
-        .enumerate()
-    {
-        let angle = degrees.to_radians();
-        let model = if i % 2 == 0 {
+    // Bushes around the clearing's edge, where the ground is open.
+    for k in 0..EDGE_BUSHES {
+        let angle = (k as f32 + 0.5 * noise(k, 5)) / EDGE_BUSHES as f32 * TAU;
+        let at = [angle.cos() * 66.0, angle.sin() * 66.0];
+        if !open_ground(at[0], at[1]) {
+            continue;
+        }
+        let model = if k % 2 == 0 {
             "nature/Bush_Common"
         } else {
             "nature/Bush_Common_Flowers"
         };
-        out.push(
-            Placement::new(
-                model,
-                [angle.cos() * 33.5, angle.sin() * 33.5],
-                noise(i as u32, 5) * TAU,
-                Collision::Core(0.55),
-            )
-            .scale(1.1),
-        );
+        out.push(Placement::new(model, at, noise(k, 15) * TAU, Collision::Core(0.55)).scale(1.1));
     }
     for (i, (model, at)) in [
-        ("nature/Rock_Medium_1", [-18.0, 26.5]),
-        ("nature/Rock_Medium_3", [24.0, 19.5]),
-        ("nature/Rock_Medium_2", [30.5, -4.0]),
-        ("nature/Rock_Medium_1", [-31.0, 6.0]),
+        ("nature/Rock_Medium_1", [-14.0, 62.0]),
+        ("nature/Rock_Medium_3", [56.0, 18.0]),
+        ("nature/Rock_Medium_2", [60.0, -24.0]),
+        ("nature/Rock_Medium_1", [-56.0, 14.0]),
+        ("nature/Rock_Medium_3", [26.0, -58.0]),
+        ("nature/Rock_Medium_2", [-6.0, -50.0]),
     ]
     .into_iter()
     .enumerate()
     {
         out.push(Placement::new(model, at, noise(i as u32, 6) * TAU, Collision::Bounds).scale(0.6));
+    }
+    // The long meadow's flowers south of the Knowledge District.
+    for (i, at) in [
+        [20.0, -52.0],
+        [8.0, -56.0],
+        [34.0, -54.0],
+        [44.0, -48.0],
+        [-3.0, -54.0],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let model = if i % 2 == 0 {
+            "nature/Flower_4_Group"
+        } else {
+            "nature/Flower_3_Group"
+        };
+        out.push(Placement::new(
+            model,
+            at,
+            noise(i as u32, 16) * TAU,
+            Collision::None,
+        ));
     }
     // Flowers and ferns along the approach path.
     for (i, at) in [
@@ -1079,8 +1809,8 @@ fn glade(out: &mut Vec<Placement>) {
             .scale(0.3),
         );
     }
-    scatter(out, &GRASS.map(|m| (m, 1.0)), GRASS_CLUMPS, 12.0, 33.0, 20);
-    scatter(out, &PLANTS, EDGE_PLANTS, 26.0, 34.0, 21);
+    scatter(out, &GRASS.map(|m| (m, 1.0)), GRASS_CLUMPS, 12.0, 66.0, 20);
+    scatter(out, &PLANTS, EDGE_PLANTS, 58.0, 70.0, 21);
 }
 
 /// Places `count` pieces of ground cover, cycling through `models`, at

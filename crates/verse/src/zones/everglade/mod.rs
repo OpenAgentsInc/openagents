@@ -2,8 +2,9 @@
 //! (`docs/verse/everglade.md`).
 //!
 //! The ground is a heightfield computed in Rust: flat inside the clearing,
-//! rising toward the tree ring. The glade and the workshop are placements
-//! of the pinned Everglade pack's models (`layout`), drawn as textured,
+//! rising toward the tree ring. The glade, the workshop, and the small town
+//! around them are placements of the pinned Everglade pack's models
+//! (`layout`), drawn as textured,
 //! alpha-tested cells on a lit stage, with the Task Wall, the desk
 //! monitors, and the atrium's goal board drawn by Verse (`boards`, from
 //! [`signals`]). The pack loads on portal entry, as the Ruins pack does.
@@ -56,8 +57,9 @@ use verse_world::social::everglade::{SPAWN, SPAWN_YAW};
 
 /// The return portal, at the start of the approach path.
 pub(crate) const RETURN_PORTAL: Vec3 = Vec3::new(0.0, 0.0, -32.0);
-/// Spacing of the baked light probes characters sample, m.
-const PROBE_CELL: f32 = 3.0;
+/// Spacing of the baked light probes characters sample, m. The town's
+/// square is 270 m across, so the grid stays under 70 probes a side.
+const PROBE_CELL: f32 = 4.0;
 /// How far the probe grid reaches above the highest ground, m: a
 /// character's head on the ring.
 const PROBE_HEADROOM: f32 = 3.0;
@@ -196,9 +198,9 @@ impl Everglade {
             sky: 1_200.0,
             ground: 450.0,
             ev100: 10.0,
-            shadow_center: Vec3::new(0.0, 0.0, -4.0),
-            shadow_half: 40.0,
-            // Past the tree ring: a tree 120 m off still casts, and the
+            shadow_center: Vec3::new(0.0, 0.0, 0.0),
+            shadow_half: 75.0,
+            // Across the town: a house 120 m off still casts, and the
             // last cascade fades out before the fog closes at 170 m.
             shadow_distance: Some(150.0),
             // The glade and the workshop are the world mesh; the seats and
@@ -290,6 +292,7 @@ impl Everglade {
         world.mesh.textured = Some(Arc::new(scene));
         world.blockers = blockers;
         world.blockers.extend(layout::board_blockers());
+        world.blockers.extend(layout::pond_blockers());
         boards::draw(&mut world.mesh);
         Ok(world)
     }
