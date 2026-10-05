@@ -151,8 +151,8 @@ async fn queued_intervals_survive_storage_resume_without_expiry() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn queued_intervals_precede_delayed_simulation_catchup() {
-    for attempt in 0..16 {
+async fn queued_intervals_precede_simulation_deadlines() {
+    for (attempt, delay_ms) in [40u64, 110].into_iter().cycle().take(32).enumerate() {
         let keys = [tests::key(114), tests::key(115), tests::key(116)];
         let gate = Arc::new((Mutex::new(false), Condvar::new()));
         let release = Release(gate.clone());
@@ -164,7 +164,8 @@ async fn queued_intervals_precede_delayed_simulation_catchup() {
                 if !has_blocked
                     && baseline.profile == crate::movement::Profile::Frames
                     && baseline.applied_sequence > 0
-                    && baseline.world_step.saturating_sub(baseline.physics_step) >= MAX_LAG - 8
+                    && baseline.world_step.saturating_sub(baseline.physics_step)
+                        >= if delay_ms == 40 { MAX_LAG } else { MAX_LAG - 8 }
                 {
                     has_blocked = true;
                     started.send(()).unwrap();
@@ -250,8 +251,8 @@ async fn queued_intervals_precede_delayed_simulation_catchup() {
             .unwrap();
         client.send(Body::MovementFrame { frame }).unwrap();
         // Other runtime tasks deliver this TLS interval while the authority is
-        // delayed. Three overdue simulation ticks must not overtake admission.
-        tokio::time::sleep(Duration::from_millis(110)).await;
+        // delayed. Neither an ordinary deadline nor a catch-up batch may overtake admission.
+        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
         drop(release);
         let (_, reply) = timeout(Duration::from_secs(2), client.receive())
             .await

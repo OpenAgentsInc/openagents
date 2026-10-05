@@ -1,0 +1,31 @@
+{
+  "schema": "verse.tick.admission.regression.v1",
+  "issue": 10559,
+  "preceding_fix": "7f29d5bf6b",
+  "before": {
+    "result": "failed",
+    "failure": "Ordinary simulation deadline expired already queued TLS movement on trial zero",
+    "log": "before.log"
+  },
+  "after": {
+    "result": "passed",
+    "transport_tests": 28,
+    "delayed_tests": 4,
+    "ordinary_deadline_trials": 16,
+    "catchup_trials": 16
+  },
+  "limits": [
+    "Real TLS scheduling regression, not full battle acceptance.",
+    "Captured FIFO cohort stays bounded and new arrivals cannot extend it. Existing movement and catch-up limits are unchanged.",
+    "Linux base 43f12d6e0b includes the preceding blocked-write and catch-up fixes plus this change."
+  ],
+  "source_sha256": {
+    "crates/verse-world/src/service/net.rs": "685751b8162702e92c74f8f8d42bb4ce24a6d99e882d3164cbb6fed22f987e54",
+    "crates/verse-world/src/service/net/resume_tests.rs": "a3976a957537410cb0bb96a97bf1b0aba95ab206c8c31babd7a18c2f4516d91a"
+  },
+  "artifact_sha256": {
+    "delayed.log": "fe52482cd322cab25fc5350fbd790c01c0f371cdb236fbf6dad2ce4da635ce9b",
+    "before.log": "a04fc66f76f477bad1fac389741080fa1e712e1696c63ca7a91b97b946bf1a06",
+    "after.log": "5876f5b7e6ad7d0a4c804a0589bbb6700a97006a64a7e69ef6916bc9031a5f43"
+  }
+}

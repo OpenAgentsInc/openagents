@@ -737,11 +737,11 @@ async fn serve_loop<F: Future<Output = ()>>(
                     continue;
                 }
                 if deferred_tick.is_none() && history && request_room
-                    && resume_requests == 0 && elapsed > period.as_secs_f64() * 1.5
+                    && resume_requests == 0
                     && !receive.is_empty()
                 {
-                    // A delayed authority can have both overdue simulation and
-                    // valid movement already waiting. Admit that fixed FIFO
+                    // A simulation deadline can become ready alongside valid
+                    // movement already waiting. Admit that fixed FIFO
                     // cohort first, then resume this same elapsed-time batch.
                     // Later arrivals cannot extend the cohort or starve time.
                     resume_requests = receive.len();
