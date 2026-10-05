@@ -508,3 +508,46 @@ fn a_second_question_queues_instead_of_blocking() {
     assert!(text.contains("QUEUE 1"));
     assert!(!text.contains("Finish or dismiss"));
 }
+
+#[test]
+fn an_agent_drives_its_own_pane_until_a_key_takes_it_back() {
+    use crate::input::{KeyCode, Logical};
+    let transport = Arc::new(Fake::default());
+    let mut app = Application::new(Sessions(transport.clone()));
+    let pane = app.open_typist("ada").unwrap();
+    // The pane shows, but the world keeps the keyboard.
+    assert!(app.open && !app.focused && !app.paper.on);
+    assert_eq!(app.panes[&pane].typist.as_deref(), Some("ada"));
+    app.send_to(pane, b"cargo test -p atif\r");
+    assert_eq!(
+        transport.input.lock().unwrap().as_slice(),
+        &[b"cargo test -p atif\r".to_vec()]
+    );
+    // The command's block finishes with its status.
+    transport.output.lock().unwrap().push_back(b"\x1b]133;A\x07$ \x1b]133;B\x07cargo test -p atif\r\n\x1b]777;openagents;command;636172676f2074657374202d702061746966\x07\x1b]133;C\x07test result: ok. 31 passed\r\n\x1b]133;D;0\x07\x1b]133;A\x07".to_vec());
+    app.tick();
+    let block = app.panes[&pane].session.blocks.records.back().unwrap();
+    assert_eq!(block.status, Some(0));
+    assert!(block.output.contains("31 passed"));
+    // A modifier alone takes nothing back; a real key does, and still types.
+    app.focused = true;
+    let mut key = crate::KeyIn {
+        code: KeyCode::ShiftLeft,
+        logical: Logical::Character("".into()),
+        text: None,
+        plain: None,
+        pressed: true,
+        repeat: false,
+        synthetic: false,
+    };
+    assert!(app.key(&key));
+    assert_eq!(app.panes[&pane].typist.as_deref(), Some("ada"));
+    key.code = KeyCode::KeyQ;
+    key.logical = Logical::Character("q".into());
+    key.text = Some("q".into());
+    assert!(app.key(&key));
+    assert!(app.panes[&pane].typist.is_none());
+    assert!(app.panes[&pane].taken_back);
+    assert!(app.show_pane(pane));
+    assert!(!app.show_pane(pane + 100));
+}

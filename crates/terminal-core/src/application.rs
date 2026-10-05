@@ -32,6 +32,14 @@ pub struct Pane {
     /// Bells seen, and when the last one lit the title bar.
     pub bells: u64,
     pub flash: Option<Instant>,
+    /// The agent typing into this pane, when one drives it; its title
+    /// says `driven by NAME`. Any key the person presses here takes the
+    /// pane back at once (`docs/terminal/smart-terminal.md`, "Agents
+    /// attached to panes").
+    pub typist: Option<String>,
+    /// The person took this pane back from its typist; the agent's driver
+    /// reads and clears it.
+    pub taken_back: bool,
 }
 
 pub struct Tab {
@@ -260,6 +268,8 @@ impl Application {
                         selection: None,
                         bells: 0,
                         flash: None,
+                        typist: None,
+                        taken_back: false,
                     },
                 );
                 Some(id)
@@ -281,6 +291,43 @@ impl Application {
             });
             self.active = self.tabs.len() - 1;
         }
+    }
+
+    /// Opens a tab whose one pane, a login shell, the agent `typist`
+    /// drives, and shows it as panes without taking focus from the world.
+    /// Returns the pane, or `None` when the shell did not start.
+    pub fn open_typist(&mut self, typist: &str) -> Option<PaneId> {
+        let (rows, cols) = self.grid_size(self.area);
+        let id = self.spawn(&Program::Shell, rows, cols)?;
+        if let Some(pane) = self.panes.get_mut(&id) {
+            pane.typist = Some(typist.to_string());
+        }
+        self.tabs.push(Tab {
+            layout: Layout::new(id),
+            zoomed: false,
+        });
+        self.active = self.tabs.len() - 1;
+        self.open = true;
+        self.paper.on = false;
+        Some(id)
+    }
+
+    /// Shows pane `id`'s tab and focuses the pane within it, without
+    /// giving the overlay keyboard focus. Returns false when no such pane
+    /// is open.
+    pub fn show_pane(&mut self, id: PaneId) -> bool {
+        let Some(index) = self
+            .tabs
+            .iter()
+            .position(|t| t.layout.panes().contains(&id))
+        else {
+            return false;
+        };
+        self.active = index;
+        self.tabs[index].layout.set_focus(id);
+        self.open = true;
+        self.paper.on = false;
+        true
     }
 
     /// Whether focus changed since the last call: the world stops the
@@ -785,6 +832,16 @@ impl Application {
         }
         if !key.pressed {
             return true;
+        }
+        // A key the person presses in a pane an agent drives takes it
+        // back before the key does anything else.
+        if !key.synthetic
+            && !is_modifier(key.code)
+            && let Some(pane) = self.focused_pane()
+            && pane.typist.take().is_some()
+        {
+            pane.taken_back = true;
+            pane.render_revision += 1;
         }
         let macos = cfg!(target_os = "macos");
         let chord = |code: KeyCode| {

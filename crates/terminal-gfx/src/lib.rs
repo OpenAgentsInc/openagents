@@ -449,11 +449,14 @@ impl Overlay {
             let focused = id == focus && pane_focused;
             let vt = &pane.session.vt;
             self.core.stats.drawn(id, vt.generation());
-            let title = if vt.title().is_empty() {
+            let mut title = if vt.title().is_empty() {
                 pane.label.clone()
             } else {
                 format!("{} — {}", pane.label, vt.title())
             };
+            if let Some(typist) = &pane.typist {
+                title = format!("{title}  [driven by {typist}; any key takes it back]");
+            }
             let mut detail = pane.session.cwd.clone().unwrap_or_default();
             if pane.scroll > 0 {
                 detail = format!("{detail}  [scrolled back {} lines]", pane.scroll);
