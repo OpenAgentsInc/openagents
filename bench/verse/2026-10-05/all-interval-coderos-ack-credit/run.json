@@ -1,0 +1,40 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "compiled_revision": "f6ed2aa223c7fed2c163c62da1cfd4255048a529",
+  "host_binary_sha256": "3e07fb7a3ed1b38b7bd376cecf871337190b74081ae0c4f4db7e652fd185a6c3",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "movement_send_steps": 6,
+  "wire_version": 27,
+  "timings": {
+    "frame_p95_ms": 19.330457999999997,
+    "gpu_p95_ms": 10.116334,
+    "verified_snapshot_age_p95_ms": 128.48066599999999,
+    "command_turnaround_p95_ms": 211.1625
+  },
+  "movement_expiries": 193,
+  "native_reset_reasons": {
+    "control_epoch": 28,
+    "teleport": 1
+  },
+  "server": {
+    "journal_sync_max_ms": 23.249,
+    "storage_paused_seconds": 0.014278,
+    "storage_refusals": 3351,
+    "deferred_read_projection_total_seconds": 16.412323,
+    "simulation_total_seconds": 13.140735
+  },
+  "validation": [
+    "All processes exited zero.",
+    "All 19 headless rows observed 20 players and at least 40 live hostile NPCs.",
+    "20483 movement inputs with zero producer pressure.",
+    "138 affected world checks passed, then matching host/native/load binaries built."
+  ],
+  "limitations": [
+    "Shared CPU/disk conditions and upstream client changes prevent causal attribution.",
+    "The corrected one-player latency probes pass; crowded movement still expires.",
+    "No battle, impaired-network, input-to-display, or soak acceptance."
+  ]
+}
