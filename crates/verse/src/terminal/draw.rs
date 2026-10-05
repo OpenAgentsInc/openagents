@@ -5,7 +5,7 @@
 //! as the program asked; its default colors are the ladder's.
 
 use coder_ui::theme::{Intensity, NEAR_BLACK};
-use coder_vt::{Color, Flags, Row};
+use coder_vt::{Cell, Color, CursorShape, Flags, Row};
 
 use super::layout::Rect;
 use crate::palette;
@@ -164,8 +164,68 @@ pub fn block(c: char) -> Option<(Vec<[f32; 4]>, f32)> {
     })
 }
 
-/// Draws a box-drawing or block character in the cell, returning false
-/// when `c` is neither.
+/// Dots of a braille pattern (U+2800 to U+28FF) as (column, row) in its
+/// two-by-four grid.
+#[must_use]
+pub fn braille(c: char) -> Option<Vec<(u8, u8)>> {
+    let n = c as u32;
+    if !(0x2800..=0x28FF).contains(&n) {
+        return None;
+    }
+    // Bit order: dots 1, 2, 3 down the left, 4, 5, 6 down the right, then
+    // 7 and 8 under them.
+    const DOTS: [(u8, u8); 8] = [
+        (0, 0),
+        (0, 1),
+        (0, 2),
+        (1, 0),
+        (1, 1),
+        (1, 2),
+        (0, 3),
+        (1, 3),
+    ];
+    let bits = n - 0x2800;
+    Some(
+        DOTS.iter()
+            .enumerate()
+            .filter(|(i, _)| bits & (1 << i) != 0)
+            .map(|(_, dot)| *dot)
+            .collect(),
+    )
+}
+
+/// A powerline separator: which way it points and whether it is solid.
+#[must_use]
+pub fn powerline(c: char) -> Option<(bool, bool)> {
+    Some(match c as u32 {
+        0xE0B0 => (true, true),
+        0xE0B1 => (true, false),
+        0xE0B2 => (false, true),
+        0xE0B3 => (false, false),
+        _ => return None,
+    })
+}
+
+/// Whether the overlay draws `c` from shapes rather than a font glyph.
+#[must_use]
+pub fn shaped(c: char) -> bool {
+    box_lines(c).is_some() || block(c).is_some() || braille(c).is_some() || powerline(c).is_some()
+}
+
+/// A stand-in for a private-use powerline glyph that fonts lack.
+#[must_use]
+pub fn substitute(c: char) -> char {
+    match c as u32 {
+        // The branch symbol, as the alternative-key symbol.
+        0xE0A0 => '⎇',
+        0xE0A1 => '¶',
+        0xE0A2 => '🔒',
+        _ => c,
+    }
+}
+
+/// Draws a shape character in the cell, returning false when `c` is not
+/// one.
 fn glyph_shape(
     batch: &mut UiBatch,
     atlas: &Atlas,
@@ -203,6 +263,29 @@ fn glyph_shape(
         }
         return true;
     }
+    if let Some(dots) = braille(c) {
+        // Square dots on a two-by-four grid, centered in the cell.
+        let size = (w / 4.0).min(h / 8.0).round().max(1.0);
+        let (step_x, step_y) = (w / 2.0, h / 4.0);
+        for (col, row) in dots {
+            let dx = x + (f32::from(col) + 0.5) * step_x - size / 2.0;
+            let dy = y + (f32::from(row) + 0.5) * step_y - size / 2.0;
+            batch.rect(atlas, dx.round(), dy.round(), size, size, color);
+        }
+        return true;
+    }
+    if let Some((right, solid)) = powerline(c) {
+        let (near, far) = if right { (x, x + w) } else { (x + w, x) };
+        let mid = y + h / 2.0;
+        if solid {
+            batch.triangle(atlas, [near, y], [far, mid], [near, y + h], color);
+        } else {
+            let t = (w / 8.0).round().max(1.0);
+            batch.line(atlas, [near, y], [far, mid], t, color);
+            batch.line(atlas, [far, mid], [near, y + h], t, color);
+        }
+        return true;
+    }
     false
 }
 
@@ -210,9 +293,6 @@ fn glyph_shape(
 pub struct Grid<'a> {
     /// The rows to draw, top to bottom.
     pub rows: Vec<&'a Row>,
-    /// The cursor's row and column on screen, when it shows.
-    pub cursor: Option<(usize, usize)>,
-    pub focused: bool,
 }
 
 /// The cell size the atlas draws: its advance and line height.
@@ -221,83 +301,129 @@ pub fn cell_size(atlas: &Atlas) -> [f32; 2] {
     [atlas.advance.max(1.0), atlas.line.max(1.0)]
 }
 
-/// Draws `grid` with its top-left cell at `origin`.
+/// The default foreground, a program color, or the bold and marker steps.
+fn foreground(cell: &Cell) -> [f32; 4] {
+    let flags = cell.attrs.flags;
+    let mut fg = if flags.contains(Flags::INVERSE) {
+        program(cell.attrs.bg).unwrap_or(field(1.0))
+    } else {
+        match program(cell.attrs.fg) {
+            Some(color) => color,
+            None if flags.contains(Flags::BOLD) => white(Intensity::Full, 1.0),
+            None if flags.contains(Flags::MARKER) => white(Intensity::Half, 1.0),
+            None => white(Intensity::ThreeQuarters, 1.0),
+        }
+    };
+    if flags.contains(Flags::DIM) {
+        fg[3] *= 0.6;
+    }
+    fg
+}
+
+/// Draws `cell`'s character with its top-left at `(x, y)` in `fg`: a
+/// shape, a font glyph centered on a wide character's two columns, a
+/// slanted italic, a doubled bold for program colors, and combining marks
+/// over it. A character the atlas lacks draws as `?`.
+pub fn glyph(batch: &mut UiBatch, atlas: &Atlas, x: f32, y: f32, cell: &Cell, fg: [f32; 4]) {
+    let [cw, ch] = cell_size(atlas);
+    let width = cw * f32::from(cell.width.max(1));
+    let c = substitute(cell.ch);
+    if glyph_shape(batch, atlas, [x, y, width, ch], c, fg) {
+        return;
+    }
+    let mut buf = [0u8; 4];
+    let c = if atlas.has_glyph(c) { c } else { '?' };
+    let text: &str = c.encode_utf8(&mut buf);
+    // A glyph wider or narrower than its columns is centered on them.
+    let advance = atlas.glyph_box(c).map_or(cw, |g| g.advance);
+    let x = if cell.width == 2 || advance > cw * 1.2 {
+        (x + (width - advance) / 2.0).round()
+    } else {
+        x
+    };
+    let start = batch.vertices.len();
+    batch.text(atlas, x, y, text, fg);
+    let flags = cell.attrs.flags;
+    if flags.contains(Flags::BOLD) && cell.attrs.fg != Color::Default {
+        // A program color has no brighter step; thicken instead.
+        batch.text(atlas, x + 1.0, y, text, fg);
+    }
+    for &mark in &cell.combining {
+        if let Some(mark_box) = atlas.glyph_box(mark) {
+            let mut buf = [0u8; 4];
+            // Fonts place marks differently against the pen; center the
+            // mark's bitmap over the character's columns instead.
+            let pen =
+                x + (width.min(advance.max(cw)) - mark_box.size[0]) / 2.0 - mark_box.offset[0];
+            batch.text(atlas, pen, y, mark.encode_utf8(&mut buf), fg);
+        }
+    }
+    if flags.contains(Flags::ITALIC) {
+        // Slant about the baseline.
+        let baseline = y + atlas.ascent;
+        for vertex in &mut batch.vertices[start..] {
+            vertex.pos[0] += (baseline - vertex.pos[1]) * 0.2;
+        }
+    }
+}
+
+/// Draws `grid` with its top-left cell at `origin`. `links` underlines
+/// hyperlinked cells.
 pub fn grid(batch: &mut UiBatch, atlas: &Atlas, origin: [f32; 2], grid: &Grid<'_>) {
     let [cw, ch] = cell_size(atlas);
     let default_fg = white(Intensity::ThreeQuarters, 1.0);
-    let bright_fg = white(Intensity::Full, 1.0);
-    let inverse_fg = field(1.0);
-    let mut buf = [0u8; 4];
-    // Backgrounds first, so glyphs draw over them.
+    // Backgrounds first, so glyphs draw over them, one rectangle per run
+    // of cells that share a background.
     for (r, row) in grid.rows.iter().enumerate() {
         let y = origin[1] + r as f32 * ch;
+        let mut run: Option<(usize, [f32; 4])> = None;
         for (col, cell) in row.cells.iter().enumerate() {
-            let inverse = cell.attrs.flags.contains(Flags::INVERSE);
-            let bg = if inverse {
+            let bg = if cell.attrs.flags.contains(Flags::INVERSE) {
                 Some(program(cell.attrs.fg).unwrap_or(default_fg))
             } else {
                 program(cell.attrs.bg)
             };
-            if let Some(bg) = bg {
-                batch.rect(atlas, origin[0] + col as f32 * cw, y, cw, ch, bg);
+            match (run, bg) {
+                (Some((_, color)), Some(bg)) if color == bg => {}
+                _ => {
+                    if let Some((from, color)) = run.take() {
+                        let x = origin[0] + from as f32 * cw;
+                        batch.rect(atlas, x, y, (col - from) as f32 * cw, ch, color);
+                    }
+                    run = bg.map(|bg| (col, bg));
+                }
             }
         }
-    }
-    if let Some((row, col)) = grid.cursor
-        && row < grid.rows.len()
-    {
-        let x = origin[0] + col as f32 * cw;
-        let y = origin[1] + row as f32 * ch;
-        if grid.focused {
-            batch.rect(atlas, x, y, cw, ch, white(Intensity::Full, 0.9));
-        } else {
-            batch.frame(atlas, x, y, cw, ch, 1.0, white(Intensity::Half, 1.0));
+        if let Some((from, color)) = run {
+            let x = origin[0] + from as f32 * cw;
+            batch.rect(atlas, x, y, (row.cells.len() - from) as f32 * cw, ch, color);
         }
     }
     for (r, row) in grid.rows.iter().enumerate() {
         let y = origin[1] + r as f32 * ch;
         for (col, cell) in row.cells.iter().enumerate() {
-            if cell.width == 0 || cell.ch == ' ' || cell.attrs.flags.contains(Flags::HIDDEN) {
-                if cell.attrs.flags.contains(Flags::UNDERLINE) && cell.width != 0 {
-                    let x = origin[0] + col as f32 * cw;
-                    let fg = program(cell.attrs.fg).unwrap_or(default_fg);
-                    batch.rect(atlas, x, y + ch - 2.0, cw, 1.0, fg);
-                }
+            if cell.width == 0 {
                 continue;
             }
             let flags = cell.attrs.flags;
-            let under_cursor = grid.focused && grid.cursor == Some((r, col));
-            let mut fg = if under_cursor {
-                inverse_fg
-            } else if flags.contains(Flags::INVERSE) {
-                program(cell.attrs.bg).unwrap_or(inverse_fg)
-            } else {
-                match program(cell.attrs.fg) {
-                    Some(color) => color,
-                    None if flags.contains(Flags::BOLD) => bright_fg,
-                    None if flags.contains(Flags::MARKER) => white(Intensity::Half, 1.0),
-                    None => default_fg,
-                }
-            };
-            if flags.contains(Flags::DIM) {
-                fg[3] *= 0.6;
-            }
             let x = origin[0] + col as f32 * cw;
-            let width = cw * f32::from(cell.width.max(1));
-            if !glyph_shape(batch, atlas, [x, y, width, ch], cell.ch, fg) {
-                let text: &str = if crate::ui::drawable(cell.ch) {
-                    cell.ch.encode_utf8(&mut buf)
-                } else {
-                    "?"
-                };
-                batch.text(atlas, x, y, text, fg);
-                if flags.contains(Flags::BOLD) && program(cell.attrs.fg).is_some() {
-                    // A program color has no brighter step; thicken instead.
-                    batch.text(atlas, x + 1.0, y, text, fg);
-                }
+            let width = cw * f32::from(cell.width);
+            let fg = foreground(cell);
+            if cell.ch != ' ' && !flags.contains(Flags::HIDDEN) {
+                glyph(batch, atlas, x, y, cell, fg);
             }
             if flags.contains(Flags::UNDERLINE) {
                 batch.rect(atlas, x, y + ch - 2.0, width, 1.0, fg);
+            } else if cell.attrs.link != 0 {
+                // A hyperlink: a faint underline until it is underlined.
+                batch.rect(
+                    atlas,
+                    x,
+                    y + ch - 2.0,
+                    width,
+                    1.0,
+                    white(Intensity::Half, 0.7),
+                );
             }
             if flags.contains(Flags::STRIKE) {
                 batch.rect(atlas, x, y + ch / 2.0, width, 1.0, fg);
@@ -306,7 +432,58 @@ pub fn grid(batch: &mut UiBatch, atlas: &Atlas, origin: [f32; 2], grid: &Grid<'_
     }
 }
 
-/// A pane's frame and title bar. Returns the rectangle left for the grid.
+/// Draws the cursor over cell `cell` at `(x, y)`: a block that inverts its
+/// character, an underline, or a bar while the pane has focus, and an
+/// outline otherwise.
+pub fn cursor(
+    batch: &mut UiBatch,
+    atlas: &Atlas,
+    [x, y]: [f32; 2],
+    cell: Option<&Cell>,
+    shape: CursorShape,
+    focused: bool,
+) {
+    let [cw, ch] = cell_size(atlas);
+    let width = cw * f32::from(cell.map_or(1, |c| c.width.max(1)));
+    if !focused {
+        batch.frame(atlas, x, y, width, ch, 1.0, white(Intensity::Half, 1.0));
+        return;
+    }
+    let color = white(Intensity::Full, 0.9);
+    match shape {
+        CursorShape::Block => {
+            batch.rect(atlas, x, y, width, ch, color);
+            if let Some(cell) = cell.filter(|c| c.ch != ' ' && c.width != 0) {
+                glyph(batch, atlas, x, y, cell, field(1.0));
+            }
+        }
+        CursorShape::Underline => {
+            let t = (ch / 10.0).round().max(2.0);
+            batch.rect(atlas, x, y + ch - t, width, t, color);
+        }
+        CursorShape::Bar => {
+            let t = (cw / 6.0).round().max(2.0);
+            batch.rect(atlas, x, y, t, ch, color);
+        }
+    }
+}
+
+/// The rectangle the grid fills inside a pane's rectangle, below its
+/// title bar, as [`chrome`] leaves it.
+#[must_use]
+pub fn inner(rect: Rect, cell: [f32; 2]) -> Rect {
+    let bar = cell[1] + 4.0;
+    let pad = 4.0;
+    Rect::new(
+        rect.x + pad,
+        rect.y + bar + 2.0,
+        (rect.w - 2.0 * pad).max(0.0),
+        (rect.h - bar - 2.0 - pad).max(0.0),
+    )
+}
+
+/// A pane's frame and title bar; `flash` lights the bar for a bell.
+/// Returns the rectangle left for the grid.
 pub fn chrome(
     batch: &mut UiBatch,
     atlas: &Atlas,
@@ -314,6 +491,7 @@ pub fn chrome(
     title: &str,
     detail: &str,
     focused: bool,
+    flash: bool,
 ) -> Rect {
     let [cw, ch] = cell_size(atlas);
     let bar = ch + 4.0;
@@ -324,7 +502,11 @@ pub fn chrome(
         rect.y,
         rect.w,
         bar,
-        white(Intensity::Quarter, if focused { 0.45 } else { 0.25 }),
+        if flash {
+            white(Intensity::Full, 0.55)
+        } else {
+            white(Intensity::Quarter, if focused { 0.45 } else { 0.25 })
+        },
     );
     let title_color = if focused {
         white(Intensity::Full, 1.0)
@@ -362,11 +544,5 @@ pub fn chrome(
         white(Intensity::Quarter, 1.0)
     };
     batch.frame(atlas, rect.x, rect.y, rect.w, rect.h, 1.0, border);
-    let pad = 4.0;
-    Rect::new(
-        rect.x + pad,
-        rect.y + bar + 2.0,
-        (rect.w - 2.0 * pad).max(0.0),
-        (rect.h - bar - 2.0 - pad).max(0.0),
-    )
+    inner(rect, [cw, ch])
 }

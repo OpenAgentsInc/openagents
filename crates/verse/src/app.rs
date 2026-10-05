@@ -11,7 +11,7 @@ use winit::event::{
     DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent,
 };
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{KeyCode, NamedKey, PhysicalKey};
 use winit::window::{CursorGrabMode, Window, WindowId};
 
 use crate::agent::Agent;
@@ -79,6 +79,10 @@ pub struct Options {
     pub demolition: bool,
     /// Print one JSON line of frame times per second to stdout.
     pub frame_times: bool,
+    /// A scripted terminal stress run in Everglade's town (the
+    /// `terminal_stress` example): it records frame times and key latency,
+    /// writes its report, and quits.
+    pub terminal_stress: Option<crate::terminal::stress::Plan>,
     /// A notice Everglade's caption leads with, such as that no coding
     /// agent can sign in, so the studio's seats cannot work.
     pub studio_notice: Option<String>,
@@ -108,6 +112,7 @@ impl Default for Options {
             grove: false,
             demolition: false,
             frame_times: false,
+            terminal_stress: None,
             studio_notice: None,
             ritual: crate::ritual::default_config(),
             #[cfg(feature = "remote-chamber")]
@@ -576,6 +581,10 @@ struct App {
     terminal: crate::terminal::Overlay,
     /// Whether the terminal overlay took the left button's last press.
     terminal_press: bool,
+    /// A scripted terminal stress run, when one was asked for.
+    stress: Option<crate::terminal::stress::Driver>,
+    /// The atlas revision the renderer last uploaded.
+    atlas_revision: u64,
     /// What the studio console keeps while its panel is closed: the
     /// history and the unsent draft.
     studio_recall: crate::panels::studio::Recall,
@@ -925,6 +934,11 @@ impl App {
             panel_shift: false,
             terminal: crate::terminal::Overlay::new(),
             terminal_press: false,
+            stress: options
+                .terminal_stress
+                .clone()
+                .map(crate::terminal::stress::Driver::new),
+            atlas_revision: 0,
             studio_recall: crate::panels::studio::Recall::default(),
             studio_muted: options.studio_muted,
             studio_badge: None,
@@ -2725,6 +2739,18 @@ impl App {
                     return;
                 }
             } else if std::mem::take(&mut self.terminal_press) {
+                self.terminal.release(self.cursor);
+                return;
+            }
+        } else {
+            let other = match button {
+                MouseButton::Right => Some(crate::terminal::mouse::Button::Right),
+                MouseButton::Middle => Some(crate::terminal::mouse::Button::Middle),
+                _ => None,
+            };
+            if let Some(other) = other
+                && self.terminal.button(other, pressed, self.cursor)
+            {
                 return;
             }
         }
@@ -3554,9 +3580,25 @@ impl App {
                 .map(|v| v * self.scale)
         });
         self.terminal.button = Some(crate::terminal::Overlay::button_for(size, self.scale, tray));
-        // The terminal overlay draws over every other HUD element.
-        match &self.atlas {
-            Some(atlas) => self.terminal.draw(&mut ui, atlas, size),
+        // The terminal overlay draws over every other HUD element. It may
+        // add fallback glyphs to the atlas, which the renderer then takes.
+        match &mut self.atlas {
+            Some(atlas) => {
+                self.terminal.draw(&mut ui, atlas, size);
+                if atlas.revision() != self.atlas_revision {
+                    self.atlas_revision = atlas.revision();
+                    let uploaded = match (&mut self.grid, &mut self.renderer) {
+                        (Some(grid), _) => grid.update_atlas(atlas),
+                        (None, Some(renderer)) => renderer.update_atlas(atlas),
+                        (None, None) => true,
+                    };
+                    if !uploaded {
+                        eprintln!(
+                            "verse: the glyph atlas changed size; new glyphs show after the next zone change"
+                        );
+                    }
+                }
+            }
             None => self.terminal.tick(),
         }
         dynamic.extend(&entities);
@@ -3603,6 +3645,87 @@ impl App {
             && let Ok(line) = serde_json::to_string(&summary)
         {
             println!("{line}");
+        }
+        self.terminal.frame_done(now);
+        self.stress_step();
+    }
+
+    /// Runs the scripted terminal stress run's next actions.
+    fn stress_step(&mut self) {
+        use crate::terminal::stress::Action;
+        let ready = self.in_bare_everglade() && self.atlas.is_some() && self.viewport().is_some();
+        let Some(driver) = &mut self.stress else {
+            return;
+        };
+        let actions = driver.step(ready);
+        if driver.recording() && !self.terminal.stats.record {
+            self.terminal.stats.record = true;
+            self.terminal.stats.frames.clear();
+            self.terminal.stats.latencies.clear();
+        }
+        for action in actions {
+            match action {
+                Action::Open => {
+                    let Some(driver) = &self.stress else { return };
+                    let programs = match driver.programs() {
+                        Ok(programs) => programs,
+                        Err(error) => {
+                            eprintln!("verse: the stress run cannot start: {error}");
+                            std::process::exit(1);
+                        }
+                    };
+                    let root = driver.root().to_path_buf();
+                    self.terminal.shutdown();
+                    self.terminal = crate::terminal::Overlay::with(
+                        &root,
+                        "/bin/sh".into(),
+                        programs[0].clone(),
+                    );
+                    if let (Some(atlas), Some((size, _))) = (&self.atlas, self.viewport()) {
+                        self.terminal.fit(atlas, size);
+                        // Meteor Swarm aims where the cursor rests.
+                        self.cursor = [size[0] * 0.5, size[1] * 0.62];
+                    }
+                    let ids = self.terminal.open_grid(&programs);
+                    eprintln!("verse: stress run opened {} panes", ids.len());
+                }
+                Action::WindWall => self.zone_action(ZoneIntent::WindWall),
+                Action::MeteorSwarm => {
+                    self.zone_action(ZoneIntent::MeteorSwarm);
+                    self.aim_meteor_swarm();
+                    self.runtime.demolition_confirm();
+                }
+                Action::Key(c) => {
+                    let (code, logical) = if c == '\r' {
+                        (KeyCode::Enter, winit::keyboard::Key::Named(NamedKey::Enter))
+                    } else {
+                        (
+                            KeyCode::KeyA,
+                            winit::keyboard::Key::Character(c.to_string().into()),
+                        )
+                    };
+                    self.terminal.key(&crate::terminal::KeyIn {
+                        code,
+                        logical,
+                        text: (c != '\r').then(|| c.to_string()),
+                        plain: None,
+                        pressed: true,
+                    });
+                }
+                Action::Finish => {
+                    let Some(driver) = &self.stress else { return };
+                    let report =
+                        driver.report(&self.terminal.stats.frames, &self.terminal.stats.latencies);
+                    let json = serde_json::to_string_pretty(&report).unwrap_or_default();
+                    if let Err(error) = std::fs::write(&driver.plan.out, &json) {
+                        eprintln!("verse: cannot write {}: {error}", driver.plan.out.display());
+                    }
+                    println!("{json}");
+                    self.terminal.shutdown();
+                    driver.clean();
+                    std::process::exit(0);
+                }
+            }
         }
     }
 
@@ -3823,6 +3946,12 @@ impl ApplicationHandler for App {
         if let Err(error) = zones::everglade::demolition::hotbar::add_sprites(&mut atlas) {
             eprintln!("verse: the demolition yard's hotbar has no icons: {error}");
         }
+        // Room for the terminal's fallback glyphs (CJK, emoji, symbols),
+        // rasterized when a pane first shows them.
+        if let Err(error) = atlas.reserve_glyphs(crate::terminal::GLYPH_ROWS) {
+            eprintln!("verse: the terminal has no room for fallback glyphs: {error}");
+        }
+        self.atlas_revision = atlas.revision();
         if let Err(error) = self.open_surface(window.clone(), &atlas) {
             self.error = Some(error);
             event_loop.exit();
@@ -3908,6 +4037,7 @@ impl ApplicationHandler for App {
                         code,
                         logical: event.logical_key.clone(),
                         text: event.text.as_ref().map(ToString::to_string),
+                        plain: plain_key(&event),
                         pressed: event.state == ElementState::Pressed,
                     })
                 {
@@ -4064,6 +4194,24 @@ impl ApplicationHandler for App {
     }
 }
 
+/// What a key types with no modifiers, which the terminal sends after
+/// Escape when Option acts as Meta.
+fn plain_key(event: &winit::event::KeyEvent) -> Option<String> {
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    {
+        use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
+        match event.key_without_modifiers() {
+            winit::keyboard::Key::Character(text) => Some(text.to_string()),
+            _ => None,
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        let _ = event;
+        None
+    }
+}
+
 /// Pick the visible point independently from the anchor used by contextual controls.
 fn point_door(
     runtime: &WorldRuntime,
@@ -4172,6 +4320,7 @@ mod tests {
             code,
             logical: Key::Character(SmolStr::new(c)),
             text: Some(c.to_owned()),
+            plain: Some(c.to_owned()),
             pressed: true,
         };
         // Closed, the world has every key.

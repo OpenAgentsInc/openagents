@@ -305,14 +305,24 @@ impl Sessions {
             .close(PRINCIPAL, &Close::new(request(), session.terminal.clone()));
     }
 
-    /// Applies waiting output to the session's grid and answers the
-    /// program's device queries. Returns whether anything changed.
-    pub fn pump(&self, session: &mut Session) -> bool {
+    /// Applies waiting output to the session's grid, up to about
+    /// `max_bytes` and until `deadline`, and answers the program's device
+    /// queries. Output past either stays queued for the next call; the
+    /// host's ring holds it, and a gap marks what overflowed. Returns
+    /// whether anything changed and how many output bytes it parsed.
+    pub fn pump(&self, session: &mut Session, max_bytes: usize, deadline: Instant) -> (bool, u64) {
         let mut changed = false;
+        let mut bytes = 0u64;
         loop {
+            if bytes as usize >= max_bytes || (bytes > 0 && Instant::now() >= deadline) {
+                break;
+            }
             match session.frames.try_recv() {
                 Ok(frame) => {
                     changed = true;
+                    if let Body::Output { data, .. } = &frame.body {
+                        bytes += data.len() as u64;
+                    }
                     session.apply(&frame);
                 }
                 Err(TryRecvError::Empty) => break,
@@ -340,7 +350,7 @@ impl Sessions {
             }
             session.cwd = session.group.and_then(cwd_of);
         }
-        changed
+        (changed, bytes)
     }
 
     /// Ends every terminal's process group.

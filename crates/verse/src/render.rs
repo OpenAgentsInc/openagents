@@ -83,6 +83,8 @@ struct Scene {
     ui_pipeline: wgpu::RenderPipeline,
     ui_bind_group: wgpu::BindGroup,
     ui_screen: wgpu::Buffer,
+    /// The glyph atlas texture, rewritten when glyphs are added.
+    ui_texture: wgpu::Texture,
     ui: Batch,
     /// The HUD pipeline for the physical path: one sample and no depth.
     ui_photo: wgpu::RenderPipeline,
@@ -881,6 +883,17 @@ impl Renderer {
     pub fn set_atmosphere(&mut self, atmosphere: crate::zones::Atmosphere) -> Result<(), String> {
         self.scene.atmosphere = atmosphere.validate()?;
         Ok(())
+    }
+
+    /// Uploads `atlas` again after glyphs were added to it, such as the
+    /// terminal's fallback glyphs. Returns false when its size changed,
+    /// which only a new renderer can take.
+    pub fn update_atlas(&mut self, atlas: &Atlas) -> bool {
+        if !verse_gfx::ui_pipeline::write_atlas(&self.queue, &self.scene.ui_texture, atlas) {
+            return false;
+        }
+        self.source_atlas = atlas.clone();
+        true
     }
 
     /// Shows `image` over every following frame, or no panel for `None`.
@@ -2007,8 +2020,8 @@ impl Scene {
             count: vertices.len() as u32,
             capacity: std::mem::size_of_val(vertices) as u64,
         };
-        let (ui_pipeline, ui_photo, ui_bind_group, ui_screen) =
-            ui_pipeline(device, queue, format, samples, atlas);
+        let (ui_pipeline, ui_photo, ui_bind_group, ui_screen, ui_texture) =
+            verse_gfx::ui_pipeline::ui_pipeline_with_texture(device, queue, format, samples, atlas);
         let capability = Capability::probe(adapter, device, format, requested_samples);
         let ui = Batch {
             buffer: device.create_buffer(&wgpu::BufferDescriptor {
@@ -2040,6 +2053,7 @@ impl Scene {
             ui_pipeline,
             ui_bind_group,
             ui_screen,
+            ui_texture,
             ui,
             samples,
             globals,
@@ -2399,8 +2413,6 @@ impl Targets {
         }
     }
 }
-
-pub(crate) use verse_gfx::ui_pipeline::ui_pipeline;
 
 fn extent(width: u32, height: u32) -> wgpu::Extent3d {
     wgpu::Extent3d {
