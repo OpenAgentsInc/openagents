@@ -704,6 +704,8 @@ struct Pending {
 /// Bounded duplex transport. Dropping it closes uncertain IO without replay.
 /// Frame tasks own partial reads and writes independently of caller polling.
 pub struct Pipeline {
+    last_turnaround: Option<Duration>,
+    last_request_started: Option<std::time::Instant>,
     client: Client,
     writes: tokio::sync::mpsc::Sender<Vec<u8>>,
     responses: tokio::sync::mpsc::Receiver<Result<Response, String>>,
@@ -756,6 +758,8 @@ impl Client {
             }
         });
         Ok(Pipeline {
+            last_turnaround: None,
+            last_request_started: None,
             client: self,
             writes,
             responses,
@@ -778,6 +782,15 @@ impl Pipeline {
     pub fn pending(&self) -> usize {
         self.pending.len()
     }
+    /// Enqueue to verified response, including IO queues, transport, and server work.
+    /// This is not a one-way network delay or isolated RTT.
+    pub fn last_turnaround(&self) -> Option<Duration> {
+        self.last_turnaround
+    }
+    pub fn last_request_started(&self) -> Option<std::time::Instant> {
+        self.last_request_started
+    }
+
     pub fn control(&self) -> Option<&Control> {
         if self.failed {
             None
@@ -911,6 +924,8 @@ impl Pipeline {
             return Err(error);
         }
         let pending = self.pending.pop_front().expect("Verified response context");
+        self.last_turnaround = Some(pending.sent.elapsed());
+        self.last_request_started = Some(pending.sent.into_std());
         self.client.tick = response.tick;
         self.client.verified_at = Some(std::time::Instant::now());
         if let Reply::Inventory { inventory } = &response.body {

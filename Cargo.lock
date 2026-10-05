@@ -14945,6 +14945,7 @@ dependencies = [
  "physics",
  "png",
  "pollster",
+ "rcgen",
  "reqwest 0.12.28",
  "resvg",
  "rust-native",

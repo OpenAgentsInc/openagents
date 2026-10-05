@@ -56,6 +56,7 @@ pub mod palette;
 pub mod panels;
 pub mod pbr;
 pub mod pillar;
+pub mod profiling;
 pub mod render;
 pub mod replay;
 pub mod ritual;

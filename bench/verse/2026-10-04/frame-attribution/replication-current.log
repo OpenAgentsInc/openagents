@@ -1,0 +1,32 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 36.90s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-d564df0283fefc2a)
+
+running 12 tests
+test service::replication::tests::scoped_collision_keeps_large_rotated_support_and_drops_distant_small_shape ... ok
+test service::replication::tests::signed_zero_is_equal_for_delta_and_digest ... ok
+test service::replication::tests::skipped_world_ticks_do_not_starve_outer_band_updates ... ok
+test service::replication::tests::spatial_entry_exit_reentry_and_frequency_classes_preserve_life ... ok
+test service::replication::tests::pipeline_refuses_second_replaceable_request_but_preserves_reliable_reads ... ok
+test service::replication::tests::shared_cache_keeps_owner_privacy_and_invalidates_on_mutation ... ok
+test service::replication::tests::full_state_numeric_round_trip_preserves_canonical_digest ... ok
+test service::replication::tests::malformed_deltas_never_advance_acknowledgement ... ok
+test service::replication::tests::valid_but_oversized_geometry_refuses_without_retaining_baseline ... ok
+test service::replication::tests::canonical_full_delta_resync_and_control_fences ... ok
+test service::replication::tests::distant_population_keeps_steady_bytes_constant_and_records_cost ... ok
+test service::replication::tests::transport::delayed_tls_deltas_resync_and_bound_replaceable_backlog ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 479 filtered out; finished in 2.93s
+

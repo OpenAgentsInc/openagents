@@ -1,0 +1,72 @@
+{
+  "schema": "verse.frame-attribution.receipt.v1",
+  "issue": 10619,
+  "recorded_at_utc": "2026-10-05T04:45:24.740924+00:00",
+  "baseline_revision": "2051f07e96e0220950448fbf83ed61554b969ae3",
+  "implementation": "Uncommitted V10 changes over this baseline; final source fingerprints are retained separately.",
+  "fixture_binary_sha256": "da9da8f095946e4406a0950933f310e5786599b779980b6738f58ad10296a2c5",
+  "build": {
+    "profile": "dev",
+    "debug_assertions": true,
+    "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "wgpu": "29.0.4",
+    "features": "remote-chamber"
+  },
+  "workloads": [
+    {
+      "artifact": "isolated.json",
+      "command": "VERSE_GPU_TIMING=1 WGPU_BACKEND=vulkan frame_profile OUTPUT.json 1 480 0"
+    },
+    {
+      "artifact": "multiplayer.json",
+      "command": "VERSE_GPU_TIMING=1 WGPU_BACKEND=vulkan frame_profile OUTPUT.json 3 480 0"
+    },
+    {
+      "artifact": "capture.json",
+      "command": "VERSE_GPU_TIMING=1 WGPU_BACKEND=vulkan frame_profile OUTPUT.json 3 480 30"
+    },
+    {
+      "artifact": "fallback.json",
+      "command": "VERSE_GPU_TIMING=0 WGPU_BACKEND=vulkan frame_profile OUTPUT.json 1 180 0"
+    }
+  ],
+  "checks": {
+    "worker": "16 passed; temporary read refusal recovery never replays commands",
+    "frame_phase_sampler": "2 passed",
+    "record_unit": "7 passed before the separate ignored native recorder regression was added",
+    "histogram_startup": "1 passed",
+    "gpu_timestamp_probe": "1 explicit ignored native test passed",
+    "native_video": "1 explicit ignored native test passed; two captures, two duplicates, four decodable video frames",
+    "preintegration_client": "16 service-net client checks passed",
+    "preintegration_net": "15 service-net transport and histogram checks passed",
+    "integrated": {
+      "worker": "17 passed",
+      "client": "16 passed",
+      "transport_histograms": "15 passed",
+      "native_imported": "76 passed; 6 ignored; the GPU timer and recorder cases were separately run explicitly",
+      "examples": "frame_profile, verse_remote, and verse_host compile",
+      "workload_validation": "All four retained JSON reports pass sample, phase, GPU availability, capture isolation, and replication checks.",
+      "links": "Local audit, world README, and networking documentation targets exist."
+    },
+    "after_replication_optimization_integration": {
+      "replication": "12 passed",
+      "worker": "17 passed",
+      "examples": "All three affected examples compile"
+    }
+  },
+  "recovered_failure": {
+    "artifact": "replication-failure.log",
+    "cause": "A temporary storage_busy projection refusal terminated the SDK worker.",
+    "fix": "Read-class backoff; ten-second continuous refusal limit; commands never replayed."
+  },
+  "limits": [
+    "One to three scratch clients share one process and NVIDIA RTX 4080 adapter; no owner computer, account, or agent engine was used.",
+    "Debug attribution workload does not establish AAA population or release performance.",
+    "Offscreen workloads have no surface acquire, display completion, or physical input-to-display measurement.",
+    "Video regression measures encoder pipe blocking, not encoder process CPU.",
+    "Disabled timestamps verify the optional measurement path; unsupported hardware was not available for a separate device run.",
+    "Source fingerprints describe retained source, not remote attestation or binary reproducibility."
+  ],
+  "integration_base": "17f0d642586812e3542f6fcaea0bd4b051d57940",
+  "final_profile_schema": "verse.remote.profile.v8"
+}

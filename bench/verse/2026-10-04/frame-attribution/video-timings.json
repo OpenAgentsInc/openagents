@@ -1,0 +1,113 @@
+{
+  "schema": "verse.frame.measurements.v1",
+  "warmup_frames": 120,
+  "startup": {
+    "capture_copy_submit_cpu_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.06428299999999999,
+      "p95": 0.06428299999999999,
+      "p99": 0.06428299999999999,
+      "maximum": 0.06428299999999999
+    },
+    "capture_fence_wait_cpu_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 1.399052,
+      "p95": 1.399052,
+      "p99": 1.399052,
+      "maximum": 1.399052
+    },
+    "capture_queue_residence_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0075120000000000004,
+      "p95": 0.0075120000000000004,
+      "p99": 0.0075120000000000004,
+      "maximum": 0.0075120000000000004
+    },
+    "capture_row_copy_cpu_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.102699,
+      "p95": 0.102699,
+      "p99": 0.102699,
+      "maximum": 0.102699
+    },
+    "encoder_pipe_write_cpu_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 77.415583,
+      "p95": 77.415583,
+      "p99": 77.415583,
+      "maximum": 77.415583
+    }
+  },
+  "steady": {
+    "capture_copy_submit_cpu_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.019613,
+      "p95": 0.019613,
+      "p99": 0.019613,
+      "maximum": 0.019613
+    },
+    "capture_fence_wait_cpu_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.11381,
+      "p95": 0.11381,
+      "p99": 0.11381,
+      "maximum": 0.11381
+    },
+    "capture_queue_residence_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 60.232836,
+      "p95": 60.232836,
+      "p99": 60.232836,
+      "maximum": 60.232836
+    },
+    "capture_row_copy_cpu_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.097732,
+      "p95": 0.097732,
+      "p99": 0.097732,
+      "maximum": 0.097732
+    },
+    "duplicate_pipe_write_cpu_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 7.719942,
+      "p95": 7.719942,
+      "p99": 7.719942,
+      "maximum": 7.719942
+    },
+    "encoder_pipe_write_cpu_ms": {
+      "samples": 1,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.15187,
+      "p95": 0.15187,
+      "p99": 0.15187,
+      "maximum": 0.15187
+    }
+  },
+  "omitted_series": 0,
+  "limits": {
+    "series_per_phase": 48,
+    "samples_per_series": 8192
+  },
+  "sampling": "First bounded observations in each phase; omissions are counted."
+}

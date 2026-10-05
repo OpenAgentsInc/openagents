@@ -26,7 +26,7 @@ use super::{
 };
 use std::collections::BTreeMap;
 mod timing;
-pub use timing::Timing;
+pub use timing::{Phases, Timing};
 
 pub(crate) mod admission;
 pub use admission::Stats as AdmissionStats;
@@ -60,6 +60,9 @@ pub struct Stats {
     pub simulation: Timing,
     pub capture: Timing,
     pub commits: Timing,
+    pub simulation_phases: Phases,
+    pub capture_phases: Phases,
+    pub commit_phases: Phases,
     pub writer_queue_peak: usize,
     pub storage_refusals: u64,
     pub storage_paused_ticks: u64,
@@ -129,6 +132,7 @@ fn finish(
 ) -> Result<(), String> {
     stats.checkpoint_seconds += done.seconds;
     stats.commits.record(done.seconds);
+    stats.commit_phases.record(done.seconds);
     let committed = done.result?;
     if committed.written {
         stats.checkpoint_commits += 1;
@@ -281,7 +285,9 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                 };
             }
         };
-        stats.capture.record(start.elapsed().as_secs_f64());
+        let seconds = start.elapsed().as_secs_f64();
+        stats.capture.record(seconds);
+        stats.capture_phases.record(seconds);
         let start = Instant::now();
         let initial = tokio::task::spawn_blocking(move || {
             let result = store.commit_prepared(prepared);
@@ -301,6 +307,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
         let seconds = start.elapsed().as_secs_f64();
         stats.checkpoint_seconds += seconds;
         stats.commits.record(seconds);
+        stats.commit_phases.record(seconds);
         match result {
             Ok(commit) => {
                 if commit.written {
@@ -413,7 +420,9 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                     if let Some(hook) = hook.as_mut() {
                         hook(&mut gateway, dt as f32);
                     }
-                    stats.simulation.record(tick.elapsed().as_secs_f64());
+                    let seconds = tick.elapsed().as_secs_f64();
+                    stats.simulation.record(seconds);
+                    stats.simulation_phases.record(seconds);
                     stats.ticks += 1;
                 } else {
                     // Flush already admitted state without adding more simulation mutations.
@@ -451,7 +460,9 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         None => {failure = Some("Chamber storage tokens exhausted".into()); break;}
                     };
                     fences.insert(token, Fence {view:CommitView::capture(&gateway), replies});
-                    stats.capture.record(capture.elapsed().as_secs_f64());
+                    let seconds = capture.elapsed().as_secs_f64();
+                    stats.capture.record(seconds);
+                    stats.capture_phases.record(seconds);
                     stats.writer_queue_peak = stats.writer_queue_peak.max(fences.len());
                     permit.send(Work {token, prepared});
                     dirty = false;
@@ -567,7 +578,9 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                             replies: vec![],
                         },
                     );
-                    stats.capture.record(capture.elapsed().as_secs_f64());
+                    let seconds = capture.elapsed().as_secs_f64();
+                    stats.capture.record(seconds);
+                    stats.capture_phases.record(seconds);
                     if writer
                         .send
                         .as_ref()

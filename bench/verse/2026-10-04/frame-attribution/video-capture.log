@@ -1,0 +1,88 @@
+    Blocking waiting for file lock on build directory
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1270:9
+     |
+1270 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:225:12
+    |
+ 83 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+225 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+236 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+  --> crates/verse/src/zones/everglade/draw.rs:80:15
+   |
+80 | pub(super) fn triangles() -> u64 {
+   |               ^^^^^^^^^
+
+warning: associated function `move_player` is never used
+   --> crates/verse/src/zones/everglade/mod.rs:236:12
+    |
+ 83 | impl Everglade {
+    | -------------- associated function in this implementation
+...
+236 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse` (lib) generated 3 warnings (run `cargo fix --lib -p verse` to apply 1 suggestion)
+warning: `verse` (lib test) generated 2 warnings (1 duplicate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 47.30s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-71a9dca49338e764)
+
+running 1 test
+Capture timing evidence: {"schema":"verse.frame.measurements.v1","warmup_frames":120,"startup":{"capture_copy_submit_cpu_ms":{"samples":1,"omitted":0,"invalid":0,"p50":0.06428299999999999,"p95":0.06428299999999999,"p99":0.06428299999999999,"maximum":0.06428299999999999},"capture_fence_wait_cpu_ms":{"samples":1,"omitted":0,"invalid":0,"p50":1.399052,"p95":1.399052,"p99":1.399052,"maximum":1.399052},"capture_queue_residence_ms":{"samples":1,"omitted":0,"invalid":0,"p50":0.0075120000000000004,"p95":0.0075120000000000004,"p99":0.0075120000000000004,"maximum":0.0075120000000000004},"capture_row_copy_cpu_ms":{"samples":1,"omitted":0,"invalid":0,"p50":0.102699,"p95":0.102699,"p99":0.102699,"maximum":0.102699},"encoder_pipe_write_cpu_ms":{"samples":1,"omitted":0,"invalid":0,"p50":77.415583,"p95":77.415583,"p99":77.415583,"maximum":77.415583}},"steady":{"capture_copy_submit_cpu_ms":{"samples":1,"omitted":0,"invalid":0,"p50":0.019613,"p95":0.019613,"p99":0.019613,"maximum":0.019613},"capture_fence_wait_cpu_ms":{"samples":1,"omitted":0,"invalid":0,"p50":0.11381,"p95":0.11381,"p99":0.11381,"maximum":0.11381},"capture_queue_residence_ms":{"samples":1,"omitted":0,"invalid":0,"p50":60.232836,"p95":60.232836,"p99":60.232836,"maximum":60.232836},"capture_row_copy_cpu_ms":{"samples":1,"omitted":0,"invalid":0,"p50":0.097732,"p95":0.097732,"p99":0.097732,"maximum":0.097732},"duplicate_pipe_write_cpu_ms":{"samples":1,"omitted":0,"invalid":0,"p50":7.719942,"p95":7.719942,"p99":7.719942,"maximum":7.719942},"encoder_pipe_write_cpu_ms":{"samples":1,"omitted":0,"invalid":0,"p50":0.15187,"p95":0.15187,"p99":0.15187,"maximum":0.15187}},"omitted_series":0,"limits":{"series_per_phase":48,"samples_per_series":8192},"sampling":"First bounded observations in each phase; omissions are counted."}
+test imported::remote_record::tests::native_capture_attributes_readback_and_encoder_queue ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 548 filtered out; finished in 0.93s
+
+     Running tests/gym_hall.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/gym_hall-41400ae6565fae83)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/presence.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/presence-93939b6307001aa5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/relay.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/relay-2f148982a06fe93f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/spectator.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/spectator-deab3d8e3375ff79)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

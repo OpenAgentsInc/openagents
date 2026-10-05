@@ -153,7 +153,7 @@ Evidence labels:
 | V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters | Complete: [#10596](https://github.com/OpenAgentsInc/openagents/issues/10596), bounded hosted profiles |
 | V08 | P1 | Grant-based admission and transport work have bounded policies. | Code | World access and transport | Complete ([#10602](https://github.com/OpenAgentsInc/openagents/issues/10602)) |
 | V09 | P1 | Persistent accounts own recoverable resident and dormant characters. | Code | Persistent character domain | Complete ([#10603](https://github.com/OpenAgentsInc/openagents/issues/10603)) |
-| V10 | P1 | CPU submission measurements do not isolate GPU or input latency. | Code, recorded | Profiling and acceptance | Open |
+| V10 | P1 | CPU, GPU, capture, and transport costs have separate measurement contracts. | Code, recorded | Profiling and acceptance | Complete ([#10619](https://github.com/OpenAgentsInc/openagents/issues/10619)) |
 | V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities | Open |
 | V12 | P1 | Whole-pack preparation is not large-world asset streaming. | Code, gap | Content loading and residency | Open |
 | V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload | Open |
@@ -799,25 +799,81 @@ claimed by these functional contracts.
 
 ## Rendering, assets, and simulation scale
 
-### V10: Profiling cannot yet attribute the frame budget
+### V10: Frame costs have separate measurement contracts
 
-[`FrameTimings`](../../crates/verse/src/imported/mod.rs) measures preparation,
-encoding, submission, CPU waiting, and readback. The render passes do not request
-GPU timestamp writes. `gpu_wait_ms` measures a CPU wait, and live draw timings
-stop after submission; neither is isolated GPU execution. The remote recorder
-also introduces readback, encoding, duplication, and capture drops.
+**Implemented in [#10619](https://github.com/OpenAgentsInc/openagents/issues/10619).**
+The original finding conflated CPU submission and GPU execution and included
+startup in frame percentiles. Subsequent upstream work already added the imported
+renderer’s optional three-slot GPU timestamp sampler and invalid-sample health
+counters. This remediation preserves that sampler and attributes its delayed
+results to their original submitted frame. The pinned
+[wgpu 29.0.4 queue contract](https://docs.rs/wgpu/29.0.4/wgpu/struct.Queue.html#method.get_timestamp_period)
+supplies the timestamp conversion period. `VERSE_GPU_TIMING=1` requests the
+feature when supported; ordinary rendering remains available without it.
 
-**Improve:** Add optional GPU timestamp queries with delayed readback and
-capability fallback. The [wgpu feature documentation](https://wgpu.rs/doc/wgpu/struct.Features.html#associatedconstant.TIMESTAMP_QUERY)
-describes pass timestamp writes and conversion through the queue timestamp
-period. Check the repository's pinned API when implementing it. Separately
-instrument presentation/acquire waits, simulation stages, encoding, queues,
-network age, and input-to-display latency. Exclude warm-up from steady-state
-percentiles and retain it as a separate startup metric.
+[`FrameProfile`](../../crates/verse/src/profiling.rs) retains the first 120
+submitted frames separately from steady work. Each phase admits at most 48
+series of 8,192 observations and reports invalid values and omissions. Renderer
+construction uses frame zero; delayed GPU and capture results keep their source
+frame. The recorder’s version-eight profile retains legacy lifetime fields for
+compatibility and labels their inclusion of startup.
 
-**Acceptance:** An isolated client and a multi-client workload report CPU, GPU,
-presentation, capture, and network metrics independently. Each regression names
-its device, resolution, quality settings, build, and active workload.
+CPU measurements distinguish client projection, preparation, timestamp polling,
+shadow/world/overlay encoding, command completion, and queue submission. Native
+presentation separates configuration, surface acquisition, encoding, submission,
+and the present call. Capture separately reports queue residence, copy submission,
+fence/map waiting, row copying, duplicate writes, and encoder pipe writes. These
+are CPU elapsed spans: a driver or pipe wait can dominate them, and parent and
+child spans must not be added together. GPU pass spans exclude presentation and
+capture copies. A successful present call does not prove scanout.
+
+The SDK’s optional bounded `worker::Observer` supplies request turnaround,
+verified-to-consumer delivery, pending requests, channel depths, and local
+snapshot freshness without blocking authority updates or retaining credentials.
+Turnaround includes queues, TLS, server work, and validation. Snapshot age starts
+at local verification or application, not the server clock. Native input records
+oldest handled input to the next CPU submission as a proxy; input-to-display and
+one-way network age remain explicitly unavailable. Standalone host simulation,
+save capture, and commit distributions retain their first 120 stage observations
+separately, with histogram percentile upper bounds.
+
+The durable scratch workload exposed a worker that terminated on a temporary
+`storage_busy` read refusal. Snapshot, event, and inventory reads now back off
+independently for 100 ms, stop after ten seconds of continuous refusal, and
+recover after successful reads. Commands are never replayed. A real authenticated
+duplex regression refuses each read class, resumes replication, and proves a
+single command executes once.
+
+**Acceptance evidence:** The
+[retained receipt](../../bench/verse/2026-10-04/frame-attribution/run.json)
+contains isolated and three-client TLS workloads with durable scratch state,
+480 submitted frames per client, 1280 × 720 targets, four-sample antialiasing,
+and NVIDIA GeForce RTX 4080/Vulkan device metadata. Each client has 120 startup
+and 360 steady CPU frames and 359 steady GPU samples; the last asynchronous
+sample is not drained by a blocking shutdown fence. The isolated scene GPU p95
+is 4.163 ms; three clients range from 2.910 to 4.207 ms. These are separate runs
+with evolving original chamber content, not a controlled claim of multiplayer
+speedup. Sampling raw capture every 30 frames retains separate copy/wait/row
+costs. A 180-frame run with timestamps disabled renders and replicates without
+GPU latency series. A real native GPU/FFmpeg regression verifies two captures,
+two duplicate frames, a four-frame decodable video, and separate startup/steady
+capture queue and pipe measurements. After integration with main, 17 worker,
+16 client, 15 transport/histogram, and 76 native imported checks pass; six native
+evidence tests remain opt-in, including the separately executed GPU timer and
+recorder cases. The host, native remote, and profiling examples compile, and
+local documentation links exist. A subsequent rebase onto main’s replication
+optimizations passes 12 replication and 17 worker checks, and the three examples
+still compile.
+
+**Remaining operating limits:** These debug workloads share one process and
+adapter and do not establish 20-player/40-NPC acceptance, hardware exclusivity,
+mobile/browser GPU parity, or a production frame budget. The offscreen fixture
+reports display and presentation measurements as unavailable. The native surface
+instrumentation compiles, but this receipt does not claim a display run or
+physical input-to-display measurement. Encoder pipe blocking is measured; encoder
+process CPU is unavailable. The PBR renderer and realm host do not yet expose
+all of this chamber-specific attribution. V11, V18, V19, and V24 own the common
+quality, population, operational, and platform acceptance work.
 
 ### V11: Rendering paths need common budgets and graceful degradation
 

@@ -97,6 +97,7 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
 tempfile = "3"
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 # A scratch host the live studio source is tested against.
 coder-host = { path = "../coder-host" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }
@@ -205,3 +206,7 @@ required-features = ["remote-chamber"]
 [[example]]
 name = "verse_load"
 required-features = ["imported-desktop", "remote-chamber"]
+
+[[example]]
+name = "frame_profile"
+required-features = ["remote-chamber"]

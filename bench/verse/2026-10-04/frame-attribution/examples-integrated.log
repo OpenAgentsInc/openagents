@@ -1,0 +1,77 @@
+   Compiling memchr v2.8.3
+    Checking coder-boundary v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-boundary)
+    Checking secret-service v5.2.0
+    Checking alsa-sys v0.4.0
+    Checking x11-dl v2.21.0
+    Checking verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+    Checking yasna v0.6.0
+    Checking rcgen v0.14.10
+    Checking alsa v0.11.0
+   Compiling serde_json v1.0.151
+   Compiling quick-xml v0.41.0
+    Checking coder-pty v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-pty)
+    Checking background v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/background)
+    Checking cpal v0.18.2
+    Checking zbus-secret-service-keyring-store v1.0.1
+   Compiling wayland-scanner v0.31.11
+    Checking keyring v4.2.0
+   Compiling tree-sitter v0.27.0
+    Checking verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+    Checking wayland-client v0.31.15
+    Checking wayland-protocols v0.32.13
+    Checking wayland-cursor v0.31.14
+    Checking calloop-wayland-source v0.3.0
+    Checking tree-sitter-highlight v0.27.0
+    Checking code-highlight v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/code-highlight)
+    Checking rust-native v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/rust-native)
+    Checking openagents-chat v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-chat)
+    Checking coder-ui v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-ui)
+    Checking wayland-protocols-wlr v0.3.12
+    Checking wayland-protocols-plasma v0.3.12
+    Checking smithay-client-toolkit v0.19.2
+    Checking winit v0.30.13
+    Checking openagents-connect v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-connect)
+    Checking coder-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-host)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+    Checking verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1270:9
+     |
+1270 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:308:12
+    |
+ 91 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+308 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+319 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+  --> crates/verse/src/zones/everglade/draw.rs:92:15
+   |
+92 | pub(super) fn triangles() -> u64 {
+   |               ^^^^^^^^^
+
+warning: `verse` (lib) generated 3 warnings (run `cargo fix --lib -p verse` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.53s
