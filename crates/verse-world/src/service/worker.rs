@@ -452,7 +452,17 @@ async fn run_impl(
                     barrier = lifecycle;
                 }
             }
+            // Schedule from the actual send time so quick replies cannot miss a phased polling tick.
+            let snapshot_due =
+                last_snapshot_sent.map_or_else(tokio::time::Instant::now, |sent| sent + cadence);
             tokio::select! {
+                _ = tokio::time::sleep_until(snapshot_due), if !input_closed && !barrier
+                    && staged.is_none() && client.available() && !snapshot_pending
+                    && last_snapshot_sent.is_some() && read_backoff.ready(0, tokio::time::Instant::now()) => {
+                    client.send_snapshot()?;
+                    last_snapshot_sent = Some(tokio::time::Instant::now());
+                    snapshot_pending = true;
+                }
                 response = client.receive(), if client.pending() > 0 => {
                     let (body,response) = response?;
                     last_response = Some(Instant::now());
@@ -472,7 +482,6 @@ async fn run_impl(
                             pending_requests: client.pending(),
                             queued_inputs: inputs.len(), queued_updates: updates.max_capacity() - updates.capacity() });
                     }
-                    let snapshot_response = matches!(&body, Body::Snapshot {} | Body::Replicate { .. });
                     let update = match body {
                         Body::Snapshot {} | Body::Replicate {..} => {
                             snapshot_pending = false;
@@ -516,22 +525,14 @@ async fn run_impl(
                     };
                     updates.send(update).await.map_err(|_| "Chamber update consumer closed")?;
                     if let Some(entry)=entry { if matches!(entry.body,Reply::Snapshot {..}) { updates.send(Update::Snapshot(entry)).await.map_err(|_| "Chamber update consumer closed")?; } }
-                    // Slow reads already consume the polling period; refresh without another tick of idle time.
-                    let now = tokio::time::Instant::now();
-                    if snapshot_response && !input_closed && !barrier && staged.is_none()
-                        && client.available() && !snapshot_pending && read_backoff.ready(0, now)
-                        && last_snapshot_sent.is_none_or(|sent| now.duration_since(sent) >= cadence) {
-                        client.send_snapshot()?;
-                        last_snapshot_sent = Some(now);
-                        snapshot_pending = true;
-                    }
+
                 }
                 _ = interval.tick() => {
                     // One outstanding request per read class bounds stale work and event cursors.
                     // A staged lifecycle action drains previous IO before changing its context.
                     if input_closed || barrier || staged.is_some() { continue; }
-                    if client.available() && !snapshot_pending && read_backoff.ready(0, tokio::time::Instant::now())
-                        && last_snapshot_sent.is_none_or(|sent| sent.elapsed() >= cadence) {
+                    if last_snapshot_sent.is_none() && client.available() && !snapshot_pending
+                        && read_backoff.ready(0, tokio::time::Instant::now()) {
                         client.send_snapshot()?;
                         last_snapshot_sent = Some(tokio::time::Instant::now());
                         snapshot_pending = true;
