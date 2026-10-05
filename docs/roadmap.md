@@ -1,17 +1,26 @@
 # OpenAgents master roadmap
 
-Updated September 26, 2026. This is the single cross-project roadmap for what
+Updated October 5, 2026 (terminal and workbench delivery). This is the single cross-project roadmap for what
 OpenAgents is building and considering. Detailed designs define contracts;
 runbooks describe shipped behavior; dated reports preserve measured outcomes.
 The [documentation index](README.md), [complete catalog](catalog.md), and
 [glossary](glossary.md) separate those roles.
 
-The direction is one reliable, economical coding agent that people can embed
-in their workflows, use across their devices, extend with reusable components,
-and hire through an open network. Coder is the anchor product. Agent labor is
+The direction is one composable general agent that people can embed in
+their workflows, use across their devices, extend with reusable components,
+and hire through an open network. Coder is the anchor coding capability. Agent labor is
 a high-priority parallel track. Shared knowledge and reusable programs should
 improve accepted work across operators; their existence alone is not a network
 effect or proof of better coding performance.
+
+The [terminal workbench roadmap](terminal/workbench-roadmap.md) is the next
+owner-directed delivery: today's target is the same real terminal in the
+desktop Grid and a standalone install; the next pass connects it to
+Everglade's existing Agent Studio. It then expands to durable sessions and
+a multiplexer for all work, including product panes, admitted cloud
+computers paid with credits, and mobile/web continuity through the shared
+router and resource owners. World placement is a separate decision. These
+milestones remain planned until their scoped checks and release receipts pass.
 
 The [launch roadmap](roadmap/2026-09-29-launch-roadmap.md) holds the OpenAgents
 app MVP that ships to playtesters on 2026-09-29, its known limits, and the

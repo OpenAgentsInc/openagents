@@ -18,6 +18,15 @@ terminals on in-world screens.
 The [smart terminal](../terminal/smart-terminal.md) builds on this overlay:
 blocks, natural-language requests as threads, and host-owned sessions.
 
+Delivery update, October 5: the [workbench roadmap](../terminal/workbench-roadmap.md)
+now governs the next slices. Today's target is the same real terminal
+application in the desktop Grid's `T` overlay and a standalone install,
+with shell blocks and request/proposal threads. The next pass connects it
+to Everglade's existing studio resources. A desk monitor or floating window
+is an entry point, not another terminal implementation. Physical placement
+and sharing on world screens remain separate choices. The phased plan below
+retains the earlier rendering research; the new roadmap owns delivery order.
+
 **Correction, October 5, 2026.** The owner's starting point is OpenAgents
 Terminal (`crates/openagents-terminal`, launched as `openagents terminal`),
 not the Coder terminal app, and the look is the white ladder of

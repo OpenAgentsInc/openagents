@@ -4,6 +4,13 @@ Running Coder and agent work on Google Cloud machines (project
 `openagentsgemini`) in parallel with, and in place of, the owner's own
 computers.
 
+The [terminal workbench roadmap](../terminal/workbench-roadmap.md#paid-openagents-cloud-computers-and-credits)
+adds a proposed paid OpenAgents cloud-computer option inside Verse and the
+other clients. Purchased credits require shared funding, quotes,
+reservations, metering, and recovery through the agentic execution router.
+Boat/GCE operator placement and hosted model fallback already exist; they
+do not establish a customer credit balance or a paid remote-computer product.
+
 On `main` today: the Boat SDK (`crates/boat`), the daily Boat template
 (`crates/boat-template`, `scripts/cloud/coder-host-setup.sh`), builds on Boat
 (`openagents boat run`, `scripts/boat-run.sh`), Coder issue runs on Boat

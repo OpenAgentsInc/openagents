@@ -8,6 +8,11 @@ claim that PPQ implements this architecture.
 
 ## 1. Product thesis
 
+The October 5 [terminal workbench roadmap](../terminal/workbench-roadmap.md)
+makes the Grid overlay and standalone terminal the next client slice, then
+connects Everglade's Agent Studio. The contract and local exit evidence
+below are current foundations; the public and paid service remains a plan.
+
 **OpenAgents routes work, not only tokens.** A caller describes an outcome. The
 router selects an admitted capability, places execution where the caller has
 authority, runs it through an existing executor, checks the result, and returns
@@ -721,3 +726,33 @@ have Coder…") or misread the request as its topic.
 repository task on a scratch computer, produces a retained patch with an
 independent check, survives a lost connection, and returns an honest final
 record. That is the smallest proof of a router for agentic execution.
+
+## 14. Terminal, studio, and paid cloud placement (2026-10-05)
+
+The [workbench roadmap](../terminal/workbench-roadmap.md) delivers a shared
+terminal application in the Grid and a standalone install, then binds
+Everglade's existing studio resources. Shell/Request selection is local
+input handling; a request then enters this shared route policy. The
+terminal reads `RouteResult`, admissions, offers, journals, and task evidence
+rather than interpreting generated prose or owning another executor.
+
+An ordinary-shell proposal is a new typed bridge beyond today's CLI
+command-tree route. Bind the exact command and proposal revision to the
+originating thread, terminal generation, directory, and approval identity.
+Every proposal in the MVP waits for Enter, including read-only commands;
+report its resulting block to that thread with idempotent acknowledgment.
+Uncertain shell execution requires reconciliation, never automatic replay.
+Approving that command does not grant a Coder task, studio merge, provider
+disclosure, or cloud spend. Studio controls initially use existing typed
+host intents; a studio router adapter is a later contract extension.
+
+Separate four choices: the viewing surface, the selected computer, the
+executor/model, and the payer. Boat/GCE operator placement and hosted
+inference fallback exist today. A credit-funded OpenAgents cloud computer
+is a proposed paid execution placement, with a price-book-bound quote,
+durable reservation, admitted computer and source, declared disclosures,
+metering, checks, settlement, and teardown. Display credits over the shared
+prepaid accounting without changing the sats contract or creating a
+game-only ledger. Observation, execution, disclosure, and spending remain
+separate authorities. A reconnect follows the funded execution identity;
+it cannot charge or dispatch again.

@@ -5,6 +5,13 @@ the smart terminal, decides its shape, and orders the work. Where it records
 a decision, the owner can overturn it; the open questions are
 [at the end](#open-questions-for-the-owner).
 
+Owner direction, October 5: ship the same terminal in the desktop Grid and
+as a separately installable app today, then connect it to Everglade's Agent
+Studio in the next pass. The [workbench roadmap](workbench-roadmap.md) records
+the transcript review, product integration, paid cloud-compute option, and
+milestone acceptance. It supersedes this page's original phase order. This
+page remains the detailed terminal specification.
+
 The owner's ask (2026-10-05): "That's our terminal UI product and not a real
 terminal. I want us to fix that while combining the ideas: let's define a
 'smart terminal' that can do both regular shell commands and also process
@@ -80,9 +87,10 @@ The decisions this page takes:
    extracted from `crates/verse/src/terminal`; a new `terminal-gfx` holds the
    wgpu grid renderer. The standalone window and Verse's overlay run the same
    code. OpenAgents Terminal's chat becomes the thread view inside it.
-8. **The smallest useful demo comes first:** blocks and a request line in
-   the Verse overlay that already exists, with the thread in a pane running
-   `openagents terminal --thread ID`.
+8. **The first release has two mounts:** blocks and requests in the Grid's
+   Verse overlay and a separately installable window sharing that code,
+   with the thread initially running `openagents terminal --thread ID`.
+   Everglade's workshop then opens the same app with studio context.
 
 ## Today: three terminals, none smart
 
@@ -675,46 +683,41 @@ Superlogical half.
 
 ## Roadmap
 
-Each phase ends with something the owner can run. Phases 4 and 5 are the
-Superlogical parallel and can start beside phase 2, since they touch the
-host and protocol, not the client. Durations are wall-clock time with two
-or three agents working a phase's areas in parallel; with phases 2 and 4
-overlapping, the whole roadmap is about three to four days.
+The [workbench roadmap](workbench-roadmap.md#delivery-sequence-and-ownership)
+owns delivery order and issue dependencies. The standalone app moves into
+the first release alongside the Grid demo; the previous three-to-four-day
+estimate is not a launch commitment.
 
-1. **Blocks and requests in the Verse overlay (about half a day).** The
-   smallest useful demo, in the terminal that already exists. OSC 133 and
-   OSC 7 in `coder-vt`; the shell hook for zsh first, then bash and fish;
-   blocks with the gutter, navigation, copy, collapse, rerun, and attach;
-   the chip with rules 1 to 3 and the ask key; a request opens a split
-   running `openagents terminal --thread ID` with the context strip's
-   items; proposals as pending blocks you run with Enter, starting with the
-   CLI route's proposals and then the new `shell` route. Demo: type `cargo
-   test`, see a failed block, type `# why did that fail`, see the thread
-   beside it propose a command, press Enter, and watch it continue.
-2. **The standalone window (about half a day).** Extract `terminal-core` and
-   `terminal-gfx`, move Verse onto them with no behavior change (the
-   performance receipt's stress run is the check), and ship `terminal-app`
-   with local PTYs. Add rule 4 with the local classifier once its question
-   set has a measured baseline.
-3. **Threads beside panes, natively (a few hours).** The native thread
-   view in `terminal-gfx`; thread panes restored with the session; Coder
-   runs as panes; agents as typists with the badge and handoff.
-4. **The terminal half on the host (about a day).** The Superlogical
-   core: the host's authoritative `coder-vt`, side-effect ownership (fixing
-   the double reply), snapshot on join and history pages, the block journal,
-   and NIP-TERM text and conformance tests for each. Then the window and
-   Verse open every pane on the resident host instead of in process, so
-   closing the window ends nothing.
-5. **Sessions, typists, and sharing (about a day).** Host sessions with
-   saved layouts, the one-typist rule, panes on several computers, and the
-   share grant with watch and drive, pause, and the viewer list.
-6. **Phone, web, and TTY (about a day).** Blocks, proposals, and threads
-   in the phone's terminal view; the browser transport and `terminal-gfx`
-   on the web; the TTY degraded mode.
-7. **In-world screens.** The [in-world terminal](../verse/in-world-terminal.md#phased-plan)
-   plan's phase 6, on the shared renderer.
+1. **Today: Grid and standalone MVP.** #10642 delivers blocks, requests,
+   context, and pending proposals with zsh integration first. In parallel,
+   extract `terminal-core` and `terminal-gfx` in #10643, mount both in
+   `terminal-app` and Verse, and package a native standalone install.
+   #10644 retains the failing-test demo, independent install, and
+   performance evidence; it depends on both implementation issues.
+2. **Next pass: Everglade.** Open the same application against studio goals,
+   seats, tasks, decisions, memory, and exact reviews. Keep station placement
+   separate. Extend shell integration to bash and fish.
+3. **Host terminals and sessions.** Authoritative emulation and side effects,
+   snapshots and history, journals, saved sessions, multi-host panes, typists,
+   and shares. Host work can run beside the workshop adapter.
+4. **The full workbench.** Native thread rendering and typed panes for agent
+   children, files, tools, artifacts, background work, knowledge, and Gym.
+   Add the local classifier only after its measured baseline is ready.
+5. **Paid cloud placement.** An explicit cloud-computer option paid with
+   credits over the shared money and admission contracts. Sponsored cloud
+   inference and paid remote execution retain distinct identities.
+6. **Mobile, web, TTY, and world screens.** Shared resource contracts and
+   permitted controls on each supported surface; optional screen textures
+   and furniture. None requires another router or task owner.
 
 ## Open questions for the owner
+
+The workbench plan sets working defaults for this release: OpenAgents
+Terminal is the product, `openagents-terminal` is the proposed graphical
+binary, `openagents terminal` keeps its TTY chat behavior, the window ships
+beside the Grid MVP, zsh is integrated first, every shell proposal waits for
+Enter, and native macOS is the first install target. The remaining questions
+below are later design choices, not blockers for today's three issues.
 
 1. **Name.** Does the smart terminal take the name OpenAgents Terminal, with
    today's chat screen renamed the thread view, or does it get a name of its

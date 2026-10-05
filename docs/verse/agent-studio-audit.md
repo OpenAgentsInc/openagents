@@ -8,6 +8,13 @@ all of it is reachable from the `openagents` command and Verse's flags,
 so that day-to-day coding can move from Claude Code and Codex into the
 studio.
 
+Historical scope note, October 5: these observations belong to the pinned
+commit above. The [current studio guide](agent-studio.md) records subsequent
+mixed-engine execution, SDK seats, CLI actions, phone controls, and the
+interactive simulator. The [workbench roadmap](../terminal/workbench-roadmap.md)
+uses that current integration as the next step after the terminal MVP; this
+audit's earlier missing features are not current absence claims.
+
 ## Summary
 
 - The host half works. A scratch host built from current code accepted a

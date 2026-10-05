@@ -1,5 +1,11 @@
 # Coder Terminal and OpenAgents Terminal: gap analysis
 
+Scope note, October 5, 2026: this comparison retains the October 2 release
+snapshot. The [current user guide](README.md) documents later TUI features;
+the [workbench roadmap](workbench-roadmap.md) orders the new terminal and
+Everglade integration. This page's phase numbers belong to its older TUI
+roadmap, rather than the current smart terminal delivery slices.
+
 Date: 2026-10-02. Compares Coder Terminal (`~/work/coder`, private, read
 from source) with OpenAgents Terminal as shipped in `1.0.0-rc.2`
 (`crates/openagents-terminal`, `crates/coder-terminal`, opened by

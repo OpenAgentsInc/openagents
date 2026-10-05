@@ -11,18 +11,24 @@ proposed acceptance for persistent multiplayer and measured scale.
 Its specification defines the runtime, GPU pipeline, authoring tools, and
 near-term migration to original assets.
 
-[Agent Studio](agent-studio.md) is the proposed specification for a team of
+[Agent Studio](agent-studio.md) implements a host-owned team of
 coding agents, on any engine the Coder host routes, doing real repository work
 inside Verse while people watch, answer, and approve merges, with panels
 harvested from Zeron. [Verse networking](networking.md) sets how Nostr, direct channels, the
 multiplayer chamber, and the Agent Studio fit together, and which NIPs the
-studio uses. [Everglade](everglade.md) is the proposed forest-glade zone
+studio uses. [Everglade](everglade.md) is the implemented forest-glade zone
 where that studio lives, built from CC0 Quaternius kits. [The Apprentice's Road](first-agent-quests.md) is a
 proposed quest line that eases new players from a first walk in the glade to
 a team of agents on their own repository.
 [Destructible buildings](destructible-buildings.md) specifies what the engine needs for a player to smash Everglade's buildings with a sledgehammer, and orders the work.
 [In-world terminal](in-world-terminal.md) specifies a multiplexed, shareable terminal overlay and in-world screens over NIP-TERM and `coder-vt`, and plans a first demo in Everglade. [Generated models with Blender](blender-pipeline.md) is how
 scripts build and convert models for zone packs.
+
+The [terminal workbench roadmap](../terminal/workbench-roadmap.md) makes
+the Grid's implemented desktop overlay and a standalone install the next
+release, then connects the same app to Everglade's Agent Studio. It orders
+durable sessions, broader product panes, paid cloud computers, mobile/web
+access, and optional world screens without duplicating the host or router.
 
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 

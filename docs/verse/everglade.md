@@ -1,6 +1,7 @@
 # Everglade
 
-Status: implemented on desktop, October 4, 2026; the phones observe only.
+Status: implemented on desktop, updated October 5, 2026; paired phones
+control the studio under the host's grants.
 Delivery step 1 is implemented: the admitted sources under
 `assets/verse/everglade/` and the pack compiler and loader in
 `verse::zones::everglade_pack`. Delivery step 3 is implemented:
@@ -16,9 +17,12 @@ between stations from a live host's studio snapshots, and the panels send the
 studio's intents to that host (`verse --everglade`, or `--studio-socket PATH`
 for another host's control socket). `verse --studio-sim` and the
 `everglade_capture` example's `studio-` views play the simulated team, a
-read-only replay with no host behind it (#10572). On phones the studio panels
-observe only (#10570). The [Agent Studio audit](agent-studio-audit.md) lists
-what has and hasn't run end to end. Everglade also runs in a browser through
+read-only replay with no host behind it (#10572). `openagents studio up
+--sim` instead runs an interactive scratch host without model spend. On
+phones the studio panels send host-checked actions under `operate` and
+`review` (#10570, #10579). The [Agent Studio guide](agent-studio.md) records
+current end-to-end evidence; the [audit](agent-studio-audit.md) retains its
+earlier pinned observations. Everglade also runs in a browser through
 [`crates/everglade-web`](../../crates/everglade-web/README.md), without the
 studio.
 
@@ -28,6 +32,13 @@ workshop where a person works with a team of coding agents. It is where the
 Minecraft studio; Everglade is the same workspace built in Verse Engine from
 stylized CC0 kits, and its panels are the Zeron-derived interface the studio
 already specifies.
+
+The [terminal workbench roadmap](../terminal/workbench-roadmap.md) delivers
+the same application in the Grid and a standalone install first, then
+opens it against this workshop's studio resources. A desk computer, `T`,
+or another entry point selects context; terminal furniture and floating
+windows remain a separate design choice. The studio stays authoritative
+for team work, decisions, and reviewed merges.
 
 ![Everglade: a city for building things together](everglade-map.png)
 
@@ -363,7 +374,8 @@ Everglade is the Agent Studio's place in the world:
 - Data loads only while the player is in Everglade, as the Gym loads only
   while the player is inside.
 - On phones, stations open the same panels through the hosts' native mounting
-  (#10476). They observe only; acting from them is #10570.
+  (#10476). Acting uses the paired computer's current `operate` or `review`
+  grant (#10570, #10579).
 - The OpenAgents app's Grid opens Everglade through a walk-in arch, with the
   shared pack loader's progress, Cancel, and Retry; see
   [the Grid's portal to Everglade](mobile.md#the-grids-portal-to-everglade).

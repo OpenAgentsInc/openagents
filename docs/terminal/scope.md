@@ -1,5 +1,12 @@
 # OpenAgents Terminal: scope
 
+Scope note, October 5, 2026: this page records the original chat TUI's v1
+boundary and decisions. The [workbench roadmap](workbench-roadmap.md) extends
+the product to a real terminal, a standalone native window, Everglade's
+studio, and a shared multiplexer across clients. Its delivery order governs
+the next work. Read the [user guide](README.md) for later shipped TUI
+features, including issue runs that now survive closing the screen.
+
 Status: phase 0 (groundwork) landed 2026-10-01
 ([#10108](https://github.com/OpenAgentsInc/openagents/issues/10108)): the chat
 client is the library `openagents_chat::client`, with a typed event stream,

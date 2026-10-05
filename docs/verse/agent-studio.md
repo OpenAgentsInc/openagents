@@ -7,6 +7,12 @@ work by walking around. Any engine the Coder host can run works there, not
 only Claude. The world borrows its idea from AgentCraft; the panels for
 reading, answering, and reviewing are harvested from Zeron.
 
+The [terminal workbench roadmap](../terminal/workbench-roadmap.md) adds a
+shared application around these resources: Grid and standalone terminal
+first, Everglade integration next. The studio stays the host-owned team
+coordinator; opening a terminal at a station adds no execution or review
+authority.
+
 What runs today:
 
 - A real goal ran end to end on a scratch host on October 4: a Codex lead
@@ -140,13 +146,13 @@ through the existing paths:
 | Grok Build | `grok agent stdio` | [Grok route](../coder/runtime/grok.md) |
 
 Microcoder's loop is not a route of its own. It is the loop mode of a `codex`
-or `claude` route ([Microcoder](../coder/guides/microcoder.md)), and the
-`coder.codex` and `coder.claude` settings choose it for the whole host, not
-per seat; #10568 lets each seat choose its engine. Unless the policy grants
-`full` access, a Claude or Codex seat runs the loop rather than a session. No
-seat runs on the Claude Agent SDK port in
-[`crates/claude_agent_sdk`](../../crates/claude_agent_sdk/README.md) yet
-(#10571).
+or `claude` route ([Microcoder](../coder/guides/microcoder.md)). Host settings
+provide defaults; each seat can select its loop, session, or supported SDK
+engine (#10568, #10571). Session and SDK seats require `full` access. The
+`claude/sdk` seat uses the in-repo
+[`claude_agent_sdk`](../../crates/claude_agent_sdk/README.md) port and can
+raise decisions that resume its running turn, as the scratch run above
+records.
 
 The studio adds no engine adapter. A new engine becomes a studio worker by
 becoming a Coder route. Routes, capacity, and failover stay in the

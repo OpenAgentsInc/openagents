@@ -541,6 +541,18 @@ files are included below.
 | --- | --- | --- |
 | [roadmap/2026-09-29-launch-roadmap.md](roadmap/2026-09-29-launch-roadmap.md) | Design / plan | Launch roadmap: the OpenAgents app MVP for playtesters on 2026-09-29 and the milestones after it |
 
+## terminal
+
+The following guides and plans were added after the September 29 inventory.
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [terminal/README.md](terminal/README.md) | User guide | Shipped OpenAgents chat TUI |
+| [terminal/scope.md](terminal/scope.md) | Historical scope | Original TUI architecture and v1 decisions |
+| [terminal/2026-10-02-coder-terminal-gap-analysis.md](terminal/2026-10-02-coder-terminal-gap-analysis.md) | Historical assessment | Original release compared with private Coder Terminal |
+| [terminal/smart-terminal.md](terminal/smart-terminal.md) | Specification / proposal | Real terminal, blocks, requests, sessions, and sharing |
+| [terminal/workbench-roadmap.md](terminal/workbench-roadmap.md) | Delivery plan | Grid and standalone MVP, Everglade, all-work sessions, and paid cloud |
+
 ## terminal-bench
 
 | Document | Role | Topic |

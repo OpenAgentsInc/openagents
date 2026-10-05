@@ -14,10 +14,15 @@ inside the `openagents` program, which installs on its own with one command
 [scope](scope.md) records why it is built this way and the decisions taken on
 its open questions. What Coder Terminal has that this lacks, and a roadmap: [gap analysis](2026-10-02-coder-terminal-gap-analysis.md).
 
-OpenAgents Terminal is a chat screen, not a terminal emulator. The
-[smart terminal](smart-terminal.md) proposes a real terminal and multiplexer
-whose input line takes both shell commands and requests, with this chat as
-its thread view.
+This guide describes the shipped text chat screen. The
+[workbench roadmap](workbench-roadmap.md) makes OpenAgents Terminal a real
+terminal and multiplexer for all work: today's target is the same application
+in the desktop Grid's `T` overlay and a separately installable window; the
+next pass connects it to Everglade's Agent Studio. This chat remains its
+thread view and the `openagents terminal` TTY command. The
+[smart terminal specification](smart-terminal.md) defines shell blocks,
+requests, proposals, and durable sessions. Those roadmap additions are
+planned until their issues have retained release evidence.
 
 ## Install
 

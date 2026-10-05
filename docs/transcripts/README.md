@@ -813,6 +813,7 @@ context, not current installation or purchasing guidance.
 | Historical thread | Maintained starting point |
 | --- | --- |
 | Coder architecture and its several product surfaces | [Coder documentation](../coder/README.md) and [TypeSafe product-suite analysis](../coder/design/typesafe-product-suite.md). |
+| Episodes 275–289: terminal, cloud, trusted devices, productive worlds, and the general agent | [Terminal workbench roadmap](../terminal/workbench-roadmap.md): Grid and standalone MVP, Everglade integration, shared sessions, paid cloud placement, and product panes. Historical announcements remain distinct from current support. |
 | Network effects, reusable components, and evidence of generalization | [Networked Coder plan](../coder/design/networked-coder-plan.md) and [knowledge-base design](../coder/design/knowledge-base.md). |
 | Traces, experiment inspection, and benchmark claims | [Trace contract](../coder/runtime/traces.md), [Gym overview](../gym.md), and [Terminal-Bench results](../terminal-bench/README.md). |
 | Nostr interoperability and the cross-client/market boundary | [NIP index](../../nips/README.md) and [OpenAgents coverage review](../protocol/2026-09-26-openagents-gap-review.md). New specifications are not evidence of implemented runtime support. |

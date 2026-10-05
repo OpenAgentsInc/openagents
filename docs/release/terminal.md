@@ -1,6 +1,6 @@
 # Releasing OpenAgents Terminal
 
-OpenAgents Terminal is the `openagents` program
+The shipped OpenAgents Terminal chat TUI is in the `openagents` program
 ([user guide](../terminal/README.md)). A release is seven platforms of two
 bare executables each, a checksum file, and a channel pointer, in the public
 bucket `gs://openagentsgemini-cli-releases` under the prefix `openagents/`.
@@ -8,6 +8,15 @@ bucket `gs://openagentsgemini-cli-releases` under the prefix `openagents/`.
 `scripts/install/openagents.sh` and `.ps1` install them. The flow is the one
 Coder Terminal used in the private `coder` repo, adapted
 ([#10114](https://github.com/OpenAgentsInc/openagents/issues/10114)).
+
+The [workbench roadmap](../terminal/workbench-roadmap.md#3-integrate-install-and-retain-the-demo)
+adds the graphical terminal as a separate installable package, with the
+Grid using the same implementation. Its first release targets native
+macOS and declares its supported platform set. Reuse this process's
+signing, checksums, source manifest, readback, and isolated install checks;
+use the `openagents-terminal/` package prefix and manifest instead of bypassing this
+channel's seven-platform coverage rule. The existing scripts below release
+the TUI payload, not the proposed graphical package.
 
 ## What a release is
 
