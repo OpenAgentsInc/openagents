@@ -524,3 +524,108 @@ fn the_everglade_arch_loads_its_pack_moves_presence_and_the_return_rejoins() {
         BARE_WORLD
     );
 }
+
+/// Where `pubkey`'s name tag stands on screen, in logical points.
+fn tag_point(scene: &Scene, pubkey: &str) -> [f32; 2] {
+    let shown = scene
+        .session
+        .as_ref()
+        .unwrap()
+        .crowd
+        .shown(Instant::now())
+        .into_iter()
+        .find(|shown| shown.pubkey == pubkey && shown.role == "avatar")
+        .expect("the player is shown");
+    let mut head = shown.pos;
+    head.y += super::PLAYER_TAG_LIFT;
+    let size = scene.lifecycle.viewport().logical_size();
+    let [x, y] = verse::hud::project(scene.world.view(scene.aspect()).view_proj, size, head)
+        .expect("the tag is on screen");
+    let line = scene.atlas.line / scene.lifecycle.viewport().scale();
+    [x, y - line / 2.0]
+}
+
+#[test]
+fn a_tapped_player_blocked_from_its_card_stays_gone_after_relaunch() {
+    let relay = loopback_relay::LoopbackRelay::start();
+    let lists = tempfile::tempdir().unwrap();
+    let clock = Instant::now();
+    let mut scene = bare_scene(&relay.url);
+    scene.set_blocklist_directory(Some(lists.path().to_owned()));
+    scene.activate(true).unwrap();
+    let identity =
+        verse::identity::Identity::from_secret("peer", verse::identity::random_secret()).unwrap();
+    let mut peer = Session::start_presence(identity, &relay.url, BARE_WORLD).unwrap();
+    let them = peer.pubkey().to_owned();
+    let mut ahead = scene.world.player.pos;
+    ahead.z += 4.0;
+    let mut peer_player = PlayerController::new(ahead, 0.0);
+    let live = |scene: &mut Scene, peer: &mut Session, _: &mut PlayerController| {
+        peer.status == Status::Online && scene.packet().live_remote_entities == 1
+    };
+    assert!(
+        run(
+            &mut scene,
+            &mut peer,
+            &mut peer_player,
+            clock,
+            Duration::from_secs(8),
+            live
+        ),
+        "the peer never appeared"
+    );
+
+    // A tap on the peer's tag opens its card; Block hides the peer at once.
+    let [x, y] = tag_point(&scene, &them);
+    assert_eq!(scene.player_at(x, y).as_deref(), Some(them.as_str()));
+    scene.pointer(1, PointerPhase::Down, x, y).unwrap();
+    scene.pointer(1, PointerPhase::Up, x, y).unwrap();
+    assert_eq!(scene.player_card(), Some(them.as_str()));
+    let block = scene.card_buttons()[0].1;
+    let (bx, by) = (block[0] + block[2] / 2.0, block[1] + block[3] / 2.0);
+    assert_eq!(scene.card_hit([bx, by]), Some(super::CardButton::Block));
+    scene.pointer(2, PointerPhase::Down, bx, by).unwrap();
+    scene.pointer(2, PointerPhase::Up, bx, by).unwrap();
+    assert_eq!(scene.player_card(), None);
+    assert_eq!(scene.packet().live_remote_entities, 0);
+    let saved = verse::blocklist::Blocklist::load(lists.path()).unwrap();
+    assert!(saved.is_blocked(&them));
+    let stayed_hidden = !run(
+        &mut scene,
+        &mut peer,
+        &mut peer_player,
+        clock,
+        Duration::from_secs(2),
+        |scene, _, _| scene.packet().live_remote_entities > 0,
+    );
+    assert!(stayed_hidden, "the blocked peer came back");
+    drop(scene);
+
+    // A new mount reading the same directory never shows the peer.
+    let mut relaunched = bare_scene(&relay.url);
+    relaunched.set_blocklist_directory(Some(lists.path().to_owned()));
+    relaunched.activate(true).unwrap();
+    let joined = run(
+        &mut relaunched,
+        &mut peer,
+        &mut peer_player,
+        clock,
+        Duration::from_secs(8),
+        |scene, _, _| {
+            scene
+                .session
+                .as_ref()
+                .is_some_and(|session| session.status == Status::Online)
+        },
+    );
+    assert!(joined, "the relaunched scene never joined");
+    let stayed_hidden = !run(
+        &mut relaunched,
+        &mut peer,
+        &mut peer_player,
+        clock,
+        Duration::from_secs(2),
+        |scene, _, _| scene.packet().live_remote_entities > 0,
+    );
+    assert!(stayed_hidden, "the blocked peer came back after relaunch");
+}

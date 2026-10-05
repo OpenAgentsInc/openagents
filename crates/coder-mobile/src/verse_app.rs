@@ -667,6 +667,22 @@ struct Touch {
     started: f64,
 }
 
+/// A button on a player's card.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CardButton {
+    Block,
+    Mute,
+    Close,
+}
+
+/// The card's size and inner spacing, in logical points.
+const CARD_SIZE: [f32; 2] = [264.0, 96.0];
+const CARD_PAD: f32 = 10.0;
+const CARD_BUTTON_HEIGHT: f32 = 34.0;
+/// How far from a name tag's center a tap still picks its player, in
+/// logical points.
+const TAG_REACH_POINTS: f32 = 28.0;
+
 struct WorldTap {
     movement: bool,
     position: [f32; 2],
@@ -829,6 +845,12 @@ pub(crate) struct Scene {
     slot_touch: Option<(u64, usize, ZoneIntent, f64)>,
     pointer_clock: Instant,
     last_world_tap: Option<WorldTap>,
+    /// The player whose card is open: their name with Block, Mute, and
+    /// Close.
+    player_card: Option<String>,
+    /// A contact that went down on a player's name tag; lifting it in place
+    /// opens their card.
+    card_touch: Option<(u64, String, [f32; 2])>,
     jump: bool,
     sprint: bool,
     computer_open: bool,
@@ -1055,6 +1077,8 @@ impl Scene {
             slot_touch: None,
             pointer_clock: Instant::now(),
             last_world_tap: None,
+            player_card: None,
+            card_touch: None,
             jump: false,
             sprint: false,
             computer_open: false,
@@ -1182,6 +1206,173 @@ impl Scene {
             session.blocklist().save(directory)?;
         }
         Ok(changed)
+    }
+
+    /// Mutes or unmutes the player with `pubkey` in the running presence
+    /// session and saves the list. Returns whether it changed.
+    pub fn set_player_muted(&mut self, pubkey: &str, muted: bool) -> Result<bool, String> {
+        let session = self.session.as_mut().ok_or("The world is offline")?;
+        let changed = if muted {
+            session.mute_player(pubkey)?
+        } else {
+            session.unmute_player(pubkey)
+        };
+        if changed && let Some(directory) = &self.blocklist_directory {
+            session.blocklist().save(directory)?;
+        }
+        Ok(changed)
+    }
+
+    /// The remote player whose name tag is under `(x, y)`, in logical
+    /// points: the nearest within [`TAG_REACH_POINTS`] of a tag's center.
+    pub(crate) fn player_at(&self, x: f32, y: f32) -> Option<String> {
+        if !self.world.is_bare()
+            || self.chamber.is_some()
+            || !self.lifecycle.active()
+            || self.panel_open()
+            || !x.is_finite()
+            || !y.is_finite()
+        {
+            return None;
+        }
+        let session = self.session.as_ref()?;
+        let size = self.lifecycle.viewport().logical_size();
+        let line = self.atlas.line / self.lifecycle.viewport().scale().max(1.0);
+        let view_proj = self.world.view(self.aspect()).view_proj;
+        session
+            .crowd
+            .shown(Instant::now())
+            .into_iter()
+            .filter(|shown| {
+                shown.role == "avatar"
+                    && shown.pubkey != self.public_key
+                    && shown.pos.distance(self.world.player.pos) <= PLAYER_TAG_RANGE
+            })
+            .filter_map(|shown| {
+                let mut head = shown.pos;
+                head.y += PLAYER_TAG_LIFT;
+                let [tx, ty] = verse::hud::project(view_proj, size, head)?;
+                let distance = (x - tx).hypot(y - (ty - line / 2.0));
+                (distance <= TAG_REACH_POINTS).then_some((distance, shown.pubkey))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, pubkey)| pubkey)
+    }
+
+    /// Opens `pubkey`'s card.
+    pub(crate) fn open_player_card(&mut self, pubkey: String) {
+        self.player_card = Some(pubkey);
+    }
+
+    /// Whose card is open.
+    pub(crate) fn player_card(&self) -> Option<&str> {
+        self.player_card.as_deref()
+    }
+
+    /// The card's rectangle, `[x, y, width, height]` in logical points:
+    /// centered, below the top inset.
+    fn card_rect(&self) -> [f32; 4] {
+        let size = self.lifecycle.viewport().logical_size();
+        let width = CARD_SIZE[0].min(size[0] - 2.0 * CARD_PAD).max(0.0);
+        [
+            (size[0] - width) / 2.0,
+            self.insets[0] + 72.0,
+            width,
+            CARD_SIZE[1],
+        ]
+    }
+
+    fn card_buttons(&self) -> [(CardButton, [f32; 4]); 3] {
+        let [x, y, width, height] = self.card_rect();
+        let button = (width - 4.0 * CARD_PAD) / 3.0;
+        let top = y + height - CARD_PAD - CARD_BUTTON_HEIGHT;
+        let at = |n: f32| {
+            [
+                x + CARD_PAD + n * (button + CARD_PAD),
+                top,
+                button,
+                CARD_BUTTON_HEIGHT,
+            ]
+        };
+        [
+            (CardButton::Block, at(0.0)),
+            (CardButton::Mute, at(1.0)),
+            (CardButton::Close, at(2.0)),
+        ]
+    }
+
+    /// The card button under `point`, in logical points, while a card is
+    /// open.
+    pub(crate) fn card_hit(&self, point: [f32; 2]) -> Option<CardButton> {
+        self.player_card.as_ref()?;
+        self.card_buttons()
+            .into_iter()
+            .find(|(_, [x, y, w, h])| {
+                (*x..=x + w).contains(&point[0]) && (*y..=y + h).contains(&point[1])
+            })
+            .map(|(button, _)| button)
+    }
+
+    /// Carries out a card button and closes the card.
+    pub(crate) fn card_press(&mut self, button: CardButton) -> Result<(), String> {
+        let Some(pubkey) = self.player_card.take() else {
+            return Ok(());
+        };
+        match button {
+            CardButton::Block => {
+                self.set_player_blocked(&pubkey, true)?;
+            }
+            CardButton::Mute => {
+                let muted = self
+                    .session
+                    .as_ref()
+                    .is_some_and(|session| session.blocklist().muted.contains(&pubkey));
+                self.set_player_muted(&pubkey, !muted)?;
+            }
+            CardButton::Close => {}
+        }
+        Ok(())
+    }
+
+    /// The open card, drawn into `ui` in pixels: the player's name, then
+    /// Block, Mute (or Unmute), and Close.
+    fn draw_player_card(&self, ui: &mut verse::ui::UiBatch) {
+        let Some(pubkey) = &self.player_card else {
+            return;
+        };
+        let scale = self.lifecycle.viewport().scale();
+        let px = |rect: [f32; 4]| rect.map(|v| v * scale);
+        let [x, y, w, h] = px(self.card_rect());
+        ui.rect(&self.atlas, x, y, w, h, [0.05, 0.05, 0.05, 0.92]);
+        ui.frame(&self.atlas, x, y, w, h, scale, [0.6, 0.6, 0.6, 1.0]);
+        let name = self
+            .session
+            .as_ref()
+            .map_or_else(|| pubkey[..8].to_owned(), |session| session.name_of(pubkey));
+        let pad = CARD_PAD * scale;
+        ui.text(&self.atlas, x + pad, y + pad, &name, TAG_COLOR);
+        let muted = self
+            .session
+            .as_ref()
+            .is_some_and(|session| session.blocklist().muted.contains(pubkey));
+        for (button, rect) in self.card_buttons() {
+            let [bx, by, bw, bh] = px(rect);
+            ui.frame(&self.atlas, bx, by, bw, bh, scale, [0.6, 0.6, 0.6, 1.0]);
+            let label = match button {
+                CardButton::Block => "BLOCK",
+                CardButton::Mute if muted => "UNMUTE",
+                CardButton::Mute => "MUTE",
+                CardButton::Close => "CLOSE",
+            };
+            let width = self.atlas.measure(label);
+            ui.text(
+                &self.atlas,
+                bx + (bw - width) / 2.0,
+                by + (bh - self.atlas.line) / 2.0,
+                label,
+                TAG_COLOR,
+            );
+        }
     }
 
     pub(crate) fn world_signer(&self) -> Result<nostr::domain::RelaySigner, String> {
@@ -1386,6 +1577,21 @@ impl Scene {
             }
             return Ok(());
         }
+        // An open player card takes every new contact: a button acts, and
+        // anywhere else closes it.
+        if self.player_card.is_some() && self.chamber.is_none() {
+            if matches!(phase, PointerPhase::Down) {
+                self.cancel_taps();
+                match self.card_hit(point) {
+                    Some(button) => self.card_press(button)?,
+                    None => self.player_card = None,
+                }
+                return Ok(());
+            }
+            if !self.touches.contains_key(&id) {
+                return Ok(());
+            }
+        }
         // The bare world draws no map or door controls to touch, and zone
         // controls only while a zone loads or inside the zone a portal leads
         // to.
@@ -1454,6 +1660,24 @@ impl Scene {
                 self.cancel_taps();
                 return Ok(());
             }
+        }
+        // A tap on a player's name tag opens their card; a drag that starts
+        // there still turns the camera.
+        match phase {
+            PointerPhase::Down => {
+                self.card_touch = self.player_at(x, y).map(|pubkey| (id, pubkey, point));
+            }
+            PointerPhase::Up => {
+                if let Some((_, pubkey, origin)) =
+                    self.card_touch.take_if(|(touch, _, _)| *touch == id)
+                    && (x - origin[0]).hypot(y - origin[1]) <= TAP_DRIFT_POINTS
+                {
+                    self.cancel_taps();
+                    self.player_card = Some(pubkey);
+                }
+            }
+            PointerPhase::Cancel => self.card_touch = None,
+            PointerPhase::Move => {}
         }
         // Gesture duration follows receipt time, not the last rendered frame.
         // A slow frame must not turn a long hold into a tap.
@@ -1851,6 +2075,7 @@ impl Scene {
             }
         }
         self.raider_glow(&mut ui);
+        self.draw_player_card(&mut ui);
         ui
     }
 

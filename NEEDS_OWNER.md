@@ -331,3 +331,12 @@ it's redeployed. To finish checking:
    (#10589), which also brings a phone, a desktop, and a browser.
 4. Block a walker with `openagents verse block KEY`, relaunch the Verse
    app on the same computer, and check that the walker stays hidden.
+
+## Block a player from the Grid on a phone (#10638)
+
+Tapping a player's name tag on the Grid opens a card with **Block**,
+**Mute**, and **Close**; the desktop Grid opens it with a click. A
+loopback test drives the scene; no phone ran it. On an iPhone and an
+Android phone built from `main`, start `openagents verse walkers 3`, tap
+a walker's tag, and tap **Block**: the walker disappears and stays gone
+after the app is relaunched.

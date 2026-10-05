@@ -123,6 +123,18 @@ impl GridSurface {
         {
             return Ok(false);
         }
+        // A player's card answers first, and a name tag opens one.
+        if self.scene.player_card().is_some() {
+            match self.scene.card_hit([x, y]) {
+                Some(button) => self.scene.card_press(button)?,
+                None => self.scene.card_press(crate::verse_app::CardButton::Close)?,
+            }
+            return Ok(true);
+        }
+        if let Some(pubkey) = self.scene.player_at(x, y) {
+            self.scene.open_player_card(pubkey);
+            return Ok(true);
+        }
         let panel = if self.scene.gym_hit(x, y) {
             Some(Panel::Gym)
         } else if self.scene.results_hit(x, y) {
