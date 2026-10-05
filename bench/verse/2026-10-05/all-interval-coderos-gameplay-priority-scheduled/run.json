@@ -70,8 +70,8 @@
     "Repeatability, impaired-network, input-to-display, and soak acceptance remain unproven.",
     "One completed baseline does not establish full roadmap acceptance.",
     "Proxy delay applies to ordered TCP chunks and does not simulate packet loss.",
-    "Scheduled propagation delay preserves order and bounds buffering; the one recorded connection reset still requires classification.",
-    "Updated clients include unrelated upstream graphics and terminal changes; successive runs are not an isolated causal comparison."
+    "Updated clients include unrelated upstream graphics and terminal changes; successive runs are not an isolated causal comparison.",
+    "Five proxy errors remain unclassified."
   ],
   "movement_inputs": 22230,
   "producer_pressure": 0,
