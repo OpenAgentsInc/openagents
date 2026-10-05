@@ -92,12 +92,21 @@ pub(crate) struct Profile {
     pub omitted_retirements: u64,
     pub correction_trace: Vec<serde_json::Value>,
     pub omitted_corrections: u64,
+    pub refusal_trace: Vec<serde_json::Value>,
+    pub omitted_refusals: u64,
     pub reset_observations: u64,
     pub reset_reasons: std::collections::BTreeMap<&'static str, u64>,
     pub bound_to_outcome_ms: Samples,
     pub bindings: std::collections::BTreeMap<u64, std::time::Instant>,
 }
 impl Profile {
+    pub fn refusal(&mut self, context: serde_json::Value) {
+        if self.refusal_trace.len() < 256 {
+            self.refusal_trace.push(context);
+        } else {
+            self.omitted_refusals += 1;
+        }
+    }
     pub fn render(&mut self, timing: super::FrameTimings, present_ms: f64) {
         self.gpu_health = timing.gpu_health;
         for sample in timing.gpu_samples.into_iter().flatten() {
@@ -189,6 +198,8 @@ impl Profile {
             "omitted_retirements":self.omitted_retirements,
             "correction_trace":self.correction_trace,
             "omitted_corrections":self.omitted_corrections,
+            "refusal_trace":self.refusal_trace,
+            "omitted_refusals":self.omitted_refusals,
             "binding_to_outcome_ms":self.bound_to_outcome_ms.summary(),
             "limits":["Render submission and renderer phases measure CPU elapsed time, including driver and presentation waits; GPU execution is not measured.",
             "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
@@ -334,6 +345,17 @@ impl Drop for Recorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn refusal_history_keeps_the_first_cause_and_counts_omissions() {
+        let mut profile = Profile::default();
+        for request_id in 0..300 {
+            profile.refusal(serde_json::json!({"request_id":request_id}));
+        }
+        let summary = profile.summary();
+        assert_eq!(summary["refusal_trace"][0]["request_id"], 0);
+        assert_eq!(summary["refusal_trace"].as_array().unwrap().len(), 256);
+        assert_eq!(summary["omitted_refusals"], 44);
+    }
     #[test]
     fn retirement_series_is_separate_and_bounded() {
         let mut profile = Profile::default();

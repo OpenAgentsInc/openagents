@@ -502,6 +502,10 @@ impl App {
                     }
                     Err(message) => {
                         self.pending.retain(|(_, pending)| *pending != Some(token));
+                        if self.record.is_some() {
+                            self.profile.refusal(serde_json::json!({"stage":"frame_binding",
+                                "token":token,"message":message,"context":self.prediction.context()}));
+                        }
                         self.prediction.clear();
                         self.frame_cursor = None;
                         self.status = message;
@@ -591,6 +595,13 @@ impl App {
                         self.status = "Item used".into();
                     }
                     if let verse_world::service::wire::Reply::Refused { message, .. } = r.body {
+                        if self.record.is_some() {
+                            self.profile
+                                .refusal(serde_json::json!({"stage":"authority_outcome",
+                                "token":token,"ability":ability.map(|a|a.label()),"message":message,
+                                "request_id":r.request_id,"tick":r.tick,"control":r.control,
+                                "context":self.prediction.context()}));
+                        }
                         self.status = message;
                     }
                 }
