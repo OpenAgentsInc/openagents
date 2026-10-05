@@ -65,6 +65,7 @@ pub mod runtime;
 pub mod session;
 pub mod shared;
 pub mod spectator;
+pub mod tooltip;
 pub mod ui;
 pub mod world;
 #[cfg(feature = "xp-host")]

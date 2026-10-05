@@ -139,6 +139,16 @@ struct Page {
     /// When the primary button or a touch went down, in milliseconds: in
     /// the demolition yard a quick tap swings the hammer.
     pressed_at: Option<f64>,
+    /// The mouse over the canvas, in CSS pixels, for a hotbar slot's card.
+    hover: Option<[f32; 2]>,
+    /// The hotbar slot the mouse rests on, for its card's delay.
+    slot_tip: verse::tooltip::Dwell,
+    /// A touch holding a hotbar slot: the pointer, the slot, its intent,
+    /// and when it went down, in milliseconds. A long press shows the
+    /// slot's card instead of using it.
+    slot_touch: Option<(i32, usize, zones::Intent, f64)>,
+    /// The latest frame's `performance.now()`, in milliseconds.
+    now: f64,
 }
 
 async fn run() -> Result<(), String> {
@@ -257,6 +267,10 @@ async fn run() -> Result<(), String> {
         layout: atlas.layout_at_scale(scale),
         climb: None,
         pressed_at: None,
+        hover: None,
+        slot_tip: verse::tooltip::Dwell::default(),
+        slot_touch: None,
+        now: 0.0,
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -343,6 +357,7 @@ impl Page {
             .map_or(0.0, |last| ((now - last) / 1000.0) as f32)
             .clamp(0.0, MAX_STEP);
         self.last = Some(now);
+        self.now = now;
 
         let (width, height) = drawing_size(&self.canvas, self.scale);
         if (width, height) != (self.canvas.width(), self.canvas.height()) {
@@ -386,14 +401,30 @@ impl Page {
         // No zone panel over the world (owner, 2026-10-04): the glade and
         // its hotbar, laid out in CSS pixels and drawn in device pixels.
         let mut ui = verse::ui::UiBatch::default();
+        let tip = self.slot_tip();
         if let (Some(layout), Some(slots)) = (&self.layout, self.runtime.everglade_hotbar()) {
             zones::everglade::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &slots);
+            if let Some(index) = tip {
+                zones::everglade::hotbar::draw_tip(&mut ui, layout, self.css_size(), 0.0, index);
+            }
         }
         if let (Some(layout), Some(bar)) = (&self.layout, self.runtime.demolition_bar()) {
             zones::everglade::demolition::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &bar);
+            if let Some(index) = tip {
+                zones::everglade::demolition::hotbar::draw_tip(
+                    &mut ui,
+                    layout,
+                    self.css_size(),
+                    0.0,
+                    index,
+                );
+            }
         }
         if let (Some(layout), Some(bar)) = (&self.layout, self.runtime.grove_bar()) {
             zones::grove::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &bar);
+            if let Some(index) = tip {
+                zones::grove::hotbar::draw_tip(&mut ui, layout, self.css_size(), 0.0, index);
+            }
         }
         for vertex in &mut ui.vertices {
             vertex.pos = vertex.pos.map(|v| v * self.scale);
@@ -409,21 +440,67 @@ impl Page {
         [size[0] / self.scale, size[1] / self.scale]
     }
 
-    /// Presses the hotbar slot under `at` (CSS pixels) for `pointer`;
-    /// returns whether one was there.
-    fn press_hotbar(&mut self, at: [f32; 2], pointer: Option<i32>) -> bool {
-        let hit = if self.runtime.in_demolition() {
-            zones::everglade::demolition::hotbar::hit(at, self.css_size(), 0.0)
+    /// The shown hotbar slot under `at` (CSS pixels), with its intent.
+    fn slot_at(&self, at: [f32; 2]) -> Option<(usize, zones::Intent)> {
+        use zones::everglade::demolition::hotbar as yard;
+        let size = self.css_size();
+        if self.runtime.in_demolition() {
+            let index = yard::slot_under(at, size, 0.0)?;
+            Some((index, yard::SLOTS.get(index)?.0))
         } else if self.runtime.grove_bar().is_some() {
-            zones::grove::hotbar::hit(at, self.css_size(), 0.0)
+            let index = zones::grove::hotbar::slot_under(at, size, 0.0)?;
+            Some((index, zones::grove::hotbar::intent(index)?))
+        } else if self.runtime.everglade_hotbar().is_some() {
+            let index = zones::everglade::hotbar::slot_under(at, size, 0.0)?;
+            Some((index, zones::everglade::hotbar::SLOTS.get(index)?.0))
         } else {
-            zones::everglade::hotbar::hit(at, self.css_size(), 0.0)
-        };
-        let Some(intent) = hit else {
+            None
+        }
+    }
+
+    /// The slot whose card shows this frame: one a touch has held past a
+    /// long press, or one the mouse has rested on.
+    fn slot_tip(&mut self) -> Option<usize> {
+        let now = self.now;
+        if let Some((_, index, _, at)) = self.slot_touch {
+            return verse::tooltip::long_press(((now - at) / 1000.0) as f32).then_some(index);
+        }
+        let slot = self.hover.and_then(|at| self.slot_at(at)).map(|(i, _)| i);
+        self.slot_tip.update(slot, (now / 1000.0) as f32)
+    }
+
+    /// Presses the hotbar slot under `at` (CSS pixels) for `pointer`;
+    /// returns whether one was there. A touch on a slot other than Up or
+    /// Down acts when it lifts, so a long press can show the card instead.
+    fn press_hotbar(&mut self, at: [f32; 2], pointer: Option<i32>, touch: bool, now: f64) -> bool {
+        let Some((index, intent)) = self.slot_at(at) else {
             return false;
         };
+        if let (true, Some(id)) = (touch, pointer) {
+            self.slot_touch = Some((id, index, intent, now));
+            if matches!(intent, zones::Intent::Rise | zones::Intent::Lower) {
+                self.press(intent, pointer);
+            }
+            return true;
+        }
         self.press(intent, pointer);
         true
+    }
+
+    /// Lifts a touch from the hotbar: a short tap on a slot other than Up
+    /// or Down uses it; a long press or a cancel only hides the card.
+    fn lift_hotbar(&mut self, pointer: i32, cancelled: bool, now: f64) {
+        let Some((id, _, intent, at)) = self.slot_touch else {
+            return;
+        };
+        if id != pointer {
+            return;
+        }
+        self.slot_touch = None;
+        let long = verse::tooltip::long_press(((now - at) / 1000.0) as f32);
+        if !cancelled && !long && !matches!(intent, zones::Intent::Rise | zones::Intent::Lower) {
+            self.press(intent, None);
+        }
     }
 
     /// Up and Down climb while held; any other slot acts once.
@@ -586,7 +663,9 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             let _ = target.set_pointer_capture(event.pointer_id());
             let mut page = page.borrow_mut();
             let on_canvas = [event.offset_x() as f32, event.offset_y() as f32];
-            if page.press_hotbar(on_canvas, Some(event.pointer_id())) {
+            let touch = event.pointer_type() == "touch";
+            let now = event.time_stamp();
+            if page.press_hotbar(on_canvas, Some(event.pointer_id()), touch, now) {
                 return;
             }
             if event.is_primary() && event.button() == 0 {
@@ -608,6 +687,11 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
         let page = page.clone();
         on(&canvas, "pointermove", move |event: PointerEvent| {
             let mut page = page.borrow_mut();
+            // A card follows a resting mouse, not a drag that turns the view.
+            if event.pointer_type() == "mouse" {
+                page.hover = (event.buttons() == 0)
+                    .then(|| [event.offset_x() as f32, event.offset_y() as f32]);
+            }
             let action = if event.pointer_type() == "touch" {
                 let at = [event.client_x() as f32, event.client_y() as f32];
                 page.input.touch_move(event.pointer_id(), at)
@@ -623,6 +707,8 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
         on(&canvas, name, move |event: PointerEvent| {
             let mut page = page.borrow_mut();
             page.release_climb(Some(event.pointer_id()), None);
+            let now = event.time_stamp();
+            page.lift_hotbar(event.pointer_id(), event.type_() == "pointercancel", now);
             if let Some(at) = page.pressed_at.take()
                 && event.is_primary()
                 && event.time_stamp() - at <= 300.0
@@ -652,6 +738,12 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             };
             let lines = (-pixels / 100.0).clamp(-10.0, 10.0) as f32;
             page.borrow_mut().apply(Some(Action::Zoom { lines }));
+        })?;
+    }
+    {
+        let page = page.clone();
+        on(&canvas, "pointerleave", move |_: PointerEvent| {
+            page.borrow_mut().hover = None;
         })?;
     }
     on(&canvas, "contextmenu", |event: web_sys::Event| {

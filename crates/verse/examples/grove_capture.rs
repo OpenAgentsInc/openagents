@@ -1,5 +1,5 @@
 //! Offline visual acceptance of the Grove with the shared renderer.
-//! Usage: grove_capture OUTPUT.png [field|action]
+//! Usage: grove_capture OUTPUT.png [field|action|tooltip]
 //!
 //! Installs the Grove from the committed, pinned Everglade pack, as
 //! `verse --grove` does after the download, and renders one view with its
@@ -9,6 +9,8 @@
 //!   training dummies.
 //! - `action`: the same view a moment after Web and Fire Bolt, with a
 //!   bolt in flight, a rooted dummy, and a floating result.
+//! - `tooltip`: the field with the pointer resting on the hotbar's
+//!   Fireball slot, so its card shows over the mana bar.
 use std::path::{Path, PathBuf};
 use verse::{
     controller::InputState,
@@ -41,7 +43,7 @@ fn main() -> Result<(), String> {
         runtime.tick(&idle, 0.05);
     }
     match view.as_str() {
-        "field" => {}
+        "field" | "tooltip" => {}
         "action" => {
             runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -11.0), 0.0)?;
             runtime.zone_intent(Intent::Web)?;
@@ -53,7 +55,11 @@ fn main() -> Result<(), String> {
                 runtime.tick(&idle, 0.05);
             }
         }
-        other => return Err(format!("unknown view `{other}`; use field or action")),
+        other => {
+            return Err(format!(
+                "unknown view `{other}`; use field, action, or tooltip"
+            ));
+        }
     }
     let mut atlas = verse::ui::Atlas::new(16.0);
     zones::grove::hotbar::add_sprites(&mut atlas)?;
@@ -61,6 +67,10 @@ fn main() -> Result<(), String> {
     let mut ui = verse::ui::UiBatch::default();
     if let Some(bar) = runtime.grove_bar() {
         zones::grove::hotbar::draw(&mut ui, &atlas, [1280.0, 800.0], 14.0, &bar);
+        if view == "tooltip" {
+            // A simulated hover on Fireball, the seventh slot.
+            zones::grove::hotbar::draw_tip(&mut ui, &atlas, [1280.0, 800.0], 14.0, 6);
+        }
     }
     verse::render::capture_with_atmosphere(
         &output,

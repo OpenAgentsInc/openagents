@@ -4,6 +4,7 @@
 //! yard's name and a line of help, all in the glade's warm colors. Space
 //! still jumps, and the return portal still leads back to the plaza.
 
+use crate::tooltip::{self, Card, Tip, palette};
 use crate::ui::{Atlas, UiBatch};
 use crate::zones::Intent;
 use crate::zones::everglade::hotbar::{self as tray, Slot};
@@ -12,6 +13,15 @@ use crate::zones::everglade::hotbar::{self as tray, Slot};
 pub const SLOTS: [(Intent, &str, &str); 2] = [
     (Intent::Swing, "sledgehammer-icon", "1"),
     (Intent::Rebuild, "rebuild-icon", "R"),
+];
+
+/// Each slot's card ([`crate::tooltip`]), in [`SLOTS`] order.
+pub const TIPS: [Tip; 2] = [
+    Tip::new(
+        "Sledgehammer",
+        "Swing two-handed at the cottage piece ahead: each blow cracks it, and at zero hit points it breaks and drops what it held up.",
+    ),
+    Tip::new("Rebuild", "Stands both cottages back up whole."),
 ];
 
 /// The line of help over the bar.
@@ -59,6 +69,36 @@ pub fn add_sprites(atlas: &mut Atlas) -> Result<(), String> {
 #[must_use]
 pub fn hit(point: [f32; 2], size: [f32; 2], bottom: f32) -> Option<Intent> {
     tray::hit_of(point, size, bottom, SLOTS.len()).map(|index| SLOTS[index].0)
+}
+
+/// The index of the slot under `point`, if any.
+#[must_use]
+pub fn slot_under(point: [f32; 2], size: [f32; 2], bottom: f32) -> Option<usize> {
+    tray::hit_of(point, size, bottom, SLOTS.len())
+}
+
+/// Slot `index`'s card: its name, its sentence, and its keys.
+#[must_use]
+pub fn card(index: usize) -> Option<Card> {
+    let tip = *TIPS.get(index)?;
+    let keys = if index == 0 {
+        "Click or 1".to_string()
+    } else {
+        format!("Key {}", SLOTS[index].2)
+    };
+    Some(Card::of(tip).detail(keys, palette::KEY))
+}
+
+/// Draws slot `index`'s card above the tray, its bar, and its help into
+/// `ui`, kept on screen.
+pub fn draw_tip(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, index: usize) {
+    let Some(card) = card(index) else {
+        return;
+    };
+    let [x, _, w, _] = tray::slot_rect_of(size, bottom, SLOTS.len(), index);
+    let [_, top, _, height] = tray::frame_of(size, bottom, SLOTS.len());
+    let help = top - (BAR[1] + 6.0) * tray::unit(size) - 2.0 * atlas.line - 4.0;
+    tooltip::draw(ui, atlas, &card, [x, help, w, top + height - help], size);
 }
 
 /// The intent a key sends, by its `KeyboardEvent.code` name: `Digit1`
@@ -142,5 +182,29 @@ mod tests {
             Some(Intent::Rebuild)
         );
         assert_eq!(hit([x - 10.0, y], size, 0.0), None);
+    }
+
+    #[test]
+    fn each_slot_has_a_card_over_the_help() {
+        let size = [1280.0, 800.0];
+        let atlas = Atlas::new(14.0);
+        let [_, top, ..] = tray::frame_of(size, 0.0, SLOTS.len());
+        let help = top - (BAR[1] + 6.0) * tray::unit(size) - 2.0 * atlas.line - 4.0;
+        for index in 0..SLOTS.len() {
+            let [x, y, w, h] = tray::slot_rect_of(size, 0.0, SLOTS.len(), index);
+            assert_eq!(
+                slot_under([x + w * 0.5, y + h * 0.5], size, 0.0),
+                Some(index)
+            );
+            let card = card(index).expect("a card");
+            assert_eq!(card.title, TIPS[index].name);
+            let mut ui = UiBatch::default();
+            draw_tip(&mut ui, &atlas, size, 0.0, index);
+            assert!(!ui.vertices.is_empty());
+            let [_, cy, _, ch] =
+                tooltip::layout(&atlas, &card, [x, help, w, top + h - help], size).rect;
+            assert!(cy + ch <= help);
+        }
+        assert!(card(SLOTS.len()).is_none());
     }
 }

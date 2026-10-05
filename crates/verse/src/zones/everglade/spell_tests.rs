@@ -18,7 +18,7 @@ fn slots(runtime: &WorldRuntime) -> [Slot; COUNT] {
 fn slot(runtime: &WorldRuntime, spell: Spell) -> Slot {
     let index = SLOTS
         .iter()
-        .position(|(intent, _)| *intent == spell.intent())
+        .position(|(intent, ..)| *intent == spell.intent())
         .expect("the spell has a slot");
     slots(runtime)[index]
 }
@@ -54,7 +54,7 @@ fn fall_time(runtime: &mut WorldRuntime, at: Vec3) -> f32 {
 
 #[test]
 fn the_hotbar_holds_four_spells_after_movement_with_keys_four_to_seven() {
-    let spells: Vec<_> = SLOTS[3..].iter().map(|(intent, _)| *intent).collect();
+    let spells: Vec<_> = SLOTS[3..].iter().map(|(intent, ..)| *intent).collect();
     assert_eq!(
         spells,
         [

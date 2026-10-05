@@ -588,6 +588,8 @@ struct App {
     everglade_pending: Option<zones::ZoneId>,
     /// A held Up (1) or Down (-1) while levitating in Everglade, or 0.
     climb: f32,
+    /// The hotbar slot the pointer rests on, for its card's hover delay.
+    slot_tip: crate::tooltip::Dwell,
     /// The hosted instance this window walks in, and the heading its
     /// keyboard steers.
     #[cfg(feature = "remote-chamber")]
@@ -858,6 +860,7 @@ impl App {
             everglade_pending: None,
             swing_press: None,
             climb: 0.0,
+            slot_tip: crate::tooltip::Dwell::default(),
             #[cfg(feature = "remote-chamber")]
             hosted,
         })
@@ -2034,6 +2037,27 @@ impl App {
         zones::grove::hotbar::hit(at, size.map(|v| v / self.scale), HOTBAR_BOTTOM)
     }
 
+    /// The hotbar slot whose card shows this frame on a screen of `size`
+    /// logical points: the one the pointer has rested on for the hover
+    /// delay, while no button is held.
+    fn hotbar_tip(&mut self, size: [f32; 2]) -> Option<usize> {
+        let at = self.cursor.map(|v| v / self.scale);
+        let free = !self.keys.left_button && !self.keys.right_button;
+        let slot = if !free {
+            None
+        } else if self.in_bare_everglade() && self.runtime.demolition_bar().is_some() {
+            zones::everglade::demolition::hotbar::slot_under(at, size, HOTBAR_BOTTOM)
+        } else if self.in_bare_everglade() && self.runtime.everglade_hotbar().is_some() {
+            zones::everglade::hotbar::slot_under(at, size, HOTBAR_BOTTOM)
+        } else if self.in_bare_grove() && self.runtime.grove_bar().is_some() {
+            zones::grove::hotbar::slot_under(at, size, HOTBAR_BOTTOM)
+        } else {
+            None
+        };
+        self.slot_tip
+            .update(slot, self.started.elapsed().as_secs_f32())
+    }
+
     /// Everglade's hotbar slot under `at`, in logical units.
     fn hotbar_at(&self, at: [f32; 2]) -> Option<ZoneIntent> {
         let (size, _) = self.viewport()?;
@@ -2218,7 +2242,8 @@ impl App {
                     KeyCode::Digit7 => Some(6),
                     _ => None,
                 };
-                if let Some((intent, _)) = slot.and_then(|i| zones::everglade::hotbar::SLOTS.get(i))
+                if let Some((intent, ..)) =
+                    slot.and_then(|i| zones::everglade::hotbar::SLOTS.get(i))
                 {
                     self.zone_action(*intent);
                     return;
@@ -3015,6 +3040,7 @@ impl App {
             self.runtime.zone,
         ));
         let overheads = self.overheads(now);
+        let tip = self.hotbar_tip(size.map(|v| v / self.scale));
         let ui = match &self.atlas {
             Some(atlas) => {
                 let (log, name_of): (&chat::Log, NameOf<'_>) = match &self.session {
@@ -3195,6 +3221,15 @@ impl App {
                         HOTBAR_BOTTOM,
                         &slots,
                     );
+                    if let Some(index) = tip {
+                        zones::everglade::hotbar::draw_tip(
+                            &mut bar,
+                            atlas,
+                            size.map(|v| v / self.scale),
+                            HOTBAR_BOTTOM,
+                            index,
+                        );
+                    }
                     for vertex in &mut bar.vertices {
                         vertex.pos = vertex.pos.map(|v| v * self.scale);
                     }
@@ -3212,6 +3247,15 @@ impl App {
                         HOTBAR_BOTTOM,
                         &bar,
                     );
+                    if let Some(index) = tip {
+                        zones::everglade::demolition::hotbar::draw_tip(
+                            &mut batch,
+                            atlas,
+                            size.map(|v| v / self.scale),
+                            HOTBAR_BOTTOM,
+                            index,
+                        );
+                    }
                     for vertex in &mut batch.vertices {
                         vertex.pos = vertex.pos.map(|v| v * self.scale);
                     }
@@ -3228,6 +3272,15 @@ impl App {
                         HOTBAR_BOTTOM,
                         &slots,
                     );
+                    if let Some(index) = tip {
+                        zones::grove::hotbar::draw_tip(
+                            &mut bar,
+                            atlas,
+                            size.map(|v| v / self.scale),
+                            HOTBAR_BOTTOM,
+                            index,
+                        );
+                    }
                     for vertex in &mut bar.vertices {
                         vertex.pos = vertex.pos.map(|v| v * self.scale);
                     }

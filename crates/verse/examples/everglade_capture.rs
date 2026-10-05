@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -7,6 +7,8 @@
 //!
 //! - `approach` (the default): from the stepping stones near the return
 //!   portal, up the path through the gate toward the workshop.
+//! - `tooltip`: the approach with the pointer resting on the hotbar's Wind
+//!   Wall slot, so its card shows over the bar.
 //! - `sky`: from the approach, turned toward the Sun and looking up, for
 //!   the daylight sky and its clouds.
 //! - `yard`: from above the yard's south edge, over the Task Wall, the
@@ -76,7 +78,7 @@ fn main() -> Result<(), String> {
     let (at, yaw, tilt) = match view.as_str() {
         "eyes" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, -60.0),
         "hall-eyes" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, -40.0),
-        "approach" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
+        "approach" | "tooltip" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
         // From the approach, turned toward the Sun and tilted up at the sky.
         "sky" => (glam::Vec3::new(0.0, 0.0, -29.0), SKY_YAW, SKY_TILT),
         "yard" | "studio-yard" => (glam::Vec3::new(-3.0, 0.0, -15.0), 0.25, 80.0),
@@ -96,7 +98,7 @@ fn main() -> Result<(), String> {
         other => {
             return Err(format!(
                 "unknown view `{other}`; use approach, sky, yard, hall, lane-east, lane-west, reverse, reverse-top, \
-                 overhead, town-north, town-west, studio-yard, studio-hall, studio-atrium, eyes, or hall-eyes"
+                 overhead, town-north, town-west, tooltip, studio-yard, studio-hall, studio-atrium, eyes, or hall-eyes"
             ));
         }
     };
@@ -127,6 +129,14 @@ fn main() -> Result<(), String> {
     let mut ui = verse::ui::UiBatch::default();
     if let Some(slots) = runtime.everglade_hotbar() {
         zones::everglade::hotbar::draw(&mut ui, &atlas, [1280.0, 800.0], 14.0, &slots);
+        if view == "tooltip" {
+            // A simulated hover: the pointer rests on Wind Wall's slot.
+            let wind = zones::everglade::hotbar::SLOTS
+                .iter()
+                .position(|(intent, ..)| *intent == zones::Intent::WindWall)
+                .ok_or("the hotbar has no Wind Wall")?;
+            zones::everglade::hotbar::draw_tip(&mut ui, &atlas, [1280.0, 800.0], 14.0, wind);
+        }
     }
     if let Some(summary) = runtime
         .studio()

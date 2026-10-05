@@ -471,7 +471,7 @@ fn the_everglade_arch_loads_its_pack_moves_presence_and_the_return_rejoins() {
     let [left, top, width, height] = verse::zones::everglade::hotbar::frame(size, bottom);
     let slot = verse::zones::everglade::hotbar::SLOTS
         .iter()
-        .position(|(intent, _)| *intent == Intent::Levitate)
+        .position(|(intent, ..)| *intent == Intent::Levitate)
         .unwrap();
     let step = width / verse::zones::everglade::hotbar::SLOTS.len() as f32;
     let (x, y) = (left + step * (slot as f32 + 0.5), top + height / 2.0);
@@ -490,13 +490,27 @@ fn the_everglade_arch_loads_its_pack_moves_presence_and_the_return_rejoins() {
     // Stone rises and its slot lights and starts its cooldown.
     let stone = verse::zones::everglade::hotbar::SLOTS
         .iter()
-        .position(|(intent, _)| *intent == Intent::WallOfStone)
+        .position(|(intent, ..)| *intent == Intent::WallOfStone)
         .unwrap();
     let x = left + step * (stone as f32 + 0.5);
     scene.pointer(10, PointerPhase::Down, x, y).unwrap();
     scene.pointer(10, PointerPhase::Up, x, y).unwrap();
     let slot = scene.world.everglade_hotbar().unwrap()[stone];
     assert!(slot.active && slot.cooldown > 0.0);
+    // A long press shows a slot's card and lifts without casting.
+    let wind = verse::zones::everglade::hotbar::SLOTS
+        .iter()
+        .position(|(intent, ..)| *intent == Intent::WindWall)
+        .unwrap();
+    let x = left + step * (wind as f32 + 0.5);
+    scene.pointer(11, PointerPhase::Down, x, y).unwrap();
+    assert_eq!(scene.held_slot_tip(), None);
+    scene.slot_touch.as_mut().unwrap().3 -= f64::from(verse::tooltip::LONG_PRESS);
+    assert_eq!(scene.held_slot_tip(), Some(wind));
+    scene.pointer(11, PointerPhase::Up, x, y).unwrap();
+    assert_eq!(scene.held_slot_tip(), None);
+    assert!(!scene.world.everglade_hotbar().unwrap()[wind].active);
+    assert!(scene.world.everglade_hotbar().unwrap()[stone].active);
     assert!(scene.zone_intent(Intent::Interact).is_err());
     assert!(scene.studio.is_none());
 
