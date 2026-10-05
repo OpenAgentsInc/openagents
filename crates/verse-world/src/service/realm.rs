@@ -585,6 +585,7 @@ impl Realm {
                     life: a.actor().into(),
                     epoch: a.epoch(),
                     accepted_sequence: a.accepted_sequence(),
+                    applied_movement: None,
                 }),
                 body: result.unwrap_or_else(|message| super::wire::Reply::Refused {
                     code: "character_lifecycle".into(),

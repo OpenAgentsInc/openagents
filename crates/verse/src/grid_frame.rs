@@ -75,6 +75,7 @@ pub fn figure(pos: Vec3, rot: Quat, gait: &Gait, speed: f32) -> Instance {
         transform: Mat4::from_rotation_translation(rot, pos),
         animation: Selection::Named(state(speed, pos.y)),
         time: gait.cycle(),
+        animation_epoch: None,
         emission: Vec3::ZERO,
     }
 }
@@ -89,6 +90,7 @@ pub fn fixed(model: &str, transform: Mat4) -> Instance {
         transform,
         animation: 0.into(),
         time: 0.,
+        animation_epoch: None,
         emission: Vec3::ZERO,
     }
 }

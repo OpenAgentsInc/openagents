@@ -210,6 +210,7 @@ mod tests {
                 },
                 epoch: 1,
                 accepted_sequence: sequence,
+                applied_movement: None,
             }),
             body: Reply::Refused {
                 code: "storage_busy".into(),

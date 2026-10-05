@@ -6,6 +6,67 @@ use crate::{
 };
 use verse_engine::core::LifeId;
 impl Game {
+    /// Retains actual completed movement, independently of envelope admission.
+    pub(super) fn record_movement_confirmations(&mut self) -> Result<(), String> {
+        let lives: Vec<_> = std::iter::once(self.player_life())
+            .chain(
+                self.additional_players
+                    .values()
+                    .map(|p| p.admission.actor()),
+            )
+            .collect();
+        for life in lives {
+            let Some(baseline) = self.movement_baseline(life)? else {
+                continue;
+            };
+            if baseline.profile != crate::movement::Profile::Frames {
+                continue;
+            }
+            let clock = if life.actor == self.player_actor() {
+                self.primary.frame_clock.as_mut()
+            } else {
+                self.additional_players
+                    .get_mut(&life.actor)
+                    .unwrap()
+                    .frame_clock
+                    .as_mut()
+            }
+            .unwrap();
+            if clock
+                .confirmations
+                .back()
+                .is_some_and(|b| b.applied_sequence == baseline.applied_sequence)
+            {
+                clock.confirmations.pop_back();
+            }
+            if clock.confirmations.len() == crate::movement::frames::MAX_QUEUED {
+                clock.confirmations.pop_front();
+            }
+            clock.confirmations.push_back(baseline);
+        }
+        Ok(())
+    }
+    pub(crate) fn movement_confirmations(&self, life: LifeId) -> Vec<crate::movement::Baseline> {
+        let Some(admission) = self.player_admission(life.actor) else {
+            return Vec::new();
+        };
+        if admission.actor() != life {
+            return Vec::new();
+        }
+        let clock = if life.actor == self.player_actor() {
+            self.primary.frame_clock.as_ref()
+        } else {
+            self.additional_players[&life.actor].frame_clock.as_ref()
+        };
+        clock.map_or_else(Vec::new, |c| {
+            c.confirmations
+                .iter()
+                .copied()
+                .filter(|b| b.life == life && b.epoch == admission.epoch())
+                .collect()
+        })
+    }
+
     /// Starts interval movement from a stationary grounded authority pose.
     /// Repeated entry is idempotent and cannot renew the clock's lag budget.
     pub fn begin_movement_frames(
@@ -204,6 +265,58 @@ mod tests {
             g.tick(1. / 30., [0.; 2]).unwrap();
         }
     }
+    #[test]
+    fn confirmations_require_applied_physics_are_bounded_and_retire_with_control() {
+        for secondary in [false, true] {
+            let mut g = world();
+            let owner = Controller(if secondary { 10 } else { 9 });
+            let life = if secondary {
+                g.add_player(owner, Vec3::new(5., 0., -22.)).unwrap()
+            } else {
+                g.player_life()
+            };
+            ticks(&mut g, 1);
+            g.begin_movement_frames(owner, life).unwrap();
+            for _ in 0..24 {
+                let f = frame(&g, life, false);
+                let sequence = f.sequence;
+                let end = f.end().unwrap();
+                g.submit_movement_frame(owner, f).unwrap();
+                assert!(
+                    g.movement_confirmations(life)
+                        .iter()
+                        .all(|b| b.applied_sequence < sequence)
+                );
+                ticks(&mut g, 1);
+                let history = g.movement_confirmations(life);
+                assert!(history.len() <= crate::movement::frames::MAX_QUEUED);
+                let applied = history.last().unwrap();
+                assert_eq!(applied.applied_sequence, sequence);
+                assert_eq!(applied.physics_step, end);
+                assert_eq!(
+                    applied.character.feet,
+                    g.movement_baseline(life).unwrap().unwrap().character.feet
+                );
+                applied.validate().unwrap();
+            }
+            let clock = if secondary {
+                &g.additional_players[&life.actor].frame_clock
+            } else {
+                &g.primary.frame_clock
+            };
+            let encoded = serde_json::to_vec(clock.as_ref().unwrap()).unwrap();
+            assert!(
+                !std::str::from_utf8(&encoded)
+                    .unwrap()
+                    .contains("confirmations")
+            );
+            let restored: Clock = serde_json::from_slice(&encoded).unwrap();
+            assert!(restored.confirmations.is_empty());
+            g.handoff_player(life, Controller(0)).unwrap();
+            assert!(g.movement_confirmations(life).is_empty());
+        }
+    }
+
     #[test]
     fn expired_admission_fences_control_before_the_next_simulation_tick() {
         for secondary in [false, true] {

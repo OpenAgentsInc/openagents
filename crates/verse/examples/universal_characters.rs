@@ -40,6 +40,7 @@ fn main() -> Result<(), String> {
                 * chamber::basis(),
             animation: State::Idle.into(),
             time: 0.4,
+            animation_epoch: None,
             emission: Vec3::ONE,
         })
         .collect();

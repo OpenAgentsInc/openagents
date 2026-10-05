@@ -1,0 +1,9 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+error[E0599]: no associated function or constant named `IDENTITY` found for struct `physics::queries::Pose` in the current scope
+   --> crates/verse-world/src/prediction/local.rs:749:25
+    |
+749 |             pose: Pose::IDENTITY,
+    |                         ^^^^^^^^ associated function or constant not found in `physics::queries::Pose`
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `verse-world` (lib test) due to 1 previous error

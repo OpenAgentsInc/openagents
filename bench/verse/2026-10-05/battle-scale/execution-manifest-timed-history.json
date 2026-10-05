@@ -1,0 +1,122 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "efeabd2b7743fbc18877b555c7265280fa390b70",
+    "source_patch": "implementation-timed-history.patch",
+    "source_patch_sha256": "b3b4e0f105a327010e399a94255151baa1384d548090f98df777190da317275e",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "1e21aaadf3258d0afc3376d1a9a5242299cb226055143dfe72f111b71cd0c861",
+    "renderer_budget": "3cea810b4a0642cb3b356c4be8765ce0b6a349cb5b1b554c7ae1b3541ffa3f0e"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-timed-history.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-timed-history.json",
+        "300"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.672567835019436,
+      "status": "passed",
+      "acceptance_failures": [],
+      "receipt_sha256": "22313e2df23a2b75d01e08c836bd8de4d99917246e71d97b8e2e8f85d7fed102"
+    },
+    {
+      "receipt": "authority-timed-history.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-timed-history.json",
+        "600"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 76.59076520602684,
+      "status": "passed",
+      "receipt_sha256": "6c6b9b72f931dbc4408e9f2538e0a92b9c86dea6af715435b49a3f0f8d6c032e"
+    },
+    {
+      "receipt": "network-timed-history.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-timed-history.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.2648539210204,
+      "status": "passed",
+      "receipt_sha256": "568e4a1fc033603bbbb19ff51c49a60fc6a76b47481d9222a509883d904ce1fb"
+    },
+    {
+      "receipt": "combined-timed-history-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-timed-history-01.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.92531703202985,
+      "status": "passed",
+      "receipt_sha256": "a156e970c337865ff8d83da1fba96531e0a12806e0b9c51f1e209e22016d831f"
+    },
+    {
+      "receipt": "combined-timed-history-02.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-timed-history-02.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.91231139696902,
+      "status": "passed",
+      "receipt_sha256": "8f3661d5a9c9164a83dfe4a836a27b6e1bfe0df8dd0b9e8165b58f3741fc88c8"
+    },
+    {
+      "receipt": "combined-timed-history-03.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-timed-history-03.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.80016563698882,
+      "status": "passed",
+      "receipt_sha256": "7cc2b42461ff6d3fa87052a096c4195c55ad08dc1540255d40e2679298a33a4e"
+    },
+    {
+      "receipt": "combined-timed-history-soak.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-timed-history-soak.json",
+        "600"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 601.5349480960285,
+      "status": "failed",
+      "receipt_sha256": "e12112e28dbf8ecb839bc8df75692ea3751e66e5665dac3500cd3a10f25431a8"
+    }
+  ],
+  "aggregate_status": "failed"
+}

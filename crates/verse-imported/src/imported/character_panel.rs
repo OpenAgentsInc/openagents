@@ -1102,6 +1102,7 @@ mod tests {
                     life: data.life,
                     epoch: 1,
                     accepted_sequence: 0,
+                    applied_movement: None,
                 }))
                 .unwrap();
             }

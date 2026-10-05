@@ -1,0 +1,38 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "fae8c18a22fc6cbf007d7dcf0182423137f896ef",
+    "source_patch": "implementation-wall-phase.patch",
+    "source_patch_sha256": "70250a3fe389d9ebcd4f95bdd52ba50945972d628692ca4d5cb530c9b70ce1c2",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "1fca3e90bf75d2862dd8c2c8788d0be3f9dee7a9a16bf26caeb075f495c61ca7"
+  },
+  "runs": [
+    {
+      "receipt": "combined-wall-phase-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-wall-phase-01.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.92866562504787,
+      "status": "failed",
+      "receipt_sha256": "f3b418b9947d922140204786bdc702c85f33ea1c8bd5b9b4080258b244a781dd"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "verse.battle.source.v1",
+  "base_revision": "94a4bde411b66aa683cf0219182749d140c6a522",
+  "source_patch": "implementation-post-cinematic.patch",
+  "source_patch_sha256": "4fdc6b71c5c6b9cef10c9be6bd541d26ee71eb1a3db0bbd3257644e3d3d2f1dc",
+  "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+}

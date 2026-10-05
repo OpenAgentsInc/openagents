@@ -1,0 +1,9 @@
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.04s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/physics-a0f32606478f67d1)
+
+running 1 test
+test character::tests::recorded_three_capsules_use_a_bounded_atomic_motor_outcome ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 131 filtered out; finished in 0.01s
+

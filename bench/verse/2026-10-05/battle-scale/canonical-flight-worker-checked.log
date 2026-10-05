@@ -1,0 +1,52 @@
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2845:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2845 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.23s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-895f92bfb62bd90a)
+
+running 19 tests
+test service::worker::delayed::delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline ... FAILED
+test service::worker::tests::coalesced_tls_inputs_bind_only_latest_moves_and_preserve_jump_order ... ok
+test service::worker::tests::explicit_read_backpressure_retries_projections_without_replaying_commands ... ok
+test service::worker::tests::interval_recovery_requires_verified_lifecycle_change ... ok
+test service::worker::tests::movement_arriving_during_refresh_replaces_the_unsent_command ... ok
+test service::worker::tests::native_inventory_polling_is_bounded_and_excludes_spectators ... ok
+test service::worker::tests::native_polling_and_sustained_movement_fit_the_tls_request_budget ... ok
+test service::worker::tests::optional_observations_remain_bounded_and_refusals_do_not_refresh_snapshots ... ok
+test service::worker::tests::read_backoff_separates_classes_and_bounds_explicit_refusal_retries ... ok
+test service::worker::tests::retired_interval_backlog_rejects_without_refreshing_each_scene ... ok
+test service::worker::tests::retirement_requires_an_irreversible_verified_control_transition ... ok
+test service::worker::tests::spectator_worker_checks_context_budgets_and_consumer_lifetime ... ok
+test service::worker::tests::teleport_outcome_releases_barrier_for_following_input_and_replication ... ok
+test service::worker::tests::tls_worker_polls_admits_commands_and_stops_under_backpressure ... ok
+test service::worker::tests::tracked_inputs_bind_before_outcomes_and_reject_stale_control ... ok
+test service::worker::tests::unsent_movement_coalesces_without_crossing_actions_or_control_fences ... ok
+test service::worker::tests::verified_control_reuse_requires_recent_exact_life_and_epoch ... ok
+test service::worker::tests::worker_binds_complete_intervals_and_snapshots_confirm_only_completed_time ... ok
+test service::worker::tests::worker_pipelines_ordered_actions_before_command_acknowledgments ... ok
+
+failures:
+
+---- service::worker::delayed::delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline stdout ----
+VERSE_V04_TLS_EVIDENCE {"up_ms":67,"down_ms":100,"bound":87,"accepted":82,"observations":13,"p95_m":0.5397698879241943,"maximum_m":0.5397698879241943,"mode_resets":0}
+
+thread 'service::worker::delayed::delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline' (3723343) panicked at crates/verse-world/src/service/worker_delayed.rs:194:5:
+Actual delayed TLS correction p95: 0.5397699
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    service::worker::delayed::delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline
+
+test result: FAILED. 18 passed; 1 failed; 0 ignored; 0 measured; 503 filtered out; finished in 10.56s
+
+error: test failed, to rerun pass `-p verse-world --lib`

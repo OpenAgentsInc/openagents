@@ -295,3 +295,7 @@ required-features = ["remote-chamber"]
 [[example]]
 name = "terminal_stress"
 required-features = ["desktop"]
+
+[[example]]
+name = "battle_scale"
+required-features = ["remote-chamber"]

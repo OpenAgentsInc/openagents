@@ -27,7 +27,7 @@ impl RecoveryObservations {
 
 /// Movement leases last half a simulated second, rounded to an authority interval.
 pub const HELD_STEPS: u64 = 60;
-#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Held {
     pub axes: [f32; 2],
@@ -64,7 +64,7 @@ impl Held {
 }
 
 /// Current authoritative walking scale and jump routing for local estimates.
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {
     pub walking_scale: f32,
@@ -100,7 +100,7 @@ pub enum Profile {
     Frames,
 }
 /// Authoritative movement state after all admitted movement and jump input is consumed.
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Baseline {
     #[serde(default)]

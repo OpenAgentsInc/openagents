@@ -1,0 +1,52 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation-frontline-defeat.patch",
+    "source_patch_sha256": "0e16f88d61f2d3ff2ac7d53a7436dd34aa87346202ec59eed98627f781abfc82",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "930d29986107652e875a7687f1ec7b821238ae53b7aca7b28a9746f92733ebed"
+  },
+  "runs": [
+    {
+      "receipt": "authority-frontline-defeat.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-frontline-defeat.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 6.146640576014761,
+      "status": "passed",
+      "receipt_sha256": "77d881e40674ed5d5a0014aff4e2d103f5030f13ba7d264e9641c439cb9f2241"
+    },
+    {
+      "receipt": "network-frontline-defeat.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-frontline-defeat.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.19244596801582,
+      "status": "failed",
+      "receipt_sha256": "56f3058c95d56f810b116582c7c9f143c592d3175f9e90e54a5b72ed852673e9"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

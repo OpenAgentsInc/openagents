@@ -1,0 +1,57 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation-fence-credit.patch",
+    "source_patch_sha256": "a65dc46699d63b77293a08e89163b212d349e7fcf7494e8ebeb96eae0affeecf",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "executables": {
+    "battle_scale": "84396709ad3e7befc0719c7bd4af256491a305af2492e3e58055658d0e6f7d74",
+    "renderer_budget": "902b5fc9c2cdfddad8dcf3fd66cc662654cf74d85c1a220429c10312d0b42be2"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-fence-final.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-fence-final.json",
+        "300"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "wall_seconds": 5.659967411018442,
+      "receipt_sha256": "c91eb2f210c21bee97de3d5ff10b4b912b893c1435830b508a4b03c2b8bfe49f"
+    },
+    {
+      "receipt": "authority-fence-final.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-fence-final.json",
+        "60"
+      ],
+      "status": "failed",
+      "exit_code": 1,
+      "wall_seconds": 5.228398463019403,
+      "receipt_sha256": "9df23b9d18d94769f212512845332b5c7993747882ead36181938171d8e85846"
+    },
+    {
+      "receipt": "network-fence-pilot.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-fence-pilot.json",
+        "60"
+      ],
+      "status": "failed",
+      "exit_code": 1,
+      "wall_seconds": 60.91065889800666,
+      "receipt_sha256": "4b7111d7499cc3284e1320e644227e1504ed6c66d460dc10eeaa3c994ed1afa3"
+    }
+  ]
+}

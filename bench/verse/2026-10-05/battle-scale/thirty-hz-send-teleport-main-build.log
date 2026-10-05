@@ -1,0 +1,81 @@
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+   Compiling verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+   Compiling verse-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-core)
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+   Compiling verse-net v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-net)
+   Compiling verse-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-lagrange)
+   Compiling verse-zone-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lagrange)
+   Compiling verse-imported v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-imported)
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-imported` (lib) generated 1 warning (run `cargo fix --lib -p verse-imported` to apply 1 suggestion)
+   Compiling verse-zone-lab v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lab)
+warning: `verse-world` (lib) generated 1 warning
+   Compiling verse-zone-ruins v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-ruins)
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:484:12
+    |
+120 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+484 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+495 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+
+warning: function `stream_triangles` is never used
+   --> crates/verse/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: method `land` is never used
+   --> crates/verse/src/zones/grove/mod.rs:200:12
+    |
+159 | impl Grove {
+    | ---------- method in this implementation
+...
+200 |     pub fn land(&self) -> Land {
+    |            ^^^^
+
+warning: `verse` (lib) generated 4 warnings
+error: linking with `cc` failed: exit status: 1
+  |
+  = note:  "cc" "-m64" "/home/christopherdavid/work/openagents-target-agent1/debug/examples/rustcGHloLg/symbols.o" "<228 object files omitted>" "-Wl,--as-needed" "-Wl,-Bstatic" "/home/christopherdavid/work/openagents-target-agent1/debug/deps/{librcgen-7d743e761d0e8809,libyasna-e55341161ff12a2e,libtime-2cfc056cff70ce1c,libpowerfmt-77505c93031bcea1,libnum_conv-33299f5008ccdba6,libderanged-49d385562974953d,libtime_core-0652bb83b5b3af7e,libtempfile-7d640d3bb07d5473,libfastrand-d389aad8579139bd,librustix-87044178b2d1a6dd,liblinux_raw_sys-8d7361e33ee9b249,libverse-5be503e273e12b80,libminiz_oxide-ae834d2fa10fd009,librust_native-3ead3a7be66adc85,libcode_highlight-3a6929b3d1021b14,libtree_sitter_css-2b3dc52ca2d695ac,libtree_sitter_html-5a5b99468bf2e037,libtree_sitter_go-1e61a1eb21048614,libtree_sitter_bash-048cac3965987329,libtree_sitter_json-15aa8ae837759d66,libtree_sitter_python-4bf0be238e7ba7ac,libtree_sitter_typescript-4e4d9dae2be730f5,libtree_sitter_javascript-6d81b6a6efea096c,libtree_sitter_cpp-68be28cd7e5d33fe,libtree_sitter_c-0fcfc36254213817,libtree_sitter_rust-982a948769a94e07,libtree_sitter_highlight-834b7d0724ea688b,libtree_sitter-af9badda4950bf84,libtree_sitter_language-d1e4542f01e45a33,libstreaming_iterator-9f8d596cdf98851a,libregex-1b0a17257923bd49,libregex_automata-d6683540d859265b,libaho_corasick-c2b79b1947395078,libregex_syntax-20454198bae9f6af,libpulldown_cmark-b316ccecf27ffae7,libunicase-2586acc18f2c16a0,libunicode_segmentation-30ab8286fc096b6a,libverse_zone_lagrange-e1e5498c8750f8e8,libverse_lagrange-1f3b9cee451834e0,libverse_zone_lab-be28cf8a75fcf1ec,libverse_zone_ruins-27043f192439e30c,libverse_ruins-4f564a318d381019,libclient_core-116895560b450f7b,libserver_core-1b65873e2af3129b,libvoxel_mesh-31f421e69bc71a56,libdata_runtime-a90dabf35409a2d1,libserde_yaml-d6eb83b069270021,libunsafe_libyaml-985f13d72e289a3c,libcollision_static-24c4826b787901ab,libnet_core-47734a088b9ec314,libmetrics-7b51bd773172fb9a,librapidhash-c6bbb8fd9fea2f22,libcrossbeam_channel-f662728d523c85cd,libcrossbeam_utils-a6e8163c72cc7c4d,libecs_core-25a8c8befb4dbb8e,libvoxel_proxy-15479ae510a34942,libcore_materials-3efc3ac1d4cbfc0c,libcore_units-b94df737171e6822,libanyhow-33aa09c41829759b,libterminal_control-fd0ca9599e51d7e3,libterminal_core-66df88711ece23ce,libcoder_vt-868168050acb606b,libvte-2ce08cd1ff5f37bb,libverse_imported-b2864acb97521dde,libverse_content-81c37aa83ed4a707,libresvg-f7973d5ed11728af,librgb-abbadff1fcf39bca,libusvg-2384e0e10327c2b5,libimagesize-334f541eef5bff9d,libdata_url-de546c535aeef9f6,libsimplecss-0731048338d62ea6,libroxmltree-34895674d05ab691,libsvgtypes-e2a1838df8a317fd,libkurbo-a0eb0b3ee8fdeaef,libpolycool-88a01235b2da0547,libsiphasher-bb3f4f08cf682f6c,libtiny_skia-c9cc941225e58cbd,libtiny_skia_path-fba389ae74810a4c,libstrict_num-3fb243dd812ea618,libfloat_cmp-6f8e9645314d1378,libarrayref-9202971aa5f4c9ee,libgym_leaderboard-8598dcaeea26f489,libreqwest-787d9d84255a36e9,libhyper_rustls-fc88e425bd4c5234,libserde_urlencoded-adbb1ced87598ce6,libryu-165e4d83438b694e,libtower_http-6b70e9a709b5cb38,libtower-b3809ea26117424b,libtower_layer-71414212be0da1f7,libhyper_util-72162a063a6fa4a5,libipnet-241870d733a6b50e,libtower_service-407a1cd7ae16c1dd,libtracing-99c8ecb7755396e0,libtracing_core-74dc10219f1950e7,libhyper-de529c0ce54a0764,libwant-767f9615c78a11d2,libtry_lock-4cd2fe57154c36e6,libatomic_waker-e5e89b778c05eae9,libhttpdate-e42b11316a73308d,libfutures_channel-26074d4f2bd4c995,libhttp_body_util-89708133881aa3f0,libhttp_body-26dc734150ae4b6f,libsync_wrapper-e48614536da21126,libatif-fc204874bdb786e6,libgym_bridge-3a2593166f9d92b5,libverse_net-2521388b5b8983c2,libweb_time-0dc2f688d7ff56b1,libverse_core-71b68e28eb58ea0a,libtoml-8c195e601b5146cd,libtoml_writer-8af4301251c6713f,libwinnow-5724f8681b1b3b9b,libtoml_parser-928143d47c9f4ab7,libwinnow-fe340e7a0b24542a,libserde_spanned-ec5343623fd3ac49,libtoml_datetime-e06e7ff31b3899fc,libverse_pbr-994d1705923652ae,libpollster-87809dc5714eb977,libgltf-15fed55d052874cb,libbase64-05fb48901da6c7a8,liburlencoding-b7a1ad31fc155ade,libbyteorder-c16a13154be8bb2f,libgltf_json-4ff3f6f68fff44de,liblazy_static-003d0f6c880a6a99,libimage-a4009a946d7184f3,libbyteorder_lite-ccf39e239709efad,libmoxcms-79edfbdaffc76711,libpxfm-f96ec165ea7955a3,libzune_jpeg-191e15dd60b6a027,libzune_core-1b1f97c27b642a00,libverse_gfx-9eabd91d3b389e45,libverse_world-7cfc19baace70a8f,libcoder_access-153b2c1e63d37d8a,libcoder_connect-bff5712bc0266d04,libqrcodegen-7dae67b0fcf55158,libnostr_transport-7fad14eeff2bd661,libcoder_history-4f276c8a6e5477cc,libnotify-2d1d5e2ba9721bd2,libwalkdir-35f200a2cbc52160,libsame_file-d3c05fa08fc1121e,libinotify-85c10e038b2f6036,libinotify_sys-0a91fa12dedb2d01,libnotify_types-053ac1e1593734ce,libcoder_reach-61098c15e83855db,liburl-e90d8de944e23acd,libidna-673d4303c34b30bf,libidna_adapter-554ff5efeba471a3,libicu_properties-14ac508dbf46a4d5,libicu_properties_data-ed2d014cfdff544e,libicu_normalizer-fd5d37367d48ac8f,libicu_normalizer_data-29bd342b3408c403,libicu_collections-eb3c5da15debefbf,libutf8_iter-9648d233b120e42e,libpotential_utf-184881f7d55075ef,libicu_provider-4cacb83e32f01af2,libicu_locale_core-08fdff62ab080046,libtinystr-6758b0d9f5670f35,liblitemap-dcf936503d37bd39,libwriteable-aee773b8f9588676,libzerovec-1c7c29e6cd1a4ba7,libzerotrie-b5b8575430c638e0,libyoke-2f914b5319b338ee,libstable_deref_trait-eb81eec56f31d4b1,libzerofrom-b24cffe9f0b6ec0a,libform_urlencoded-30ee8c9b68b67810,libpercent_encoding-04b199d204ef816e,libtokio_tungstenite-8687d102418444da,libwebpki_roots-8e0b8b62038af8bb,libwebpki_roots-2346d4a9d4eadb07,libtungstenite-042560f7e6ea6d0e,libdata_encoding-a0b15fa0181302b2,librand-e32cfb8cfccc46f1,libgetrandom-40927fdb1eaaaa9e,libchacha20-78f4aba693535fe2,libsha1-c8c897bc6c736bde,libhttparse-fdd448910e772fde,libhttp-7245e47e9557fa6c,libfutures_util-6bc9fa08d76f0e87,libfutures_io-c7909cf426daeae3,libslab-5a82f5ac5267aef8,libfutures_sink-3019c0b9b26f9271,libfutures_task-e5030587a491edf0,libfutures_core-6eef8ae4428d3e60,libbase64-ef7c71042959ea5a,libnostr-ef8616c0d9ef7211,libsha2-6daa6301cd0a6589,libcpufeatures-b046a17fe68bc09f,libdigest-7047f639dfbacc82,libctutils-c38c81d081c754ca,libcmov-5439428be9711e34,libconst_oid-5e9c79d04919f2df,libcrypto_common-055bcb34b282bbce,librand_core-b5fb47911cba15b8,libblock_buffer-ff9058d599998a3e,libhybrid_array-37000b80d3adfdc0,libryu_js-fb08e18ce005616b,libtokio_rustls-5acd1061708ef3c0,librustls-4b34c7b6e5fb6b72,libsubtle-51d9f2e97fd77436,libwebpki-6623c1c651baa744,libring-146965fcd88449e6,libgetrandom-d4b832033c85f2d6,libuntrusted-97810520237763c0,librustls_pki_types-2fe888ca0fd177cd,libzeroize-30c889b158944788,libsecp256k1-2cd150711178ca32,librand-8c6123e8e21289e0,librand_chacha-26ca46d2da00e5e6,libppv_lite86-7f080b5cae326139,librand_core-180e290f766bed93,libgetrandom-2cc5f9e83ee6f1aa,libsecp256k1_sys-3d06803d4c993824,libphysics-ba9768f5afcc384d,libwgpu-5e0994734adea544,libstatic_assertions-f44adfad20a31692,libwgpu_core-e58e0d8510bc0192,libwgpu_hal-0718040b7289ef8d,librenderdoc_sys-25deecb8763407bb,libgpu_allocator-70a8e99a08308208,libpresser-c35348461826c0f2,libkhronos_egl-905e0dbe79deebb6,libwayland_sys-e497d5666f36570e,libonce_cell-2af96466339c0192,libportable_atomic-bc184becf31ac971,libdlib-f52845f54b1420b2,libprofiling-ad55e11550478765,libwgpu_naga_bridge-c3bda883aee97184,libordered_float-60501e2a697041ba,libgpu_descriptor-006aab69b0c10f7b,libhashbrown-bb78e362461032d7,libfoldhash-41b4c51199bfed89,libgpu_descriptor_types-4e4a99a24c7aa83f,libash-69b8d4eff9a0c40c,liblibloading-55e9e77aabaf68f9,libnaga-9d23962f5e3774fc,librustc_hash-1eb60a9d29db4dce,liblibm-bc874e9a9405b52f,libhexf_parse-418e3babce0f49aa,libunicode_ident-1559d01666684b40,libbit_set-08b0b3d093dcd409,libbit_vec-3704a94d8f39da54,libcodespan_reporting-6c8fbb084b3cfa9c,libunicode_width-41d6eeb370d05f22,libspirv-a0c7f800842d7331,libhalf-916bb937358d1c39,libzerocopy-e8edcc5f9b043a77,libnum_traits-103ce2a390d632b7,libthiserror-3cd2eeb59b2e4567,libarrayvec-5ddd0952b477bc53,libparking_lot-7b3ebb7159051244,libparking_lot_core-9bedb7ad17a01669,libsmallvec-f32250f872f60944,liblock_api-8c2d92eaab852e67,libscopeguard-9c2379402a25548e,libhashbrown-6f7ee305968e3603,libglow-19ac6b9d0be4a7b1,libwgpu_types-4d2a53309b52ebbe,libraw_window_handle-aee177120ce0550e,libswash-0a8d45fe8d3c98c0,libyazi-a061bb10bc649437,libskrifa-b61c46b48dbc4f09,libread_fonts-2ce1e84dbf53a551,libfont_types-da14627ab622598b,libzeno-5666534ed74e85a8,libverse_engine-652caf7ab812a642,libpng-38f492bdf013900a,libbitflags-32558f083228f1ee,libflate2-487f009c75c02752,libminiz_oxide-d1e6ea282e7fbf99,libfdeflate-ec1104942d092581,libsimd_adler32-79dad12e567b77e0,libcrc32fast-5eea38bb8a018fef,libsha2-f7ec19cc991fc8b1,libcpufeatures-6b91b8401a45c157,libcfg_if-8a23cabd694141b2,libdigest-30067050dca8b234,libblock_buffer-d643652aeff017e0,libcrypto_common-b602413af328412e,libgeneric_array-507b552e94ea78a7,libtypenum-616bf56c01683ee9,libbytemuck-0a32cbfe64d779df,libglam-805f0c007252aca1,libcoder_ui-8b9eabdbdd29dc12,libserde-6add294b7854c950,libtokio-02eb37b9a298b216,libsignal_hook_registry-39592bb56b2ce8b4,liberrno-41cb959a1577806c,libsocket2-ee609f0c068ed908,libbytes-b2e2b6c22704bf2c,libmio-18753c202bb056f3,liblibc-010731c869a51028,liblog-ce1d5e2c569fb106,libpin_project_lite-9a718c0716770040,libserde_json-ab4ad7a0fa938869,libmemchr-a3f76fceac331f1c,libzmij-8cdecdbec75dd8c0,libitoa-e1cf0ba11d02098b,libindexmap-c063355f5b892a08,libhashbrown-3f50b1e7ac65f638,libequivalent-01e821a4d110282a,libfoldhash-b5820346252db416,liballocator_api2-61967c744f8f94a4,libserde_core-28befa98d9b0aa4e}.rlib" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/{libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "-Wl,-Bdynamic" "-ldl" "-lgcc_s" "-lutil" "-lrt" "-lpthread" "-lm" "-ldl" "-lc" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/examples/rustcGHloLg/raw-dylibs" "-B<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/bin/gcc-ld" "-fuse-ld=lld" "-Wl,--eh-frame-hdr" "-Wl,-z,noexecstack" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/secp256k1-sys-b0efc53429149a8a/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/ring-b254da2910e1cf7f/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-bash-69e125bafd578c51/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-c-e4aff454ed18b7b8/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-cpp-f4acd1b7c8901489/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-css-7ad26086ed77dbc8/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-go-0942b4fb2e052dd4/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-2d84b3d809fccc37/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-html-a73e5416b13c0658/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-javascript-d1b9699e555b3b50/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-json-cd659b9eee45859a/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-python-19b03ad6bd07268f/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-rust-4396f98c09bcffff/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/tree-sitter-typescript-e89cd794589d51d6/out" "-L" "/home/christopherdavid/work/openagents-target-agent1/debug/build/blake3-26af24813f67d072/out" "-L" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib" "-o" "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale-91f8e51132a38b7f" "-Wl,--gc-sections" "-pie" "-Wl,-z,relro,-z,now" "-Wl,-O1" "-nodefaultlibs"
+  = note: some arguments are omitted. use `--verbose` to show all linker arguments
+  = note: PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.
+          LLVM ERROR: IO failure on output stream: No space left on device
+          collect2: error: ld returned 1 exit status
+          
+
+error: could not compile `verse` (example "battle_scale") due to 1 previous error

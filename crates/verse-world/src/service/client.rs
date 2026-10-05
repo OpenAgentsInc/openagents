@@ -438,8 +438,23 @@ impl Client {
             return Err("Chamber response context mismatch".into());
         }
         if let Some(control) = &r.control {
+            if let Some(baseline) = control.applied_movement {
+                baseline.validate()?;
+                if baseline.profile != crate::movement::Profile::Frames
+                    || baseline.life != control.life.into()
+                    || baseline.epoch != control.epoch
+                    || baseline.applied_sequence > control.accepted_sequence
+                    || baseline.world_step > control.credit_step
+                {
+                    return Err("Chamber applied movement confirmation is incompatible".into());
+                }
+            }
             if control.credit_step < control.world_step
                 || control.life.instance != self.instance
+                || control
+                    .credit_step
+                    .checked_add(u64::from(crate::movement::frames::MAX_STEPS))
+                    .is_none()
                 || (self.logged_in
                     && !self.player
                     && !matches!(
@@ -2635,6 +2650,7 @@ mod tests {
             life,
             epoch: 2,
             accepted_sequence: 3,
+            applied_movement: None,
         };
         let client = Client {
             public_key: [1; 32],
@@ -2683,6 +2699,40 @@ mod tests {
                 _ => bad.control.as_mut().unwrap().credit_step -= 1,
             }
             assert!(client.validate(2, &request, &bad).is_err());
+        }
+        let applied = crate::movement::Baseline {
+            profile: crate::movement::Profile::Frames,
+            life: life.into(),
+            epoch: response.control.as_ref().unwrap().epoch,
+            applied_sequence: 2,
+            world_step: 4,
+            physics_step: 2,
+            held: Default::default(),
+            policy: Default::default(),
+            character: physics::character::Character::new(glam::DVec3::ZERO),
+            yaw: 0.,
+        };
+        let mut confirmed = response.clone();
+        confirmed.control.as_mut().unwrap().applied_movement = Some(applied);
+        assert!(client.validate(2, &request, &confirmed).is_ok());
+        for field in 0..6 {
+            let mut invalid = confirmed.clone();
+            let proof = invalid
+                .control
+                .as_mut()
+                .unwrap()
+                .applied_movement
+                .as_mut()
+                .unwrap();
+            match field {
+                0 => proof.life.generation += 1,
+                1 => proof.epoch += 1,
+                2 => proof.applied_sequence = 5,
+                3 => proof.world_step += 1,
+                4 => proof.profile = crate::movement::Profile::Arrival,
+                _ => proof.character.feet.x = f64::NAN,
+            }
+            assert!(client.validate(2, &request, &invalid).is_err());
         }
         let mut revived = response;
         revived.control.as_mut().unwrap().life.generation += 1;

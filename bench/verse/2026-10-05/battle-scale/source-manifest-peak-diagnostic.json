@@ -1,0 +1,7 @@
+{
+  "schema": "verse.battle.source.v1",
+  "base_revision": "94555e0d65e06618137bed77e71f51cb12f5f695",
+  "source_patch": "implementation-peak-diagnostic.patch",
+  "source_patch_sha256": "cc9f57e55bb5961e71156041606e0af66c57f27a75fb29cdcc774ea7f1894dd1",
+  "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+}

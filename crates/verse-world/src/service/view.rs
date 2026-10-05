@@ -531,6 +531,7 @@ impl View {
         let Some(mut presentation) = self.replica.sample(alpha)? else {
             return Ok(None);
         };
+        let mut animation_owner = None;
         if let Some(predicted) = predicted {
             let control = self
                 .replica
@@ -581,6 +582,7 @@ impl View {
                 }
                 .into();
                 actor.animation_time = predicted.motion_time;
+                animation_owner = Some((predicted.life, predicted.epoch));
             } else if predicted.axes == [0.; 2]
                 && matches!(
                     actor.animation,
@@ -619,6 +621,9 @@ impl View {
                 life: Some(p.life.into()),
                 animation: p.animation,
                 animation_time: p.animation_time,
+                animation_epoch: animation_owner
+                    .filter(|(life, _)| *life == p.life.into())
+                    .map(|(_, epoch)| epoch),
                 visible: p.visible,
                 health: p.health,
             })
@@ -1086,6 +1091,7 @@ mod tests {
             life,
             epoch: 1,
             accepted_sequence: 0,
+            applied_movement: None,
         });
         super::super::replica::tests::attach_hud(&mut snapshot);
         let mut view = View::new(130, 10., 0).unwrap();
@@ -1280,6 +1286,7 @@ mod tests {
             life,
             epoch: 1,
             accepted_sequence: 0,
+            applied_movement: None,
         });
         super::super::replica::tests::attach_hud(&mut snapshot);
         let mut view = View::new(130, 10., 0).unwrap();
@@ -1390,6 +1397,7 @@ mod tests {
             life,
             epoch: 1,
             accepted_sequence: 0,
+            applied_movement: None,
         });
         super::super::replica::tests::attach_hud(&mut snapshot);
         let mut view = View::new(130, 10., 0).unwrap();
@@ -1435,6 +1443,31 @@ mod tests {
         assert_eq!(
             serde_json::to_vec(view.replica.latest().unwrap()).unwrap(),
             encoded
+        );
+        assert!(
+            original
+                .frame
+                .actors
+                .iter()
+                .all(|actor| actor.animation_epoch.is_none())
+        );
+        assert_eq!(
+            predicted
+                .frame
+                .actors
+                .iter()
+                .find(|actor| actor.life == Some(life.into()))
+                .unwrap()
+                .animation_epoch,
+            Some(pose.epoch)
+        );
+        assert!(
+            predicted
+                .frame
+                .actors
+                .iter()
+                .filter(|actor| actor.life != Some(life.into()))
+                .all(|actor| actor.animation_epoch.is_none())
         );
         assert_eq!(predicted.combat.players[0].position, pose.position);
         let mut foreign = pose;

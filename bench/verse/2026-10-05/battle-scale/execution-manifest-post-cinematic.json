@@ -1,0 +1,109 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "94a4bde411b66aa683cf0219182749d140c6a522",
+    "source_patch": "implementation-post-cinematic.patch",
+    "source_patch_sha256": "4fdc6b71c5c6b9cef10c9be6bd541d26ee71eb1a3db0bbd3257644e3d3d2f1dc",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "3c7de2c9e0a7d9a3fea371c2d289df87916b97eb40d1903ba88e341e1250a1bb",
+    "renderer_budget": "2df85c8a8eb296cd5030994395c520e54030fd8b3e84612c8e330986d731f5c5"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-post-cinematic.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-post-cinematic.json",
+        "300"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.66993234702386,
+      "status": "passed",
+      "acceptance_failures": [],
+      "receipt_sha256": "8d10adadd47507b39528cd6d103a81cc6dca03770c0bc48447351461881a0127"
+    },
+    {
+      "receipt": "authority-post-cinematic.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-post-cinematic.json",
+        "600"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 76.41492152697174,
+      "status": "passed",
+      "receipt_sha256": "5e5751061803c0f87e35a420ec9e6261f6d80759c802b55f84538cd64703cbe7"
+    },
+    {
+      "receipt": "network-post-cinematic.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-post-cinematic.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 60.94804061896866,
+      "status": "passed",
+      "receipt_sha256": "a20abcbaad5d527213ce86c6562052bbb1fec8857fa58ae0f1b836b8955c4c4f"
+    },
+    {
+      "receipt": "combined-post-cinematic-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-post-cinematic-01.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.55484687600983,
+      "status": "passed",
+      "receipt_sha256": "e79d8ce87ea7bfe46dbf8c73516e4cc3a18f620d0bc1f0079e426c6d2c6f11cc"
+    },
+    {
+      "receipt": "combined-post-cinematic-02.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-post-cinematic-02.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.71431778097758,
+      "status": "failed",
+      "receipt_sha256": "93008d83e9f37207dcba3c5c6d361c3d617fa7337667ba0be49daaadf9f8550a"
+    },
+    {
+      "receipt": "combined-post-cinematic-03.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-post-cinematic-03.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.694985374982934,
+      "status": "passed",
+      "receipt_sha256": "cd716f6606c075b126448dedb866ee9654f9a48a6ad16bd7014271955270b6fe"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

@@ -135,13 +135,15 @@ async fn interval_stream(durable_stall: bool, stall_ms: u64, up_ms: u64, down_ms
     local.advance(0.).unwrap();
     let (input, inputs, updates, mut output) = channels();
     let (stop, stopping) = oneshot::channel();
-    let mut task = tokio::spawn(run(
+    let observer = Observer::default();
+    let mut task = tokio::spawn(run_profiled(
         client,
         Cursor::new(120),
         NATIVE_CADENCE,
         inputs,
         updates,
         stopping,
+        observer.clone(),
     ));
     let started = Instant::now();
     let mut last = started;
@@ -278,6 +280,27 @@ async fn interval_stream(durable_stall: bool, stall_ms: u64, up_ms: u64, down_ms
         serde_json::json!({"up_ms":up.as_millis(),"down_ms":down.as_millis(),"durable_stall_ms":stall_ms,"bound":bound,"accepted":accepted,"observations":corrections.len(),"p95_m":p95,"maximum_m":corrections.last().unwrap(),"mode_resets":0})
     );
     assert!(p95 < 0.1, "Actual delayed TLS correction p95: {p95}");
+    let reads: Vec<_> = observer
+        .drain()
+        .samples
+        .into_iter()
+        .filter(|sample| sample.accepted_snapshot)
+        .collect();
+    assert!(reads.len() > 10);
+    assert!(
+        reads
+            .iter()
+            .any(|read| read.turnaround_ms > NATIVE_CADENCE.as_secs_f64() * 1000.),
+        "Fixture must observe a slow snapshot response"
+    );
+    assert!(
+        reads.windows(2).all(|pair| {
+            pair[0].turnaround_ms <= NATIVE_CADENCE.as_secs_f64() * 1000.
+                || pair[1].started_at.duration_since(pair[0].verified_at)
+                    >= Duration::from_millis(40)
+        }),
+        "Slow snapshot responses must yield request capacity before the next read"
+    );
     let _ = stop.send(());
     task.await.unwrap().unwrap();
     proxy.abort();

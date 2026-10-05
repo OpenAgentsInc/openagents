@@ -1,0 +1,159 @@
+{
+  "schema": "verse.battle.capacity.v1",
+  "mode": "authority",
+  "seconds": 60,
+  "players": 20,
+  "hostile_npcs": 40,
+  "cultist_health": 20000,
+  "delay_ms_per_chunk": 40,
+  "jitter_ms_per_chunk": 20,
+  "wire_version": 26,
+  "debug_assertions": true,
+  "status": "complete",
+  "budgets": {
+    "simulation_p99_upper_bound_ms": 33.333333333333336,
+    "render_cpu_p95_ms": 16.666666666666668,
+    "render_gpu_p95_ms": 16.666666666666668,
+    "snapshot_age_p95_ms": 400.0,
+    "minimum_live_hostiles": 40
+  },
+  "limits": [
+    "Scratch authority and clients share this process and machine.",
+    "Offscreen rendering has no display surface, capture, or physical input-to-display measurement.",
+    "Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.",
+    "GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."
+  ],
+  "content": [
+    124,
+    243,
+    126,
+    248,
+    195,
+    44,
+    215,
+    87,
+    181,
+    10,
+    243,
+    127,
+    189,
+    47,
+    47,
+    43,
+    136,
+    92,
+    158,
+    178,
+    155,
+    54,
+    14,
+    221,
+    102,
+    32,
+    250,
+    111,
+    190,
+    151,
+    62,
+    36
+  ],
+  "phase": "authority_setup",
+  "authority": {
+    "ticks": 1800,
+    "accepted_inputs": 23502,
+    "refused_inputs": 12498,
+    "minimum_live_hostiles": 40,
+    "measurements": {
+      "schema": "verse.frame.measurements.v1",
+      "warmup_frames": 120,
+      "startup": {
+        "command_dispatch_cpu_ms": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 0.001863,
+          "p95": 0.024975,
+          "p99": 0.032354,
+          "maximum": 0.089303
+        },
+        "simulation_cpu_ms": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 0.005639,
+          "p95": 0.007243,
+          "p99": 0.007958999999999999,
+          "maximum": 0.009951
+        }
+      },
+      "steady": {
+        "command_dispatch_cpu_ms": {
+          "samples": 1680,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 0.083716,
+          "p95": 0.15027500000000002,
+          "p99": 0.183213,
+          "maximum": 0.354932
+        },
+        "simulation_cpu_ms": {
+          "samples": 1680,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 3.801507,
+          "p95": 4.604719,
+          "p99": 5.662903,
+          "maximum": 8.703545
+        }
+      },
+      "omitted_series": 0,
+      "limits": {
+        "series_per_phase": 48,
+        "samples_per_series": 8192
+      },
+      "sampling": "First bounded observations in each phase; omissions are counted."
+    },
+    "query_profile": {
+      "ray": {
+        "calls": 45574,
+        "errors": 0,
+        "truncated": 1,
+        "nodes": 136722,
+        "triangles": 546888,
+        "capsule_tests": 0,
+        "scene_nodes": 2802400,
+        "scene_candidates": 59393,
+        "wall_seconds": 0.03865695199999959,
+        "maximum_wall_seconds": 0.0000132
+      },
+      "overlap": {
+        "calls": 305590,
+        "errors": 0,
+        "truncated": 0,
+        "nodes": 1156908,
+        "triangles": 3667128,
+        "capsule_tests": 147811,
+        "scene_nodes": 20122560,
+        "scene_candidates": 852284,
+        "wall_seconds": 1.7972479749999626,
+        "maximum_wall_seconds": 0.000136802
+      },
+      "sweep": {
+        "calls": 839134,
+        "errors": 0,
+        "truncated": 1,
+        "nodes": 3060486,
+        "triangles": 9770352,
+        "capsule_tests": 375157,
+        "scene_nodes": 52632522,
+        "scene_candidates": 2279166,
+        "wall_seconds": 2.1164103120000006,
+        "maximum_wall_seconds": 0.000115014
+      }
+    },
+    "motor_recovery": 0
+  },
+  "error": null,
+  "acceptance": "passed",
+  "acceptance_failures": []
+}

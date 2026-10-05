@@ -1,0 +1,52 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation-bounded-prediction.patch",
+    "source_patch_sha256": "9bab3a7b8075955e43a462166100821e3db5ecc40957a3acdd54f35248ffc14d",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "9b36bfeddb9826a943a69ea153c1625ce709775e7650bb77550b49c7f9a22cf0"
+  },
+  "runs": [
+    {
+      "receipt": "authority-bounded-prediction.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-bounded-prediction.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 6.053158892027568,
+      "status": "passed",
+      "receipt_sha256": "4dd7ae758b71bf44cfe56248394fe9180686ac473b42aa647d542421a129fca9"
+    },
+    {
+      "receipt": "network-bounded-prediction.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-bounded-prediction.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.124030973005574,
+      "status": "failed",
+      "receipt_sha256": "4361da8bdc3aeeb3f3ff8d1ef9aaa6394ca9cc7d95d9846b98614792dec99dda"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

@@ -1,0 +1,38 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "94555e0d65e06618137bed77e71f51cb12f5f695",
+    "source_patch": "implementation-peak-diagnostic.patch",
+    "source_patch_sha256": "cc9f57e55bb5961e71156041606e0af66c57f27a75fb29cdcc774ea7f1894dd1",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "3ac26c19dbeb36ed19eeeb53c9a2588157ad5124e8d9c65c82d95833aca545ac"
+  },
+  "runs": [
+    {
+      "receipt": "combined-peak-diagnostic-soak.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-peak-diagnostic-soak.json",
+        "600"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 602.0749131149496,
+      "status": "failed",
+      "receipt_sha256": "f3a1a581e623b8e8fa542bcd81700fb35b4a36824babc85ff435ea52550adaae"
+    }
+  ],
+  "purpose": "Diagnostic soak: retain strongest correction and release completed measurement trees; no aggregate scale acceptance claim.",
+  "aggregate_status": "diagnostic_failed"
+}

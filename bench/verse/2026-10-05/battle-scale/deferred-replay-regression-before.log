@@ -1,0 +1,38 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2845:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2845 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+
+thread 'opt d2ke4wvao6x1zxhp8i45v58t1' (3863698) panicked at /rustc-dev/8bab26f4f68e0e26f0bb7960be334d5b520ea452/compiler/rustc_codegen_ssa/src/back/write.rs:843:21:
+Error writing pre-lto-bitcode file `/home/christopherdavid/work/openagents-target-agent1/debug/incremental/verse_world-188tfkh7syfvn/s-hmxn2wifcu-0oi1p4j-working/d2ke4wvao6x1zxhp8i45v58t1.pre-lto.bc`: No space left on device (os error 28)
+stack backtrace:
+   0:     0x77631a6901f9 - <<std[1e3c4ec04c5261a9]::sys::backtrace::BacktraceLock>::print::DisplayBacktrace as core[37f591cfbe66b0b1]::fmt::Display>::fmt
+   1:     0x77631ae20cc8 - core[37f591cfbe66b0b1]::fmt::write
+   2:     0x77631c20d936 - <std[1e3c4ec04c5261a9]::sys::stdio::unix::Stderr as std[1e3c4ec04c5261a9]::io::Write>::write_fmt
+   3:     0x77631a6663fe - std[1e3c4ec04c5261a9]::panicking::default_hook::{closure#0}
+   4:     0x77631a683b33 - std[1e3c4ec04c5261a9]::panicking::default_hook
+   5:     0x776319476c31 - std[1e3c4ec04c5261a9]::panicking::update_hook::<alloc[24b8200b0946867]::boxed::Box<rustc_driver_impl[4e5b0da0f4005eeb]::install_ice_hook::{closure#1}>>::{closure#0}
+   6:     0x77631a683e12 - std[1e3c4ec04c5261a9]::panicking::panic_with_hook
+   7:     0x77631a6664c2 - std[1e3c4ec04c5261a9]::panicking::panic_handler::{closure#0}
+   8:     0x77631a65a9a9 - std[1e3c4ec04c5261a9]::sys::backtrace::__rust_end_short_backtrace::<std[1e3c4ec04c5261a9]::panicking::panic_handler::{closure#0}, !>
+   9:     0x77631a667f2d - __rustc[6ef78fba13ac776c]::rust_begin_unwind
+  10:     0x7763171192dc - core[37f591cfbe66b0b1]::panicking::panic_fmt
+  11:     0x77631bf52543 - std[1e3c4ec04c5261a9]::sys::backtrace::__rust_begin_short_backtrace::<rustc_codegen_ssa[20a34f9232644acf]::back::write::spawn_work<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>::{closure#0}, ()>
+  12:     0x77631bf5192b - <std[1e3c4ec04c5261a9]::thread::lifecycle::spawn_unchecked<rustc_codegen_ssa[20a34f9232644acf]::back::write::spawn_work<rustc_codegen_llvm[49149b7e7b12cc7]::LlvmCodegenBackend>::{closure#0}, ()>::{closure#1} as core[37f591cfbe66b0b1]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  13:     0x77631bf5556c - <std[1e3c4ec04c5261a9]::sys::thread::unix::Thread>::new::thread_start
+warning: `verse-world` (lib test) generated 1 warning
+error: could not compile `verse-world` (lib test); 1 warning emitted
+
+Caused by:
+  No space left on device (os error 28)
+
+Caused by:
+  failed to parse process output: `/home/christopherdavid/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustc --crate-name verse_world --edition=2024 crates/verse-world/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C opt-level=3 -C embed-bitcode=no -C debuginfo=2 --deny=unsafe_op_in_unsafe_fn '--deny=clippy::unimplemented' --warn=unexpected_cfgs '--deny=clippy::todo' --allow=linker_messages '--deny=clippy::dbg_macro' --check-cfg 'cfg(kani)' -C debug-assertions=on --test --cfg 'feature="service-auth"' --cfg 'feature="service-net"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("service-auth", "service-net", "service-reach", "studio"))' -C metadata=065bd59f8911dfcd -C extra-filename=-b780e2e678f658c9 --out-dir /home/christopherdavid/work/openagents-target-agent1/debug/deps -C incremental=/home/christopherdavid/work/openagents-target-agent1/debug/incremental -L dependency=/home/christopherdavid/work/openagents-target-agent1/debug/deps --extern getrandom=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libgetrandom-4099f1e47dd44e35.rlib --extern glam=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libglam-9180d1aa67bc8163.rlib --extern physics=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libphysics-68a6b3dcba3a520f.rlib --extern rcgen=/home/christopherdavid/work/openagents-target-agent1/debug/deps/librcgen-b8c596a76994710c.rlib --extern rustls=/home/christopherdavid/work/openagents-target-agent1/debug/deps/librustls-0a8863e5cccda274.rlib --extern secp256k1=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libsecp256k1-5e165df871fe4cf4.rlib --extern serde=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libserde-9a12eb85df6763b1.rlib --extern serde_json=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libserde_json-cad8636d06cbde3e.rlib --extern sha2=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libsha2-ea605dab1e472d27.rlib --extern tempfile=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libtempfile-e15aa33262248cac.rlib --extern tokio=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libtokio-0b25c55bc21f0f47.rlib --extern tokio_rustls=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libtokio_rustls-8dd2dc65cc7b5e50.rlib --extern verse_engine=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-5f4276fde30fe40a.rlib -L native=/home/christopherdavid/work/openagents-target-agent1/debug/build/ring-b254da2910e1cf7f/out -L native=/home/christopherdavid/work/openagents-target-agent1/debug/build/secp256k1-sys-5db8129b533236a1/out` (exit status: 1)

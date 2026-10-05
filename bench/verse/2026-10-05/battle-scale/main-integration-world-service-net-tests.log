@@ -1,0 +1,486 @@
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+error[E0308]: mismatched types
+  --> crates/verse-world/src/service/client.rs:84:33
+   |
+84 |             if hello.version != VERSION || hello.challenge.instance() != instance {
+   |                                 ^^^^^^^ expected `u16`, found `u32`
+
+error[E0277]: can't compare `u16` with `u32`
+   --> crates/verse-world/src/service/client.rs:84:30
+    |
+ 84 |             if hello.version != VERSION || hello.challenge.instance() != instance {
+    |                              ^^ no implementation for `u16 == u32`
+    |
+    = help: the trait `PartialEq<u32>` is not implemented for `u16`
+help: `u16` implements trait `PartialEq<Rhs>`
+   --> /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1876:12
+    |
+    = note: `PartialEq`
+   ::: /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1900:5
+    |
+    = note: in this macro invocation
+    |
+   ::: /home/christopherdavid/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.151/src/value/partial_eq.rs:76:13
+    |
+ 76 |               impl PartialEq<Value> for $ty {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `PartialEq<serde_json::Value>`
+...
+ 97 | / partialeq_numeric! {
+ 98 | |     eq_i64[i8 i16 i32 i64 isize]
+ 99 | |     eq_u64[u8 u16 u32 u64 usize]
+100 | |     eq_f32[f32]
+101 | |     eq_f64[f64]
+102 | |     eq_bool[bool]
+103 | | }
+    | |_- in this macro invocation
+    = note: this error originates in the macro `partial_eq_impl` which comes from the expansion of the macro `partialeq_numeric` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/client.rs:148:22
+    |
+148 |             version: VERSION,
+    |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/net.rs:1344:22
+     |
+1344 |             version: VERSION,
+     |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/client.rs:433:25
+    |
+433 |         if r.version != VERSION
+    |                         ^^^^^^^ expected `u16`, found `u32`
+
+error[E0277]: can't compare `u16` with `u32`
+   --> crates/verse-world/src/service/client.rs:433:22
+    |
+433 |         if r.version != VERSION
+    |                      ^^ no implementation for `u16 == u32`
+    |
+    = help: the trait `PartialEq<u32>` is not implemented for `u16`
+help: `u16` implements trait `PartialEq<Rhs>`
+   --> /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1876:12
+    |
+    = note: `PartialEq`
+   ::: /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1900:5
+    |
+    = note: in this macro invocation
+    |
+   ::: /home/christopherdavid/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.151/src/value/partial_eq.rs:76:13
+    |
+ 76 |               impl PartialEq<Value> for $ty {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `PartialEq<serde_json::Value>`
+...
+ 97 | / partialeq_numeric! {
+ 98 | |     eq_i64[i8 i16 i32 i64 isize]
+ 99 | |     eq_u64[u8 u16 u32 u64 usize]
+100 | |     eq_f32[f32]
+101 | |     eq_f64[f64]
+102 | |     eq_bool[bool]
+103 | | }
+    | |_- in this macro invocation
+    = note: this error originates in the macro `partial_eq_impl` which comes from the expansion of the macro `partialeq_numeric` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/client.rs:887:22
+    |
+887 |             version: VERSION,
+    |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/client.rs:2670:22
+     |
+2670 |             version: VERSION,
+     |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/event_cursor.rs:119:32
+    |
+119 |         if response.version != VERSION
+    |                                ^^^^^^^ expected `u16`, found `u32`
+
+error[E0277]: can't compare `u16` with `u32`
+   --> crates/verse-world/src/service/event_cursor.rs:119:29
+    |
+119 |         if response.version != VERSION
+    |                             ^^ no implementation for `u16 == u32`
+    |
+    = help: the trait `PartialEq<u32>` is not implemented for `u16`
+help: `u16` implements trait `PartialEq<Rhs>`
+   --> /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1876:12
+    |
+    = note: `PartialEq`
+   ::: /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1900:5
+    |
+    = note: in this macro invocation
+    |
+   ::: /home/christopherdavid/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.151/src/value/partial_eq.rs:76:13
+    |
+ 76 |               impl PartialEq<Value> for $ty {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `PartialEq<serde_json::Value>`
+...
+ 97 | / partialeq_numeric! {
+ 98 | |     eq_i64[i8 i16 i32 i64 isize]
+ 99 | |     eq_u64[u8 u16 u32 u64 usize]
+100 | |     eq_f32[f32]
+101 | |     eq_f64[f64]
+102 | |     eq_bool[bool]
+103 | | }
+    | |_- in this macro invocation
+    = note: this error originates in the macro `partial_eq_impl` which comes from the expansion of the macro `partialeq_numeric` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/event_cursor.rs:207:22
+    |
+207 |             version: VERSION,
+    |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/net/session_pipeline.rs:199:22
+    |
+199 |             version: VERSION,
+    |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/net/session_pipeline.rs:262:26
+    |
+262 |                 version: VERSION,
+    |                          ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/net.rs:137:22
+    |
+137 |             version: VERSION,
+    |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/net.rs:1084:22
+     |
+1084 |             version: VERSION,
+     |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/net.rs:1153:22
+     |
+1153 |             version: VERSION,
+     |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/net.rs:1454:26
+     |
+1454 |                 version: VERSION,
+     |                          ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/net.rs:1484:34
+     |
+1484 |                         version: VERSION,
+     |                                  ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/net.rs:1554:22
+     |
+1554 |             version: VERSION,
+     |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/net.rs:1707:13
+     |
+1705 |         let (bytes, _) = committed_control_credit(
+     |                          ------------------------ arguments to this function are incorrect
+1706 |             Ok((acknowledgment.encode().unwrap(), true)),
+1707 |             &BTreeMap::from([(1, current.clone())]),
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&BTreeMap<ConnectionId, Control>`, found `&BTreeMap<{integer}, Control>`
+     |
+     = note: expected reference `&std::collections::BTreeMap<auth::ConnectionId, _>`
+                found reference `&std::collections::BTreeMap<{integer}, _>`
+note: function defined here
+    --> crates/verse-world/src/service/net.rs:202:4
+     |
+ 202 | fn committed_control_credit(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^
+ 203 |     result: DispatchReply,
+ 204 |     controls: &BTreeMap<ConnectionId, Control>,
+     |     ------------------------------------------
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/net.rs:1725:17
+     |
+1723 |             committed_control_credit(
+     |             ------------------------ arguments to this function are incorrect
+1724 |                 Ok((original.clone(), true)),
+1725 |                 &BTreeMap::from([(1, current.clone())])
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&BTreeMap<ConnectionId, Control>`, found `&BTreeMap<{integer}, Control>`
+     |
+     = note: expected reference `&std::collections::BTreeMap<auth::ConnectionId, _>`
+                found reference `&std::collections::BTreeMap<{integer}, _>`
+note: function defined here
+    --> crates/verse-world/src/service/net.rs:202:4
+     |
+ 202 | fn committed_control_credit(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^
+ 203 |     result: DispatchReply,
+ 204 |     controls: &BTreeMap<ConnectionId, Control>,
+     |     ------------------------------------------
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/net.rs:1737:13
+     |
+1735 |         let credited = committed_control_credit(
+     |                        ------------------------ arguments to this function are incorrect
+1736 |             Ok((snapshot.encode().unwrap(), true)),
+1737 |             &BTreeMap::from([(1, current.clone())]),
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&BTreeMap<ConnectionId, Control>`, found `&BTreeMap<{integer}, Control>`
+     |
+     = note: expected reference `&std::collections::BTreeMap<auth::ConnectionId, _>`
+                found reference `&std::collections::BTreeMap<{integer}, _>`
+note: function defined here
+    --> crates/verse-world/src/service/net.rs:202:4
+     |
+ 202 | fn committed_control_credit(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^
+ 203 |     result: DispatchReply,
+ 204 |     controls: &BTreeMap<ConnectionId, Control>,
+     |     ------------------------------------------
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/realm.rs:578:26
+    |
+578 |                 version: super::wire::VERSION,
+    |                          ^^^^^^^^^^^^^^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+  --> crates/verse-world/src/service/realm/tests.rs:87:18
+   |
+87 |         version: VERSION,
+   |                  ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/realm/tests.rs:109:18
+    |
+109 |         version: VERSION,
+    |                  ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/realm/tests.rs:237:22
+    |
+237 |             version: VERSION,
+    |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/realm/tests.rs:1757:22
+     |
+1757 |             version: VERSION,
+     |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/realm/tests.rs:1978:34
+     |
+1978 |                         version: VERSION,
+     |                                  ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+  --> crates/verse-world/src/service/replica.rs:43:32
+   |
+43 |         if response.version != VERSION
+   |                                ^^^^^^^ expected `u16`, found `u32`
+
+error[E0277]: can't compare `u16` with `u32`
+   --> crates/verse-world/src/service/replica.rs:43:29
+    |
+ 43 |         if response.version != VERSION
+    |                             ^^ no implementation for `u16 == u32`
+    |
+    = help: the trait `PartialEq<u32>` is not implemented for `u16`
+help: `u16` implements trait `PartialEq<Rhs>`
+   --> /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1876:12
+    |
+    = note: `PartialEq`
+   ::: /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1900:5
+    |
+    = note: in this macro invocation
+    |
+   ::: /home/christopherdavid/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.151/src/value/partial_eq.rs:76:13
+    |
+ 76 |               impl PartialEq<Value> for $ty {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `PartialEq<serde_json::Value>`
+...
+ 97 | / partialeq_numeric! {
+ 98 | |     eq_i64[i8 i16 i32 i64 isize]
+ 99 | |     eq_u64[u8 u16 u32 u64 usize]
+100 | |     eq_f32[f32]
+101 | |     eq_f64[f64]
+102 | |     eq_bool[bool]
+103 | | }
+    | |_- in this macro invocation
+    = note: this error originates in the macro `partial_eq_impl` which comes from the expansion of the macro `partialeq_numeric` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/replica.rs:379:22
+    |
+379 |             version: VERSION,
+    |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+  --> crates/verse-world/src/service/replication/tests.rs:20:18
+   |
+20 |         version: VERSION,
+   |                  ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/replication/tests.rs:296:26
+    |
+296 |                 version: VERSION,
+    |                          ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/view.rs:286:32
+    |
+286 |         if response.version != super::wire::VERSION
+    |                                ^^^^^^^^^^^^^^^^^^^^ expected `u16`, found `u32`
+
+error[E0277]: can't compare `u16` with `u32`
+   --> crates/verse-world/src/service/view.rs:286:29
+    |
+286 |         if response.version != super::wire::VERSION
+    |                             ^^ no implementation for `u16 == u32`
+    |
+    = help: the trait `PartialEq<u32>` is not implemented for `u16`
+help: `u16` implements trait `PartialEq<Rhs>`
+   --> /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1876:12
+    |
+    = note: `PartialEq`
+   ::: /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1900:5
+    |
+    = note: in this macro invocation
+    |
+   ::: /home/christopherdavid/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.151/src/value/partial_eq.rs:76:13
+    |
+ 76 |               impl PartialEq<Value> for $ty {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `PartialEq<serde_json::Value>`
+...
+ 97 | / partialeq_numeric! {
+ 98 | |     eq_i64[i8 i16 i32 i64 isize]
+ 99 | |     eq_u64[u8 u16 u32 u64 usize]
+100 | |     eq_f32[f32]
+101 | |     eq_f64[f64]
+102 | |     eq_bool[bool]
+103 | | }
+    | |_- in this macro invocation
+    = note: this error originates in the macro `partial_eq_impl` which comes from the expansion of the macro `partialeq_numeric` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/wire.rs:378:25
+    |
+378 |         if r.version != VERSION || r.request_id == 0 {
+    |                         ^^^^^^^ expected `u16`, found `u32`
+
+error[E0277]: can't compare `u16` with `u32`
+   --> crates/verse-world/src/service/wire.rs:378:22
+    |
+378 |         if r.version != VERSION || r.request_id == 0 {
+    |                      ^^ no implementation for `u16 == u32`
+    |
+    = help: the trait `PartialEq<u32>` is not implemented for `u16`
+help: `u16` implements trait `PartialEq<Rhs>`
+   --> /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1876:12
+    |
+    = note: `PartialEq`
+   ::: /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1900:5
+    |
+    = note: in this macro invocation
+    |
+   ::: /home/christopherdavid/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.151/src/value/partial_eq.rs:76:13
+    |
+ 76 |               impl PartialEq<Value> for $ty {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `PartialEq<serde_json::Value>`
+...
+ 97 | / partialeq_numeric! {
+ 98 | |     eq_i64[i8 i16 i32 i64 isize]
+ 99 | |     eq_u64[u8 u16 u32 u64 usize]
+100 | |     eq_f32[f32]
+101 | |     eq_f64[f64]
+102 | |     eq_bool[bool]
+103 | | }
+    | |_- in this macro invocation
+    = note: this error originates in the macro `partial_eq_impl` which comes from the expansion of the macro `partialeq_numeric` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/wire.rs:563:22
+    |
+563 |             version: VERSION,
+    |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/wire.rs:593:22
+    |
+593 |             version: VERSION,
+    |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/wire.rs:970:22
+    |
+970 |             version: VERSION,
+    |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+   --> crates/verse-world/src/service/wire.rs:980:9
+    |
+980 |         assert_eq!(hello.version, VERSION);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `u16`, found `u32`
+
+error[E0277]: can't compare `u16` with `u32`
+   --> crates/verse-world/src/service/wire.rs:980:9
+    |
+980 |         assert_eq!(hello.version, VERSION);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no implementation for `u16 == u32`
+    |
+    = help: the trait `PartialEq<u32>` is not implemented for `u16`
+help: `u16` implements trait `PartialEq<Rhs>`
+   --> /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1876:12
+    |
+    = note: `PartialEq`
+   ::: /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/cmp.rs:1900:5
+    |
+    = note: in this macro invocation
+    |
+   ::: /home/christopherdavid/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.151/src/value/partial_eq.rs:76:13
+    |
+ 76 |               impl PartialEq<Value> for $ty {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `PartialEq<serde_json::Value>`
+...
+ 97 | / partialeq_numeric! {
+ 98 | |     eq_i64[i8 i16 i32 i64 isize]
+ 99 | |     eq_u64[u8 u16 u32 u64 usize]
+100 | |     eq_f32[f32]
+101 | |     eq_f64[f64]
+102 | |     eq_bool[bool]
+103 | | }
+    | |_- in this macro invocation
+    = note: this error originates in the macro `assert_eq` which comes from the expansion of the macro `partialeq_numeric` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/wire.rs:1653:22
+     |
+1653 |             version: VERSION,
+     |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/wire.rs:1685:22
+     |
+1685 |             version: VERSION,
+     |                      ^^^^^^^ expected `u16`, found `u32`
+
+error[E0308]: mismatched types
+    --> crates/verse-world/src/service/wire.rs:1702:22
+     |
+1702 |             version: VERSION,
+     |                      ^^^^^^^ expected `u16`, found `u32`
+
+Some errors have detailed explanations: E0277, E0308.
+For more information about an error, try `rustc --explain E0277`.
+error: could not compile `verse-world` (lib test) due to 45 previous errors

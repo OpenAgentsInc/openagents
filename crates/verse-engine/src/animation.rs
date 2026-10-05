@@ -170,6 +170,7 @@ pub struct Playback {
     current: Vec<Local>,
     marker_cursor: crate::markers::Cursor,
     marker_epoch: u64,
+    phase_epoch: Option<u64>,
 }
 impl Playback {
     /// Evaluates the pose and presentation markers together. Marker refusals occur
@@ -182,9 +183,25 @@ impl Playback {
         time: f32,
         clock: f32,
     ) -> Result<(Vec<Mat4>, Vec<crate::markers::Event>), String> {
+        self.update_with_marker_phase(life, model, selection, time, clock, None)
+    }
+    /// An explicit phase-owner change starts marker delivery at the new source's
+    /// current time. The same phase still refuses oversized marker catch-up.
+    pub fn update_with_marker_phase(
+        &mut self,
+        life: crate::core::LifeId,
+        model: &Model,
+        selection: Selection,
+        time: f32,
+        clock: f32,
+        phase_epoch: Option<u64>,
+    ) -> Result<(Vec<Mat4>, Vec<crate::markers::Event>), String> {
         valid_time(time, clock)?;
         let binding = resolve(model, selection)?;
-        let reset = self.life != Some(life) || self.clip != Some(selection) || clock < self.clock;
+        let reset = self.life != Some(life)
+            || self.clip != Some(selection)
+            || clock < self.clock
+            || self.phase_epoch != phase_epoch;
         let epoch = if reset {
             self.marker_epoch
                 .checked_add(1)
@@ -220,6 +237,7 @@ impl Playback {
         let pose = self.update_for_life(life, model, selection, time, clock)?;
         self.marker_cursor = cursor;
         self.marker_epoch = epoch;
+        self.phase_epoch = phase_epoch;
         Ok((pose, events))
     }
     /// Compatibility playback for retained numeric clips.
@@ -633,6 +651,57 @@ mod semantic_tests {
         assert!(events.is_empty());
         assert!(
             p.update_with_markers(life.next().unwrap(), &m, State::Walk.into(), 5., 5.)
+                .unwrap()
+                .1
+                .is_empty()
+        );
+    }
+    #[test]
+    fn locomotion_clock_handoff_does_not_replay_another_sources_markers() {
+        use crate::markers::{ClipTrack, Marker, Track};
+        let mut m = model();
+        m.markers.push(ClipTrack {
+            clip: 403,
+            track: Track {
+                duration: 1.,
+                markers: vec![Marker {
+                    id: 7,
+                    seconds: 0.5,
+                }],
+            },
+        });
+        let life = LifeId {
+            instance: 1,
+            actor: 2,
+            generation: 0,
+        };
+        let mut p = Playback::default();
+        p.update_with_marker_phase(life, &m, State::Walk.into(), 0.5, 400., Some(12))
+            .unwrap();
+        let (_, events) = p
+            .update_with_marker_phase(life, &m, State::Walk.into(), 400., 400.016, None)
+            .unwrap();
+        assert!(
+            events.is_empty(),
+            "A new clock source establishes a marker baseline"
+        );
+        let (_, events) = p
+            .update_with_marker_phase(life, &m, State::Walk.into(), 400.5, 400.5, None)
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].marker, 7);
+        assert!(
+            p.update_with_marker_phase(life, &m, State::Walk.into(), 900., 401., None)
+                .is_err()
+        );
+        assert!(
+            p.update_with_marker_phase(life, &m, State::Walk.into(), 400.5, 401., None)
+                .unwrap()
+                .1
+                .is_empty()
+        );
+        assert!(
+            p.update_with_marker_phase(life, &m, State::Walk.into(), 0.5, 402., Some(13))
                 .unwrap()
                 .1
                 .is_empty()

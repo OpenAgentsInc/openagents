@@ -1,0 +1,7 @@
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.548s
+
+OK
+{"profile": "serial", "bytes_checked": 268, "first_byte_seconds": 0.08156543300719932, "queued_chunk_peak": 0}
+{"profile": "pipeline", "bytes_checked": 2097164, "first_byte_seconds": 0.08399993999046274, "queued_chunk_peak": 8}

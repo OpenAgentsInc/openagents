@@ -1,0 +1,7 @@
+{
+  "schema": "verse.battle.source.v1",
+  "base_revision": "f10424a9fd255f5ca903a5f2f21eff5f791e7177",
+  "source_patch": "implementation-future-geometry.patch",
+  "source_patch_sha256": "fab55cf3143978b31cd83a1f7c8b57f5a860f9498152a6ea52b6c8bae3de1864",
+  "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+}

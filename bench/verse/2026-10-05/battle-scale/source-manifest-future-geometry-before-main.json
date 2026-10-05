@@ -1,0 +1,7 @@
+{
+  "schema": "verse.battle.source.v1",
+  "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+  "source_patch": "implementation-future-geometry-before-main.patch",
+  "source_patch_sha256": "c05a804010f225b25dc85f272d91b3579abe4deb38a8b1da4556c69c8d16d1fb",
+  "scope": "Checked source before main integration; no capacity executable or passing receipt is claimed for this revision."
+}

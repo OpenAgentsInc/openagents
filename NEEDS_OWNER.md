@@ -374,3 +374,10 @@ openagents.com was not redeployed. To finish:
    gone after a reload.
 5. Optional: on the Android emulator with `-gpu swiftshader_indirect`, the
    OpenAgents app's Grid must draw instead of the renderer's error card.
+
+## Upgrade Verse hosts and clients together after V18 (#10637)
+
+Wire version 29 adds applied movement confirmations to owned response controls.
+Deploy matching builds of `verse-host` and each native chamber client before
+using this protocol on a real host. The V18 capacity checks use scratch TLS
+hosts and offscreen rendering; they do not deploy or exercise owner devices.

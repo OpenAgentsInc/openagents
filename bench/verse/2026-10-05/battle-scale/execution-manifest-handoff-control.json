@@ -1,0 +1,109 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation-handoff-control.patch",
+    "source_patch_sha256": "e69a64d5ad807d5099a7ff228bbf35fff04f0e7b6fc1afe33b7aaf46f7335c32",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "4a6ad48e8574dd6b229abcce21e15f24020236ed6a5a2d148341179485fdf147",
+    "renderer_budget": "284d300435fe65f87a3587e6fd40eb1a86518602641f00afcd5f4b35ac47da67"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-handoff-control.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-handoff-control.json",
+        "300"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.674387865990866,
+      "status": "passed",
+      "acceptance_failures": [],
+      "receipt_sha256": "89fb9cbb9c55872ff55a7e3b7e4217a0fd260156ead951e08052999fff4e1f28"
+    },
+    {
+      "receipt": "authority-handoff-control.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-handoff-control.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 6.052210106980056,
+      "status": "passed",
+      "receipt_sha256": "23937d7da9c258dddd3d49a5464087fbe913e5ed850d0f2c49e02c51e0bf01c3"
+    },
+    {
+      "receipt": "network-handoff-control.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-handoff-control.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.17906412499724,
+      "status": "passed",
+      "receipt_sha256": "bd7bd141d43df4b1d07ae400e7876705c3ea425209572be1e39e3bb89b302857"
+    },
+    {
+      "receipt": "combined-handoff-control-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-handoff-control-01.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.478565711993724,
+      "status": "passed",
+      "receipt_sha256": "46883f34ac0963fc126c0330a20cace17c9f287040725e747c7c8be166ae553f"
+    },
+    {
+      "receipt": "combined-handoff-control-02.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-handoff-control-02.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.4153837429476,
+      "status": "passed",
+      "receipt_sha256": "e1b84156158930cbc9eab99c552668bb4d7502debd16974ac51357fcf1fac88f"
+    },
+    {
+      "receipt": "combined-handoff-control-03.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-handoff-control-03.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.48337791004451,
+      "status": "failed",
+      "receipt_sha256": "9ffdfccfabe8b9a095a9697341d9ef26d4f2a7e246779345769a970333153c26"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

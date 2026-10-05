@@ -1,0 +1,67 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "f10424a9fd255f5ca903a5f2f21eff5f791e7177",
+    "source_patch": "implementation-future-geometry.patch",
+    "source_patch_sha256": "fab55cf3143978b31cd83a1f7c8b57f5a860f9498152a6ea52b6c8bae3de1864",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "254ed4bc28bdd4ee43971a45a0065989d1479c90a7e19babaf04df03c5f4a8cd",
+    "renderer_budget": "ac3a1c877167043be02195b31727db9e268d0c3cef2378505a3c4c049da27b22"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-future-geometry.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-future-geometry.json",
+        "300"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.702173542988021,
+      "status": "passed",
+      "acceptance_failures": [],
+      "receipt_sha256": "1d34cb05211046fea5ed0f8d93dd04fe56e3b78118bc99439cdb4d58d032ac4c"
+    },
+    {
+      "receipt": "authority-future-geometry.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-future-geometry.json",
+        "600"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 77.36520089500118,
+      "status": "passed",
+      "receipt_sha256": "245f7ea12ca6703d0512d0a14c1c4108210093960159003424216c3e92d0d73e"
+    },
+    {
+      "receipt": "network-future-geometry.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-future-geometry.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.2400351940305,
+      "status": "failed",
+      "receipt_sha256": "1f6a1ab2dcc541763095533be06f53291949b98e6603dfeb4af92dd541125fbb"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

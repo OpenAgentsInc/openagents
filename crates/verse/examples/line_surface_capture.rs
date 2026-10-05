@@ -15,6 +15,7 @@ fn instance(model: &str, transform: Mat4) -> Instance {
         transform,
         animation: 0.into(),
         time: 0.,
+        animation_epoch: None,
         emission: Vec3::ZERO,
     }
 }

@@ -52,6 +52,7 @@ fn run() -> Result<(), String> {
             )) * chamber::basis(),
             animation: State::Walk.into(),
             time: 0.,
+            animation_epoch: None,
             emission: Vec3::ONE,
         });
         if player {
@@ -68,6 +69,7 @@ fn run() -> Result<(), String> {
                 transform: Mat4::IDENTITY,
                 animation: 0.into(),
                 time: 0.,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             });
         }
@@ -84,6 +86,7 @@ fn run() -> Result<(), String> {
             )) * Mat4::from_scale(Vec3::splat(0.1)),
             animation: 0.into(),
             time: 0.,
+            animation_epoch: None,
             emission: Vec3::ONE,
         });
     }

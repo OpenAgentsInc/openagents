@@ -1,0 +1,122 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "94555e0d65e06618137bed77e71f51cb12f5f695",
+    "source_patch": "implementation-thirty-hz-send.patch",
+    "source_patch_sha256": "e9777c817a38ddfbaa592862808c975b4b107da21bb621a03b8529dbe21525c7",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "b5126a257eac38912eaddfde8c750812ccc262bd4bf7d81746e64500d20bbe25",
+    "renderer_budget": "7d44f804634932aa3c0fff4438ba4265ac2165e09841d5e52370e5718dab1bf1"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-thirty-hz-send.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-thirty-hz-send.json",
+        "300"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.717000629985705,
+      "status": "passed",
+      "acceptance_failures": [],
+      "receipt_sha256": "3cb24a7a6143f1c05faa294bc07abd3f0ebf80608ca5e2d9d27a104a9906b7b3"
+    },
+    {
+      "receipt": "authority-thirty-hz-send.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-thirty-hz-send.json",
+        "600"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 75.83856080996338,
+      "status": "passed",
+      "receipt_sha256": "f0484c0778620a060bab15452adebe785fa155c56025087af4556f65d0b4f69f"
+    },
+    {
+      "receipt": "network-thirty-hz-send.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-thirty-hz-send.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.28872071602382,
+      "status": "passed",
+      "receipt_sha256": "4b3fc6555477963419a781318653813acccff54e751bd57f7bec6992ace6334f"
+    },
+    {
+      "receipt": "combined-thirty-hz-send-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-thirty-hz-send-01.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.549947099993005,
+      "status": "passed",
+      "receipt_sha256": "b01a3ecf7c0a943259851a83deaa7115fea945e471c603ede7a3c9855af1c1be"
+    },
+    {
+      "receipt": "combined-thirty-hz-send-02.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-thirty-hz-send-02.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.90174952399684,
+      "status": "passed",
+      "receipt_sha256": "126d2b8142d39c2b0373b0348ef3123ca445221b7fb2c063c06d21022fab088f"
+    },
+    {
+      "receipt": "combined-thirty-hz-send-03.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-thirty-hz-send-03.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.93084778403863,
+      "status": "passed",
+      "receipt_sha256": "cc626feec23e7ea3a22acb65153b84cf37d037e1b3c6edf1ecac2d40a2a2c203"
+    },
+    {
+      "receipt": "combined-thirty-hz-send-soak.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-thirty-hz-send-soak.json",
+        "600"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 601.9800108060008,
+      "status": "failed",
+      "receipt_sha256": "5e1af639d9a5d3bd0b5abe11ac2958e50c31ccc6d5fd80d95e944f9e1857f49f"
+    }
+  ],
+  "aggregate_status": "failed"
+}

@@ -1,0 +1,7 @@
+{
+  "base_revision": "f10424a9fd255f5ca903a5f2f21eff5f791e7177",
+  "incoming_revision": "efeabd2b7743fbc18877b555c7265280fa390b70",
+  "source_patch": "implementation-timed-history-before-main.patch",
+  "source_patch_sha256": "7923867b7c8fb2285c67e2363a22076b85a113d01313d273cd82fdd0f3945186",
+  "scope": "Source checked by 34 prediction regressions; no capacity executable for this source yet."
+}

@@ -1,0 +1,76 @@
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling gltf-json v1.4.1
+   Compiling gltf v1.4.1
+   Compiling verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+   Compiling verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+   Compiling verse-net v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-net)
+   Compiling verse-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-core)
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+   Compiling verse-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-lagrange)
+   Compiling verse-gym v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gym)
+   Compiling verse-zone-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lagrange)
+   Compiling verse-zone-ruins v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-ruins)
+   Compiling verse-imported v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-imported)
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+   Compiling verse-zone-lab v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lab)
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:489:12
+    |
+123 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+489 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+500 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+
+warning: function `stream_triangles` is never used
+   --> crates/verse/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: method `land` is never used
+   --> crates/verse/src/zones/grove/mod.rs:228:12
+    |
+179 | impl Grove {
+    | ---------- method in this implementation
+...
+228 |     pub fn land(&self) -> Land {
+    |            ^^^^
+
+warning: `verse-imported` (lib) generated 1 warning (run `cargo fix --lib -p verse-imported` to apply 1 suggestion)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+warning: `verse` (lib) generated 4 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3m 32s

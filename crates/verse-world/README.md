@@ -419,8 +419,8 @@ packet would exceed the latest authority `credit_step`, verified through a snaps
 or control acknowledgment, plus the existing 12-substep lookahead; local elapsed
 time cannot grant credit during storage pauses.
 The worker binds packets to the shared command sequence before transmission. Legacy CLI and headless movement retains the
-arrival-time profile. Version-28 peers must upgrade both host and client; control
-headers separate admitted body `world_step` from durable checkpoint `credit_step`, and ability events require matching
+arrival-time profile. Version-29 peers must upgrade both host and client; control
+headers separate admitted body `world_step` from durable checkpoint `credit_step`, actual applied movement confirmations remain bounded by the admitted sequence; ability events require matching
 event decoders.
 
 The serial SDK retries an explicit `stale_tick` refusal only when its verified
@@ -876,7 +876,7 @@ and control fences. `host::Config::social_profile` selects this profile;
 `bind_content` includes its digest in the scene/asset identity. Startup recovery
 refuses changed profiles. Host, CLI, and offline migration preparation use this
 binding. Supported older combat checkpoints remain readable under rules v24;
-wire clients use version 25.
+wire clients use version 29.
 
 Seats are exclusive and tied to a character life. Accepted interactions stop
 queued movement and advance its control epoch. Movement and control retirement
@@ -895,3 +895,41 @@ These are opt-in hosted variants with neutral shared geometry and generic figure
 Local asset packs keep their existing rules; Ruins, Lagrange, and Lab are refused
 as hosted profiles. Existing realm instance and concurrent resident limits remain. The [social authority receipt](../../bench/verse/2026-10-04/social-authority/run.json)
 records two-viewer convergence, transfer, recovery, and native projection checks.
+
+Owned wire controls can include a bounded `applied_movement` confirmation.
+The host supplies actual completed interval movement from the response's durable
+fence, with an applied sequence no greater than its original admission prefix.
+Admission acknowledgments alone do not confirm travel. Clients verify the life,
+epoch, sequence, and world clock, retire confirmed prediction history, and retain
+newer confirmed travel when a scene body represents an earlier prefix. Runtime
+confirmation histories contain at most sixteen entries per actor and are omitted
+from saves; reconnects establish a fresh baseline.
+
+Interval controls retain the body's admission `world_step` separately from
+completed durable `credit_step`. Credit renews permission without confirming
+travel or advancing local elapsed time. Prediction retains at most 257 motor
+states and 256 deferred physics steps. Grounded horizontal confirmations compare
+the estimate at the confirmed step; changed walls, forces, vertical motion, or
+movement policy require full replay. When unchanged walls obstruct the correction,
+each retained motor state receives a collision-constrained fixed-scene adjustment.
+Projected capsule changes affect future
+integration. Blocking overlap holds the estimate until authority resolves it;
+query errors and truncation still propagate.
+
+Live game frames retain authority time after the authored cinematic ends, so
+owned HUD and hostile-effect validation continue during long sessions. The
+cinematic director itself retains its bounded playback duration.
+
+Frame-profile input enters at the current prediction clock boundary and affects
+future integration without replaying already processed travel against newer
+crowd poses. Changed authority motor state, fixed geometry, or retired past
+input still requires reconciliation. An existing capsule overlap permits only
+straight grounded motion that separates every initial contact, sweeps other
+colliders, does not increase original penetration, and retains the same fixed
+floor support. Inward movement, jumps, forces, floor loss, and opposing contacts
+retain their prior handling. Past deferred steps stay deferred.
+
+Local render values distinguish the prediction control epoch from authority and
+authored animation clocks. A clock-owner handoff starts marker delivery at the
+new phase without catching up another source's history. Gameplay snapshots and
+control authority remain unchanged; marker budgets and atomic refusals still apply.

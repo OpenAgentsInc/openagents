@@ -17,23 +17,35 @@ impl Local {
                     .min(self.world_credit.saturating_add(u64::from(MAX_STEPS)))
             })
     }
-    /// Admits verified authority time only for the active owned interval context.
+    /// Refreshes exact authority credit without advancing prediction or replaying input.
+    /// A response from another life or epoch cannot renew this clock.
+    pub fn movement_credit(
+        &mut self,
+        life: LifeId,
+        epoch: u64,
+        world_step: u64,
+    ) -> Result<(), String> {
+        let baseline = self
+            .baseline
+            .ok_or("Movement credit has no prediction baseline")?;
+        if baseline.profile != Profile::Frames
+            || self.context() != Some((life, epoch))
+            || world_step < self.world_credit
+            || world_step.checked_add(u64::from(MAX_STEPS)).is_none()
+        {
+            return Err("Movement credit context or clock is invalid".into());
+        }
+        self.world_credit = world_step;
+        Ok(())
+    }
+    /// Admits verified authority time for the active owned interval context.
     pub fn grant_world_credit(
         &mut self,
         life: LifeId,
         epoch: u64,
         world_step: u64,
     ) -> Result<(), String> {
-        if self.context() != Some((life, epoch))
-            || self.movement_profile() != Some(Profile::Frames)
-            || world_step < self.world_credit
-        {
-            return Err(
-                "Movement time credit is stale or belongs to another control context".into(),
-            );
-        }
-        self.world_credit = world_step;
-        Ok(())
+        self.movement_credit(life, epoch, world_step)
     }
     pub fn physics_step(&self) -> u64 {
         self.step

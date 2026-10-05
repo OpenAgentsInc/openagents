@@ -1,0 +1,7 @@
+{
+  "schema": "verse.battle.source.v1",
+  "base_revision": "f10424a9fd255f5ca903a5f2f21eff5f791e7177",
+  "source_patch": "implementation-deferred-replay.patch",
+  "source_patch_sha256": "db2702dc4af60a775f7cbc3b525ac4fbff88ec6bdf4e9fa5c248285d3607e95e",
+  "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+}

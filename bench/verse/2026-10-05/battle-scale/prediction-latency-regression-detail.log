@@ -1,0 +1,16 @@
+
+running 1 test
+VERSE_V04_EVIDENCE [{"route":"Flat","delayed_bootstrap":false,"frame_steps":4,"jitter_steps":4,"airborne_steps":0,"max_height":0.0,"maximum_distance":4.267199993133545,"profile":"frames","up_ms":33.333333333333336,"down_ms":33.333333333333336,"observations":121,"withheld_baselines":0,"p50_m":0.0,"p95_m":0.10667997598648071,"p99_m":0.10668015480041504,"maximum_m":0.10668015480041504,"refused":0},{"route":"Flat","delayed_bootstrap":false,"frame_steps":12,"jitter_steps":0,"airborne_steps":0,"max_height":0.0,"maximum_distance":4.267199993133545,"profile":"frames","up_ms":66.66666666666667,"down_ms":66.66666666666667,"observations":121,"withheld_baselines":0,"p50_m":0.0,"p95_m":0.0,"p99_m":0.0,"maximum_m":0.0,"refused":0},{"route":"DiagonalJump","delayed_bootstrap":false,"frame_steps":4,"jitter_steps":0,"airborne_steps":81,"max_height":1.2196625471115112,"maximum_distance":5.791200160980225,"profile":"frames","up_ms":66.66666666666667,"down_ms":66.66666666666667,"observations":121,"withheld_baselines":0,"p50_m":0.0,"p95_m":0.0,"p99_m":0.0,"maximum_m":0.0,"refused":0},{"route":"Wall","delayed_bootstrap":false,"frame_steps":4,"jitter_steps":0,"airborne_steps":0,"max_height":0.0,"maximum_distance":1.1499900817871094,"profile":"frames","up_ms":66.66666666666667,"down_ms":66.66666666666667,"observations":121,"withheld_baselines":0,"p50_m":0.0,"p95_m":0.0,"p99_m":0.0,"maximum_m":0.0,"refused":0},{"route":"Stairs","delayed_bootstrap":false,"frame_steps":4,"jitter_steps":0,"airborne_steps":0,"max_height":1.5000100135803223,"maximum_distance":7.19851541519165,"profile":"frames","up_ms":66.66666666666667,"down_ms":66.66666666666667,"observations":121,"withheld_baselines":0,"p50_m":0.0,"p95_m":0.0,"p99_m":0.0,"maximum_m":0.0,"refused":0}]
+
+thread 'prediction::latency::intervals_cover_jitter_coalescing_jump_wall_and_stairs' (3720392) panicked at crates/verse-world/src/prediction/latency.rs:322:9:
+{"route":"Flat","delayed_bootstrap":false,"frame_steps":4,"jitter_steps":4,"airborne_steps":0,"max_height":0.0,"maximum_distance":4.267199993133545,"profile":"frames","up_ms":33.333333333333336,"down_ms":33.333333333333336,"observations":121,"withheld_baselines":0,"p50_m":0.0,"p95_m":0.10667997598648071,"p99_m":0.10668015480041504,"maximum_m":0.10668015480041504,"refused":0}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test prediction::latency::intervals_cover_jitter_coalescing_jump_wall_and_stairs ... FAILED
+
+failures:
+
+failures:
+    prediction::latency::intervals_cover_jitter_coalescing_jump_wall_and_stairs
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 521 filtered out; finished in 0.40s
+

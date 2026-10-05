@@ -1,0 +1,57 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation-snapshot-yield.patch",
+    "source_patch_sha256": "0da960b7aa2e7f96ca5e14085766db1a15ea83d4b27efa7255a1ccfd6c016201",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "executables": {
+    "battle_scale": "2afa2c0373419b42013d422f238e53313f87a746300ebc42cc9918c22596eb25",
+    "renderer_budget": "c62e0d369eec2ccfd68b9f852c1c231433e5e9b76c7d6bbebde7a9deb81455db"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-yield-final.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-yield-final.json",
+        "300"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "wall_seconds": 5.643454445002135,
+      "receipt_sha256": "9cf48164231d27416342bd3f7eca673abdb5755a59c1b0e3ae731c92d01466db"
+    },
+    {
+      "receipt": "authority-yield-final.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-yield-final.json",
+        "60"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "wall_seconds": 5.756530002021464,
+      "receipt_sha256": "497d05ba0cf565dfabfb849fff870523418392d8f0fa7be225a680029591f5b6"
+    },
+    {
+      "receipt": "network-yield-final.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-yield-final.json",
+        "60"
+      ],
+      "status": "failed",
+      "exit_code": 1,
+      "wall_seconds": 61.16442255998845,
+      "receipt_sha256": "e59a3b784b57303b0ecd5a3ee757b9ab9c699f0c735f408eb1b4b190863803ae"
+    }
+  ]
+}

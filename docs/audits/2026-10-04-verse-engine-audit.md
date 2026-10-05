@@ -41,20 +41,15 @@ remediation in [#10602](https://github.com/OpenAgentsInc/openagents/issues/10602
 adds transport admission partitions and shared request budgets. V09 remediation
 in [#10603](https://github.com/OpenAgentsInc/openagents/issues/10603) adds stable
 accounts, durable logout and selection, key replacement, and reward participation.
-Two findings still deserve
-immediate engineering attention:
-
-1. A sustained 20-player/40-NPC battle fails performance acceptance, and a
-   newer three-contact recovery failure stopped the whole host. Current code
-   contains recoverable character/NPC movement failures; accepted crowded
-   performance remains unproven.
-2. Historical delayed battles retain failed correction and frame budgets,
-   including a 6.5-meter outlier. V04 now passes a bounded deterministic profile;
-   accepted crowded movement and hardware latency still require evidence.
+V18 remediation in [#10637](https://github.com/OpenAgentsInc/openagents/issues/10637)
+contains recoverable crowd movement and passes a declared durable 20-player/
+40-hostile profile, including three combined repeats and a ten-minute soak.
+Historical failed battles remain retained. The accepted profile uses one native
+renderer and nineteen headless clients on one machine; broader device,
+authoring, operational, and population readiness remains open in V19–V28.
 
 The [engine roadmap](../verse/engine/roadmap.md) already names a battle with
-about 20 authenticated players and 40 active NPCs. Treat that as the next
-measured milestone. Neither a 64-player admission limit nor a video with two
+about 20 authenticated players and 40 active NPCs. That milestone now has a bounded accepted profile. Neither a 64-player admission limit nor a video with two
 players proves that workload. Realm population, concurrent nearby players,
 instance density, minimum devices, and operating cost still need explicit
 targets before planning broader MMORPG scale.
@@ -161,7 +156,7 @@ Evidence labels:
 | V15 | P1 | Content-bound navigation tiles have scheduled routes and local invalidation. | Code, recorded | Navigation and AI | Complete ([#10634](https://github.com/OpenAgentsInc/openagents/issues/10634)), grounded profile |
 | V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters | Complete (chamber profile; [#10635](https://github.com/OpenAgentsInc/openagents/issues/10635)) |
 | V17 | P1 | Shared rendering, compiled content, and dedicated TLS hosting have working consumers. | Code, recorded | Engine extraction and host packaging | Complete ([#10636](https://github.com/OpenAgentsInc/openagents/issues/10636)) |
-| V18 | P0 | Crowd recovery improves, but failure containment and scale acceptance remain. | Recorded, code | Movement failure handling and scale acceptance | Open |
+| V18 | P0 | Contained crowd recovery and a durable 20/40 battle pass the declared profile. | Recorded, code | Movement failure handling and scale acceptance | Complete ([#10637](https://github.com/OpenAgentsInc/openagents/issues/10637)), one native renderer |
 | V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Open |
 | V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Open |
 | V21 | P2 | Animation needs production locomotion and authoring support. | Code, gap | Animation and character content | Open |
@@ -1283,7 +1278,7 @@ world authoring remain V20; platform and zone authority parity remain V24;
 scale and cross-platform replay remain V18 and V27. The application still owns
 its UI, zones, authored frame composition, and optional agent integrations.
 
-### V18: Crowd recovery improves without passing scale acceptance
+### V18: Contained crowd recovery and durable battle acceptance
 
 The new [`verse_load`](../../crates/verse/examples/verse_load.rs) and
 [battle harness](../../scripts/bench/verse-battle-capture.py) exercise 20
@@ -1350,23 +1345,81 @@ no retained runtime acceptance yet. Historical nondurable failures and missing
 profiles remain evidence of their original revisions. Zero dropped server
 seconds alone is not a passing timing distribution.
 
-**Improve:** Preserve the upstream crowd-recovery regressions and historical
-contact sequences. Measure combined scale with the corrected authored-health
-configuration so the stated NPC workload remains active. Define bounded
-per-character recovery or containment without hiding invariant or storage
-corruption; a recoverable blocked character should not stop unrelated
-players. Emit partial profiles, actor/contact diagnostics, and omission counts
-even when a participant fails. Extend the harness in stages: authority-only,
-network-only, one isolated renderer, and durable combined acceptance. Mix movement,
-targeting, casts, AoE, NPC pursuit, equipment, quests, disconnects, and respawns.
-Retain full workload parameters and source/content revisions. A capacity test
-that only spawns players is insufficient.
+Remediation in [#10637](https://github.com/OpenAgentsInc/openagents/issues/10637)
+contains recoverable character movement and establishes a measured durable
+20-player/40-hostile profile. The [capacity evidence notes](../../bench/verse/2026-10-05/battle-scale/README.md)
+retain every historical failure, budget, command, source patch, executable hash,
+and measurement limitation. The [final execution manifest](../../bench/verse/2026-10-05/battle-scale/execution-manifest-final-main-repeat.json)
+records seven passing stages on source baseline
+`c0611aab1f880ff9184a091eb6c62ccb36658a62` plus its pinned implementation patch.
 
-**Acceptance:** A regression fixture covers the recorded recovery failure and
-crowded movement without host shutdown. The declared 20/40 battle passes its
-agreed budgets repeatedly, then a longer soak exposes ledger, event, memory,
-and content-cache lifetime. Larger realm targets follow measured bottlenecks and operating cost, not an
-extrapolation from a three-client video.
+The production changes preserve the authority and durability boundaries:
+
+- Recorded three-capsule recovery has an atomic blocked outcome. The world
+  contains that character while unrelated players and ticks continue. Invalid
+  inputs, query truncation, and storage failures still propagate. Actor/contact
+  diagnostics, partial profiles, and omission counters remain bounded.
+- Durable reads capture their immutable admission prefix before later requests
+  enter the stream; delivery waits for commit. Queues and held reply bytes bound
+  backpressure. Wire version 29 carries actual completed movement within the
+  original accepted sequence, separately from body time and permission credit.
+  Sixteen runtime confirmations per actor are omitted from saves.
+- Prediction retains at most 257 motor states and 256 deferred steps. It compares
+  a confirmation at its own physics step and preserves already processed travel
+  against later actor poses. Unchanged walls constrain historical horizontal
+  corrections; changed motor state, support, fixed geometry, forces, or policy
+  still requires reconciliation. Fresh interval input affects future integration.
+  A projected capsule overlap permits straight motion only if it separates every
+  original contact, sweeps other geometry, preserves penetration bounds, and
+  retains the same floor. Past deferred time stays deferred. Corrections are
+  neither capped nor smoothed.
+- Native movement sends complete four-step histories at 30 Hz, retains bounded
+  twelve-step catch-up, and integrates main's verified clock recovery and
+  epoch-checked movement during teleport reply waits. Inventory and quest
+  mutations remain ordered. Live presentation keeps authority time beyond the
+  cinematic endpoint; explicit render animation phase ownership prevents marker
+  catch-up across clock sources while preserving marker limits and atomic errors.
+  Canonical hostile-flight endpoints retain collision order and checkpoint
+  validation at long lifetimes.
+
+The new driver uses scratch TLS hosts, Schnorr-authenticated participants,
+ordered durable storage, one native session, and nineteen headless workers on
+one machine. It sustains thirty-nine 20,000-HP cultists and one boss, uses a
+bounded 40 ms plus 0–20 ms jitter pipelined route, and draws the actual low-quality
+scene, mounts, lighting, and HUD offscreen at 1280 × 720. Movement, casts/AoE,
+pursuit, equipment, seeded quest claims, items, midpoint reconnect, and actual
+defeat/respawn use the production authority paths.
+
+| Final profile | Result |
+| --- | --- |
+| Three consecutive 60-second combined repeats | All gates pass; 1,793, 1,792, and 1,792 workload ticks; ordinary correction p95 below 0.214 m and maximum below 0.641 m. |
+| Isolated renderer | Required roots/mounts retained; draw CPU p95 6.344 ms and GPU p95 1.131 ms against 16.667 ms. |
+| Authority and delayed durable network | 600 simulated authority seconds and 60 actual network seconds pass. |
+| 600-second combined soak | All clients complete both segments; 17,910 workload ticks; simulation p99 upper bound 28.667 ms against 33.333 ms. |
+| Soak presentation and correction | Steady CPU frame p95 5.248 ms, GPU p95 5.772 ms, and snapshot age p95 223.896 ms; native ordinary correction maxima 0.6401 m and 0.4801 m. All late windows pass. |
+| Soak lifetime and recovery | 114 post-thirty-second RSS samples; peak growth 44,429,312 bytes against 64 MiB; twenty inventories verified, forty live hostiles, sixty actors, 127 active receipts, ledger revision 787, 512 events, and a 446,777-byte checkpoint; two actual respawns. |
+
+Request queue peak is twenty against 128, writer queue peak is two against two,
+and held replies peak at 911,226 bytes against 32 MiB. Completed measurement
+segments use integrity-checked scratch files; compact typed producer histories
+retain all declared fields and explicit omission counts. Whole-process RSS and
+late windows remain gated. Acceptance thresholds stay unchanged. Earlier
+campaigns retain failed motor recovery, cinematic/animation clocks, correction,
+RSS, and disk-throughput results; passing receipts do not relabel them.
+
+Targeted verification passes 546 world tests, six native session tests, 78
+renderer tests, 125 engine tests, 131 physics tests, the actual TLS host tests,
+and scratch TCP proxy tests; each log records its source stage and existing
+ignored fixtures. Formatting, local documentation links, receipt hashes, and
+source-patch integrity pass. Disk-full build failures and narrowly scoped
+obsolete-executable cleanup are retained separately.
+
+This establishes the declared single-machine profile. It does not establish
+twenty renderers, minimum-device performance, physical input-to-display latency,
+default authored combat balance, quest-giver/loot progression, browser/phone
+parity, larger realms, or multi-host operations. Matching wire-29 host/client
+deployment remains an owner step in `NEEDS_OWNER.md`. V19, V24, V25, and V27
+address the remaining operational, platform, MMO, and acceptance scope.
 
 ### V19: Operators need visibility while the world is running
 

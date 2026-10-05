@@ -1,0 +1,20 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+error: could not compile `verse-world` (lib); 1 warning emitted
+
+Caused by:
+  No space left on device (os error 28)
+
+Caused by:
+  failed to parse process output: `/home/christopherdavid/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustc --crate-name verse_world --edition=2024 crates/verse-world/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C opt-level=3 -C embed-bitcode=no -C debuginfo=2 --deny=unsafe_op_in_unsafe_fn '--deny=clippy::unimplemented' --warn=unexpected_cfgs '--deny=clippy::todo' --allow=linker_messages '--deny=clippy::dbg_macro' --check-cfg 'cfg(kani)' -C debug-assertions=on --cfg 'feature="service-auth"' --cfg 'feature="service-net"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("service-auth", "service-net", "service-reach", "studio"))' -C metadata=e0cd44955665a230 -C extra-filename=-605a6237fb99fc7e --out-dir /home/christopherdavid/work/openagents-target-agent1/debug/deps -C incremental=/home/christopherdavid/work/openagents-target-agent1/debug/incremental -L dependency=/home/christopherdavid/work/openagents-target-agent1/debug/deps --extern getrandom=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libgetrandom-4099f1e47dd44e35.rmeta --extern glam=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libglam-9180d1aa67bc8163.rmeta --extern physics=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libphysics-68a6b3dcba3a520f.rmeta --extern rustls=/home/christopherdavid/work/openagents-target-agent1/debug/deps/librustls-0a8863e5cccda274.rmeta --extern secp256k1=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libsecp256k1-5e165df871fe4cf4.rmeta --extern serde=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libserde-9a12eb85df6763b1.rmeta --extern serde_json=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libserde_json-cad8636d06cbde3e.rmeta --extern sha2=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libsha2-ea605dab1e472d27.rmeta --extern tokio=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libtokio-5bda2544622e9837.rmeta --extern tokio_rustls=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libtokio_rustls-25430b8180eec0ec.rmeta --extern verse_engine=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-ebcac07feee15e5a.rmeta -L native=/home/christopherdavid/work/openagents-target-agent1/debug/build/ring-b254da2910e1cf7f/out -L native=/home/christopherdavid/work/openagents-target-agent1/debug/build/secp256k1-sys-5db8129b533236a1/out` (exit status: 1)

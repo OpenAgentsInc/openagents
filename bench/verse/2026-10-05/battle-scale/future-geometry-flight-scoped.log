@@ -1,0 +1,23 @@
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2845:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2845 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-895f92bfb62bd90a)
+
+running 4 tests
+test combat::hostile_flight_tests::actual_hostile_flight_hits_before_scheduled_area_time_and_only_once ... ok
+test combat::hostile_flight_tests::hostile_flight_remains_checkpoint_consistent_at_large_coordinates_and_late_times ... ok
+test combat::hostile_flight_tests::hostile_flight_shield_and_target_life_fences_precede_damage ... ok
+test combat::hostile_flight_tests::stored_hostile_position_replays_and_forged_flight_is_refused ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 519 filtered out; finished in 0.17s
+

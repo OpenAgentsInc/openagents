@@ -1,0 +1,101 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation-respawn-retry.patch",
+    "source_patch_sha256": "5b931a52107bf8d8c4480ac5026400df2050f0078d299069e5b4cac37528a4de",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "executables": {
+    "battle_scale": "a5853f9e2f9e95900724faa3b7bb56339fefec6d7e4cae97bf9176e8b8484fcf",
+    "renderer_budget": "902b5fc9c2cdfddad8dcf3fd66cc662654cf74d85c1a220429c10312d0b42be2"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-retry-final.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-retry-final.json",
+        "300"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "wall_seconds": 5.663134068978252,
+      "receipt_sha256": "0ce9c040c6d541fca15813cb3090e1ce948b82361855047339821420e8a9aab4"
+    },
+    {
+      "receipt": "authority-retry-final.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-retry-final.json",
+        "60"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "wall_seconds": 5.984067376994062,
+      "receipt_sha256": "bdcfd6d2e0dd0d2f49eb739d264456306794193f0b4677ddd8bb10585578c869"
+    },
+    {
+      "receipt": "network-retry-final.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-retry-final.json",
+        "60"
+      ],
+      "status": "failed",
+      "exit_code": 1,
+      "wall_seconds": 60.96472680699662,
+      "receipt_sha256": "85b3b07d110bff077bac5ffd10e070e3796c947e7b45584dcb145ef18065d4c9"
+    },
+    {
+      "receipt": "combined-retry-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-retry-01.json",
+        "60"
+      ],
+      "status": "failed",
+      "exit_code": 1,
+      "wall_seconds": 61.7390807789925,
+      "receipt_sha256": "e930fa4a408ab91d2cc6dbb9bd0b7d46811cb80b7f3668f88bd4be4e011268de"
+    },
+    {
+      "receipt": "combined-retry-02.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-retry-02.json",
+        "60"
+      ],
+      "status": "failed",
+      "exit_code": 1,
+      "wall_seconds": 61.45457961698412,
+      "receipt_sha256": "478b6d2bcf4f64e913efcc3aeed97bfac75377a130d22f147224bb7cf13a6db3"
+    },
+    {
+      "receipt": "combined-retry-03.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-retry-03.json",
+        "60"
+      ],
+      "status": "failed",
+      "exit_code": 1,
+      "wall_seconds": 61.480753284995444,
+      "receipt_sha256": "d6ef48ffdbc343adc0422c7874d144ffdb08c2e207a8164060c38b8a3fdc03c3"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

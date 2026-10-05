@@ -145,6 +145,7 @@ fn append_equipment(
                 transform: Mat4::IDENTITY,
                 animation: 0.into(),
                 time: frame.time,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             });
         }
@@ -189,6 +190,7 @@ fn instances_with_outfits(
                 * basis(),
             animation: a.animation,
             time: a.animation_time,
+            animation_epoch: a.animation_epoch,
             emission: Vec3::ONE,
         })
         .collect();
@@ -222,6 +224,7 @@ fn instances_with_outfits(
                 transform: Mat4::IDENTITY,
                 animation: 0.into(),
                 time: frame.time,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             });
         }
@@ -236,6 +239,7 @@ fn instances_with_outfits(
                 * basis(),
             animation: 0.into(),
             time: frame.time,
+            animation_epoch: None,
             emission: Vec3::ONE,
         });
     }
@@ -267,6 +271,7 @@ pub fn blocker_instances_from_bounds(
                 * basis(),
             animation: 0.into(),
             time,
+            animation_epoch: None,
             emission: Vec3::ONE,
         })
         .collect()
@@ -289,6 +294,7 @@ pub fn static_instances(pack: &Pack, origin: Vec3) -> Vec<Instance> {
                 ),
             animation: 0.into(),
             time: 0.0,
+            animation_epoch: None,
             emission: if matches!(
                 p.model.as_str(),
                 "prop/flame" | "prop/ritual-liquid" | "prop/summoning-seal"
@@ -407,6 +413,7 @@ pub fn playground_static_instances() -> Vec<Instance> {
         transform: basis(),
         animation: 0.into(),
         time: 0.0,
+        animation_epoch: None,
         emission: Vec3::ONE,
     }]
 }
@@ -438,6 +445,7 @@ pub fn prop_instances_from_poses(
                     * basis(),
                 animation: 0.into(),
                 time,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             })
         })
@@ -635,6 +643,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
                     * Mat4::from_scale(Vec3::splat(1.2)),
                 animation: 0.into(),
                 time: visuals.time,
+                animation_epoch: None,
                 emission: Vec3::ZERO,
             });
             continue;
@@ -655,6 +664,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
             transform: Mat4::from_translation(p.pos.into()) * Mat4::from_scale(Vec3::splat(scale)),
             animation: 0.into(),
             time: visuals.time,
+            animation_epoch: None,
             emission: Vec3::ONE,
         });
         for trail in 1..4 {
@@ -667,6 +677,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
                 ) * Mat4::from_scale(Vec3::splat(scale * (1.0 - trail as f32 * 0.2))),
                 animation: 0.into(),
                 time: visuals.time,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             });
         }
@@ -706,6 +717,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
                 },
             animation: 0.into(),
             time: visuals.time,
+            animation_epoch: None,
             emission: Vec3::splat(alpha),
         });
     }
@@ -719,6 +731,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
                 transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(0.12)),
                 animation: 0.into(),
                 time: visuals.time,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             });
         }
@@ -732,6 +745,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
                     * Mat4::from_scale(Vec3::new(1.1, 1.25, 1.1)),
                 animation: 0.into(),
                 time: visuals.time,
+                animation_epoch: None,
                 emission: Vec3::splat(0.8),
             });
         }
@@ -759,6 +773,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
                     * Mat4::from_scale(Vec3::splat(cast.radius)),
                 animation: 0.into(),
                 time: visuals.time,
+                animation_epoch: None,
                 emission: Vec3::splat(0.6),
             });
             let position = if visuals.time < cast.release {
@@ -774,6 +789,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
                 transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(size)),
                 animation: 0.into(),
                 time: visuals.time,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             });
             if visuals.time >= cast.release {
@@ -787,6 +803,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
                         * Mat4::from_scale(Vec3::new(size * 0.7, 0.85, 1.0)),
                     animation: 0.into(),
                     time: visuals.time,
+                    animation_epoch: None,
                     emission: Vec3::splat(0.75),
                 });
             }
@@ -809,6 +826,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
             transform: Mat4::from_translation(*position) * Mat4::from_scale(Vec3::splat(scale)),
             animation: 0.into(),
             time: visuals.time,
+            animation_epoch: None,
             emission: Vec3::splat((1.0 - elapsed / 0.6).max(0.0)),
         });
     }
@@ -877,6 +895,7 @@ fn particle(model: &str, position: Vec3, radius: f32, opacity: f32, time: f32) -
         transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(radius)),
         animation: 0.into(),
         time,
+        animation_epoch: None,
         emission: Vec3::splat(opacity.clamp(0.0, 1.0)),
     }
 }
@@ -917,6 +936,7 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
                 transform: basis(),
                 animation: 0.into(),
                 time: 0.0,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             }],
             &UiBatch::default(),
@@ -1693,6 +1713,7 @@ pub fn environment_instances(pack: &Pack, game: &super::play::Game) -> Vec<Insta
                 * Mat4::from_scale(Vec3::new(width, length, 1.)),
             animation: 0.into(),
             time: game.time,
+            animation_epoch: None,
             emission: Vec3::splat(0.5),
         });
     };
@@ -1756,6 +1777,7 @@ pub fn environment_instances(pack: &Pack, game: &super::play::Game) -> Vec<Insta
                             * basis(),
                         animation: 0.into(),
                         time: game.time,
+                        animation_epoch: None,
                         emission: Vec3::splat(4.),
                     }
                 }),

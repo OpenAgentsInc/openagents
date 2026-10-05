@@ -1,0 +1,35 @@
+Command: cargo test -p verse-world --lib --features service-net service::net::tests -- --test-threads=1
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2845:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2845 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 46s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-895f92bfb62bd90a)
+
+running 14 tests
+test service::net::tests::catch_up_ticks_each_leave_their_own_simulation_observation ... ok
+test service::net::tests::durable_clock_credit_preserves_the_admission_prefix_and_byte_bounds ... ok
+test service::net::tests::durable_host_stops_without_acknowledgment_on_storage_failure ... ok
+test service::net::tests::durable_tls_host_recovers_acknowledged_combat_after_abrupt_restart ... ok
+test service::net::tests::durable_travel_confirmation_preserves_body_and_cannot_cross_admission_prefix ... ok
+test service::net::tests::durable_two_player_input_cadence_records_checkpoint_cost ... ok
+test service::net::tests::frame_budget_rejects_header_before_waiting_for_payload ... ok
+test service::net::tests::movement_entry_storage_backpressure_preserves_exact_request_and_refusal_boundaries ... ok
+test service::net::tests::overload_keeps_admitted_commands_live_and_reconnects_share_budgets ... ok
+test service::net::tests::slow_tls_handshake_expires_and_releases_its_pending_slot ... ok
+test service::net::tests::slow_writer_fences_replies_and_backpressures_the_bounded_request_queue ... ok
+test service::net::tests::storage_busy_does_not_extend_the_authentication_deadline ... ok
+test service::net::tests::tls_and_frame_refusals_leave_the_world_available ... ok
+test service::net::tests::tls_players_and_spectator_share_one_world_and_shutdown_parks_controls ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 502 filtered out; finished in 10.77s
+

@@ -100,6 +100,8 @@ pub struct Instance {
     pub transform: Mat4,
     pub animation: Selection,
     pub time: f32,
+    /// Phase owner for presentation markers, independent of actor authority.
+    pub animation_epoch: Option<u64>,
     pub emission: Vec3,
 }
 
@@ -303,6 +305,7 @@ mod tests {
             transform: Mat4::IDENTITY,
             animation: Selection::Legacy(0),
             time: 0.,
+            animation_epoch: None,
             emission: Vec3::ZERO,
         }
     }

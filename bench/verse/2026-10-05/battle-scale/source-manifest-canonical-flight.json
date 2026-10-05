@@ -1,0 +1,7 @@
+{
+  "schema": "verse.battle.source.v1",
+  "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+  "source_patch": "implementation-canonical-flight.patch",
+  "source_patch_sha256": "f6ee32486abd8d15cc123667433d795ac0066ca5bb10efd1d7041e06ea972e74",
+  "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+}

@@ -1,0 +1,20 @@
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.23s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9)
+
+running 1 test
+test service::persistence::migration::tests::populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_quests ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 542 filtered out; finished in 0.64s
+

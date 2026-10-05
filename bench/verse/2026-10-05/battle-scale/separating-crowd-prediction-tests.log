@@ -1,0 +1,9 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+error[E0616]: field `support_pose` of struct `physics::character::Character` is private
+   --> crates/verse-world/src/prediction/local.rs:608:26
+    |
+608 |             || character.support_pose != self.collision.scene().pose(support)
+    |                          ^^^^^^^^^^^^ private field
+
+For more information about this error, try `rustc --explain E0616`.
+error: could not compile `verse-world` (lib test) due to 1 previous error

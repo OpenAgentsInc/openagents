@@ -1,0 +1,44 @@
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2845:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2845 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+warning: `verse-world` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 46s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-f57d3ad69100fb15)
+
+running 2 tests
+test tests::host_file_inputs_reject_oversized_and_non_regular_sources ... ok
+test tests::tls_private_key_requires_owner_only_permissions ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-12ec5da542d691b6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/worlds.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-00efdcab108d5000)
+
+running 1 test
+test two_original_worlds_use_the_same_dedicated_host_and_authentication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s
+
+   Doc-tests verse_host
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

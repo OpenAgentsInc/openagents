@@ -1,0 +1,38 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "c0611aab1f880ff9184a091eb6c62ccb36658a62",
+    "source_patch": "implementation-final-main.patch",
+    "source_patch_sha256": "9732f2d1042d4b72ec3b832479d6e3e3b89f689859c300173f0859f12c254126",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "6136dae2b32b6941b0093327eb6222313bcd6d8f43dfcc0028108020247f8a92"
+  },
+  "runs": [
+    {
+      "receipt": "combined-final-main-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-final-main-01.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.80180313100573,
+      "status": "failed",
+      "receipt_sha256": "ad6d83b45a73ef35af4619b9e39b7b7d31ed29e018cf70d15af243f51e9a7b54"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

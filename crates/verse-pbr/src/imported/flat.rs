@@ -187,6 +187,7 @@ mod tests {
                 transform: Mat4::IDENTITY,
                 animation: 0.into(),
                 time: 0.,
+                animation_epoch: None,
                 emission: Vec3::ZERO,
             }],
         )
@@ -198,6 +199,7 @@ mod tests {
             transform: Mat4::from_translation(at) * Mat4::from_scale(Vec3::splat(2.0)),
             animation: 0.into(),
             time: 0.,
+            animation_epoch: None,
             emission: Vec3::ZERO,
         };
         let eye = Vec3::new(0., 1.5, -6.);

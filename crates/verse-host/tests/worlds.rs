@@ -93,6 +93,7 @@ fn two_original_worlds_use_the_same_dedicated_host_and_authentication() {
                     * verse_content::basis(),
                 animation: actor.animation,
                 time: actor.animation_time,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             })
             .collect();

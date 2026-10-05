@@ -8,7 +8,7 @@ use crate::{
 };
 use glam::Vec3;
 use physics::queries::{Filter, Life, SceneCache, SceneSnapshot};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use verse_engine::core::LifeId;
 
 #[derive(Clone, Copy, Debug)]
@@ -26,6 +26,12 @@ pub struct Pose {
 #[derive(serde::Serialize)]
 pub struct Timing {
     recovery_blocks: u64,
+    embedding_deferrals: u64,
+    separating_steps: u64,
+    last_embedding: Option<String>,
+    render_floor: u64,
+    deferred_steps: Vec<u64>,
+    motor_history_steps: usize,
     steps_per_second: u16,
     step: u64,
     simulated: u64,
@@ -48,17 +54,30 @@ struct Input {
     step: u64,
     intent: Intent<Ability>,
 }
+#[derive(Clone, Copy)]
+struct Estimate {
+    character: physics::character::Character,
+    held: movement::Held,
+    yaw: f32,
+    policy: movement::Policy,
+}
 pub struct Local {
     recovery: movement::RecoveryObservations,
+    embedding_deferrals: u64,
+    separating_steps: u64,
+    last_embedding: Option<String>,
     collision: SceneCache,
     baseline: Option<Baseline>,
     world_credit: u64,
+    deferred_steps: BTreeSet<u64>,
+    estimates: BTreeMap<u64, Estimate>,
     inputs: VecDeque<Input>,
     token: u64,
     tick: u64,
     observation: u64,
     step: u64,
     simulated: u64,
+    render_floor: u64,
     fraction: f64,
     character: Option<physics::character::Character>,
     yaw: f32,
@@ -70,15 +89,21 @@ impl Local {
     pub fn new(instance: u64) -> Self {
         Self {
             recovery: Default::default(),
+            embedding_deferrals: 0,
+            separating_steps: 0,
+            last_embedding: None,
             collision: SceneCache::new(instance),
             baseline: None,
             world_credit: 0,
+            deferred_steps: BTreeSet::new(),
+            estimates: BTreeMap::new(),
             inputs: VecDeque::new(),
             token: 0,
             tick: 0,
             observation: 0,
             step: 0,
             simulated: 0,
+            render_floor: 0,
             fraction: 0.,
             character: None,
             yaw: 0.,
@@ -90,6 +115,9 @@ impl Local {
     pub fn clear(&mut self) {
         self.baseline = None;
         self.world_credit = 0;
+        self.render_floor = 0;
+        self.deferred_steps.clear();
+        self.estimates.clear();
         self.inputs.clear();
         self.character = None;
         self.fraction = 0.;
@@ -103,6 +131,12 @@ impl Local {
     pub fn timing(&self) -> Timing {
         Timing {
             recovery_blocks: self.recovery.blocks,
+            embedding_deferrals: self.embedding_deferrals,
+            separating_steps: self.separating_steps,
+            last_embedding: self.last_embedding.clone(),
+            render_floor: self.render_floor,
+            deferred_steps: self.deferred_steps.iter().copied().collect(),
+            motor_history_steps: self.estimates.len(),
             steps_per_second: 120,
             step: self.step,
             simulated: self.simulated,
@@ -124,10 +158,62 @@ impl Local {
     pub fn pending(&self) -> usize {
         self.inputs.len()
     }
+    /// Separates the input clock from the last processed motor step.
+    pub fn prediction_delay_steps(&self) -> u64 {
+        self.step.saturating_sub(self.simulated)
+    }
+    pub fn embedding_deferrals(&self) -> u64 {
+        self.embedding_deferrals
+    }
+    pub fn separating_steps(&self) -> u64 {
+        self.separating_steps
+    }
+    pub fn last_embedding(&self) -> Option<&str> {
+        self.last_embedding.as_deref()
+    }
     pub fn observe(
         &mut self,
         baseline: Baseline,
         geometry: &SceneSnapshot,
+        tick: u64,
+        observation: u64,
+    ) -> Result<(), String> {
+        self.observe_inner(baseline, Some(geometry), tick, observation)
+    }
+    /// Applies verified completed travel using the most recent collision scene.
+    /// Returns false for a superseded confirmation without changing prediction.
+    pub fn observe_applied(
+        &mut self,
+        baseline: Baseline,
+        tick: u64,
+        observation: u64,
+    ) -> Result<bool, String> {
+        let Some(old) = self.baseline else {
+            return Ok(false);
+        };
+        if baseline.life != old.life
+            || baseline.epoch != old.epoch
+            || baseline.profile != movement::Profile::Frames
+        {
+            return Ok(false);
+        }
+        if baseline.physics_step < old.physics_step
+            || baseline.applied_sequence < old.applied_sequence
+            || (baseline.physics_step == old.physics_step
+                && baseline.applied_sequence == old.applied_sequence)
+        {
+            return Ok(false);
+        }
+        self.observe_inner(baseline, None, tick, observation)?;
+        Ok(true)
+    }
+    pub fn confirmed(&self) -> Option<Baseline> {
+        self.baseline
+    }
+    fn observe_inner(
+        &mut self,
+        baseline: Baseline,
+        geometry: Option<&SceneSnapshot>,
         tick: u64,
         observation: u64,
     ) -> Result<(), String> {
@@ -153,6 +239,100 @@ impl Local {
             }
         }
         let reset = self.context() != Some((baseline.life, baseline.epoch));
+        let same_travel = baseline.profile == movement::Profile::Frames
+            && self.baseline.is_some_and(|mut previous| {
+                previous.world_step = baseline.world_step;
+                previous == baseline
+            })
+            && geometry.is_none_or(|geometry| self.collision.fixed_geometry_matches(geometry));
+        // Compare completed travel at its own physics step. Capsule poses from
+        // another observation cannot retroactively replace a pending path that
+        // this estimate already processed. Other motor state still requires replay.
+        let mut translation = None;
+        let mut constrained = None;
+        if !reset
+            && !same_travel
+            && !self.dirty
+            && baseline.profile == movement::Profile::Frames
+            && geometry.is_none_or(|scene| self.collision.fixed_geometry_matches(scene))
+        {
+            if let (Some(reference), Some(current)) =
+                (self.estimates.get(&baseline.physics_step), self.character)
+            {
+                let delta = baseline.character.feet - reference.character.feet;
+                let mut expected = reference.character;
+                expected.feet = baseline.character.feet;
+                if expected == baseline.character
+                    && expected.support.is_some()
+                    && delta.y.abs() <= 1e-8
+                    && reference.policy == baseline.policy
+                    && reference.held.axes(baseline.physics_step)
+                        == baseline.held.axes(baseline.physics_step)
+                    && reference.yaw == baseline.yaw
+                {
+                    let mut filter = Filter::blocking(baseline.life.instance);
+                    filter.ignore = Some(Life {
+                        instance: baseline.life.instance,
+                        entity: baseline.life.actor,
+                        generation: baseline.life.generation,
+                    });
+                    let overlap = self.collision.scene().overlap(
+                        physics::character::Settings::default().capsule(current.feet + delta),
+                        filter,
+                    )?;
+                    if overlap.truncated {
+                        return Err("Prediction reconciliation query budget exceeded".into());
+                    }
+                    let fixed_clear = overlap.hits.iter().all(|hit| {
+                        hit.penetration <= 1e-5 || self.collision.is_capsule(hit.collider)
+                    });
+                    if fixed_clear {
+                        translation = Some(delta);
+                    } else {
+                        // Later actor capsules affect future integration. Resolve a
+                        // completed confirmation against the unchanged fixed scene,
+                        // preserving the collision-constrained path already processed.
+                        let mut fixed = self.collision.scene().clone();
+                        let capsules: Vec<_> = fixed.capsule_keys().collect();
+                        for key in capsules {
+                            fixed.remove_capsule(key);
+                        }
+                        let settings = physics::character::Settings::default();
+                        let correct = |feet: glam::DVec3| -> Result<Option<glam::DVec3>, String> {
+                            let corrected = physics::character::slide(
+                                &fixed, filter, settings, feet, delta, true,
+                            )?;
+                            let overlap = fixed.overlap(settings.capsule(corrected), filter)?;
+                            if overlap.truncated {
+                                return Err(
+                                    "Prediction reconciliation query budget exceeded".into()
+                                );
+                            }
+                            Ok((corrected.y == feet.y
+                                && overlap.hits.iter().all(|hit| hit.penetration <= 1e-5))
+                            .then_some(corrected))
+                        };
+                        if let Some(feet) = correct(current.feet)? {
+                            let mut history = Vec::new();
+                            let mut valid = true;
+                            for (step, estimate) in self.estimates.range((
+                                std::ops::Bound::Excluded(baseline.physics_step),
+                                std::ops::Bound::Unbounded,
+                            )) {
+                                let Some(corrected) = correct(estimate.character.feet)? else {
+                                    valid = false;
+                                    break;
+                                };
+                                history.push((*step, corrected));
+                            }
+                            if valid {
+                                constrained = Some((feet, history));
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let shift = if reset || baseline.physics_step <= self.step {
             0
         } else {
@@ -172,14 +352,35 @@ impl Local {
             .simulated
             .checked_add(shift)
             .ok_or("Local prediction clock exhausted")?;
-        self.collision.update(geometry)?;
+        if let Some(geometry) = geometry {
+            self.collision.update(geometry)?;
+        }
         if reset {
+            self.deferred_steps.clear();
+            self.estimates.clear();
             self.inputs.clear();
-            self.step = baseline.physics_step;
+            // Entry requires a stationary grounded pose. Align only this fresh
+            // interval timeline to verified simulated time, preserving the old
+            // character pose and neutral input throughout the gap.
+            self.step = if baseline.profile == movement::Profile::Frames
+                && baseline.applied_sequence == 0
+                && baseline.character.support.is_some()
+                && baseline.held.axes(baseline.physics_step) == [0.; 2]
+            {
+                baseline.world_step
+            } else {
+                baseline.physics_step
+            };
+            self.simulated = self.step;
+            self.render_floor = self.step;
             self.fraction = 0.;
             self.motion_time = 0.;
             self.moving = false;
         } else {
+            self.deferred_steps
+                .retain(|step| *step >= baseline.physics_step);
+            self.estimates
+                .retain(|step, _| *step >= baseline.physics_step);
             self.inputs
                 .retain(|i| i.sequence.is_none_or(|s| s > baseline.applied_sequence));
             // Rebase pending intervals only when authority overtakes the local clock.
@@ -190,8 +391,44 @@ impl Local {
             self.step = step.max(baseline.physics_step);
             self.simulated = simulated;
         }
-        self.character = Some(baseline.character);
-        self.yaw = baseline.yaw;
+        // New geometry cannot invent movement during already replayed time.
+        // A changed authority motor state still requires reconciliation below.
+        if let Some(delta) = translation {
+            self.character
+                .as_mut()
+                .expect("Verified prediction character")
+                .feet += delta;
+            for (step, estimate) in &mut self.estimates {
+                if *step > baseline.physics_step {
+                    estimate.character.feet += delta;
+                }
+            }
+        } else if let Some((feet, history)) = &constrained {
+            self.character
+                .as_mut()
+                .expect("Verified prediction character")
+                .feet = *feet;
+            for (step, corrected) in history {
+                if let Some(estimate) = self.estimates.get_mut(step) {
+                    estimate.character.feet = *corrected;
+                }
+            }
+        } else if !same_travel {
+            self.character = Some(baseline.character);
+            self.yaw = baseline.yaw;
+            self.estimates.clear();
+        }
+        if baseline.profile == movement::Profile::Frames {
+            self.estimates.insert(
+                baseline.physics_step,
+                Estimate {
+                    character: baseline.character,
+                    held: baseline.held,
+                    yaw: baseline.yaw,
+                    policy: baseline.policy,
+                },
+            );
+        }
         self.world_credit = if reset {
             baseline.world_step
         } else {
@@ -200,7 +437,11 @@ impl Local {
         self.baseline = Some(baseline);
         self.tick = tick;
         self.observation = observation;
-        self.dirty = true;
+        if translation.is_some() || constrained.is_some() {
+            self.dirty = false;
+        } else if !same_travel {
+            self.dirty = !reset || self.step == baseline.physics_step;
+        }
         Ok(())
     }
     pub fn observation(&self) -> u64 {
@@ -219,10 +460,14 @@ impl Local {
         if self.baseline.is_none() || tick < self.tick || observation <= self.observation {
             return Err("Prediction collision observation is inactive or regressed".into());
         }
+        let replay = self
+            .baseline
+            .is_some_and(|b| b.profile != movement::Profile::Frames)
+            || !self.collision.fixed_geometry_matches(geometry);
         self.collision.update(geometry)?;
         self.tick = tick;
         self.observation = observation;
-        self.dirty = true;
+        self.dirty |= replay;
         Ok(())
     }
     pub fn queue(&mut self, token: u64, intent: Intent<Ability>) -> Result<(), String> {
@@ -251,7 +496,14 @@ impl Local {
             step: self.step,
             intent,
         });
-        self.dirty = true;
+        // Interval input starts at the current clock boundary. It changes only
+        // future integration, never travel already processed against older geometry.
+        if self
+            .baseline
+            .is_some_and(|b| b.profile != movement::Profile::Frames)
+        {
+            self.dirty = true;
+        }
         Ok(())
     }
     /// Retains local motion until the newer unsent movement is acknowledged.
@@ -342,6 +594,86 @@ impl Local {
         self.inputs.retain(|i| !retired.contains(&i.token));
         self.dirty = true;
     }
+    fn outward_crowd_step(
+        &self,
+        character: &physics::character::Character,
+        filter: Filter,
+        overlap: &physics::queries::Results,
+        delta: glam::DVec3,
+        jump: bool,
+    ) -> Result<Option<glam::DVec3>, String> {
+        let Some(support) = character.support else {
+            return Ok(None);
+        };
+        if jump
+            || character.vertical_speed != 0.
+            || character.gravity.is_some()
+            || character.external != glam::DVec3::ZERO
+            || delta.y != 0.
+            || delta.length_squared() <= 1e-16
+            || self.collision.is_capsule(support)
+            || character.support_pose() != self.collision.scene().pose(support)
+        {
+            return Ok(None);
+        }
+        let contacts: Vec<_> = overlap
+            .hits
+            .iter()
+            .filter(|hit| hit.penetration > 1e-5)
+            .collect();
+        if contacts.is_empty()
+            || contacts.iter().any(|hit| {
+                !self.collision.is_capsule(hit.collider) || delta.dot(hit.normal) < -1e-12
+            })
+        {
+            return Ok(None);
+        }
+        // A straight translation out of every convex contact plane cannot
+        // increase these existing capsule overlaps. Sweep all other colliders;
+        // do not invent a depenetration push or a new supported height.
+        let mut remaining = self.collision.scene().clone();
+        for hit in &contacts {
+            remaining.remove_capsule(hit.collider);
+        }
+        let settings = physics::character::Settings::default();
+        let sweep = remaining.sweep(settings.capsule(character.feet), delta, filter)?;
+        if sweep.truncated {
+            return Err("Prediction separating sweep query budget exceeded".into());
+        }
+        if sweep
+            .hits
+            .iter()
+            .any(|hit| hit.fraction < 1. && delta.dot(hit.normal) < -1e-12)
+        {
+            return Ok(None);
+        }
+        let feet = character.feet + delta;
+        let endpoint = self
+            .collision
+            .scene()
+            .overlap(settings.capsule(feet), filter)?;
+        if endpoint.truncated {
+            return Err("Prediction separating overlap query budget exceeded".into());
+        }
+        if endpoint.hits.iter().any(|hit| {
+            hit.penetration
+                > contacts
+                    .iter()
+                    .find(|old| old.collider == hit.collider)
+                    .map_or(1e-5, |old| old.penetration + 1e-8)
+        }) {
+            return Ok(None);
+        }
+        let ground = remaining.sweep(settings.capsule(feet), -glam::DVec3::Y * 2e-5, filter)?;
+        if ground.truncated {
+            return Err("Prediction separating support query budget exceeded".into());
+        }
+        Ok(ground
+            .hits
+            .iter()
+            .any(|hit| hit.collider == support && hit.surface_normal.y >= settings.slope_cos)
+            .then_some(feet))
+    }
     pub fn advance(&mut self, seconds: f64) -> Result<(), String> {
         if !seconds.is_finite() || !(0. ..=0.1).contains(&seconds) {
             return Err("Invalid local prediction frame interval".into());
@@ -360,8 +692,21 @@ impl Local {
             self.clear();
             return Err("Local prediction exceeded its correction horizon".into());
         }
+        let mut filter = Filter::blocking(baseline.life.instance);
+        filter.ignore = Some(Life {
+            instance: baseline.life.instance,
+            entity: baseline.life.actor,
+            generation: baseline.life.generation,
+        });
+        // Replay the existing input timeline without granting elapsed time from
+        // an acknowledgment. Embedded projected geometry is handled below.
+        let target = self.step;
         let from = if self.dirty {
-            baseline.physics_step
+            if baseline.profile == movement::Profile::Frames {
+                baseline.physics_step.max(self.render_floor)
+            } else {
+                baseline.physics_step
+            }
         } else {
             self.simulated
         };
@@ -370,13 +715,10 @@ impl Local {
         } else {
             self.character.unwrap_or(baseline.character)
         };
-        let mut filter = Filter::blocking(baseline.life.instance);
-        filter.ignore = Some(Life {
-            instance: baseline.life.instance,
-            entity: baseline.life.actor,
-            generation: baseline.life.generation,
-        });
-        for step in from..self.step {
+        for step in from..target {
+            // An earlier estimate held these exact steps against projected
+            // obstruction. A later baseline confirms travel only through its
+            // own clock; it cannot make the held pending time move retroactively.
             let previous = character.feet;
             let mut held = baseline.held;
             let mut yaw = baseline.yaw;
@@ -398,22 +740,120 @@ impl Local {
                     _ => {}
                 }
             }
+            if baseline.profile == movement::Profile::Frames && self.deferred_steps.contains(&step)
+            {
+                self.estimates.insert(
+                    step + 1,
+                    Estimate {
+                        character,
+                        held,
+                        yaw,
+                        policy: baseline.policy,
+                    },
+                );
+                self.moving = false;
+                continue;
+            }
             let walk = movement::walk(held.axes(step), yaw)?;
             let velocity = baseline.policy.velocity(held.axes(step), yaw)?;
-            let travel = movement::advance(
-                &mut character,
-                self.collision.scene(),
-                filter,
-                velocity,
-                jump && baseline.policy.jump_allowed,
-                1,
-                1. / 120.,
-            )?;
-            if travel.recovery.blocks > 0 {
-                self.recovery.blocks = self.recovery.blocks.saturating_add(travel.recovery.blocks);
-                self.recovery.last_diagnostic = travel.recovery.last_diagnostic;
-                self.moving = false;
-                break;
+            let mut separating = false;
+            // A projected crowd can embed a newer confirmed character in an
+            // older collider pose. Authority chooses the recovery exit; a local
+            // estimate holds its pose instead of inventing that displacement.
+            if baseline.profile == movement::Profile::Frames {
+                let overlap = self.collision.scene().overlap(
+                    physics::character::Settings::default().capsule(character.feet),
+                    filter,
+                )?;
+                if overlap.truncated {
+                    return Err("Prediction overlap query budget exceeded".into());
+                }
+                if let Some(hit) = overlap
+                    .hits
+                    .iter()
+                    .filter(|hit| hit.penetration > 1e-5)
+                    .max_by(|a, b| a.penetration.total_cmp(&b.penetration))
+                {
+                    if let Some(feet) = self.outward_crowd_step(
+                        &character,
+                        filter,
+                        &overlap,
+                        velocity / 120.,
+                        jump,
+                    )? {
+                        character.feet = feet;
+                        separating = true;
+                        self.separating_steps = self.separating_steps.saturating_add(1);
+                    } else {
+                        self.deferred_steps.extend(step..target);
+                        self.embedding_deferrals = self.embedding_deferrals.saturating_add(1);
+                        self.last_embedding = Some(format!(
+                            "Prediction holds actor {:?} at {:?}: contact {:?}, penetration {}, normal {:?}, observed tick {}, replay step {}",
+                            baseline.life,
+                            character.feet,
+                            hit.collider,
+                            hit.penetration,
+                            hit.normal,
+                            self.tick,
+                            step,
+                        ));
+                        self.estimates.insert(
+                            step + 1,
+                            Estimate {
+                                character,
+                                held,
+                                yaw,
+                                policy: baseline.policy,
+                            },
+                        );
+                        self.moving = false;
+                        continue;
+                    }
+                }
+            }
+            if !separating {
+                let travel = movement::advance(
+                    &mut character,
+                    self.collision.scene(),
+                    filter,
+                    velocity,
+                    jump && baseline.policy.jump_allowed,
+                    1,
+                    1. / 120.,
+                )?;
+                if travel.recovery.blocks > 0 {
+                    if baseline.profile == movement::Profile::Frames {
+                        self.deferred_steps.extend(step..target);
+                    }
+                    self.recovery.blocks =
+                        self.recovery.blocks.saturating_add(travel.recovery.blocks);
+                    self.recovery.last_diagnostic = travel.recovery.last_diagnostic;
+                    self.moving = false;
+                    if baseline.profile == movement::Profile::Frames {
+                        self.estimates.insert(
+                            step + 1,
+                            Estimate {
+                                character,
+                                held,
+                                yaw,
+                                policy: baseline.policy,
+                            },
+                        );
+                        continue;
+                    }
+                    break;
+                }
+            }
+            if baseline.profile == movement::Profile::Frames {
+                self.estimates.insert(
+                    step + 1,
+                    Estimate {
+                        character,
+                        held,
+                        yaw,
+                        policy: baseline.policy,
+                    },
+                );
             }
             let distance = character.feet.distance(previous) as f32;
             self.moving = distance > 0.00001;
@@ -431,7 +871,7 @@ impl Local {
             })
             .unwrap_or(baseline.yaw);
         self.character = Some(character);
-        self.simulated = self.step;
+        self.simulated = target;
         self.dirty = false;
         Ok(())
     }
@@ -546,7 +986,7 @@ mod tests {
         baseline.physics_step = 4;
         baseline.character = partial;
         baseline.held.refresh([1., 0.], 0).unwrap();
-        local.observe(baseline, &geometry, 3, 3).unwrap();
+        assert!(local.observe_applied(baseline, 3, 3).unwrap());
         local.advance(0.).unwrap();
         assert_eq!(local.physics_step(), 12);
         assert!(local.contains(1));
@@ -557,7 +997,7 @@ mod tests {
         baseline.physics_step = 12;
         baseline.applied_sequence = 1;
         baseline.character = predicted;
-        local.observe(baseline, &geometry, 4, 4).unwrap();
+        assert!(local.observe_applied(baseline, 4, 4).unwrap());
         local.advance(0.).unwrap();
         assert!(!local.contains(1));
         assert_eq!(
@@ -623,39 +1063,765 @@ mod tests {
         local.observe(baseline, &source, 4, 4).unwrap();
         assert_eq!(local.movement_frame_limit(), Some(32));
         assert_eq!(local.physics_step(), 36);
+        let before = local.pose().unwrap().position;
         local
-            .grant_world_credit(baseline.life, baseline.epoch, 28)
+            .movement_credit(baseline.life, baseline.epoch, 24)
             .unwrap();
-        local.advance(12. / 120.).unwrap();
-        assert_eq!(local.movement_frame_limit(), Some(40));
+        assert_eq!(local.movement_frame_limit(), Some(36));
+        assert_eq!(local.physics_step(), 36);
+        assert_eq!(local.pose().unwrap().position, before);
         assert!(
             local
-                .grant_world_credit(baseline.life, baseline.epoch, 20)
+                .movement_credit(baseline.life, baseline.epoch, 23)
                 .is_err()
         );
         assert!(
             local
-                .grant_world_credit(baseline.life, baseline.epoch + 1, 100)
+                .movement_credit(baseline.life, baseline.epoch + 1, 28)
                 .is_err()
         );
         let mut foreign = baseline.life;
-        foreign.actor += 1;
+        foreign.generation += 1;
+        assert!(local.movement_credit(foreign, baseline.epoch, 28).is_err());
         assert!(
             local
-                .grant_world_credit(foreign, baseline.epoch, 100)
+                .movement_credit(baseline.life, baseline.epoch, u64::MAX)
                 .is_err()
         );
-        assert_eq!(local.movement_frame_limit(), Some(40));
-        // A delayed full baseline cannot erase time already granted by a verified acknowledgment.
+        local.advance(12. / 120.).unwrap();
+        local
+            .movement_credit(baseline.life, baseline.epoch, 24)
+            .unwrap();
+        assert_eq!(local.physics_step(), 48);
+        assert_eq!(local.movement_frame_limit(), Some(36));
+        // An older body baseline cannot revoke newer verified header credit.
         local.observe(baseline, &source, 5, 5).unwrap();
-        assert_eq!(local.movement_frame_limit(), Some(40));
-        local.clear();
+        assert_eq!(local.movement_frame_limit(), Some(36));
+    }
+
+    #[test]
+    fn embedded_prediction_waits_for_authority_without_losing_input_or_query_errors() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        let (mut local, mut baseline, mut source) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        let clean = source.clone();
+        let settings = physics::character::Settings::default();
+        let capsule = settings.capsule(glam::DVec3::new(-0.1, 0., 0.));
+        let obstacle = ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 216,
+                    generation: 0,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Capsule {
+                a: capsule.a,
+                b: capsule.b,
+                radius: capsule.radius,
+            },
+        };
+        source.colliders.push(obstacle.clone());
+        local.observe(baseline, &source, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        local.advance(4. / 120.).unwrap();
+        assert_eq!(local.pose().unwrap().position, Vec3::ZERO);
+        assert_eq!(local.physics_step(), 4);
+        assert_eq!(local.pending(), 1);
+        assert_eq!(local.embedding_deferrals(), 1);
+        assert!(local.last_embedding().unwrap().contains("entity: 216"));
+        // The same contact remains in authority's scene and can recover there.
+        let mut authoritative = baseline.character;
+        let travel = movement::advance(
+            &mut authoritative,
+            local.collision.scene(),
+            Filter::blocking(7),
+            glam::DVec3::X,
+            false,
+            1,
+            1. / 120.,
+        )
+        .unwrap();
+        assert_eq!(travel.recovery.blocks, 0);
+        assert!(authoritative.feet.distance(baseline.character.feet) > 0.5);
+        local.observe(baseline, &clean, 3, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.pose().unwrap().position, Vec3::ZERO);
+        local.advance(4. / 120.).unwrap();
+        assert!(local.pose().unwrap().position.x > 0.2);
+        assert_eq!(local.pending(), 1);
+        // A truncated query is an error, rather than an uncertain crowd hold.
+        for entity in 216..296 {
+            let mut shape = obstacle.clone();
+            shape.key.life.entity = entity;
+            source.colliders.push(shape);
+        }
+        source.colliders.remove(1);
+        local.update_geometry(&source, 4, 4).unwrap();
         assert!(
             local
-                .grant_world_credit(baseline.life, baseline.epoch, 100)
-                .is_err()
+                .advance(1. / 120.)
+                .unwrap_err()
+                .contains("query budget")
         );
-        assert_eq!(local.movement_frame_limit(), None);
+    }
+
+    #[test]
+    fn outward_projected_crowd_motion_preserves_support_contacts_and_input_time() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        for case in 0..7 {
+            let (mut local, mut baseline, mut source) = setup();
+            local.advance(1. / 120.).unwrap();
+            baseline.character = local.character.unwrap();
+            baseline.profile = movement::Profile::Frames;
+            baseline.epoch += 1;
+            // The retained actor-230 contact: penetration 0.1453 m and an
+            // outward normal with positive z while input walks toward +z.
+            let normal = glam::DVec3::new(0.8549089799662449, 0., 0.5187780218678065);
+            let settings = physics::character::Settings::default();
+            let mut add_capsule = |entity, feet| {
+                let capsule = settings.capsule(feet);
+                source.colliders.push(ShapeSnapshot {
+                    key: ColliderKey {
+                        life: Life {
+                            instance: 7,
+                            entity,
+                            generation: 0,
+                        },
+                        shape: 0,
+                    },
+                    layers: 1,
+                    usage: Usage::Blocking,
+                    pose: Pose::default(),
+                    geometry: GeometrySnapshot::Capsule {
+                        a: capsule.a,
+                        b: capsule.b,
+                        radius: capsule.radius,
+                    },
+                });
+            };
+            add_capsule(230, -normal * (0.7 - 0.14529274757222588));
+            if case == 6 {
+                add_capsule(231, glam::DVec3::Z * 0.5);
+            }
+            if case == 2 {
+                source.colliders.push(ShapeSnapshot {
+                    key: ColliderKey {
+                        life: Life {
+                            instance: 7,
+                            entity: 0,
+                            generation: 0,
+                        },
+                        shape: 1,
+                    },
+                    layers: 1,
+                    usage: Usage::Blocking,
+                    pose: Pose::default(),
+                    geometry: GeometrySnapshot::Box {
+                        min: glam::DVec3::new(-2., 0., 0.4),
+                        max: glam::DVec3::new(2., 4., 0.5),
+                    },
+                });
+            }
+            if case == 3 {
+                source.colliders[0].geometry = GeometrySnapshot::Box {
+                    min: glam::DVec3::new(-20., -1., -20.),
+                    max: glam::DVec3::new(20., 0., 0.),
+                };
+            }
+            if case == 4 {
+                baseline.character.external.x = 2.;
+            }
+            local.observe(baseline, &source, 2, 2).unwrap();
+            local
+                .queue(
+                    1,
+                    Intent::Move {
+                        axes: [0., if case == 1 { -1. } else { 1. }],
+                        yaw: std::f32::consts::PI,
+                    },
+                )
+                .unwrap();
+            if case == 5 {
+                local.queue(2, Intent::Jump).unwrap();
+            }
+            local.advance(4. / 120.).unwrap();
+            let position = local.pose().unwrap().position;
+            if case == 0 {
+                assert!(
+                    (position.z - 0.21336).abs() < 0.0001,
+                    "Outward travel was frozen: {position:?}"
+                );
+                assert!(
+                    position.x.abs() < 1e-5,
+                    "Prediction invented a recovery push"
+                );
+                assert_eq!(local.embedding_deferrals(), 0);
+                let filter = Filter::blocking(7);
+                let before = local
+                    .collision
+                    .scene()
+                    .overlap(settings.capsule(baseline.character.feet), filter)
+                    .unwrap();
+                let after = local
+                    .collision
+                    .scene()
+                    .overlap(settings.capsule(position.as_dvec3()), filter)
+                    .unwrap();
+                let depth = |hits: &physics::queries::Results| {
+                    hits.hits
+                        .iter()
+                        .find(|h| h.collider.life.entity == 230)
+                        .map_or(0., |h| h.penetration)
+                };
+                assert!(depth(&after) < depth(&before));
+                assert_eq!(local.character.unwrap().support, baseline.character.support);
+            } else {
+                assert_eq!(position, Vec3::ZERO, "Case {case} must retain obstruction");
+                assert_eq!(local.embedding_deferrals(), 1);
+            }
+            assert_eq!(local.physics_step(), 4);
+            assert_eq!(local.timing().simulated, 4);
+            assert_eq!(local.pending(), if case == 5 { 2 } else { 1 });
+            assert_eq!(
+                local.collision.scene().capsule_keys().count(),
+                if case == 6 { 2 } else { 1 }
+            );
+        }
+    }
+    #[test]
+    fn wall_constrained_confirmation_preserves_time_processed_before_later_crowd_geometry() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        let (mut local, mut baseline, mut source) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        source.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 0,
+                    generation: 0,
+                },
+                shape: 1,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Box {
+                min: glam::DVec3::new(6., 0., -2.),
+                max: glam::DVec3::new(6.1, 4., 2.),
+            },
+        });
+        local.observe(baseline, &source, 2, 2).unwrap();
+        for token in 1..=9 {
+            local.queue(token, movement()).unwrap();
+            local.advance(0.1).unwrap();
+        }
+        assert!((local.pose().unwrap().position.x - 5.64999).abs() < 0.0001);
+        movement::advance(
+            &mut baseline.character,
+            local.collision.scene(),
+            Filter::blocking(7),
+            glam::DVec3::X * 6.4008,
+            false,
+            12,
+            1. / 120.,
+        )
+        .unwrap();
+        let capsule =
+            physics::character::Settings::default().capsule(glam::DVec3::new(0.7, 0., 0.));
+        source.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 216,
+                    generation: 0,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Capsule {
+                a: capsule.a,
+                b: capsule.b,
+                radius: capsule.radius,
+            },
+        });
+        local.update_geometry(&source, 3, 3).unwrap();
+        baseline.physics_step = 12;
+        baseline.world_step = 108;
+        baseline.character.feet.x = 0.7;
+        baseline.held.refresh([1., 0.], 0).unwrap();
+        local.observe(baseline, &source, 4, 4).unwrap();
+        local.advance(0.).unwrap();
+        assert!(
+            (local.pose().unwrap().position.x - 5.64999).abs() < 0.0001,
+            "A later capsule erased processed pending travel: {:?}",
+            local.pose().unwrap().position
+        );
+        assert_eq!(local.physics_step(), 108);
+        assert_eq!(local.pending(), 9);
+        assert!(local.estimates.len() <= super::super::MAX_PENDING_STEPS as usize + 1);
+        local.advance(4. / 120.).unwrap();
+        assert!((local.pose().unwrap().position.x - 5.64999).abs() < 0.0001);
+    }
+
+    #[test]
+    fn motor_history_preserves_fixed_walls_external_motion_and_policy_changes() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        for case in 0..3 {
+            let (mut local, mut baseline, mut source) = setup();
+            baseline.profile = movement::Profile::Frames;
+            baseline.epoch += 1;
+            if case == 0 {
+                source.colliders.push(ShapeSnapshot {
+                    key: ColliderKey {
+                        life: Life {
+                            instance: 7,
+                            entity: 0,
+                            generation: 0,
+                        },
+                        shape: 1,
+                    },
+                    layers: 1,
+                    usage: Usage::Blocking,
+                    pose: Pose::default(),
+                    geometry: GeometrySnapshot::Box {
+                        min: glam::DVec3::new(2., 0., -2.),
+                        max: glam::DVec3::new(2.1, 4., 2.),
+                    },
+                });
+            }
+            local.observe(baseline, &source, 2, 2).unwrap();
+            local.queue(1, movement()).unwrap();
+            for _ in 0..3 {
+                local.advance(0.1).unwrap();
+            }
+            movement::advance(
+                &mut baseline.character,
+                local.collision.scene(),
+                Filter::blocking(7),
+                glam::DVec3::X * 6.4008,
+                false,
+                12,
+                1. / 120.,
+            )
+            .unwrap();
+            baseline.physics_step = 12;
+            baseline.world_step = 36;
+            baseline.held.refresh([1., 0.], 0).unwrap();
+            let expected = match case {
+                0 => {
+                    baseline.character.feet.x += 0.1;
+                    1.64999
+                }
+                1 => {
+                    baseline.character.external.x = 2.;
+                    2.04524
+                }
+                _ => {
+                    baseline.policy.walking_scale = 0.5;
+                    1.28016
+                }
+            };
+            local.observe(baseline, &source, 3, 3).unwrap();
+            assert_eq!(
+                local.dirty,
+                case != 0,
+                "Only changed motor state requires replay"
+            );
+            local.advance(0.).unwrap();
+            assert!(
+                (local.pose().unwrap().position.x - expected).abs() < 0.0001,
+                "Case {case}: {:?}",
+                local.pose().unwrap().position
+            );
+            assert_eq!(local.physics_step(), 36);
+            assert_eq!(local.pending(), 1);
+            assert!(local.estimates.len() <= super::super::MAX_PENDING_STEPS as usize + 1);
+            local.clear();
+            assert!(local.estimates.is_empty());
+        }
+    }
+
+    #[test]
+    fn fresh_interval_input_cannot_replay_processed_travel_against_a_later_crowd_pose() {
+        use physics::queries::{GeometrySnapshot, Pose, ShapeSnapshot};
+        let (mut local, mut baseline, mut geometry) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        movement::advance(
+            &mut baseline.character,
+            local.collision.scene(),
+            Filter::blocking(7),
+            glam::DVec3::ZERO,
+            false,
+            1,
+            1. / 120.,
+        )
+        .unwrap();
+        baseline.character.external = glam::DVec3::new(0.1988262287, 0., 0.0657269547);
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        for _ in 0..6 {
+            local.advance(0.1).unwrap();
+        }
+        local.advance(2. / 120.).unwrap();
+        let before = local.character.unwrap();
+        let capsule = physics::character::Settings::default().capsule(baseline.character.feet);
+        geometry.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 216,
+                    generation: 0,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Capsule {
+                a: capsule.a,
+                b: capsule.b,
+                radius: capsule.radius,
+            },
+        });
+        local.update_geometry(&geometry, 3, 3).unwrap();
+        local
+            .queue(
+                2,
+                Intent::Move {
+                    axes: [0., 1.],
+                    yaw: 0.,
+                },
+            )
+            .unwrap();
+        baseline.world_step = local.physics_step();
+        local.observe(baseline, &geometry, 4, 4).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(
+            local.character.unwrap(),
+            before,
+            "Fresh boundary input cannot rewrite historical travel"
+        );
+        assert_eq!(local.physics_step(), 74);
+        assert_eq!(local.timing().simulated, 74);
+        assert_eq!(local.pending(), 2);
+        assert!(local.deferred_steps.is_empty());
+        local.advance(4. / 120.).unwrap();
+        let after = local.character.unwrap();
+        assert!((after.feet.x - before.feet.x).abs() < 1e-8);
+        assert!((after.feet.z - before.feet.z + 6.4008 * 4. / 120.).abs() < 1e-7);
+        assert_eq!(local.physics_step(), 78);
+        assert!(
+            local
+                .collision
+                .is_capsule(geometry.colliders.last().unwrap().key)
+        );
+    }
+
+    #[test]
+    fn confirmed_time_reconciliation_does_not_replay_through_later_crowd_geometry() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        let (mut local, mut baseline, mut source) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        local.observe(baseline, &source, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        for _ in 0..3 {
+            local.advance(0.1).unwrap();
+        }
+        let before = local.pose().unwrap().position;
+        assert!((before.x - 1.92024).abs() < 0.0001);
+        movement::advance(
+            &mut baseline.character,
+            local.collision.scene(),
+            Filter::blocking(7),
+            glam::DVec3::X * 6.4008,
+            false,
+            12,
+            1. / 120.,
+        )
+        .unwrap();
+        // This crowd pose is newer than the completed baseline below. It affects
+        // future steps, and does not erase the already estimated pending path.
+        let capsule =
+            physics::character::Settings::default().capsule(glam::DVec3::new(0.64, 0., 0.));
+        source.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 216,
+                    generation: 0,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Capsule {
+                a: capsule.a,
+                b: capsule.b,
+                radius: capsule.radius,
+            },
+        });
+        local.update_geometry(&source, 3, 3).unwrap();
+        baseline.physics_step = 12;
+        baseline.world_step = 36;
+        baseline.character.feet.x = 0.7;
+        baseline.held.refresh([1., 0.], 0).unwrap();
+        local.observe(baseline, &source, 4, 4).unwrap();
+        local.advance(0.).unwrap();
+        assert!(
+            (local.pose().unwrap().position.x - 1.98016).abs() < 0.0001,
+            "{}",
+            local.pose().unwrap().position.x
+        );
+        assert_eq!(local.physics_step(), 36);
+        assert_eq!(local.pending(), 1);
+        local.advance(4. / 120.).unwrap();
+        assert!((local.pose().unwrap().position.x - 2.19352).abs() < 0.0001);
+    }
+
+    #[test]
+    fn confirmed_exit_cannot_replay_previously_deferred_crowd_time() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        let (mut local, mut baseline, mut source) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        let capsule =
+            physics::character::Settings::default().capsule(glam::DVec3::new(-0.1, 0., 0.));
+        source.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 216,
+                    generation: 0,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Capsule {
+                a: capsule.a,
+                b: capsule.b,
+                radius: capsule.radius,
+            },
+        });
+        local.observe(baseline, &source, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        for _ in 0..3 {
+            local.advance(0.1).unwrap();
+        }
+        assert_eq!(local.pose().unwrap().position, Vec3::ZERO);
+        // A completed authority baseline exits the old projected overlap.
+        // The estimate already held the remaining input time; an acknowledgment
+        // cannot turn that old time into new travel through the frozen crowd.
+        baseline.physics_step = 12;
+        baseline.world_step = 36;
+        baseline.character.feet.x = 0.75;
+        local.observe(baseline, &source, 3, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.pose().unwrap().position.x, 0.75);
+        assert_eq!(local.physics_step(), 36);
+        assert_eq!(local.pending(), 1);
+        assert_eq!(local.deferred_steps.len(), 24);
+        assert!(local.deferred_steps.len() <= super::super::MAX_PENDING_STEPS as usize);
+        local.advance(4. / 120.).unwrap();
+        assert!((local.pose().unwrap().position.x - 0.96336).abs() < 0.0001);
+        assert_eq!(local.physics_step(), 40);
+        assert_eq!(local.pending(), 1);
+        local.clear();
+        assert!(local.deferred_steps.is_empty());
+    }
+
+    #[test]
+    fn geometry_refresh_applies_to_future_steps_without_replaying_past_blocked_input() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        let (mut local, mut baseline, mut geometry) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        let capsule =
+            physics::character::Settings::default().capsule(glam::DVec3::new(1.2, 0., 0.));
+        geometry.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 216,
+                    generation: 0,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Capsule {
+                a: capsule.a,
+                b: capsule.b,
+                radius: capsule.radius,
+            },
+        });
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        local.advance(0.1).unwrap();
+        let before = local.pose().unwrap().position;
+        assert!((before.x - 0.5).abs() < 0.001);
+        geometry.colliders.last_mut().unwrap().pose.position.x = 5.;
+        baseline.world_step = 12;
+        local.observe(baseline, &geometry, 3, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.pose().unwrap().position, before);
+        assert_eq!(local.physics_step(), 12);
+        local.advance(4. / 120.).unwrap();
+        assert!((local.pose().unwrap().position.x - before.x - 0.21336).abs() < 0.001);
+        assert_eq!(local.pending(), 1);
+        // Withheld baselines update collision under the same future-only rule.
+        geometry.colliders.last_mut().unwrap().pose.position.x = 10.;
+        let before = local.pose().unwrap().position;
+        local.update_geometry(&geometry, 4, 4).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.pose().unwrap().position, before);
+    }
+
+    #[test]
+    fn completed_confirmation_replays_existing_time_without_granting_a_new_interval() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        let (mut local, mut baseline, mut geometry) = setup();
+        let capsule =
+            physics::character::Settings::default().capsule(glam::DVec3::new(0., 0., 1.1));
+        geometry.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 216,
+                    generation: 0,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Capsule {
+                a: capsule.a,
+                b: capsule.b,
+                radius: capsule.radius,
+            },
+        });
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        local.advance(0.1).unwrap();
+        let mut first = local.movement_frame(0, 12).unwrap();
+        first.sequence = 1;
+        local.bind_movement_frame(&first).unwrap();
+        let confirmed_character = local.character.unwrap();
+        local.advance(0.1).unwrap();
+        assert_eq!(local.physics_step(), 24);
+        assert_eq!(local.timing().simulated, 24);
+        assert!(
+            local
+                .character
+                .unwrap()
+                .feet
+                .distance(confirmed_character.feet)
+                > 0.6
+        );
+        assert_eq!(local.prediction_delay_steps(), 0);
+        local
+            .movement_credit(baseline.life, baseline.epoch, 24)
+            .unwrap();
+        let next = local.movement_frame(12, 12).unwrap();
+        assert_eq!(next.start, 12);
+        assert_eq!(next.steps, 12);
+        baseline.character = confirmed_character;
+        baseline.physics_step = 12;
+        baseline.world_step = 24;
+        baseline.applied_sequence = 1;
+        baseline.held.refresh([1., 0.], 0).unwrap();
+        let before = local.pose().unwrap().position;
+        local.observe_applied(baseline, 3, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert!(local.pose().unwrap().position.distance(before) < 0.00001);
+        assert_eq!(local.physics_step(), 24);
+        assert_eq!(local.timing().simulated, 24);
+        local.advance(2. / 120.).unwrap();
+        assert_eq!(local.timing().simulated, 26);
+        assert!(local.pose().unwrap().position.distance(before) < 0.11);
+        assert_eq!(local.prediction_delay_steps(), 0);
+    }
+
+    #[test]
+    fn grounded_interval_bootstrap_aligns_only_verified_time_and_keeps_the_gap_neutral() {
+        let (mut local, mut baseline, geometry) = setup();
+        // Obtain an actual supported character before entering the interval profile.
+        local.advance(1. / 120.).unwrap();
+        baseline.character = local.character.unwrap();
+        assert!(baseline.character.support.is_some());
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        baseline.world_step = 8;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        assert_eq!(local.physics_step(), 8);
+        assert_eq!(local.character.unwrap().feet, baseline.character.feet);
+        local.queue(1, movement()).unwrap();
+        local.advance(4. / 120.).unwrap();
+        let frame = local.movement_frame(0, 12).unwrap();
+        assert_eq!(frame.segments[0].axes, [0.; 2]);
+        assert_eq!(frame.segments[1].offset, 8);
+        assert_eq!(frame.segments[1].axes, [1., 0.]);
+        // Ordinary credit changes permission only; it cannot repeat bootstrap.
+        local
+            .movement_credit(baseline.life, baseline.epoch, 20)
+            .unwrap();
+        assert_eq!(local.physics_step(), 12);
+        assert!(local.pose().unwrap().position.x < 0.25);
+    }
+
+    #[test]
+    fn applied_confirmation_retires_inputs_without_minting_time_or_reverting_to_old_travel() {
+        let (mut local, mut baseline, geometry) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        local.advance(4. / 120.).unwrap();
+        baseline.character = local.character.unwrap();
+        baseline.held.refresh([1., 0.], 0).unwrap();
+        baseline.physics_step = 4;
+        baseline.world_step = 4;
+        baseline.applied_sequence = 1;
+        let mut frame = local.movement_frame(0, 4).unwrap();
+        frame.sequence = 1;
+        local.bind_movement_frame(&frame).unwrap();
+        local.advance(8. / 120.).unwrap();
+        let before = local.pose().unwrap();
+        let time = local.timing();
+        assert!(local.observe_applied(baseline, 3, 3).unwrap());
+        local.advance(0.).unwrap();
+        assert_eq!(local.pending(), 0);
+        assert_eq!(local.timing().step, time.step);
+        assert_eq!(local.timing().simulated, time.simulated);
+        assert!(local.pose().unwrap().position.distance(before.position) < 0.00001);
+        let mut stale = baseline;
+        stale.applied_sequence = 0;
+        assert!(!local.observe_applied(stale, 4, 4).unwrap());
+        stale.epoch += 1;
+        assert!(!local.observe_applied(stale, 4, 4).unwrap());
+        assert_eq!(local.observation(), 3);
+        let mut future = baseline;
+        future.applied_sequence += 1;
+        future.physics_step = local.physics_step() + 1;
+        future.world_step = future.physics_step;
+        assert!(local.observe_applied(future, 4, 4).is_err());
     }
 
     #[test]
@@ -942,46 +2108,51 @@ mod tests {
     #[test]
     fn pending_geometry_corrects_unacknowledged_travel_and_retires_removed_walls() {
         use physics::queries::{GeometrySnapshot, Pose, ShapeSnapshot};
-        let (mut local, baseline, mut geometry) = setup();
-        local.queue(1, movement()).unwrap();
-        for _ in 0..5 {
-            local.advance(0.1).unwrap();
-        }
-        assert!(local.pose().unwrap().position.x > 3.);
-        geometry.colliders.push(ShapeSnapshot {
-            key: ColliderKey {
-                life: Life {
-                    instance: 7,
-                    entity: 99,
-                    generation: 1,
+        for profile in [movement::Profile::Arrival, movement::Profile::Frames] {
+            let (mut local, mut baseline, mut geometry) = setup();
+            baseline.profile = profile;
+            baseline.epoch += 1;
+            local.observe(baseline, &geometry, 1, 2).unwrap();
+            local.queue(1, movement()).unwrap();
+            for _ in 0..5 {
+                local.advance(0.1).unwrap();
+            }
+            assert!(local.pose().unwrap().position.x > 3.);
+            geometry.colliders.push(ShapeSnapshot {
+                key: ColliderKey {
+                    life: Life {
+                        instance: 7,
+                        entity: 99,
+                        generation: 1,
+                    },
+                    shape: 0,
                 },
-                shape: 0,
-            },
-            layers: 1,
-            usage: Usage::Blocking,
-            pose: Pose::default(),
-            geometry: GeometrySnapshot::Box {
-                min: glam::DVec3::new(1., 0., -5.),
-                max: glam::DVec3::new(1.01, 3., 5.),
-            },
-        });
-        local.update_geometry(&geometry, 2, 2).unwrap();
-        local.advance(0.).unwrap();
-        assert!(local.pose().unwrap().position.x < 0.71);
-        assert_eq!(local.pending(), 1);
-        let stopped = local.pose().unwrap().position;
-        assert!(local.update_geometry(&geometry, 1, 3).is_err());
-        assert!(local.update_geometry(&geometry, 2, 2).is_err());
-        let mut foreign = geometry.clone();
-        foreign.instance = 8;
-        assert!(local.update_geometry(&foreign, 3, 3).is_err());
-        assert_eq!(local.pose().unwrap().position, stopped);
-        assert!(local.observe(baseline, &geometry, 2, 2).is_err());
-        geometry.colliders.pop();
-        local.update_geometry(&geometry, 3, 3).unwrap();
-        local.advance(0.).unwrap();
-        assert!(local.pose().unwrap().position.x > 3.);
-        assert_eq!(local.observation(), 3);
+                layers: 1,
+                usage: Usage::Blocking,
+                pose: Pose::default(),
+                geometry: GeometrySnapshot::Box {
+                    min: glam::DVec3::new(1., 0., -5.),
+                    max: glam::DVec3::new(1.01, 3., 5.),
+                },
+            });
+            local.update_geometry(&geometry, 2, 3).unwrap();
+            local.advance(0.).unwrap();
+            assert!(local.pose().unwrap().position.x < 0.71);
+            assert_eq!(local.pending(), 1);
+            let stopped = local.pose().unwrap().position;
+            assert!(local.update_geometry(&geometry, 1, 4).is_err());
+            assert!(local.update_geometry(&geometry, 2, 3).is_err());
+            let mut foreign = geometry.clone();
+            foreign.instance = 8;
+            assert!(local.update_geometry(&foreign, 3, 4).is_err());
+            assert_eq!(local.pose().unwrap().position, stopped);
+            assert!(local.observe(baseline, &geometry, 2, 3).is_err());
+            geometry.colliders.pop();
+            local.update_geometry(&geometry, 3, 4).unwrap();
+            local.advance(0.).unwrap();
+            assert!(local.pose().unwrap().position.x > 3.);
+            assert_eq!(local.observation(), 4);
+        }
     }
     #[test]
     fn movement_policy_preserves_slowing_and_control_routing() {

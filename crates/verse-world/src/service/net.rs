@@ -32,6 +32,10 @@ pub use timing::{Phases, Timing};
 pub(crate) mod admission;
 pub use admission::Stats as AdmissionStats;
 const QUEUE: usize = 128;
+const REPLY_BYTES: usize = 16 * 1024 * 1024;
+const CLOCK_BYTES: usize = 20;
+const CONFIRMATION_BYTES: usize = 4096;
+const MAX_HELD_REPLY_BYTES: usize = MAX_RESPONSE_BYTES + CLOCK_BYTES + CONFIRMATION_BYTES;
 const HANDSHAKE: Duration = Duration::from_secs(5);
 const WRITE: Duration = Duration::from_secs(10);
 const AUTH: Duration = Duration::from_secs(30);
@@ -60,7 +64,7 @@ pub struct Stats {
     pub checkpoint_seconds: f64,
     pub simulation: Timing,
     pub capture: Timing,
-    pub deferred_read_projection: Timing,
+    pub read_projection: Timing,
     pub checkpoint_copy: Timing,
     pub commits: Timing,
     pub commit_preparation: Timing,
@@ -73,6 +77,8 @@ pub struct Stats {
     pub capture_phases: Phases,
     pub commit_phases: Phases,
     pub writer_queue_peak: usize,
+    pub request_queue_peak: usize,
+    pub held_reply_bytes_peak: usize,
     pub storage_refusals: u64,
     pub storage_paused_ticks: u64,
     pub storage_paused_seconds: f64,
@@ -87,67 +93,21 @@ pub struct Exit {
 type OpenReply = Result<(ConnectionId, Vec<u8>), String>;
 type DispatchReply = Result<(Vec<u8>, bool), String>;
 struct PendingReply {
-    id: ConnectionId,
     reply: oneshot::Sender<DispatchReply>,
-    response: PendingResponse,
+    response: DispatchReply,
 }
-enum PendingResponse {
-    Outcome(DispatchReply),
-}
-// Preserve the admitted body and fences while attaching checkpointed clock credit.
-#[derive(serde::Deserialize, serde::Serialize)]
-struct CreditedResponse<'a> {
-    version: u16,
-    request_id: u64,
-    instance: u64,
-    tick: u64,
-    control: Option<Control>,
-    #[serde(borrow)]
-    body: &'a serde_json::value::RawValue,
-}
-fn promote_outcome_credit(result: DispatchReply, credit: Option<&Control>) -> DispatchReply {
-    let (bytes, authenticated) = result?;
-    let Some(credit) = credit else {
-        return Ok((bytes, authenticated));
-    };
-    let mut response: CreditedResponse<'_> =
-        serde_json::from_slice(&bytes).map_err(|_| "Invalid deferred chamber outcome")?;
-    let Some(control) = response.control.as_mut() else {
-        return Ok((bytes, authenticated));
-    };
-    if control.life != credit.life
-        || control.epoch != credit.epoch
-        || control.credit_step >= credit.credit_step
-    {
-        return Ok((bytes, authenticated));
+fn reply_bytes(reply: &DispatchReply) -> usize {
+    match reply {
+        // Reserve clock growth and a bounded completed-movement confirmation.
+        Ok((bytes, _)) => bytes.len() + CLOCK_BYTES + CONFIRMATION_BYTES,
+        Err(error) => error.len(),
     }
-    control.credit_step = credit.credit_step;
-    let bytes = serde_json::to_vec(&response).map_err(|_| "Cannot encode chamber clock credit")?;
-    if bytes.len() > MAX_RESPONSE_BYTES {
-        return Err("Credited chamber response exceeds the frame bound".into());
-    }
-    Ok((bytes, authenticated))
 }
-fn checkpoint_replies(
-    pending: &mut Vec<PendingReply>,
-    credits: BTreeMap<ConnectionId, Control>,
-) -> Result<Vec<(oneshot::Sender<DispatchReply>, DispatchReply)>, String> {
-    pending
-        .drain(..)
-        .map(|pending| {
-            let PendingResponse::Outcome(result) = pending.response;
-            Ok((
-                pending.reply,
-                promote_outcome_credit(result, credits.get(&pending.id)),
-            ))
-        })
-        .collect()
-}
-
 struct CommitView {
     tick: u64,
     instance: u64,
     controls: BTreeMap<ConnectionId, Control>,
+    confirmations: BTreeMap<verse_engine::core::LifeId, Vec<crate::movement::Baseline>>,
     authenticated: std::collections::BTreeSet<ConnectionId>,
 }
 impl CommitView {
@@ -155,6 +115,14 @@ impl CommitView {
         Self {
             tick: gateway.game().authority_tick,
             instance: gateway.game().player_life().instance,
+            confirmations: gateway
+                .committed_controls()
+                .values()
+                .map(|c| {
+                    let life = c.life.into();
+                    (life, gateway.game().movement_confirmations(life))
+                })
+                .collect(),
             controls: gateway.committed_controls(),
             authenticated: gateway.committed_connections(),
         }
@@ -182,6 +150,7 @@ impl CommitView {
 struct Fence {
     view: CommitView,
     replies: Vec<(oneshot::Sender<DispatchReply>, DispatchReply)>,
+    reply_bytes: usize,
 }
 fn finish(
     done: Done,
@@ -220,10 +189,143 @@ fn finish(
         .ok_or("Chamber storage completion has no fence")?;
     *view = fence.view;
     for (reply, result) in fence.replies {
-        let _ = reply.send(result);
+        let _ = reply.send(committed_movement(
+            committed_control_credit(result, &view.controls),
+            &view.confirmations,
+        ));
     }
     Ok(())
 }
+/// A later checkpoint grants credit only to its matching admitted control context.
+fn committed_control_credit(
+    result: DispatchReply,
+    controls: &BTreeMap<ConnectionId, Control>,
+) -> DispatchReply {
+    let Ok((bytes, _)) = &result else {
+        return result;
+    };
+    let body = bytes
+        .windows(7)
+        .position(|part| part == b"\"body\":")
+        .ok_or("Committed response has no body")?;
+    #[derive(serde::Deserialize)]
+    struct Header {
+        control: Option<Control>,
+    }
+    let mut header = bytes[..body].to_vec();
+    header.extend_from_slice(b"\"body\":null}");
+    let Header { control } =
+        serde_json::from_slice(&header).map_err(|_| "Committed response header is malformed")?;
+    let Some(old) = control else {
+        return result;
+    };
+    let Some(current) = controls
+        .values()
+        .find(|c| c.life == old.life && c.epoch == old.epoch)
+    else {
+        return result;
+    };
+    committed_world_credit(result, current.credit_step)
+}
+/// Renews only the clock from the completed durable fence. Admission identity,
+/// sequence, tick, and projected state retain their original ordered prefix.
+fn committed_world_credit(mut result: DispatchReply, world_step: u64) -> DispatchReply {
+    let Ok((bytes, _)) = &mut result else {
+        return result;
+    };
+    // These bytes come from Response::encode. Its typed numeric header precedes
+    // the body; never search arbitrary body strings or decode the projected scene.
+    let body = bytes
+        .windows(7)
+        .position(|part| part == b"\"body\":")
+        .ok_or("Committed response has no body")?;
+    let marker = b"\"credit_step\":";
+    let Some(start) = bytes[..body]
+        .windows(marker.len())
+        .position(|part| part == marker)
+        .map(|offset| offset + marker.len())
+    else {
+        return result;
+    };
+    let end = start
+        + bytes[start..body]
+            .iter()
+            .take_while(|byte| byte.is_ascii_digit())
+            .count();
+    let previous: u64 = std::str::from_utf8(&bytes[start..end])
+        .map_err(|_| "Committed response clock is malformed")?
+        .parse()
+        .map_err(|_| "Committed response clock is malformed")?;
+    if previous > world_step {
+        return Err("Committed response clock exceeds its durable fence".into());
+    }
+    let clock = world_step.to_string();
+    let length = bytes.len() - (end - start) + clock.len();
+    if length > MAX_RESPONSE_BYTES {
+        return Err("Committed response exceeds byte budget".into());
+    }
+    bytes.splice(start..end, clock.bytes());
+    result
+}
+/// Adds only confirmed travel within the response's original admission prefix.
+/// Decoding the small header avoids copying or rebuilding the projected scene.
+fn committed_movement(
+    mut result: DispatchReply,
+    histories: &BTreeMap<verse_engine::core::LifeId, Vec<crate::movement::Baseline>>,
+) -> DispatchReply {
+    let Ok((bytes, _)) = &mut result else {
+        return result;
+    };
+    let body = bytes
+        .windows(7)
+        .position(|part| part == b"\"body\":")
+        .ok_or("Committed response has no body")?;
+    #[derive(serde::Deserialize)]
+    struct Header {
+        control: Option<Control>,
+    }
+    let mut header = bytes[..body].to_vec();
+    header.extend_from_slice(b"\"body\":null}");
+    let Header { control } =
+        serde_json::from_slice(&header).map_err(|_| "Committed response header is malformed")?;
+    let Some(mut control) = control else {
+        return result;
+    };
+    let Some(baseline) = histories.get(&control.life.into()).and_then(|history| {
+        history.iter().rev().find(|b| {
+            b.life == control.life.into()
+                && b.epoch == control.epoch
+                && b.applied_sequence <= control.accepted_sequence
+                && b.world_step <= control.credit_step
+        })
+    }) else {
+        return result;
+    };
+    baseline.validate()?;
+    control.applied_movement = Some(*baseline);
+    let encoded =
+        serde_json::to_vec(&control).map_err(|_| "Cannot encode movement confirmation")?;
+    if encoded.len() > CONFIRMATION_BYTES {
+        return Err("Movement confirmation exceeds byte budget".into());
+    }
+    let marker = b"\"control\":";
+    let start = bytes[..body]
+        .windows(marker.len())
+        .position(|part| part == marker)
+        .ok_or("Committed response has no control header")?
+        + marker.len();
+    let end = body
+        .checked_sub(1)
+        .ok_or("Committed response header is malformed")?;
+    if bytes.get(end) != Some(&b',')
+        || bytes.len() - (end - start) + encoded.len() > MAX_RESPONSE_BYTES
+    {
+        return Err("Committed response exceeds byte budget".into());
+    }
+    bytes.splice(start..end, encoded);
+    result
+}
+
 /// An ordered, authenticated byte stream that carries chamber frames.
 pub trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Transport for T {}
@@ -455,12 +557,21 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
     let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut pending: Vec<PendingReply> = Vec::with_capacity(QUEUE);
+    let mut pending_bytes = 0usize;
     let mut fences = BTreeMap::new();
     let mut committed = CommitView::capture(&gateway);
     let mut token = 0u64;
     let mut dirty = false;
     tokio::pin!(shutdown);
     loop {
+        stats.request_queue_peak = stats.request_queue_peak.max(receive.len());
+        stats.held_reply_bytes_peak = stats.held_reply_bytes_peak.max(
+            pending_bytes
+                + fences
+                    .values()
+                    .map(|fence: &Fence| fence.reply_bytes)
+                    .sum::<usize>(),
+        );
         tokio::select! {
             _ = &mut shutdown => break,
             completed = async { writer.as_mut().unwrap().done.recv().await }, if writer.is_some() && !fences.is_empty() => {
@@ -519,18 +630,16 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         Err(error) => {failure = Some(error); break;}
                     };
                     stats.dropped_seconds += batch.dropped_seconds;
-                    let tick = Instant::now();
                     for _ in 0..batch.steps {
+                        let tick = Instant::now();
                         if let Err(error) = gateway.tick(batch.seconds) {failure = Some(error); break;}
                         if let Some(hook) = hook.as_mut() { hook(&mut gateway, batch.seconds); }
-                    }
-                    if failure.is_some() { break; }
-                    if batch.steps > 0 {
                         let seconds = tick.elapsed().as_secs_f64();
                         stats.simulation.record(seconds);
                         stats.simulation_phases.record(seconds);
-                        stats.ticks += u64::from(batch.steps);
+                        stats.ticks += 1;
                     }
+                    if failure.is_some() { break; }
                 } else {
                     // Flush already admitted state without adding more simulation mutations.
                     stats.storage_paused_ticks += 1;
@@ -549,10 +658,9 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         }
                     };
                     let capture = Instant::now();
-                    let replies = match checkpoint_replies(&mut pending, gateway.committed_controls()) {
-                        Ok(replies) => replies,
-                        Err(error) => {failure = Some(error); break;}
-                    };
+                    let replies = pending.drain(..).map(|pending|
+                        (pending.reply, pending.response)).collect();
+                    let reply_bytes = std::mem::take(&mut pending_bytes);
                     let copy = Instant::now();
                     let prepared = match super::save::Prepared::capture(&gateway) {
                         Ok(prepared) => prepared,
@@ -563,7 +671,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         Some(token) => token,
                         None => {failure = Some("Chamber storage tokens exhausted".into()); break;}
                     };
-                    fences.insert(token, Fence {view:CommitView::capture(&gateway), replies});
+                    fences.insert(token, Fence {view:CommitView::capture(&gateway), replies, reply_bytes});
                     let seconds = capture.elapsed().as_secs_f64();
                     stats.capture.record(seconds);
                     stats.capture_phases.record(seconds);
@@ -572,7 +680,12 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                     dirty = false;
                 }
             }
-            event = receive.recv() => {
+            // Leave requests in the bounded transport queue while both persistence
+            // slots are occupied. Completion wakes this loop without a retry tick.
+            event = receive.recv(), if writer.as_ref().is_none_or(|writer|
+                pending.len() < QUEUE && fences.len() < 2
+                    && pending_bytes <= REPLY_BYTES - MAX_HELD_REPLY_BYTES
+                    && writer.send.as_ref().unwrap().capacity() > 0) => {
                 let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                 match event {
                     Some(Event::Open {spectate, reply}) => {
@@ -595,7 +708,8 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                             if !mutating && !dirty {
                                 if let Some(mut entry) = fences.last_entry() {
                                     let fence = entry.get_mut();
-                                    if fence.replies.len() >= QUEUE {
+                                    if fence.replies.len() >= QUEUE
+                                        || fence.reply_bytes > REPLY_BYTES - MAX_HELD_REPLY_BYTES {
                                         stats.storage_refusals += 1;
                                         busy_progress(progress);
                                         let _ = reply.send(committed.busy(id, &bytes));
@@ -603,6 +717,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                                         let result = gateway.dispatch_json(id, now, &bytes)
                                             .map(|bytes| (bytes, gateway.authenticated(id)));
                                         dispatch_progress(progress, &result);
+                                        fence.reply_bytes += reply_bytes(&result);
                                         fence.replies.push((reply, result));
                                     }
                                 } else {
@@ -610,7 +725,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                                     let result = gateway.dispatch_json(id, now, &bytes)
                                         .map(|bytes| (bytes, gateway.authenticated(id)));
                                     dispatch_progress(progress, &result);
-                                    let _ = reply.send(result);
+                                    let _ = reply.send(committed_movement(result, &committed.confirmations));
                                 }
                                 continue;
                             }
@@ -620,27 +735,24 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                                 let _ = reply.send(committed.busy(id, &bytes));
                                 continue;
                             }
-                            let response = if mutating {
-                                dirty = true;
-                                let result = gateway.dispatch_json(id, now, &bytes)
-                                    .map(|bytes| (bytes, gateway.authenticated(id)));
-                                dispatch_progress(progress, &result);
-                                PendingResponse::Outcome(result)
-                            } else {
-                                // Freeze the read before admitting later commands on this connection.
-                                // Its reply still waits for the ordered checkpoint, but admission can proceed.
-                                let projection = Instant::now();
-                                let result = gateway.dispatch_json(id, now, &bytes)
-                                    .map(|bytes| (bytes, gateway.authenticated(id)));
-                                stats.deferred_read_projection.record(projection.elapsed().as_secs_f64());
-                                dispatch_progress(progress, &result);
-                                PendingResponse::Outcome(result)
-                            };
-                            pending.push(PendingReply {id, reply, response});
+                            dirty |= mutating;
+                            // Capture this ordered prefix before admitting later input.
+                            // Admission progress is immediate; delivery still waits for storage.
+                            let projection = Instant::now();
+                            let response = gateway.dispatch_json(id, now, &bytes)
+                                .map(|bytes| (bytes, gateway.authenticated(id)));
+                            if !mutating { stats.read_projection.record(projection.elapsed().as_secs_f64()); }
+                            dispatch_progress(progress, &response);
+                            pending_bytes += reply_bytes(&response);
+                            pending.push(PendingReply {reply, response});
                         } else {
                             let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
                             dispatch_progress(progress, &result);
-                            let _ = reply.send(result);
+                            let histories = gateway.admission(id).ok().map(|a| {
+                                let life = a.actor();
+                                BTreeMap::from([(life, gateway.game().movement_confirmations(life))])
+                            }).unwrap_or_default();
+                            let _ = reply.send(committed_movement(result, &histories));
                         }
                     }
                     Some(Event::Close(id)) => {let _ = gateway.close(id); dirty = true;}
@@ -696,6 +808,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         Fence {
                             view: CommitView::capture(&gateway),
                             replies: vec![],
+                            reply_bytes: 0,
                         },
                     );
                     let seconds = capture.elapsed().as_secs_f64();
@@ -946,6 +1059,153 @@ pub(super) mod tests {
     use tokio_rustls::{TlsConnector, client::TlsStream};
     use verse_engine::director::Scene;
     type Stream = TlsStream<TcpStream>;
+    #[test]
+    fn durable_travel_confirmation_preserves_body_and_cannot_cross_admission_prefix() {
+        let life = verse_engine::core::LifeId {
+            instance: 120,
+            actor: 14,
+            generation: 2,
+        };
+        let baseline = crate::movement::Baseline {
+            profile: crate::movement::Profile::Frames,
+            life,
+            epoch: 3,
+            applied_sequence: 7,
+            physics_step: 8,
+            world_step: 12,
+            held: Default::default(),
+            policy: Default::default(),
+            character: physics::character::Character::new(glam::DVec3::ZERO),
+            yaw: 0.,
+        };
+        let response = Response {
+            version: VERSION,
+            request_id: 23,
+            instance: 120,
+            tick: 4,
+            control: Some(Control {
+                life: life.into(),
+                epoch: 3,
+                accepted_sequence: 7,
+                world_step: 12,
+                credit_step: 12,
+                applied_movement: None,
+            }),
+            body: Reply::Refused {
+                code: "gameplay".into(),
+                message: "Body text contains \"control\": and \"body\":".into(),
+            },
+        };
+        let original = response.encode().unwrap();
+        let mut ahead = baseline;
+        ahead.applied_sequence = 8;
+        let histories = BTreeMap::from([(life, vec![baseline, ahead])]);
+        let (encoded, authenticated) =
+            committed_movement(Ok((original.clone(), true)), &histories).unwrap();
+        assert!(authenticated);
+        let actual: Response = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(
+            actual
+                .control
+                .as_ref()
+                .unwrap()
+                .applied_movement
+                .unwrap()
+                .applied_sequence,
+            7
+        );
+        let mut expected = serde_json::to_value(response.clone()).unwrap();
+        expected["control"]["applied_movement"] = serde_json::to_value(baseline).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&encoded).unwrap(),
+            expected
+        );
+        for mut invalid in [baseline; 3].into_iter().enumerate() {
+            match invalid.0 {
+                0 => invalid.1.epoch += 1,
+                1 => invalid.1.applied_sequence += 1,
+                _ => invalid.1.world_step += 1,
+            }
+            let histories = BTreeMap::from([(life, vec![invalid.1])]);
+            assert_eq!(
+                committed_movement(Ok((original.clone(), true)), &histories)
+                    .unwrap()
+                    .0,
+                original
+            );
+        }
+        let mut bounded = response;
+        if let Reply::Refused { message, .. } = &mut bounded.body {
+            message.clear();
+        }
+        let overhead = bounded.encode().unwrap().len();
+        if let Reply::Refused { message, .. } = &mut bounded.body {
+            *message = "a".repeat(MAX_RESPONSE_BYTES - overhead);
+        }
+        assert!(committed_movement(Ok((bounded.encode().unwrap(), true)), &histories).is_err());
+    }
+
+    #[test]
+    fn durable_clock_credit_preserves_the_admission_prefix_and_byte_bounds() {
+        let mut response = Response {
+            version: VERSION,
+            request_id: 23,
+            instance: 120,
+            tick: 4,
+            control: Some(Control {
+                life: super::super::wire::Life { instance: 120, actor: 14, generation: 2 },
+                epoch: 3,
+                accepted_sequence: 7,
+                world_step: 9,
+                credit_step: 9,
+                applied_movement: None,
+            }),
+            body: Reply::Refused {
+                code: "gameplay".into(),
+                message: "Body strings can contain \"world_step\":999 and \"body\": without changing header credit".into(),
+            },
+        };
+        let original = response.encode().unwrap();
+        let (renewed, admitted) =
+            committed_world_credit(Ok((original.clone(), true)), 100).unwrap();
+        assert!(admitted);
+        let mut actual: serde_json::Value = serde_json::from_slice(&renewed).unwrap();
+        assert_eq!(actual["control"]["credit_step"], 100);
+        actual["control"]["credit_step"] = serde_json::json!(9);
+        assert_eq!(
+            actual,
+            serde_json::from_slice::<serde_json::Value>(&original).unwrap()
+        );
+        assert!(committed_world_credit(Ok((original, true)), 8).is_err());
+        response.control = None;
+        let original = response.encode().unwrap();
+        assert_eq!(
+            committed_world_credit(Ok((original.clone(), false)), 100).unwrap(),
+            (original, false)
+        );
+        response.control = Some(Control {
+            life: super::super::wire::Life {
+                instance: 120,
+                actor: 14,
+                generation: 2,
+            },
+            epoch: 3,
+            accepted_sequence: 7,
+            world_step: 9,
+            credit_step: 9,
+            applied_movement: None,
+        });
+        if let Reply::Refused { message, .. } = &mut response.body {
+            message.clear();
+        }
+        let overhead = response.encode().unwrap().len();
+        if let Reply::Refused { message, .. } = &mut response.body {
+            *message = "a".repeat(MAX_RESPONSE_BYTES - overhead);
+        }
+        let bounded = response.encode().unwrap();
+        assert_eq!(bounded.len(), MAX_RESPONSE_BYTES);
+        assert!(committed_world_credit(Ok((bounded, true)), 100).is_err());
+    }
     pub(in crate::service) fn key(n: u8) -> Keypair {
         Keypair::from_secret_key(
             &Secp256k1::new(),
@@ -1023,6 +1283,40 @@ pub(super) mod tests {
             let _ = stopped.await;
         }));
         (address, connector, stop, task)
+    }
+    #[tokio::test]
+    async fn catch_up_ticks_each_leave_their_own_simulation_observation() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (tls, _) = tls();
+        let keys = [key(121), key(122), key(123)];
+        let gateway = gateway(&keys);
+        let (stop, stopped) = oneshot::channel();
+        let mut stop = Some(stop);
+        let mut hooks = 0;
+        let hook: Tick = Box::new(move |_, _| {
+            hooks += 1;
+            if hooks == 1 {
+                // The next wake has more than one fixed step to account for.
+                std::thread::sleep(Duration::from_millis(80));
+            }
+            if hooks >= 8 {
+                if let Some(stop) = stop.take() {
+                    let _ = stop.send(());
+                }
+            }
+        });
+        let exit = timeout(
+            Duration::from_secs(3),
+            serve_ticked(listener, tls, gateway, None, hook, async {
+                let _ = stopped.await;
+            }),
+        )
+        .await
+        .unwrap();
+        assert!(exit.failure.is_none(), "{:?}", exit.failure);
+        assert!(exit.stats.ticks >= 8);
+        assert_eq!(exit.stats.simulation.count, exit.stats.ticks);
+        assert_eq!(exit.stats.simulation_phases.startup.count, exit.stats.ticks);
     }
     async fn open(address: std::net::SocketAddr, connector: &TlsConnector) -> (Stream, Hello) {
         let socket = TcpStream::connect(address).await.unwrap();
@@ -1400,15 +1694,21 @@ pub(super) mod tests {
         .unwrap();
         let snapshot = client.request(Body::Snapshot {}).await.unwrap();
         let old = snapshot.control.clone().unwrap();
+        let mut identities = gateway(&keys);
+        let (first, _) = identities.open(0).unwrap();
+        let (second, _) = identities.open(1).unwrap();
+
         let mut current = old.clone();
         current.world_step += 4;
         current.credit_step += 4;
         current.accepted_sequence += 10;
         let mut acknowledgment = snapshot.clone();
         acknowledgment.body = Reply::Accepted;
-        let (bytes, _) =
-            promote_outcome_credit(Ok((acknowledgment.encode().unwrap(), true)), Some(&current))
-                .unwrap();
+        let (bytes, _) = committed_control_credit(
+            Ok((acknowledgment.encode().unwrap(), true)),
+            &BTreeMap::from([(first, current.clone())]),
+        )
+        .unwrap();
         let promoted: Response = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             promoted.control.as_ref().unwrap().credit_step,
@@ -1422,19 +1722,21 @@ pub(super) mod tests {
         current.epoch += 1;
         let original = acknowledgment.encode().unwrap();
         assert_eq!(
-            promote_outcome_credit(Ok((original.clone(), true)), Some(&current))
-                .unwrap()
-                .0,
+            committed_control_credit(
+                Ok((original.clone(), true)),
+                &BTreeMap::from([(first, current.clone())])
+            )
+            .unwrap()
+            .0,
             original
         );
         current.epoch = old.epoch;
-        let mut identities = gateway(&keys);
-        let (first, _) = identities.open(0).unwrap();
-        let (second, _) = identities.open(1).unwrap();
-        let credited =
-            promote_outcome_credit(Ok((snapshot.encode().unwrap(), true)), Some(&current))
-                .unwrap()
-                .0;
+        let credited = committed_control_credit(
+            Ok((snapshot.encode().unwrap(), true)),
+            &BTreeMap::from([(first, current.clone())]),
+        )
+        .unwrap()
+        .0;
         let decoded: Response = serde_json::from_slice(&credited).unwrap();
         assert_eq!(decoded.control.as_ref().unwrap().world_step, old.world_step);
         assert_eq!(
@@ -1442,37 +1744,32 @@ pub(super) mod tests {
             current.credit_step
         );
         let original_snapshot = snapshot.encode().unwrap();
-        let before: CreditedResponse<'_> = serde_json::from_slice(&original_snapshot).unwrap();
-        let after: CreditedResponse<'_> = serde_json::from_slice(&credited).unwrap();
-        assert_eq!(before.body.get(), after.body.get());
-        let make_pending = |id, response: Response| {
-            let (reply, _) = oneshot::channel();
-            PendingReply {
-                id,
-                reply,
-                response: PendingResponse::Outcome(Ok((response.encode().unwrap(), true))),
-            }
-        };
+        let before: serde_json::Value = serde_json::from_slice(&original_snapshot).unwrap();
+        let after: serde_json::Value = serde_json::from_slice(&credited).unwrap();
+        assert_eq!(before["body"], after["body"]);
         let mut second_credit = current.clone();
+        second_credit.life.actor += 1;
         second_credit.credit_step += 8;
-        let mut ordered = vec![
-            make_pending(first, acknowledgment.clone()),
-            make_pending(second, acknowledgment.clone()),
-            make_pending(first, snapshot.clone()),
-            make_pending(first, acknowledgment.clone()),
-        ];
-        let replies = checkpoint_replies(
-            &mut ordered,
-            BTreeMap::from([(first, current.clone()), (second, second_credit.clone())]),
-        )
-        .unwrap();
-        let controls: Vec<_> = replies
-            .into_iter()
-            .map(|(_, result)| {
-                let response: Response = serde_json::from_slice(&result.unwrap().0).unwrap();
-                response.control.unwrap()
-            })
-            .collect();
+        let mut other = acknowledgment.clone();
+        other.control.as_mut().unwrap().life = second_credit.life;
+        let credits = BTreeMap::from([(first, current.clone()), (second, second_credit.clone())]);
+        let controls: Vec<_> = [
+            acknowledgment.clone(),
+            other,
+            snapshot.clone(),
+            acknowledgment.clone(),
+        ]
+        .into_iter()
+        .map(|response| {
+            let bytes = committed_control_credit(Ok((response.encode().unwrap(), true)), &credits)
+                .unwrap()
+                .0;
+            serde_json::from_slice::<Response>(&bytes)
+                .unwrap()
+                .control
+                .unwrap()
+        })
+        .collect();
         assert_eq!(controls[0].world_step, old.world_step);
         assert_eq!(controls[1].world_step, old.world_step);
         assert_eq!(controls[2].world_step, old.world_step);
@@ -1491,7 +1788,6 @@ pub(super) mod tests {
                 current.credit_step
             ]
         );
-        assert!(ordered.is_empty());
         let Reply::Snapshot { state } = snapshot.body else {
             panic!("Expected owned snapshot");
         };
@@ -1501,7 +1797,7 @@ pub(super) mod tests {
     }
 
     #[tokio::test]
-    async fn slow_writer_fences_replies_bounds_backlog_and_refuses_new_work() {
+    async fn slow_writer_fences_replies_and_backpressures_the_bounded_request_queue() {
         use crate::{Intent, service::client::Client};
         use std::sync::{
             Condvar, Mutex,
@@ -1588,30 +1884,18 @@ pub(super) mod tests {
                 .is_err(),
             "Uncommitted command was acknowledged"
         );
+        let mut b = b.pipeline().unwrap();
         let command_b = b.prepare_command(movement).unwrap();
-        let refused = timeout(
-            Duration::from_secs(1),
-            b.request(Body::Command {
-                command: command_b.into(),
-            }),
-        )
-        .await
-        .unwrap()
+        b.send(Body::Command {
+            command: command_b.into(),
+        })
         .unwrap();
-        assert!(matches!(refused.body, Reply::Refused {code, ..} if code == "storage_busy"));
-        assert!(refused.tick >= committed_tick);
-        let control = b.control().unwrap();
-        assert_eq!(
-            (control.life, control.epoch, control.accepted_sequence),
-            committed_control
-        );
-        let snapshot = b.snapshot();
-        tokio::pin!(snapshot);
+        b.send_snapshot().unwrap();
         assert!(
-            timeout(Duration::from_millis(120), &mut snapshot)
+            timeout(Duration::from_millis(120), b.receive())
                 .await
                 .is_err(),
-            "Snapshot bypassed the durability fence or was refused for writer capacity"
+            "A queued command bypassed storage backpressure or its durability fence"
         );
         drop(release);
         let admitted = timeout(Duration::from_secs(2), &mut command)
@@ -1623,10 +1907,28 @@ pub(super) mod tests {
             "Unexpected admission after storage drain: {:?}",
             admitted.body
         );
-        timeout(Duration::from_secs(2), &mut snapshot)
+        let (body, response) = timeout(Duration::from_secs(2), b.receive())
             .await
             .unwrap()
             .unwrap();
+        assert!(matches!(body, Body::Command { .. }));
+        assert!(matches!(response.body, Reply::Accepted));
+        assert!(response.tick >= committed_tick);
+        let control = response.control.unwrap();
+        assert_eq!(
+            (control.life, control.epoch),
+            (committed_control.0, committed_control.1)
+        );
+        assert_eq!(control.accepted_sequence, committed_control.2 + 1);
+        let (body, response) = timeout(Duration::from_secs(2), b.receive())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            body,
+            Body::Snapshot { .. } | Body::Replicate { .. }
+        ));
+        assert!(matches!(response.body, Reply::Snapshot { .. }));
         stop.send(()).unwrap();
         let exit = timeout(Duration::from_secs(2), server)
             .await
@@ -1634,7 +1936,9 @@ pub(super) mod tests {
             .unwrap();
         assert!(exit.failure.is_none(), "{:?}", exit.failure);
         assert_eq!(exit.stats.writer_queue_peak, 2);
-        assert!(exit.stats.storage_refusals > 0);
+        assert!((1..=QUEUE).contains(&exit.stats.request_queue_peak));
+        assert!((1..=REPLY_BYTES * 2).contains(&exit.stats.held_reply_bytes_peak));
+        assert_eq!(exit.stats.storage_refusals, 0);
         assert!(exit.stats.storage_paused_ticks > 0 && exit.stats.storage_paused_seconds > 0.);
         assert!(exit.stats.commits.maximum_seconds >= 0.12);
         assert_eq!(exit.stats.simulation.count, exit.stats.ticks);

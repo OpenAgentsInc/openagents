@@ -1,0 +1,57 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation.patch",
+    "source_patch_sha256": "87deeda7c94cd45f53d67e74a128313c0694864c2f8ab79586a1fc06e9f8be7a",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "executables": {
+    "battle_scale": "b1badf2252c51791fe1b3581efe224f1f5531ec00cb17202476ee74d737483d0",
+    "renderer_budget": "e7420eea071d8ba3bba572043bc15106f086a2f75a6dc212924b3a706ad3b9ca"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-final.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-final.json",
+        "300"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "wall_seconds": 5.6591677220130805,
+      "receipt_sha256": "9936db2e55bef0abf235b8e8a223c11031efe3ef9402d56c54bbc3d78be62234"
+    },
+    {
+      "receipt": "authority-final.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-final.json",
+        "60"
+      ],
+      "status": "passed",
+      "exit_code": 0,
+      "wall_seconds": 5.742913343012333,
+      "receipt_sha256": "3ab78b8a663a72095ae9a4fb0e2c098a891fc692cae204919a950ba4b9729221"
+    },
+    {
+      "receipt": "network-final.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-final.json",
+        "60"
+      ],
+      "status": "failed",
+      "exit_code": 1,
+      "wall_seconds": 60.87486689101206,
+      "receipt_sha256": "9a54067b94692b769ca048dbbbd810f43c8adbd12bc470d49f223c3d68a41f1d"
+    }
+  ]
+}

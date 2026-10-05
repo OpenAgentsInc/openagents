@@ -1,0 +1,37 @@
+{
+  "scope": "Only completed, inactive executables identified by retained execution-manifest hashes; no caches or other checkouts removed.",
+  "removed": [
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale-91f8e51132a38b7f",
+      "sha256": "3ac26c19dbeb36ed19eeeb53c9a2588157ad5124e8d9c65c82d95833aca545ac",
+      "execution_manifest": "execution-manifest-peak-diagnostic.json",
+      "bytes": 767231192,
+      "device": 66306,
+      "inode": 41077872
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+      "sha256": "3ac26c19dbeb36ed19eeeb53c9a2588157ad5124e8d9c65c82d95833aca545ac",
+      "execution_manifest": "execution-manifest-peak-diagnostic.json",
+      "bytes": 767231192,
+      "device": 66306,
+      "inode": 41077872
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget-d70d9a88bdf84491",
+      "sha256": "7d44f804634932aa3c0fff4438ba4265ac2165e09841d5e52370e5718dab1bf1",
+      "execution_manifest": "execution-manifest-thirty-hz-send.json",
+      "bytes": 554005416,
+      "device": 66306,
+      "inode": 41087138
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+      "sha256": "7d44f804634932aa3c0fff4438ba4265ac2165e09841d5e52370e5718dab1bf1",
+      "execution_manifest": "execution-manifest-thirty-hz-send.json",
+      "bytes": 554005416,
+      "device": 66306,
+      "inode": 41087138
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "scope": "Only inactive obsolete test executables named by this audit's retained Running test logs. Latest world, engine, native, and renderer tests are retained. No caches or other checkouts removed.",
+  "removed": [
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-b88cdf63ee888e7c",
+      "sha256": "32f93199f339fa7982841e7435fa167d04671d7e07ae34e9fbcd04f29e61e3c3",
+      "retained_test_logs": [
+        "bench/verse/2026-10-05/engine-boundaries/worlds.log"
+      ],
+      "bytes": 277912752,
+      "device": 66306,
+      "inode": 41090132
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-00efdcab108d5000",
+      "sha256": "5706cdedf610b94c055962e3d2c8f01336a971bedb398e03edd61cf227860cc3",
+      "retained_test_logs": [
+        "bench/verse/2026-10-05/battle-scale/timed-history-main-host-tests.log",
+        "bench/verse/2026-10-05/battle-scale/main-integration-host-tests.log"
+      ],
+      "bytes": 282759240,
+      "device": 66306,
+      "inode": 41087918
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_imported-d461871c378f653e",
+      "sha256": "5056b89f88c378a5b3f6762af96a9c9d4ce5d093ec5e4989fe28030d66e04624",
+      "retained_test_logs": [
+        "bench/verse/2026-10-05/battle-scale/timed-history-main-native-tests.log"
+      ],
+      "bytes": 515667992,
+      "device": 66306,
+      "inode": 41085845
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/gym_hall-45f30934b6dff419",
+      "sha256": "4d063225b64de7061dba01f82ae0c8625d91f5b35cfd668bbabf3bfe3e08d131",
+      "retained_test_logs": [
+        "bench/verse/2026-10-04/character-lifecycle/rebased-consumers.log",
+        "bench/verse/2026-10-04/frame-attribution/gpu-timestamp-probe.log"
+      ],
+      "bytes": 560189232,
+      "device": 66306,
+      "inode": 41082247
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/presence-b41a05de57caf062",
+      "sha256": "8acff7c9df8a47f061f74504be87675b2be811af590ae9c5be8fe2c673b438f4",
+      "retained_test_logs": [
+        "bench/verse/2026-10-04/character-lifecycle/rebased-consumers.log",
+        "bench/verse/2026-10-04/frame-attribution/gpu-timestamp-probe.log"
+      ],
+      "bytes": 558285920,
+      "device": 66306,
+      "inode": 41081049
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/relay-4759ca93cc15f872",
+      "sha256": "e8abe2400f5dba7fa9b2be6ea012d077bef9a6ba8604f7b1a5385124cb9f1d75",
+      "retained_test_logs": [
+        "bench/verse/2026-10-04/character-lifecycle/rebased-consumers.log",
+        "bench/verse/2026-10-04/frame-attribution/gpu-timestamp-probe.log"
+      ],
+      "bytes": 557252384,
+      "device": 66306,
+      "inode": 41082330
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/spectator-aec802c3f378873b",
+      "sha256": "64ac10e521055339e4ade566be0f2144618fd498eeec80c23a3182219210382c",
+      "retained_test_logs": [
+        "bench/verse/2026-10-04/character-lifecycle/rebased-consumers.log",
+        "bench/verse/2026-10-04/frame-attribution/gpu-timestamp-probe.log"
+      ],
+      "bytes": 560366752,
+      "device": 66306,
+      "inode": 41081137
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verify_card-5adaadf5e1ebddb3",
+      "sha256": "f57e0618db4ce18a32e350e7afc4e7a8a65480c5875b5bd26ef4db7d7d73eb3e",
+      "retained_test_logs": [
+        "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log"
+      ],
+      "bytes": 593052352,
+      "device": 66306,
+      "inode": 41085954
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/gym_hall-ffcdf34d3384d868",
+      "sha256": "9e4f1de52fac492bf637570d06764245d213f8327819b057a21cd0b2afb7cd42",
+      "retained_test_logs": [
+        "bench/verse/2026-10-04/social-authority/acceptance-integration.log"
+      ],
+      "bytes": 554154672,
+      "device": 66306,
+      "inode": 41078093
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/presence-546b8a30cf94fb7f",
+      "sha256": "18262cf5e33ea7a3ce2293aaf45fd09c5b79ee3c8a37f7b97152b01ef1351214",
+      "retained_test_logs": [
+        "bench/verse/2026-10-04/social-authority/acceptance-integration.log"
+      ],
+      "bytes": 552251768,
+      "device": 66306,
+      "inode": 41078092
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/relay-77720aa8be5aad4a",
+      "sha256": "b620cbb58fceedbb00e4728f58ad66b2c7838e4fc8d2365163b8306177e559fc",
+      "retained_test_logs": [
+        "bench/verse/2026-10-04/social-authority/acceptance-integration.log"
+      ],
+      "bytes": 551219928,
+      "device": 66306,
+      "inode": 41078090
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/spectator-a9b95dc2475570fb",
+      "sha256": "79f20ef15e19461235146b848297275d18c6f66efe0f500b21a93304158e541a",
+      "retained_test_logs": [
+        "bench/verse/2026-10-04/social-authority/acceptance-integration.log"
+      ],
+      "bytes": 554320776,
+      "device": 66306,
+      "inode": 41078071
+    }
+  ]
+}

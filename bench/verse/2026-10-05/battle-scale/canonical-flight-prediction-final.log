@@ -1,0 +1,65 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2845:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2845 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 47s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-895f92bfb62bd90a)
+
+running 30 tests
+test prediction::latency::confirmed_intervals_reconcile_delayed_delivery ... ok
+test prediction::latency::current_moving_support_geometry_reports_a_separate_distribution ... ok
+test prediction::latency::delayed_input_profile_measures_authority_corrections ... ok
+test prediction::latency::initial_entry_snapshot_can_arrive_after_a_full_downlink_delay ... ok
+test prediction::latency::intervals_cover_jitter_coalescing_jump_wall_and_stairs ... ok
+test prediction::local::tests::accepted_jump_is_not_repeated_and_rejected_movement_is_removed ... ok
+test prediction::local::tests::applied_confirmation_retires_inputs_without_minting_time_or_reverting_to_old_travel ... ok
+test prediction::local::tests::bounded_motor_prediction_preserves_complete_inputs_and_does_not_burst_on_confirmation ... FAILED
+test prediction::local::tests::chained_unsent_replacements_preserve_motion_and_retire_with_the_real_ack ... ok
+test prediction::local::tests::delayed_baselines_do_not_extend_the_clock_or_renew_unacknowledged_holds ... ok
+test prediction::local::tests::embedded_prediction_waits_for_authority_without_losing_input_or_query_errors ... ok
+test prediction::local::tests::grounded_interval_bootstrap_aligns_only_verified_time_and_keeps_the_gap_neutral ... ok
+test prediction::local::tests::input_moves_before_binding_and_acknowledgment_then_uses_authoritative_hold ... ok
+test prediction::local::tests::interval_transmission_waits_for_verified_credit_while_prediction_advances ... ok
+test prediction::local::tests::lifecycle_clear_and_bounded_history_never_replay_old_inputs ... ok
+test prediction::local::tests::movement_policy_preserves_slowing_and_control_routing ... ok
+test prediction::local::tests::overtaken_pending_intervals_preserve_move_jump_stop_and_expire ... ok
+test prediction::local::tests::overtaken_unacknowledged_hold_keeps_its_age_and_expires ... ok
+test prediction::local::tests::pending_geometry_corrects_unacknowledged_travel_and_retires_removed_walls ... ok
+test prediction::local::tests::refused_replacement_cancels_its_entire_bounded_local_chain ... ok
+test prediction::local::tests::timing_distinguishes_local_steps_input_binding_and_authoritative_ack ... ok
+test prediction::tests::acknowledged_jump_is_not_replayed_and_external_motor_state_survives ... ok
+test prediction::tests::changed_collision_replays_pending_input_against_current_geometry ... ok
+test prediction::tests::coalesced_authority_inputs_correct_the_estimate_without_duplicate_travel ... ok
+test prediction::tests::delayed_ack_discards_only_applied_inputs_and_replays_exact_motor_state ... ok
+test prediction::tests::new_life_and_epoch_retire_old_input_and_conflicting_acks_are_atomic ... ok
+test prediction::tests::newer_observation_can_correct_external_motion_at_the_same_server_tick ... ok
+test prediction::tests::overflow_and_duplicate_input_preserve_the_prediction ... ok
+test prediction::tests::physics_watermarks_cannot_regress_without_a_control_reset ... ok
+test prediction::tests::substep_budget_and_foreign_collision_context_are_refused_atomically ... ok
+
+failures:
+
+---- prediction::local::tests::bounded_motor_prediction_preserves_complete_inputs_and_does_not_burst_on_confirmation stdout ----
+
+thread 'prediction::local::tests::bounded_motor_prediction_preserves_complete_inputs_and_does_not_burst_on_confirmation' (3722887) panicked at crates/verse-world/src/prediction/local.rs:863:9:
+assertion `left == right` failed
+  left: 24
+ right: 12
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    prediction::local::tests::bounded_motor_prediction_preserves_complete_inputs_and_does_not_burst_on_confirmation
+
+test result: FAILED. 29 passed; 1 failed; 0 ignored; 0 measured; 492 filtered out; finished in 1.94s
+
+error: test failed, to rerun pass `-p verse-world --lib`

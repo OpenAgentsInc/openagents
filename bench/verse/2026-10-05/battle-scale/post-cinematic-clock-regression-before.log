@@ -1,0 +1,59 @@
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2845:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2845 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:426:19
+     |
+ 332 | impl Game {
+     | --------- methods in this implementation
+...
+ 426 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1396 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, and `quest_log` are never used
+   --> crates/verse-world/src/service.rs:148:8
+    |
+ 98 | impl Chamber {
+    | ------------ methods in this implementation
+...
+148 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+256 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+307 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+
+warning: method `validate_use` is never used
+  --> crates/verse-world/src/service/items.rs:54:19
+   |
+27 | impl Catalog {
+   | ------------ method in this implementation
+...
+54 |     pub(super) fn validate_use(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^
+
+warning: method `validate_change` is never used
+  --> crates/verse-world/src/service/outfits.rs:70:19
+   |
+33 | impl Catalog {
+   | ------------ method in this implementation
+...
+70 |     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^^^^
+

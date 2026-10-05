@@ -4,8 +4,8 @@ use std::collections::VecDeque;
 use verse_engine::core::LifeId;
 
 pub const MAX_STEPS: u32 = 12;
-/// Producer batches leave room for two complete intervals per authority tick.
-pub const SEND_STEPS: u32 = 6;
+/// Send completed history at 30 Hz; catch-up still uses the twelve-step work bound.
+pub const SEND_STEPS: u32 = 4;
 pub const MAX_QUEUED: usize = 16;
 pub const MAX_LAG: u64 = 32;
 pub const BOOTSTRAP_LAG: u64 = 48;
@@ -172,6 +172,9 @@ pub(crate) struct Clock {
     pub applied_sequence: u64,
     pub received_at: u64,
     queue: VecDeque<Frame>,
+    /// Runtime confirmation history never enters a save or grants execution.
+    #[serde(skip)]
+    pub(crate) confirmations: VecDeque<super::Baseline>,
 }
 impl Clock {
     pub fn new(step: u64, sequence: u64) -> Self {
@@ -180,6 +183,7 @@ impl Clock {
             applied_sequence: sequence,
             received_at: step,
             queue: VecDeque::new(),
+            confirmations: VecDeque::new(),
         }
     }
     pub fn admit(&mut self, frame: Frame, world_step: u64) -> Result<(), String> {

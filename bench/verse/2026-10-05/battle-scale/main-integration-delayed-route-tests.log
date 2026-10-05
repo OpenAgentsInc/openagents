@@ -1,0 +1,11 @@
+test_default_profile_retains_scheduled_delay (test_verse_delayed_route.DelayedRoute.test_default_profile_retains_scheduled_delay) ... ok
+test_explicit_serial_profile_retains_serial_delay (test_verse_delayed_route.DelayedRoute.test_explicit_serial_profile_retains_serial_delay) ... ok
+test_pipeline_keeps_large_payload_order_and_per_chunk_delay (test_verse_delayed_route.DelayedRoute.test_pipeline_keeps_large_payload_order_and_per_chunk_delay) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.740s
+
+OK
+{"profile": "scheduled", "bytes_checked": 2097164, "first_byte_seconds": 0.0829127419856377, "queued_chunk_peak": 32}
+{"profile": "serial", "bytes_checked": 268, "first_byte_seconds": 0.08077358599985018, "queued_chunk_peak": 0}
+{"profile": "pipeline", "bytes_checked": 2097164, "first_byte_seconds": 0.08223245199769735, "queued_chunk_peak": 8}

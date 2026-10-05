@@ -1,0 +1,68 @@
+Command: cargo test -p verse --no-default-features --features remote-chamber --example battle_scale -- --test-threads=1
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2845:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2845 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:460:12
+    |
+116 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+460 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+471 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+
+warning: function `stream_triangles` is never used
+   --> crates/verse/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: method `land` is never used
+   --> crates/verse/src/zones/grove/mod.rs:200:12
+    |
+159 | impl Grove {
+    | ---------- method in this implementation
+...
+200 |     pub fn land(&self) -> Land {
+    |            ^^^^
+
+warning: `verse` (lib) generated 5 warnings (run `cargo fix --lib -p verse` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 00s
+     Running unittests examples/battle_scale.rs (/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale-7d3f90b8b4d41f7e)
+
+running 3 tests
+test battle_acceptance::tests::a_successful_exit_and_fast_empty_profiles_do_not_pass_capacity ... ok
+test battle_acceptance::tests::fast_profiles_do_not_hide_missing_actions_or_route_failures ... ok
+test battle_acceptance::tests::missing_and_over_budget_authority_timings_refuse_a_full_population ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

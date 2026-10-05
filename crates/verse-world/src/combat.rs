@@ -58,6 +58,13 @@ pub struct EnemyCast {
     pub radius: f32,
     pub boss: bool,
 }
+impl EnemyCast {
+    fn flight_position(&self, at: f32) -> Vec3 {
+        let fraction = ((at - self.release) / (self.impact - self.release)).clamp(0., 1.);
+        self.origin.lerp(self.target + Vec3::Y, fraction)
+    }
+}
+
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Encounter {
     #[serde(default)]
@@ -223,9 +230,7 @@ impl Encounter {
                 return Err("Invalid hostile projectile checkpoint".into());
             }
             if let Some(position) = cast.position {
-                let fraction =
-                    ((game.time - cast.release) / (cast.impact - cast.release)).clamp(0., 1.);
-                let expected = cast.origin.lerp(cast.target + Vec3::Y, fraction);
+                let expected = cast.flight_position(game.time);
                 if position.distance(expected) > 0.002 {
                     return Err("Hostile projectile position disagrees with its flight".into());
                 }
@@ -330,7 +335,6 @@ impl Encounter {
                 command_start.max(cast.release)
             };
             let end = game.time.min(cast.impact);
-            let velocity = (cast.target + Vec3::Y - cast.origin) / (cast.impact - cast.release);
             let duration = (end - begin).max(0.);
             let steps = (duration * 120.).ceil().max(1.) as usize;
             let radius = if cast.boss { 0.18 } else { 0.08 };
@@ -356,7 +360,11 @@ impl Encounter {
             }
             for window in boundaries.windows(2) {
                 let (at, until) = (window[0], window[1]);
-                let delta = velocity * (until - at);
+                // Sweep to the canonical endpoint used by checkpoint validation.
+                // Accumulating small f32 displacements drifts at late times or
+                // large coordinates even when every individual sweep succeeds.
+                let destination = cast.flight_position(until);
+                let delta = destination - position;
                 let from = if dt > 0. {
                     (at - command_start) / dt
                 } else {
@@ -404,7 +412,7 @@ impl Encounter {
                     resolved = true;
                     break;
                 }
-                position += delta;
+                position = destination;
             }
             if resolved {
                 continue;
@@ -1115,6 +1123,33 @@ mod hostile_flight_tests {
         assert_eq!(e.absorbed, 8);
         assert!(e.casts.is_empty());
     }
+    #[test]
+    fn hostile_flight_remains_checkpoint_consistent_at_large_coordinates_and_late_times() {
+        let mut g = game();
+        let mut e = g.encounter.take().unwrap();
+        for ready in e.ready.values_mut() {
+            *ready = 10_000.;
+        }
+        let mut cast = shot(&g);
+        cast.origin = Vec3::new(10_000., 1.1, 10_000.);
+        cast.target = Vec3::new(10_004., 0., 10_000.);
+        cast.started = 499.;
+        cast.release = 500.;
+        cast.impact = 502.2;
+        g.time = cast.release;
+        e.casts.push(cast);
+        for tick in 1..=30 {
+            g.time = 500. + tick as f32 / 30.;
+            e.step(&mut g, 1. / 30.).unwrap();
+            assert_eq!(e.casts.len(), 1);
+            e.validate(&g).unwrap();
+        }
+        g.encounter = Some(e);
+        let bytes = g.checkpoint().unwrap();
+        let restored = Game::restore(&bytes).unwrap();
+        assert_eq!(bytes, restored.checkpoint().unwrap());
+    }
+
     #[test]
     fn stored_hostile_position_replays_and_forged_flight_is_refused() {
         let mut g = game();

@@ -1,0 +1,21 @@
+Command: cargo test -p verse-world --lib --features service-net service::client::tests::context_and_control_regressions_are_refused -- --test-threads=1
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2845:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2845 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-895f92bfb62bd90a)
+
+running 1 test
+test service::client::tests::context_and_control_regressions_are_refused ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 515 filtered out; finished in 0.00s
+

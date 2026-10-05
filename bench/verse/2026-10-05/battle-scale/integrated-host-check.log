@@ -1,0 +1,19 @@
+    Checking serde_json v1.0.151
+    Checking verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+    Checking physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+    Checking verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2844:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2844 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+    Checking verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+    Checking verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.95s

@@ -1775,6 +1775,9 @@ impl Game {
             }
             return frame;
         }
+        // The cinematic director stops its clock at the authored endpoint.
+        // Live authority presentation continues with combat and the owned HUD.
+        frame.time = self.time;
         let snapshot = self.snapshot();
         for a in &mut frame.actors {
             if self.scene.collision_profile.as_deref() == Some(crate::playground::PROFILE)
@@ -2648,6 +2651,7 @@ impl Game {
         self.damage_numbers.retain(|n| self.time - n.at < 1.35);
         self.impacts.retain(|(_, at, _)| self.time - at < 0.6);
         self.sync_bodies(dt)?;
+        self.record_movement_confirmations()?;
         Ok(())
     }
     fn respawn_cultists(&mut self) -> Result<(), String> {
@@ -5196,6 +5200,24 @@ mod motor_containment_tests {
         game.tick(1. / 30., [0.; 2]).unwrap();
         let position = game.primary.player;
         let instance = game.player_life().instance;
+        let owner = crate::Controller(9);
+        let unrelated_spawn = position + Vec3::X * 8.;
+        let unrelated = game.add_player(owner, unrelated_spawn).unwrap();
+        let admission = game.player_admission(unrelated.actor).unwrap();
+        game.submit(
+            owner,
+            crate::Command {
+                actor: unrelated,
+                epoch: admission.epoch(),
+                sequence: admission.accepted_sequence() + 1,
+                tick: game.authority_tick,
+                intent: crate::Intent::Move {
+                    axes: [1., 0.],
+                    yaw: 0.,
+                },
+            },
+        )
+        .unwrap();
         for (entity, lo, hi) in [(90001, -2., 0.1), (90002, -0.1, 2.)] {
             game.query_scene
                 .insert(MeshCollider {
@@ -5225,6 +5247,12 @@ mod motor_containment_tests {
         }
         assert_eq!(game.authority_tick, tick + 3);
         assert!(game.time > time);
+        assert!(
+            game.actor_position(unrelated.actor)
+                .unwrap()
+                .distance(unrelated_spawn)
+                > 0.1
+        );
         assert_eq!(game.motor_recovery.blocks, 3);
         assert!(game.motor_recovery.last_diagnostic.is_some());
         // An already planned route can become obstructed before its motor step.

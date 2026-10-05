@@ -57,6 +57,8 @@ pub struct ActorFrame {
     pub life: Option<crate::core::LifeId>,
     pub animation: Selection,
     pub animation_time: f32,
+    /// Local prediction control epoch; authority and authored clocks use `None`.
+    pub animation_epoch: Option<u64>,
     pub visible: bool,
     pub health: u32,
 }
@@ -263,6 +265,7 @@ impl Scene {
                 life: None,
                 animation,
                 animation_time,
+                animation_epoch: None,
                 health: a.health.saturating_sub(damage),
             });
         }

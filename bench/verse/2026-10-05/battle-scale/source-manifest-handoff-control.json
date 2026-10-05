@@ -1,0 +1,7 @@
+{
+  "schema": "verse.battle.source.v1",
+  "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+  "source_patch": "implementation-handoff-control.patch",
+  "source_patch_sha256": "e69a64d5ad807d5099a7ff228bbf35fff04f0e7b6fc1afe33b7aaf46f7335c32",
+  "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+}

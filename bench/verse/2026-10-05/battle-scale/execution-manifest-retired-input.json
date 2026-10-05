@@ -1,0 +1,94 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation-retired-input.patch",
+    "source_patch_sha256": "784dc433ad5b8320c26609dfd30007b49507c0c2f61957fb8c2504e05270ad3a",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "98851f702f413988c9c60fd7828342240aca9eafcdd1c85e518f2cc385d3a4b7"
+  },
+  "runs": [
+    {
+      "receipt": "authority-retired-input.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-retired-input.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 6.088071410980774,
+      "status": "passed",
+      "receipt_sha256": "3cd6b391d9c43a1bc6dc18bed63aaf709b995dfea0a96474a8e517517b51cde4"
+    },
+    {
+      "receipt": "network-retired-input.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-retired-input.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 60.85195860802196,
+      "status": "passed",
+      "receipt_sha256": "828754347e4997155320a85c3ae3f0cb9e39e5f6acc3344e7187076f86460481"
+    },
+    {
+      "receipt": "combined-retired-input-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-retired-input-01.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.32700556900818,
+      "status": "failed",
+      "receipt_sha256": "7282c26438146f5d31e648b861747469a8cdbc7c0b5b2ceedb7de1960d033795"
+    },
+    {
+      "receipt": "combined-retired-input-02.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-retired-input-02.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.82707717901212,
+      "status": "failed",
+      "receipt_sha256": "4c724cb8275873ab197b49f27369ee0cc66e61cade5aec570acf732ba96ab5e0"
+    },
+    {
+      "receipt": "combined-retired-input-03.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-retired-input-03.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.735199886985356,
+      "status": "failed",
+      "receipt_sha256": "432782add070d99cf97a70aafdc906027f96c71dc08d78476ffaf8f5a7833cf6"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

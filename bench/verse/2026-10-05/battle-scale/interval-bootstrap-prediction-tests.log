@@ -1,0 +1,35 @@
+Command: cargo test -p verse-world --lib --features service-net prediction::local::tests -- --test-threads=1
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2845:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2845 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 46s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-895f92bfb62bd90a)
+
+running 14 tests
+test prediction::local::tests::accepted_jump_is_not_repeated_and_rejected_movement_is_removed ... ok
+test prediction::local::tests::applied_confirmation_retires_inputs_without_minting_time_or_reverting_to_old_travel ... ok
+test prediction::local::tests::chained_unsent_replacements_preserve_motion_and_retire_with_the_real_ack ... ok
+test prediction::local::tests::delayed_baselines_do_not_extend_the_clock_or_renew_unacknowledged_holds ... ok
+test prediction::local::tests::grounded_interval_bootstrap_aligns_only_verified_time_and_keeps_the_gap_neutral ... ok
+test prediction::local::tests::input_moves_before_binding_and_acknowledgment_then_uses_authoritative_hold ... ok
+test prediction::local::tests::interval_transmission_waits_for_verified_credit_while_prediction_advances ... ok
+test prediction::local::tests::lifecycle_clear_and_bounded_history_never_replay_old_inputs ... ok
+test prediction::local::tests::movement_policy_preserves_slowing_and_control_routing ... ok
+test prediction::local::tests::overtaken_pending_intervals_preserve_move_jump_stop_and_expire ... ok
+test prediction::local::tests::overtaken_unacknowledged_hold_keeps_its_age_and_expires ... ok
+test prediction::local::tests::pending_geometry_corrects_unacknowledged_travel_and_retires_removed_walls ... ok
+test prediction::local::tests::refused_replacement_cancels_its_entire_bounded_local_chain ... ok
+test prediction::local::tests::timing_distinguishes_local_steps_input_binding_and_authoritative_ack ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 503 filtered out; finished in 0.02s
+

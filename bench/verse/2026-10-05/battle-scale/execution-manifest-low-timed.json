@@ -1,0 +1,109 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation-respawn-retry.patch",
+    "source_patch_sha256": "5b931a52107bf8d8c4480ac5026400df2050f0078d299069e5b4cac37528a4de",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "a5853f9e2f9e95900724faa3b7bb56339fefec6d7e4cae97bf9176e8b8484fcf",
+    "renderer_budget": "902b5fc9c2cdfddad8dcf3fd66cc662654cf74d85c1a220429c10312d0b42be2"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-low-timed.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-low-timed.json",
+        "300"
+      ],
+      "status": "passed",
+      "receipt_sha256": "9d9d198a5aae08edfaec309a830177370e6a6e4d87ca61c71310f0df456f018a",
+      "coverage_failures": [],
+      "exit_code": 0,
+      "wall_seconds": 5.64262893400155
+    },
+    {
+      "receipt": "authority-low-timed.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-low-timed.json",
+        "60"
+      ],
+      "status": "passed",
+      "receipt_sha256": "110161852c3499aeb025951e11d0448008227757d72d25271049914343675df4",
+      "exit_code": 0,
+      "wall_seconds": 5.987804331001826
+    },
+    {
+      "receipt": "network-low-timed.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-low-timed.json",
+        "60"
+      ],
+      "status": "failed",
+      "receipt_sha256": "16e7085e4221c430907c4b24a3eb083dc64717b15724562aeaeef10509adb31a",
+      "exit_code": 1,
+      "wall_seconds": 61.13460762499017
+    },
+    {
+      "receipt": "combined-low-timed-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-low-timed-01.json",
+        "60"
+      ],
+      "status": "failed",
+      "receipt_sha256": "b81a8f5392e59bb3a638ed5ba032bcd112f794b4b524bd5346455be20ac93e32",
+      "exit_code": 1,
+      "wall_seconds": 61.41251329201623
+    },
+    {
+      "receipt": "combined-low-timed-02.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-low-timed-02.json",
+        "60"
+      ],
+      "status": "failed",
+      "receipt_sha256": "fbd90931aab333783bd023108cc45de7ab5069b8a3925fb1c47bf1a91952af1d",
+      "exit_code": 1,
+      "wall_seconds": 61.46988694398897
+    },
+    {
+      "receipt": "combined-low-timed-03.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-low-timed-03.json",
+        "60"
+      ],
+      "status": "failed",
+      "receipt_sha256": "d6deead412dfa0748cd7855395eb1d4d0a130f955b13b5d323fdad63284e0e58",
+      "exit_code": 1,
+      "wall_seconds": 61.505820710008265
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

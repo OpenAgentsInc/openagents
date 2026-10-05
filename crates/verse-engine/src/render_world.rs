@@ -91,6 +91,7 @@ mod tests {
             transform: Mat4::IDENTITY,
             animation: crate::motion::State::Idle.into(),
             time: 0.,
+            animation_epoch: None,
             emission: Vec3::ONE,
         }
     }

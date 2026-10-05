@@ -247,6 +247,20 @@ impl Session {
         }
     }
 
+    /// Local input-to-prediction clock delay; this excludes display latency.
+    pub fn prediction_delay_steps(&self) -> u64 {
+        self.prediction.prediction_delay_steps()
+    }
+    pub fn prediction_embedding_deferrals(&self) -> u64 {
+        self.prediction.embedding_deferrals()
+    }
+    pub fn prediction_separating_steps(&self) -> u64 {
+        self.prediction.separating_steps()
+    }
+    pub fn prediction_embedding_diagnostic(&self) -> Option<&str> {
+        self.prediction.last_embedding()
+    }
+
     /// Stops the worker and waits for it; the transport closes with it.
     pub fn stop(mut self) -> Stopped {
         self.close()
@@ -631,17 +645,17 @@ impl Session {
                     }
                 },
                 Ok(Update::Outcome(r)) => {
-                    if let Some(control) = &r.control {
-                        if self.prediction.context() == Some((control.life.into(), control.epoch))
+                    self.confirm_applied_movement(&r)?;
+                    if let Some(control) = r.control.as_ref().filter(|c| {
+                        self.prediction.context() == Some((c.life.into(), c.epoch))
                             && self.prediction.movement_profile()
                                 == Some(verse_world::movement::Profile::Frames)
-                        {
-                            self.prediction.grant_world_credit(
-                                control.life.into(),
-                                control.epoch,
-                                control.credit_step,
-                            )?;
-                        }
+                    }) {
+                        self.prediction.movement_credit(
+                            control.life.into(),
+                            control.epoch,
+                            control.credit_step,
+                        )?;
                     }
                     if self.frame_entry_pending {
                         self.frame_entry_pending = false;
@@ -691,6 +705,38 @@ impl Session {
         Ok(())
     }
 
+    fn confirm_applied_movement(
+        &mut self,
+        r: &verse_world::service::wire::Response,
+    ) -> Result<(), String> {
+        let Some(baseline) = r.control.as_ref().and_then(|c| c.applied_movement) else {
+            return Ok(());
+        };
+        let before = self.prediction.pose();
+        let timing = self.notes.as_ref().map(|_| self.prediction.timing());
+        if !self
+            .prediction
+            .observe_applied(baseline, r.tick, r.request_id)?
+        {
+            return Ok(());
+        }
+        if self.notes.is_some() {
+            self.prediction.advance(0.)?;
+            if let (Some(before), Some(after)) = (before, self.prediction.pose()) {
+                let detail = serde_json::json!({"stage":"applied_movement_confirmation",
+                    "tick":r.tick,"request_id":r.request_id,"life":after.life,"epoch":after.epoch,
+                    "before":before.position,"after":after.position,"pending":self.prediction.pending(),
+                    "baseline":baseline,"timing_before":timing,"timing_after":self.prediction.timing()});
+                self.note(Note::Correction {
+                    distance: f64::from(before.position.distance(after.position)),
+                    discontinuity: false,
+                    detail,
+                });
+            }
+        }
+        Ok(())
+    }
+
     fn snapshot(
         &mut self,
         scene: &Scene,
@@ -715,9 +761,18 @@ impl Session {
                 .find(|p| LifeId::from(p.life) == life)
                 .and_then(|p| p.teleport_stamp)
         });
-        let movement = state.movement;
-        let collision = state.collision.clone();
         let controlled = self.controlled(scene);
+        // Body projection retains its admission prefix. Completed travel can be
+        // newer than that body; an older body must not undo a verified confirmation.
+        let movement = state
+            .movement
+            .into_iter()
+            .chain(r.control.as_ref().and_then(|c| c.applied_movement))
+            .chain(self.prediction.confirmed().filter(|b| {
+                controlled && teleport == self.owned_teleport && context == Some((b.life, b.epoch))
+            }))
+            .max_by_key(|b| (b.physics_step, b.applied_sequence));
+        let collision = state.collision.clone();
         let reset_reason = if !controlled {
             "unavailable_or_dead"
         } else if context.map(|c| c.0) != self.prediction.context().map(|c| c.0) {

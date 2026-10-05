@@ -1,0 +1,248 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2844:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2844 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 08s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-895f92bfb62bd90a)
+
+running 206 tests
+test service::auth::tests::authenticated_handles_cannot_cross_server_lifetimes ... ok
+test service::auth::tests::challenge_signature_binds_immutable_content_identity ... ok
+test service::auth::tests::challenges_are_single_use_expiring_and_bound_to_key_connection_server_instance ... ok
+test service::auth::tests::pending_budget_expiry_invalid_keys_and_unenrolled_signatures ... ok
+test service::auth::tests::reconnect_close_and_revocation_remove_dispatch_authority ... ok
+test service::auth::tests::signed_players_and_spectator_dispatch_without_request_principals ... ok
+test service::client::tests::cancelling_an_uncertain_request_drops_transport ... ok
+test service::client::tests::client_refuses_untrusted_certificates_and_foreign_instance_before_signing ... ok
+test service::client::tests::configured_content_mismatch_sends_no_authentication_request ... ok
+test service::client::tests::context_and_control_regressions_are_refused ... ok
+test service::client::tests::durable_claim_failure_withholds_receipt_and_recovers_ready_quest ... ok
+test service::client::tests::durable_item_use_withholds_failed_ack_and_retries_without_duplicate_recovery ... ok
+test service::client::tests::durable_outfit_change_is_replicated_and_survives_failed_commit_and_restart ... ok
+test service::client::tests::foreign_correlation_invalidates_transport_without_automatic_retry ... ok
+test service::client::tests::npc_quest_acceptance_is_durable_owned_and_withheld_on_storage_failure ... ok
+test service::client::tests::pipeline_drop_closes_an_uncertain_request ... ok
+test service::client::tests::pipeline_foreign_correlation_closes_io_without_replay ... ok
+test service::client::tests::pipeline_sends_bounded_inputs_before_any_reply_and_preserves_partial_reads ... ok
+test service::client::tests::reward_overflow_stops_durable_host_without_saving_partial_death ... ok
+test service::client::tests::serial_commands_refresh_only_explicit_unconsumed_stale_ticks ... ok
+test service::client::tests::tls_combat_rewards_are_owned_and_survive_durable_host_restart ... ok
+test service::client::tests::verified_clients_keep_owned_sequences_and_gameplay_refusals ... ok
+test service::equipment::tests::catalogs_and_saved_changes_refuse_ambiguous_or_unbounded_gear ... ok
+test service::event_cursor::tests::history_and_tick_regression_or_skipping_unseen_events_are_refused ... ok
+test service::event_cursor::tests::malformed_contexts_lives_and_payloads_leave_progress_unchanged ... ok
+test service::event_cursor::tests::partial_duplicate_and_overlapping_pages_deliver_each_serial_once ... ok
+test service::event_cursor::tests::retention_gap_is_reported_once_and_reconnect_continues_from_progress ... ok
+test service::host::tests::a_named_everglade_profile_resolves_to_the_shared_social_profile ... ok
+test service::host::tests::authored_health_survives_reset_and_recovery_fences ... ok
+test service::host::tests::configured_host_enrolls_players_and_spectators_over_real_tls ... ok
+test service::host::tests::guests_join_as_players_on_the_ring_up_to_the_cap_and_recover ... ok
+test service::host::tests::reach_configuration_drops_the_certificate_and_keeps_granted_spectators ... ok
+test service::host::tests::recovery_refuses_changed_identity_roles_and_spawns ... ok
+test service::host::tests::reward_configuration_and_recovery_refuse_changed_or_foreign_policies ... ok
+test service::host::tests::social_host_configuration_binds_rules_and_refuses_changed_recovery ... ok
+test service::host::tests::strict_configuration_refuses_duplicate_keys_roles_and_spawn_budgets ... ok
+test service::items::tests::catalog_refuses_ambiguous_names_ids_and_unbounded_effects ... ok
+test service::net::admission::tests::aggregate_projection_limit_preserves_other_principals_commands ... ok
+test service::net::admission::tests::mapped_ipv4_connections_share_the_pending_ip_limit ... ok
+test service::net::admission::tests::pending_partitions_and_drop_leave_admitted_capacity ... ok
+test service::net::admission::tests::reconnect_retires_old_connection_without_refilling_work ... ok
+test service::net::session_pipeline::tests::admission_is_bounded_and_replies_wait_for_ordered_durability ... ok
+test service::net::session_pipeline::tests::storage_refusal_preserves_the_delivered_control_prefix_at_the_same_tick ... ok
+test service::net::tests::catch_up_ticks_each_leave_their_own_simulation_observation ... ok
+test service::net::tests::durable_host_stops_without_acknowledgment_on_storage_failure ... ok
+test service::net::tests::durable_tls_host_recovers_acknowledged_combat_after_abrupt_restart ... ok
+test service::net::tests::durable_two_player_input_cadence_records_checkpoint_cost ... ok
+test service::net::tests::frame_budget_rejects_header_before_waiting_for_payload ... ok
+test service::net::tests::movement_entry_storage_backpressure_preserves_exact_request_and_refusal_boundaries ... ok
+test service::net::tests::overload_keeps_admitted_commands_live_and_reconnects_share_budgets ... ok
+test service::net::tests::slow_tls_handshake_expires_and_releases_its_pending_slot ... ok
+test service::net::tests::slow_writer_fences_replies_and_backpressures_the_bounded_request_queue ... ok
+test service::net::tests::storage_busy_does_not_extend_the_authentication_deadline ... ok
+test service::net::tests::tls_and_frame_refusals_leave_the_world_available ... ok
+test service::net::tests::tls_players_and_spectator_share_one_world_and_shutdown_parks_controls ... ok
+test service::net::timing::tests::startup_storage_and_tick_outliers_stay_out_of_steady_percentiles ... ok
+test service::outfits::tests::catalogs_refuse_ambiguous_ids_models_and_consumable_overlap ... ok
+test service::participation_tests::authored_participation_excludes_disconnected_and_distant_recipients ... ok
+test service::persistence::checks::crash_child ... ignored, Launched by the commit-boundary recovery test with an isolated storage root
+test service::persistence::checks::incremental_journal_compacts_and_recovers_a_growing_reward_history ... ok
+test service::persistence::checks::persistence_copy_does_not_follow_later_authority_mutations ... ok
+test service::persistence::checks::prepared_world_matches_encoded_journal_state_including_signed_zero ... ok
+test service::persistence::checks::process_exit_at_commit_boundaries_preserves_acknowledged_rewards ... ok
+test service::persistence::checks::replay_discards_only_an_incomplete_tail_and_refuses_complete_corruption ... ok
+test service::persistence::checks::unchanged_commit_flushes_staged_history_without_acknowledging_future_rewards ... ok
+test service::persistence::journal::tests::journal_preserves_signed_zero_inside_otherwise_equal_containers ... ok
+test service::persistence::journal::tests::journal_replays_reordered_and_inserted_object_keys_with_exact_digests ... ok
+test service::persistence::journal::tests::legacy_sorted_map_journals_recover_only_the_sealed_representation ... ok
+test service::persistence::journal::tests::numeric_diff_matches_serialized_representation_without_rounding_integers ... ok
+test service::persistence::migration::tests::a_corrupt_backup_cannot_replace_the_applied_world ... ok
+test service::persistence::migration::tests::a_storage_failure_recovers_the_source_after_storage_becomes_available ... ok
+test service::persistence::migration::tests::changed_source_revision_and_active_objective_are_refused ... ok
+test service::persistence::migration::tests::crash_child ... ignored, Subprocess exits deliberately; launched by the crash recovery test.
+test service::persistence::migration::tests::crash_recovery_selects_source_before_seal_and_target_after_seal ... 
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+ok
+test service::persistence::migration::tests::drift_unsafe_definitions_and_later_commit_refuse_without_discarding_source ... ok
+test service::persistence::migration::tests::interrupted_rollback_keeps_the_target_until_its_own_seal ... 
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+ok
+test service::persistence::migration::tests::populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_quests ... ok
+test service::persistence::migration::tests::reintroduced_npc_and_new_props_use_a_generation_beyond_previous_content ... ok
+test service::persistence::migration::tests::revoked_character_reenrollment_keeps_its_actor_and_balances ... ok
+test service::persistence::tests::archived_rewards_recover_after_the_old_lifetime_limit_and_ignore_uncommitted_writes ... ok
+test service::persistence::tests::atomic_store_recovers_validated_world_and_excludes_other_writers ... ok
+test service::persistence::tests::committed_rewards_recover_once_and_failed_grants_do_not_reach_disk ... ok
+test service::persistence::tests::corrupt_state_and_failed_replacement_never_become_acknowledged_commits ... ok
+test service::presentation::tests::corpse_pose_survives_rules_retirement_until_new_life_respawn ... ok
+test service::presentation::tests::extraction_retains_life_bound_hostile_visuals_and_transient_impacts ... ok
+test service::presentation::tests::malformed_hostile_visuals_and_impact_budgets_are_refused ... ok
+test service::presentation::tests::tls_spectator_receives_hostile_telegraphs_and_impact_flashes ... ok
+test service::progression::marker_tests::authored_dialogue_is_bounded_and_follows_quest_state ... ok
+test service::progression::marker_tests::markers_follow_enrollment_objectives_claims_and_prerequisites ... ok
+test service::progression::tests::authored_levels_and_quest_definitions_enforce_boundaries ... ok
+test service::progression::tests::prerequisite_graph_rejects_invalid_edges_and_preserves_legacy_configs ... ok
+test service::realm::tests::account_observation_is_connection_scoped_and_does_not_retain_grants ... ok
+test service::realm::tests::admission_and_transfer_preserve_unrelated_live_sessions_and_replication ... ok
+test service::realm::tests::admission_capacity_and_transfer_refusals_leave_owned_states_in_place ... ok
+test service::realm::tests::character_receipt_branches_recover_original_revisions_after_transfer ... ok
+test service::realm::tests::defeated_logout_keeps_resources_and_account_character_limits_refuse_without_mutation ... ok
+test service::realm::tests::every_transfer_publication_boundary_selects_one_owner_and_inventory ... ok
+test service::realm::tests::leases_fence_expiry_draining_restart_and_competing_coordinators ... ok
+test service::realm::tests::legacy_realm_head_upgrades_ownership_without_relabeling_characters ... ok
+test service::realm::tests::lifecycle_crash_child ... ok
+test service::realm::tests::lifecycle_crashes_select_one_account_character_and_exact_inventory ... ok
+test service::realm::tests::owned_wire_dispatch_and_dirty_reads_select_durable_game_checkpoints ... ok
+test service::realm::tests::primary_character_logout_resume_and_key_recovery_preserve_owned_receipts ... ok
+test service::realm::tests::primary_equipment_and_progression_survive_logout_recovery_and_another_instance ... ok
+test service::realm::tests::public_guest_admission_registers_verified_accounts_and_preserves_recovery ... ok
+test service::realm::tests::real_tls_listeners_route_transfer_and_reauthenticate_the_sdk ... ok
+test service::realm::tests::real_tls_sdk_account_selection_logout_and_operator_recovery ... ok
+test service::realm::tests::real_tls_social_profiles_share_interactions_and_fence_zone_transfers ... ok
+test service::realm::tests::registry_retains_more_than_the_resident_manifest_budget_with_bounded_records ... ok
+test service::realm::tests::resident_slots_recycle_across_eighty_distinct_persistent_accounts ... ok
+test service::realm::tests::transfer_crash_child ... ok
+test service::realm::tests::transfer_index_branches_and_original_receipts_survive_repeated_placements ... ok
+test service::realm::tests::transfer_moves_resources_receipts_and_placement_once_across_restarts ... ok
+test service::realm::tests::version_nine_uses_its_original_schema_and_refuses_new_realm_books ... ok
+test service::replica::tests::admitted_misty_step_stamp_survives_subsequent_casts_and_checkpoint ... ok
+test service::replica::tests::blocker_bounds_validate_atomically_and_retire_without_interpolation ... ok
+test service::replica::tests::control_regression_and_generation_capacity_are_atomic ... ok
+test service::replica::tests::malformed_prop_transforms_and_budgets_leave_the_replica_unchanged ... ok
+test service::replica::tests::positions_yaw_phases_and_effect_anchors_interpolate_without_changing_authority ... ok
+test service::replica::tests::prop_poses_interpolate_snap_new_lives_and_retire_removed_lives ... ok
+test service::replica::tests::short_teleports_animation_changes_death_and_control_changes_snap ... ok
+test service::replica::tests::stale_lives_bad_ticks_and_malformed_state_leave_buffer_unchanged ... ok
+test service::replica::tests::world_reset_advances_every_life_and_never_blends_old_corpses ... ok
+test service::replication::tests::canonical_full_delta_resync_and_control_fences ... ok
+test service::replication::tests::distant_population_keeps_steady_bytes_constant_and_records_cost ... ok
+test service::replication::tests::full_state_numeric_round_trip_preserves_canonical_digest ... ok
+test service::replication::tests::malformed_deltas_never_advance_acknowledgement ... ok
+test service::replication::tests::pipeline_refuses_second_replaceable_request_but_preserves_reliable_reads ... ok
+test service::replication::tests::scoped_collision_keeps_large_rotated_support_and_drops_distant_small_shape ... ok
+test service::replication::tests::shared_cache_keeps_owner_privacy_and_invalidates_on_mutation ... ok
+test service::replication::tests::signed_zero_is_equal_for_delta_and_digest ... ok
+test service::replication::tests::skipped_world_ticks_do_not_starve_outer_band_updates ... ok
+test service::replication::tests::spatial_entry_exit_reentry_and_frequency_classes_preserve_life ... ok
+test service::replication::tests::transport::delayed_tls_deltas_resync_and_bound_replaceable_backlog ... ok
+test service::replication::tests::valid_but_oversized_geometry_refuses_without_retaining_baseline ... ok
+test service::rewards::tests::abandoned_archive_nodes_cannot_apply_a_failed_batch ... ok
+test service::rewards::tests::archived_mixed_operations_retain_retries_and_bounded_checkpoints ... ok
+test service::rewards::tests::cooperative_batch_failure_leaves_all_characters_and_receipts_unchanged ... ok
+test service::rewards::tests::failed_archive_write_preserves_balances_revisions_and_retry_state ... ok
+test service::rewards::tests::invalid_and_overflowing_grants_preserve_every_field ... ok
+test service::rewards::tests::lifetime_transaction_count_does_not_exhaust_the_ledger ... ok
+test service::rewards::tests::retries_return_original_receipts_and_conflicting_reuse_is_atomic ... ok
+test service::save::tests::campaign_claims_are_owned_once_and_validated_on_recovery ... ok
+test service::save::tests::counted_checkpoint_encoding_retains_exact_escaping_and_byte_limits ... ok
+test service::save::tests::equipment_slots_preserve_resources_retry_identity_and_saved_derivation ... ok
+test service::save::tests::expanded_journal_state_matches_the_legacy_checkpoint_representation ... ok
+test service::save::tests::giver_interaction_requires_live_owned_actors_range_and_clear_sight ... ok
+test service::save::tests::malformed_or_incompatible_saves_never_admit_ownership ... ok
+test service::save::tests::npc_enrollment_baselines_retries_and_claims_survive_recovery ... ok
+test service::save::tests::outfit_ownership_retries_and_recovery_preserve_character_identity ... ok
+test service::save::tests::quest_chains_unlock_per_character_and_survive_recovery ... ok
+test service::save::tests::recovery_items_spend_once_restore_only_owned_resources_and_validate_saved_debits ... ok
+test service::save::tests::recovery_preserves_characters_combat_and_grants_but_fences_connections ... ok
+test service::save::tests::rewards_survive_recovery_and_legacy_saves_upgrade_without_grants ... ok
+test service::tests::admission_budgets_foreign_handles_and_respawn_rights ... ok
+test service::tests::cooperative_rewards_follow_npc_lives_without_connection_duplicates ... ok
+test service::tests::hosting_existing_players_clears_every_pending_controller_input ... ok
+test service::tests::reconnect_disconnect_revocation_and_reset_fence_queued_input ... ok
+test service::tests::session_casts_spend_only_owned_resources_and_respawn_only_owned_lives ... ok
+test service::tests::two_players_and_spectator_share_one_clock_with_owned_commands ... ok
+test service::view::tests::actual_damage_numbers_expire_and_never_attach_to_a_respawned_life ... ok
+test service::view::tests::admitted_poses_bow_flights_and_programmatic_dialogue_project_into_native_frames ... ok
+test service::view::tests::authored_friendly_giver_enrolls_over_tls_and_fences_quest_chain ... ok
+test service::view::tests::event_duplicates_gaps_and_malformed_batches_are_atomic ... ok
+test service::view::tests::exact_life_selection_cycles_stably_and_clears_on_committed_death_or_respawn ... ok
+test service::view::tests::friendly_givers_remain_visible_but_cannot_be_combat_targets ... ok
+test service::view::tests::inventory_admission_is_atomic_and_future_lives_wait_for_their_snapshot ... ok
+test service::view::tests::native_camera_degrees_project_into_a_radian_scene_frame ... ok
+test service::view::tests::predicted_owned_pose_moves_attachments_without_mutating_remote_state ... ok
+test service::view::tests::quest_world_updates_keep_ledger_fields_and_generation_fences_atomic ... ok
+test service::view::tests::respawn_and_world_reset_fence_old_dialogue_and_camera_history ... ok
+test service::view::tests::retired_combat_actor_keeps_a_corpse_frame_and_requires_new_life_to_return ... ok
+test service::view::tests::scene_sample_keeps_interpolated_body_and_effect_anchors_together ... ok
+test service::view::tests::tls_movement_updates_giver_availability_at_unchanged_reward_revision ... ok
+test service::view::tests::tls_worker_updates_drive_read_only_native_frames ... ok
+test service::wire::tests::admitted_remote_combat_visuals_match_local_extraction ... ok
+test service::wire::tests::event_pages_report_retention_gaps_and_never_replay_past_cursor ... ok
+test service::wire::tests::expired_interval_refusal_exposes_the_new_epoch_and_allows_fresh_entry ... ok
+test service::wire::tests::gameplay_refusal_reports_consumed_sequence_for_client_reconciliation ... ok
+test service::wire::tests::inventory_refuses_foreign_lives_unbounded_counts_and_client_selected_characters ... ok
+test service::wire::tests::malformed_signature_consumes_challenge_and_respawn_is_owned ... ok
+test service::wire::tests::movement_baselines_wait_for_applied_inputs_and_match_owned_control ... ok
+test service::wire::tests::oversized_responses_are_refused_instead_of_sent_without_a_bound ... ok
+test service::wire::tests::owned_hud_is_scoped_to_each_authenticated_life_and_spectators_have_none ... ok
+test service::wire::tests::owned_intervals_acknowledge_admission_before_body_time_and_refuse_foreign_controls ... ok
+test service::wire::tests::presentation_keeps_independent_movement_and_spell_visuals_on_one_tick ... ok
+test service::wire::tests::signed_json_players_and_spectator_share_state_and_control_acknowledgments ... ok
+test service::wire::tests::stale_tick_refusal_is_explicit_and_does_not_consume_or_apply_the_command ... ok
+test service::wire::tests::strict_request_budget_versions_and_nested_fields_are_enforced ... ok
+test service::worker::delayed::delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline ... ok
+test service::worker::tests::coalesced_tls_inputs_bind_only_latest_moves_and_preserve_jump_order ... ok
+test service::worker::tests::explicit_read_backpressure_retries_projections_without_replaying_commands ... ok
+test service::worker::tests::interval_recovery_requires_verified_lifecycle_change ... ok
+test service::worker::tests::movement_arriving_during_refresh_replaces_the_unsent_command ... ok
+test service::worker::tests::native_inventory_polling_is_bounded_and_excludes_spectators ... ok
+test service::worker::tests::native_polling_and_sustained_movement_fit_the_tls_request_budget ... ok
+test service::worker::tests::optional_observations_remain_bounded_and_refusals_do_not_refresh_snapshots ... ok
+test service::worker::tests::read_backoff_separates_classes_and_bounds_explicit_refusal_retries ... ok
+test service::worker::tests::spectator_worker_checks_context_budgets_and_consumer_lifetime ... ok
+test service::worker::tests::teleport_outcome_releases_barrier_for_following_input_and_replication ... ok
+test service::worker::tests::tls_worker_polls_admits_commands_and_stops_under_backpressure ... ok
+test service::worker::tests::tracked_inputs_bind_before_outcomes_and_reject_stale_control ... ok
+test service::worker::tests::unsent_movement_coalesces_without_crossing_actions_or_control_fences ... ok
+test service::worker::tests::verified_control_reuse_requires_recent_exact_life_and_epoch ... ok
+test service::worker::tests::worker_binds_complete_intervals_and_snapshots_confirm_only_completed_time ... ok
+test service::worker::tests::worker_pipelines_ordered_actions_before_command_acknowledgments ... ok
+
+test result: ok. 204 passed; 0 failed; 2 ignored; 0 measured; 305 filtered out; finished in 183.41s
+

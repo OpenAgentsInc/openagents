@@ -1,0 +1,67 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation-canonical-flight.patch",
+    "source_patch_sha256": "f6ee32486abd8d15cc123667433d795ac0066ca5bb10efd1d7041e06ea972e74",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "a69d2e9abc9ac7542537fdcb617419754a776bb0474f1255ec5e35636a6ace2c",
+    "renderer_budget": "91bb209e17fd4015b96ded962ad1e6b0bd9fee3a71e864ece2dd6cd58efa45ff"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-canonical-flight.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-canonical-flight.json",
+        "300"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.673468252993189,
+      "status": "passed",
+      "acceptance_failures": [],
+      "receipt_sha256": "737509ff6bd4ca28040cbd7f5833d1a1193cdbe529a18009d38e1a7364f1e950"
+    },
+    {
+      "receipt": "authority-canonical-flight.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-canonical-flight.json",
+        "600"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 75.89170343999285,
+      "status": "passed",
+      "receipt_sha256": "35b03d49b450f2193684a0fccea96b37c9f69f952e42e3942fca6417c9213102"
+    },
+    {
+      "receipt": "network-canonical-flight.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-canonical-flight.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.26922964095138,
+      "status": "failed",
+      "receipt_sha256": "5cc75dcf890bfd87d246010435643d47de54a705f8c21b01c0a65800d27155aa"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

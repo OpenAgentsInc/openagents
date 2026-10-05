@@ -1,0 +1,12 @@
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.18s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/physics-a0f32606478f67d1)
+
+running 4 tests
+test queries::snapshot::tests::cached_capsule_pose_updates_and_shape_replacement_keep_queries_current ... ok
+test queries::snapshot::tests::cached_pose_updates_reuse_meshes_and_replacement_is_atomic ... ok
+test queries::snapshot::tests::rejects_foreign_duplicate_invalid_and_over_budget_geometry ... ok
+test queries::snapshot::tests::snapshot_round_trip_preserves_solid_boxes_meshes_capsules_and_poses ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 128 filtered out; finished in 0.00s
+

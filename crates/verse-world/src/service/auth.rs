@@ -262,6 +262,7 @@ impl Gateway {
                             life: admission.actor().into(),
                             epoch: admission.epoch(),
                             accepted_sequence: admission.accepted_sequence(),
+                            applied_movement: None,
                         },
                     )
                 })

@@ -1,0 +1,122 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "fae8c18a22fc6cbf007d7dcf0182423137f896ef",
+    "source_patch": "implementation-fresh-input-repeat.patch",
+    "source_patch_sha256": "8999a419864d78e4d8aa066ff5139598a123f465570882bd738ed95808d9a852",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "b853005398a46a569cf9fff35685e534ae2672c63797bf22fb2785e3ff4b70b0",
+    "renderer_budget": "c7e50e348bfd888da7c7098769c7c258bb61beabe60ee38ab9c0e289d0ae8b27"
+  },
+  "runs": [
+    {
+      "receipt": "combined-fresh-input-repeat-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-fresh-input-repeat-01.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.548969508032314,
+      "status": "passed",
+      "receipt_sha256": "48eb4df6e7a3c30860808fe90472360a18d9ff6cd54e4c727fd8e7b2d153c539"
+    },
+    {
+      "receipt": "combined-fresh-input-repeat-02.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-fresh-input-repeat-02.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.54581214004429,
+      "status": "passed",
+      "receipt_sha256": "237b2aa744fe018eca5091f69425a7cafc3dc5f0ecee5adb41fd9243c038e844"
+    },
+    {
+      "receipt": "combined-fresh-input-repeat-03.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-fresh-input-repeat-03.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.576659435988404,
+      "status": "passed",
+      "receipt_sha256": "264c166962f50a0aaaf7ffa693e972ab96b0320c659ccd74d862088ac96c8b95"
+    },
+    {
+      "receipt": "renderer-fresh-input-repeat.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-fresh-input-repeat.json",
+        "300"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.736194622004405,
+      "status": "passed",
+      "acceptance_failures": [],
+      "receipt_sha256": "248e77879ad5e521e9863630ca38768666bd48efa76eef33333e2f5e931b5a50"
+    },
+    {
+      "receipt": "authority-fresh-input-repeat.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-fresh-input-repeat.json",
+        "600"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 75.83657807897544,
+      "status": "passed",
+      "receipt_sha256": "2b4071860a280634345b3ce9adb7282dc5869c615c39598fb8d1a1f9e00016ef"
+    },
+    {
+      "receipt": "network-fresh-input-repeat.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-fresh-input-repeat.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 60.96042658598162,
+      "status": "passed",
+      "receipt_sha256": "d6d5a0af0124f51e8521c980a7b558995e4714e44f9767c6c6de7ec26b2a3dcc"
+    },
+    {
+      "receipt": "combined-fresh-input-repeat-soak.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-fresh-input-repeat-soak.json",
+        "600"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 601.7524928859784,
+      "status": "passed",
+      "receipt_sha256": "e395485798b584896611cea0d433ffacb5a2a3b02569cf32cb6dfb512de38992"
+    }
+  ],
+  "aggregate_status": "passed"
+}

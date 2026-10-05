@@ -1775,25 +1775,45 @@ impl Renderer {
                         .graph_playback
                         .entry((id, instance.model.clone()))
                         .or_default()
-                        .update_sampled(
+                        .update_sampled_phase(
                             graph.admitted(),
                             id,
                             &values,
                             f64::from(instance.time),
                             f64::from(lighting.time),
-                        )?;
+                            instance.animation_epoch,
+                        )
+                        .map_err(|error| {
+                            format!(
+                                "Actor {id:?} animation {:?} phase {:?} time {} clock {}: {error}",
+                                instance.animation,
+                                instance.animation_epoch,
+                                instance.time,
+                                lighting.time
+                            )
+                        })?;
                     (frame.matrices, frame.markers)
                 } else {
                     self.playback
                         .entry((id, instance.model.clone()))
                         .or_default()
-                        .update_with_markers(
+                        .update_with_marker_phase(
                             id,
                             &self.pack.models[&instance.model],
                             instance.animation,
                             instance.time,
                             lighting.time,
-                        )?
+                            instance.animation_epoch,
+                        )
+                        .map_err(|error| {
+                            format!(
+                                "Actor {id:?} animation {:?} phase {:?} time {} clock {}: {error}",
+                                instance.animation,
+                                instance.animation_epoch,
+                                instance.time,
+                                lighting.time
+                            )
+                        })?
                 };
                 if self.marker_events.len() + events.len() > 4096 {
                     return Err("Frame animation markers exceed the presentation budget".into());
@@ -2701,6 +2721,7 @@ mod tests {
                 transform: verse_content::basis(),
                 animation: verse_engine::motion::State::Walk.into(),
                 time: 0.25,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             },
             Instance {
@@ -2716,6 +2737,7 @@ mod tests {
                 transform: Mat4::IDENTITY,
                 animation: 0.into(),
                 time: 0.25,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             },
         ];
@@ -2787,6 +2809,7 @@ mod tests {
                     * Mat4::from_scale(Vec3::splat(0.5)),
                 animation: 0.into(),
                 time: 0.5,
+                animation_epoch: None,
                 emission: Vec3::ONE,
             })
             .collect();

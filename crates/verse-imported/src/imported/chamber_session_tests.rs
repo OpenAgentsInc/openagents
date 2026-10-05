@@ -455,7 +455,7 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
         yaw: 0.,
     }));
     assert!(inputs.try_recv().is_err());
-    session.prediction.advance(4. / 120.).unwrap();
+    session.prediction.advance(2. / 120.).unwrap();
     session.send_movement_interval().unwrap();
     assert!(inputs.try_recv().is_err());
     session.send(Input::Command(Intent::Move {
@@ -467,10 +467,11 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
     let Input::MovementFrame { token, mut frame } = inputs.try_recv().unwrap() else {
         panic!("Missing complete interval")
     };
-    assert_eq!(frame.steps, verse_world::movement::frames::SEND_STEPS);
+    // A 30 Hz update sends its complete four-step history without another wake-up.
+    assert_eq!(frame.steps, 4);
     assert_eq!(frame.segments.len(), 2);
     assert_eq!(frame.segments[0].axes, [1., 0.]);
-    assert_eq!(frame.segments[1].offset, 4);
+    assert_eq!(frame.segments[1].offset, 2);
     assert_eq!(frame.segments[1].axes, [0., 1.]);
     assert_eq!(frame.sequence, 0);
     frame.sequence = gateway.admission(connection).unwrap().accepted_sequence() + 1;
@@ -482,19 +483,50 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
         })
         .unwrap();
     session.consume(&scene).unwrap();
-    let response = request(&mut gateway, connection, 302, Body::MovementFrame { frame });
+    let mut response = request(&mut gateway, connection, 302, Body::MovementFrame { frame });
     assert!(matches!(
         response.body,
         verse_world::service::wire::Reply::Accepted
     ));
+    // Capture an older body, then deliver movement only after it actually applies.
+    let mut older = request(&mut gateway, connection, 303, Body::Snapshot {});
+    gateway.tick(0.05).unwrap();
+    let applied = gateway.game().movement_baseline(life).unwrap().unwrap();
+    response.control.as_mut().unwrap().credit_step = gateway.game().physics_steps;
+    older.control.as_mut().unwrap().credit_step = gateway.game().physics_steps;
+    response.control.as_mut().unwrap().applied_movement = Some(applied);
     updates.try_send(Update::Outcome(response)).unwrap();
     session.consume(&scene).unwrap();
-    gateway.tick(0.05).unwrap();
+    session.prediction.advance(0.).unwrap();
+    assert_eq!(
+        session.prediction.confirmed().unwrap().applied_sequence,
+        applied.applied_sequence
+    );
+    assert_eq!(session.prediction.pending(), 0);
+    assert!(
+        session
+            .prediction
+            .pose()
+            .unwrap()
+            .position
+            .distance(gateway.game().actor_position(life.actor).unwrap())
+            < 0.0001
+    );
+    assert!(session.take_notes().iter().any(
+        |n| matches!(n, Note::Correction { detail, discontinuity:false, .. }
+        if detail["stage"] == "applied_movement_confirmation")
+    ));
+    updates.try_send(Update::Snapshot(older)).unwrap();
+    session.consume(&scene).unwrap();
+    assert_eq!(
+        session.prediction.confirmed().unwrap().applied_sequence,
+        applied.applied_sequence
+    );
     updates
         .try_send(Update::Snapshot(request(
             &mut gateway,
             connection,
-            303,
+            304,
             Body::Snapshot {},
         )))
         .unwrap();
@@ -515,7 +547,7 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
         .try_send(Update::Snapshot(request(
             &mut gateway,
             connection,
-            304,
+            305,
             Body::Snapshot {},
         )))
         .unwrap();

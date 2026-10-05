@@ -1,0 +1,122 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "fae8c18a22fc6cbf007d7dcf0182423137f896ef",
+    "source_patch": "implementation-separating-crowd.patch",
+    "source_patch_sha256": "e327cc8a864cdea99284e6db3b3086b0229296d10a6be249623f00ee71d27fb0",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "d3d4180b416a19f5ba7866fdf3c32838e56535d22a5d2989670cd0622c10fed7",
+    "renderer_budget": "4810ae3c4e62c2534c9799d2fa4f481dc7a2be1faddaae93f2ac13effd372d6e"
+  },
+  "runs": [
+    {
+      "receipt": "combined-separating-crowd-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-separating-crowd-01.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.56298525398597,
+      "status": "passed",
+      "receipt_sha256": "983ff119a0a86c47b02e49eab303eefba49e3c61e25b1f1b1c24f215e479b3bc"
+    },
+    {
+      "receipt": "combined-separating-crowd-02.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-separating-crowd-02.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.83970609901007,
+      "status": "passed",
+      "receipt_sha256": "7dac47ed46e07ae778705fbf14a5b61e25240f1acdaf6d28ed3168bfe3026a0f"
+    },
+    {
+      "receipt": "combined-separating-crowd-03.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-separating-crowd-03.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.76633870898513,
+      "status": "passed",
+      "receipt_sha256": "17caa5fb8390dff1c1c55e0e95a238bf54bdcb8625223a4b83358f3da1afbb4c"
+    },
+    {
+      "receipt": "renderer-separating-crowd.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-separating-crowd.json",
+        "300"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.682686588028446,
+      "status": "passed",
+      "acceptance_failures": [],
+      "receipt_sha256": "1d0b7cc7c09985b3f21c089e65b75103fc4fee1b583c8fcfc4f2815822e74996"
+    },
+    {
+      "receipt": "authority-separating-crowd.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-separating-crowd.json",
+        "600"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 76.11597350396914,
+      "status": "passed",
+      "receipt_sha256": "09e9916e2fff9d9e2e7b0b2c83febdaa8c316dda0641c8c0dc064361bdc8c4ec"
+    },
+    {
+      "receipt": "network-separating-crowd.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-separating-crowd.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.32624595297966,
+      "status": "passed",
+      "receipt_sha256": "349f7e246ee0032804b14d789102267756555b58bc6c4c2cce7d682bc3745185"
+    },
+    {
+      "receipt": "combined-separating-crowd-soak.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-separating-crowd-soak.json",
+        "600"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 602.1393989070202,
+      "status": "failed",
+      "receipt_sha256": "bf4426269dc434bace1f93cdabdde8a389b02e6f578117c4d5be0db679dd608b"
+    }
+  ],
+  "aggregate_status": "failed"
+}

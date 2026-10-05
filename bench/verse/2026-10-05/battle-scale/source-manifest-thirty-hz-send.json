@@ -1,0 +1,7 @@
+{
+  "schema": "verse.battle.source.v1",
+  "base_revision": "94555e0d65e06618137bed77e71f51cb12f5f695",
+  "source_patch": "implementation-thirty-hz-send.patch",
+  "source_patch_sha256": "e9777c817a38ddfbaa592862808c975b4b107da21bb621a03b8529dbe21525c7",
+  "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "verse.battle.source.v1",
+  "base_revision": "fae8c18a22fc6cbf007d7dcf0182423137f896ef",
+  "source_patch": "implementation-separating-crowd.patch",
+  "source_patch_sha256": "e327cc8a864cdea99284e6db3b3086b0229296d10a6be249623f00ee71d27fb0",
+  "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+}

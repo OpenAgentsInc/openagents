@@ -419,6 +419,26 @@ impl SceneCache {
     pub fn scene(&self) -> &Scene {
         &self.scene
     }
+    /// Classifies an admitted shape without copying its collision geometry.
+    pub fn is_capsule(&self, key: ColliderKey) -> bool {
+        self.source
+            .get(&key)
+            .is_some_and(|shape| matches!(shape.geometry, GeometrySnapshot::Capsule { .. }))
+    }
+    /// Compares fixed geometry, including poses and identities, before an update.
+    /// Capsule motion is separate; `update` still validates the complete snapshot.
+    pub fn fixed_geometry_matches(&self, snapshot: &SceneSnapshot) -> bool {
+        if snapshot.instance != self.instance {
+            return false;
+        }
+        let fixed =
+            |shape: &&ShapeSnapshot| !matches!(shape.geometry, GeometrySnapshot::Capsule { .. });
+        let next = snapshot.colliders.iter().filter(fixed);
+        next.clone().count() == self.source.values().filter(fixed).count()
+            && next
+                .into_iter()
+                .all(|shape| self.source.get(&shape.key) == Some(shape))
+    }
     /// Returns the number of recompiled shapes. Validation and compilation precede mutation.
     pub fn update(&mut self, snapshot: &SceneSnapshot) -> Result<usize, String> {
         snapshot.validate(self.instance)?;

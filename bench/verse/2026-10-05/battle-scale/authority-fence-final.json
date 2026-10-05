@@ -1,0 +1,225 @@
+{
+  "schema": "verse.battle.capacity.v1",
+  "mode": "authority",
+  "seconds": 60,
+  "players": 20,
+  "native_sessions": 1,
+  "headless_workers": 19,
+  "hostile_npcs": 40,
+  "cultist_health": 20000,
+  "frontline_player": 19,
+  "frontline_initial_position": [
+    -6.0,
+    0.0,
+    -8.0
+  ],
+  "delay_profile": "pipeline",
+  "delay_ms_per_chunk": 40,
+  "jitter_ms_per_chunk": 20,
+  "wire_version": 27,
+  "debug_assertions": true,
+  "status": "failed",
+  "budgets": {
+    "simulation_p99_upper_bound_ms": 33.333333333333336,
+    "render_cpu_p95_ms": 16.666666666666668,
+    "render_gpu_p95_ms": 16.666666666666668,
+    "snapshot_age_p95_ms": 400.0,
+    "minimum_live_hostiles": 40,
+    "minimum_authority_tick_fraction": 0.98,
+    "battle_framed_snapshot_fraction": 0.8,
+    "prediction_correction_p95_meters": 0.25,
+    "prediction_correction_maximum_meters": 1.0,
+    "checkpoint_bytes": 1048576,
+    "request_queue_peak": 128,
+    "writer_queue_peak": 2,
+    "held_reply_bytes_peak": 33554432,
+    "steady_rss_growth_bytes": 67108864
+  },
+  "limits": [
+    "Scratch authority and clients share this process and machine.",
+    "Offscreen rendering has no display surface, capture, or physical input-to-display measurement.",
+    "Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.",
+    "GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."
+  ],
+  "implementation": {
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "executable_sha256": "84396709ad3e7befc0719c7bd4af256491a305af2492e3e58055658d0e6f7d74",
+    "harness_sha256": "c91bae34d8624d7f98cafc77dd087b1973d2fd9eacc7f907afd13fa08a6ea44e",
+    "native_driver_sha256": "541ff8ac7e6b9375ae2819ea75ddacb2e27954745ef13e417ed61357e116f408",
+    "headless_driver_sha256": "4f33fae6a4e3c55bb339443af8b8b5b5ea97f3ca97e8f7225c5b7f763b2890a2",
+    "acceptance_sha256": "dece2abd22d3d70d9e68bd537cc4dac7547da83ddd3525d17db3a42aa01f13ef",
+    "world_net_sha256": "519813228eb47e6cdbc54bd2454cdc7b1bf848d8dc058568ff050403d301fb51",
+    "worker_sha256": "8dd83ed80a4dc88a935df08199107717bdfff742b759046b6ecc4e205a7bae3f",
+    "wire_sha256": "9585c21992c3289405f85fa3cbad66a7a364d2486b83ca52f4b8e72b1c8bb327",
+    "prediction_local_sha256": "eab79cd649593c93ce321f80fc83583e0df31b933191a8d2fba0fa9165e8a65e",
+    "prediction_frames_sha256": "6178cbe01c186ef2f3249cabbe4f71efb6d1d4ffad53d026c45db1a0c4842cc6",
+    "persistence_sha256": "e82dc940ed3de2dfb6b79af777d2282f0929d85b4497c603482fc6203d4ea004",
+    "native_session_sha256": "da8396d8f5ed70d9aa1fcac0504c56f885ea36fba7f40ef22dffd615ad3f36de",
+    "cargo_lock_sha256": "9dfc9c3f2b0922cfd90a9574b44147e243e6464080d5a2659249fd1f6299d361",
+    "delayed_route_sha256": "7c59cc013471ee09241335dc3c2638762ba76549367620cdcadd6e8d732d3990"
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "os": "linux",
+    "cpu": "Intel(R) Core(TM) i7-14700K",
+    "load_average_at_start": "1.91 2.28 2.28"
+  },
+  "content": [
+    124,
+    243,
+    126,
+    248,
+    195,
+    44,
+    215,
+    87,
+    181,
+    10,
+    243,
+    127,
+    189,
+    47,
+    47,
+    43,
+    136,
+    92,
+    158,
+    178,
+    155,
+    54,
+    14,
+    221,
+    102,
+    32,
+    250,
+    111,
+    190,
+    151,
+    62,
+    36
+  ],
+  "phase": "authority_setup",
+  "authority": {
+    "ticks": 1638,
+    "accepted_battle_movement_per_player": [
+      1022,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021,
+      1021
+    ],
+    "respawns": 1,
+    "accepted_inputs": 20521,
+    "refused_inputs": 12258,
+    "minimum_live_hostiles": 40,
+    "measurements": {
+      "schema": "verse.frame.measurements.v1",
+      "warmup_frames": 120,
+      "startup": {
+        "command_dispatch_cpu_ms": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 0.081295,
+          "p95": 0.111426,
+          "p99": 0.136348,
+          "maximum": 0.136492
+        },
+        "simulation_cpu_ms": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 0.005006,
+          "p95": 0.006573,
+          "p99": 0.007418999999999999,
+          "maximum": 0.008027
+        }
+      },
+      "steady": {
+        "command_dispatch_cpu_ms": {
+          "samples": 1518,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 0.15193399999999999,
+          "p95": 0.224444,
+          "p99": 0.258878,
+          "maximum": 0.39770700000000003
+        },
+        "simulation_cpu_ms": {
+          "samples": 1518,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 3.80191,
+          "p95": 4.9091059999999995,
+          "p99": 6.0961289999999995,
+          "maximum": 7.101508
+        }
+      },
+      "omitted_series": 0,
+      "limits": {
+        "series_per_phase": 48,
+        "samples_per_series": 8192
+      },
+      "sampling": "First bounded observations in each phase; omissions are counted."
+    },
+    "query_profile": {
+      "ray": {
+        "calls": 33760,
+        "errors": 0,
+        "truncated": 1,
+        "nodes": 101280,
+        "triangles": 405120,
+        "capsule_tests": 0,
+        "scene_nodes": 1633196,
+        "scene_candidates": 43539,
+        "wall_seconds": 0.026850078000000114,
+        "maximum_wall_seconds": 0.000016471
+      },
+      "overlap": {
+        "calls": 265493,
+        "errors": 0,
+        "truncated": 0,
+        "nodes": 1000533,
+        "triangles": 3139056,
+        "capsule_tests": 161650,
+        "scene_nodes": 15841191,
+        "scene_candidates": 747610,
+        "wall_seconds": 1.4918365379999872,
+        "maximum_wall_seconds": 0.000138897
+      },
+      "sweep": {
+        "calls": 742879,
+        "errors": 0,
+        "truncated": 4687,
+        "nodes": 2713574,
+        "triangles": 8593608,
+        "capsule_tests": 418953,
+        "scene_nodes": 43491585,
+        "scene_candidates": 2056865,
+        "wall_seconds": 2.0050644729999454,
+        "maximum_wall_seconds": 0.000095947
+      }
+    },
+    "motor_recovery": 0
+  },
+  "error": "Character teleport endpoint is obstructed",
+  "acceptance": "failed",
+  "acceptance_failures": [
+    "Workload process did not complete"
+  ]
+}

@@ -162,10 +162,7 @@ pub async fn serve(
     for (label, timing) in [
         ("Simulation", &exit.stats.simulation),
         ("Persistence capture", &exit.stats.capture),
-        (
-            "Deferred read projection",
-            &exit.stats.deferred_read_projection,
-        ),
+        ("Admitted read projection", &exit.stats.read_projection),
         ("Running checkpoint copy", &exit.stats.checkpoint_copy),
         ("Storage commit", &exit.stats.commits),
         ("Commit preparation", &exit.stats.commit_preparation),

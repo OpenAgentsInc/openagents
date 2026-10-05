@@ -28,6 +28,7 @@ fn particle(model: &str, center: Vec3, radius: f32, opacity: f32, time: f32) -> 
         transform: Mat4::from_translation(center) * Mat4::from_scale(Vec3::splat(radius)),
         animation: 0.into(),
         time,
+        animation_epoch: None,
         emission: Vec3::splat(opacity.clamp(0.0, 1.0)),
     }
 }
@@ -43,6 +44,7 @@ fn decal(model: &str, center: Vec3, radius: f32, opacity: f32, time: f32) -> Ins
             * Mat4::from_scale(Vec3::new(radius, radius, 1.0)),
         animation: 0.into(),
         time,
+        animation_epoch: None,
         emission: Vec3::splat(opacity.clamp(0.0, 1.0)),
     }
 }

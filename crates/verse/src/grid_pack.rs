@@ -229,6 +229,7 @@ pub fn placements(pack: &Pack) -> Vec<verse_engine::presentation::Instance> {
             ),
             animation: 0.into(),
             time: 0.,
+            animation_epoch: None,
             emission: Vec3::ZERO,
         })
         .collect()
@@ -288,6 +289,7 @@ pub fn gates(runtime: &crate::runtime::WorldRuntime) -> Vec<verse_engine::presen
             transform: Mat4::from_rotation_translation(Quat::from_rotation_y(gate.yaw), gate.at),
             animation: 0.into(),
             time: 0.,
+            animation_epoch: None,
             emission: Vec3::ZERO,
         })
     })

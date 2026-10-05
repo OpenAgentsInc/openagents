@@ -1,0 +1,59 @@
+{
+  "schema": "verse.build.cleanup.v1",
+  "files": [
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale-4d116bdc8d591cdc",
+      "sha256": "b853005398a46a569cf9fff35685e534ae2672c63797bf22fb2785e3ff4b70b0",
+      "bytes": 773810632,
+      "device": 66306,
+      "inode": 41087398,
+      "retained_proof": "execution-manifest-fresh-input-repeat.json",
+      "reason": "Obsolete earlier-source executable; inactive before integrated build retry"
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+      "sha256": "b853005398a46a569cf9fff35685e534ae2672c63797bf22fb2785e3ff4b70b0",
+      "bytes": 773810632,
+      "device": 66306,
+      "inode": 41087398,
+      "retained_proof": "execution-manifest-fresh-input-repeat.json",
+      "reason": "Obsolete earlier-source executable; inactive before integrated build retry"
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget-7922ea1fc69228a8",
+      "sha256": "c7e50e348bfd888da7c7098769c7c258bb61beabe60ee38ab9c0e289d0ae8b27",
+      "bytes": 559315664,
+      "device": 66306,
+      "inode": 41086093,
+      "retained_proof": "execution-manifest-fresh-input-repeat.json",
+      "reason": "Obsolete earlier-source executable; inactive before integrated build retry"
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+      "sha256": "c7e50e348bfd888da7c7098769c7c258bb61beabe60ee38ab9c0e289d0ae8b27",
+      "bytes": 559315664,
+      "device": 66306,
+      "inode": 41086093,
+      "retained_proof": "execution-manifest-fresh-input-repeat.json",
+      "reason": "Obsolete earlier-source executable; inactive before integrated build retry"
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_imported-87eebde5e7d4fc4b",
+      "sha256": "66d3f6c557ff049dab3776b0af678c904f9fc08b5dcc2d69f84b3e91c02b1a09",
+      "bytes": 580213528,
+      "device": 66306,
+      "inode": 41089662,
+      "retained_proof": "wall-phase-main-native-corrected.log",
+      "reason": "Obsolete earlier-source executable; inactive before integrated build retry"
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-00efdcab108d5000",
+      "sha256": "0ce59cbd1d3f354c93cd977b5bdc9ed11be6a875fcbe86f6f98983441494c7d7",
+      "bytes": 283260520,
+      "device": 66306,
+      "inode": 41089843,
+      "retained_proof": "wall-phase-main-host-second-retry.log",
+      "reason": "Obsolete earlier-source executable; inactive before integrated build retry"
+    }
+  ]
+}

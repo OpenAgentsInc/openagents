@@ -1,0 +1,61 @@
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2844:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2844 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:460:12
+    |
+116 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+460 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+471 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+
+warning: function `stream_triangles` is never used
+   --> crates/verse/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: method `land` is never used
+   --> crates/verse/src/zones/grove/mod.rs:200:12
+    |
+159 | impl Grove {
+    | ---------- method in this implementation
+...
+200 |     pub fn land(&self) -> Land {
+    |            ^^^^
+
+warning: `verse` (lib) generated 5 warnings (run `cargo fix --lib -p verse` to apply 1 suggestion)
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+
+error: linking with `cc` failed: exit status: 1
+  |
+  = note:  "cc" "-m64" "/home/christopherdavid/work/openagents-target-agent1/debug/examples/rustcVIP2Ki/symbols.o" "<42 object files omitted>" "-Wl,--as-needed" "-Wl,-Bstatic" "/home/christopherdavid/work/openagents-target-agent1/debug/deps/{libtempfile-7d640d3bb07d5473,libfastrand-d389aad8579139bd,librustix-87044178b2d1a6dd,liblinux_raw_sys-8d7361e33ee9b249,libverse-7e847f297d32ee4f,libminiz_oxide-ae834d2fa10fd009,librust_native-3ead3a7be66adc85,libcode_highlight-3a6929b3d1021b14,libtree_sitter_css-2b3dc52ca2d695ac,libtree_sitter_html-5a5b99468bf2e037,libtree_sitter_go-1e61a1eb21048614,libtree_sitter_bash-048cac3965987329,libtree_sitter_json-15aa8ae837759d66,libtree_sitter_python-4bf0be238e7ba7ac,libtree_sitter_typescript-4e4d9dae2be730f5,libtree_sitter_javascript-6d81b6a6efea096c,libtree_sitter_cpp-68be28cd7e5d33fe,libtree_sitter_c-0fcfc36254213817,libtree_sitter_rust-982a948769a94e07,libtree_sitter_highlight-834b7d0724ea688b,libtree_sitter-af9badda4950bf84,libtree_sitter_language-d1e4542f01e45a33,libstreaming_iterator-9f8d596cdf98851a,libregex-1b0a17257923bd49,libregex_automata-d6683540d859265b,libaho_corasick-c2b79b1947395078,libregex_syntax-20454198bae9f6af,libpulldown_cmark-b316ccecf27ffae7,libunicase-2586acc18f2c16a0,libunicode_segmentation-30ab8286fc096b6a,libverse_ruins-4f564a318d381019,libclient_core-116895560b450f7b,libserver_core-1b65873e2af3129b,libvoxel_mesh-31f421e69bc71a56,libdata_runtime-a90dabf35409a2d1,libtoml-8c195e601b5146cd,libtoml_writer-8af4301251c6713f,libwinnow-5724f8681b1b3b9b,libtoml_parser-928143d47c9f4ab7,libwinnow-fe340e7a0b24542a,libserde_spanned-ec5343623fd3ac49,libtoml_datetime-e06e7ff31b3899fc,libserde_yaml-d6eb83b069270021,libunsafe_libyaml-985f13d72e289a3c,libcollision_static-24c4826b787901ab,libnet_core-47734a088b9ec314,libmetrics-7b51bd773172fb9a,librapidhash-c6bbb8fd9fea2f22,libcrossbeam_channel-f662728d523c85cd,libcrossbeam_utils-a6e8163c72cc7c4d,libecs_core-25a8c8befb4dbb8e,libvoxel_proxy-15479ae510a34942,libcore_mat

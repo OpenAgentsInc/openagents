@@ -1,0 +1,109 @@
+{
+  "schema": "verse.battle.execution.v1",
+  "source": {
+    "schema": "verse.battle.source.v1",
+    "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+    "source_patch": "implementation-embedding-deferred.patch",
+    "source_patch_sha256": "65d94e3f222625c8819471dfd6356bc81d6e762a140cacd2c58ba45ac5347903",
+    "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+  },
+  "environment": {
+    "VERSE_QUALITY": "low",
+    "VERSE_GPU_TIMING": "1",
+    "DISPLAY": "unset",
+    "WAYLAND_DISPLAY": "unset",
+    "HOME": "temporary directory per run"
+  },
+  "executables": {
+    "battle_scale": "9ba59a94ef403e593c5f2b0ad267c48ad8cc64d9ecbadd97b8c6d3dc0a7d3415",
+    "renderer_budget": "c789f6fe8c529224b01e393cff079b3152f3be8f5f5a552848cdb96c9f7fc2c9"
+  },
+  "runs": [
+    {
+      "receipt": "renderer-embedding-deferred.json",
+      "executable": "renderer_budget",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget",
+        "bench/verse/2026-10-05/battle-scale/renderer-embedding-deferred.json",
+        "300"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 5.653696911002044,
+      "status": "passed",
+      "acceptance_failures": [],
+      "receipt_sha256": "fc693c1cc694265460f5e7ca3dc158352f9659f84d83b6154f6b82d789f0787f"
+    },
+    {
+      "receipt": "authority-embedding-deferred.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "authority",
+        "bench/verse/2026-10-05/battle-scale/authority-embedding-deferred.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 6.06606845598435,
+      "status": "passed",
+      "receipt_sha256": "5db51671c3499382994471eeca4fa1ec35679e017e3d65d5a54af39825de6c54"
+    },
+    {
+      "receipt": "network-embedding-deferred.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "network",
+        "bench/verse/2026-10-05/battle-scale/network-embedding-deferred.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.339307438000105,
+      "status": "passed",
+      "receipt_sha256": "b099a1af03bdaf58f5b3821bb02cd1fd2666b6a067ee93a0cf0a5a61900b226c"
+    },
+    {
+      "receipt": "combined-embedding-deferred-01.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-embedding-deferred-01.json",
+        "60"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 61.73755193001125,
+      "status": "failed",
+      "receipt_sha256": "c1475db40456b3bd06cc8a3c1bf372bf6126900129ecf477847f86b49fe74b4c"
+    },
+    {
+      "receipt": "combined-embedding-deferred-02.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-embedding-deferred-02.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.578971883049235,
+      "status": "passed",
+      "receipt_sha256": "bf606bce42c8849fc7d40658178046c4cf36ea92d648b8ba3083fd07cdca6c8e"
+    },
+    {
+      "receipt": "combined-embedding-deferred-03.json",
+      "executable": "battle_scale",
+      "argv": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale",
+        "combined",
+        "bench/verse/2026-10-05/battle-scale/combined-embedding-deferred-03.json",
+        "60"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 61.48155264701927,
+      "status": "passed",
+      "receipt_sha256": "f86cdcf1bd33f870902c79b52f662d6946ed5ad0961000618463e8a528f23091"
+    }
+  ],
+  "soak": "not run because short acceptance gates failed",
+  "aggregate_status": "failed"
+}

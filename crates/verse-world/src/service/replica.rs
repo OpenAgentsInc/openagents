@@ -497,6 +497,7 @@ pub(super) mod tests {
                     life,
                     epoch: 1,
                     accepted_sequence: 0,
+                    applied_movement: None,
                 });
                 attach_hud(&mut next);
             }
@@ -575,6 +576,7 @@ pub(super) mod tests {
             life,
             epoch: 2,
             accepted_sequence: 4,
+            applied_movement: None,
         });
         attach_hud(&mut first);
         let mut b = Buffer::new(130, 2.).unwrap();

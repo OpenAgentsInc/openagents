@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 28;
+pub const VERSION: u16 = 29;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -392,6 +392,10 @@ pub struct Control {
     pub epoch: u64,
     /// Highest admitted envelope, including subsequent gameplay refusals.
     pub accepted_sequence: u64,
+    /// Actual applied movement from a completed durable fence. Admission alone
+    /// never supplies this confirmation; it cannot exceed the envelope prefix.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applied_movement: Option<crate::movement::Baseline>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -583,6 +587,7 @@ impl Gateway {
             life: a.actor().into(),
             epoch: a.epoch(),
             accepted_sequence: a.accepted_sequence(),
+            applied_movement: None,
         });
         Response {
             version: VERSION,
@@ -854,6 +859,7 @@ impl Gateway {
                     life: a.actor().into(),
                     epoch: a.epoch(),
                     accepted_sequence: a.accepted_sequence(),
+                    applied_movement: None,
                 });
                 let tick = self.game().authority_tick;
                 let instance = self.game().player_life().instance;
@@ -1494,6 +1500,25 @@ mod tests {
         }
     }
     #[test]
+    fn owned_snapshots_keep_authority_time_after_the_cinematic_ends() {
+        for elapsed in [0., 1., 500.] {
+            let mut g = gateway();
+            let player = key(28);
+            let time = g.game().scene.duration + elapsed;
+            g.chamber.game.time = time;
+            assert_eq!(g.game().scene.frame(time).time, g.game().scene.duration);
+            g.enroll_primary(public(&player)).unwrap();
+            let id = join(&mut g, &player);
+            let response = send(&mut g, id, 2, Body::Snapshot {});
+            let Reply::Snapshot { state } = response.body else {
+                panic!("Expected snapshot");
+            };
+            state.validate_control(110, &response.control).unwrap();
+            assert_eq!(state.presentation.time, time);
+            assert_eq!(state.hud.unwrap().time, time);
+        }
+    }
+    #[test]
     fn owned_hud_is_scoped_to_each_authenticated_life_and_spectators_have_none() {
         let mut g = gateway();
         let ka = key(25);
@@ -1607,6 +1632,7 @@ mod tests {
             life,
             epoch: 1,
             accepted_sequence: 0,
+            applied_movement: None,
         });
         let inventory = Inventory {
             life,

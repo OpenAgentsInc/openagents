@@ -1,0 +1,7 @@
+{
+  "schema": "verse.battle.source.v1",
+  "base_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+  "source_patch": "implementation-fence-credit.patch",
+  "source_patch_sha256": "a65dc46699d63b77293a08e89163b212d349e7fcf7494e8ebeb96eae0affeecf",
+  "scope": "Tracked engine, authority, client, example, and route changes plus new Rust drivers and route tests; documentation and receipts are excluded."
+}

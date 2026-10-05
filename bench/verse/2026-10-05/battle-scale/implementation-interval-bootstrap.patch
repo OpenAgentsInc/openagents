@@ -1,0 +1,3841 @@
+diff --git a/crates/physics/src/character.rs b/crates/physics/src/character.rs
+index b5407da869..6645ddf06f 100644
+--- a/crates/physics/src/character.rs
++++ b/crates/physics/src/character.rs
+@@ -903,6 +903,84 @@ mod tests {
+         }
+     }
+     #[test]
++    fn recorded_three_capsules_use_a_bounded_atomic_motor_outcome() {
++        use crate::queries::{CapsuleCollider, Pose};
++        // Actor 216 in the retained three-contact failure at revision 533d3b0cde.
++        let start = DVec3::new(5.427652835845947, 0., -7.92329216003418);
++        let mut scene = floor();
++        for (actor, position) in [
++            (201, [4.765291690826416, 0.9, -7.703629493713379]),
++            (207, [5.614517688751221, 0.9, -8.606459617614746]),
++            (219, [6.103566646575928, 0.9, -8.10561752319336]),
++        ] {
++            let key = ColliderKey {
++                life: Life {
++                    instance: 1,
++                    entity: actor,
++                    generation: 0,
++                },
++                shape: 0,
++            };
++            scene
++                .insert_capsule(CapsuleCollider {
++                    key,
++                    layers: 2,
++                    usage: Usage::Blocking,
++                    capsule: Capsule {
++                        a: -DVec3::Y * 0.55,
++                        b: DVec3::Y * 0.55,
++                        radius: 0.35,
++                    },
++                })
++                .unwrap();
++            scene
++                .set_pose(
++                    key,
++                    Pose {
++                        position: DVec3::from_array(position),
++                        rotation: glam::DQuat::IDENTITY,
++                    },
++                )
++                .unwrap();
++        }
++        let settings = Settings::default();
++        let mut filter = Filter::blocking(1);
++        filter.ignore = Some(Life {
++            instance: 1,
++            entity: 216,
++            generation: 0,
++        });
++        let mut character = Character::new(start);
++        for _ in 0..120 {
++            let before = serde_json::to_value(character).unwrap();
++            match character
++                .step_contained(&scene, filter, settings, DVec3::ZERO, false, 1. / 120.)
++                .unwrap()
++            {
++                Step::Advanced => {
++                    assert!(character.feet.distance(start) <= settings.radius * 4.);
++                    assert!(
++                        scene
++                            .overlap(settings.capsule(character.feet), filter)
++                            .unwrap()
++                            .hits
++                            .iter()
++                            .all(|hit| hit.penetration <= SKIN)
++                    );
++                }
++                Step::BlockedRecovery { diagnostic } => {
++                    assert_eq!(serde_json::to_value(character).unwrap(), before);
++                    assert!(diagnostic.contains("216"));
++                }
++            }
++        }
++        assert!(
++            character
++                .step_contained(&scene, filter, settings, DVec3::ZERO, false, f64::NAN)
++                .is_err()
++        );
++    }
++    #[test]
+     fn enclosed_four_capsules_recover_without_crossing_walls() {
+         use crate::queries::{CapsuleCollider, Pose};
+         let start = DVec3::new(2.8624002933502197, 0., -8.559691429138184);
+diff --git a/crates/verse-host/src/lib.rs b/crates/verse-host/src/lib.rs
+index e641744666..8c7e3d4989 100644
+--- a/crates/verse-host/src/lib.rs
++++ b/crates/verse-host/src/lib.rs
+@@ -162,10 +162,7 @@ pub async fn serve(
+     for (label, timing) in [
+         ("Simulation", &exit.stats.simulation),
+         ("Persistence capture", &exit.stats.capture),
+-        (
+-            "Deferred read projection",
+-            &exit.stats.deferred_read_projection,
+-        ),
++        ("Admitted read projection", &exit.stats.read_projection),
+         ("Running checkpoint copy", &exit.stats.checkpoint_copy),
+         ("Storage commit", &exit.stats.commits),
+         ("Commit preparation", &exit.stats.commit_preparation),
+diff --git a/crates/verse-world/src/movement/frames.rs b/crates/verse-world/src/movement/frames.rs
+index c994df6237..1f7871f893 100644
+--- a/crates/verse-world/src/movement/frames.rs
++++ b/crates/verse-world/src/movement/frames.rs
+@@ -135,6 +135,9 @@ pub(crate) struct Clock {
+     pub applied_sequence: u64,
+     pub received_at: u64,
+     queue: VecDeque<Frame>,
++    /// Runtime confirmation history never enters a save or grants execution.
++    #[serde(skip)]
++    pub(crate) confirmations: VecDeque<super::Baseline>,
+ }
+ impl Clock {
+     pub fn new(step: u64, sequence: u64) -> Self {
+@@ -143,6 +146,7 @@ impl Clock {
+             applied_sequence: sequence,
+             received_at: step,
+             queue: VecDeque::new(),
++            confirmations: VecDeque::new(),
+         }
+     }
+     pub fn admit(&mut self, frame: Frame, world_step: u64) -> Result<(), String> {
+diff --git a/crates/verse-world/src/play.rs b/crates/verse-world/src/play.rs
+index 58689995c7..09d71ef020 100644
+--- a/crates/verse-world/src/play.rs
++++ b/crates/verse-world/src/play.rs
+@@ -2648,6 +2648,7 @@ impl Game {
+         self.damage_numbers.retain(|n| self.time - n.at < 1.35);
+         self.impacts.retain(|(_, at, _)| self.time - at < 0.6);
+         self.sync_bodies(dt)?;
++        self.record_movement_confirmations()?;
+         Ok(())
+     }
+     fn respawn_cultists(&mut self) -> Result<(), String> {
+@@ -5196,6 +5197,24 @@ mod motor_containment_tests {
+         game.tick(1. / 30., [0.; 2]).unwrap();
+         let position = game.primary.player;
+         let instance = game.player_life().instance;
++        let owner = crate::Controller(9);
++        let unrelated_spawn = position + Vec3::X * 8.;
++        let unrelated = game.add_player(owner, unrelated_spawn).unwrap();
++        let admission = game.player_admission(unrelated.actor).unwrap();
++        game.submit(
++            owner,
++            crate::Command {
++                actor: unrelated,
++                epoch: admission.epoch(),
++                sequence: admission.accepted_sequence() + 1,
++                tick: game.authority_tick,
++                intent: crate::Intent::Move {
++                    axes: [1., 0.],
++                    yaw: 0.,
++                },
++            },
++        )
++        .unwrap();
+         for (entity, lo, hi) in [(90001, -2., 0.1), (90002, -0.1, 2.)] {
+             game.query_scene
+                 .insert(MeshCollider {
+@@ -5225,6 +5244,12 @@ mod motor_containment_tests {
+         }
+         assert_eq!(game.authority_tick, tick + 3);
+         assert!(game.time > time);
++        assert!(
++            game.actor_position(unrelated.actor)
++                .unwrap()
++                .distance(unrelated_spawn)
++                > 0.1
++        );
+         assert_eq!(game.motor_recovery.blocks, 3);
+         assert!(game.motor_recovery.last_diagnostic.is_some());
+         // An already planned route can become obstructed before its motor step.
+diff --git a/crates/verse-world/src/play/framed_movement.rs b/crates/verse-world/src/play/framed_movement.rs
+index 37d5c58687..8e54d57479 100644
+--- a/crates/verse-world/src/play/framed_movement.rs
++++ b/crates/verse-world/src/play/framed_movement.rs
+@@ -6,6 +6,67 @@ use crate::{
+ };
+ use verse_engine::core::LifeId;
+ impl Game {
++    /// Retains actual completed movement, independently of envelope admission.
++    pub(super) fn record_movement_confirmations(&mut self) -> Result<(), String> {
++        let lives: Vec<_> = std::iter::once(self.player_life())
++            .chain(
++                self.additional_players
++                    .values()
++                    .map(|p| p.admission.actor()),
++            )
++            .collect();
++        for life in lives {
++            let Some(baseline) = self.movement_baseline(life)? else {
++                continue;
++            };
++            if baseline.profile != crate::movement::Profile::Frames {
++                continue;
++            }
++            let clock = if life.actor == self.player_actor() {
++                self.primary.frame_clock.as_mut()
++            } else {
++                self.additional_players
++                    .get_mut(&life.actor)
++                    .unwrap()
++                    .frame_clock
++                    .as_mut()
++            }
++            .unwrap();
++            if clock
++                .confirmations
++                .back()
++                .is_some_and(|b| b.applied_sequence == baseline.applied_sequence)
++            {
++                clock.confirmations.pop_back();
++            }
++            if clock.confirmations.len() == crate::movement::frames::MAX_QUEUED {
++                clock.confirmations.pop_front();
++            }
++            clock.confirmations.push_back(baseline);
++        }
++        Ok(())
++    }
++    pub(crate) fn movement_confirmations(&self, life: LifeId) -> Vec<crate::movement::Baseline> {
++        let Some(admission) = self.player_admission(life.actor) else {
++            return Vec::new();
++        };
++        if admission.actor() != life {
++            return Vec::new();
++        }
++        let clock = if life.actor == self.player_actor() {
++            self.primary.frame_clock.as_ref()
++        } else {
++            self.additional_players[&life.actor].frame_clock.as_ref()
++        };
++        clock.map_or_else(Vec::new, |c| {
++            c.confirmations
++                .iter()
++                .copied()
++                .filter(|b| b.life == life && b.epoch == admission.epoch())
++                .collect()
++        })
++    }
++
+     /// Starts interval movement from a stationary grounded authority pose.
+     /// Repeated entry is idempotent and cannot renew the clock's lag budget.
+     pub fn begin_movement_frames(
+@@ -204,6 +265,58 @@ mod tests {
+             g.tick(1. / 30., [0.; 2]).unwrap();
+         }
+     }
++    #[test]
++    fn confirmations_require_applied_physics_are_bounded_and_retire_with_control() {
++        for secondary in [false, true] {
++            let mut g = world();
++            let owner = Controller(if secondary { 10 } else { 9 });
++            let life = if secondary {
++                g.add_player(owner, Vec3::new(5., 0., -22.)).unwrap()
++            } else {
++                g.player_life()
++            };
++            ticks(&mut g, 1);
++            g.begin_movement_frames(owner, life).unwrap();
++            for _ in 0..24 {
++                let f = frame(&g, life, false);
++                let sequence = f.sequence;
++                let end = f.end().unwrap();
++                g.submit_movement_frame(owner, f).unwrap();
++                assert!(
++                    g.movement_confirmations(life)
++                        .iter()
++                        .all(|b| b.applied_sequence < sequence)
++                );
++                ticks(&mut g, 1);
++                let history = g.movement_confirmations(life);
++                assert!(history.len() <= crate::movement::frames::MAX_QUEUED);
++                let applied = history.last().unwrap();
++                assert_eq!(applied.applied_sequence, sequence);
++                assert_eq!(applied.physics_step, end);
++                assert_eq!(
++                    applied.character.feet,
++                    g.movement_baseline(life).unwrap().unwrap().character.feet
++                );
++                applied.validate().unwrap();
++            }
++            let clock = if secondary {
++                &g.additional_players[&life.actor].frame_clock
++            } else {
++                &g.primary.frame_clock
++            };
++            let encoded = serde_json::to_vec(clock.as_ref().unwrap()).unwrap();
++            assert!(
++                !std::str::from_utf8(&encoded)
++                    .unwrap()
++                    .contains("confirmations")
++            );
++            let restored: Clock = serde_json::from_slice(&encoded).unwrap();
++            assert!(restored.confirmations.is_empty());
++            g.handoff_player(life, Controller(0)).unwrap();
++            assert!(g.movement_confirmations(life).is_empty());
++        }
++    }
++
+     #[test]
+     fn expired_admission_fences_control_before_the_next_simulation_tick() {
+         for secondary in [false, true] {
+diff --git a/crates/verse-world/src/prediction/local.rs b/crates/verse-world/src/prediction/local.rs
+index 710b530ea2..2150f0a14d 100644
+--- a/crates/verse-world/src/prediction/local.rs
++++ b/crates/verse-world/src/prediction/local.rs
+@@ -52,6 +52,7 @@ pub struct Local {
+     recovery: movement::RecoveryObservations,
+     collision: SceneCache,
+     baseline: Option<Baseline>,
++    world_credit: u64,
+     inputs: VecDeque<Input>,
+     token: u64,
+     tick: u64,
+@@ -71,6 +72,7 @@ impl Local {
+             recovery: Default::default(),
+             collision: SceneCache::new(instance),
+             baseline: None,
++            world_credit: 0,
+             inputs: VecDeque::new(),
+             token: 0,
+             tick: 0,
+@@ -87,6 +89,7 @@ impl Local {
+     }
+     pub fn clear(&mut self) {
+         self.baseline = None;
++        self.world_credit = 0;
+         self.inputs.clear();
+         self.character = None;
+         self.fraction = 0.;
+@@ -127,6 +130,43 @@ impl Local {
+         geometry: &SceneSnapshot,
+         tick: u64,
+         observation: u64,
++    ) -> Result<(), String> {
++        self.observe_inner(baseline, Some(geometry), tick, observation)
++    }
++    /// Applies verified completed travel using the most recent collision scene.
++    /// Returns false for a superseded confirmation without changing prediction.
++    pub fn observe_applied(
++        &mut self,
++        baseline: Baseline,
++        tick: u64,
++        observation: u64,
++    ) -> Result<bool, String> {
++        let Some(old) = self.baseline else {
++            return Ok(false);
++        };
++        if baseline.life != old.life
++            || baseline.epoch != old.epoch
++            || baseline.profile != movement::Profile::Frames
++        {
++            return Ok(false);
++        }
++        if baseline.physics_step < old.physics_step
++            || baseline.applied_sequence <= old.applied_sequence
++        {
++            return Ok(false);
++        }
++        self.observe_inner(baseline, None, tick, observation)?;
++        Ok(true)
++    }
++    pub fn confirmed(&self) -> Option<Baseline> {
++        self.baseline
++    }
++    fn observe_inner(
++        &mut self,
++        baseline: Baseline,
++        geometry: Option<&SceneSnapshot>,
++        tick: u64,
++        observation: u64,
+     ) -> Result<(), String> {
+         baseline.validate()?;
+         if let Some(old) = self.baseline {
+@@ -169,10 +209,24 @@ impl Local {
+             .simulated
+             .checked_add(shift)
+             .ok_or("Local prediction clock exhausted")?;
+-        self.collision.update(geometry)?;
++        if let Some(geometry) = geometry {
++            self.collision.update(geometry)?;
++        }
+         if reset {
+             self.inputs.clear();
+-            self.step = baseline.physics_step;
++            // Entry requires a stationary grounded pose. Align only this fresh
++            // interval timeline to verified simulated time, preserving the old
++            // character pose and neutral input throughout the gap.
++            self.step = if baseline.profile == movement::Profile::Frames
++                && baseline.applied_sequence == 0
++                && baseline.character.support.is_some()
++                && baseline.held.axes(baseline.physics_step) == [0.; 2]
++            {
++                baseline.world_step
++            } else {
++                baseline.physics_step
++            };
++            self.simulated = self.step;
+             self.fraction = 0.;
+             self.motion_time = 0.;
+             self.moving = false;
+@@ -189,10 +243,15 @@ impl Local {
+         }
+         self.character = Some(baseline.character);
+         self.yaw = baseline.yaw;
++        self.world_credit = if reset {
++            baseline.world_step
++        } else {
++            self.world_credit.max(baseline.world_step)
++        };
+         self.baseline = Some(baseline);
+         self.tick = tick;
+         self.observation = observation;
+-        self.dirty = true;
++        self.dirty = !reset || self.step == baseline.physics_step;
+         Ok(())
+     }
+     pub fn observation(&self) -> u64 {
+@@ -540,6 +599,105 @@ mod tests {
+         local.observe(baseline, &source, 4, 4).unwrap();
+         assert_eq!(local.movement_frame_limit(), Some(32));
+         assert_eq!(local.physics_step(), 36);
++        let before = local.pose().unwrap().position;
++        local
++            .movement_credit(baseline.life, baseline.epoch, 24)
++            .unwrap();
++        assert_eq!(local.movement_frame_limit(), Some(36));
++        assert_eq!(local.physics_step(), 36);
++        assert_eq!(local.pose().unwrap().position, before);
++        assert!(
++            local
++                .movement_credit(baseline.life, baseline.epoch, 23)
++                .is_err()
++        );
++        assert!(
++            local
++                .movement_credit(baseline.life, baseline.epoch + 1, 28)
++                .is_err()
++        );
++        let mut foreign = baseline.life;
++        foreign.generation += 1;
++        assert!(local.movement_credit(foreign, baseline.epoch, 28).is_err());
++        assert!(
++            local
++                .movement_credit(baseline.life, baseline.epoch, u64::MAX)
++                .is_err()
++        );
++        local.advance(12. / 120.).unwrap();
++        local
++            .movement_credit(baseline.life, baseline.epoch, 24)
++            .unwrap();
++        assert_eq!(local.physics_step(), 48);
++        assert_eq!(local.movement_frame_limit(), Some(36));
++        // An older body baseline cannot revoke newer verified header credit.
++        local.observe(baseline, &source, 5, 5).unwrap();
++        assert_eq!(local.movement_frame_limit(), Some(36));
++    }
++
++    #[test]
++    fn grounded_interval_bootstrap_aligns_only_verified_time_and_keeps_the_gap_neutral() {
++        let (mut local, mut baseline, geometry) = setup();
++        // Obtain an actual supported character before entering the interval profile.
++        local.advance(1. / 120.).unwrap();
++        baseline.character = local.character.unwrap();
++        assert!(baseline.character.support.is_some());
++        baseline.profile = movement::Profile::Frames;
++        baseline.epoch += 1;
++        baseline.world_step = 8;
++        local.observe(baseline, &geometry, 2, 2).unwrap();
++        assert_eq!(local.physics_step(), 8);
++        assert_eq!(local.character.unwrap().feet, baseline.character.feet);
++        local.queue(1, movement()).unwrap();
++        local.advance(4. / 120.).unwrap();
++        let frame = local.movement_frame(0, 12).unwrap();
++        assert_eq!(frame.segments[0].axes, [0.; 2]);
++        assert_eq!(frame.segments[1].offset, 8);
++        assert_eq!(frame.segments[1].axes, [1., 0.]);
++        // Ordinary credit changes permission only; it cannot repeat bootstrap.
++        local
++            .movement_credit(baseline.life, baseline.epoch, 20)
++            .unwrap();
++        assert_eq!(local.physics_step(), 12);
++        assert!(local.pose().unwrap().position.x < 0.25);
++    }
++
++    #[test]
++    fn applied_confirmation_retires_inputs_without_minting_time_or_reverting_to_old_travel() {
++        let (mut local, mut baseline, geometry) = setup();
++        baseline.profile = movement::Profile::Frames;
++        baseline.epoch += 1;
++        local.observe(baseline, &geometry, 2, 2).unwrap();
++        local.queue(1, movement()).unwrap();
++        local.advance(4. / 120.).unwrap();
++        baseline.character = local.character.unwrap();
++        baseline.held.refresh([1., 0.], 0).unwrap();
++        baseline.physics_step = 4;
++        baseline.world_step = 4;
++        baseline.applied_sequence = 1;
++        let mut frame = local.movement_frame(0, 4).unwrap();
++        frame.sequence = 1;
++        local.bind_movement_frame(&frame).unwrap();
++        local.advance(8. / 120.).unwrap();
++        let before = local.pose().unwrap();
++        let time = local.timing();
++        assert!(local.observe_applied(baseline, 3, 3).unwrap());
++        local.advance(0.).unwrap();
++        assert_eq!(local.pending(), 0);
++        assert_eq!(local.timing().step, time.step);
++        assert_eq!(local.timing().simulated, time.simulated);
++        assert!(local.pose().unwrap().position.distance(before.position) < 0.00001);
++        let mut stale = baseline;
++        stale.applied_sequence = 0;
++        assert!(!local.observe_applied(stale, 4, 4).unwrap());
++        stale.epoch += 1;
++        assert!(!local.observe_applied(stale, 4, 4).unwrap());
++        assert_eq!(local.observation(), 3);
++        let mut future = baseline;
++        future.applied_sequence += 1;
++        future.physics_step = local.physics_step() + 1;
++        future.world_step = future.physics_step;
++        assert!(local.observe_applied(future, 4, 4).is_err());
+     }
+ 
+     #[test]
+diff --git a/crates/verse-world/src/prediction/local_frames.rs b/crates/verse-world/src/prediction/local_frames.rs
+index d1427077d0..d009fef209 100644
+--- a/crates/verse-world/src/prediction/local_frames.rs
++++ b/crates/verse-world/src/prediction/local_frames.rs
+@@ -12,11 +12,32 @@ impl Local {
+     pub fn movement_frame_limit(&self) -> Option<u64> {
+         self.baseline
+             .filter(|b| b.profile == Profile::Frames)
+-            .map(|b| {
++            .map(|_| {
+                 self.step
+-                    .min(b.world_step.saturating_add(u64::from(MAX_STEPS)))
++                    .min(self.world_credit.saturating_add(u64::from(MAX_STEPS)))
+             })
+     }
++    /// Refreshes exact authority credit without advancing prediction or replaying input.
++    /// A response from another life or epoch cannot renew this clock.
++    pub fn movement_credit(
++        &mut self,
++        life: LifeId,
++        epoch: u64,
++        world_step: u64,
++    ) -> Result<(), String> {
++        let baseline = self
++            .baseline
++            .ok_or("Movement credit has no prediction baseline")?;
++        if baseline.profile != Profile::Frames
++            || self.context() != Some((life, epoch))
++            || world_step < self.world_credit
++            || world_step.checked_add(u64::from(MAX_STEPS)).is_none()
++        {
++            return Err("Movement credit context or clock is invalid".into());
++        }
++        self.world_credit = world_step;
++        Ok(())
++    }
+     pub fn physics_step(&self) -> u64 {
+         self.step
+     }
+diff --git a/crates/verse-world/src/service/auth.rs b/crates/verse-world/src/service/auth.rs
+index 2cb0cb1c44..1431a98b1a 100644
+--- a/crates/verse-world/src/service/auth.rs
++++ b/crates/verse-world/src/service/auth.rs
+@@ -260,6 +260,8 @@ impl Gateway {
+                             life: admission.actor().into(),
+                             epoch: admission.epoch(),
+                             accepted_sequence: admission.accepted_sequence(),
++                            world_step: self.game().physics_steps,
++                            applied_movement: None,
+                         },
+                     )
+                 })
+diff --git a/crates/verse-world/src/service/client.rs b/crates/verse-world/src/service/client.rs
+index 92b11af5e4..a7acc802e0 100644
+--- a/crates/verse-world/src/service/client.rs
++++ b/crates/verse-world/src/service/client.rs
+@@ -438,7 +438,22 @@ impl Client {
+             return Err("Chamber response context mismatch".into());
+         }
+         if let Some(control) = &r.control {
++            if let Some(baseline) = control.applied_movement {
++                baseline.validate()?;
++                if baseline.profile != crate::movement::Profile::Frames
++                    || baseline.life != control.life.into()
++                    || baseline.epoch != control.epoch
++                    || baseline.applied_sequence > control.accepted_sequence
++                    || baseline.world_step > control.world_step
++                {
++                    return Err("Chamber applied movement confirmation is incompatible".into());
++                }
++            }
+             if control.life.instance != self.instance
++                || control
++                    .world_step
++                    .checked_add(u64::from(crate::movement::frames::MAX_STEPS))
++                    .is_none()
+                 || (self.logged_in
+                     && !self.player
+                     && !matches!(
+@@ -455,6 +470,7 @@ impl Client {
+                 if control.life.actor != previous.life.actor
+                     || control.life.generation < previous.life.generation
+                     || control.epoch < previous.epoch
++                    || control.world_step < previous.world_step
+                     || (control.epoch == previous.epoch
+                         && (control.accepted_sequence < previous.accepted_sequence
+                             || control.life.generation != previous.life.generation))
+@@ -2594,6 +2610,8 @@ mod tests {
+             life,
+             epoch: 2,
+             accepted_sequence: 3,
++            world_step: 40,
++            applied_movement: None,
+         };
+         let client = Client {
+             public_key: [1; 32],
+@@ -2629,7 +2647,7 @@ mod tests {
+         let mut response = response;
+         response.control.as_mut().unwrap().accepted_sequence = 4;
+         assert!(client.validate(2, &request, &response).is_ok());
+-        for field in 0..6 {
++        for field in 0..8 {
+             let mut bad = response.clone();
+             match field {
+                 0 => bad.version += 1,
+@@ -2637,10 +2655,46 @@ mod tests {
+                 2 => bad.instance += 1,
+                 3 => bad.tick -= 1,
+                 4 => bad.control.as_mut().unwrap().epoch -= 1,
+-                _ => bad.control.as_mut().unwrap().accepted_sequence -= 2,
++                5 => bad.control.as_mut().unwrap().accepted_sequence -= 2,
++                6 => bad.control.as_mut().unwrap().world_step -= 1,
++                _ => bad.control.as_mut().unwrap().world_step = u64::MAX,
+             }
+             assert!(client.validate(2, &request, &bad).is_err());
+         }
++        let applied = crate::movement::Baseline {
++            profile: crate::movement::Profile::Frames,
++            life: life.into(),
++            epoch: response.control.as_ref().unwrap().epoch,
++            applied_sequence: 2,
++            world_step: 40,
++            physics_step: 20,
++            held: Default::default(),
++            policy: Default::default(),
++            character: physics::character::Character::new(glam::DVec3::ZERO),
++            yaw: 0.,
++        };
++        let mut confirmed = response.clone();
++        confirmed.control.as_mut().unwrap().applied_movement = Some(applied);
++        assert!(client.validate(2, &request, &confirmed).is_ok());
++        for field in 0..6 {
++            let mut invalid = confirmed.clone();
++            let proof = invalid
++                .control
++                .as_mut()
++                .unwrap()
++                .applied_movement
++                .as_mut()
++                .unwrap();
++            match field {
++                0 => proof.life.generation += 1,
++                1 => proof.epoch += 1,
++                2 => proof.applied_sequence = 5,
++                3 => proof.world_step += 1,
++                4 => proof.profile = crate::movement::Profile::Arrival,
++                _ => proof.character.feet.x = f64::NAN,
++            }
++            assert!(client.validate(2, &request, &invalid).is_err());
++        }
+         let mut revived = response;
+         revived.control.as_mut().unwrap().life.generation += 1;
+         assert!(client.validate(2, &request, &revived).is_err());
+diff --git a/crates/verse-world/src/service/net.rs b/crates/verse-world/src/service/net.rs
+index 706df5af70..645fd4268a 100644
+--- a/crates/verse-world/src/service/net.rs
++++ b/crates/verse-world/src/service/net.rs
+@@ -32,6 +32,10 @@ pub use timing::{Phases, Timing};
+ pub(crate) mod admission;
+ pub use admission::Stats as AdmissionStats;
+ const QUEUE: usize = 128;
++const REPLY_BYTES: usize = 16 * 1024 * 1024;
++const CLOCK_BYTES: usize = 20;
++const CONFIRMATION_BYTES: usize = 4096;
++const MAX_HELD_REPLY_BYTES: usize = MAX_RESPONSE_BYTES + CLOCK_BYTES + CONFIRMATION_BYTES;
+ const HANDSHAKE: Duration = Duration::from_secs(5);
+ const WRITE: Duration = Duration::from_secs(10);
+ const AUTH: Duration = Duration::from_secs(30);
+@@ -60,7 +64,7 @@ pub struct Stats {
+     pub checkpoint_seconds: f64,
+     pub simulation: Timing,
+     pub capture: Timing,
+-    pub deferred_read_projection: Timing,
++    pub read_projection: Timing,
+     pub checkpoint_copy: Timing,
+     pub commits: Timing,
+     pub commit_preparation: Timing,
+@@ -73,6 +77,8 @@ pub struct Stats {
+     pub capture_phases: Phases,
+     pub commit_phases: Phases,
+     pub writer_queue_peak: usize,
++    pub request_queue_peak: usize,
++    pub held_reply_bytes_peak: usize,
+     pub storage_refusals: u64,
+     pub storage_paused_ticks: u64,
+     pub storage_paused_seconds: f64,
+@@ -88,27 +94,37 @@ type OpenReply = Result<(ConnectionId, Vec<u8>), String>;
+ type DispatchReply = Result<(Vec<u8>, bool), String>;
+ struct PendingReply {
+     reply: oneshot::Sender<DispatchReply>,
+-    response: PendingResponse,
++    response: DispatchReply,
+ }
+-enum PendingResponse {
+-    Outcome(DispatchReply),
+-    Read {
+-        id: ConnectionId,
+-        bytes: Vec<u8>,
+-        progress: Option<oneshot::Sender<RequestProgress>>,
+-    },
++fn reply_bytes(reply: &DispatchReply) -> usize {
++    match reply {
++        // Reserve clock growth and a bounded completed-movement confirmation.
++        Ok((bytes, _)) => bytes.len() + CLOCK_BYTES + CONFIRMATION_BYTES,
++        Err(error) => error.len(),
++    }
+ }
+ struct CommitView {
+     tick: u64,
++    world_step: u64,
+     instance: u64,
+     controls: BTreeMap<ConnectionId, Control>,
++    confirmations: BTreeMap<verse_engine::core::LifeId, Vec<crate::movement::Baseline>>,
+     authenticated: std::collections::BTreeSet<ConnectionId>,
+ }
+ impl CommitView {
+     fn capture(gateway: &Gateway) -> Self {
+         Self {
+             tick: gateway.game().authority_tick,
++            world_step: gateway.game().physics_steps,
+             instance: gateway.game().player_life().instance,
++            confirmations: gateway
++                .committed_controls()
++                .values()
++                .map(|c| {
++                    let life = c.life.into();
++                    (life, gateway.game().movement_confirmations(life))
++                })
++                .collect(),
+             controls: gateway.committed_controls(),
+             authenticated: gateway.committed_connections(),
+         }
+@@ -136,6 +152,7 @@ impl CommitView {
+ struct Fence {
+     view: CommitView,
+     replies: Vec<(oneshot::Sender<DispatchReply>, DispatchReply)>,
++    reply_bytes: usize,
+ }
+ fn finish(
+     done: Done,
+@@ -174,10 +191,112 @@ fn finish(
+         .ok_or("Chamber storage completion has no fence")?;
+     *view = fence.view;
+     for (reply, result) in fence.replies {
+-        let _ = reply.send(result);
++        let _ = reply.send(committed_movement(
++            committed_world_credit(result, view.world_step),
++            &view.confirmations,
++        ));
+     }
+     Ok(())
+ }
++/// Renews only the clock from the completed durable fence. Admission identity,
++/// sequence, tick, and projected state retain their original ordered prefix.
++fn committed_world_credit(mut result: DispatchReply, world_step: u64) -> DispatchReply {
++    let Ok((bytes, _)) = &mut result else {
++        return result;
++    };
++    // These bytes come from Response::encode. Its typed numeric header precedes
++    // the body; never search arbitrary body strings or decode the projected scene.
++    let body = bytes
++        .windows(7)
++        .position(|part| part == b"\"body\":")
++        .ok_or("Committed response has no body")?;
++    let marker = b"\"world_step\":";
++    let Some(start) = bytes[..body]
++        .windows(marker.len())
++        .position(|part| part == marker)
++        .map(|offset| offset + marker.len())
++    else {
++        return result;
++    };
++    let end = start
++        + bytes[start..body]
++            .iter()
++            .take_while(|byte| byte.is_ascii_digit())
++            .count();
++    let previous: u64 = std::str::from_utf8(&bytes[start..end])
++        .map_err(|_| "Committed response clock is malformed")?
++        .parse()
++        .map_err(|_| "Committed response clock is malformed")?;
++    if previous > world_step {
++        return Err("Committed response clock exceeds its durable fence".into());
++    }
++    let clock = world_step.to_string();
++    let length = bytes.len() - (end - start) + clock.len();
++    if length > MAX_RESPONSE_BYTES {
++        return Err("Committed response exceeds byte budget".into());
++    }
++    bytes.splice(start..end, clock.bytes());
++    result
++}
++/// Adds only confirmed travel within the response's original admission prefix.
++/// Decoding the small header avoids copying or rebuilding the projected scene.
++fn committed_movement(
++    mut result: DispatchReply,
++    histories: &BTreeMap<verse_engine::core::LifeId, Vec<crate::movement::Baseline>>,
++) -> DispatchReply {
++    let Ok((bytes, _)) = &mut result else {
++        return result;
++    };
++    let body = bytes
++        .windows(7)
++        .position(|part| part == b"\"body\":")
++        .ok_or("Committed response has no body")?;
++    #[derive(serde::Deserialize)]
++    struct Header {
++        control: Option<Control>,
++    }
++    let mut header = bytes[..body].to_vec();
++    header.extend_from_slice(b"\"body\":null}");
++    let Header { control } =
++        serde_json::from_slice(&header).map_err(|_| "Committed response header is malformed")?;
++    let Some(mut control) = control else {
++        return result;
++    };
++    let Some(baseline) = histories.get(&control.life.into()).and_then(|history| {
++        history.iter().rev().find(|b| {
++            b.life == control.life.into()
++                && b.epoch == control.epoch
++                && b.applied_sequence <= control.accepted_sequence
++                && b.world_step <= control.world_step
++        })
++    }) else {
++        return result;
++    };
++    baseline.validate()?;
++    control.applied_movement = Some(*baseline);
++    let encoded =
++        serde_json::to_vec(&control).map_err(|_| "Cannot encode movement confirmation")?;
++    if encoded.len() > CONFIRMATION_BYTES {
++        return Err("Movement confirmation exceeds byte budget".into());
++    }
++    let marker = b"\"control\":";
++    let start = bytes[..body]
++        .windows(marker.len())
++        .position(|part| part == marker)
++        .ok_or("Committed response has no control header")?
++        + marker.len();
++    let end = body
++        .checked_sub(1)
++        .ok_or("Committed response header is malformed")?;
++    if bytes.get(end) != Some(&b',')
++        || bytes.len() - (end - start) + encoded.len() > MAX_RESPONSE_BYTES
++    {
++        return Err("Committed response exceeds byte budget".into());
++    }
++    bytes.splice(start..end, encoded);
++    result
++}
++
+ /// An ordered, authenticated byte stream that carries chamber frames.
+ pub trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
+ impl<T: AsyncRead + AsyncWrite + Unpin + Send> Transport for T {}
+@@ -409,12 +528,21 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+     let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+     let mut pending: Vec<PendingReply> = Vec::with_capacity(QUEUE);
++    let mut pending_bytes = 0usize;
+     let mut fences = BTreeMap::new();
+     let mut committed = CommitView::capture(&gateway);
+     let mut token = 0u64;
+     let mut dirty = false;
+     tokio::pin!(shutdown);
+     loop {
++        stats.request_queue_peak = stats.request_queue_peak.max(receive.len());
++        stats.held_reply_bytes_peak = stats.held_reply_bytes_peak.max(
++            pending_bytes
++                + fences
++                    .values()
++                    .map(|fence: &Fence| fence.reply_bytes)
++                    .sum::<usize>(),
++        );
+         tokio::select! {
+             _ = &mut shutdown => break,
+             completed = async { writer.as_mut().unwrap().done.recv().await }, if writer.is_some() && !fences.is_empty() => {
+@@ -473,18 +601,16 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+                         Err(error) => {failure = Some(error); break;}
+                     };
+                     stats.dropped_seconds += batch.dropped_seconds;
+-                    let tick = Instant::now();
+                     for _ in 0..batch.steps {
++                        let tick = Instant::now();
+                         if let Err(error) = gateway.tick(batch.seconds) {failure = Some(error); break;}
+                         if let Some(hook) = hook.as_mut() { hook(&mut gateway, batch.seconds); }
+-                    }
+-                    if failure.is_some() { break; }
+-                    if batch.steps > 0 {
+                         let seconds = tick.elapsed().as_secs_f64();
+                         stats.simulation.record(seconds);
+                         stats.simulation_phases.record(seconds);
+-                        stats.ticks += u64::from(batch.steps);
++                        stats.ticks += 1;
+                     }
++                    if failure.is_some() { break; }
+                 } else {
+                     // Flush already admitted state without adding more simulation mutations.
+                     stats.storage_paused_ticks += 1;
+@@ -503,21 +629,9 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+                         }
+                     };
+                     let capture = Instant::now();
+-                    let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+-                    let replies = pending.drain(..).map(|pending| {
+-                        let result = match pending.response {
+-                            PendingResponse::Outcome(result) => result,
+-                            PendingResponse::Read {id, bytes, progress} => {
+-                                let projection = Instant::now();
+-                                let result = gateway.dispatch_json(id, now, &bytes)
+-                                    .map(|bytes| (bytes, gateway.authenticated(id)));
+-                                stats.deferred_read_projection.record(projection.elapsed().as_secs_f64());
+-                                dispatch_progress(progress, &result);
+-                                result
+-                            },
+-                        };
+-                        (pending.reply, result)
+-                    }).collect();
++                    let replies = pending.drain(..).map(|pending|
++                        (pending.reply, pending.response)).collect();
++                    let reply_bytes = std::mem::take(&mut pending_bytes);
+                     let copy = Instant::now();
+                     let prepared = match super::save::Prepared::capture(&gateway) {
+                         Ok(prepared) => prepared,
+@@ -528,7 +642,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+                         Some(token) => token,
+                         None => {failure = Some("Chamber storage tokens exhausted".into()); break;}
+                     };
+-                    fences.insert(token, Fence {view:CommitView::capture(&gateway), replies});
++                    fences.insert(token, Fence {view:CommitView::capture(&gateway), replies, reply_bytes});
+                     let seconds = capture.elapsed().as_secs_f64();
+                     stats.capture.record(seconds);
+                     stats.capture_phases.record(seconds);
+@@ -537,7 +651,12 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+                     dirty = false;
+                 }
+             }
+-            event = receive.recv() => {
++            // Leave requests in the bounded transport queue while both persistence
++            // slots are occupied. Completion wakes this loop without a retry tick.
++            event = receive.recv(), if writer.as_ref().is_none_or(|writer|
++                pending.len() < QUEUE && fences.len() < 2
++                    && pending_bytes <= REPLY_BYTES - MAX_HELD_REPLY_BYTES
++                    && writer.send.as_ref().unwrap().capacity() > 0) => {
+                 let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+                 match event {
+                     Some(Event::Open {spectate, reply}) => {
+@@ -560,7 +679,8 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+                             if !mutating && !dirty {
+                                 if let Some(mut entry) = fences.last_entry() {
+                                     let fence = entry.get_mut();
+-                                    if fence.replies.len() >= QUEUE {
++                                    if fence.replies.len() >= QUEUE
++                                        || fence.reply_bytes > REPLY_BYTES - MAX_HELD_REPLY_BYTES {
+                                         stats.storage_refusals += 1;
+                                         busy_progress(progress);
+                                         let _ = reply.send(committed.busy(id, &bytes));
+@@ -568,6 +688,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+                                         let result = gateway.dispatch_json(id, now, &bytes)
+                                             .map(|bytes| (bytes, gateway.authenticated(id)));
+                                         dispatch_progress(progress, &result);
++                                        fence.reply_bytes += reply_bytes(&result);
+                                         fence.replies.push((reply, result));
+                                     }
+                                 } else {
+@@ -575,7 +696,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+                                     let result = gateway.dispatch_json(id, now, &bytes)
+                                         .map(|bytes| (bytes, gateway.authenticated(id)));
+                                     dispatch_progress(progress, &result);
+-                                    let _ = reply.send(result);
++                                    let _ = reply.send(committed_movement(result, &committed.confirmations));
+                                 }
+                                 continue;
+                             }
+@@ -585,20 +706,24 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+                                 let _ = reply.send(committed.busy(id, &bytes));
+                                 continue;
+                             }
+-                            let response = if mutating {
+-                                dirty = true;
+-                                let result = gateway.dispatch_json(id, now, &bytes)
+-                                    .map(|bytes| (bytes, gateway.authenticated(id)));
+-                                dispatch_progress(progress, &result);
+-                                PendingResponse::Outcome(result)
+-                            } else {
+-                                PendingResponse::Read {id, bytes, progress}
+-                            };
++                            dirty |= mutating;
++                            // Capture this ordered prefix before admitting later input.
++                            // Admission progress is immediate; delivery still waits for storage.
++                            let projection = Instant::now();
++                            let response = gateway.dispatch_json(id, now, &bytes)
++                                .map(|bytes| (bytes, gateway.authenticated(id)));
++                            if !mutating { stats.read_projection.record(projection.elapsed().as_secs_f64()); }
++                            dispatch_progress(progress, &response);
++                            pending_bytes += reply_bytes(&response);
+                             pending.push(PendingReply {reply, response});
+                         } else {
+                             let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
+                             dispatch_progress(progress, &result);
+-                            let _ = reply.send(result);
++                            let histories = gateway.admission(id).ok().map(|a| {
++                                let life = a.actor();
++                                BTreeMap::from([(life, gateway.game().movement_confirmations(life))])
++                            }).unwrap_or_default();
++                            let _ = reply.send(committed_movement(result, &histories));
+                         }
+                     }
+                     Some(Event::Close(id)) => {let _ = gateway.close(id); dirty = true;}
+@@ -654,6 +779,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
+                         Fence {
+                             view: CommitView::capture(&gateway),
+                             replies: vec![],
++                            reply_bytes: 0,
+                         },
+                     );
+                     let seconds = capture.elapsed().as_secs_f64();
+@@ -904,6 +1030,150 @@ pub(super) mod tests {
+     use tokio_rustls::{TlsConnector, client::TlsStream};
+     use verse_engine::director::Scene;
+     type Stream = TlsStream<TcpStream>;
++    #[test]
++    fn durable_travel_confirmation_preserves_body_and_cannot_cross_admission_prefix() {
++        let life = verse_engine::core::LifeId {
++            instance: 120,
++            actor: 14,
++            generation: 2,
++        };
++        let baseline = crate::movement::Baseline {
++            profile: crate::movement::Profile::Frames,
++            life,
++            epoch: 3,
++            applied_sequence: 7,
++            physics_step: 8,
++            world_step: 12,
++            held: Default::default(),
++            policy: Default::default(),
++            character: physics::character::Character::new(glam::DVec3::ZERO),
++            yaw: 0.,
++        };
++        let response = Response {
++            version: VERSION,
++            request_id: 23,
++            instance: 120,
++            tick: 4,
++            control: Some(Control {
++                life: life.into(),
++                epoch: 3,
++                accepted_sequence: 7,
++                world_step: 12,
++                applied_movement: None,
++            }),
++            body: Reply::Refused {
++                code: "gameplay".into(),
++                message: "Body text contains \"control\": and \"body\":".into(),
++            },
++        };
++        let original = response.encode().unwrap();
++        let mut ahead = baseline;
++        ahead.applied_sequence = 8;
++        let histories = BTreeMap::from([(life, vec![baseline, ahead])]);
++        let (encoded, authenticated) =
++            committed_movement(Ok((original.clone(), true)), &histories).unwrap();
++        assert!(authenticated);
++        let actual: Response = serde_json::from_slice(&encoded).unwrap();
++        assert_eq!(
++            actual
++                .control
++                .as_ref()
++                .unwrap()
++                .applied_movement
++                .unwrap()
++                .applied_sequence,
++            7
++        );
++        let mut expected = serde_json::to_value(response.clone()).unwrap();
++        expected["control"]["applied_movement"] = serde_json::to_value(baseline).unwrap();
++        assert_eq!(
++            serde_json::from_slice::<serde_json::Value>(&encoded).unwrap(),
++            expected
++        );
++        for mut invalid in [baseline; 3].into_iter().enumerate() {
++            match invalid.0 {
++                0 => invalid.1.epoch += 1,
++                1 => invalid.1.applied_sequence += 1,
++                _ => invalid.1.world_step += 1,
++            }
++            let histories = BTreeMap::from([(life, vec![invalid.1])]);
++            assert_eq!(
++                committed_movement(Ok((original.clone(), true)), &histories)
++                    .unwrap()
++                    .0,
++                original
++            );
++        }
++        let mut bounded = response;
++        if let Reply::Refused { message, .. } = &mut bounded.body {
++            message.clear();
++        }
++        let overhead = bounded.encode().unwrap().len();
++        if let Reply::Refused { message, .. } = &mut bounded.body {
++            *message = "a".repeat(MAX_RESPONSE_BYTES - overhead);
++        }
++        assert!(committed_movement(Ok((bounded.encode().unwrap(), true)), &histories).is_err());
++    }
++
++    #[test]
++    fn durable_clock_credit_preserves_the_admission_prefix_and_byte_bounds() {
++        let mut response = Response {
++            version: VERSION,
++            request_id: 23,
++            instance: 120,
++            tick: 4,
++            control: Some(Control {
++                life: super::super::wire::Life { instance: 120, actor: 14, generation: 2 },
++                epoch: 3,
++                accepted_sequence: 7,
++                world_step: 9,
++                applied_movement: None,
++            }),
++            body: Reply::Refused {
++                code: "gameplay".into(),
++                message: "Body strings can contain \"world_step\":999 and \"body\": without changing header credit".into(),
++            },
++        };
++        let original = response.encode().unwrap();
++        let (renewed, admitted) =
++            committed_world_credit(Ok((original.clone(), true)), 100).unwrap();
++        assert!(admitted);
++        let mut actual: serde_json::Value = serde_json::from_slice(&renewed).unwrap();
++        assert_eq!(actual["control"]["world_step"], 100);
++        actual["control"]["world_step"] = serde_json::json!(9);
++        assert_eq!(
++            actual,
++            serde_json::from_slice::<serde_json::Value>(&original).unwrap()
++        );
++        assert!(committed_world_credit(Ok((original, true)), 8).is_err());
++        response.control = None;
++        let original = response.encode().unwrap();
++        assert_eq!(
++            committed_world_credit(Ok((original.clone(), false)), 100).unwrap(),
++            (original, false)
++        );
++        response.control = Some(Control {
++            life: super::super::wire::Life {
++                instance: 120,
++                actor: 14,
++                generation: 2,
++            },
++            epoch: 3,
++            accepted_sequence: 7,
++            world_step: 9,
++            applied_movement: None,
++        });
++        if let Reply::Refused { message, .. } = &mut response.body {
++            message.clear();
++        }
++        let overhead = response.encode().unwrap().len();
++        if let Reply::Refused { message, .. } = &mut response.body {
++            *message = "a".repeat(MAX_RESPONSE_BYTES - overhead);
++        }
++        let bounded = response.encode().unwrap();
++        assert_eq!(bounded.len(), MAX_RESPONSE_BYTES);
++        assert!(committed_world_credit(Ok((bounded, true)), 100).is_err());
++    }
+     pub(in crate::service) fn key(n: u8) -> Keypair {
+         Keypair::from_secret_key(
+             &Secp256k1::new(),
+@@ -982,6 +1252,40 @@ pub(super) mod tests {
+         }));
+         (address, connector, stop, task)
+     }
++    #[tokio::test]
++    async fn catch_up_ticks_each_leave_their_own_simulation_observation() {
++        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let (tls, _) = tls();
++        let keys = [key(121), key(122), key(123)];
++        let gateway = gateway(&keys);
++        let (stop, stopped) = oneshot::channel();
++        let mut stop = Some(stop);
++        let mut hooks = 0;
++        let hook: Tick = Box::new(move |_, _| {
++            hooks += 1;
++            if hooks == 1 {
++                // The next wake has more than one fixed step to account for.
++                std::thread::sleep(Duration::from_millis(80));
++            }
++            if hooks >= 8 {
++                if let Some(stop) = stop.take() {
++                    let _ = stop.send(());
++                }
++            }
++        });
++        let exit = timeout(
++            Duration::from_secs(3),
++            serve_ticked(listener, tls, gateway, None, hook, async {
++                let _ = stopped.await;
++            }),
++        )
++        .await
++        .unwrap();
++        assert!(exit.failure.is_none(), "{:?}", exit.failure);
++        assert!(exit.stats.ticks >= 8);
++        assert_eq!(exit.stats.simulation.count, exit.stats.ticks);
++        assert_eq!(exit.stats.simulation_phases.startup.count, exit.stats.ticks);
++    }
+     async fn open(address: std::net::SocketAddr, connector: &TlsConnector) -> (Stream, Hello) {
+         let socket = TcpStream::connect(address).await.unwrap();
+         socket.set_nodelay(true).unwrap();
+@@ -1343,7 +1647,7 @@ pub(super) mod tests {
+     }
+ 
+     #[tokio::test]
+-    async fn slow_writer_fences_replies_bounds_backlog_and_refuses_new_work() {
++    async fn slow_writer_fences_replies_and_backpressures_the_bounded_request_queue() {
+         use crate::{Intent, service::client::Client};
+         use std::sync::{
+             Condvar, Mutex,
+@@ -1430,30 +1734,18 @@ pub(super) mod tests {
+                 .is_err(),
+             "Uncommitted command was acknowledged"
+         );
++        let mut b = b.pipeline().unwrap();
+         let command_b = b.prepare_command(movement).unwrap();
+-        let refused = timeout(
+-            Duration::from_secs(1),
+-            b.request(Body::Command {
+-                command: command_b.into(),
+-            }),
+-        )
+-        .await
+-        .unwrap()
++        b.send(Body::Command {
++            command: command_b.into(),
++        })
+         .unwrap();
+-        assert!(matches!(refused.body, Reply::Refused {code, ..} if code == "storage_busy"));
+-        assert!(refused.tick >= committed_tick);
+-        let control = b.control().unwrap();
+-        assert_eq!(
+-            (control.life, control.epoch, control.accepted_sequence),
+-            committed_control
+-        );
+-        let snapshot = b.snapshot();
+-        tokio::pin!(snapshot);
++        b.send_snapshot().unwrap();
+         assert!(
+-            timeout(Duration::from_millis(120), &mut snapshot)
++            timeout(Duration::from_millis(120), b.receive())
+                 .await
+                 .is_err(),
+-            "Snapshot bypassed the durability fence or was refused for writer capacity"
++            "A queued command bypassed storage backpressure or its durability fence"
+         );
+         drop(release);
+         let admitted = timeout(Duration::from_secs(2), &mut command)
+@@ -1465,10 +1757,28 @@ pub(super) mod tests {
+             "Unexpected admission after storage drain: {:?}",
+             admitted.body
+         );
+-        timeout(Duration::from_secs(2), &mut snapshot)
++        let (body, response) = timeout(Duration::from_secs(2), b.receive())
++            .await
++            .unwrap()
++            .unwrap();
++        assert!(matches!(body, Body::Command { .. }));
++        assert!(matches!(response.body, Reply::Accepted));
++        assert!(response.tick >= committed_tick);
++        let control = response.control.unwrap();
++        assert_eq!(
++            (control.life, control.epoch),
++            (committed_control.0, committed_control.1)
++        );
++        assert_eq!(control.accepted_sequence, committed_control.2 + 1);
++        let (body, response) = timeout(Duration::from_secs(2), b.receive())
+             .await
+             .unwrap()
+             .unwrap();
++        assert!(matches!(
++            body,
++            Body::Snapshot { .. } | Body::Replicate { .. }
++        ));
++        assert!(matches!(response.body, Reply::Snapshot { .. }));
+         stop.send(()).unwrap();
+         let exit = timeout(Duration::from_secs(2), server)
+             .await
+@@ -1476,7 +1786,9 @@ pub(super) mod tests {
+             .unwrap();
+         assert!(exit.failure.is_none(), "{:?}", exit.failure);
+         assert_eq!(exit.stats.writer_queue_peak, 2);
+-        assert!(exit.stats.storage_refusals > 0);
++        assert!((1..=QUEUE).contains(&exit.stats.request_queue_peak));
++        assert!((1..=REPLY_BYTES * 2).contains(&exit.stats.held_reply_bytes_peak));
++        assert_eq!(exit.stats.storage_refusals, 0);
+         assert!(exit.stats.storage_paused_ticks > 0 && exit.stats.storage_paused_seconds > 0.);
+         assert!(exit.stats.commits.maximum_seconds >= 0.12);
+         assert_eq!(exit.stats.simulation.count, exit.stats.ticks);
+diff --git a/crates/verse-world/src/service/net/session_pipeline.rs b/crates/verse-world/src/service/net/session_pipeline.rs
+index a08000cd2c..e9c5f6f475 100644
+--- a/crates/verse-world/src/service/net/session_pipeline.rs
++++ b/crates/verse-world/src/service/net/session_pipeline.rs
+@@ -208,6 +208,8 @@ mod tests {
+                 },
+                 epoch: 1,
+                 accepted_sequence: sequence,
++                world_step: tick * 4,
++                applied_movement: None,
+             }),
+             body: Reply::Refused {
+                 code: "storage_busy".into(),
+diff --git a/crates/verse-world/src/service/realm.rs b/crates/verse-world/src/service/realm.rs
+index 2063e69e71..4279d8604b 100644
+--- a/crates/verse-world/src/service/realm.rs
++++ b/crates/verse-world/src/service/realm.rs
+@@ -583,6 +583,8 @@ impl Realm {
+                     life: a.actor().into(),
+                     epoch: a.epoch(),
+                     accepted_sequence: a.accepted_sequence(),
++                    world_step: gateway.game().physics_steps,
++                    applied_movement: None,
+                 }),
+                 body: result.unwrap_or_else(|message| super::wire::Reply::Refused {
+                     code: "character_lifecycle".into(),
+diff --git a/crates/verse-world/src/service/replica.rs b/crates/verse-world/src/service/replica.rs
+index 0cac1eb9ae..f504bfc01d 100644
+--- a/crates/verse-world/src/service/replica.rs
++++ b/crates/verse-world/src/service/replica.rs
+@@ -495,6 +495,8 @@ pub(super) mod tests {
+                     life,
+                     epoch: 1,
+                     accepted_sequence: 0,
++                    world_step: 0,
++                    applied_movement: None,
+                 });
+                 attach_hud(&mut next);
+             }
+@@ -571,6 +573,8 @@ pub(super) mod tests {
+             life,
+             epoch: 2,
+             accepted_sequence: 4,
++            world_step: 0,
++            applied_movement: None,
+         });
+         attach_hud(&mut first);
+         let mut b = Buffer::new(130, 2.).unwrap();
+diff --git a/crates/verse-world/src/service/view.rs b/crates/verse-world/src/service/view.rs
+index 6bc4414b83..0d79cad089 100644
+--- a/crates/verse-world/src/service/view.rs
++++ b/crates/verse-world/src/service/view.rs
+@@ -1084,6 +1084,8 @@ mod tests {
+             life,
+             epoch: 1,
+             accepted_sequence: 0,
++            world_step: 0,
++            applied_movement: None,
+         });
+         super::super::replica::tests::attach_hud(&mut snapshot);
+         let mut view = View::new(130, 10., 0).unwrap();
+@@ -1276,6 +1278,8 @@ mod tests {
+             life,
+             epoch: 1,
+             accepted_sequence: 0,
++            world_step: 0,
++            applied_movement: None,
+         });
+         super::super::replica::tests::attach_hud(&mut snapshot);
+         let mut view = View::new(130, 10., 0).unwrap();
+@@ -1384,6 +1388,8 @@ mod tests {
+             life,
+             epoch: 1,
+             accepted_sequence: 0,
++            world_step: 0,
++            applied_movement: None,
+         });
+         super::super::replica::tests::attach_hud(&mut snapshot);
+         let mut view = View::new(130, 10., 0).unwrap();
+diff --git a/crates/verse-world/src/service/wire.rs b/crates/verse-world/src/service/wire.rs
+index 48b0b88b0f..46b0fa08ac 100644
+--- a/crates/verse-world/src/service/wire.rs
++++ b/crates/verse-world/src/service/wire.rs
+@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
+ use super::auth::{Challenge, ConnectionId, Gateway};
+ use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
+ 
+-pub const VERSION: u16 = 26;
++pub const VERSION: u16 = 27;
+ pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
+ pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+ 
+@@ -381,6 +381,13 @@ pub struct Control {
+     pub epoch: u64,
+     /// Highest admitted envelope, including subsequent gameplay refusals.
+     pub accepted_sequence: u64,
++    /// Exact authority physics clock. Durable delivery can renew it from the
++    /// completed fence without changing the admission prefix or confirming travel.
++    pub world_step: u64,
++    /// Actual applied movement from a completed durable fence. Admission alone
++    /// never supplies this confirmation; it cannot exceed the envelope prefix.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub applied_movement: Option<crate::movement::Baseline>,
+ }
+ #[derive(Clone, Debug, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+@@ -570,6 +577,8 @@ impl Gateway {
+             life: a.actor().into(),
+             epoch: a.epoch(),
+             accepted_sequence: a.accepted_sequence(),
++            world_step: self.game().physics_steps,
++            applied_movement: None,
+         });
+         Response {
+             version: VERSION,
+@@ -839,6 +848,8 @@ impl Gateway {
+                     life: a.actor().into(),
+                     epoch: a.epoch(),
+                     accepted_sequence: a.accepted_sequence(),
++                    world_step: self.game().physics_steps,
++                    applied_movement: None,
+                 });
+                 let tick = self.game().authority_tick;
+                 let instance = self.game().player_life().instance;
+@@ -1590,6 +1601,8 @@ mod tests {
+             life,
+             epoch: 1,
+             accepted_sequence: 0,
++            world_step: 0,
++            applied_movement: None,
+         });
+         let inventory = Inventory {
+             life,
+diff --git a/crates/verse-world/src/service/worker.rs b/crates/verse-world/src/service/worker.rs
+index 27465e1496..94e9fecbc1 100644
+--- a/crates/verse-world/src/service/worker.rs
++++ b/crates/verse-world/src/service/worker.rs
+@@ -163,7 +163,12 @@ fn fresh_control(
+     let (life, epoch) = match input {
+         Input::TrackedCommand { life, epoch, .. } => (*life, *epoch),
+         Input::MovementFrame { frame, .. } => (frame.life, frame.epoch),
+-        Input::Command(Intent::Cast { .. }) => match control {
++        Input::Command(Intent::Cast { .. })
++        | Input::UseItem(_)
++        | Input::EquipGear(_, _)
++        | Input::EquipOutfit(_)
++        | Input::ClaimQuest(_)
++        | Input::AcceptQuest(_, _) => match control {
+             Some(c) => (c.life.into(), c.epoch),
+             None => return false,
+         },
+@@ -277,6 +282,7 @@ async fn run_impl(
+         let mut interval = tokio::time::interval(cadence);
+         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+         let mut next_inventory = tokio::time::Instant::now();
++        let mut next_events = tokio::time::Instant::now();
+         let mut inventory_life = None;
+         let mut last_token = 0;
+         let mut deferred = None;
+@@ -284,6 +290,7 @@ async fn run_impl(
+         let mut last_response = client.verified_at();
+         let mut snapshot_pending = false;
+         let mut last_snapshot_sent = None;
++        let mut snapshot_resume = tokio::time::Instant::now();
+         let mut events_pending = false;
+         let mut inventory_pending = false;
+         let mut refreshed = false;
+@@ -315,15 +322,23 @@ async fn run_impl(
+                         .await
+                         .map_err(|_| "Chamber update consumer closed")?;
+                 }
+-                let lifecycle = !matches!(
++                // Inventory and quest operations preserve control and stay ordered
++                // in the duplex stream. Only a control transition drains earlier IO.
++                let lifecycle = matches!(
+                     input,
+-                    Input::Command(_) | Input::TrackedCommand { .. } | Input::MovementFrame { .. }
+-                ) || matches!(
+-                    input,
+-                    Input::Command(Intent::Cast {
+-                        ability: Ability::MistyStep,
+-                        ..
+-                    })
++                    Input::Respawn
++                        | Input::BeginMovementFrames { .. }
++                        | Input::Command(Intent::Cast {
++                            ability: Ability::MistyStep,
++                            ..
++                        })
++                        | Input::TrackedCommand {
++                            intent: Intent::Cast {
++                                ability: Ability::MistyStep,
++                                ..
++                            },
++                            ..
++                        }
+                 );
+                 if lifecycle && client.pending() > 0 {
+                     staged = Some(input);
+@@ -453,8 +468,9 @@ async fn run_impl(
+                 }
+             }
+             // Schedule from the actual send time so quick replies cannot miss a phased polling tick.
+-            let snapshot_due =
+-                last_snapshot_sent.map_or_else(tokio::time::Instant::now, |sent| sent + cadence);
++            let snapshot_due = last_snapshot_sent
++                .map_or_else(tokio::time::Instant::now, |sent| sent + cadence)
++                .max(snapshot_resume);
+             tokio::select! {
+                 _ = tokio::time::sleep_until(snapshot_due), if !input_closed && !barrier
+                     && staged.is_none() && client.available() && !snapshot_pending
+@@ -485,6 +501,11 @@ async fn run_impl(
+                     let update = match body {
+                         Body::Snapshot {} | Body::Replicate {..} => {
+                             snapshot_pending = false;
++                            // A slow read yields one cadence to input before requesting another
++                            // projection. Fast routes retain their deadline from the send time.
++                            if client.last_turnaround().is_some_and(|elapsed| elapsed > cadence) {
++                                snapshot_resume = tokio::time::Instant::now() + cadence;
++                            }
+                             if read_backoff.observe(0, &response.body, tokio::time::Instant::now())? {
+                                 refreshed = false;
+                                 continue;
+@@ -537,9 +558,12 @@ async fn run_impl(
+                         last_snapshot_sent = Some(tokio::time::Instant::now());
+                         snapshot_pending = true;
+                     }
+-                    if client.available() && !events_pending && read_backoff.ready(1, tokio::time::Instant::now()) {
++                    // Event pages preserve every event and need fewer round trips than poses.
++                    if client.available() && !events_pending && tokio::time::Instant::now() >= next_events
++                        && read_backoff.ready(1, tokio::time::Instant::now()) {
+                         client.send(Body::Events { after: cursor.after(), limit: 64 })?;
+                         events_pending = true;
++                        next_events = tokio::time::Instant::now() + cadence.max(Duration::from_millis(200));
+                     }
+                     let life = client.control().map(|c| c.life);
+                     if client.available() && !inventory_pending && life.is_some()
+@@ -805,6 +829,8 @@ mod tests {
+             life: life.into(),
+             epoch: 3,
+             accepted_sequence: 1,
++            world_step: 0,
++            applied_movement: None,
+         };
+         assert!(!interval_control_changed(&frame, None));
+         assert!(!interval_control_changed(&frame, Some(&control)));
+@@ -993,7 +1019,39 @@ mod tests {
+         use tokio::net::TcpListener;
+         use tokio_rustls::TlsAcceptor;
+         let keys = [key(204), key(205), key(206)];
+-        let mut gateway = gateway(&keys);
++        let mut gateway = gateway(&keys)
++            .with_items(super::super::items::Catalog {
++                version: 1,
++                items: vec![super::super::items::Item {
++                    id: 1,
++                    name: "Pipeline recovery fixture".into(),
++                    health: 0,
++                    mana: 1,
++                }],
++            })
++            .unwrap();
++        gateway
++            .grant_reward(super::super::rewards::Transaction {
++                acceptance: None,
++                instance: 120,
++                actor: gateway.game().player_life().actor,
++                source: [204; 32],
++                experience: 0,
++                items: vec![super::super::rewards::Entry { id: 1, count: 1 }],
++                quests: vec![],
++                spent: vec![],
++                outfit: None,
++                equipment: None,
++            })
++            .unwrap();
++        let actor = gateway.game().player_life().actor;
++        let source = gateway.game().player_source(actor).unwrap();
++        gateway
++            .chamber
++            .game
++            .simulation
++            .spend_mana_for(source, 1)
++            .unwrap();
+         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+         let address = listener.local_addr().unwrap();
+         let (server_tls, connector) = tls();
+@@ -1012,7 +1070,8 @@ mod tests {
+                 .unwrap();
+             let mut commands = Vec::new();
+             let mut held = Vec::new();
+-            while commands.len() < 3 {
++            let mut actions = Vec::new();
++            while actions.len() < 4 {
+                 let bytes = timeout(
+                     Duration::from_secs(3),
+                     read_frame(&mut socket, MAX_REQUEST_BYTES),
+@@ -1021,10 +1080,26 @@ mod tests {
+                 .unwrap()
+                 .unwrap();
+                 let request = Request::decode(&bytes).unwrap();
+-                if let Body::Command { command } = request.body {
+-                    commands.push(command);
++                match request.body {
++                    Body::Command { command } => {
++                        actions.push("command");
++                        commands.push(command);
++                    }
++                    Body::UseItem { item, .. } => {
++                        assert_eq!(item, 1);
++                        actions.push("item");
++                    }
++                    _ => {}
+                 }
+                 let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
++                if actions.last() == Some(&"item") {
++                    let response =
++                        serde_json::from_slice::<super::super::wire::Response>(&response).unwrap();
++                    assert!(
++                        matches!(response.body, Reply::ItemUsed { .. }),
++                        "{response:?}"
++                    );
++                }
+                 if commands.is_empty() {
+                     write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                         .await
+@@ -1033,6 +1108,15 @@ mod tests {
+                     held.push(response);
+                 }
+             }
++            assert_eq!(actions, vec!["command", "command", "item", "command"]);
++            assert_eq!(
++                gateway
++                    .character_rewards(gateway.game().player_life().actor)
++                    .unwrap()
++                    .items
++                    .get(&1),
++                None
++            );
+             assert_eq!(
+                 commands.iter().map(|c| c.sequence).collect::<Vec<_>>(),
+                 vec![1, 2, 3]
+@@ -1081,6 +1165,9 @@ mod tests {
+         .into_iter()
+         .enumerate()
+         {
++            if index == 2 {
++                input.send(Input::UseItem(1)).await.unwrap();
++            }
+             input
+                 .send(Input::TrackedCommand {
+                     token: index as u64 + 1,
+@@ -1106,7 +1193,7 @@ mod tests {
+         let mut bound = 0;
+         let mut outcomes = 0;
+         timeout(Duration::from_secs(4), async {
+-            while outcomes < 3 {
++            while outcomes < 4 {
+                 match output.recv().await.unwrap() {
+                     Update::CommandBound { token, binding } => {
+                         bound += 1;
+@@ -1115,7 +1202,10 @@ mod tests {
+                     }
+                     Update::Outcome(response) => {
+                         assert_eq!(bound, 3);
+-                        assert!(matches!(response.body, Reply::Accepted));
++                        assert!(matches!(
++                            response.body,
++                            Reply::Accepted | Reply::ItemUsed { .. }
++                        ));
+                         outcomes += 1;
+                     }
+                     Update::MovementSuperseded { .. } => panic!("Movement crossed a jump barrier"),
+@@ -1161,6 +1251,8 @@ mod tests {
+             life: life.into(),
+             epoch: 1,
+             accepted_sequence: 0,
++            world_step: 0,
++            applied_movement: None,
+         };
+         assert!(fresh_control(&input, Some(&control), Some(Instant::now())));
+         assert!(!fresh_control(&input, Some(&control), None));
+@@ -1180,6 +1272,22 @@ mod tests {
+             Some(&control),
+             Some(Instant::now())
+         ));
++        for input in [
++            Input::UseItem(1),
++            Input::EquipGear(super::super::equipment::Slot::Head, 1),
++            Input::EquipOutfit(1),
++            Input::ClaimQuest(1),
++            Input::AcceptQuest(1, life),
++        ] {
++            assert!(fresh_control(&input, Some(&control), Some(Instant::now())));
++            assert!(!fresh_control(&input, None, Some(Instant::now())));
++            assert!(!fresh_control(&input, Some(&control), None));
++            assert!(!fresh_control(
++                &input,
++                Some(&control),
++                Some(Instant::now() - Duration::from_millis(75))
++            ));
++        }
+     }
+     #[test]
+     fn unsent_movement_coalesces_without_crossing_actions_or_control_fences() {
+@@ -1599,6 +1707,7 @@ mod tests {
+         let mut outcomes = 0;
+         let mut accepted = 0;
+         let mut snapshots = 0;
++        let mut event_pages = Vec::new();
+         timeout(Duration::from_secs(8), async {
+             while outcomes < 93 {
+                 match output
+@@ -1613,10 +1722,10 @@ mod tests {
+                             accepted += 1;
+                         }
+                     }
++                    Update::Events { .. } => event_pages.push(Instant::now()),
+                     Update::MovementSuperseded { .. }
+                     | Update::FrameBound { .. }
+                     | Update::CommandBound { .. }
+-                    | Update::Events { .. }
+                     | Update::Inventory(_) => {}
+                 }
+             }
+@@ -1627,6 +1736,12 @@ mod tests {
+         // Raw moves refresh control; casts can reuse a recent verified acknowledgment.
+         assert!(snapshots >= 90);
+         assert!(accepted >= 90);
++        assert!(event_pages.len() >= 10);
++        assert!(
++            event_pages
++                .windows(2)
++                .all(|pages| pages[1].duration_since(pages[0]) >= Duration::from_millis(180))
++        );
+         stop.send(()).unwrap();
+         assert!(worker.await.unwrap().is_ok());
+         drop(input);
+diff --git a/crates/verse-world/src/service/worker_delayed.rs b/crates/verse-world/src/service/worker_delayed.rs
+index de9a0aacea..f3072551b8 100644
+--- a/crates/verse-world/src/service/worker_delayed.rs
++++ b/crates/verse-world/src/service/worker_delayed.rs
+@@ -84,13 +84,15 @@ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
+     local.advance(0.).unwrap();
+     let (input, inputs, updates, mut output) = channels();
+     let (stop, stopping) = oneshot::channel();
+-    let mut task = tokio::spawn(run(
++    let observer = Observer::default();
++    let mut task = tokio::spawn(run_profiled(
+         client,
+         Cursor::new(120),
+         NATIVE_CADENCE,
+         inputs,
+         updates,
+         stopping,
++        observer.clone(),
+     ));
+     let started = Instant::now();
+     let mut last = started;
+@@ -190,6 +192,19 @@ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
+         serde_json::json!({"up_ms":67,"down_ms":100,"bound":bound,"accepted":accepted,"observations":corrections.len(),"p95_m":p95,"maximum_m":corrections.last().unwrap(),"mode_resets":0})
+     );
+     assert!(p95 < 0.1, "Actual delayed TLS correction p95: {p95}");
++    let reads: Vec<_> = observer
++        .drain()
++        .samples
++        .into_iter()
++        .filter(|sample| sample.accepted_snapshot)
++        .collect();
++    assert!(reads.len() > 10);
++    assert!(
++        reads.windows(2).all(|pair| {
++            pair[1].started_at.duration_since(pair[0].verified_at) >= Duration::from_millis(40)
++        }),
++        "Slow snapshot responses must yield request capacity before the next read"
++    );
+     let _ = stop.send(());
+     task.await.unwrap().unwrap();
+     proxy.abort();
+diff --git a/crates/verse/Cargo.toml b/crates/verse/Cargo.toml
+index cc4e7a9f44..06be7b70c7 100644
+--- a/crates/verse/Cargo.toml
++++ b/crates/verse/Cargo.toml
+@@ -237,3 +237,7 @@ required-features = ["imported-desktop", "remote-chamber"]
+ [[example]]
+ name = "frame_profile"
+ required-features = ["remote-chamber"]
++
++[[example]]
++name = "battle_scale"
++required-features = ["remote-chamber"]
+diff --git a/crates/verse/examples/verse_load.rs b/crates/verse/examples/verse_load.rs
+index eedf3861bc..76dfdb77d9 100644
+--- a/crates/verse/examples/verse_load.rs
++++ b/crates/verse/examples/verse_load.rs
+@@ -1,22 +1,7 @@
+ //! Bounded authenticated movement and combat load using the native replication worker.
+ use serde::Deserialize;
+-use std::{
+-    collections::{BTreeMap, BTreeSet, VecDeque},
+-    net::SocketAddr,
+-    path::PathBuf,
+-    sync::Arc,
+-    time::Duration,
+-};
+-use verse_world::{
+-    Intent,
+-    play::Ability,
+-    service::{
+-        client::Client,
+-        event_cursor::Cursor,
+-        wire::{Reply, State},
+-        worker::{self, Input, Update},
+-    },
+-};
++use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
++use verse_world::service::client::Client;
+ #[derive(Deserialize)]
+ #[serde(deny_unknown_fields)]
+ struct Config {
+@@ -53,189 +38,10 @@ fn bounded(path: &std::path::Path, limit: usize) -> Result<Vec<u8>, String> {
+     Ok(bytes)
+ }
+ 
+-fn sample(values: &mut Vec<f64>, value: f64) -> bool {
+-    if values.len() < 8192 {
+-        values.push(value);
+-        true
+-    } else {
+-        false
+-    }
+-}
+-fn summary(mut values: Vec<f64>) -> serde_json::Value {
+-    values.sort_by(f64::total_cmp);
+-    let p95 =
+-        (!values.is_empty()).then(|| values[((values.len() - 1) as f64 * 0.95).ceil() as usize]);
+-    serde_json::json!({"samples":values.len(),"p95":p95,"max":values.last()})
+-}
+-async fn player(
+-    client: Client,
+-    index: usize,
+-    end: tokio::time::Instant,
+-    movement_frames: bool,
+-) -> Result<serde_json::Value, String> {
+-    let instance = client.instance();
+-    let (send, inputs, updates, mut receive) = worker::channels();
+-    let (stop, stopped) = tokio::sync::oneshot::channel();
+-    let task = tokio::spawn(worker::run(
+-        client,
+-        Cursor::new(instance),
+-        worker::NATIVE_CADENCE,
+-        inputs,
+-        updates,
+-        stopped,
+-    ));
+-    let mut clock = tokio::time::interval(Duration::from_millis(33));
+-    clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+-    let mut state: Option<State> = None;
+-    let mut token = 0u64;
+-    let mut epoch = 0;
+-    let mut frame_cursor = None;
+-    let mut frame_entry = None;
+-    let mut observed_frame_snapshots = 0u64;
+-    let mut pending = VecDeque::new();
+-    let mut outstanding = BTreeSet::new();
+-    let mut latency = Vec::new();
+-    let mut omitted_latency = 0u64;
+-    let mut casts = BTreeMap::<String, u64>::new();
+-    let mut refused = 0;
+-    let mut refusal_trace = Vec::new();
+-    let mut snapshots = 0;
+-    let mut snapshot_bytes = 0u64;
+-    let mut movement = 0;
+-    let mut pressure = 0;
+-    let mut next_cast = tokio::time::Instant::now() + Duration::from_millis(index as u64 * 75);
+-    let mut slot = 0;
+-    let mut respawned = None;
+-    let mut min_hp = i32::MAX;
+-    let mut max_actors = 0;
+-    let mut max_players = 0;
+-    let mut max_live_hostiles = 0;
+-    let mut battle_samples = 0u64;
+-    let mut battle_live_total = 0u64;
+-    let mut battle_live_min = usize::MAX;
+-    let began = tokio::time::Instant::now();
+-    let result=async {
+-  loop {
+-   tokio::select! {
+-    _=tokio::time::sleep_until(end)=>break,
+-    _=clock.tick()=>{
+-     let Some(state)=state.as_ref() else {continue};
+-     let Some(hud)=state.hud.as_ref() else {return Err("Load principal has no player HUD".into())};
+-     min_hp=min_hp.min(hud.resources.hp);
+-     if hud.resources.hp<=0 {
+-      if respawned!=Some(hud.life) && send.try_send(Input::Respawn).is_ok() {respawned=Some(hud.life);}
+-      continue;
+-     }
+-     if state.presentation.time<20. {continue;}
+-     let seconds=began.elapsed().as_secs_f64();
+-     let phase=((seconds+index as f64*0.2).rem_euclid(8.)).floor() as u32;
+-     let axes=match phase {0=>[0.,1.],1=>[1.,0.],2=>[0.,-1.],3=>[-1.,0.],_=>[0.,0.]};
+-     let mut intent=Intent::Move {axes,yaw:std::f32::consts::PI};
+-     if tokio::time::Instant::now()>=next_cast && hud.casting.is_none() {
+-      let order=[Ability::Shield,Ability::Fireball,Ability::Web,Ability::Grease,Ability::Light,Ability::Thunderwave,Ability::MistyStep,Ability::Bow,Ability::FireBolt,Ability::MagicMissile];
+-      let ability=order[slot%order.len()];slot+=1;next_cast=tokio::time::Instant::now()+Duration::from_secs(2);
+-      if hud.slots.iter().any(|s|s.ability==ability && s.ready) {
+-       let owned=state.presentation.actors.iter().find(|p|verse_engine::core::LifeId::from(p.life)==hud.life).map(|p|p.actor.position).unwrap_or_default();
+-       let target=state.presentation.actors.iter().filter(|p|p.health>0 && p.visible && !p.actor.friendly && p.actor.nameplate && p.actor.model!="adventurer").min_by(|a,b|a.actor.position.distance_squared(owned).total_cmp(&b.actor.position.distance_squared(owned)));
+-       let aim=target.map(|p|{let mut direction=p.actor.position-owned;direction.y=0.;direction.normalize_or_zero().to_array()}).unwrap_or([0.,0.,1.]);
+-       intent=Intent::Cast {ability,target:target.map(|p|p.life.into()),aim};
+-      }
+-     }
+-     token=token.checked_add(1).ok_or("Load input identities exhausted")?;
+-     let moving=matches!(intent,Intent::Move {..});
+-     let input=if movement_frames && moving {
+-      let Some(baseline)=state.movement else {continue};
+-      let context=(baseline.life,baseline.epoch);
+-      if baseline.profile!=verse_world::movement::Profile::Frames {
+-       frame_cursor=None;
+-       if baseline.character.support.is_some() && baseline.held.axes(baseline.physics_step)==[0.;2] && frame_entry!=Some(context) && outstanding.is_empty() && pending.is_empty() {
+-        match send.try_send(Input::BeginMovementFrames {life:baseline.life,epoch:baseline.epoch}) {
+-         Ok(())=>{frame_entry=Some(context);pending.push_back((tokio::time::Instant::now(),None,Some(context),None));},
+-         Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>pressure+=1,
+-         Err(_)=>return Err("Load worker input closed".into()),
+-        }
+-       }
+-       continue;
+-      }
+-      let start=match frame_cursor {Some((life,old_epoch,start)) if (life,old_epoch)==context=>start,_=>baseline.physics_step};
+-      let limit=baseline.world_step.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
+-      let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::SEND_STEPS)) as u32;
+-      if steps<verse_world::movement::frames::SEND_STEPS {continue;}
+-      let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
+-       segments:vec![verse_world::movement::frames::Segment {offset:0,axes,yaw:std::f32::consts::PI,until:start+verse_world::movement::HELD_STEPS,jump:false}]};
+-      frame.validate_payload()?;
+-      Input::MovementFrame {token,frame}
+-     } else {Input::TrackedCommand {token,life:hud.life,epoch,intent}};
+-     let proposed_end=match &input {Input::MovementFrame {frame,..}=>Some((frame.life,frame.epoch,frame.end()?)),_=>None};
+-     match send.try_send(input) {
+-      Ok(())=>{outstanding.insert(token);if let Some(cursor)=proposed_end {frame_cursor=Some(cursor);} if moving {movement+=1;}},
+-      Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>pressure+=1,
+-      Err(_)=>return Err("Load worker input closed".into()),
+-     }
+-    }
+-    update=receive.recv()=>match update.ok_or("Load worker output closed")? {
+-     Update::Snapshot(response)=>{
+-      epoch=response.control.as_ref().ok_or("Load lost player control")?.epoch;
+-      snapshot_bytes+=serde_json::to_vec(&response).map_err(|_|"Cannot size load snapshot")?.len() as u64;
+-      let Reply::Snapshot {state:latest}=response.body else {return Err("Load snapshot refused".into())};
+-      if latest.movement.is_some_and(|b|b.profile==verse_world::movement::Profile::Frames) {observed_frame_snapshots+=1;}
+-      snapshots+=1;max_actors=max_actors.max(latest.presentation.actors.len());
+-      max_players=max_players.max(latest.presentation.actors.iter().filter(|p|p.actor.model=="adventurer").count());
+-      max_live_hostiles=max_live_hostiles.max(latest.presentation.actors.iter().filter(|p|p.health>0 && !p.actor.friendly && p.actor.model!="adventurer").count());
+-      if latest.presentation.time>=20. {
+-       let live=latest.presentation.actors.iter().filter(|p|p.health>0 && !p.actor.friendly && p.actor.model!="adventurer").count();
+-       battle_samples+=1;battle_live_total+=live as u64;battle_live_min=battle_live_min.min(live);
+-      }
+-      state=Some(latest);
+-     }
+-     Update::CommandBound {token,binding}=>match binding {
+-      Ok(command)=>{let ability=match command.intent {Intent::Cast {ability,..}=>Some(ability.label().to_string()),_=>None};pending.push_back((tokio::time::Instant::now(),ability,None,Some(token)));},
+-      Err(message)=>{outstanding.remove(&token);refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"command_binding","message":message}));}},
+-     },
+-     Update::FrameBound {token,binding}=>match binding {
+-      Ok(_)=>pending.push_back((tokio::time::Instant::now(),None,None,Some(token))),
+-      Err(message)=>{outstanding.remove(&token);refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"frame_binding","message":message}));}},
+-     },
+-     Update::Outcome(response)=>{
+-      if let Some((started,ability,entry,token))=pending.pop_front() {
+-       if let Some(token)=token {outstanding.remove(&token);}
+-       if entry.is_some() && frame_entry==entry && matches!(&response.body,Reply::Refused {..}) {frame_entry=None;}
+-       if !sample(&mut latency,started.elapsed().as_secs_f64()*1000.) {omitted_latency+=1;}
+-       match response.body {Reply::Accepted=>{if let Some(ability)=ability {*casts.entry(ability).or_default()+=1;}},Reply::Refused {message,code,..}=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"outcome","message":message,"code":code,"tick":response.tick,"control":response.control}));}},_=>{}}
+-      }
+-     }
+-     Update::MovementSuperseded {token,..}=>{outstanding.remove(&token);},
+-     Update::Events {..}|Update::Inventory(_)=>{},
+-    }
+-   }
+-  }
+-  Ok::<(),String>(())
+- }.await;
+-    let _ = stop.send(());
+-    let worker_result = task.await;
+-    let observation_error = result
+-        .as_ref()
+-        .err()
+-        .map(|e| e.chars().take(2048).collect::<String>());
+-    let worker_error = match &worker_result {
+-        Err(e) => Some(e.to_string()),
+-        Ok(Err(e)) => Some(e.clone()),
+-        Ok(Ok(())) => None,
+-    }
+-    .map(|e| e.chars().take(2048).collect::<String>());
+-    let failure_stage = if result.is_err() {
+-        Some("observation")
+-    } else {
+-        match worker_result {
+-            Err(_) => Some("worker_task"),
+-            Ok(Err(_)) => Some("worker_transport"),
+-            Ok(Ok(())) => None,
+-        }
+-    };
+-    Ok(
+-        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
+-    )
+-}
++#[path = "common/battle_player.rs"]
++mod battle_player;
++use battle_player::player;
++
+ async fn run(config: Config) -> Result<(), String> {
+     if !(1..=20).contains(&config.keys.len()) || !(1..=120).contains(&config.seconds) {
+         return Err("Load count or duration exceeds bounds".into());
+@@ -299,7 +105,7 @@ async fn run(config: Config) -> Result<(), String> {
+     let end = tokio::time::Instant::now() + Duration::from_secs(config.seconds as u64);
+     let mut tasks = tokio::task::JoinSet::new();
+     for (index, client) in clients.into_iter().enumerate() {
+-        tasks.spawn(player(client, index, end, config.movement_frames));
++        tasks.spawn(player(client, index, end, config.movement_frames, false));
+     }
+     let mut rows = Vec::new();
+     while let Some(result) = tasks.join_next().await {
+diff --git a/crates/verse/src/imported/chamber_session.rs b/crates/verse/src/imported/chamber_session.rs
+index b593df1da6..16ec81aab9 100644
+--- a/crates/verse/src/imported/chamber_session.rs
++++ b/crates/verse/src/imported/chamber_session.rs
+@@ -631,6 +631,18 @@ impl Session {
+                     }
+                 },
+                 Ok(Update::Outcome(r)) => {
++                    self.confirm_applied_movement(&r)?;
++                    if let Some(control) = r.control.as_ref().filter(|c| {
++                        self.prediction.context() == Some((c.life.into(), c.epoch))
++                            && self.prediction.movement_profile()
++                                == Some(verse_world::movement::Profile::Frames)
++                    }) {
++                        self.prediction.movement_credit(
++                            control.life.into(),
++                            control.epoch,
++                            control.world_step,
++                        )?;
++                    }
+                     if self.frame_entry_pending {
+                         self.frame_entry_pending = false;
+                         if matches!(r.body, Reply::Refused { .. }) {
+@@ -679,6 +691,38 @@ impl Session {
+         Ok(())
+     }
+ 
++    fn confirm_applied_movement(
++        &mut self,
++        r: &verse_world::service::wire::Response,
++    ) -> Result<(), String> {
++        let Some(baseline) = r.control.as_ref().and_then(|c| c.applied_movement) else {
++            return Ok(());
++        };
++        let before = self.prediction.pose();
++        let timing = self.notes.as_ref().map(|_| self.prediction.timing());
++        if !self
++            .prediction
++            .observe_applied(baseline, r.tick, r.request_id)?
++        {
++            return Ok(());
++        }
++        if self.notes.is_some() {
++            self.prediction.advance(0.)?;
++            if let (Some(before), Some(after)) = (before, self.prediction.pose()) {
++                let detail = serde_json::json!({"stage":"applied_movement_confirmation",
++                    "tick":r.tick,"request_id":r.request_id,"life":after.life,"epoch":after.epoch,
++                    "before":before.position,"after":after.position,"pending":self.prediction.pending(),
++                    "baseline":baseline,"timing_before":timing,"timing_after":self.prediction.timing()});
++                self.note(Note::Correction {
++                    distance: f64::from(before.position.distance(after.position)),
++                    discontinuity: false,
++                    detail,
++                });
++            }
++        }
++        Ok(())
++    }
++
+     fn snapshot(
+         &mut self,
+         scene: &Scene,
+@@ -703,9 +747,18 @@ impl Session {
+                 .find(|p| LifeId::from(p.life) == life)
+                 .and_then(|p| p.teleport_stamp)
+         });
+-        let movement = state.movement;
+-        let collision = state.collision.clone();
+         let controlled = self.controlled(scene);
++        // Body projection retains its admission prefix. Completed travel can be
++        // newer than that body; an older body must not undo a verified confirmation.
++        let movement = state
++            .movement
++            .into_iter()
++            .chain(r.control.as_ref().and_then(|c| c.applied_movement))
++            .chain(self.prediction.confirmed().filter(|b| {
++                controlled && teleport == self.owned_teleport && context == Some((b.life, b.epoch))
++            }))
++            .max_by_key(|b| (b.physics_step, b.applied_sequence));
++        let collision = state.collision.clone();
+         let reset_reason = if !controlled {
+             "unavailable_or_dead"
+         } else if context.map(|c| c.0) != self.prediction.context().map(|c| c.0) {
+diff --git a/crates/verse/src/imported/chamber_session_tests.rs b/crates/verse/src/imported/chamber_session_tests.rs
+index 092a703d1b..bb4fccee3e 100644
+--- a/crates/verse/src/imported/chamber_session_tests.rs
++++ b/crates/verse/src/imported/chamber_session_tests.rs
+@@ -482,19 +482,49 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments()
+         })
+         .unwrap();
+     session.consume(&scene).unwrap();
+-    let response = request(&mut gateway, connection, 302, Body::MovementFrame { frame });
++    let mut response = request(&mut gateway, connection, 302, Body::MovementFrame { frame });
+     assert!(matches!(
+         response.body,
+         verse_world::service::wire::Reply::Accepted
+     ));
++    // Capture an older body, then deliver movement only after it actually applies.
++    let older = request(&mut gateway, connection, 303, Body::Snapshot {});
++    gateway.tick(0.05).unwrap();
++    let applied = gateway.game().movement_baseline(life).unwrap().unwrap();
++    response.control.as_mut().unwrap().world_step = gateway.game().physics_steps;
++    response.control.as_mut().unwrap().applied_movement = Some(applied);
+     updates.try_send(Update::Outcome(response)).unwrap();
+     session.consume(&scene).unwrap();
+-    gateway.tick(0.05).unwrap();
++    session.prediction.advance(0.).unwrap();
++    assert_eq!(
++        session.prediction.confirmed().unwrap().applied_sequence,
++        applied.applied_sequence
++    );
++    assert_eq!(session.prediction.pending(), 0);
++    assert!(
++        session
++            .prediction
++            .pose()
++            .unwrap()
++            .position
++            .distance(gateway.game().actor_position(life.actor).unwrap())
++            < 0.0001
++    );
++    assert!(session.take_notes().iter().any(
++        |n| matches!(n, Note::Correction { detail, discontinuity:false, .. }
++        if detail["stage"] == "applied_movement_confirmation")
++    ));
++    updates.try_send(Update::Snapshot(older)).unwrap();
++    session.consume(&scene).unwrap();
++    assert_eq!(
++        session.prediction.confirmed().unwrap().applied_sequence,
++        applied.applied_sequence
++    );
+     updates
+         .try_send(Update::Snapshot(request(
+             &mut gateway,
+             connection,
+-            303,
++            304,
+             Body::Snapshot {},
+         )))
+         .unwrap();
+diff --git a/crates/verse/src/imported/character_panel.rs b/crates/verse/src/imported/character_panel.rs
+index f147534126..1b280998ee 100644
+--- a/crates/verse/src/imported/character_panel.rs
++++ b/crates/verse/src/imported/character_panel.rs
+@@ -1100,6 +1100,8 @@ mod tests {
+                     life: data.life,
+                     epoch: 1,
+                     accepted_sequence: 0,
++                    world_step: 0,
++                    applied_movement: None,
+                 }))
+                 .unwrap();
+             }
+diff --git a/scripts/bench/verse-delayed-route.py b/scripts/bench/verse-delayed-route.py
+index a33ad6d720..e96be960fa 100644
+--- a/scripts/bench/verse-delayed-route.py
++++ b/scripts/bench/verse-delayed-route.py
+@@ -9,12 +9,13 @@ import time
+ 
+ 
+ async def run(args):
+-    stats = {"schema": "verse.delayed-route.v1", "delay_ms": args.delay_ms,
++    stats = {"schema": "verse.delayed-route.v2", "delay_profile": args.delay_profile, "queued_chunks_per_direction": 8 if args.delay_profile == "pipeline" else 0, "queued_chunk_peak": 0, "delay_ms": args.delay_ms,
+              "jitter_ms": args.jitter_ms, "connections": 0,
+              "upstream_bytes": 0, "downstream_bytes": 0,
+              "forwarded_chunks": 0, "errors": 0, "refused_connections": 0,
+              "error_details": [], "omitted_error_details": 0,
+              "limits": ["Delay applies to each TCP read chunk, not decrypted game messages.",
++                        "Serial mode throttles successive reads; pipeline mode applies independent deadlines with eight queued chunks per direction.",
+                         "TCP preserves byte order; this fixture does not simulate packet loss."]}
+     stopped = asyncio.Event()
+     tasks = set()
+@@ -33,15 +34,46 @@ async def run(args):
+             stats["omitted_error_details"] += 1
+ 
+     async def copy(reader, writer, direction):
+-        count = 0
+-        while chunk := await reader.read(65536):
+-            jitter = (count % 3) * args.jitter_ms / 2
+-            await asyncio.sleep((args.delay_ms + jitter) / 1000)
+-            writer.write(chunk)
+-            await writer.drain()
+-            stats[direction + "_bytes"] += len(chunk)
+-            stats["forwarded_chunks"] += 1
+-            count += 1
++        if args.delay_profile == "serial":
++            count = 0
++            while chunk := await reader.read(65536):
++                jitter = (count % 3) * args.jitter_ms / 2
++                await asyncio.sleep((args.delay_ms + jitter) / 1000)
++                writer.write(chunk)
++                await writer.drain()
++                stats[direction + "_bytes"] += len(chunk)
++                stats["forwarded_chunks"] += 1
++                count += 1
++            return
++        queue = asyncio.Queue(maxsize=8)
++
++        async def read():
++            count = 0
++            while chunk := await reader.read(65536):
++                jitter = (count % 3) * args.jitter_ms / 2
++                due = time.monotonic() + (args.delay_ms + jitter) / 1000
++                await queue.put((due, chunk))
++                stats["queued_chunk_peak"] = max(stats["queued_chunk_peak"], queue.qsize())
++                count += 1
++            await queue.put(None)
++
++        async def write():
++            while (item := await queue.get()) is not None:
++                due, chunk = item
++                # Ordered delivery also holds a later chunk behind earlier jitter.
++                await asyncio.sleep(max(0, due - time.monotonic()))
++                writer.write(chunk)
++                await writer.drain()
++                stats[direction + "_bytes"] += len(chunk)
++                stats["forwarded_chunks"] += 1
++
++        pipes = [asyncio.create_task(read()), asyncio.create_task(write())]
++        try:
++            await asyncio.gather(*pipes)
++        finally:
++            for pipe in pipes:
++                pipe.cancel()
++            await asyncio.gather(*pipes, return_exceptions=True)
+ 
+     async def connect(reader, writer):
+         if len(tasks) >= args.connections:
+@@ -96,6 +128,7 @@ async def run(args):
+ 
+ if __name__ == "__main__":
+     parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--delay-profile", choices=["serial", "pipeline"], default="serial")
+     parser.add_argument("--connections", type=int, default=3)
+     parser.add_argument("--destination-port", type=int, required=True)
+     parser.add_argument("--listen-port", type=int, default=0)
+@@ -107,6 +140,6 @@ if __name__ == "__main__":
+     args = parser.parse_args()
+     if not (1 <= args.connections <= 32 and 1 <= args.destination_port <= 65535 and 0 <= args.listen_port <= 65535
+             and 0 <= args.delay_ms <= 250 and 0 <= args.jitter_ms <= 100
+-            and 1 <= args.seconds <= 300):
++            and 1 <= args.seconds <= 3660):
+         parser.error("Ports, delay, jitter, or duration exceed fixture bounds")
+     asyncio.run(run(args))
+diff --git a/crates/verse/examples/battle_scale.rs b/crates/verse/examples/battle_scale.rs
+new file mode 100644
+index 0000000000..e51b75ed51
+--- /dev/null
++++ b/crates/verse/examples/battle_scale.rs
+@@ -0,0 +1,686 @@
++//! Isolated original-world capacity checks with the actual authority and TLS worker.
++//! Usage: battle_scale authority|network|combined OUTPUT.json SECONDS
++#[path = "common/battle_acceptance.rs"]
++mod battle_acceptance;
++#[path = "common/battle_native_player.rs"]
++mod battle_native_player;
++#[path = "common/battle_player.rs"]
++mod battle_player;
++use glam::Vec3;
++use rustls::{
++    ClientConfig, RootCertStore, ServerConfig,
++    pki_types::{PrivatePkcs8KeyDer, ServerName},
++};
++use secp256k1::{Keypair, Secp256k1};
++use std::{
++    sync::Arc,
++    time::{Duration, Instant},
++};
++use verse::{
++    imported::{Renderer, chamber, original},
++    profiling::FrameProfile,
++};
++use verse_engine::{assets::Pack, director::Scene};
++use verse_world::{
++    Command, Intent,
++    play::{Ability, Game},
++    service::{
++        Chamber,
++        auth::Gateway,
++        client::Client,
++        net::{self, Phases, Timing},
++        persistence::Store,
++    },
++};
++const INSTANCE: u64 = 9300;
++const PLAYERS: usize = 20;
++const HOSTILES: usize = 40;
++const WARMUP: u64 = 120;
++
++fn timing(value: &Timing) -> serde_json::Value {
++    serde_json::json!({"count":value.count,"maximum_ms":value.maximum_seconds*1000.,
++        "p95_upper_bound_ms":value.percentile(0.95).map(|v|v*1000.),
++        "p99_upper_bound_ms":value.percentile(0.99).map(|v|v*1000.)})
++}
++fn phases(value: &Phases) -> serde_json::Value {
++    serde_json::json!({"startup":timing(&value.startup),"steady":timing(&value.steady)})
++}
++fn hostile_count(game: &Game) -> usize {
++    game.frame()
++        .actors
++        .iter()
++        .filter(|a| a.health > 0 && !a.actor.friendly && a.actor.model != "adventurer")
++        .count()
++}
++fn make_world(
++    pack: &Pack,
++    directory: &std::path::Path,
++) -> Result<(Scene, Gateway, Vec<Keypair>), String> {
++    let mut scene = Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json"))?;
++    let mut cultists: Vec<_> = scene
++        .actors
++        .iter()
++        .filter(|a| a.model == "cultist")
++        .cloned()
++        .collect();
++    while cultists.len() < HOSTILES - 1 {
++        let mut actor = cultists[0].clone();
++        actor.id = 200 + (cultists.len() - 12) as u64;
++        scene.actors.push(actor.clone());
++        cultists.push(actor);
++    }
++    for (index, source) in cultists.iter().enumerate() {
++        let actor = scene.actors.iter_mut().find(|a| a.id == source.id).unwrap();
++        actor.position = Vec3::new(
++            -4.5 + 3. * (index % 4) as f32,
++            0.,
++            -9. + 2. * (index / 4) as f32,
++        );
++        actor.health = 20000;
++    }
++    scene.validate()?;
++    let content = verse_content::remote_content::identity(pack, &scene, directory)?;
++    let mut game = Game::combat_authored_in(scene.clone(), false, INSTANCE)?;
++    verse_content::collision::admit_collision(pack, &mut game)?;
++    game.enable_query_profiling();
++    let mut gateway = Gateway::new(Chamber::new(game)?)?.with_content(content)?;
++    let mut keys = Vec::new();
++    let mut lives = Vec::new();
++    for index in 0..PLAYERS {
++        let key = Keypair::new(&Secp256k1::new(), &mut secp256k1::rand::rng());
++        let public = key.x_only_public_key().0.serialize();
++        let life = if index == 0 {
++            gateway.enroll_primary(public)?;
++            gateway.game().player_life()
++        } else {
++            let position = if index == PLAYERS - 1 {
++                // Keep one participant exposed to hostile pursuit so the workload
++                // exercises an actual defeat and the normal respawn request.
++                Vec3::new(-6., 0., -8.)
++            } else {
++                Vec3::new(
++                    -6. + 3. * ((index - 1) % 5) as f32,
++                    0.,
++                    -21. + 2. * ((index - 1) / 5) as f32,
++                )
++            };
++            gateway.enroll_player(public, position)?
++        };
++        lives.push(life);
++        keys.push(key);
++    }
++    use verse_world::service::{
++        equipment, items, progression,
++        rewards::{Entry, Transaction},
++    };
++    gateway = gateway
++        .with_equipment(equipment::Catalog {
++            version: 1,
++            gear: vec![equipment::Gear {
++                id: 501,
++                name: "Capacity fixture hat".into(),
++                slot: equipment::Slot::Head,
++                model: "gear-hat".into(),
++                offset: [0, 0, 230],
++                health: 100,
++                mana: 20,
++            }],
++        })?
++        .with_items(items::Catalog {
++            version: 1,
++            items: vec![items::Item {
++                id: 502,
++                name: "Capacity fixture recovery".into(),
++                health: 100,
++                mana: 20,
++            }],
++        })?
++        .with_progression(progression::Config {
++            version: 1,
++            levels: vec![0, 100, 1000],
++            quests: vec![progression::Quest {
++                dialogue: None,
++                giver: None,
++                prerequisites: vec![],
++                id: 1,
++                name: "Capacity fixture objective".into(),
++                objective: 1,
++                goal: 1,
++                experience: 100,
++                items: vec![],
++            }],
++        })?;
++    for (index, life) in lives.iter().enumerate() {
++        let mut source = [0; 32];
++        source[..8].copy_from_slice(b"VBENCH01");
++        source[8..16].copy_from_slice(&(index as u64 + 1).to_be_bytes());
++        gateway.grant_reward(Transaction {
++            acceptance: None,
++            instance: INSTANCE,
++            actor: life.actor,
++            source,
++            experience: 1,
++            items: vec![
++                Entry { id: 501, count: 1 },
++                Entry {
++                    id: 502,
++                    count: 1000,
++                },
++            ],
++            quests: vec![Entry { id: 1, count: 1 }],
++            spent: vec![],
++            outfit: None,
++            equipment: None,
++        })?;
++    }
++    verse_content::remote_content::admit(
++        pack,
++        &scene,
++        directory,
++        gateway.outfits(),
++        gateway.equipment(),
++    )?;
++    Ok((scene, gateway, keys))
++}
++struct Process(std::process::Child);
++impl Drop for Process {
++    fn drop(&mut self) {
++        let _ = self.0.kill();
++        let _ = self.0.wait();
++    }
++}
++fn rss_bytes() -> Option<u64> {
++    let text = std::fs::read_to_string("/proc/self/status").ok()?;
++    text.lines()
++        .find_map(|line| {
++            line.strip_prefix("VmRSS:")
++                .and_then(|s| s.split_whitespace().next()?.parse::<u64>().ok())
++        })
++        .map(|kb| kb * 1024)
++}
++async fn connect(
++    address: std::net::SocketAddr,
++    tls: Arc<ClientConfig>,
++    content: [u8; 32],
++    key: &Keypair,
++) -> Result<Client, String> {
++    let deadline = Instant::now() + Duration::from_secs(10);
++    loop {
++        match Client::connect_with_content(
++            address,
++            ServerName::try_from("localhost").unwrap(),
++            tls.clone(),
++            INSTANCE,
++            Some(content),
++            key,
++        )
++        .await
++        {
++            Ok(client) => return Ok(client),
++            Err(error)
++                if error.starts_with("Chamber storage is busy") && Instant::now() < deadline =>
++            {
++                tokio::time::sleep(Duration::from_millis(50)).await
++            }
++            Err(error) => return Err(error),
++        }
++    }
++}
++async fn run(mode: &str, seconds: u32, report: &mut serde_json::Value) -> Result<(), String> {
++    let assets = tempfile::tempdir().map_err(|e| e.to_string())?;
++    let state = tempfile::tempdir().map_err(|e| e.to_string())?;
++    let pack = original::generate(assets.path())?;
++    let (scene, mut gateway, keys) = make_world(&pack, assets.path())?;
++    let content = gateway.content().ok_or("Missing fixture content")?;
++    report["content"] = serde_json::json!(content);
++    report["phase"] = serde_json::json!("authority_setup");
++    if mode == "authority" {
++        let mut connections = Vec::new();
++        for key in &keys {
++            let public = key.x_only_public_key().0.serialize();
++            let (id, challenge) = gateway.open(0)?;
++            gateway.authenticate(
++                id,
++                0,
++                public,
++                Secp256k1::new()
++                    .sign_schnorr_no_aux_rand(&challenge.signing_digest(public), key)
++                    .to_byte_array(),
++            )?;
++            connections.push(id);
++        }
++        let mut profile = FrameProfile::new(WARMUP);
++        let mut min_hostiles = HOSTILES;
++        let mut accepted = 0u64;
++        let mut refused = 0u64;
++        let mut completed_ticks = 0u64;
++        let mut battle_moves = vec![0u64; PLAYERS];
++        let mut respawns = 0u64;
++        let mut respawn_refusals = 0u64;
++        let mut next_respawn = vec![0u64; PLAYERS];
++        let workload = (|| {
++            for tick in 1..=u64::from(seconds) * 30 {
++                let started = Instant::now();
++                for (index, id) in connections.iter().enumerate() {
++                    let mut admission = gateway.admission(*id)?;
++                    if gateway.game().player_snapshot(admission.actor())?.player.hp == 0 {
++                        if tick < next_respawn[index] {
++                            continue;
++                        }
++                        let request = verse_world::service::wire::Request {
++                            version: verse_world::service::wire::VERSION,
++                            request_id: tick * PLAYERS as u64 + index as u64 + 1,
++                            body: verse_world::service::wire::Body::Respawn {
++                                life: admission.actor().into(),
++                            },
++                        };
++                        let bytes = serde_json::to_vec(&request).map_err(|e| e.to_string())?;
++                        let response: verse_world::service::wire::Response =
++                            serde_json::from_slice(&gateway.dispatch_json(
++                                *id,
++                                tick * 1000 / 30,
++                                &bytes,
++                            )?)
++                            .map_err(|e| e.to_string())?;
++                        match response.body {
++                            verse_world::service::wire::Reply::Accepted => respawns += 1,
++                            verse_world::service::wire::Reply::Refused { code, message }
++                                if code == "command"
++                                    && matches!(
++                                        message.as_str(),
++                                        "Character teleport endpoint is obstructed"
++                                            | "Teleport destination is occupied"
++                                    ) =>
++                            {
++                                respawn_refusals += 1;
++                                next_respawn[index] = tick + 30;
++                                continue;
++                            }
++                            verse_world::service::wire::Reply::Refused { message, .. } => {
++                                return Err(message);
++                            }
++                            _ => return Err("Unexpected authority respawn outcome".into()),
++                        }
++                        admission = gateway.admission(*id)?;
++                    }
++                    let intent = if tick % 60 == index as u64 % 60 {
++                        Intent::Cast {
++                            ability: Ability::Shield,
++                            target: None,
++                            aim: [0., 0., 1.],
++                        }
++                    } else {
++                        Intent::Move {
++                            axes: [
++                                if (tick / 120 + index as u64) % 2 == 0 {
++                                    0.25
++                                } else {
++                                    -0.25
++                                },
++                                0.,
++                            ],
++                            yaw: std::f32::consts::PI,
++                        }
++                    };
++                    let moving = matches!(intent, Intent::Move { .. });
++                    let command = Command {
++                        actor: admission.actor(),
++                        epoch: admission.epoch(),
++                        sequence: admission.accepted_sequence() + 1,
++                        tick: gateway.game().authority_tick,
++                        intent,
++                    };
++                    match gateway.submit(*id, command) {
++                        Ok(()) => {
++                            accepted += 1;
++                            if moving && gateway.game().time >= 20. {
++                                battle_moves[index] += 1;
++                            }
++                        }
++                        Err(_) => refused += 1,
++                    };
++                }
++                profile.record(
++                    tick,
++                    "command_dispatch_cpu_ms",
++                    started.elapsed().as_secs_f64() * 1000.,
++                );
++                let started = Instant::now();
++                gateway.tick(1. / 30.)?;
++                profile.record(
++                    tick,
++                    "simulation_cpu_ms",
++                    started.elapsed().as_secs_f64() * 1000.,
++                );
++                completed_ticks += 1;
++                min_hostiles = min_hostiles.min(hostile_count(gateway.game()));
++            }
++            Ok::<_, String>(())
++        })();
++        report["authority"] = serde_json::json!({"ticks":completed_ticks,"accepted_battle_movement_per_player":battle_moves,"respawns":respawns,"respawn_refusals":respawn_refusals,"accepted_inputs":accepted,"refused_inputs":refused,"minimum_live_hostiles":min_hostiles,"measurements":profile.summary(),"query_profile":gateway.game().query_profile(),"motor_recovery":gateway.game().motor_recovery.blocks});
++        return workload;
++    }
++    let content = gateway.content().unwrap();
++    let certificate =
++        rcgen::generate_simple_self_signed(vec!["localhost".into()]).map_err(|e| e.to_string())?;
++    let der = certificate.cert.der().clone();
++    let private = PrivatePkcs8KeyDer::from(certificate.signing_key.serialize_der());
++    let provider = Arc::new(rustls::crypto::ring::default_provider());
++    let tls = ServerConfig::builder_with_provider(provider.clone())
++        .with_safe_default_protocol_versions()
++        .map_err(|e| e.to_string())?
++        .with_no_client_auth()
++        .with_single_cert(vec![der.clone()], private.into())
++        .map_err(|e| e.to_string())?;
++    let mut roots = RootCertStore::empty();
++    roots.add(der).map_err(|e| e.to_string())?;
++    let client_tls = Arc::new(
++        ClientConfig::builder_with_provider(provider)
++            .with_safe_default_protocol_versions()
++            .map_err(|e| e.to_string())?
++            .with_root_certificates(roots)
++            .with_no_client_auth(),
++    );
++    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
++        .await
++        .map_err(|e| e.to_string())?;
++    let destination = listener.local_addr().map_err(|e| e.to_string())?;
++    let proxy_ready = state.path().join("proxy-ready.json");
++    let proxy_receipt = state.path().join("proxy-receipt.json");
++    let proxy_start = Instant::now();
++    let mut proxy = Process(
++        std::process::Command::new("python3")
++            .arg(concat!(
++                env!("CARGO_MANIFEST_DIR"),
++                "/../../scripts/bench/verse-delayed-route.py"
++            ))
++            .args([
++                "--destination-port",
++                &destination.port().to_string(),
++                "--connections",
++                "32",
++                "--delay-profile",
++                "pipeline",
++                "--delay-ms",
++                "40",
++                "--jitter-ms",
++                "20",
++                "--seconds",
++                &(seconds + 30).to_string(),
++            ])
++            .arg("--ready")
++            .arg(&proxy_ready)
++            .arg("--receipt")
++            .arg(&proxy_receipt)
++            .stdout(std::process::Stdio::null())
++            .stderr(std::process::Stdio::null())
++            .spawn()
++            .map_err(|e| e.to_string())?,
++    );
++    while !proxy_ready.is_file() {
++        if proxy.0.try_wait().map_err(|e| e.to_string())?.is_some()
++            || proxy_start.elapsed() > Duration::from_secs(5)
++        {
++            return Err("Scratch delayed route did not start".into());
++        }
++        tokio::time::sleep(Duration::from_millis(10)).await;
++    }
++    let route: serde_json::Value =
++        serde_json::from_slice(&std::fs::read(&proxy_ready).map_err(|e| e.to_string())?)
++            .map_err(|e| e.to_string())?;
++    let address: std::net::SocketAddr = route["address"]
++        .as_str()
++        .ok_or("Missing delayed route address")?
++        .parse()
++        .map_err(|_| "Invalid delayed route address")?;
++    let mut store = Store::open(&state.path().join("world"), content, INSTANCE)?;
++    // Initial storage preparation also attaches the bounded history before clients start.
++    store.commit(&mut gateway)?;
++    let (stop, stopping) = tokio::sync::oneshot::channel();
++    let workload_window = Arc::new(std::sync::Mutex::new(None::<(Instant, Instant)>));
++    let workload_ticks = Arc::new(std::sync::atomic::AtomicU64::new(0));
++    let tick_window = workload_window.clone();
++    let tick_count = workload_ticks.clone();
++    let tick: net::Tick = Box::new(move |_, _| {
++        let now = Instant::now();
++        if tick_window
++            .lock()
++            .unwrap()
++            .is_some_and(|(start, end)| now >= start && now < end)
++        {
++            tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        }
++    });
++    let server = tokio::spawn(net::serve_ticked(
++        listener,
++        Arc::new(tls),
++        gateway,
++        Some(store),
++        tick,
++        async {
++            let _ = stopping.await;
++        },
++    ));
++    let (tap, mut snapshots) = tokio::sync::mpsc::channel::<battle_native_player::Tap>(1);
++    let mut renderer = if mode == "combined" {
++        Some(Renderer::new(
++            pack.clone(),
++            assets.path(),
++            1280,
++            720,
++            &original::atlas()?,
++            &chamber::static_instances(&pack, scene.origin.into()),
++        )?)
++    } else {
++        None
++    };
++    let mut native_frame = None;
++    let mut projection_ms = 0.;
++    let mut profile = FrameProfile::new(WARMUP);
++    let start_offset = proxy_start.elapsed().as_secs_f64();
++    let began = tokio::time::Instant::now();
++    let end = began + Duration::from_secs(u64::from(seconds));
++    *workload_window.lock().unwrap() = Some((began.into_std(), end.into_std()));
++    let mut tasks = Vec::new();
++    for (index, key) in keys.into_iter().enumerate() {
++        let tls = client_tls.clone();
++        let scene = scene.clone();
++        let pack = pack.clone();
++        let tap = if index == 0 { Some(tap.clone()) } else { None };
++        tasks.push(tokio::spawn(async move {
++            let mut segments = Vec::new();
++            let midpoint = began + Duration::from_secs(u64::from(seconds) / 2);
++            let mut error = None;
++            for deadline in [midpoint, end] {
++                tokio::time::sleep(Duration::from_millis(index as u64 * 125)).await;
++                let client = match connect(address, tls.clone(), content, &key).await {Ok(client)=>client,Err(message)=>{error=Some(message);break;}};
++                let segment = if index==0 {
++                    battle_native_player::player(client,index,deadline,scene.clone(),pack.clone(),tap.clone()).await?
++                } else {
++                    battle_player::player(client,index,deadline,true,true).await?
++                };
++                segments.push(segment);
++            }
++            Ok::<_, String>(serde_json::json!({"player":index,"status":if error.is_none(){"complete"}else{"failed"},"error":error,"connections":segments.len(),"segments":segments}))
++        }));
++    }
++    drop(tap);
++    let mut frame = 0u64;
++    let mut verified = None;
++    let mut rss = Vec::new();
++    let mut window = FrameProfile::new(0);
++    let mut windows = Vec::new();
++    let mut window_frames = 0u64;
++    report["phase"] = serde_json::json!("mixed_workload");
++    let workload=async {
++        let mut clock=tokio::time::interval(Duration::from_secs_f64(1./60.));clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
++        while tokio::time::Instant::now()<end {
++            clock.tick().await;frame+=1;window_frames+=1;
++            if window_frames>1800 {windows.push(serde_json::json!({"end_seconds":began.elapsed().as_secs_f64(),"measurements":window.summary()}));window=FrameProfile::new(0);window_frames=1;}
++            while let Ok(snapshot)=snapshots.try_recv() {native_frame=Some(snapshot.frame);projection_ms=snapshot.projection_ms;verified=Some(snapshot.applied_at);}
++            if frame%300==0 {rss.push(serde_json::json!({"seconds":began.elapsed().as_secs_f64(),"bytes":rss_bytes()}));}
++            if let Some(at)=verified {let age=at.elapsed().as_secs_f64()*1000.;profile.record(frame,"applied_snapshot_age_ms",age);window.record(frame,"applied_snapshot_age_ms",age);}
++            if let Some(renderer)=renderer.as_mut() {
++                if let Some(scene)=native_frame.as_ref() {
++                    renderer.draw_live(scene.view,&scene.instances,&scene.ui,&scene.lighting)?;
++                    let timings=renderer.last_timings;
++                    let roots=scene.instances.iter().filter(|i|i.actor.is_some()).count();
++                    let mounts=scene.instances.iter().filter(|i|i.mount.is_some()).count();
++                    if timings.actor_roots!=roots || timings.mounts!=mounts {
++                        return Err("Required replicated visual was omitted".into());
++                    }
++                    for (name,value) in [("frame_cpu_ms",timings.total_ms+projection_ms),("draw_cpu_ms",timings.total_ms),("command_finish_cpu_ms",timings.command_finish_ms),("actor_roots",timings.actor_roots as f64),("mounts",timings.mounts as f64),("managed_geometry_bytes",renderer.resources.geometry_bytes as f64)] {profile.record(timings.frame,name,value);window.record(timings.frame,name,value);}
++                    for sample in timings.gpu_samples.into_iter().flatten() {profile.record(sample.frame,"gpu_scene_ms",sample.total_ms);window.record(sample.frame,"gpu_scene_ms",sample.total_ms);}
++                }
++            }
++        }
++        Ok::<_,String>(())
++    }.await;
++    if window_frames > 0 {
++        windows.push(serde_json::json!({"end_seconds":began.elapsed().as_secs_f64(),"measurements":window.summary()}));
++    }
++    report["render"] = serde_json::json!({"frames":frame,"rss":rss,"windows":windows,"measurements":profile.summary(),"failure":workload.as_ref().err()});
++    if let Some(renderer) = renderer {
++        report["device"] = serde_json::json!(renderer.device_profile);
++        report["resources"] = serde_json::json!(renderer.resources);
++        report["gpu_health"] = serde_json::json!(renderer.last_timings.gpu_health);
++    }
++    let mut players = Vec::new();
++    for task in tasks {
++        players.push(match task.await {
++            Ok(Ok(record)) => record,
++            Ok(Err(error)) => serde_json::json!({"status":"failed","error":error}),
++            Err(error) => serde_json::json!({"status":"failed","error":error.to_string()}),
++        });
++    }
++    report["players"] = serde_json::json!(players);
++    let _ = stop.send(());
++    let exit = server.await.map_err(|e| e.to_string())?;
++    report["server"] = serde_json::json!({"failure":exit.failure,"ticks":exit.stats.ticks,"workload_ticks":workload_ticks.load(std::sync::atomic::Ordering::Relaxed),"dropped_seconds":exit.stats.dropped_seconds,"simulation":phases(&exit.stats.simulation_phases),"admission":exit.stats.admission,"movement_expiry":exit.gateway.game().movement_expiry,"capture":phases(&exit.stats.capture_phases),"commits":phases(&exit.stats.commit_phases),"commit_preparation":timing(&exit.stats.commit_preparation),"history_sync":timing(&exit.stats.history_sync),"journal_encoding":timing(&exit.stats.journal_encoding),"journal_write":timing(&exit.stats.journal_write),"journal_sync":timing(&exit.stats.journal_sync),"snapshot_compaction":timing(&exit.stats.snapshot_compaction),"checkpoint_copy":timing(&exit.stats.checkpoint_copy),"read_projection":timing(&exit.stats.read_projection),"checkpoint_bytes":exit.stats.checkpoint_bytes,"checkpoint_commits":exit.stats.checkpoint_commits,"writer_queue_peak":exit.stats.writer_queue_peak,"request_queue_peak":exit.stats.request_queue_peak,"held_reply_bytes_peak":exit.stats.held_reply_bytes_peak,"storage_refusals":exit.stats.storage_refusals,"storage_paused_seconds":exit.stats.storage_paused_seconds,"requests":exit.stats.requests,"replication":exit.stats.replication,"motor_recovery_blocks":exit.gateway.game().motor_recovery.blocks,"motor_recovery_diagnostic":exit.gateway.game().motor_recovery.last_diagnostic,"minimum_final_live_hostiles":hostile_count(exit.gateway.game()),"navigation_plans":exit.gateway.game().navigation_plans,"navigation_budget_refusals":exit.gateway.game().navigation_budget_refusals,"navigation_work":exit.gateway.game().navigation_work(),"query_profile":exit.gateway.game().query_profile()});
++    report["phase"] = serde_json::json!("durable_recovery");
++    if !std::process::Command::new("kill")
++        .args(["-TERM", &proxy.0.id().to_string()])
++        .status()
++        .map_err(|e| e.to_string())?
++        .success()
++    {
++        return Err("Could not stop scratch delayed route".into());
++    }
++    let deadline = Instant::now() + Duration::from_secs(5);
++    while proxy.0.try_wait().map_err(|e| e.to_string())?.is_none() {
++        if Instant::now() > deadline {
++            return Err("Scratch delayed route did not stop".into());
++        }
++        tokio::time::sleep(Duration::from_millis(10)).await;
++    }
++    report["route"] =
++        serde_json::from_slice(&std::fs::read(&proxy_receipt).map_err(|e| e.to_string())?)
++            .map_err(|e| e.to_string())?;
++    report["disconnect_windows_seconds"] = serde_json::json!([
++        start_offset + f64::from(seconds) / 2.,
++        start_offset + f64::from(seconds)
++    ]);
++    let checkpoint = exit.gateway.checkpoint()?;
++    let recovered = Store::open(&state.path().join("world"), content, INSTANCE)?
++        .recover()
++        .ok_or("Missing final durable recovery")?;
++    let saved: serde_json::Value =
++        serde_json::from_slice(&checkpoint).map_err(|e| e.to_string())?;
++    let mut characters = 0usize;
++    for actor in exit
++        .gateway
++        .game()
++        .frame()
++        .actors
++        .iter()
++        .filter(|a| a.actor.model == "adventurer")
++    {
++        let life = actor.life.ok_or("Player has no durable life")?;
++        if exit.gateway.character_rewards(life.actor) != recovered.character_rewards(life.actor) {
++            return Err("Durable recovery changed owned character rewards".into());
++        }
++        characters += 1;
++    }
++    report["recovery"] = serde_json::json!({"characters_checked":characters,"active_receipts":saved["ledger"]["receipts"].as_array().map(|r|r.len()),"ledger_revision":saved["ledger"]["revision"],"retained_events":exit.gateway.game().events.len(),"checkpoint_bytes":checkpoint.len(),"restored_checkpoint_bytes":recovered.checkpoint()?.len(),"live_hostiles":hostile_count(recovered.game()),"actor_count":recovered.game().frame().actors.len()});
++    workload?;
++    if let Some(error) = exit.failure {
++        return Err(error);
++    }
++    Ok(())
++}
++fn executable_digest() -> Result<String, String> {
++    use sha2::{Digest, Sha256};
++    use std::io::Read;
++    let mut file = std::fs::File::open(std::env::current_exe().map_err(|e| e.to_string())?)
++        .map_err(|e| e.to_string())?;
++    let mut buffer = [0; 65536];
++    let mut digest = Sha256::new();
++    loop {
++        let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
++        if count == 0 {
++            break;
++        }
++        digest.update(&buffer[..count]);
++    }
++    Ok(format!("{:x}", digest.finalize()))
++}
++fn main() -> Result<(), String> {
++    let args: Vec<_> = std::env::args().skip(1).collect();
++    if args.len() != 3 {
++        return Err("Expected MODE OUTPUT.json SECONDS".into());
++    }
++    let seconds: u32 = args[2].parse().map_err(|_| "Invalid duration")?;
++    if !matches!(args[0].as_str(), "authority" | "network" | "combined")
++        || !(10..=3600).contains(&seconds)
++    {
++        return Err("Invalid capacity mode or duration".into());
++    }
++    let mut report = serde_json::json!({"schema":"verse.battle.capacity.v1","mode":args[0],"seconds":seconds,"players":PLAYERS,"native_sessions":1,"headless_workers":19,"hostile_npcs":HOSTILES,"cultist_health":20000,"frontline_player":19,"frontline_initial_position":[-6.,0.,-8.],"delay_profile":"pipeline","delay_ms_per_chunk":40,"jitter_ms_per_chunk":20,"wire_version":verse_world::service::wire::VERSION,"debug_assertions":cfg!(debug_assertions),"status":"running","budgets":{"simulation_p99_upper_bound_ms":1000./30.,"render_cpu_p95_ms":1000./60.,"render_gpu_p95_ms":1000./60.,"snapshot_age_p95_ms":400.,"minimum_live_hostiles":HOSTILES,"minimum_authority_tick_fraction":0.98,"battle_framed_snapshot_fraction":0.8,"prediction_correction_p95_meters":0.25,"prediction_correction_maximum_meters":1.,"checkpoint_bytes":1048576,"request_queue_peak":128,"writer_queue_peak":2,"held_reply_bytes_peak":33554432,"steady_rss_growth_bytes":67108864},"limits":["Scratch authority and clients share this process and machine.","Offscreen rendering has no display surface, capture, or physical input-to-display measurement.","Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.","GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."]});
++    use sha2::{Digest, Sha256};
++    report["implementation"] = serde_json::json!({
++        "base_revision":option_env!("VERSE_BENCH_SOURCE_REVISION").unwrap_or("unrecorded"),
++        "executable_sha256":executable_digest()?,
++        "harness_sha256":format!("{:x}",Sha256::digest(include_bytes!("battle_scale.rs"))),
++        "native_driver_sha256":format!("{:x}",Sha256::digest(include_bytes!("common/battle_native_player.rs"))),
++        "headless_driver_sha256":format!("{:x}",Sha256::digest(include_bytes!("common/battle_player.rs"))),
++        "acceptance_sha256":format!("{:x}",Sha256::digest(include_bytes!("common/battle_acceptance.rs"))),
++        "world_net_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/service/net.rs"))),
++        "worker_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/service/worker.rs"))),
++        "wire_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/service/wire.rs"))),
++        "prediction_local_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/prediction/local.rs"))),
++        "prediction_frames_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/prediction/local_frames.rs"))),
++        "authority_movement_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/play/framed_movement.rs"))),
++        "authority_clock_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/movement/frames.rs"))),
++        "authority_game_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/play.rs"))),
++        "persistence_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/service/persistence.rs"))),
++        "native_session_sha256":format!("{:x}",Sha256::digest(include_bytes!("../src/imported/chamber_session.rs"))),
++        "cargo_lock_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../../Cargo.lock"))),
++        "delayed_route_sha256":format!("{:x}",Sha256::digest(std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"),"/../../scripts/bench/verse-delayed-route.py")).map_err(|e|e.to_string())?))
++    });
++    report["machine"] = serde_json::json!({"architecture":std::env::consts::ARCH,"os":std::env::consts::OS,"cpu":std::fs::read_to_string("/proc/cpuinfo").ok().and_then(|text|text.lines().find_map(|line|line.strip_prefix("model name").and_then(|s|s.split_once(':').map(|(_,s)|s.trim().to_string())))),"load_average_at_start":std::fs::read_to_string("/proc/loadavg").ok().map(|s|s.split_whitespace().take(3).collect::<Vec<_>>().join(" "))});
++    let runtime = tokio::runtime::Builder::new_multi_thread()
++        .worker_threads(4)
++        .enable_all()
++        .build()
++        .map_err(|e| e.to_string())?;
++    let result = runtime.block_on(run(&args[0], seconds, &mut report));
++    report["status"] = serde_json::json!(if result.is_ok() { "complete" } else { "failed" });
++    report["error"] = serde_json::json!(result.as_ref().err());
++    let failures = battle_acceptance::failures(&report);
++    report["acceptance"] = serde_json::json!(if failures.is_empty() {
++        "passed"
++    } else {
++        "failed"
++    });
++    report["acceptance_failures"] = serde_json::json!(failures);
++    std::fs::write(
++        &args[1],
++        serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
++    )
++    .map_err(|e| e.to_string())?;
++    result?;
++    if !failures.is_empty() {
++        return Err("Capacity budgets failed; the report retains observations".into());
++    }
++    Ok(())
++}
+diff --git a/crates/verse/examples/common/battle_acceptance.rs b/crates/verse/examples/common/battle_acceptance.rs
+new file mode 100644
+index 0000000000..933fa81238
+--- /dev/null
++++ b/crates/verse/examples/common/battle_acceptance.rs
+@@ -0,0 +1,314 @@
++//! Capacity verdicts require observed workloads and declared budgets.
++use serde_json::Value;
++
++pub fn failures(report: &Value) -> Vec<String> {
++    let mut failures = Vec::new();
++    if report["status"] != "complete" {
++        failures.push("Workload process did not complete".into());
++    }
++    let limit = |path: &str, maximum: f64, failures: &mut Vec<String>| {
++        let value = report.pointer(path).and_then(Value::as_f64);
++        if value.is_none_or(|value| !value.is_finite() || value < 0. || value > maximum) {
++            failures.push(format!(
++                "{path}: {value:?} exceeds {maximum}, or is unavailable"
++            ));
++        }
++    };
++    if report["mode"] == "authority" {
++        limit(
++            "/authority/measurements/steady/simulation_cpu_ms/p99",
++            1000. / 30.,
++            &mut failures,
++        );
++        if report["authority"]["minimum_live_hostiles"] != 40 {
++            failures.push("Authority did not sustain forty hostiles".into());
++        }
++        if report["authority"]["accepted_battle_movement_per_player"]
++            .as_array()
++            .is_none_or(|players| {
++                players.len() != 20 || players.iter().any(|moves| moves.as_u64().unwrap_or(0) < 10)
++            })
++        {
++            failures.push("Authority lacks accepted battle movement for twenty players".into());
++        }
++        return failures;
++    }
++    if report["seconds"]
++        .as_f64()
++        .zip(report["server"]["workload_ticks"].as_f64())
++        .is_none_or(|(seconds, ticks)| ticks < seconds * 30. * 0.98)
++    {
++        failures.push("Authority throughput fell below ninety-eight percent of 30 Hz".into());
++    }
++    limit(
++        "/server/simulation/steady/p99_upper_bound_ms",
++        1000. / 30.,
++        &mut failures,
++    );
++    limit(
++        "/render/measurements/steady/applied_snapshot_age_ms/p95",
++        400.,
++        &mut failures,
++    );
++    limit("/server/request_queue_peak", 128., &mut failures);
++    limit("/server/writer_queue_peak", 2., &mut failures);
++    limit("/server/held_reply_bytes_peak", 33554432., &mut failures);
++    limit("/recovery/active_receipts", 128., &mut failures);
++    limit("/recovery/retained_events", 512., &mut failures);
++    if !report["server"]["failure"].is_null() {
++        failures.push("The authority failed".into());
++    }
++    if report["recovery"]["characters_checked"] != 20 || report["recovery"]["live_hostiles"] != 40 {
++        failures
++            .push("Durable recovery did not preserve twenty characters and forty hostiles".into());
++    }
++    let mut operations = std::collections::BTreeMap::<String, u64>::new();
++    let mut casts = std::collections::BTreeMap::<String, u64>::new();
++    let players = report["players"].as_array();
++    if players.is_none_or(|players| players.len() != 20) {
++        failures.push("Twenty authenticated player records are required".into());
++    }
++    for player in players.into_iter().flatten() {
++        let segments = player["segments"].as_array();
++        if segments.is_none_or(|segments| segments.len() != 2) {
++            failures.push(format!(
++                "Player {} did not finish its reconnect",
++                player["player"]
++            ));
++        }
++        for segment in segments.into_iter().flatten() {
++            if segment["status"] != "complete"
++                || segment["maximum_players"] != 20
++                || segment["battle_occupancy"]["samples"].as_u64().unwrap_or(0) == 0
++                || segment["battle_occupancy"]["minimum_live_hostiles"] != 40
++                || segment["observed_frame_snapshots"].as_u64().unwrap_or(0) == 0
++                || segment["movement_inputs"].as_u64().unwrap_or(0) == 0
++            {
++                failures.push(format!(
++                    "Player {} lacks sustained interval battle observations",
++                    player["player"]
++                ));
++            }
++            for (label, count) in segment["accepted_operations"]
++                .as_object()
++                .into_iter()
++                .flatten()
++            {
++                *operations.entry(label.clone()).or_default() += count.as_u64().unwrap_or(0);
++            }
++            if segment["bound_frames"].as_u64().unwrap_or(0) < 10 {
++                failures.push(format!(
++                    "Player {} did not transmit ten native movement intervals",
++                    player["player"]
++                ));
++            }
++            let samples = segment["battle_occupancy"]["samples"].as_u64().unwrap_or(0);
++            let framed = segment["battle_framed_snapshots"].as_u64().unwrap_or(0);
++            if samples == 0 || framed as f64 / (samples as f64) < 0.8 {
++                failures.push(format!("Player {} did not sustain interval movement for eighty percent of battle snapshots",player["player"]));
++            }
++            if player["player"] == 0 {
++                for (field, maximum) in [("p95", 0.25), ("maximum", 1.)] {
++                    let value = segment["measurements"]["steady"]["prediction_correction_meters"]
++                        [field]
++                        .as_f64();
++                    if value.is_none_or(|v| !v.is_finite() || v > maximum) {
++                        failures.push(format!("Player {} prediction {field} {value:?} exceeds {maximum} meters or is unavailable",player["player"]));
++                    }
++                }
++            }
++            if player["player"] == 0 {
++                for window in segment["windows"]
++                    .as_array()
++                    .into_iter()
++                    .flatten()
++                    .filter(|w| w["end_seconds"].as_f64().is_some_and(|end| end >= 30.))
++                {
++                    for (field, maximum) in [("p95", 0.25), ("maximum", 1.)] {
++                        let value =
++                            window["measurements"]["steady"]["prediction_correction_meters"][field]
++                                .as_f64();
++                        if value.is_none_or(|v| !v.is_finite() || v > maximum) {
++                            failures.push(format!("Player 0 late prediction {field} {value:?} exceeds {maximum} meters or is unavailable"));
++                        }
++                    }
++                }
++            }
++            for (label, count) in segment["accepted_casts"].as_object().into_iter().flatten() {
++                *casts.entry(label.clone()).or_default() += count.as_u64().unwrap_or(0);
++            }
++            if segment["confirmed_interval_steps"].as_u64().unwrap_or(0) < 240 {
++                failures.push(format!(
++                    "Player {} lacks two seconds of confirmed interval physics",
++                    player["player"]
++                ));
++            }
++        }
++    }
++    for operation in ["equipment", "quest_claim", "item_use", "respawn"] {
++        if operations.get(operation).copied().unwrap_or(0) == 0 {
++            failures.push(format!("No accepted {operation} operation"));
++        }
++    }
++    for ability in ["Fireball", "Web", "Thunderwave"] {
++        if casts.get(ability).copied().unwrap_or(0) == 0 {
++            failures.push(format!("The workload has no accepted {ability} casts"));
++        }
++    }
++    limit("/recovery/checkpoint_bytes", 1048576., &mut failures);
++    if report["route"]["connections"] != 40
++        || report["route"]["refused_connections"] != 0
++        || report["server"]["admission"]["active_peak"] != 20
++    {
++        failures.push(
++            "The delayed route did not admit forty sessions and twenty concurrent players".into(),
++        );
++    }
++    let windows = report["disconnect_windows_seconds"].as_array();
++    if report["route"]["omitted_error_details"] != 0 {
++        failures.push("Delayed route error evidence was omitted".into());
++    }
++    for error in report["route"]["error_details"]
++        .as_array()
++        .into_iter()
++        .flatten()
++    {
++        let elapsed = error["elapsed_seconds"].as_f64();
++        let at_disconnect = elapsed.is_some_and(|at| {
++            windows
++                .into_iter()
++                .flatten()
++                .filter_map(Value::as_f64)
++                .any(|end| (at - end).abs() < 3.)
++        });
++        let closure = error["type"] == "ConnectionResetError" || error["type"] == "BrokenPipeError";
++        if !closure || !at_disconnect {
++            failures.push(format!("Unclassified delayed route error: {error}"));
++        }
++    }
++    for window in report["render"]["windows"].as_array().into_iter().flatten() {
++        if window["end_seconds"].as_f64().is_some_and(|at| at > 35.) {
++            let age = window["measurements"]["steady"]["applied_snapshot_age_ms"]["p95"].as_f64();
++            if age.is_none_or(|age| age > 400.) {
++                failures.push("A lifetime window exceeded the snapshot freshness budget".into());
++            }
++        }
++    }
++    let rss = report["render"]["rss"]
++        .as_array()
++        .into_iter()
++        .flatten()
++        .filter(|row| row["seconds"].as_f64().is_some_and(|at| at >= 30.))
++        .filter_map(|row| row["bytes"].as_u64())
++        .collect::<Vec<_>>();
++    if report["seconds"].as_u64().is_some_and(|s| s >= 600) {
++        if rss.len() < 60
++            || rss
++                .iter()
++                .max()
++                .zip(rss.first())
++                .is_none_or(|(last, first)| last.saturating_sub(*first) > 67108864)
++        {
++            failures.push("The soak lacks bounded steady resident memory evidence".into());
++        }
++    }
++    if report["mode"] == "combined" {
++        limit(
++            "/render/measurements/steady/frame_cpu_ms/p95",
++            1000. / 60.,
++            &mut failures,
++        );
++        limit(
++            "/render/measurements/steady/gpu_scene_ms/p95",
++            1000. / 60.,
++            &mut failures,
++        );
++    }
++    failures
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn a_successful_exit_and_fast_empty_profiles_do_not_pass_capacity() {
++        let report = serde_json::json!({"status":"complete","mode":"combined",
++            "server":{"simulation":{"steady":{"p99_upper_bound_ms":1.}}},
++            "render":{"measurements":{"steady":{"draw_cpu_ms":{"p95":1.},"gpu_scene_ms":{"p95":1.},"applied_snapshot_age_ms":{"p95":1.}}}}});
++        let refused = failures(&report);
++        assert!(
++            refused
++                .iter()
++                .any(|failure| failure.contains("authenticated"))
++        );
++        assert!(
++            refused
++                .iter()
++                .any(|failure| failure.contains("Durable recovery"))
++        );
++    }
++    #[test]
++    fn missing_and_over_budget_authority_timings_refuse_a_full_population() {
++        let mut report = serde_json::json!({"status":"complete","mode":"authority","authority":{"minimum_live_hostiles":40}});
++        assert!(!failures(&report).is_empty());
++        report["authority"]["measurements"] =
++            serde_json::json!({"steady":{"simulation_cpu_ms":{"p99":34.}}});
++        assert!(!failures(&report).is_empty());
++        report["authority"]["measurements"]["steady"]["simulation_cpu_ms"]["p99"] =
++            serde_json::json!(16.);
++        assert!(!failures(&report).is_empty());
++        report["authority"]["accepted_battle_movement_per_player"] =
++            serde_json::json!(vec![100; 20]);
++        assert!(failures(&report).is_empty());
++    }
++    #[test]
++    fn fast_profiles_do_not_hide_missing_actions_or_route_failures() {
++        let segment = serde_json::json!({"status":"complete","maximum_players":20,"battle_occupancy":{"samples":100,"minimum_live_hostiles":40},"observed_frame_snapshots":100,"battle_framed_snapshots":100,"movement_inputs":100,"bound_frames":30,"confirmed_interval_steps":360,"accepted_operations":{"equipment":1,"quest_claim":1,"item_use":1,"respawn":1},"accepted_casts":{"Fireball":1,"Web":1,"Thunderwave":1},"measurements":{"steady":{"prediction_correction_meters":{"p95":0.01,"maximum":0.1}}}});
++        let mut report = serde_json::json!({"status":"complete","mode":"network","seconds":60,"server":{"ticks":1800,"workload_ticks":1800,"request_queue_peak":20,"writer_queue_peak":2,"held_reply_bytes_peak":1000000,"failure":null,"simulation":{"steady":{"p99_upper_bound_ms":16.}},"admission":{"active_peak":20}},"render":{"measurements":{"steady":{"applied_snapshot_age_ms":{"p95":100.}}}},"recovery":{"active_receipts":32,"retained_events":512,"characters_checked":20,"live_hostiles":40,"checkpoint_bytes":300000},"route":{"connections":40,"refused_connections":0,"omitted_error_details":0,"error_details":[]},"disconnect_windows_seconds":[30.,60.],"players":(0..20).map(|player|serde_json::json!({"player":player,"segments":[segment.clone(),segment.clone()]})).collect::<Vec<_>>()});
++        assert!(failures(&report).is_empty());
++        report["server"]["workload_ticks"] = serde_json::json!(1700);
++        assert!(failures(&report).iter().any(|f| f.contains("throughput")));
++        report["server"]["workload_ticks"] = serde_json::json!(1800);
++        report["players"][0]["segments"][0]["windows"] = serde_json::json!([
++            {"end_seconds":31.,"measurements":{"steady":{"prediction_correction_meters":{"p95":0.3,"maximum":0.8}}}}
++        ]);
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|f| f.contains("late prediction p95"))
++        );
++        report["players"][0]["segments"][0]["windows"][0]["measurements"]["steady"]["prediction_correction_meters"]
++            ["p95"] = serde_json::json!(0.1);
++        report["players"][0]["segments"][0]["windows"][0]["measurements"]["steady"]["prediction_correction_meters"]
++            ["maximum"] = serde_json::json!(1.1);
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|f| f.contains("late prediction maximum"))
++        );
++        report["players"][0]["segments"][0]["windows"] = serde_json::json!([]);
++        for player in report["players"].as_array_mut().unwrap() {
++            for segment in player["segments"].as_array_mut().unwrap() {
++                segment["accepted_operations"]["quest_claim"] = serde_json::json!(0);
++            }
++        }
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|failure| failure.contains("quest_claim"))
++        );
++        report["route"]["error_details"] =
++            serde_json::json!([{"type":"ConnectionResetError","elapsed_seconds":15.}]);
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|failure| failure.contains("Unclassified"))
++        );
++        report["route"]["error_details"][0]["elapsed_seconds"] = serde_json::json!(30.1);
++        assert!(
++            !failures(&report)
++                .iter()
++                .any(|failure| failure.contains("Unclassified"))
++        );
++    }
++}
+diff --git a/crates/verse/examples/common/battle_native_player.rs b/crates/verse/examples/common/battle_native_player.rs
+new file mode 100644
+index 0000000000..41c75c445e
+--- /dev/null
++++ b/crates/verse/examples/common/battle_native_player.rs
+@@ -0,0 +1,178 @@
++//! Exercises the shared native session without a window or owner state.
++use std::{
++    collections::BTreeMap,
++    time::{Duration, Instant},
++};
++use tokio::sync::{mpsc, oneshot};
++use verse::{
++    imported::{
++        chamber_session::{Frame, Note, Session},
++        original,
++    },
++    profiling::FrameProfile,
++};
++use verse_engine::{assets::Pack, director::Scene};
++use verse_world::{
++    play::Ability,
++    service::{
++        client::Client,
++        event_cursor::Cursor,
++        view::View,
++        wire::Reply,
++        worker::{self, Input, Observer, Update},
++    },
++};
++
++pub struct Tap {
++    pub frame: Frame,
++    pub applied_at: Instant,
++    pub projection_ms: f64,
++}
++pub async fn player(
++    client: Client,
++    index: usize,
++    end: tokio::time::Instant,
++    scene: Scene,
++    pack: Pack,
++    tap: Option<mpsc::Sender<Tap>>,
++) -> Result<serde_json::Value, String> {
++    let instance = client.instance();
++    let (input, inputs, updates, mut output) = worker::channels();
++    let (project, projection) = mpsc::channel(worker::UPDATE_CAPACITY);
++    let (stop, stopping) = oneshot::channel();
++    let observer = Observer::default();
++    let task = tokio::spawn(worker::run_profiled(
++        client,
++        Cursor::new(instance),
++        worker::NATIVE_CADENCE,
++        inputs,
++        updates,
++        stopping,
++        observer.clone(),
++    ));
++    let mut session = Session::attached(View::new(instance, 10., 0)?, input, projection);
++    session.observe();
++    let atlas = if tap.is_some() {
++        Some(original::atlas()?)
++    } else {
++        None
++    };
++    let mut measurements = FrameProfile::new(120);
++    let mut window = FrameProfile::new(0);
++    let mut windows = Vec::new();
++    let mut window_frames = 0u64;
++    let mut operations = BTreeMap::<String, u64>::new();
++    let mut occupancy = 0u64;
++    let mut min_hostiles = usize::MAX;
++    let mut max_players = 0usize;
++    let mut confirmed = None;
++    let mut confirmed_steps = 0u64;
++    let mut framed = 0u64;
++    let mut battle_framed = 0u64;
++    let mut movements = 0u64;
++    let mut accepted_frames = 0u64;
++    let mut bound_frames = 0u64;
++    let mut min_hp = i32::MAX;
++    let mut refusals = 0u64;
++    let mut trace = Vec::new();
++    let mut omitted_observer = 0u64;
++    let mut correction_trace = Vec::new();
++    let mut omitted_corrections = 0u64;
++    let mut omitted_taps = 0u64;
++    let mut frame = 0u64;
++    let mut operation = 0u64;
++    let began = Instant::now();
++    let mut last = began;
++    let mut next_cast = began + Duration::from_secs(1) + Duration::from_millis(index as u64 * 75);
++    let mut next_operation =
++        began + Duration::from_secs(2) + Duration::from_millis(index as u64 * 75);
++    let mut cast = 0usize;
++    let mut responses = 0u64;
++    let result=async {
++      let mut clock=tokio::time::interval(Duration::from_secs_f64(1./60.));clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
++      while tokio::time::Instant::now()<end {
++        clock.tick().await;frame+=1;window_frames+=1;
++        if window_frames>1800 {windows.push(serde_json::json!({"end_seconds":began.elapsed().as_secs_f64(),"measurements":window.summary()}));window=FrameProfile::new(0);window_frames=1;}
++        while let Ok(update)=output.try_recv() {
++          match &update {
++            Update::Snapshot(response)=>if let Reply::Snapshot {state}=&response.body {
++              max_players=max_players.max(state.presentation.actors.iter().filter(|p|p.actor.model=="adventurer").count());
++              if state.presentation.time>=20. {occupancy+=1;min_hostiles=min_hostiles.min(state.presentation.actors.iter().filter(|p|p.health>0 && !p.actor.friendly && p.actor.model!="adventurer").count());}
++              if let Some(baseline)=state.movement.filter(|b|b.profile==verse_world::movement::Profile::Frames) {
++                framed+=1;if state.presentation.time>=20. {battle_framed+=1;}
++                if let Some((life,epoch,step))=confirmed {if life==baseline.life && epoch==baseline.epoch {confirmed_steps+=baseline.physics_step.saturating_sub(step);}}
++                confirmed=Some((baseline.life,baseline.epoch,baseline.physics_step));
++              } else {confirmed=None;}
++            },
++            Update::FrameBound {binding:Ok(_),..}=>bound_frames+=1,
++            Update::Outcome(response)=>{responses+=1;match &response.body {
++              Reply::GearEquipped {..}=>*operations.entry("equipment".into()).or_default()+=1,
++              Reply::QuestClaimed {..}=>*operations.entry("quest_claim".into()).or_default()+=1,
++              Reply::ItemUsed {..}=>*operations.entry("item_use".into()).or_default()+=1,
++              Reply::Accepted=>accepted_frames+=1,
++              _=>{}
++            }},
++            _=>{}
++          }
++          project.send(update).await.map_err(|_|"Native projection closed")?;
++          session.consume(&scene)?;
++        }
++        if task.is_finished() {return Err("Native session worker stopped before its deadline".into());}
++        let now=Instant::now();let dt=now.duration_since(last).as_secs_f64().min(0.1);last=now;
++        if let Some(hud)=session.hud() {min_hp=min_hp.min(hud.resources.hp);}
++        if session.dead() {session.respawn();}
++        if session.controlled(&scene) && session.movement_frames() && bound_frames>=10 {
++          if now>=next_operation && session.idle() {
++            let input=match operation {0=>Input::EquipGear(verse_world::service::equipment::Slot::Head,501),1=>Input::ClaimQuest(1),_=>Input::UseItem(502)};
++            session.send(input);operation+=1;next_operation=now+Duration::from_secs(6);
++          }
++          if now>=next_cast {
++            let abilities=[Ability::Shield,Ability::Fireball,Ability::Web,Ability::Grease,Ability::Light,Ability::Thunderwave,Ability::MistyStep,Ability::Bow,Ability::FireBolt,Ability::MagicMissile];
++            session.target_nearest();session.cast(&scene,abilities[cast%abilities.len()]);cast+=1;next_cast=now+Duration::from_secs(2);
++          }
++        }
++        let phase=((began.elapsed().as_secs_f64()+index as f64*0.2).rem_euclid(8.)).floor() as u32;
++        let axes=match phase {0=>[0.,1.],1=>[1.,0.],2=>[0.,-1.],3=>[-1.,0.],_=>[0.,0.]};
++        session.steer(&scene,axes,dt as f32,session.movement_frames())?;
++        if session.controlled(&scene) {movements+=1;}
++        for note in session.take_notes() {match note {
++          Note::Correction {distance,discontinuity:false,detail}=>{
++            measurements.record(frame,"prediction_correction_meters",distance);window.record(frame,"prediction_correction_meters",distance);
++            if distance>0.25 {if correction_trace.len()<32 {correction_trace.push(serde_json::json!({"seconds":began.elapsed().as_secs_f64(),"distance":distance,"detail":detail}));} else {omitted_corrections+=1;}}
++          },
++          Note::Reset(reason)=>{measurements.record(frame,"prediction_reset",1.);if trace.len()<32 {trace.push(serde_json::json!({"reset":reason,"seconds":began.elapsed().as_secs_f64()}));}},
++          Note::Refusal(detail)=>{refusals+=1;if trace.len()<32 {trace.push(detail);}},
++          _=>{}
++        }}
++        let observations=observer.drain();omitted_observer+=observations.omitted;
++        for sample in observations.samples {
++          measurements.record(frame,"request_turnaround_ms",sample.turnaround_ms);window.record(frame,"request_turnaround_ms",sample.turnaround_ms);
++          measurements.record(frame,"pending_requests",sample.pending_requests as f64);window.record(frame,"pending_requests",sample.pending_requests as f64);
++          measurements.record(frame,"queued_inputs",sample.queued_inputs as f64);window.record(frame,"queued_inputs",sample.queued_inputs as f64);
++        }
++        if let Some(at)=observations.snapshot_verified_at {measurements.record(frame,"snapshot_verified_age_ms",at.elapsed().as_secs_f64()*1000.);}
++        if let (Some(tap),Some(atlas))=(&tap,&atlas) {
++          let started=Instant::now();let drawn=session.frame(&pack,atlas,&scene,[1280,720])?;
++          measurements.record(frame,"frame_projection_cpu_ms",started.elapsed().as_secs_f64()*1000.);
++          if let Some(age)=session.snapshot_age() {
++            if tap.try_send(Tap {frame:drawn,applied_at:Instant::now()-age,projection_ms:started.elapsed().as_secs_f64()*1000.}).is_err() {omitted_taps+=1;}
++          }
++        }
++      }
++      Ok::<_,String>(())
++    }.await;
++    let _ = stop.send(());
++    let worker = task.await;
++    let error = result.as_ref().err().cloned().or_else(|| match worker {
++        Ok(Err(e)) => Some(e),
++        Err(e) => Some(e.to_string()),
++        _ => None,
++    });
++    if window_frames > 0 {
++        windows.push(serde_json::json!({"end_seconds":began.elapsed().as_secs_f64(),"measurements":window.summary()}));
++    }
++    operations.insert("respawn".into(), session.life_changes);
++    Ok(
++        serde_json::json!({"player":index,"status":if error.is_none(){"complete"}else{"failed"},"error":error,"snapshots":session.snapshots,"maximum_players":max_players,"battle_occupancy":{"samples":occupancy,"minimum_live_hostiles":(occupancy>0).then_some(min_hostiles)},"movement_profile":"native_session_intervals","observed_frame_snapshots":framed,"movement_inputs":movements,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"bound_frames":bound_frames,"accepted_outcomes":accepted_frames,"outcomes":responses,"accepted_casts":session.accepted_casts,"accepted_operations":operations,"damage_events":session.damage_events,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"unacknowledged_bound_operations":session.pending(),"refusals":refusals,"refusal_trace":trace,"correction_trace":correction_trace,"omitted_correction_details":omitted_corrections,"omitted_observer_samples":omitted_observer,"omitted_render_frames":omitted_taps,"windows":windows,"measurements":measurements.summary()}),
++    )
++}
+diff --git a/crates/verse/examples/common/battle_player.rs b/crates/verse/examples/common/battle_player.rs
+new file mode 100644
+index 0000000000..7b6480471c
+--- /dev/null
++++ b/crates/verse/examples/common/battle_player.rs
+@@ -0,0 +1,254 @@
++//! Shared battle clients use the production duplex worker and control fences.
++use std::{
++    collections::{BTreeMap, BTreeSet, VecDeque},
++    time::Duration,
++};
++use verse_world::{
++    Intent,
++    play::Ability,
++    service::{
++        client::Client,
++        event_cursor::Cursor,
++        wire::{Reply, State},
++        worker::{self, Input, Observer, Update},
++    },
++};
++fn sample(values: &mut Vec<f64>, value: f64) -> bool {
++    if values.len() < 8192 {
++        values.push(value);
++        true
++    } else {
++        false
++    }
++}
++fn summary(mut values: Vec<f64>) -> serde_json::Value {
++    values.sort_by(f64::total_cmp);
++    let p95 =
++        (!values.is_empty()).then(|| values[((values.len() - 1) as f64 * 0.95).ceil() as usize]);
++    serde_json::json!({"samples":values.len(),"p95":p95,"max":values.last()})
++}
++pub async fn player(
++    client: Client,
++    index: usize,
++    end: tokio::time::Instant,
++    movement_frames: bool,
++    mixed: bool,
++) -> Result<serde_json::Value, String> {
++    let instance = client.instance();
++    let mut credit = client
++        .control()
++        .map(|c| (c.life.into(), c.epoch, c.world_step));
++    let (send, inputs, updates, mut receive) = worker::channels();
++    let (stop, stopped) = tokio::sync::oneshot::channel();
++    let observer = Observer::default();
++    let task = tokio::spawn(worker::run_profiled(
++        client,
++        Cursor::new(instance),
++        worker::NATIVE_CADENCE,
++        inputs,
++        updates,
++        stopped,
++        observer.clone(),
++    ));
++    let mut clock = tokio::time::interval(Duration::from_millis(33));
++    clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
++    let mut state: Option<State> = None;
++    let mut token = 0u64;
++    let mut epoch = 0;
++    let mut frame_cursor = None;
++    let mut frame_entry = None;
++    let mut observed_frame_snapshots = 0u64;
++    let mut pending = VecDeque::new();
++    let mut outstanding = BTreeSet::new();
++    let mut latency = Vec::new();
++    let mut omitted_latency = 0u64;
++    let mut casts = BTreeMap::<String, u64>::new();
++    let mut operation = 0u64;
++    let mut next_operation = tokio::time::Instant::now();
++    let mut bound_frames = 0u64;
++    let mut battle_framed = 0u64;
++    let mut confirmed = None;
++    let mut confirmed_steps = 0u64;
++    let mut operations = BTreeMap::<String, u64>::new();
++    let mut turnaround = Vec::new();
++    let mut omitted_turnaround = 0u64;
++    let mut by_kind = BTreeMap::<String, Vec<f64>>::new();
++    let mut omitted_by_kind = BTreeMap::<String, u64>::new();
++    let mut peak_pending = 0usize;
++    let mut peak_inputs = 0usize;
++    let mut omitted_observer = 0u64;
++    let mut snapshot_age = Vec::new();
++    let mut omitted_age = 0u64;
++    let mut refused = 0u64;
++    let mut refusal_trace = Vec::new();
++    let mut snapshots = 0;
++    let mut snapshot_bytes = 0u64;
++    let mut movement = 0;
++    let mut pressure = 0;
++    let mut next_cast = tokio::time::Instant::now() + Duration::from_millis(index as u64 * 75);
++    let mut slot = 0;
++    let mut respawned = None;
++    let mut next_respawn = tokio::time::Instant::now();
++    let mut min_hp = i32::MAX;
++    let mut max_actors = 0;
++    let mut max_players = 0;
++    let mut max_live_hostiles = 0;
++    let mut battle_samples = 0u64;
++    let mut battle_live_total = 0u64;
++    let mut battle_live_min = usize::MAX;
++    let began = tokio::time::Instant::now();
++    let result=async {
++  loop {
++   tokio::select! {
++    _=tokio::time::sleep_until(end)=>break,
++    _=clock.tick()=>{
++     let observations=observer.drain();
++     omitted_observer+=observations.omitted;
++     for observation in observations.samples {
++      if !sample(&mut turnaround,observation.turnaround_ms) {omitted_turnaround+=1;}
++      if !sample(by_kind.entry(observation.kind.into()).or_default(), observation.turnaround_ms) { *omitted_by_kind.entry(observation.kind.into()).or_default() += 1; }
++      peak_pending=peak_pending.max(observation.pending_requests);
++      peak_inputs=peak_inputs.max(observation.queued_inputs);
++     }
++     if let Some(at)=observations.snapshot_verified_at {
++      if !sample(&mut snapshot_age,at.elapsed().as_secs_f64()*1000.) {omitted_age+=1;}
++     }
++     let Some(state)=state.as_ref() else {continue};
++     let Some(hud)=state.hud.as_ref() else {return Err("Load principal has no player HUD".into())};
++     min_hp=min_hp.min(hud.resources.hp);
++     if hud.resources.hp<=0 {
++      if tokio::time::Instant::now()>=next_respawn && respawned!=Some(hud.life) && outstanding.is_empty() && pending.is_empty() && send.try_send(Input::Respawn).is_ok() {
++       respawned=Some(hud.life);
++       pending.push_back((tokio::time::Instant::now(),Some("operation/respawn".into()),None,None));
++      }
++      continue;
++     }
++     if state.presentation.time<20. {continue;}
++     if mixed && pending.is_empty() && outstanding.is_empty() && tokio::time::Instant::now()>=next_operation {
++      let (input,label)=match operation {0=>(Input::EquipGear(verse_world::service::equipment::Slot::Head,501),"equipment"),1=>(Input::ClaimQuest(1),"quest_claim"),_=>(Input::UseItem(502),"item_use")};
++      if send.try_send(input).is_ok() {pending.push_back((tokio::time::Instant::now(),Some(format!("operation/{label}")),None,None));operation+=1;next_operation=tokio::time::Instant::now()+Duration::from_secs(6);continue;}
++     }
++     let seconds=began.elapsed().as_secs_f64();
++     let phase=((seconds+index as f64*0.2).rem_euclid(8.)).floor() as u32;
++     let axes=match phase {0=>[0.,1.],1=>[1.,0.],2=>[0.,-1.],3=>[-1.,0.],_=>[0.,0.]};
++     let mut intent=Intent::Move {axes,yaw:std::f32::consts::PI};
++     if tokio::time::Instant::now()>=next_cast && hud.casting.is_none() {
++      let order=[Ability::Shield,Ability::Fireball,Ability::Web,Ability::Grease,Ability::Light,Ability::Thunderwave,Ability::MistyStep,Ability::Bow,Ability::FireBolt,Ability::MagicMissile];
++      let ability=order[slot%order.len()];slot+=1;next_cast=tokio::time::Instant::now()+Duration::from_secs(2);
++      if hud.slots.iter().any(|s|s.ability==ability && s.ready) {
++       let owned=state.presentation.actors.iter().find(|p|verse_engine::core::LifeId::from(p.life)==hud.life).map(|p|p.actor.position).unwrap_or_default();
++       let target=state.presentation.actors.iter().filter(|p|p.health>0 && p.visible && !p.actor.friendly && p.actor.nameplate && p.actor.model!="adventurer").min_by(|a,b|a.actor.position.distance_squared(owned).total_cmp(&b.actor.position.distance_squared(owned)));
++       let aim=target.map(|p|{let mut direction=p.actor.position-owned;direction.y=0.;direction.normalize_or_zero().to_array()}).unwrap_or([0.,0.,1.]);
++       intent=Intent::Cast {ability,target:target.map(|p|p.life.into()),aim};
++      }
++     }
++     token=token.checked_add(1).ok_or("Load input identities exhausted")?;
++     let moving=matches!(intent,Intent::Move {..});
++     let input=if movement_frames && moving {
++      let Some(baseline)=state.movement else {continue};
++      let context=(baseline.life,baseline.epoch);
++      if baseline.profile!=verse_world::movement::Profile::Frames {
++       frame_cursor=None;
++       if baseline.character.support.is_some() && baseline.held.axes(baseline.physics_step)==[0.;2] && frame_entry!=Some(context) && outstanding.is_empty() && pending.is_empty() {
++        match send.try_send(Input::BeginMovementFrames {life:baseline.life,epoch:baseline.epoch}) {
++         Ok(())=>{frame_entry=Some(context);pending.push_back((tokio::time::Instant::now(),None,Some(context),None));},
++         Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>pressure+=1,
++         Err(_)=>return Err("Load worker input closed".into()),
++        }
++       }
++       continue;
++      }
++      let start=match frame_cursor {Some((life,old_epoch,start)) if (life,old_epoch)==context=>start,_=>baseline.physics_step};
++      let world_step=credit.filter(|(life,epoch,_)|(*life,*epoch)==context).map_or(baseline.world_step,|(_,_,step)|step.max(baseline.world_step));
++      let limit=world_step.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
++      let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::SEND_STEPS)) as u32;
++      if steps<verse_world::movement::frames::SEND_STEPS {continue;}
++      let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
++       segments:vec![verse_world::movement::frames::Segment {offset:0,axes,yaw:std::f32::consts::PI,until:start+verse_world::movement::HELD_STEPS,jump:false}]};
++      frame.validate_payload()?;
++      Input::MovementFrame {token,frame}
++     } else {Input::TrackedCommand {token,life:hud.life,epoch,intent}};
++     let proposed_end=match &input {Input::MovementFrame {frame,..}=>Some((frame.life,frame.epoch,frame.end()?)),_=>None};
++     match send.try_send(input) {
++      Ok(())=>{outstanding.insert(token);if let Some(cursor)=proposed_end {frame_cursor=Some(cursor);} if moving {movement+=1;}},
++      Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>pressure+=1,
++      Err(_)=>return Err("Load worker input closed".into()),
++     }
++    }
++    update=receive.recv()=>match update.ok_or("Load worker output closed")? {
++     Update::Snapshot(response)=>{
++      credit=response.control.as_ref().map(|c|(c.life.into(),c.epoch,c.world_step));
++      epoch=response.control.as_ref().ok_or("Load lost player control")?.epoch;
++      snapshot_bytes+=serde_json::to_vec(&response).map_err(|_|"Cannot size load snapshot")?.len() as u64;
++      let Reply::Snapshot {state:latest}=response.body else {return Err("Load snapshot refused".into())};
++      if let Some(baseline)=latest.movement.filter(|b|b.profile==verse_world::movement::Profile::Frames) {
++       observed_frame_snapshots+=1;if latest.presentation.time>=20. {battle_framed+=1;}
++       if let Some((life,epoch,step))=confirmed {if life==baseline.life && epoch==baseline.epoch {confirmed_steps+=baseline.physics_step.saturating_sub(step);}}
++       confirmed=Some((baseline.life,baseline.epoch,baseline.physics_step));
++      } else {confirmed=None;}
++      snapshots+=1;max_actors=max_actors.max(latest.presentation.actors.len());
++      max_players=max_players.max(latest.presentation.actors.iter().filter(|p|p.actor.model=="adventurer").count());
++      max_live_hostiles=max_live_hostiles.max(latest.presentation.actors.iter().filter(|p|p.health>0 && !p.actor.friendly && p.actor.model!="adventurer").count());
++      if latest.presentation.time>=20. {
++       let live=latest.presentation.actors.iter().filter(|p|p.health>0 && !p.actor.friendly && p.actor.model!="adventurer").count();
++       battle_samples+=1;battle_live_total+=live as u64;battle_live_min=battle_live_min.min(live);
++      }
++      state=Some(latest);
++     }
++     Update::CommandBound {token,binding}=>match binding {
++      Ok(command)=>{let ability=match command.intent {Intent::Cast {ability,..}=>Some(ability.label().to_string()),_=>None};pending.push_back((tokio::time::Instant::now(),ability,None,Some(token)));},
++      Err(message)=>{outstanding.remove(&token);refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"command_binding","message":message}));}},
++     },
++     Update::FrameBound {token,binding}=>match binding {
++      Ok(_)=>{bound_frames+=1;pending.push_back((tokio::time::Instant::now(),None,None,Some(token)));},
++      Err(message)=>{outstanding.remove(&token);refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"frame_binding","message":message}));}},
++     },
++     Update::Outcome(response)=>{
++      credit=response.control.as_ref().map(|c|(c.life.into(),c.epoch,c.world_step));
++      if let Some((started,ability,entry,token))=pending.pop_front() {
++       if let Some(token)=token {outstanding.remove(&token);}
++       if entry.is_some() && frame_entry==entry && matches!(&response.body,Reply::Refused {..}) {frame_entry=None;}
++       if !sample(&mut latency,started.elapsed().as_secs_f64()*1000.) {omitted_latency+=1;}
++       if ability.as_deref()==Some("operation/respawn") && matches!(&response.body,Reply::Refused {code,message} if code=="command" && matches!(message.as_str(),"Character teleport endpoint is obstructed" | "Teleport destination is occupied")) {respawned=None;next_respawn=tokio::time::Instant::now()+Duration::from_secs(1);}
++       match response.body {Reply::Accepted|Reply::GearEquipped {..}|Reply::ItemUsed {..}|Reply::QuestClaimed {..}=>{if let Some(ability)=ability {
++        if let Some(label)=ability.strip_prefix("operation/") {*operations.entry(label.into()).or_default()+=1;}
++        else {*casts.entry(ability).or_default()+=1;}
++       }},Reply::Refused {message,code,..}=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"outcome","message":message,"code":code,"tick":response.tick,"control":response.control}));}},_=>{}}
++      }
++     }
++     Update::MovementSuperseded {token,..}=>{outstanding.remove(&token);},
++     Update::Events {..}|Update::Inventory(_)=>{},
++    }
++   }
++  }
++  Ok::<(),String>(())
++ }.await;
++    let _ = stop.send(());
++    let worker_result = task.await;
++    let observation_error = result
++        .as_ref()
++        .err()
++        .map(|e| e.chars().take(2048).collect::<String>());
++    let worker_error = match &worker_result {
++        Err(e) => Some(e.to_string()),
++        Ok(Err(e)) => Some(e.clone()),
++        Ok(Ok(())) => None,
++    }
++    .map(|e| e.chars().take(2048).collect::<String>());
++    let failure_stage = if result.is_err() {
++        Some("observation")
++    } else {
++        match worker_result {
++            Err(_) => Some("worker_task"),
++            Ok(Err(_)) => Some("worker_transport"),
++            Ok(Ok(())) => None,
++        }
++    };
++    let by_kind = by_kind
++        .into_iter()
++        .map(|(kind, values)| (kind, summary(values)))
++        .collect::<BTreeMap<_, _>>();
++    Ok(
++        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"omitted_refusal_samples":refused.saturating_sub(refusal_trace.len() as u64),"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"bound_frames":bound_frames,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"input_pressure":pressure,"unacknowledged_bound_operations":pending.len(),"unbound_inputs":outstanding.len(),"refusals":refused,"accepted_casts":casts,"accepted_operations":operations,"request_turnaround_ms":summary(turnaround),"request_turnaround_by_kind_ms":by_kind,"omitted_request_samples_by_kind":omitted_by_kind,"pending_request_peak":peak_pending,"queued_input_peak":peak_inputs,"snapshot_verified_age_ms":summary(snapshot_age),"omitted_request_samples":omitted_turnaround,"omitted_age_samples":omitted_age,"omitted_observer_samples":omitted_observer,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
++    )
++}
+diff --git a/scripts/bench/tests/test_verse_delayed_route.py b/scripts/bench/tests/test_verse_delayed_route.py
+new file mode 100644
+index 0000000000..58336ce39a
+--- /dev/null
++++ b/scripts/bench/tests/test_verse_delayed_route.py
+@@ -0,0 +1,86 @@
++"""Check byte order, injected delay, and bounded forwarding on scratch TCP."""
++import asyncio
++import json
++import pathlib
++import signal
++import sys
++import tempfile
++import time
++import unittest
++
++
++class DelayedRoute(unittest.IsolatedAsyncioTestCase):
++    async def exercise(self, profile):
++        async def echo(reader, writer):
++            try:
++                while chunk := await reader.read(65536):
++                    writer.write(chunk)
++                    await writer.drain()
++            finally:
++                writer.close()
++                await writer.wait_closed()
++
++        server = await asyncio.start_server(echo, "127.0.0.1", 0)
++        port = server.sockets[0].getsockname()[1]
++        proxy = None
++        writer = None
++        with tempfile.TemporaryDirectory(prefix="verse-route-test-") as directory:
++            ready = pathlib.Path(directory) / "ready.json"
++            receipt = pathlib.Path(directory) / "receipt.json"
++            command = [sys.executable, str(pathlib.Path(__file__).parents[1] / "verse-delayed-route.py"),
++                       "--destination-port", str(port), "--seconds", "10",
++                       "--delay-ms", "40", "--jitter-ms", "20",
++                       "--ready", str(ready), "--receipt", str(receipt)]
++            if profile == "pipeline":
++                command += ["--delay-profile", profile]
++            try:
++                proxy = await asyncio.create_subprocess_exec(*command)
++                async with asyncio.timeout(5):
++                    while not ready.exists():
++                        self.assertIsNone(proxy.returncode)
++                        await asyncio.sleep(0.01)
++                    address = json.loads(ready.read_text())["address"]
++                    reader, writer = await asyncio.open_connection("127.0.0.1", int(address.rsplit(":", 1)[1]))
++                    payload = bytes(range(256)) * (8192 if profile == "pipeline" else 1) + b"ordered-tail"
++                    began = time.monotonic()
++                    writer.write(payload)
++                    await writer.drain()
++                    first = await reader.readexactly(1)
++                    first_seconds = time.monotonic() - began
++                    self.assertGreaterEqual(first_seconds, 0.075)
++                    received = first + await reader.readexactly(len(payload) - 1)
++                    self.assertEqual(received, payload)
++                    writer.close()
++                    await writer.wait_closed()
++                    proxy.send_signal(signal.SIGTERM)
++                    await proxy.wait()
++                self.assertEqual(proxy.returncode, 0)
++                stats = json.loads(receipt.read_text())
++                self.assertEqual(stats["delay_profile"], profile)
++                self.assertLessEqual(stats["queued_chunk_peak"], 8)
++                if profile == "pipeline":
++                    self.assertGreater(stats["queued_chunk_peak"], 1)
++                    self.assertGreater(stats["forwarded_chunks"], 8)
++                else:
++                    self.assertEqual(stats["queued_chunk_peak"], 0)
++                print(json.dumps({"profile": profile, "bytes_checked": len(payload),
++                                  "first_byte_seconds": first_seconds,
++                                  "queued_chunk_peak": stats["queued_chunk_peak"]}))
++            finally:
++                if writer:
++                    writer.close()
++                if proxy and proxy.returncode is None:
++                    proxy.kill()
++                    await proxy.wait()
++                server.close()
++                await server.wait_closed()
++
++    async def test_pipeline_keeps_large_payload_order_and_per_chunk_delay(self):
++        await self.exercise("pipeline")
++
++    async def test_default_profile_retains_serial_delay(self):
++        await self.exercise("serial")
++
++
++if __name__ == "__main__":
++    unittest.main()

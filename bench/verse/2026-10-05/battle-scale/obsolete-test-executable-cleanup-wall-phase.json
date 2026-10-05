@@ -1,0 +1,37 @@
+{
+  "scope": "Only obsolete inactive ELF executables from this audit, identified by retained test paths or measurement hashes. Build caches and other checkouts are intact.",
+  "removed": [
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-895f92bfb62bd90a",
+      "sha256": "41ba350d1ba40716ab1f7dc71abc1844016850acce388281ef22eaf06ce4bf02",
+      "retained_evidence": "bench/verse/2026-10-05/battle-scale/canonical-flight-world-tests.log",
+      "bytes": 257319736,
+      "device": 66306,
+      "inode": 41078295
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_imported-9db3eb1d26ca17c6",
+      "sha256": "67cdcc5a69cb5fc65b607bec1b75485ccf457efef823baa36ddd48b6a12d1311",
+      "retained_evidence": "bench/verse/2026-10-05/battle-scale/thirty-hz-send-teleport-main-native-tests.log",
+      "bytes": 515668280,
+      "device": 66306,
+      "inode": 41084277
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_imported-43a0538bf12f701a",
+      "sha256": "7b3a7df701a05b9ca737402eb9bfdac44a9d0448785a2822a3fb85014722f434",
+      "retained_evidence": "bench/verse/2026-10-05/battle-scale/wall-phase-main-native-tests.log",
+      "bytes": 393958944,
+      "device": 66306,
+      "inode": 41082293
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/renderer_budget-3a6fcaa7f16fed85",
+      "sha256": "b95e1122e08e3844d2708d72a26a828bb6ebefc2e4e45cd5ad50e784c10cbd0d",
+      "retained_evidence": "bench/verse/2026-10-04/renderer-budgets/measurement-receipt.json",
+      "bytes": 667780336,
+      "device": 66306,
+      "inode": 41079388
+    }
+  ]
+}

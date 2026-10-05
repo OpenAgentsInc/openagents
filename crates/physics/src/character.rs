@@ -101,7 +101,7 @@ pub struct GravityOverride {
     pub terminal: f64,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Character {
     pub feet: DVec3,
     pub vertical_speed: f64,
@@ -134,6 +134,10 @@ impl Character {
             peak: None,
             landed: None,
         }
+    }
+    /// Returns the supporting collider pose recorded by the last motor step.
+    pub fn support_pose(&self) -> Option<Pose> {
+        self.support_pose
     }
     /// Initial speed that slides exactly `distance` on flat ground.
     pub fn push_speed(distance: f64) -> f64 {
@@ -901,6 +905,84 @@ mod tests {
             assert!(contacts.hits.iter().all(|hit| hit.penetration <= SKIN));
             assert!(feet.distance(start) < 0.3);
         }
+    }
+    #[test]
+    fn recorded_three_capsules_use_a_bounded_atomic_motor_outcome() {
+        use crate::queries::{CapsuleCollider, Pose};
+        // Actor 216 in the retained three-contact failure at revision 533d3b0cde.
+        let start = DVec3::new(5.427652835845947, 0., -7.92329216003418);
+        let mut scene = floor();
+        for (actor, position) in [
+            (201, [4.765291690826416, 0.9, -7.703629493713379]),
+            (207, [5.614517688751221, 0.9, -8.606459617614746]),
+            (219, [6.103566646575928, 0.9, -8.10561752319336]),
+        ] {
+            let key = ColliderKey {
+                life: Life {
+                    instance: 1,
+                    entity: actor,
+                    generation: 0,
+                },
+                shape: 0,
+            };
+            scene
+                .insert_capsule(CapsuleCollider {
+                    key,
+                    layers: 2,
+                    usage: Usage::Blocking,
+                    capsule: Capsule {
+                        a: -DVec3::Y * 0.55,
+                        b: DVec3::Y * 0.55,
+                        radius: 0.35,
+                    },
+                })
+                .unwrap();
+            scene
+                .set_pose(
+                    key,
+                    Pose {
+                        position: DVec3::from_array(position),
+                        rotation: glam::DQuat::IDENTITY,
+                    },
+                )
+                .unwrap();
+        }
+        let settings = Settings::default();
+        let mut filter = Filter::blocking(1);
+        filter.ignore = Some(Life {
+            instance: 1,
+            entity: 216,
+            generation: 0,
+        });
+        let mut character = Character::new(start);
+        for _ in 0..120 {
+            let before = serde_json::to_value(character).unwrap();
+            match character
+                .step_contained(&scene, filter, settings, DVec3::ZERO, false, 1. / 120.)
+                .unwrap()
+            {
+                Step::Advanced => {
+                    assert!(character.feet.distance(start) <= settings.radius * 4.);
+                    assert!(
+                        scene
+                            .overlap(settings.capsule(character.feet), filter)
+                            .unwrap()
+                            .hits
+                            .iter()
+                            .all(|hit| hit.penetration <= SKIN)
+                    );
+                }
+                Step::BlockedRecovery { diagnostic } => {
+                    assert_eq!(serde_json::to_value(character).unwrap(), before);
+                    assert!(diagnostic.contains("216"));
+                }
+            }
+        }
+        assert!(
+            character
+                .step_contained(&scene, filter, settings, DVec3::ZERO, false, f64::NAN)
+                .is_err()
+        );
     }
     #[test]
     fn enclosed_four_capsules_recover_without_crossing_walls() {

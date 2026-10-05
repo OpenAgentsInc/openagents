@@ -788,6 +788,7 @@ pub struct Playback {
     entered: f64,
     sample_time: f64,
     sampled: Option<bool>,
+    phase_epoch: Option<u64>,
     changed: f64,
     duration: f32,
     from: std::sync::Arc<[Local]>,
@@ -814,7 +815,7 @@ impl Playback {
         values: &[Value],
         clock: f64,
     ) -> Result<Frame, String> {
-        self.update_time(admitted, life, values, clock, None)
+        self.update_time(admitted, life, values, clock, None, None)
     }
     /// Uses an admitted presentation phase, such as distance-driven locomotion,
     /// while the independent clock governs transitions. Backward phases seek.
@@ -826,10 +827,30 @@ impl Playback {
         sample_time: f64,
         clock: f64,
     ) -> Result<Frame, String> {
+        self.update_sampled_phase(admitted, life, values, sample_time, clock, None)
+    }
+    /// Changes to the explicit phase owner reset markers without replaying another
+    /// source's elapsed time. Graph state and transition policy remain intact.
+    pub fn update_sampled_phase(
+        &mut self,
+        admitted: &Admitted,
+        life: crate::core::LifeId,
+        values: &[Value],
+        sample_time: f64,
+        clock: f64,
+        phase_epoch: Option<u64>,
+    ) -> Result<Frame, String> {
         if !sample_time.is_finite() || !(0. ..=1_000_000.).contains(&sample_time) {
             return Err("Invalid animation graph presentation phase".into());
         }
-        self.update_time(admitted, life, values, clock, Some(sample_time))
+        self.update_time(
+            admitted,
+            life,
+            values,
+            clock,
+            Some(sample_time),
+            phase_epoch,
+        )
     }
     fn update_time(
         &mut self,
@@ -838,6 +859,7 @@ impl Playback {
         values: &[Value],
         clock: f64,
         sample_time: Option<f64>,
+        phase_epoch: Option<u64>,
     ) -> Result<Frame, String> {
         if !clock.is_finite() || !(0. ..=1_000_000.).contains(&clock) {
             return Err("Invalid animation graph playback clock".into());
@@ -870,7 +892,8 @@ impl Playback {
         }
         let root = admitted.graph.states[next.state].node;
         let time = sample_time.unwrap_or(clock - next.entered);
-        let seeked = !reset && !transitioned && time < next.sample_time;
+        let seeked =
+            !reset && !transitioned && (time < next.sample_time || next.phase_epoch != phase_epoch);
         let target = admitted
             .graph
             .locals(&admitted.model, root, values, time as f32)?;
@@ -935,6 +958,7 @@ impl Playback {
         }
         next.clock = clock;
         next.sample_time = time;
+        next.phase_epoch = phase_epoch;
         let frame = Frame {
             matrices,
             markers,
@@ -1600,6 +1624,51 @@ mod tests {
         let timed_again = playback.update(&admitted, life(0), &values, 0.5).unwrap();
         assert!(timed_again.markers.is_empty());
         assert!(timed_again.selection_epoch > sampled.selection_epoch);
+    }
+    #[test]
+    fn phase_owner_handoff_preserves_state_and_bounded_marker_delivery() {
+        let (mut model, mut graph) = fixture();
+        for state in &mut graph.states {
+            state.transitions.clear();
+        }
+        model.markers.push(crate::markers::ClipTrack {
+            clip: 1,
+            track: crate::markers::Track {
+                duration: 1.,
+                markers: vec![crate::markers::Marker {
+                    id: 1,
+                    seconds: 0.25,
+                }],
+            },
+        });
+        let admitted = Admitted::new(graph, &model).unwrap();
+        let mut playback = Playback::default();
+        let values = [Value::Scalar(1.), Value::Boolean(false)];
+        let local = playback
+            .update_sampled_phase(&admitted, life(0), &values, 0.3, 400., Some(12))
+            .unwrap();
+        let authority = playback
+            .update_sampled_phase(&admitted, life(0), &values, 400., 400.016, None)
+            .unwrap();
+        assert_eq!(authority.state, local.state);
+        assert!(authority.markers.is_empty());
+        assert!(authority.selection_epoch > local.selection_epoch);
+        let next = playback
+            .update_sampled_phase(&admitted, life(0), &values, 400.3, 400.3, None)
+            .unwrap();
+        assert_eq!(next.markers.len(), 1);
+        assert!(
+            playback
+                .update_sampled_phase(&admitted, life(0), &values, 900., 401., None)
+                .is_err()
+        );
+        assert_eq!(playback.sample_time, 400.3);
+        assert_eq!(playback.clock, 400.3);
+        let restored = playback
+            .update_sampled_phase(&admitted, life(0), &values, 0.3, 402., Some(13))
+            .unwrap();
+        assert!(restored.markers.is_empty());
+        assert_eq!(restored.state, next.state);
     }
     #[test]
     fn invalid_parameters_and_epoch_exhaustion_preserve_playback() {

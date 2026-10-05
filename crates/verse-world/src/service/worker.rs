@@ -158,14 +158,20 @@ fn interval_control_changed(
     control.is_some_and(|c| c.life != frame.life.into() || c.epoch != frame.epoch)
 }
 
-// A verified replacement context makes queued owned input obsolete without another read.
-fn replaced_context(input: &Input, control: Option<&super::wire::Control>) -> bool {
+/// A newer verified generation or epoch permanently retires tracked input.
+/// This avoids refreshing the scene for each queued input that cannot be rebound.
+fn retired_control(input: &Input, control: Option<&super::wire::Control>) -> bool {
     let (life, epoch) = match input {
         Input::TrackedCommand { life, epoch, .. } => (*life, *epoch),
         Input::MovementFrame { frame, .. } => (frame.life, frame.epoch),
         _ => return false,
     };
-    control.is_some_and(|c| c.life != life.into() || c.epoch != epoch)
+    control.is_some_and(|c| {
+        c.life.instance == life.instance
+            && c.life.actor == life.actor
+            && (life.generation < c.life.generation
+                || (life.generation == c.life.generation && epoch < c.epoch))
+    })
 }
 
 /// Reuses only recent verified response control; server admission still checks every command.
@@ -175,9 +181,16 @@ fn fresh_control(
     observed: Option<Instant>,
 ) -> bool {
     let (life, epoch) = match input {
-        Input::TrackedCommand { life, epoch, .. } => (*life, *epoch),
+        Input::TrackedCommand { life, epoch, .. } | Input::BeginMovementFrames { life, epoch } => {
+            (*life, *epoch)
+        }
         Input::MovementFrame { frame, .. } => (frame.life, frame.epoch),
-        Input::Command(Intent::Cast { .. }) => match control {
+        Input::Command(Intent::Cast { .. })
+        | Input::UseItem(_)
+        | Input::EquipGear(_, _)
+        | Input::EquipOutfit(_)
+        | Input::ClaimQuest(_)
+        | Input::AcceptQuest(_, _) => match control {
             Some(c) => (c.life.into(), c.epoch),
             None => return false,
         },
@@ -291,6 +304,7 @@ async fn run_impl(
         let mut interval = tokio::time::interval(cadence);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut next_inventory = tokio::time::Instant::now();
+        let mut next_events = tokio::time::Instant::now();
         let mut inventory_life = None;
         let mut last_token = 0;
         let mut deferred = None;
@@ -298,6 +312,7 @@ async fn run_impl(
         let mut last_response = client.verified_at();
         let mut snapshot_pending = false;
         let mut last_snapshot_sent = None;
+        let mut snapshot_resume = tokio::time::Instant::now();
         let mut events_pending = false;
         let mut inventory_pending = false;
         let mut refreshed = false;
@@ -337,7 +352,7 @@ async fn run_impl(
                         .await
                         .map_err(|_| "Chamber update consumer closed")?;
                 }
-                let obsolete = replaced_context(&input, client.control());
+                let obsolete = retired_control(&input, client.control());
                 let teleport = matches!(
                     input,
                     Input::Command(Intent::Cast {
@@ -351,19 +366,16 @@ async fn run_impl(
                         ..
                     }
                 );
+                // Inventory and quest operations preserve control and stay ordered.
+                // Sequenced teleports keep the reply barrier but can send before
+                // earlier replies return. Respawn and interval entry drain earlier IO.
                 let lifecycle = !obsolete
-                    && (!matches!(
-                        input,
-                        Input::Command(_)
-                            | Input::TrackedCommand { .. }
-                            | Input::MovementFrame { .. }
-                    ) || teleport);
-                // Sequenced teleports follow earlier inputs on the ordered connection.
-                // Keep the reply barrier, but do not wait for earlier replies to send.
+                    && (matches!(input, Input::Respawn | Input::BeginMovementFrames { .. })
+                        || teleport);
                 if lifecycle && !teleport && client.pending() > 0 {
                     staged = Some(input);
                 } else if !refreshed
-                    && !obsolete
+                    && !retired_control(&input, client.control())
                     && !fresh_control(&input, client.control(), last_response)
                 {
                     if !snapshot_pending && read_backoff.ready(0, tokio::time::Instant::now()) {
@@ -494,8 +506,9 @@ async fn run_impl(
                 }
             }
             // Schedule from the actual send time so quick replies cannot miss a phased polling tick.
-            let snapshot_due =
-                last_snapshot_sent.map_or_else(tokio::time::Instant::now, |sent| sent + cadence);
+            let snapshot_due = last_snapshot_sent
+                .map_or_else(tokio::time::Instant::now, |sent| sent + cadence)
+                .max(snapshot_resume);
             tokio::select! {
                 _ = tokio::time::sleep_until(snapshot_due), if !input_closed && !barrier
                     && staged.is_none() && client.available() && !snapshot_pending
@@ -527,6 +540,11 @@ async fn run_impl(
                     let update = match body {
                         Body::Snapshot {} | Body::Replicate {..} => {
                             snapshot_pending = false;
+                            // A slow read yields one cadence to input before requesting another
+                            // projection. Fast routes retain their deadline from the send time.
+                            if client.last_turnaround().is_some_and(|elapsed| elapsed > cadence) {
+                                snapshot_resume = tokio::time::Instant::now() + cadence;
+                            }
                             if read_backoff.observe(0, &response.body, tokio::time::Instant::now())? {
                                 refreshed = false;
                                 continue;
@@ -580,10 +598,11 @@ async fn run_impl(
                         last_snapshot_sent = Some(tokio::time::Instant::now());
                         snapshot_pending = true;
                     }
-                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
+                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some()) && tokio::time::Instant::now() >= next_events
                         && !events_pending && read_backoff.ready(1, tokio::time::Instant::now()) {
                         client.send(Body::Events { after: cursor.after(), limit: 64 })?;
                         events_pending = true;
+                        next_events = tokio::time::Instant::now() + cadence.max(Duration::from_millis(200));
                     }
                     let life = client.control().map(|c| c.life);
                     if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
@@ -852,6 +871,7 @@ mod tests {
             life: life.into(),
             epoch: 3,
             accepted_sequence: 1,
+            applied_movement: None,
         };
         assert!(!interval_control_changed(&frame, None));
         assert!(!interval_control_changed(&frame, Some(&control)));
@@ -862,6 +882,132 @@ mod tests {
         control.epoch = frame.epoch;
         control.life.generation += 1;
         assert!(interval_control_changed(&frame, Some(&control)));
+    }
+
+    #[tokio::test]
+    async fn retired_interval_backlog_rejects_without_refreshing_each_scene() {
+        use crate::movement::frames::{Frame, Segment};
+        use crate::service::net::{read_frame, tests::gateway, write_frame};
+        use crate::service::wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request};
+        let keys = [key(232), key(233), key(234)];
+        let mut gateway = gateway(&keys);
+        let (client_socket, mut peer_socket) = tokio::io::duplex(1024 * 1024);
+        let (peer_stop, mut peer_stopped) = oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let (connection, hello) = gateway.open_json(0).unwrap();
+            write_frame(&mut peer_socket, &hello, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let mut snapshots = 0;
+            let started = Instant::now();
+            loop {
+                let bytes = tokio::select! {
+                    _=&mut peer_stopped=>break,
+                    bytes=read_frame(&mut peer_socket,MAX_REQUEST_BYTES)=>match bytes {Ok(b)=>b,Err(_)=>break},
+                };
+                let request = Request::decode(&bytes).unwrap();
+                assert!(!matches!(request.body, Body::MovementFrame { .. }));
+                let response = gateway
+                    .dispatch_json(connection, started.elapsed().as_millis() as u64, &bytes)
+                    .unwrap();
+                if matches!(request.body, Body::Snapshot {} | Body::Replicate { .. }) {
+                    snapshots += 1;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                if write_frame(&mut peer_socket, &response, MAX_RESPONSE_BYTES)
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            snapshots
+        });
+        let client = Client::connect_stream(Box::new(client_socket), 120, None, &keys[0])
+            .await
+            .unwrap();
+        let control = client.control().unwrap().clone();
+        assert!(control.epoch > 0);
+        let (input, inputs, updates, mut output) = channels();
+        for token in 1..=16 {
+            input
+                .try_send(Input::MovementFrame {
+                    token,
+                    frame: Frame {
+                        life: control.life.into(),
+                        epoch: control.epoch - 1,
+                        sequence: 0,
+                        tick: 0,
+                        start: 0,
+                        steps: 4,
+                        segments: vec![Segment {
+                            offset: 0,
+                            axes: [0.; 2],
+                            yaw: 0.,
+                            until: 0,
+                            jump: false,
+                        }],
+                    },
+                })
+                .unwrap();
+        }
+        let (stop, stopped) = oneshot::channel();
+        let task = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            Duration::from_secs(1),
+            inputs,
+            updates,
+            stopped,
+        ));
+        timeout(Duration::from_millis(500), async {
+            let mut rejected = 0;
+            while rejected < 16 {
+                if let Update::FrameBound { token, binding } = output.recv().await.unwrap() {
+                    assert_eq!(token, rejected + 1);
+                    assert!(binding.is_err());
+                    rejected += 1;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        stop.send(()).unwrap();
+        task.await.unwrap().unwrap();
+        let _ = peer_stop.send(());
+        assert!(peer.await.unwrap() <= 1);
+    }
+    #[test]
+    fn retirement_requires_an_irreversible_verified_control_transition() {
+        let life = verse_engine::core::LifeId {
+            instance: 120,
+            actor: 14,
+            generation: 0,
+        };
+        let input = Input::TrackedCommand {
+            token: 1,
+            life,
+            epoch: 2,
+            intent: Intent::Jump,
+        };
+        let mut control = super::super::wire::Control {
+            life: life.into(),
+            epoch: 2,
+            accepted_sequence: 0,
+            world_step: 0,
+            credit_step: 0,
+            applied_movement: None,
+        };
+        assert!(!retired_control(&input, None));
+        assert!(!retired_control(&input, Some(&control)));
+        control.epoch = 3;
+        assert!(retired_control(&input, Some(&control)));
+        control.epoch = 1;
+        assert!(!retired_control(&input, Some(&control)));
+        control.life.generation = 1;
+        assert!(retired_control(&input, Some(&control)));
+        control.life.actor += 1;
+        assert!(!retired_control(&input, Some(&control)));
     }
 
     #[tokio::test]
@@ -1546,7 +1692,39 @@ mod tests {
         use tokio::net::TcpListener;
         use tokio_rustls::TlsAcceptor;
         let keys = [key(204), key(205), key(206)];
-        let mut gateway = gateway(&keys);
+        let mut gateway = gateway(&keys)
+            .with_items(super::super::items::Catalog {
+                version: 1,
+                items: vec![super::super::items::Item {
+                    id: 1,
+                    name: "Pipeline recovery fixture".into(),
+                    health: 0,
+                    mana: 1,
+                }],
+            })
+            .unwrap();
+        gateway
+            .grant_reward(super::super::rewards::Transaction {
+                acceptance: None,
+                instance: 120,
+                actor: gateway.game().player_life().actor,
+                source: [204; 32],
+                experience: 0,
+                items: vec![super::super::rewards::Entry { id: 1, count: 1 }],
+                quests: vec![],
+                spent: vec![],
+                outfit: None,
+                equipment: None,
+            })
+            .unwrap();
+        let actor = gateway.game().player_life().actor;
+        let source = gateway.game().player_source(actor).unwrap();
+        gateway
+            .chamber
+            .game
+            .simulation
+            .spend_mana_for(source, 1)
+            .unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (server_tls, connector) = tls();
@@ -1565,7 +1743,8 @@ mod tests {
                 .unwrap();
             let mut commands = Vec::new();
             let mut held = Vec::new();
-            while commands.len() < 3 {
+            let mut actions = Vec::new();
+            while actions.len() < 4 {
                 let bytes = timeout(
                     Duration::from_secs(3),
                     read_frame(&mut socket, MAX_REQUEST_BYTES),
@@ -1574,10 +1753,26 @@ mod tests {
                 .unwrap()
                 .unwrap();
                 let request = Request::decode(&bytes).unwrap();
-                if let Body::Command { command } = request.body {
-                    commands.push(command);
+                match request.body {
+                    Body::Command { command } => {
+                        actions.push("command");
+                        commands.push(command);
+                    }
+                    Body::UseItem { item, .. } => {
+                        assert_eq!(item, 1);
+                        actions.push("item");
+                    }
+                    _ => {}
                 }
                 let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
+                if actions.last() == Some(&"item") {
+                    let response =
+                        serde_json::from_slice::<super::super::wire::Response>(&response).unwrap();
+                    assert!(
+                        matches!(response.body, Reply::ItemUsed { .. }),
+                        "{response:?}"
+                    );
+                }
                 if commands.is_empty() {
                     write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
                         .await
@@ -1586,6 +1781,15 @@ mod tests {
                     held.push(response);
                 }
             }
+            assert_eq!(actions, vec!["command", "command", "item", "command"]);
+            assert_eq!(
+                gateway
+                    .character_rewards(gateway.game().player_life().actor)
+                    .unwrap()
+                    .items
+                    .get(&1),
+                None
+            );
             assert_eq!(
                 commands.iter().map(|c| c.sequence).collect::<Vec<_>>(),
                 vec![1, 2, 3]
@@ -1634,6 +1838,9 @@ mod tests {
         .into_iter()
         .enumerate()
         {
+            if index == 2 {
+                input.send(Input::UseItem(1)).await.unwrap();
+            }
             input
                 .send(Input::TrackedCommand {
                     token: index as u64 + 1,
@@ -1659,7 +1866,7 @@ mod tests {
         let mut bound = 0;
         let mut outcomes = 0;
         timeout(Duration::from_secs(4), async {
-            while outcomes < 3 {
+            while outcomes < 4 {
                 match output.recv().await.unwrap() {
                     Update::CommandBound { token, binding } => {
                         bound += 1;
@@ -1668,7 +1875,10 @@ mod tests {
                     }
                     Update::Outcome(response) => {
                         assert_eq!(bound, 3);
-                        assert!(matches!(response.body, Reply::Accepted));
+                        assert!(matches!(
+                            response.body,
+                            Reply::Accepted | Reply::ItemUsed { .. }
+                        ));
                         outcomes += 1;
                     }
                     Update::MovementSuperseded { .. } => panic!("Movement crossed a jump barrier"),
@@ -1716,6 +1926,7 @@ mod tests {
             life: life.into(),
             epoch: 1,
             accepted_sequence: 0,
+            applied_movement: None,
         };
         assert!(fresh_control(&input, Some(&control), Some(Instant::now())));
         assert!(!fresh_control(&input, Some(&control), None));
@@ -1735,6 +1946,32 @@ mod tests {
             Some(&control),
             Some(Instant::now())
         ));
+        control.life.generation = life.generation;
+        let begin = Input::BeginMovementFrames { life, epoch: 1 };
+        assert!(fresh_control(&begin, Some(&control), Some(Instant::now())));
+        control.epoch += 1;
+        assert!(!fresh_control(&begin, Some(&control), Some(Instant::now())));
+        control.epoch = 1;
+        control.life.generation += 1;
+        assert!(!fresh_control(&begin, Some(&control), Some(Instant::now())));
+        control.life.generation = life.generation;
+        for input in [
+            begin,
+            Input::UseItem(1),
+            Input::EquipGear(super::super::equipment::Slot::Head, 1),
+            Input::EquipOutfit(1),
+            Input::ClaimQuest(1),
+            Input::AcceptQuest(1, life),
+        ] {
+            assert!(fresh_control(&input, Some(&control), Some(Instant::now())));
+            assert!(!fresh_control(&input, None, Some(Instant::now())));
+            assert!(!fresh_control(&input, Some(&control), None));
+            assert!(!fresh_control(
+                &input,
+                Some(&control),
+                Some(Instant::now() - Duration::from_millis(75))
+            ));
+        }
     }
     #[test]
     fn unsent_movement_coalesces_without_crossing_actions_or_control_fences() {
@@ -2154,6 +2391,7 @@ mod tests {
         let mut outcomes = 0;
         let mut accepted = 0;
         let mut snapshots = 0;
+        let mut event_pages = Vec::new();
         timeout(Duration::from_secs(8), async {
             while outcomes < 93 {
                 match output
@@ -2168,10 +2406,10 @@ mod tests {
                             accepted += 1;
                         }
                     }
+                    Update::Events { .. } => event_pages.push(Instant::now()),
                     Update::MovementSuperseded { .. }
                     | Update::FrameBound { .. }
                     | Update::CommandBound { .. }
-                    | Update::Events { .. }
                     | Update::Inventory(_) => {}
                 }
             }
@@ -2182,6 +2420,12 @@ mod tests {
         // Raw moves refresh control; casts can reuse a recent verified acknowledgment.
         assert!(snapshots >= 90);
         assert!(accepted >= 90);
+        assert!(event_pages.len() >= 10);
+        assert!(
+            event_pages
+                .windows(2)
+                .all(|pages| pages[1].duration_since(pages[0]) >= Duration::from_millis(180))
+        );
         stop.send(()).unwrap();
         assert!(worker.await.unwrap().is_ok());
         drop(input);

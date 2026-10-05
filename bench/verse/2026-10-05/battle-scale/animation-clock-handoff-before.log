@@ -1,0 +1,23 @@
+    Blocking waiting for file lock on build directory
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 52.40s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-e997d7858058f2aa)
+
+running 1 test
+test animation::semantic_tests::locomotion_clock_handoff_does_not_replay_another_sources_markers ... FAILED
+
+failures:
+
+---- animation::semantic_tests::locomotion_clock_handoff_does_not_replay_another_sources_markers stdout ----
+
+thread 'animation::semantic_tests::locomotion_clock_handoff_does_not_replay_another_sources_markers' (3983832) panicked at crates/verse-engine/src/animation.rs:652:94:
+called `Result::unwrap()` on an `Err` value: "Animation marker crossings exceed the event budget"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    animation::semantic_tests::locomotion_clock_handoff_does_not_replay_another_sources_markers
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p verse-engine --lib`
