@@ -30,6 +30,7 @@
 //! chime for a finished task or goal, with a desktop notice while the
 //! window is not in front; `V` mutes them, and `--studio-mute` starts muted.
 //! the podium, and merge decisions from the merge station.
+//! `--grove` opens straight into the Grove, the druid training field.
 //! `--everglade` opens straight into Everglade instead of the plaza, and
 //! `--studio-notice <text>` leads Everglade's caption with a notice;
 //! `openagents studio up` passes both.
@@ -199,6 +200,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--studio-socket" => options.studio_socket = Some(value()?.into()),
             "--studio-mute" => options.studio_muted = true,
             "--everglade" => options.everglade = true,
+            "--grove" => options.grove = true,
             "--studio-notice" => options.studio_notice = Some(value()?),
             "--ritual" => options.ritual = Some(value()?.into()),
             "--no-ritual" => options.ritual = None,

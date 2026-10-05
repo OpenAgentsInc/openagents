@@ -69,6 +69,9 @@ pub struct Options {
     /// Open straight into Everglade once the window shows, as
     /// `openagents studio up` asks, rather than in the plaza.
     pub everglade: bool,
+    /// Open straight into the Grove, the druid training field, once the
+    /// window shows (`verse --grove`).
+    pub grove: bool,
     /// A notice Everglade's caption leads with, such as that no coding
     /// agent can sign in, so the studio's seats cannot work.
     pub studio_notice: Option<String>,
@@ -91,6 +94,7 @@ impl Default for Options {
             studio_socket: None,
             studio_muted: false,
             everglade: false,
+            grove: false,
             studio_notice: None,
             ritual: crate::ritual::default_config(),
         }
@@ -561,7 +565,7 @@ struct App {
     /// `--everglade` asked to open Everglade and it has not loaded yet. The
     /// request survives a load that losing focus cancels, so a window that
     /// starts behind another still enters once it comes to the front.
-    everglade_pending: bool,
+    everglade_pending: Option<zones::ZoneId>,
     /// A held Up (1) or Down (-1) while levitating in Everglade, or 0.
     climb: f32,
 }
@@ -810,7 +814,7 @@ impl App {
             studio_muted: options.studio_muted,
             studio_badge: None,
             window_focused: true,
-            everglade_pending: false,
+            everglade_pending: None,
             climb: 0.0,
         })
     }
@@ -1337,34 +1341,40 @@ impl App {
     /// portal, then hand off as a portal entry does.
     /// Starts or restarts the `--everglade` load while it is pending and the
     /// window is in front, and drops the request once Everglade is in.
+    /// `--grove` does the same for the Grove, which loads Everglade's pack.
     fn open_pending_everglade(&mut self) {
-        if !self.everglade_pending {
+        let Some(zone) = self.everglade_pending else {
             return;
-        }
+        };
         // In, or failed with its error on screen: a failed load is not
         // retried, so the player sees why.
-        if self.runtime.zone == crate::zones::ZoneId::Everglade
+        if self.runtime.zone == zone
             || self.runtime.zone_load_state() == crate::zones::LoadState::Failed
         {
-            self.everglade_pending = false;
+            self.everglade_pending = None;
         } else if self.window_focused
             && self.runtime.is_plaza()
             && !self.runtime.zone_loading()
             && self.runtime.everglade_loader_idle()
         {
-            self.open_everglade();
+            self.open_everglade(zone);
         }
     }
 
-    fn open_everglade(&mut self) {
-        match self.runtime.enter_everglade() {
+    fn open_everglade(&mut self, zone: zones::ZoneId) {
+        let entered = if zone == zones::ZoneId::Grove {
+            self.runtime.enter_grove()
+        } else {
+            self.runtime.enter_everglade()
+        };
+        match entered {
             Ok(()) => {
                 self.stop_map();
                 self.keys = Keys::default();
                 self.capture(false);
                 self.sync_zone_services(true);
             }
-            Err(error) => eprintln!("verse: cannot open Everglade: {error}"),
+            Err(error) => eprintln!("verse: cannot open {}: {error}", zone.label()),
         }
     }
 
@@ -1972,6 +1982,19 @@ impl App {
             && self.runtime.zone_load_state() == zones::LoadState::Idle
     }
 
+    /// The Grove shows its hotbar and nothing else over the meadow, as
+    /// Everglade does.
+    fn in_bare_grove(&self) -> bool {
+        self.runtime.zone == zones::ZoneId::Grove
+            && self.runtime.zone_load_state() == zones::LoadState::Idle
+    }
+
+    /// The Grove's hotbar slot under `at`, in logical units.
+    fn grove_hotbar_at(&self, at: [f32; 2]) -> Option<ZoneIntent> {
+        let size = self.renderer.as_ref()?.size();
+        zones::grove::hotbar::hit(at, size.map(|v| v / self.scale), HOTBAR_BOTTOM)
+    }
+
     /// Everglade's hotbar slot under `at`, in logical units.
     fn hotbar_at(&self, at: [f32; 2]) -> Option<ZoneIntent> {
         let size = self.renderer.as_ref()?.size();
@@ -1980,6 +2003,7 @@ impl App {
 
     fn map_visible(&self) -> bool {
         !self.in_bare_everglade()
+            && !self.in_bare_grove()
             && !self.runtime.zone_loading()
             && !self.chat.open
             && !self.board_open
@@ -2104,6 +2128,26 @@ impl App {
                     ZoneIntent::Return
                 });
                 return;
+            }
+            // The Grove's hotbar: 1 to 9 cast its spells, and 0 rests.
+            if self.in_bare_grove() {
+                let digit = match code {
+                    KeyCode::Digit0 => Some(0),
+                    KeyCode::Digit1 => Some(1),
+                    KeyCode::Digit2 => Some(2),
+                    KeyCode::Digit3 => Some(3),
+                    KeyCode::Digit4 => Some(4),
+                    KeyCode::Digit5 => Some(5),
+                    KeyCode::Digit6 => Some(6),
+                    KeyCode::Digit7 => Some(7),
+                    KeyCode::Digit8 => Some(8),
+                    KeyCode::Digit9 => Some(9),
+                    _ => None,
+                };
+                if let Some(intent) = digit.and_then(zones::grove::hotbar::key) {
+                    self.zone_action(intent);
+                    return;
+                }
             }
             // Everglade's hotbar: 1 or L levitates or lands.
             if self.in_bare_everglade() && matches!(code, KeyCode::Digit1 | KeyCode::KeyL) {
@@ -2465,6 +2509,16 @@ impl App {
                 ZoneIntent::Lower if self.runtime.everglade_levitating() => self.climb = -1.0,
                 intent => self.zone_action(intent),
             }
+            return;
+        }
+        if button == MouseButton::Left
+            && pressed
+            && !self.keys.left_button
+            && !self.keys.right_button
+            && self.in_bare_grove()
+            && let Some(intent) = self.grove_hotbar_at(self.cursor.map(|v| v / self.scale))
+        {
+            self.zone_action(intent);
             return;
         }
         if button == MouseButton::Left && !pressed && self.climb != 0.0 {
@@ -3016,7 +3070,8 @@ impl App {
                         && !self.board_open
                         && !self.gym_open
                         && self.picker.is_none()
-                        && !self.in_bare_everglade(),
+                        && !self.in_bare_everglade()
+                        && !self.in_bare_grove(),
                 ));
                 if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.zone_frame) {
                     ui.vertices
@@ -3030,6 +3085,22 @@ impl App {
                     // in pixels.
                     let mut bar = crate::ui::UiBatch::default();
                     zones::everglade::hotbar::draw(
+                        &mut bar,
+                        atlas,
+                        size.map(|v| v / self.scale),
+                        HOTBAR_BOTTOM,
+                        &slots,
+                    );
+                    for vertex in &mut bar.vertices {
+                        vertex.pos = vertex.pos.map(|v| v * self.scale);
+                    }
+                    ui.vertices.extend(bar.vertices);
+                }
+                if self.in_bare_grove()
+                    && let (Some(atlas), Some(slots)) = (&self.map_atlas, self.runtime.grove_bar())
+                {
+                    let mut bar = crate::ui::UiBatch::default();
+                    zones::grove::hotbar::draw(
                         &mut bar,
                         atlas,
                         size.map(|v| v / self.scale),
@@ -3252,6 +3323,9 @@ impl ApplicationHandler for App {
         if let Err(error) = zones::everglade::hotbar::add_sprites(&mut atlas) {
             eprintln!("verse: Everglade's hotbar has no icons: {error}");
         }
+        if let Err(error) = zones::grove::hotbar::add_sprites(&mut atlas) {
+            eprintln!("verse: the Grove's hotbar has no icons: {error}");
+        }
         match Renderer::new(window.clone(), &self.runtime.world.mesh, &atlas) {
             Ok(mut renderer) => {
                 if let Err(error) = renderer.set_atmosphere(zones::atmosphere(self.runtime.zone)) {
@@ -3288,7 +3362,12 @@ impl ApplicationHandler for App {
         // `--everglade` enters once, from the first window; a later resume
         // leaves the player where they are.
         if std::mem::take(&mut self.connection_options.everglade) {
-            self.everglade_pending = true;
+            self.everglade_pending = Some(zones::ZoneId::Everglade);
+            self.open_pending_everglade();
+        }
+        // `--grove` likewise, through the same pending load.
+        if std::mem::take(&mut self.connection_options.grove) {
+            self.everglade_pending = Some(zones::ZoneId::Grove);
             self.open_pending_everglade();
         }
     }

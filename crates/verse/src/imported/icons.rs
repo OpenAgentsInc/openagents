@@ -49,6 +49,7 @@ const STONE: [f32; 3] = [0.82, 0.76, 0.66];
 const WIND: [f32; 3] = [0.6, 0.95, 0.9];
 const ROT: [f32; 3] = [0.55, 0.9, 0.5];
 const METEOR: [f32; 3] = [1.0, 0.42, 0.18];
+const REST: [f32; 3] = [0.45, 1.0, 0.5];
 
 /// Every hotbar icon: the original ten abilities, then the SRD spell slots.
 pub const ICONS: &[Icon] = &[
@@ -117,6 +118,8 @@ pub const ICONS: &[Icon] = &[
         TRANSMUTATION,
         true
     ),
+    // The Grove's Long Rest: a camp lantern in green.
+    icon!("long-rest-icon", "lorc/lantern-flame.svg", "Lorc", REST),
     // Everglade's movement hotbar.
     icon!(
         "rise-icon",

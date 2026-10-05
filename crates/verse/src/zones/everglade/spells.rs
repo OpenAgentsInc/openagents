@@ -29,7 +29,7 @@ const PLAYER: u32 = 1;
 /// The player's mass for Feather Fall's energy accounting, kg.
 const MASS: f64 = 75.0;
 /// How far ahead of the caster the walls stand, m, as in the chamber.
-const AHEAD: f64 = 4.0;
+pub(crate) const AHEAD: f64 = 4.0;
 /// Half the stone slab the glade's ground is to Wall of Stone's support
 /// check, m.
 const SLAB: f64 = 20.0;
@@ -214,11 +214,28 @@ impl Spells {
     /// # Errors
     ///
     /// Returns why the cast was refused: a cooldown, or the rule it breaks.
+    #[cfg(test)]
     pub fn cast(
         &mut self,
         spell: Spell,
         player: &PlayerController,
         solids: &Solids,
+    ) -> Result<(), String> {
+        self.cast_ahead(spell, player, solids, AHEAD)
+    }
+
+    /// Casts `spell` as [`Self::cast`] does, with Wall of Stone and Wind
+    /// Wall standing `ahead` meters in front of `player`.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the cast was refused: a cooldown, or the rule it breaks.
+    pub fn cast_ahead(
+        &mut self,
+        spell: Spell,
+        player: &PlayerController,
+        solids: &Solids,
+        ahead: f64,
     ) -> Result<(), String> {
         if spell != Spell::FeatherFall && self.active(spell) {
             self.concentration = None;
@@ -227,7 +244,7 @@ impl Spells {
         if self.cooling(spell) > 0.0 {
             return Err(format!("{} is not ready", label(spell)));
         }
-        match self.admit(spell, player, solids)? {
+        match self.admit_ahead(spell, player, solids, ahead)? {
             Admitted::Feather(effect) => self.feather = Some(effect),
             Admitted::Concentration(c) => self.concentration = Some(c),
         }
@@ -241,6 +258,16 @@ impl Spells {
         spell: Spell,
         player: &PlayerController,
         solids: &Solids,
+    ) -> Result<Admitted, String> {
+        self.admit_ahead(spell, player, solids, AHEAD)
+    }
+
+    fn admit_ahead(
+        &self,
+        spell: Spell,
+        player: &PlayerController,
+        solids: &Solids,
+        ahead: f64,
     ) -> Result<Admitted, String> {
         let feet = player.pos.as_dvec3();
         let forward = player.forward().as_dvec3();
@@ -270,7 +297,7 @@ impl Spells {
             Spell::WallOfStone => {
                 let side = DVec3::new(forward.z, 0.0, -forward.x);
                 let size = stone::Form::Thick.size();
-                let center = feet + forward * AHEAD;
+                let center = feet + forward * ahead;
                 // The panels stand on the lowest ground under them, so no
                 // gap opens beneath the wall on a slope.
                 let samples = (2.0 * size.x / 0.5).ceil() as usize;
@@ -296,7 +323,7 @@ impl Spells {
             }
             Spell::WindWall => {
                 let facing = DVec2::new(forward.x, forward.z);
-                let center = DVec2::new(feet.x, feet.z) + facing * AHEAD;
+                let center = DVec2::new(feet.x, feet.z) + facing * ahead;
                 let side = DVec2::new(-facing.y, facing.x);
                 let path = wind::Wall::straight(center, side, 30.0 * wind::FOOT);
                 let wall = wind::Wall::new(path, feet, |p| {
@@ -319,6 +346,33 @@ impl Spells {
                     at,
                 }))
             }
+        }
+    }
+
+    /// The live Reverse Gravity, if any.
+    #[must_use]
+    pub fn reverse_gravity(&self) -> Option<&reverse::Gravity> {
+        match &self.concentration {
+            Some(Concentration::Reverse { gravity, .. }) => Some(gravity),
+            _ => None,
+        }
+    }
+
+    /// The live Wind Wall, if any.
+    #[must_use]
+    pub fn wind_wall(&self) -> Option<&wind::Wall> {
+        match &self.concentration {
+            Some(Concentration::Wind { wall, .. }) => Some(wall),
+            _ => None,
+        }
+    }
+
+    /// The live Wall of Stone's panels, if any.
+    #[must_use]
+    pub fn stone_panels(&self) -> Option<&[stone::Placement]> {
+        match &self.concentration {
+            Some(Concentration::Stone { panels, .. }) => Some(panels),
+            _ => None,
         }
     }
 

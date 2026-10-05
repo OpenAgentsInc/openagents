@@ -68,7 +68,7 @@ const YARD_DIRT: [f32; 3] = [0.24, 0.2, 0.13];
 
 /// Sunlight from above and slightly behind the approach, so slopes facing
 /// the arriving player read lighter.
-pub(super) fn shade(color: [f32; 3], a: Vec3, b: Vec3, c: Vec3) -> [f32; 3] {
+pub(crate) fn shade(color: [f32; 3], a: Vec3, b: Vec3, c: Vec3) -> [f32; 3] {
     let normal = (b - a).cross(c - a).normalize_or_zero();
     let light = Vec3::new(0.35, 0.85, -0.4).normalize();
     let k = 0.62 + 0.45 * normal.dot(light).abs();
@@ -86,6 +86,12 @@ pub(super) fn triangles() -> u64 {
 /// Adds the ground to `scene`: its two images and materials, a grass mesh
 /// per tile, and the dirt sheet, each placed at its own corner.
 pub(super) fn ground(scene: &mut TexturedScene) {
+    ground_with(scene, true);
+}
+
+/// Adds the grass to `scene`, and the dirt sheet over the yard and the
+/// approach path when `dirt` is set.
+pub(crate) fn ground_with(scene: &mut TexturedScene, dirt: bool) {
     let grass_image = scene.add_image(grass_image());
     let grass = scene.add_material(TexturedMaterial {
         image: Some(grass_image),
@@ -109,6 +115,9 @@ pub(super) fn ground(scene: &mut TexturedScene) {
                 Mat4::from_translation(Vec3::new(corner[0], 0.0, corner[1])),
             );
         }
+    }
+    if !dirt {
+        return;
     }
     let dirt_image = scene.add_image(dirt_image());
     let dirt = scene.add_material(TexturedMaterial {

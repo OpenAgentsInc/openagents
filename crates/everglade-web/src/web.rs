@@ -149,10 +149,23 @@ async fn run() -> Result<(), String> {
     // The canvas takes drags and pinches instead of the page scrolling.
     let _ = canvas.style().set_property("touch-action", "none");
 
+    // `?zone=grove` starts in the Grove, the druid training field built on
+    // the same pack.
+    let grove = window.location().search().is_ok_and(|query| {
+        query
+            .trim_start_matches('?')
+            .split('&')
+            .any(|part| part.eq_ignore_ascii_case("zone=grove"))
+    });
     let bytes = download(&window).await?;
-    status("Opening Everglade…");
     let mut runtime = WorldRuntime::new();
-    runtime.install_everglade_bytes(&bytes)?;
+    if grove {
+        status("Opening the Grove…");
+        runtime.install_grove_bytes(&bytes)?;
+    } else {
+        status("Opening Everglade…");
+        runtime.install_everglade_bytes(&bytes)?;
+    }
     // The page opens no studio panel, on a keyboard or a touchscreen.
     runtime.interact_hint = verse::runtime::InteractHint::None;
     drop(bytes);
@@ -174,6 +187,7 @@ async fn run() -> Result<(), String> {
     };
     let mut atlas = Atlas::new((14.0 * scale).round());
     zones::everglade::hotbar::add_sprites(&mut atlas)?;
+    zones::grove::hotbar::add_sprites(&mut atlas)?;
     let mut canvas = canvas;
     let mut renderer = open(&canvas, backends, &runtime, &atlas, width, height).await?;
     // Everglade's textured world draws only on the physical renderer. A
@@ -361,9 +375,12 @@ impl Page {
         let mut ui = verse::ui::UiBatch::default();
         if let (Some(layout), Some(slots)) = (&self.layout, self.runtime.everglade_hotbar()) {
             zones::everglade::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &slots);
-            for vertex in &mut ui.vertices {
-                vertex.pos = vertex.pos.map(|v| v * self.scale);
-            }
+        }
+        if let (Some(layout), Some(bar)) = (&self.layout, self.runtime.grove_bar()) {
+            zones::grove::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &bar);
+        }
+        for vertex in &mut ui.vertices {
+            vertex.pos = vertex.pos.map(|v| v * self.scale);
         }
         if let DrawStatus::Error(error) = self.renderer.draw(view, &dynamic, &ui) {
             self.fail(&error);
@@ -379,7 +396,12 @@ impl Page {
     /// Presses the hotbar slot under `at` (CSS pixels) for `pointer`;
     /// returns whether one was there.
     fn press_hotbar(&mut self, at: [f32; 2], pointer: Option<i32>) -> bool {
-        let Some(intent) = zones::everglade::hotbar::hit(at, self.css_size(), 0.0) else {
+        let hit = if self.runtime.grove_bar().is_some() {
+            zones::grove::hotbar::hit(at, self.css_size(), 0.0)
+        } else {
+            zones::everglade::hotbar::hit(at, self.css_size(), 0.0)
+        };
+        let Some(intent) = hit else {
             return false;
         };
         self.press(intent, pointer);
@@ -419,6 +441,20 @@ impl Page {
     /// levitating Space and X hold Up and Down. Returns whether it used the
     /// key.
     fn hotbar_key(&mut self, code: &str, down: bool) -> bool {
+        // The Grove's bar: 1 to 9 cast, and 0 is Long Rest.
+        if self.runtime.grove_bar().is_some() {
+            let Some(intent) = code
+                .strip_prefix("Digit")
+                .and_then(|d| d.parse::<u8>().ok())
+                .and_then(zones::grove::hotbar::key)
+            else {
+                return false;
+            };
+            if down {
+                let _ = self.runtime.zone_intent(intent);
+            }
+            return true;
+        }
         let slots = &zones::everglade::hotbar::SLOTS;
         let slot = code
             .strip_prefix("Digit")

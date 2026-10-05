@@ -525,6 +525,11 @@ impl WorldRuntime {
             eye.y = eye
                 .y
                 .max(verse_ruins::scene::Terrain::bundled().height(eye.x, eye.z) + 0.4);
+        } else if self.zone == crate::zones::ZoneId::Grove {
+            eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
+            eye.y = eye
+                .y
+                .max(crate::zones::everglade::height(eye.x, eye.z) + 0.4);
         } else if self.zone == crate::zones::ZoneId::Everglade {
             eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
             eye.y = eye
@@ -572,7 +577,11 @@ impl WorldRuntime {
     /// where the player walks as the outfitted character alone.
     #[must_use]
     pub fn companion_present(&self) -> bool {
-        !self.bare && self.zone != crate::zones::ZoneId::Everglade
+        !self.bare
+            && !matches!(
+                self.zone,
+                crate::zones::ZoneId::Everglade | crate::zones::ZoneId::Grove
+            )
     }
 
     /// Project the animated spade center into normalized viewport coordinates.
