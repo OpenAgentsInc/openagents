@@ -77,6 +77,8 @@ physics = { path = "../physics" }
 verse-lagrange = { path = "../verse-lagrange" }
 # The Lagrange 1 zone; `verse` re-exports it as `zones::lagrange`.
 verse-zone-lagrange = { path = "../verse-zone-lagrange" }
+# The Physics Lab zone; `verse` re-exports it as `zones::lab`.
+verse-zone-lab = { path = "../verse-zone-lab" }
 # The Ruins zone and its pack loader; `verse` re-exports them as
 # `zones::ruins` and `zones::assets`.
 verse-zone-ruins = { path = "../verse-zone-ruins" }

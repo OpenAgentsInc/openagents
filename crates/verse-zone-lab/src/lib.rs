@@ -5,6 +5,9 @@
 //! owns the knobs, the fixed-step clock, and the HUD text; [`draw`] turns a
 //! scenario into meshes. The player walks around a stage on flat ground;
 //! physics coordinates are stage coordinates offset by [`STAGE`].
+//!
+//! `verse` re-exports this crate as `zones::lab`, so an edit here recompiles
+//! this crate and what depends on it rather than all of Verse.
 
 mod draw;
 mod scenes;
@@ -12,19 +15,24 @@ mod scenes;
 mod tests;
 
 use crate::{mesh::Mesh, world::World};
+
+// The paths this zone was written against inside `crates/verse`.
 use glam::Vec3;
 use physics::FixedStep;
 use serde::Serialize;
+use verse_core::world;
+use verse_pbr::mesh;
+use verse_world::social::controller;
 
 pub use scenes::Kind;
-pub(crate) use scenes::{DT, KnobDef, Scene};
+pub use scenes::{DT, KnobDef, Scene};
 
 /// Scene position of the physics origin: the center of the stage floor.
-pub(crate) const STAGE: Vec3 = Vec3::new(0.0, 0.0, 3.0);
+pub const STAGE: Vec3 = Vec3::new(0.0, 0.0, 3.0);
 /// The return portal, to the front left of the stage.
-pub(crate) const RETURN_PORTAL: Vec3 = Vec3::new(-9.0, 0.0, -8.0);
+pub const RETURN_PORTAL: Vec3 = Vec3::new(-9.0, 0.0, -8.0);
 /// Half the walkable square, m.
-pub(crate) const HALF_EXTENT: f32 = 40.0;
+pub const HALF_EXTENT: f32 = 40.0;
 /// Where the player arrives: off center, so the character does not hide
 /// the scenario, and turned toward the stage.
 const SPAWN: Vec3 = Vec3::new(1.6, 0.0, -2.2);
@@ -65,7 +73,7 @@ pub struct Snapshot {
     pub readout: Vec<String>,
 }
 
-pub(crate) struct Lab {
+pub struct Lab {
     pub scene: Scene,
     scenario: usize,
     /// Option index of every knob, per scenario, kept across switches.

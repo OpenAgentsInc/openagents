@@ -9152,6 +9152,7 @@ dependencies = [
  "verse-pbr",
  "verse-ruins",
  "verse-world",
+ "verse-zone-lab",
  "verse-zone-lagrange",
  "verse-zone-ruins",
  "web-time",
@@ -9297,6 +9298,19 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "verse-engine",
+]
+
+[[package]]
+name = "verse-zone-lab"
+version = "0.1.0"
+dependencies = [
+ "coder-ui",
+ "glam",
+ "physics",
+ "serde",
+ "verse-core",
+ "verse-pbr",
+ "verse-world",
 ]
 
 [[package]]

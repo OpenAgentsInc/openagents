@@ -9,10 +9,12 @@ pub mod everglade_pack;
 pub mod gate;
 pub mod grove;
 pub mod hud;
-mod lab;
+pub use verse_zone_lab as lab;
 pub use verse_zone_lagrange as lagrange;
 pub mod operators;
 pub use verse_zone_ruins as ruins;
+#[cfg(test)]
+mod lab_tests;
 mod runtime;
 #[cfg(test)]
 mod tests;

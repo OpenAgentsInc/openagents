@@ -12,15 +12,15 @@ use physics::{
 };
 
 /// Fixed step length, s.
-pub(crate) const DT: f64 = 1.0 / 120.0;
+pub const DT: f64 = 1.0 / 120.0;
 /// Standard gravity, m/s^2.
-pub(crate) const G: f64 = 9.81;
+pub const G: f64 = 9.81;
 /// Half the stage floor's width, m.
-pub(crate) const FLOOR_HALF: f64 = 3.5;
+pub const FLOOR_HALF: f64 = 3.5;
 
 /// One knob: a closed list of options, so every value is reproducible.
 #[derive(Clone, Copy)]
-pub(crate) struct KnobDef {
+pub struct KnobDef {
     pub id: &'static str,
     pub label: &'static str,
     pub options: &'static [f64],
@@ -379,7 +379,7 @@ impl Kind {
         !matches!(self, Self::Tunneling | Self::Momentum | Self::Thrusters)
     }
 
-    pub(crate) const fn knobs(self) -> &'static [KnobDef] {
+    pub const fn knobs(self) -> &'static [KnobDef] {
         match self {
             Self::Manifold => MANIFOLD_KNOBS,
             Self::Friction => FRICTION_KNOBS,
@@ -400,7 +400,7 @@ impl Kind {
 }
 
 /// Scenario-specific bodies and bookkeeping.
-pub(crate) enum Rig {
+pub enum Rig {
     Manifold {
         top: BodyId,
         /// Tilt and yaw, rad; penetration and slide, m.
@@ -463,7 +463,7 @@ pub(crate) enum Rig {
 }
 
 /// A built scenario: its world, rig, and elapsed time.
-pub(crate) struct Scene {
+pub struct Scene {
     pub kind: Kind,
     pub world: World,
     pub rig: Rig,

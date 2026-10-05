@@ -215,7 +215,7 @@ fn capsule(
 }
 
 /// The lab's static geometry and what the player cannot walk through.
-pub(super) fn world() -> World {
+pub fn world() -> World {
     let mut mesh = Mesh::default();
     let half = super::HALF_EXTENT;
     let mut x = -half;
@@ -330,7 +330,7 @@ pub(super) fn world() -> World {
 /// Block lettering from the shared door font, recolored.
 fn label(mesh: &mut Mesh, text: &str, anchor: Vec3, height: f32, color: [f32; 3]) {
     let mut letters = Mesh::default();
-    crate::doors::scene_label(
+    verse_core::label::label(
         &mut letters,
         text,
         anchor,
@@ -342,7 +342,7 @@ fn label(mesh: &mut Mesh, text: &str, anchor: Vec3, height: f32, color: [f32; 3]
 }
 
 /// Every collider, the scenario's own marks, and the debug overlay.
-pub(super) fn scene(scene: &Scene, alpha: f64, overlay: bool) -> Mesh {
+pub fn scene(scene: &Scene, alpha: f64, overlay: bool) -> Mesh {
     let mut mesh = Mesh::default();
     let world = &scene.world;
     label(
