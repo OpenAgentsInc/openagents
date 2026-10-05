@@ -27,21 +27,13 @@ cannot replace the compiled game code. This profile is the source game's tuning,
 not a complete implementation of Dungeons & Dragons Fifth Edition. Its original
 SRD 5.2.1 references do not change that claim.
 
-## Fifth edition remains a separate planned profile
+## No dice: the combat model
 
-A creator-selectable fifth-edition ruleset is still intended. It should be added
-as an explicit, independently versioned alternative with a documented SRD
-edition and executable coverage fixtures. Do not silently label the current
-real-time fireball simulator as fifth-edition conformance, and do not replace
-an authored world's rules with a different profile under the same ID.
-
-Before publishing a profile, specify character statistics, initiative and
-turns, action economy, movement and range, attacks and saves, spell resources,
-conditions, death, and unsupported actions. Tests must distinguish natural
-attack rolls from ordinary checks and saves, verify critical dice and advantage,
-and reject unsupported actions without partially mutating state. Full character
-creation, a complete spell catalog, equipment, rests, and multiplayer authority
-remain separate work. A limited subset must say exactly what it supports.
+There is no dice-based fifth-edition profile, and none is planned (owner,
+2026-10-04). Every zone uses the real-time [combat model](combat-model.md):
+fixed damage, mana and cooldowns, timed debuffs, and no attack rolls or saving
+throws. SRD abilities are translated into that model, never run by tabletop
+procedure.
 
 ## Creator-selected profiles
 

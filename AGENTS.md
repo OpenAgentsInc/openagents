@@ -630,7 +630,9 @@ uses, and marks which are implemented and which are only specified.
   on entry and runs the original real-time Wizard Woods combat through
   `verse-ruins`; Lagrange 1 is a generated Sun–Earth L1 construction station
   driven by `verse-lagrange`; the Physics Lab runs the `physics` crate's
-  mechanisms live with HUD knobs (`docs/verse/physics-lab.md`). Read `docs/verse/zones.md` (including its guide
+  mechanisms live with HUD knobs (`docs/verse/physics-lab.md`). Combat
+  everywhere follows `docs/verse/combat-model.md`: real time, MMO style, no
+  dice; SRD abilities are translated into it. Read `docs/verse/zones.md` (including its guide
   to building and registering a zone) and `docs/verse/zone-rules.md` before
   changing asset admission, transitions, portals, or rules.
   Keep product colors and world behavior out of Rust Native. Desktop features

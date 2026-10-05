@@ -7,7 +7,14 @@ Document. This page researches what a level 20 SRD druid can do, lays out the
 action bar, maps each ability to what Verse already implements, and specifies
 the build.
 
-The rules come from the
+Every ability follows the [combat model](combat-model.md): real time, MMO
+style, no dice. Tabletop dice become fixed values scaled by spell power,
+saving throws become full effects with diminishing-returns control, and spell
+slots and rest-limited uses become mana, cooldowns, and recharging charges.
+The class summary below describes the SRD source; the action bar and the build
+use Verse numbers.
+
+The abilities come from the
 [System Reference Document 5.2.1](https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf)
 (SRD 5.2.1), the 2024 rules, rather than the SRD 5.1 that
 [SRD-5.1-NOTICE.md](SRD-5.1-NOTICE.md) covers. See [Attribution](#attribution).
@@ -17,8 +24,8 @@ The rules come from the
 A visitor opens `openagents.com/druid`, which is full screen like
 `/everglade`, and plays an Archdruid in a meadow. Training dummies stand at
 several distances. Four action bar rows hold every class feature and every
-prepared spell. Each ability shows its effect in the world, its dice and saving
-throws in a combat log, and its effect on the dummies' hit points and
+prepared spell. Each ability shows its effect in the world, its damage and debuffs
+in a combat log, and its effect on the dummies' hit points and
 conditions. A **Choose Land** button swaps the land spells, and **Long Rest**
 refills everything. The demo needs no sign-in, no server, and no model calls.
 
@@ -67,19 +74,20 @@ Land spells by druid level, from the SRD table:
 
 ### Numbers the demo uses
 
-- **Ability scores:** Wisdom 20 (+5) and proficiency bonus +6, so spell save
-  DC 19 and spell attack +11.
-- **Hit points:** level 20 with Constitution 14 gives 163.
-- **Cantrips:** four dice from level 17, plus Wisdom from Potent Spellcasting.
-  *Produce Flame* hurls for 4d8 + 5.
-- **Slots and uses:** shown as pips, 4/3/3/3/3/2/2/1/1 spell slots plus four
-  Wild Shape uses.
+- **Health and mana:** 163 health and 300 mana; mana regenerates 10 a second
+  out of combat.
+- **Spell power:** from Wisdom 20; it scales every spell's base value.
+  Cantrips add the Potent Spellcasting bonus.
+- **Tiers:** mana, cooldown, and cast time by spell level, from the
+  [tier table](combat-model.md#spell-tiers).
+- **Wild Shape:** four charges, one back every 30 seconds; each form grants a
+  20-point shield.
 
 ## The action bar
 
 Four rows of twelve, on keys `1` to `=`, with `Shift`, `Ctrl`, and `Alt` for
 the rows below. Every slot shows its game-icons.net icon, its key, its
-remaining uses or slot level, and a tooltip with its SRD summary. **Status**
+remaining charges or cooldown, and a tooltip with its SRD summary. **Status**
 says where each ability stands today:
 
 - **Done:** a Verse spell solver already exists (`verse-world` spells or the
@@ -91,58 +99,58 @@ says where each ability stands today:
 
 | Key | Ability | Status | Demo behavior |
 | --- | --- | --- | --- |
-| 1 | Wild Shape: Brown Bear | New | Become a bear (20 temp HP); bite and claw attacks on dummies. |
-| 2 | Wild Shape: Dire Wolf | New | Fast wolf; pack-tactics bite that can knock a dummy Prone. |
-| 3 | Wild Shape: Giant Eagle | New | Flight (Wild Shape forms may fly from level 8). |
-| 4 | Wild Shape: Giant Spider | New | Climb, and a web attack that Restrains. |
-| 5 | Return to Form | New | Bonus Action; drop the form and keep the temp HP rules. |
-| 6 | Wild Companion | New | A Fey owl familiar that circles the druid and can Help. |
-| 7 | Land's Aid | New | Flower-and-thorn burst: Con save for 4d6 necrotic, heal one ally 4d6. |
+| 1 | Wild Shape: Brown Bear | New | Become a bear (a 20-point shield); bite and claw attacks on dummies. |
+| 2 | Wild Shape: Dire Wolf | New | Fast wolf; a bite that knocks a dummy down for 1.5 s. |
+| 3 | Wild Shape: Giant Eagle | New | Flight with Everglade's levitate altitude controls. |
+| 4 | Wild Shape: Giant Spider | New | Climb, and a web attack that roots. |
+| 5 | Return to Form | New | Drops the form, off the global cooldown. |
+| 6 | Wild Companion | New | A Fey owl familiar that circles the druid and marks targets. |
+| 7 | Land's Aid | New | Flower-and-thorn burst: 18 necrotic to enemies in a 3 m burst; heals one ally 14. |
 | 8 | Nature's Sanctuary | Port | A 15-foot cube of spectral trees giving half cover; reuse Wall of Stone's placement. |
 | 9 | Choose Land | New | Cycles Arid, Polar, Temperate, and Tropical, and swaps row 4's land slots. |
-| 0 | Nature Magician | New | Converts Wild Shape uses into one slot (two levels per use). |
-| - | Wild Resurgence | New | Trades a slot for a Wild Shape use, or the reverse once. |
-| = | Long Rest | New | Demo control: refills slots, uses, and dummies. |
+| 0 | Nature Magician | New | Converts Wild Shape charges into mana (30 per charge). |
+| - | Wild Resurgence | New | Trades 40 mana for a Wild Shape charge. |
+| = | Long Rest | New | Demo control: refills mana, charges, cooldowns, and dummies. |
 
 ### Row 2: cantrips and level 1 to 2 (`Shift`)
 
 | Key | Ability | Level | Status | Demo behavior |
 | --- | --- | --- | --- | --- |
-| 1 | Produce Flame | 0 | Port | Flame in hand; hurled at a dummy for 4d8 + 5 fire (reuse Fire Bolt's projectile). |
-| 2 | Starry Wisp | 0 | New | A mote of starlight for 4d8 + 5 radiant; the target sheds light and can't be invisible. |
+| 1 | Produce Flame | 0 | Port | Flame in hand; hurled at a dummy for 23 fire (reuse Fire Bolt's projectile). |
+| 2 | Starry Wisp | 0 | New | A mote of starlight for 23 radiant; the target sheds light and can't be invisible. |
 | 3 | Shillelagh | 0 | New | Staff glows; melee with Wisdom for force damage. |
-| 4 | Poison Spray | 0 | New | Ranged spell attack for 4d12 + 5 poison, as a green puff. |
+| 4 | Poison Spray | 0 | New | A bolt for 31 poison, as a green puff. |
 | 5 | Elementalism | 0 | New | Cosmetic gust, ember, or earth tremor near a dummy. |
-| 6 | Thunderwave | 1 | Done | Exists in the chamber kit and the physics layer; pushes dummies on a failed Con save. |
-| 7 | Entangle | 1 | New | Grasping vines in a 20-foot square; Str save or Restrained. |
-| 8 | Faerie Fire | 1 | New | Outlines dummies; attacks on them have Advantage. |
-| 9 | Ice Knife | 1 | New | Shard hits for 1d10, then bursts for 2d6 cold on a failed Dex save. |
-| 0 | Healing Word | 1 | New | Bonus Action heal at range, as a green rune. |
-| - | Moonbeam | 2 | New | A movable column of silver light; Con save for 2d10 radiant. |
+| 6 | Thunderwave | 1 | Done | Exists in the chamber kit and the physics layer; damages and pushes dummies. |
+| 7 | Entangle | 1 | New | Grasping vines in a 6 m square; roots for 3 s, with diminishing returns. |
+| 8 | Faerie Fire | 1 | New | Outlines dummies; they take 20% more damage for 10 s. |
+| 9 | Ice Knife | 1 | New | Shard hits for 5 piercing, then bursts for 7 cold around it. |
+| 0 | Healing Word | 1 | New | Off-GCD heal at range, as a green rune. |
+| - | Moonbeam | 2 | New | A movable column of silver light; 11 radiant a second inside. |
 | = | Gust of Wind | 2 | Done | Already in the physics layer; pushes dummies and props in a line. |
 
 ### Row 3: levels 2 to 6 (`Ctrl`)
 
 | Key | Ability | Level | Status | Demo behavior |
 | --- | --- | --- | --- | --- |
-| 1 | Spike Growth | 2 | New | 20-foot thorny ground; 2d4 piercing per 5 feet moved. |
-| 2 | Call Lightning | 3 | New | A storm cloud; each turn calls a bolt: Dex save for 3d10. |
+| 1 | Spike Growth | 2 | New | 6 m of thorny ground; 5 piercing per 1.5 m moved. |
+| 2 | Call Lightning | 3 | New | A storm cloud; a bolt every 6 s for 16 lightning. |
 | 3 | Conjure Animals | 3 | New | A spectral pack that damages dummies it moves past. |
 | 4 | Wind Wall | 3 | Done | Already in the physics layer and in Everglade's hotbar. |
-| 5 | Ice Storm | 4 | New | Hail in a 20-foot cylinder: 2d10 bludgeoning plus 4d6 cold; leaves difficult ground. |
-| 6 | Wall of Fire | 4 | New | A 60-foot burning line: 5d8 fire. |
-| 7 | Polymorph | 4 | New | Turns a dummy into a harmless beast (Wis save). |
+| 5 | Ice Storm | 4 | New | Hail in a 6 m cylinder: 11 bludgeoning plus 14 cold; leaves difficult ground. |
+| 6 | Wall of Fire | 4 | New | An 18 m burning line: 22 fire a second. |
+| 7 | Polymorph | 4 | New | Turns a dummy into a harmless beast for 8 s, with diminishing returns. |
 | 8 | Mass Cure Wounds | 5 | New | A wave of green light that heals several targets. |
-| 9 | Sunbeam | 6 | New | A radiant beam, recast each turn: 6d8, and Blinded on a failed Con save. |
-| 0 | Wall of Thorns | 6 | New | A wall of brambles: 7d8 piercing. |
-| - | Fire Storm | 7 | New | Ten 10-foot cubes of flame: 7d10 fire. |
+| 9 | Sunbeam | 6 | New | A radiant beam, recast while held: 27 radiant and a 2 s blind. |
+| 0 | Wall of Thorns | 6 | New | A wall of brambles: 31 piercing to anything crossing. |
+| - | Fire Storm | 7 | New | Ten 3 m cubes of flame: 38 fire. |
 | = | Reverse Gravity | 7 | Done | Already in the physics layer; dummies and props fall upward. |
 
 ### Row 4: levels 8 and 9, and land spells (`Alt`)
 
 | Key | Ability | Level | Status | Demo behavior |
 | --- | --- | --- | --- | --- |
-| 1 | Sunburst | 8 | New | A 60-foot burst: 12d6 radiant, and Blinded on a failed Con save. |
+| 1 | Sunburst | 8 | New | An 18 m burst: 42 radiant and a 3 s blind. |
 | 2 | Storm of Vengeance | 9 | New | A spreading storm with a new effect each round: thunder, acid rain, lightning, hail. |
 | 3 | Shapechange | 9 | New | Take any form, here a dragon silhouette, while keeping druid spellcasting. |
 | 4 | Speak with Animals | 1 | New | Druidic's always-prepared spell; the familiar answers in the log. |
@@ -186,8 +194,9 @@ placeholder burst.
   Gust of Wind, Wind Wall, Wall of Stone, and Reverse Gravity, all druid spells,
   plus Telekinesis, Levitate, Feather Fall, Black Tentacles, and Meteor Swarm,
   which aren't. The chamber kit adds Fire Bolt, Fireball, Misty Step, and
-  Web, which arrive through land spells. These carry seeded dice, saving throws,
-  concentration, and fields.
+  Web, which arrive through land spells. These carry mana, cooldowns, maintained
+  effects, and fields. Their seeded dice and saving throws come out under the
+  combat model (a follow-up issue).
 - **Everglade in the browser** (`crates/everglade-web`, `openagents.com/everglade`)
   runs the shared `WorldRuntime` on WebGPU and WebGL2. It already has the icon
   hotbar with held controls and four spells (Feather Fall, Wall of Stone, Wind
@@ -242,23 +251,19 @@ download stands between the demo and tomorrow:
 
 A `zones::grove` module, single-player and client-side, holds the following.
 
-**Druid state:** the druid's ability scores, spell slots, Wild Shape uses,
+**Druid state:** the druid's stats, mana, cooldowns, Wild Shape charges,
 concentration, the chosen land, the current form, and temporary hit points.
 
 **Dummy state:** each dummy's AC, HP, saving throw modifiers, resistances,
 and conditions (Restrained, Prone, Blinded, Poisoned, Faerie Fire,
 Polymorphed, Burning), with condition icons shown above the health bar.
 
-**Dice:** SRD dice from `verse-world`'s seeded `dice::Dice`, so a page load
-can be replayed from its seed. Attacks roll against AC, saves roll against
-DC 19, and the result is half damage on a successful save where the spell
-says so.
+**No dice:** every spell deals its fixed Verse value; control uses diminishing
+returns; armor and resistances are multipliers.
 
-**Real-time timing:** the SRD's six-second round runs as a 6-second clock.
-Durations and concentration tick on it. Casting costs a slot and has a short
-global cooldown (1 second) so the bar feels like an action game, not a turn
-sequence. Bonus-action features (Wild Shape, Healing Word) share a separate
-1-second cooldown.
+**Timing:** mana and cooldowns from the tier table, a 1-second global
+cooldown, and a separate 1-second lane for off-GCD abilities (Wild Shape,
+Healing Word). A new maintained effect replaces the old one.
 
 **Physics:** spells marked **Done** call their existing `verse-world`
 solvers, as Everglade's four spells do. Their dummies are physics bodies, so
@@ -292,15 +297,14 @@ flow, and no storage buffers on the Low tier.
 ### Interface
 
 - **Action bar:** the four-row icon tray described above, extended from
-  `zones::everglade::hotbar` to four rows of twelve, with a slot-level badge
+  `zones::everglade::hotbar` to four rows of twelve, with a mana-cost badge
   and a cooldown sweep.
-- **Resource bar:** spell slot pips by level, Wild Shape uses, temporary hit
-  points, the current land, the current form, and concentration.
-- **Combat log:** an overlay at the lower left. Each entry gives the roll,
-  the DC, the save, the damage by type, and any condition, for example
-  "Fire Bolt hits Armored Dummy (19 vs AC 18): 22 fire".
-- **Tooltips:** each slot's SRD summary in our own words, with level, range,
-  area, save, and damage.
+- **Resource bar:** health, mana, Wild Shape charges, the shield, the current land, the current form, and concentration.
+- **Combat log:** an overlay at the lower left. Each entry gives the
+  damage by type, the mitigation, and any debuff, for example
+  "Fire Bolt hits Armored Dummy: 22 fire, 6 mitigated".
+- **Tooltips:** each slot's SRD summary in our own words, with mana,
+  cooldown, range and area in meters, damage, and debuffs.
 - **Spellbook:** the panel described in [Prepared spells](#prepared-spells).
 - **Touch:** on phones the bar collapses to one row with a row switcher, as on
   the iOS app.
@@ -326,21 +330,22 @@ shows the spell's school color and its initials until one is chosen.
 
 | Tier | What ships | Effort |
 | --- | --- | --- |
-| **Demo (tomorrow)** | The Grove field and dummies; the four-row bar with every slot, tooltip, and log line; all nine Done spells; at least 14 more spells with real effects: Produce Flame, Starry Wisp, Poison Spray, Entangle, Faerie Fire, Ice Knife, Healing Word, Moonbeam, Spike Growth, Call Lightning, Ice Storm, Wall of Fire, Sunbeam, Sunburst. Choose Land swaps slots; Long Rest; Wild Shape as a stylized form change (tinted silhouette and speed) until beast models exist. Every other slot casts its labeled placeholder burst and logs its SRD numbers. | Two or three focused agents in one day, integrated and deployed the same night. |
+| **Demo (tomorrow)** | The Grove field and dummies; the four-row bar with every slot, tooltip, and log line; all nine Done spells; at least 14 more spells with real effects: Produce Flame, Starry Wisp, Poison Spray, Entangle, Faerie Fire, Ice Knife, Healing Word, Moonbeam, Spike Growth, Call Lightning, Ice Storm, Wall of Fire, Sunbeam, Sunburst. Choose Land swaps slots; Long Rest; Wild Shape as a stylized form change (tinted silhouette and speed) until beast models exist. Every other slot casts its labeled placeholder burst and logs its Verse numbers. | Two or three focused agents in one day, integrated and deployed the same night. |
 | **Next** | The remaining spells' effects (Wall of Thorns, Fire Storm, Storm of Vengeance, Shapechange, Conjure Animals, Polymorph, and Insect Plague first); Land's Aid; Nature's Sanctuary; Wild Companion; the Spellbook panel. | About a week. |
 | **Beasts** | Real Wild Shape forms once a CC0 animal pack is in hand: bear, wolf, eagle, and spider with their own attacks and animations. | Blocked on an asset pack. |
 
-## Open decisions for the owner
+## Beast models
 
-1. **Beast models.** The CC0 kits on this Mac have no animals. The options:
-   - download a CC0 animated animal pack (Quaternius publishes animal packs
-     under CC0) for real Wild Shape forms;
-   - accept stylized silhouettes for tomorrow.
-2. **Subclass.** Circle of the Land is the only SRD subclass. The Circle of
-   the Moon is not in the SRD, so it stays out.
-3. **Tuning.** The default is real-time rounds with tabletop dice and slots,
-   as above. The chamber's mana-and-cooldown kit is the alternative if the demo
-   should feel like an MMO rotation rather than a tabletop turn.
+None of the kits on this Mac has a bear, wolf, or eagle. Quaternius's **Easy
+Animated Enemy Pack** (January 2019, CC0, in `~/Downloads`) has an animated
+**Spider**, plus a Rat, Frog, Snake, and Wasp, as FBX, OBJ, and Blender files.
+The Spider becomes the first real Wild Shape form (Giant Spider, scaled up).
+The pack has no glTF, and no Blender is installed here, so importing it needs
+an FBX-to-glTF conversion step first. Bear, wolf, and eagle stay stylized
+silhouettes until a CC0 pack with them is in hand.
+
+The Circle of the Land is the only SRD druid subclass; the Circle of the Moon
+isn't in the SRD and stays out.
 
 ## Attribution
 
