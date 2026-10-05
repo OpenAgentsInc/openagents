@@ -274,7 +274,7 @@ async fn run(config: Config) -> Result<(), String> {
     }
     let pack = verse_engine::assets::Pack::read(&config.pack)?;
     let scene = verse_engine::director::Scene::from_json(&bounded(&config.scene, 1024 * 1024)?)?;
-    let content = verse::imported::remote_content::identity(&pack, &scene, &config.dir)?;
+    let content = verse_content::remote_content::identity(&pack, &scene, &config.dir)?;
     let mut roots = rustls::RootCertStore::empty();
     roots
         .add(rustls::pki_types::CertificateDer::from(bounded(

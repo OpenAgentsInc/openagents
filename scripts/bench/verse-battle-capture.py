@@ -12,6 +12,7 @@ parser.add_argument('--players',type=int,default=20)
 parser.add_argument('--movement-frames',action='store_true',help='Request interval movement for native and headless battle clients')
 parser.add_argument('--ssh-host',help='Run the fixture server through SSH on a separate Linux machine')
 parser.add_argument('--remote-binary',help='Absolute path to the pinned Linux server binary')
+parser.add_argument('--remote-load-binary',help='Run headless clients on the fixture Linux host using this absolute binary path')
 parser.add_argument('--remote-user',default='christopherdavid',help='Linux account that owns the fixture')
 parser.add_argument('--sample-host',action='store_true',help='Take a five-second macOS CPU sample of the owned host during the capture')
 parser.add_argument('--persistent',action='store_true',help='Enable host saves in the isolated scratch directory')
@@ -26,6 +27,8 @@ if args.ssh_host and args.sample_host:
     parser.error('macOS CPU sampling is unavailable for a Linux server')
 if args.remote_binary and not pathlib.PurePosixPath(args.remote_binary).is_absolute():
     parser.error('Remote binary must be an absolute path')
+if args.remote_load_binary and (not args.ssh_host or not pathlib.PurePosixPath(args.remote_load_binary).is_absolute()):
+    parser.error('Remote load requires an SSH fixture and an absolute binary path')
 if args.sample_host and shutil.which('sample') is None:
     parser.error('Host CPU sampling requires the macOS sample command')
 if not (1<=args.seconds<=90 and 2<=args.players<=20 and 0<=args.delay_ms<=250 and 0<=args.jitter_ms<=100):
@@ -98,14 +101,29 @@ env=dict(os.environ)
 env['VERSE_GPU_TIMING']='1' if args.gpu_timing else '0'
 (root/'home').mkdir()
 env['HOME']=str(root/'home')
-(root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'persistent_storage':args.persistent,'gpu_timestamps_requested':args.gpu_timing,'native_movement_frames_requested':args.movement_frames,'headless_movement_frames_requested':args.movement_frames,'compiled_revisions':{'host':args.compiled_revision,'headless_clients':args.load_compiled_revision or args.compiled_revision,'native_client':args.client_compiled_revision or args.compiled_revision},'fixture_sha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.','Server runs on Linux through SSH.' if args.ssh_host else 'Server shares the Mac with clients.']}))
+(root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'headless_placement':'linux_fixture' if args.remote_load_binary else 'native_client_machine','seconds':args.seconds,'persistent_storage':args.persistent,'gpu_timestamps_requested':args.gpu_timing,'native_movement_frames_requested':args.movement_frames,'headless_movement_frames_requested':args.movement_frames,'compiled_revisions':{'host':args.compiled_revision,'headless_clients':args.load_compiled_revision or args.compiled_revision,'native_client':args.client_compiled_revision or args.compiled_revision},'fixture_sha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Headless clients share the Linux server; the native client runs on the Mac.' if args.remote_load_binary else 'Native player and load generator share one host machine.','Server runs on Linux through SSH.' if args.ssh_host else 'Server shares the Mac with clients.']}))
 logs=[];processes=[]
 remote_root=None
 hostp=None
+remote_processes=[]
+remote_load_proxy=None
 def remote(command, **kwargs):
     return subprocess.run(['ssh','-o','BatchMode=yes','-o','ConnectTimeout=10',args.ssh_host,
                            'runuser -u '+shlex.quote(args.remote_user)+' -- sh -c '+shlex.quote(command)],
                           check=True, **kwargs)
+def remote_process(command, log):
+    supervised=['python3',remote_root+'/verse-fixture-process.py','--home',remote_root+'/home','--',*command]
+    process=subprocess.Popen(['ssh','-o','BatchMode=yes',args.ssh_host,
+        'runuser -u '+shlex.quote(args.remote_user)+' -- sh -c '+shlex.quote(shlex.join(supervised))],
+        stdin=subprocess.PIPE,stdout=log,stderr=log)
+    remote_processes.append(process)
+    return process
+
+def stop_remote_process(process):
+    if process.poll() is None:
+        process.stdin.close()
+        process.wait(timeout=20)
+
 def transfer_files(source, names, destination):
     flags=['--no-xattrs','--no-mac-metadata'] if sys.platform=='darwin' else []
     archive=subprocess.Popen(['tar',*flags,'-cf','-', '-C',str(source),*names],
@@ -168,7 +186,7 @@ try:
         (root/'remote-receipt.json').write_text(json.dumps({'schema':'verse.battle.remote-host.v1','host':args.ssh_host,
             'compiled_revision':args.compiled_revision,'binary_sha256':remote('sha256sum '+shlex.quote(args.remote_binary),capture_output=True,text=True).stdout.split()[0],
             'system':remote('uname -srmo; ps -eo comm,pcpu --sort=-pcpu | head -12',capture_output=True,text=True).stdout,
-            'limits':['Linux server CPU is shared with other work.','SSH forwarding adds transport overhead.','Native client and headless drivers share the Mac.','Host CPU process samples are unavailable in this fixture.']}))
+            'limits':['Linux server CPU is shared with other work.','SSH forwarding adds transport overhead.','Headless clients share the Linux server; the native client runs on the Mac.' if args.remote_load_binary else 'Native client and headless drivers share the Mac.','Host CPU process samples are unavailable in this fixture.']}))
     else:
         hostp=subprocess.Popen([str(binaries/'verse_host'),str(root/'host.json')],stdout=log,stderr=log,env=env)
     processes.append(hostp)
@@ -188,7 +206,7 @@ try:
                 time.sleep(.1)
         else:raise RuntimeError('SSH forwarding readiness timed out')
     proxylog=open(root/'proxy.log','w');logs.append(proxylog)
-    proxy=subprocess.Popen(['python3',str(repo/'scripts/bench/verse-delayed-route.py'),'--destination-port',str(port),'--connections',str(args.players),'--delay-mode',args.delay_mode,'--delay-ms',str(args.delay_ms),'--jitter-ms',str(args.jitter_ms),'--seconds',str(min(300,args.seconds+100)),'--ready',str(root/'proxy-ready.json'),'--receipt',str(root/'proxy-receipt.json')],stdout=proxylog,stderr=proxylog,env=env)
+    proxy=subprocess.Popen(['python3',str(repo/'scripts/bench/verse-delayed-route.py'),'--destination-port',str(port),'--connections',str(1 if args.remote_load_binary else args.players),'--delay-mode',args.delay_mode,'--delay-ms',str(args.delay_ms),'--jitter-ms',str(args.jitter_ms),'--seconds',str(min(300,args.seconds+100)),'--ready',str(root/'proxy-ready.json'),'--receipt',str(root/'proxy-receipt.json')],stdout=proxylog,stderr=proxylog,env=env)
     processes.append(proxy)
     for _ in range(100):
         if proxy.poll() is not None:raise RuntimeError('Proxy failed')
@@ -199,7 +217,36 @@ try:
     loadcfg={'address':delayed_address,'server_name':'localhost','instance':220,'trust_der':str(root/'cert.der'),'keys':[str(root/(r+'.key')) for r in roles[1:]],'pack':pack,'scene':scene,'dir':str(assets),'seconds':args.seconds+30,'output':str(root/'load-receipt.json'),'movement_frames':args.movement_frames}
     (root/'load-config.json').write_text(json.dumps(loadcfg))
     loadlog=open(root/'load.log','w');logs.append(loadlog)
-    loadp=subprocess.Popen([str(binaries/'verse_load'),str(root/'load-config.json')],stdout=loadlog,stderr=loadlog,env=env);processes.append(loadp)
+    if args.remote_load_binary:
+        transfer_files(repo/'scripts/bench',['verse-fixture-process.py','verse-delayed-route.py'],remote_root)
+        remote_proxy_log=open(root/'load-proxy.log','w');logs.append(remote_proxy_log)
+        remote_load_proxy=remote_process(['python3',remote_root+'/verse-delayed-route.py',
+            '--destination-port',str(remote_port),'--connections',str(args.players-1),
+            '--delay-mode',args.delay_mode,'--delay-ms',str(args.delay_ms),'--jitter-ms',str(args.jitter_ms),
+            '--seconds',str(min(300,args.seconds+100)),'--ready',remote_root+'/load-proxy-ready.json',
+            '--receipt',remote_root+'/load-proxy-receipt.json'],remote_proxy_log)
+        for _ in range(100):
+            if remote_load_proxy.poll() is not None:raise RuntimeError('Remote load proxy failed')
+            ready=remote('if test -f '+shlex.quote(remote_root+'/load-proxy-ready.json')+'; then cat '+shlex.quote(remote_root+'/load-proxy-ready.json')+'; fi',capture_output=True,text=True).stdout
+            if ready:break
+            time.sleep(.1)
+        else:raise RuntimeError('Remote load proxy readiness timed out')
+        remote_load_config=dict(loadcfg)
+        remote_load_config.update(address=json.loads(ready)['address'],trust_der=remote_root+'/cert.der',
+            keys=[remote_root+'/'+role+'.key' for role in roles[1:]],pack=remote_root+'/assets/runtime-pack.json',
+            scene=remote_root+'/battle.json',dir=remote_root+'/assets',output=remote_root+'/load-receipt.json')
+        (root/'remote-load-config.json').write_text(json.dumps(remote_load_config))
+        transfer_files(root,['remote-load-config.json',*[role+'.key' for role in roles[1:]]],remote_root)
+        (root/'load-deployment.json').write_text(json.dumps({'schema':'verse.battle.remote-load.v1',
+            'compiled_revision':args.load_compiled_revision or args.compiled_revision,
+            'binary_sha256':remote('sha256sum '+shlex.quote(args.remote_load_binary),capture_output=True,text=True).stdout.split()[0],
+            'native_route':'Mac delayed proxy to SSH-forwarded Linux authority',
+            'headless_route':'Linux delayed loopback proxy to Linux authority',
+            'limits':['Headless drivers and authority share Linux CPU and storage.','Only the native player renders.','Headless route has no SSH forwarding hop.']}))
+        loadp=remote_process([args.remote_load_binary,remote_root+'/remote-load-config.json'],loadlog)
+    else:
+        loadp=subprocess.Popen([str(binaries/'verse_load'),str(root/'load-config.json')],stdout=loadlog,stderr=loadlog,env=env)
+    processes.append(loadp)
     for _ in range(400):
         if loadp.poll() is not None:raise RuntimeError('Headless load failed before readiness')
         if 'Load ready' in (root/'load.log').read_text():break
@@ -227,6 +274,10 @@ try:
         sample_host_cpu(hostp)
         time.sleep(1)
     loadp.wait(timeout=50)
+    if args.remote_load_binary:
+        (root/'load-receipt.json').write_text(remote('cat '+shlex.quote(remote_root+'/load-receipt.json'),capture_output=True,text=True).stdout)
+        stop_remote_process(remote_load_proxy)
+        (root/'load-proxy-receipt.json').write_text(remote('cat '+shlex.quote(remote_root+'/load-proxy-receipt.json'),capture_output=True,text=True).stdout)
     if sample_process is not None:
         sample_receipt['exit_code']=sample_process.wait(timeout=30)
         sample_receipt['status']='complete' if sample_process.returncode==0 else 'failed'
@@ -239,6 +290,14 @@ try:
     (root/'exits.json').write_text(json.dumps({'clients':codes,'host':hostp.returncode,'proxy':proxy.returncode}))
     if any(codes.values()) or hostp.returncode:raise RuntimeError('Acceptance process failed')
 finally:
+    remote_cleanup_confirmed=True
+    for process in remote_processes:
+        try:
+            stop_remote_process(process)
+            if process.returncode==255:remote_cleanup_confirmed=False
+        except (OSError,subprocess.TimeoutExpired) as error:
+            remote_cleanup_confirmed=False
+            print('Remote client cleanup could not be confirmed: '+str(error),flush=True)
     try:
         stop_host()
     except (OSError,subprocess.TimeoutExpired) as error:
@@ -248,7 +307,7 @@ finally:
             p.terminate()
             try:p.wait(timeout=10)
             except subprocess.TimeoutExpired:p.kill();p.wait()
-    if remote_root and (hostp is None or hostp.returncode==0):
+    if remote_root and remote_cleanup_confirmed and (hostp is None or hostp.returncode==0):
         remote('rm -rf -- '+shlex.quote(remote_root))
     elif remote_root:
         print('Retained remote scratch after unsuccessful host exit: '+remote_root,flush=True)

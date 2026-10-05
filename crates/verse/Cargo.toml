@@ -268,7 +268,7 @@ required-features = ["remote-chamber"]
 
 [[example]]
 name = "verse_load"
-required-features = ["imported-desktop", "remote-chamber"]
+required-features = ["remote-chamber"]
 
 [[example]]
 name = "frame_profile"

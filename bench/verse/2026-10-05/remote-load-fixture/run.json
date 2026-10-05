@@ -1,0 +1,43 @@
+{
+  "schema": "verse.battle.fixture.evidence.v1",
+  "acceptance": "focused-only",
+  "tested_base_revision": "ff1ea1b39429ffee859063b15e9bda1b17b388bb",
+  "rust_feature_patch_sha256": "aaacc86744087c0a777f2dd58f47df60f55f7e7c891e78dacbcba2fec1e2c399",
+  "checks": {
+    "supervision_and_arguments": {
+      "command": "python3 scripts/bench/test-verse-fixture-process.py",
+      "passed": 4,
+      "failed": 0
+    },
+    "scheduled_proxy": {
+      "command": "python3 scripts/bench/test-verse-delayed-route.py",
+      "passed": 4,
+      "failed": 0
+    },
+    "python_syntax": {
+      "status": "passed"
+    },
+    "linux_load_build": {
+      "command": "cargo build -p verse --no-default-features --features remote-chamber --example verse_load",
+      "status": "complete",
+      "wall_seconds": 228,
+      "binary_sha256": "dee1015f652016f2ef0e574c3f65eb73128fcb3f5ea7122ba98e8c80e0a51887",
+      "platform": "Linux x86_64",
+      "debug_info": 0,
+      "jobs": 1
+    }
+  },
+  "contract": "Optional remote load runs in the isolated Linux fixture through a separate delayed loopback proxy. The native client retains its Mac delayed/SSH route. Portable content admission removes the load example desktop-feature requirement. Supervised processes finish naturally without controller EOF and clean owned process groups on disconnect.",
+  "regressions": [
+    "Natural child exit preserves its code while controller stdin remains open.",
+    "Controller EOF terminates a running child.",
+    "A descendant that ignores TERM cannot keep inherited output pipes open.",
+    "Invalid remote-load paths or missing SSH fixture arguments are refused before creating scratch artifacts."
+  ],
+  "limitations": [
+    "Headless drivers and authority share Linux CPU and storage.",
+    "Only the native client establishes rendering performance.",
+    "Headless loopback delay and native delayed SSH forwarding are different routes.",
+    "Full remote capture and crowded performance acceptance remain pending."
+  ]
+}
