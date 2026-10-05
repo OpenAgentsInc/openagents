@@ -159,6 +159,10 @@ async fn player(
       Ok(command)=>{let ability=match command.intent {Intent::Cast {ability,..}=>Some(ability.label().to_string()),_=>None};pending.push_back((tokio::time::Instant::now(),ability));},
       Err(_)=>refused+=1,
      },
+     Update::FrameBound {binding,..}=>match binding {
+      Ok(_)=>pending.push_back((tokio::time::Instant::now(),None)),
+      Err(_)=>refused+=1,
+     },
      Update::Outcome(response)=>{
       if let Some((started,ability))=pending.pop_front() {
        if !sample(&mut latency,started.elapsed().as_secs_f64()*1000.) {omitted_latency+=1;}
