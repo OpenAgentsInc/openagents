@@ -32,8 +32,8 @@ fn unknown_options_and_extra_arguments_have_command_usage() {
             "verse who",
         ),
         (
-            vec!["verse", "quests", "--xp-referee", "KEY"],
-            "--xp-referee isn't an option of verse quests",
+            vec!["verse", "quests", "--radius", "5"],
+            "--radius isn't an option of verse quests",
             "verse quests",
         ),
         (
