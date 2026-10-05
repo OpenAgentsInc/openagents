@@ -645,6 +645,7 @@ async fn serve_loop<F: Future<Output = ()>>(
     diagnostics.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut storage_paused = false;
     let mut resume_requests = 0usize;
+    let mut deferred_tick = None;
     tokio::pin!(shutdown);
     loop {
         stats.request_queue_peak = stats.request_queue_peak.max(receive.len());
@@ -715,10 +716,15 @@ async fn serve_loop<F: Future<Output = ()>>(
             }
             // If reply or writer bounds block admission, a tick must still flush
             // admitted state. New arrivals cannot extend the captured FIFO cohort.
-            _ = ticker.tick(), if resume_requests == 0 || !request_room => {
+            _ = async {
+                if deferred_tick.is_none() || resume_requests > 0 {
+                    ticker.tick().await;
+                }
+            }, if resume_requests == 0 || !request_room => {
                 let now = Instant::now();
-                let elapsed = now.duration_since(last_tick).as_secs_f64();
+                let wall_elapsed = now.duration_since(last_tick).as_secs_f64();
                 last_tick = now;
+                let elapsed = deferred_tick.unwrap_or(0.) + wall_elapsed;
                 let room = writer.as_ref().is_none_or(|writer| fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0);
                 let history = match gateway.chamber.rewards.history_capacity() {
                     Ok(available) => available,
@@ -727,10 +733,23 @@ async fn serve_loop<F: Future<Output = ()>>(
                 if !room {
                     storage_paused = true;
                     stats.storage_paused_ticks += 1;
-                    stats.storage_paused_seconds += elapsed;
+                    stats.storage_paused_seconds += wall_elapsed;
+                    continue;
+                }
+                if deferred_tick.is_none() && history && request_room
+                    && resume_requests == 0 && elapsed > period.as_secs_f64() * 1.5
+                    && !receive.is_empty()
+                {
+                    // A delayed authority can have both overdue simulation and
+                    // valid movement already waiting. Admit that fixed FIFO
+                    // cohort first, then resume this same elapsed-time batch.
+                    // Later arrivals cannot extend the cohort or starve time.
+                    resume_requests = receive.len();
+                    deferred_tick = Some(elapsed);
                     continue;
                 }
                 if history && resume_requests == 0 {
+                    deferred_tick = None;
                     let batch = match schedule.advance(elapsed) {
                         Ok(batch) => batch,
                         Err(error) => {failure = Some(error); break;}
@@ -749,7 +768,8 @@ async fn serve_loop<F: Future<Output = ()>>(
                 } else {
                     // Flush already admitted state without adding more simulation mutations.
                     stats.storage_paused_ticks += 1;
-                    stats.storage_paused_seconds += elapsed;
+                    stats.storage_paused_seconds += wall_elapsed;
+                    if !history { deferred_tick = None; }
                 }
                 if let Some(writer) = &mut writer {
                     let permit = match writer.send.as_ref().unwrap().try_reserve() {

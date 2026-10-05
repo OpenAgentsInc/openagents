@@ -30,6 +30,7 @@ coder-reach = { path = "../coder-reach", optional = true }
 coder-access = { path = "../coder-access", default-features = false, optional = true }
 
 [dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread"] }
 tempfile = "3"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 

@@ -1,0 +1,31 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/verse-battle-host-agent1/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2872:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2872 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized] target(s) in 1m 45s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-verse-battle-agent1/debug/deps/verse_world-537ce11b459e7b68)
+
+running 1 test
+
+thread 'service::net::resume_tests::queued_intervals_precede_delayed_simulation_catchup' (4161135) panicked at crates/verse-world/src/service/net/resume_tests.rs:266:9:
+Attempt 0: Refused { code: "command", message: "Movement interval control is stale or unavailable" }; expiries ExpiryObservations { total: 1, admission: 0, primary_tick: 1, additional_tick: 0, bootstrap: 0, samples: [ExpirySample { actor: 14, epoch: 4, authority_tick: 11, origin: PrimaryTick, world_step: 44, confirmed_step: 8, projected_step: 8, received_at: 4, applied_sequence: 1, queued_frames: 0, queued_steps: 0, first_start: None, last_end: None }], omitted: 0 }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test service::net::resume_tests::queued_intervals_precede_delayed_simulation_catchup ... FAILED
+
+failures:
+
+failures:
+    service::net::resume_tests::queued_intervals_precede_delayed_simulation_catchup
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 583 filtered out; finished in 0.55s
+
+error: test failed, to rerun pass `-p verse-world --lib`

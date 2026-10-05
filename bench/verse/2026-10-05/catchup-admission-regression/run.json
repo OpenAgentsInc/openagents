@@ -1,0 +1,38 @@
+{
+  "schema": "verse.catchup.admission.regression.v1",
+  "issue": 10559,
+  "linux_base_revision": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "preceding_transport_fix": "3a09efb997",
+  "before": {
+    "result": "failed",
+    "log": "before.log",
+    "failure": "Catch-up expired an already queued TLS movement interval on trial zero"
+  },
+  "after": {
+    "result": "passed",
+    "transport_tests": 28,
+    "delayed_client_tests": 4,
+    "catchup_trials": 16,
+    "checks": [
+      "Queued TLS intervals precede catch-up simulation after an authority scheduling delay.",
+      "Captured request cohorts remain bounded; new arrivals cannot extend a deferred catch-up batch.",
+      "Three-tick catch-up, movement lag and interval size, authentication, reply order, and durable fencing limits remain unchanged.",
+      "Existing storage-resume and delayed writer-pressure fixtures pass."
+    ]
+  },
+  "source_sha256": {
+    "crates/verse-world/src/service/net.rs": "00404bada3979e8ea3e77579ea17b83c952ba6a599d80e85764e4a4f554bd0a2",
+    "crates/verse-world/src/service/net/resume_tests.rs": "ce9d2f83312c105c62a582585feedef8cf0a8168078cb5c9d1d3a51555db1c51",
+    "crates/verse-world/Cargo.toml": "016a445f183d6057ca6c76f3ae2b170d44959fd7156bc190f04f01dbb94238a9"
+  },
+  "artifact_sha256": {
+    "delayed.log": "4cc4994ac97f45ba34809059b2520dc7fdb594d9b45340aa16beff3aa2ded16c",
+    "before.log": "8d93794a94a0d4329e9dd767f3d7c2cdb2d81bcfec57ccff21e380eaa30665fd",
+    "after.log": "a77359b695409385e0558ca1a9b42899ac45e94d2567221634e2d5579dc56541"
+  },
+  "limits": [
+    "A scheduling regression proves this ordering defect and its fix, not full battle continuity. A fresh licensed battle run remains necessary.",
+    "The earlier fixture compile lacked a multithreaded test runtime, and its first runnable setup attempted interval entry before ground support. Neither is behavioral evidence; retained before.log is the corrected fixture.",
+    "Linux checks use the previous base plus the preceding blocked-write transport fix and this change; main source hashes of affected files match."
+  ]
+}
