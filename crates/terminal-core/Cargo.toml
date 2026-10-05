@@ -1,0 +1,16 @@
+[package]
+name = "terminal-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Shared terminal command blocks, request context, and explicit proposal approval."
+
+[dependencies]
+coder-vt = { path = "../coder-vt" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[lints]
+workspace = true

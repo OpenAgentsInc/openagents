@@ -2,8 +2,7 @@
 //! number of terminal panes in a split layout, each a real program on a
 //! PTY of this computer drawn from its `coder-vt` grid.
 //!
-//! The first pane runs OpenAgents Terminal (`openagents terminal`) when an
-//! `openagents` binary is found, and the login shell otherwise. While the
+//! The first pane runs the login shell. OpenAgents Terminal is a thread pane. While the
 //! overlay has focus every key goes to the focused pane; a tmux-like
 //! prefix, Ctrl+B, splits, moves focus, closes, zooms, opens tabs, enters
 //! copy mode and search, and shows performance numbers. Ctrl+` or Cmd+T
@@ -21,11 +20,13 @@ pub use crate::terminal_control as control;
 mod copy;
 pub mod draw;
 pub mod glyphs;
+mod integration;
 pub mod keys;
 pub mod layout;
 pub mod mouse;
 pub mod pty;
 pub mod select;
+mod smart;
 pub mod stats;
 pub mod stress;
 #[cfg(test)]
@@ -56,7 +57,7 @@ pub struct KeyIn {
 }
 
 /// The overlay's help line.
-pub const HELP: &str = "Ctrl+B then  % \" split · arrows focus · x close · z zoom · c n p tabs · o OpenAgents Terminal · [ copy · / search · ? stats · Esc world   Ctrl+` world";
+pub const HELP: &str = "Ctrl+B a ask · j/k blocks · y copy · d collapse · r rerun   Ctrl+B then  % \" split · arrows focus · x close · z zoom · c n p tabs · o OpenAgents Terminal · [ copy · / search · ? stats · Esc world   Ctrl+` world";
 
 /// The longest a frame spends applying output, across panes.
 pub const UPDATE_BUDGET: Duration = Duration::from_millis(3);
@@ -122,6 +123,7 @@ pub struct Overlay {
     tabs: Vec<Tab>,
     active: usize,
     next: PaneId,
+    smart: smart::Smart,
     prefix: bool,
     mods: ModifiersState,
     /// Where the hotbar button sits this frame, in pixels, when it shows.
@@ -132,7 +134,7 @@ pub struct Overlay {
     cell: [f32; 2],
     /// A one-line notice, such as why the first pane is a shell.
     notice: Option<String>,
-    /// What the first pane runs: OpenAgents Terminal when found.
+    /// What the first pane runs; the login shell by default.
     first: Option<Program>,
     /// The control socket, when one listens.
     control: Option<control::Listener>,
@@ -183,6 +185,7 @@ impl Overlay {
             tabs: Vec::new(),
             active: 0,
             next: 1,
+            smart: smart::Smart::default(),
             prefix: false,
             mods: ModifiersState::empty(),
             button: None,
@@ -265,13 +268,7 @@ impl Overlay {
         if let Some(first) = &self.first {
             return first.clone();
         }
-        let first = Program::openagents_terminal().unwrap_or_else(|| {
-            self.notice = Some(
-                "no openagents with the terminal command was found (workspace build, PATH, ~/.openagents/bin); this pane is your login shell"
-                    .into(),
-            );
-            Program::Shell
-        });
+        let first = Program::Shell;
         self.first = Some(first.clone());
         first
     }
@@ -816,6 +813,16 @@ impl Overlay {
     /// Handles a key. Returns whether the overlay took it; when it did,
     /// the world must not see it.
     pub fn key(&mut self, key: &KeyIn) -> bool {
+        if key.code == KeyCode::Enter {
+            let was_down = self.smart.enter_down;
+            self.smart.enter_down = key.pressed;
+            if was_down
+                && key.pressed
+                && (self.smart.pending.is_some() || self.smart.draft.is_some())
+            {
+                return true;
+            }
+        }
         let ctrl = self.mods.control_key();
         let cmd = self.mods.super_key();
         let shift = self.mods.shift_key();
@@ -848,7 +855,14 @@ impl Overlay {
         }
         if chord(KeyCode::KeyV) {
             if let Some(text) = clipboard() {
-                self.paste(&text);
+                if let Some(draft) = &mut self.smart.draft {
+                    draft
+                        .text
+                        .extend(text.chars().filter(|ch| !ch.is_control()));
+                    draft.text.truncate(draft.text.floor_char_boundary(8192));
+                } else if self.smart.pending.is_none() {
+                    self.paste(&text);
+                }
             }
             return true;
         }
@@ -882,6 +896,9 @@ impl Overlay {
         }
         if self.focused_pane().is_some_and(|pane| pane.ended) {
             self.close_focused();
+            return true;
+        }
+        if self.smart_key(key) {
             return true;
         }
         if let Some(bytes) = self.encode(key) {
@@ -937,6 +954,12 @@ impl Overlay {
             return;
         }
         match typed {
+            Some('a') => self.ask(String::new()),
+            Some('j') => self.block_move(false),
+            Some('k') => self.block_move(true),
+            Some('y') => self.copy_block(),
+            Some('d') => self.collapse_block(),
+            Some('r') => self.rerun_block(),
             Some('?') => self.stats.shown = !self.stats.shown,
             Some('[') => self.enter_copy(false),
             Some('/') => self.enter_copy(true),
@@ -1067,6 +1090,7 @@ impl Overlay {
                 ));
             }
         }
+        self.smart_tick();
         self.report_focus();
         for (id, rect) in self.shown() {
             let (rows, cols) = self.grid_size(rect);
@@ -1232,11 +1256,11 @@ impl Overlay {
         let lines = [
             ("Terminal", Intensity::Full),
             (
-                "Opens terminals over the world: OpenAgents Terminal first,",
+                "Opens your login shell over the world.",
                 Intensity::ThreeQuarters,
             ),
             (
-                "then splits with your shell. Ctrl+B is the prefix.",
+                "Ctrl+B splits and opens agent threads.",
                 Intensity::ThreeQuarters,
             ),
             ("T or click · Ctrl+` focus", Intensity::Half),
@@ -1326,6 +1350,7 @@ impl Overlay {
         }
         let drawing = self.stats.active().then(Instant::now);
         self.draw_panes(batch, atlas);
+        self.draw_smart(batch, atlas);
         if let Some(drawing) = drawing {
             self.stats.add_draw(drawing.elapsed());
         }
@@ -1342,7 +1367,14 @@ impl Overlay {
         if self.prefix {
             "prefix: waiting for a command".to_owned()
         } else if self.focused {
-            "typing goes to the focused pane".to_owned()
+            let mode = self
+                .focus_id()
+                .and_then(|id| self.panes.get(&id))
+                .map(|pane| {
+                    terminal_core::context::mode(None, pane.session.blocks.buffer.as_deref())
+                })
+                .unwrap_or_default();
+            format!("{mode:?} · Enter accepts · Ctrl+B a asks")
         } else {
             "the world has focus: click a pane or press Ctrl+`".to_owned()
         }
@@ -1507,6 +1539,43 @@ impl Overlay {
             }
             let inner = draw::inner(rect, [cw, ch]);
             let top = select::top(vt, pane.scroll);
+            // Advisory command gutters and collapsed output stay on their absolute lines.
+            if !vt.alternate_screen() {
+                let absolute_top = vt.history_dropped() + top as u64;
+                for block in &pane.session.blocks.records {
+                    let end = block.end.as_ref().map_or(block.start.line, |end| end.line);
+                    let from = block.start.line.max(absolute_top);
+                    let to = end.min(absolute_top + rows.len() as u64);
+                    if to < from {
+                        continue;
+                    }
+                    let step = if block.status.is_some_and(|status| status != 0) {
+                        Intensity::Full
+                    } else {
+                        Intensity::Half
+                    };
+                    for absolute in from..to {
+                        let y = inner.y + (absolute - absolute_top) as f32 * ch;
+                        batch.rect(atlas, inner.x - 3.0, y, 2.0, ch, draw::white(step, 1.0));
+                        if block.collapsed {
+                            batch.rect(atlas, inner.x, y, inner.w, ch, draw::field(1.0));
+                            if absolute == block.start.line {
+                                let summary = format!(
+                                    "[block {} · exit {:?} · output collapsed]",
+                                    block.id, block.status
+                                );
+                                batch.text(
+                                    atlas,
+                                    inner.x,
+                                    y,
+                                    &summary,
+                                    draw::white(Intensity::Half, 1.0),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
             // The selection, over the text.
             if let Some(selection) = pane.selection.filter(|s| !s.empty()) {
                 for (r, row) in rows.iter().enumerate() {

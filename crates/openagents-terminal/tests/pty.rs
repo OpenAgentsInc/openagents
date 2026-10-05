@@ -421,6 +421,7 @@ fn screen_process() {
         let client = Client::in_process(chats, home.clone(), false, options, coder.clone());
         openagents_terminal::run(Launch {
             client,
+            observe: false,
             coder,
             interrupter,
             extras: Arc::new(NoExtras),

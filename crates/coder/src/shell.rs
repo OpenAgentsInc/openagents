@@ -502,7 +502,7 @@ fn joined(stdout: &Captured, stderr: &Captured) -> String {
 
 /// The deny list: commands that end a machine, a shell session, or the
 /// user's trust — refused before they run, judged like any other outcome.
-fn denied(command: &str) -> Option<&'static str> {
+pub fn denied(command: &str) -> Option<&'static str> {
     const PATTERNS: &[(&str, &str)] = &[
         ("sudo ", "sudo would hang on a password prompt"),
         ("doas ", "doas would hang on a password prompt"),

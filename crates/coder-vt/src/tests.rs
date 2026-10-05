@@ -733,3 +733,81 @@ fn scrolling_reuses_rows_without_changing_what_shows() {
     t.feed(b"\x1b[H\x1bM");
     assert_eq!(t.text(), "\nr4\nr5");
 }
+
+#[test]
+fn shell_marks_follow_absolute_lines_across_fragments_and_scrollback() {
+    let mut t = Terminal::new(2, 40, 1);
+    for byte in b"\x1b]133;A\x07$ \x1b]133;B\x07echo hi\r\n\x1b]777;openagents;command;6563686f206869\x07\x1b]133;C\x07hi\r\n\x1b]133;D;0\x07" {
+        t.feed(&[*byte]);
+    }
+    let marks = t.take_shell_marks();
+    assert_eq!(
+        marks
+            .iter()
+            .map(|m| (&m.event, m.line, m.col))
+            .collect::<Vec<_>>(),
+        vec![
+            (&shell::Event::Prompt, 0, 0),
+            (&shell::Event::Input, 0, 2),
+            (&shell::Event::Command("echo hi".into()), 1, 0),
+            (&shell::Event::Output, 1, 0),
+            (&shell::Event::Finished { status: Some(0) }, 2, 0),
+        ]
+    );
+    t.feed(b"next\r\nnext\r\n\x1b]133;A\x07");
+    assert_eq!(t.take_shell_marks()[0].line, 4);
+    assert_eq!(t.history_dropped(), 2);
+}
+
+#[test]
+fn shell_metadata_is_bounded_and_loss_is_explicit() {
+    let mut t = term(2, 20);
+    for _ in 0..shell::MAX_EVENTS + 3 {
+        t.feed(b"\x1b]133;A\x07");
+    }
+    let marks = t.take_shell_marks();
+    assert!(marks.len() <= shell::MAX_EVENTS);
+    assert_eq!(marks[0].event, shell::Event::Gap);
+    t.feed(b"\x1b]777;openagents;command;zz\x07\x1b]777;openagents;buffer;0a\x07\x1b]133;D;bad\x07\x1b]7;file:///tmp/%0a\x07");
+    assert!(t.take_shell_marks().is_empty());
+    let oversized = format!(
+        "\x1b]777;openagents;buffer;{}\x07",
+        "61".repeat(shell::MAX_TEXT + 1)
+    );
+    t.feed(oversized.as_bytes());
+    assert!(t.take_shell_marks().is_empty());
+    assert!(t.take_replies().is_empty());
+}
+
+#[test]
+fn directory_and_buffer_marks_preserve_unicode_and_reject_controls() {
+    let mut t = term(2, 20);
+    t.feed(b"\x1b]7;file://localhost/tmp/a%20b\x07\x1b]777;openagents;buffer;23206869\x07");
+    let marks = t.take_shell_marks();
+    assert_eq!(marks[0].event, shell::Event::Directory("/tmp/a b".into()));
+    assert_eq!(marks[1].event, shell::Event::Buffer("# hi".into()));
+    t.feed(b"\x1b[?1049h\x1b]133;A\x07\x1b]777;openagents;command;726d\x07");
+    assert!(t.take_shell_marks().is_empty());
+    t.feed(b"\x1b[?1049l");
+    t.mark("lost");
+    assert_eq!(t.take_shell_marks()[0].event, shell::Event::Gap);
+}
+
+#[test]
+fn damage_tracks_edits_scrolls_resize_and_screen_switches() {
+    let mut t = term(3, 10);
+    assert_eq!(t.take_damage(), vec![0, 1, 2]);
+    assert!(t.take_damage().is_empty());
+    t.feed(b"a");
+    assert_eq!(t.take_damage(), vec![0]);
+    t.feed(b"\x1b[3;1Hz");
+    assert_eq!(t.take_damage(), vec![2]);
+    t.feed(b"\r\n");
+    assert_eq!(t.take_damage(), vec![0, 1, 2]);
+    t.resize(4, 10);
+    assert_eq!(t.take_damage(), vec![0, 1, 2, 3]);
+    t.feed(b"\x1b[?1049h");
+    assert_eq!(t.take_damage(), vec![0, 1, 2, 3]);
+    t.feed(b"\x1b[?1049l");
+    assert_eq!(t.take_damage(), vec![0, 1, 2, 3]);
+}

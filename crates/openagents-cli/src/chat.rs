@@ -41,6 +41,8 @@ mod coder_run;
 mod gce;
 #[path = "chat_placement.rs"]
 mod placement;
+#[path = "chat_shell.rs"]
+mod shell;
 #[path = "chat_work.rs"]
 mod work;
 
@@ -55,6 +57,8 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         and its events stream here. --no-run only shows the offer instead.
         `openagents settings` chooses the providers, whether Coder asks
         first, the project folders, and what its commands may reach.
+  shell-request -
+        Submit a typed live-shell request from stdin. Commands remain pending.
   follow --thread ID
         Replay the thread's Coder task from its first event and keep
         streaming until it ends. Ctrl-C stops following, not the task.
@@ -148,6 +152,7 @@ needed, and nothing prints a key.";
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("send", Effect::Publishes),
+    Declared::computer("shell-request", Effect::Publishes),
     Declared::computer("threads", Effect::ReadOnly),
     Declared::computer("read", Effect::ReadOnly),
     Declared::computer("export", Effect::ReadOnly),
@@ -203,6 +208,7 @@ impl From<client::Error> for Failure {
 
 /// The `openagents chat` commands; any other first word starts a message.
 const COMMANDS: &[&str] = &[
+    "shell-request",
     "send",
     "threads",
     "read",
@@ -324,6 +330,7 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
             .ok_or_else(|| Failure::Usage(format!("`chat {command}` needs --thread ID")))
     };
     match command {
+        "shell-request" => shell::request(output, args).await,
         "work" => {
             no_positional(args)?;
             work::work(output, args).await

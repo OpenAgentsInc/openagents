@@ -3116,6 +3116,35 @@
           }
         },
         {
+          "name": "shell-request",
+          "leaf": {
+            "path": [
+              "chat",
+              "shell-request"
+            ],
+            "usage": [
+              "shell-request -"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "shell-request"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "-"
+                  }
+                ]
+              }
+            ],
+            "summary": "Submit a typed live-shell request from stdin. Commands remain pending.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "follow",
           "leaf": {
             "path": [
@@ -3655,6 +3684,12 @@
                 "open": true,
                 "optional": true,
                 "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "observe",
+                "optional": true,
+                "repeated": true
               }
             ]
           }
@@ -3677,6 +3712,12 @@
           "name": "resume",
           "value": "ID|TITLE",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "observe",
           "optional": true,
           "repeated": true
         },

@@ -30,7 +30,7 @@ use crate::{Args, Output, runtime};
 
 pub(crate) const USAGE: &str =
     "usage: openagents terminal [--thread ID] [--continue] [--scratch] [--local] [--socket PATH]
-                          [--computer HOST] [--resume [ID|TITLE]]
+                          [--computer HOST] [--resume [ID|TITLE]] [--observe]
 OpenAgents Terminal: a full-screen chat with OpenAgents in this terminal.
 Type a message and press Enter. It opens on a new thread; --continue opens
 the last thread you had open in this folder, --thread ID opens that thread,
@@ -54,7 +54,7 @@ pub(crate) const EFFECTS: &[Declared] = &[Declared::computer("", Effect::LongRun
 const OPTIONS: &[&str] = &["thread", "socket", "computer", "resume"];
 // `--new` is the default now and still accepted.
 // `--resume` takes an optional value: the words after it.
-const SWITCHES: &[&str] = &["scratch", "local", "new", "continue", "resume"];
+const SWITCHES: &[&str] = &["observe", "scratch", "local", "new", "continue", "resume"];
 
 /// How a Coder question is answered in the screen.
 const ANSWER_HINT: &str = "Type your answer and press Enter.";
@@ -91,6 +91,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         return output.usage("terminal", &format!("unexpected argument `{word}`"), USAGE);
     }
     let thread = args.option("thread").map(str::to_owned);
+    if args.switch("observe") && thread.is_none() {
+        return output.usage("terminal", "--observe needs --thread ID", USAGE);
+    }
     if let Some(id) = &thread
         && !client::thread_id(id)
     {
@@ -214,6 +217,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         let kind = client.kind();
         let launch = Launch {
             client,
+            observe: args.switch("observe"),
             coder: Arc::new(Here),
             interrupter,
             extras: Arc::new(ProgramExtras::new(socket)),

@@ -2082,3 +2082,111 @@ async fn a_plugin_is_drafted_tested_and_turned_on_through_typed_steps() {
         .map(|argv| argv.into_iter().map(str::to_owned).collect::<Vec<_>>())
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn terminal_requests_keep_read_only_commands_pending_and_retries_bound() {
+    let dir = tempfile::tempdir().unwrap();
+    let coder = Arc::new(Commands::default());
+    let mut client = in_process(
+        Arc::new(Proposes(vec!["wallet", "status"])),
+        options(dir.path()),
+        coder.clone(),
+    );
+    let thread = new_id();
+    let request = new_id();
+    let mut events = Vec::new();
+    assert_eq!(
+        client
+            .send_terminal(&thread, &request, true, "show balance", &mut |event| events
+                .push(event))
+            .await,
+        Ok(Ended::Done)
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Command { confirm: true, .. }))
+    );
+    assert!(
+        events
+            .iter()
+            .all(|event| !matches!(event, Event::Ran { .. } | Event::Coder { .. }))
+    );
+    assert!(coder.ran.lock().unwrap().is_empty());
+    let before = client.collect(&thread).await.unwrap().turns.len();
+    assert_eq!(
+        client
+            .send_terminal(&thread, &request, false, "show balance", &mut |_| {})
+            .await,
+        Ok(Ended::Done)
+    );
+    assert_eq!(client.collect(&thread).await.unwrap().turns.len(), before);
+    assert_eq!(
+        client
+            .send_terminal(&thread, &request, false, "different bytes", &mut |_| {})
+            .await,
+        Ok(Ended::Refused)
+    );
+    assert!(coder.ran.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn terminal_requests_never_start_a_coder_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let coder = Arc::new(FakeCoder::default());
+    let worker = Arc::new(Worker {
+        contexts: Arc::new(Mutex::new(Vec::new())),
+        coding: true,
+    });
+    let mut client = in_process(worker, options(dir.path()), coder.clone());
+    assert_eq!(
+        client
+            .send_terminal(
+                &new_id(),
+                &new_id(),
+                true,
+                "inspect failing test",
+                &mut |_| {}
+            )
+            .await,
+        Ok(Ended::Done)
+    );
+    assert!(coder.started.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn terminal_observer_reloads_another_local_clients_encrypted_updates() {
+    let dir = tempfile::tempdir().unwrap();
+    let secret = device_key(dir.path(), true).unwrap();
+    let make = |door| {
+        let store = Cache::open(&dir.path().join("threads"), &secret).unwrap();
+        let chats = BasicChats::new(Some(tokio::runtime::Handle::current()), door, Some(store));
+        Client::in_process(
+            chats,
+            dir.path().to_owned(),
+            false,
+            options(dir.path()),
+            Arc::new(NoCoder),
+        )
+    };
+    let mut observer = make(None);
+    let mut writer = make(Some(
+        Arc::new(Proposes(vec!["wallet", "status"])) as Arc<dyn Door>
+    ));
+    let thread = new_id();
+    writer
+        .send_terminal(&thread, &new_id(), true, "show wallet", &mut |_| {})
+        .await
+        .unwrap();
+    assert!(observer.collect(&thread).await.is_err());
+    let observed = observer.observe(&thread).await.unwrap();
+    assert_eq!(observed.turns.len(), 2);
+    assert_eq!(observed.turns[0].text, "show wallet");
+    let ciphertext = std::fs::read(
+        dir.path()
+            .join("threads")
+            .join(format!("basic-{thread}.cache")),
+    )
+    .unwrap();
+    assert!(!String::from_utf8_lossy(&ciphertext).contains("show wallet"));
+}

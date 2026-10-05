@@ -45,6 +45,7 @@ const THREADS_MAX: usize = 200;
 
 /// What a piece of work off the loop sends back.
 enum Done {
+    Observed(Client, Result<openagents_chat::thread::Thread, Error>),
     Rail(
         String,
         crate::rail::Refresh,
@@ -72,6 +73,8 @@ enum Done {
 /// The screen with its client and the work it has started.
 struct Screen {
     app: App,
+    observe: bool,
+    observed: Option<Vec<openagents_chat::basic_coder::Turn>>,
     client: Option<Client>,
     events: Option<mpsc::UnboundedReceiver<Event>>,
     running: Option<JoinHandle<(Client, Result<Ended, Error>)>>,
@@ -110,6 +113,7 @@ pub(crate) async fn run(launch: Launch) -> io::Result<Exit> {
 async fn prepare(launch: Launch, ladder: Ladder) -> (Screen, mpsc::UnboundedReceiver<Done>) {
     let Launch {
         mut client,
+        observe,
         coder,
         interrupter,
         extras,
@@ -174,6 +178,8 @@ async fn prepare(launch: Launch, ladder: Ladder) -> (Screen, mpsc::UnboundedRece
     let (done, receiver) = mpsc::unbounded_channel();
     let mut screen = Screen {
         app,
+        observe,
+        observed: None,
         client: Some(client),
         events: None,
         running: None,
@@ -234,7 +240,7 @@ async fn drive(
                     let width = terminal.size()?.width;
                     let actions = screen.app.key(&key, width);
                     if let Some(prompt) = screen.app.take_sent() {
-                        prompts::remember(&screen.home, &prompt);
+                        if !screen.observe { prompts::remember(&screen.home, &prompt); }
                     }
                     for action in actions {
                         screen.act(action).await;
@@ -270,7 +276,10 @@ async fn drive(
                 dirty = screen.app.animating()
                     && coder_terminal::grok_spinner::turns(screen.app.tick);
             }
-            _ = poll.tick(), if screen.invite.is_some() && !screen.polling => screen.poll(),
+            _ = poll.tick(), if screen.observe || (screen.invite.is_some() && !screen.polling) => {
+                if screen.observe { screen.observe_thread(); } else { screen.poll(); }
+                dirty = false;
+            },
             _ = notices.tick() => {
                 // Nothing changes until the answer arrives.
                 dirty = false;
@@ -337,6 +346,15 @@ impl Screen {
 
     /// Run one action.
     async fn act(&mut self, action: Action) {
+        if self.observe
+            && !matches!(
+                action,
+                Action::Quit | Action::Copy(_) | Action::OpenFile { .. }
+            )
+        {
+            self.app.note("This pane observes the shell's thread. Submit requests and approve commands in the shell pane.");
+            return;
+        }
         match action {
             Action::Quit => self.quit().await,
             Action::Interrupt => self.interrupter.fire(),
@@ -659,7 +677,9 @@ impl Screen {
         if let Some(folder) = &self.folder {
             last::remember(&self.home, folder, &id, now());
         }
-        if let Some(coder) = &whole.summary.coder {
+        if !self.observe
+            && let Some(coder) = &whole.summary.coder
+        {
             self.app.task = Some(coder.task.clone());
             self.start(Op::Follow { thread: id });
         }
@@ -758,8 +778,29 @@ impl Screen {
         });
     }
 
+    fn observe_thread(&mut self) {
+        let Some(mut client) = self.client.take() else {
+            return;
+        };
+        let id = self.app.thread.clone();
+        let done = self.done.clone();
+        tokio::spawn(async move {
+            let whole = client.observe(&id).await;
+            let _ = done.send(Done::Observed(client, whole));
+        });
+    }
+
     fn done(&mut self, result: Done) {
         match result {
+            Done::Observed(client, whole) => {
+                self.client = Some(client);
+                if let Ok(whole) = whole
+                    && self.observed.as_ref() != Some(&whole.turns)
+                {
+                    self.app.show_turns(&whole.turns);
+                    self.observed = Some(whole.turns);
+                }
+            }
             Done::Rail(thread, refresh, states) => {
                 if thread == self.app.thread {
                     self.app.refresh_rail(states);

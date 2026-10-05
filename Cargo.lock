@@ -9784,6 +9784,7 @@ dependencies = [
  "sha2 0.11.0",
  "supervise",
  "tempfile",
+ "terminal-core",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "toml",
@@ -13570,6 +13571,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal-core"
+version = "0.1.0"
+dependencies = [
+ "coder-vt",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "terminfo"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14968,6 +14979,7 @@ dependencies = [
  "sha2 0.10.9",
  "swash",
  "tempfile",
+ "terminal-core",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "toml",

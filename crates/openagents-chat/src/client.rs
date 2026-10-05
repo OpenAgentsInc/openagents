@@ -1111,6 +1111,28 @@ impl Client {
         .map_err(failed)
     }
 
+    /// Reads a thread another local process may have updated, without starting work.
+    /// Local observation reloads the encrypted store; host observation uses its owner.
+    pub async fn observe(&mut self, id: &str) -> Result<Thread, Error> {
+        let home = match &self.backend {
+            Backend::Local { home, .. } => Some(home.clone()),
+            _ => None,
+        };
+        if let Some(home) = home {
+            let id = id.to_owned();
+            return tokio::task::spawn_blocking(move || {
+                let secret = device_key(&home, false).map_err(failed)?;
+                let store = Cache::open(&home.join("threads"), &secret).map_err(failed)?;
+                let mut chats = BasicChats::new(None, None, Some(store));
+                crate::thread::collect(&id, |command| service::apply(&mut chats, command, now()))
+                    .map_err(failed)
+            })
+            .await
+            .map_err(|_| failed("thread observer did not finish"))?;
+        }
+        self.collect(id).await
+    }
+
     /// Up to `limit` threads, newest first (`all` includes archived ones),
     /// and how many the store holds.
     ///
@@ -1206,7 +1228,8 @@ impl Client {
                     Start::OfferOnly => false,
                     Start::Settings => !self.coder.asks_first(),
                 };
-                self.send(&thread, new, &text, run, timeout, sink).await
+                self.send(&thread, new, &text, run, timeout, None, false, sink)
+                    .await
             }
             Op::RunCoder { thread } => {
                 let ended = self.run_coder(&thread, sink).await;
@@ -1294,6 +1317,40 @@ impl Client {
         }
     }
 
+    /// Sends a consented live-shell request under a stable request identity.
+    /// Every effect remains a proposal, including read-only commands.
+    /// Retrying the same identity binds to the exact same text in the service.
+    pub async fn send_terminal(
+        &mut self,
+        thread: &str,
+        request: &str,
+        new: bool,
+        text: &str,
+        sink: &mut Sink<'_>,
+    ) -> Result<Ended, Error> {
+        if !thread_id(thread) || !thread_id(request) {
+            return Err(Error::Usage(
+                "terminal thread and request identities must be valid".into(),
+            ));
+        }
+        self.routing = None;
+        self.issue_ahead = None;
+        let ended = self
+            .send(
+                thread,
+                new,
+                text,
+                false,
+                DEFAULT_TIMEOUT,
+                Some(request),
+                true,
+                sink,
+            )
+            .await;
+        self.settle(thread).await;
+        ended
+    }
+
     async fn send(
         &mut self,
         id: &str,
@@ -1301,6 +1358,8 @@ impl Client {
         text: &str,
         run: bool,
         timeout: Duration,
+        request: Option<&str>,
+        proposal_only: bool,
         sink: &mut Sink<'_>,
     ) -> Result<Ended, Error> {
         let mut interrupt = (self.interrupt)();
@@ -1319,7 +1378,7 @@ impl Client {
         if !new {
             self.carry_run(id).await;
         }
-        let request = new_id();
+        let request = request.map(str::to_owned).unwrap_or_else(new_id);
         let sent = self
             .delivered(
                 id,
@@ -1484,6 +1543,22 @@ impl Client {
                     running: coding && run,
                     route: Some(routed.family()),
                 });
+                if proposal_only {
+                    if let Some(argv) = command
+                        && self
+                            .coder
+                            .effect(&argv)
+                            .is_some_and(|effect| effect.run_policy() != RunPolicy::NeverFromChat)
+                    {
+                        sink(Event::Command {
+                            thread: id.to_owned(),
+                            argv,
+                            confirm: true,
+                        });
+                        self.step(id, Lifecycle::Proposed, "live_shell_enter");
+                    }
+                    return Ok(Ended::Done);
+                }
                 // The reply arrived. The router judged this is coding:
                 // Coder runs here at once, unless the person asked only
                 // for the offer, and the reply then succeeds only if Coder

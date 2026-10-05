@@ -34,6 +34,7 @@
 mod cell;
 pub mod input;
 pub mod mouse;
+pub mod shell;
 
 use std::collections::{HashMap, VecDeque};
 
@@ -164,6 +165,8 @@ struct State {
     /// Hyperlink targets; [`Attrs::link`] `n` is `links[n - 1]`.
     links: Vec<String>,
     link_ids: HashMap<String, u16>,
+    shell: shell::Metadata,
+    damage: Vec<bool>,
 }
 
 /// A terminal emulator for one grid.
@@ -224,6 +227,8 @@ impl Terminal {
                 clipboard: None,
                 links: Vec::new(),
                 link_ids: HashMap::new(),
+                shell: shell::Metadata::default(),
+                damage: vec![true; rows],
             },
             generation: 0,
         }
@@ -245,6 +250,11 @@ impl Terminal {
     /// since the bytes that would finish it are gone.
     pub fn mark(&mut self, text: &str) {
         self.parser = vte::Parser::new();
+        let line =
+            self.state.dropped + self.state.scrollback.len() as u64 + self.state.cursor.row as u64;
+        self.state
+            .shell
+            .push(line, self.state.cursor.col, shell::Event::Gap);
         let state = &mut self.state;
         state.charsets = [Charset::Ascii; 2];
         state.shift = 0;
@@ -463,6 +473,21 @@ impl Terminal {
         encode_paste(text, self.state.modes.bracketed_paste)
     }
 
+    /// Takes advisory shell marks. They never authorize input or execution.
+    pub fn take_shell_marks(&mut self) -> Vec<shell::Mark> {
+        self.state.shell.events.drain(..).collect()
+    }
+
+    /// Takes the visible rows changed since the previous call.
+    pub fn take_damage(&mut self) -> Vec<usize> {
+        self.state
+            .damage
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(row, dirty)| std::mem::take(dirty).then_some(row))
+            .collect()
+    }
+
     /// Replies the program asked for, such as its cursor position, for the
     /// client to send back as input. Taking them clears them.
     pub fn take_replies(&mut self) -> Vec<u8> {
@@ -537,7 +562,17 @@ impl State {
         }
     }
 
+    fn dirty_row(&mut self, row: usize) -> &mut Row {
+        self.damage[row] = true;
+        if self.alternate_active {
+            &mut self.alternate[row]
+        } else {
+            &mut self.primary[row]
+        }
+    }
+
     fn grid_mut(&mut self) -> &mut Vec<Row> {
+        self.damage.fill(true);
         if self.alternate_active {
             &mut self.alternate
         } else {
@@ -583,7 +618,7 @@ impl State {
                 let (row, col) = (self.cursor.row, self.cursor.col);
                 let blank = self.blank();
                 self.clear_wide(row, col);
-                self.grid_mut()[row].cells[col] = blank;
+                self.dirty_row(row).cells[col] = blank;
                 self.wrap();
             } else {
                 self.cursor.col = self.cols - 2;
@@ -598,7 +633,7 @@ impl State {
             self.clear_wide(row, col + 1);
         }
         let attrs = self.cursor.attrs;
-        let cells = &mut self.grid_mut()[row].cells;
+        let cells = &mut self.dirty_row(row).cells;
         cells[col] = Cell {
             ch: character,
             combining: Vec::new(),
@@ -628,7 +663,7 @@ impl State {
         } else {
             return;
         };
-        let cells = &mut self.grid_mut()[row].cells;
+        let cells = &mut self.dirty_row(row).cells;
         if cells[col].width == 0 && col > 0 {
             col -= 1;
         }
@@ -648,7 +683,7 @@ impl State {
             return;
         }
         let blank = self.blank();
-        let cells = &mut self.grid_mut()[row].cells;
+        let cells = &mut self.dirty_row(row).cells;
         match width {
             0 if col > 0 => cells[col - 1] = blank,
             2 if col + 1 < cells.len() => cells[col + 1] = blank,
@@ -658,7 +693,7 @@ impl State {
 
     fn wrap(&mut self) {
         let row = self.cursor.row;
-        self.grid_mut()[row].wrapped = true;
+        self.dirty_row(row).wrapped = true;
         self.cursor.col = 0;
         self.cursor.pending_wrap = false;
         self.linefeed();
@@ -755,6 +790,7 @@ impl State {
         } else {
             &mut self.primary
         };
+        self.damage[top..=bottom].fill(true);
         grid[top..=bottom].rotate_left(count);
         for row in &mut grid[bottom + 1 - count..=bottom] {
             if to_scrollback {
@@ -793,7 +829,7 @@ impl State {
         let count = count.min(cols - col);
         let blank = self.blank();
         self.clear_wide(row, col);
-        let cells = &mut self.grid_mut()[row].cells;
+        let cells = &mut self.dirty_row(row).cells;
         cells.truncate(cols - count);
         for _ in 0..count {
             cells.insert(col, blank.clone());
@@ -809,7 +845,7 @@ impl State {
         let count = count.min(cols - col);
         let blank = self.blank();
         self.clear_wide(row, col);
-        let cells = &mut self.grid_mut()[row].cells;
+        let cells = &mut self.dirty_row(row).cells;
         cells.drain(col..col + count);
         cells.extend(std::iter::repeat_n(blank.clone(), count));
         // The right half of a wide character whose left half was deleted.
@@ -827,7 +863,7 @@ impl State {
         self.clear_wide(row, from);
         self.clear_wide(row, to - 1);
         let blank = self.blank();
-        for cell in &mut self.grid_mut()[row].cells[from..to] {
+        for cell in &mut self.dirty_row(row).cells[from..to] {
             *cell = blank.clone();
         }
     }
@@ -942,6 +978,7 @@ impl State {
 
     fn enter_alternate(&mut self, clear: bool) {
         if !self.alternate_active {
+            self.damage.fill(true);
             self.alternate_active = true;
             if clear {
                 self.erase_rows(0, self.rows);
@@ -950,6 +987,7 @@ impl State {
     }
 
     fn leave_alternate(&mut self) {
+        self.damage.fill(true);
         self.alternate_active = false;
     }
 
@@ -1068,8 +1106,15 @@ impl State {
         let (rows, cols, scrollback, bells) =
             (self.rows, self.cols, self.scrollback_max, self.bells);
         let dropped = self.dropped + self.scrollback.len() as u64;
+        let mut metadata = std::mem::take(&mut self.shell);
+        metadata.push(
+            dropped + self.cursor.row as u64,
+            self.cursor.col,
+            shell::Event::Gap,
+        );
         let fresh = Terminal::new(rows, cols, scrollback).state;
         *self = fresh;
+        self.shell = metadata;
         self.bells = bells;
         self.dropped = dropped;
     }
@@ -1126,6 +1171,7 @@ impl State {
         for row in &mut self.scrollback {
             row.cells.resize(cols, Cell::default());
         }
+        self.damage = vec![true; rows];
         self.rows = rows;
         self.cols = cols;
         self.top = 0;
@@ -1280,6 +1326,13 @@ impl vte::Perform for State {
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
+        if !self.alternate_active
+            && let Some(event) = shell::parse(params)
+        {
+            let line = self.dropped + self.scrollback.len() as u64 + self.cursor.row as u64;
+            self.shell.push(line, self.cursor.col, event);
+            return;
+        }
         // The parser splits at every `;`, which a title or a link target
         // may contain; join the rest back.
         let rest = |from: usize| params.get(from..).unwrap_or_default().join(&b';');

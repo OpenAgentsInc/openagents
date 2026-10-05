@@ -376,6 +376,8 @@ pub enum Resume {
 pub struct Launch {
     /// The client, already open on its backend.
     pub client: Client,
+    /// Observe a thread changed by another surface; no execution actions.
+    pub observe: bool,
     /// Coder on this computer, for the welcome card's engines and project.
     pub coder: Arc<dyn Coder>,
     /// The interrupt the client was opened with.

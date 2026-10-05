@@ -883,3 +883,200 @@ fn a_flood_of_output_is_applied_within_the_frame_budget() {
     );
     overlay.shutdown();
 }
+
+#[test]
+fn zsh_hooks_keep_user_configuration_and_make_requests_pending() {
+    let shell = std::env::var_os("OPENAGENTS_TEST_ZSH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("/bin/zsh"));
+    assert!(
+        shell.is_file(),
+        "set OPENAGENTS_TEST_ZSH to an installed zsh"
+    );
+    let root = tempfile::tempdir().unwrap();
+    let rc = "PROMPT='fixture> '\nalias fixture_greeting='print hello'\n";
+    std::fs::write(root.path().join(".zshrc"), rc).unwrap();
+    let mut overlay = Overlay::with(root.path(), shell, Program::Shell);
+    overlay.open = true;
+    overlay.focused = true;
+    overlay.ensure_started();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !overlay
+        .panes
+        .values()
+        .any(|pane| pane.session.blocks.at_prompt)
+    {
+        assert!(
+            Instant::now() < deadline,
+            "shell prompt did not initialize: {:?}",
+            overlay.focused_text()
+        );
+        overlay.tick();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    overlay.send(b"fixture_greeting; false\r");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !overlay.panes.values().any(|pane| {
+        pane.session
+            .blocks
+            .records
+            .back()
+            .is_some_and(|block| block.status == Some(1))
+    }) {
+        assert!(
+            Instant::now() < deadline,
+            "command did not complete: {:?}",
+            overlay.focused_text()
+        );
+        overlay.tick();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let pane = overlay.panes.values().next().unwrap();
+    let block = pane.session.blocks.records.back().unwrap();
+    assert_eq!(block.command, "fixture_greeting; false");
+    assert!(block.output.contains("hello"), "{}", block.output);
+    let before = pane.session.blocks.records.len();
+    overlay.send(b"# why did that fail\r");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while overlay.smart.draft.is_none() {
+        assert!(
+            Instant::now() < deadline,
+            "request hook did not initialize: {:?}",
+            overlay.focused_text()
+        );
+        overlay.tick();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let draft = overlay.smart.draft.as_ref().unwrap();
+    assert_eq!(draft.text, "why did that fail");
+    assert_eq!(draft.context.blocks.len(), 1);
+    assert!(overlay.smart.workers.is_empty());
+    assert_eq!(
+        overlay
+            .panes
+            .values()
+            .next()
+            .unwrap()
+            .session
+            .blocks
+            .records
+            .len(),
+        before
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.path().join(".zshrc")).unwrap(),
+        rc
+    );
+    overlay.smart.draft = None;
+    overlay.send(b"print continued\r");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !overlay
+        .focused_text()
+        .is_some_and(|text| text.contains("continued"))
+    {
+        assert!(Instant::now() < deadline);
+        overlay.tick();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn attached_context_scrubs_credentials_before_preview() {
+    let text = "authorization: Bearer private\napi_key=private\nsafe\n-----BEGIN PRIVATE KEY-----\nprivate\n-----END PRIVATE KEY-----\nvalue sk-example";
+    let clean = super::smart::scrub(text);
+    assert!(!clean.contains("private"));
+    assert!(!clean.contains("sk-example"));
+    assert!(clean.contains("safe"));
+}
+
+#[test]
+fn a_live_shell_proposal_waits_for_exact_enter_and_destructive_confirmation() {
+    use terminal_core::proposals::{Effect, Phase, Proposal};
+    let shell = std::env::var_os("OPENAGENTS_TEST_ZSH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| "/bin/zsh".into());
+    let root = tempfile::tempdir().unwrap();
+    let mut overlay = Overlay::with(root.path(), shell, Program::Shell);
+    overlay.open = true;
+    overlay.focused = true;
+    overlay.ensure_started();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !overlay
+        .panes
+        .values()
+        .any(|pane| pane.session.blocks.at_prompt)
+    {
+        assert!(Instant::now() < deadline);
+        overlay.tick();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let pane = overlay.focus_id().unwrap();
+    let command = "print approved_once".to_owned();
+    let proposal = Proposal {
+        thread: "test-thread".into(),
+        id: "test-proposal".into(),
+        revision: 1,
+        command: command.clone(),
+        binding: overlay.panes[&pane]
+            .session
+            .binding("context".into())
+            .unwrap(),
+    };
+    let key = overlay.smart.book.offer(proposal).unwrap();
+    overlay
+        .smart
+        .policy
+        .0
+        .insert(command, Effect::Destructive("changes files".into()));
+    overlay.smart.pending = Some((pane, key.clone()));
+    for _ in 0..10 {
+        overlay.tick();
+    }
+    assert!(overlay.panes[&pane].session.blocks.records.is_empty());
+    let enter = KeyIn {
+        code: KeyCode::Enter,
+        logical: Logical::Named(NamedKey::Enter),
+        text: None,
+        plain: None,
+        pressed: true,
+    };
+    assert!(overlay.key(&enter));
+    assert!(matches!(
+        overlay.smart.book.entries[&key].phase,
+        Phase::Warned { .. }
+    ));
+    assert!(overlay.panes[&pane].session.blocks.records.is_empty());
+    assert!(overlay.key(&enter));
+    assert!(matches!(
+        overlay.smart.book.entries[&key].phase,
+        Phase::Warned { .. }
+    ));
+    let mut release = enter.clone();
+    release.pressed = false;
+    assert!(overlay.key(&release));
+    assert!(overlay.key(&enter));
+    assert!(matches!(
+        overlay.smart.book.entries[&key].phase,
+        Phase::Executing { .. }
+    ));
+    // Keep this fixture offline: verify the PTY block without starting a chat helper.
+    overlay.smart.execution = None;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !overlay.panes[&pane]
+        .session
+        .blocks
+        .records
+        .back()
+        .is_some_and(|block| block.end.is_some())
+    {
+        assert!(Instant::now() < deadline);
+        overlay.tick();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let records = &overlay.panes[&pane].session.blocks.records;
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].command, "print approved_once");
+    assert_eq!(records[0].status, Some(0));
+    assert!(records[0].output.contains("approved_once"));
+    overlay.shutdown();
+}

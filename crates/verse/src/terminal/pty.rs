@@ -26,7 +26,9 @@ pub const SCROLLBACK: usize = 5000;
 const QUEUE: usize = 4096;
 
 /// Spawns a program as it is.
-struct Plain;
+struct Plain {
+    _integration: Option<super::integration::Integration>,
+}
 
 impl host::Wrap for Plain {
     fn command(
@@ -49,7 +51,7 @@ impl Rights for Owner {
     }
 }
 
-fn request() -> String {
+pub(super) fn request() -> String {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
     let nanos = std::time::SystemTime::now()
@@ -207,7 +209,23 @@ impl Sessions {
         // The person at this computer drives these terminals, so they run
         // unwrapped: the privacy boundary the resident host applies is for
         // terminals nobody at the Mac would answer a prompt for.
-        config.wrap = Some(Arc::new(Plain));
+        let home = home.map(Path::to_path_buf).unwrap_or_else(|| {
+            std::env::var_os("ZDOTDIR")
+                .or_else(|| std::env::var_os("HOME"))
+                .map(PathBuf::from)
+                .unwrap_or_else(|| root.to_path_buf())
+        });
+        let integration = if shell.file_name().is_some_and(|name| name == "zsh") {
+            super::integration::Integration::create().ok()
+        } else {
+            None
+        };
+        if let Some(hooks) = &integration {
+            config.base_env.extend(hooks.environment(&home));
+        }
+        config.wrap = Some(Arc::new(Plain {
+            _integration: integration,
+        }));
         Sessions {
             host: Host::new(config, Arc::new(Owner)),
             shell,
@@ -267,6 +285,8 @@ impl Sessions {
         }
         Ok(Session {
             vt: coder_vt::Terminal::new(rows.into(), cols.into(), SCROLLBACK),
+            blocks: terminal_core::blocks::Blocks::default(),
+            started: Instant::now(),
             terminal,
             frames,
             exited: None,
@@ -362,6 +382,8 @@ impl Sessions {
 /// One terminal and its emulator.
 pub struct Session {
     pub vt: coder_vt::Terminal,
+    pub blocks: terminal_core::blocks::Blocks,
+    started: Instant,
     terminal: TerminalRef,
     frames: Receiver<Frame>,
     /// How the program ended, once it has.
@@ -382,10 +404,28 @@ impl std::fmt::Debug for Session {
 }
 
 impl Session {
+    pub fn binding(&self, context_digest: String) -> Option<terminal_core::proposals::Binding> {
+        Some(terminal_core::proposals::Binding {
+            terminal: self.terminal.terminal.clone(),
+            generation: self.terminal.generation.clone(),
+            cwd: raw_cwd(self.group?)?,
+            shell_directory: self.blocks.cwd.clone(),
+            context_digest,
+        })
+    }
+
     fn apply(&mut self, frame: &Frame) {
         match &frame.body {
-            Body::Output { data, .. } => self.vt.feed(data),
-            Body::Gap { .. } => self.vt.mark("[output skipped]"),
+            Body::Output { data, .. } => {
+                self.vt.feed(data);
+                self.blocks
+                    .update(&mut self.vt, self.started.elapsed().as_millis() as u64);
+            }
+            Body::Gap { .. } => {
+                self.vt.mark("[output skipped]");
+                self.blocks
+                    .update(&mut self.vt, self.started.elapsed().as_millis() as u64);
+            }
             Body::Exit { exit, .. } => {
                 self.exited = Some(match (exit.code, exit.signal) {
                     (Some(code), _) => format!("exited {code}"),

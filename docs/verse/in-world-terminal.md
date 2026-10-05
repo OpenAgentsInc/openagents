@@ -39,9 +39,8 @@ a pane on a PTY and draws through `coder-vt` unchanged.
 
 Implemented on October 5, 2026, in `crates/verse/src/terminal` (desktop
 `terminal` feature; never in the web build). `T` opens the overlay over any
-zone. The first pane runs `openagents terminal` when an `openagents` binary
-with that command is found (the workspace build beside `verse`, `PATH`, then
-`~/.openagents/bin`), else the login shell with a one-line note. While the
+zone. The first pane runs the login shell. zsh integration uses temporary
+startup files and preserves the user's dotfiles, editor, and history. While the
 overlay has focus every key goes to the focused pane, `Esc` included, so
 `vim` works; `` Ctrl+` ``, `Cmd+T`, or `Ctrl+B` then `Esc` gives focus back to
 the world, and a click on a pane focuses it. `Ctrl+B` is a tmux-style
@@ -52,6 +51,17 @@ run on PTYs of this computer through an in-process `coder-pty` host instead
 of the resident host and NIP-TERM, which is the next phase. Hiding the
 overlay keeps the sessions; quitting Verse ends their process groups.
 `cargo run -p verse --example terminal_capture -- out.png` renders it.
+
+`Ctrl+B`, then `a` opens Ask even over a full-screen program. At a zsh
+prompt, `# ` selects Request before Enter; other input stays in Shell.
+The request preview shows directory, Git status, and a scrubbed selected or
+failed block. `Ctrl+D` removes its context; `PageUp` and `PageDown` scroll it.
+Enter submits once and opens the same thread in an observing
+`openagents terminal --thread ID --observe` split. Shell proposals remain
+pending until Enter; commands that may change the computer require a second
+Enter. The resulting command block returns to the same thread without
+replaying an uncertain command. `Ctrl+B`, then `j` or `k` navigates blocks,
+`y` copies, `d` collapses output, and `r` types a command for a new run.
 
 The overlay also listens on a control socket,
 `~/.openagents/verse/terminal.sock` (`VERSE_TERMINAL_SOCKET` overrides it;
