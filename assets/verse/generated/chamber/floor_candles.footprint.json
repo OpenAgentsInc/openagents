@@ -1,0 +1,20 @@
+{
+  "model": "floor_candles.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 576,
+  "boxes": [
+    {
+      "name": "floor_candles",
+      "center": [
+        0.0,
+        0.192,
+        0.0
+      ],
+      "half_extents": [
+        0.34,
+        0.192,
+        0.34
+      ]
+    }
+  ]
+}

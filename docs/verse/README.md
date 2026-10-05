@@ -23,6 +23,7 @@ a team of agents on their own repository.
 [Destructible buildings](destructible-buildings.md) specifies what the engine needs for a player to smash Everglade's buildings with a sledgehammer, and orders the work.
 [In-world terminal](in-world-terminal.md) specifies a multiplexed, shareable terminal overlay and in-world screens over NIP-TERM and `coder-vt`, and plans a first demo in Everglade. [Generated models with Blender](blender-pipeline.md) is how
 scripts build and convert models for zone packs; the [asset runbook](asset-runbook.md) is the procedure.
+The [crypt lab](../../assets/verse/generated/chamber/PROVENANCE.md) is a standalone original hall built that way.
 
 The [terminal workbench roadmap](../terminal/workbench-roadmap.md) makes
 the Grid's implemented desktop overlay and a standalone install the next

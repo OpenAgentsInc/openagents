@@ -1,0 +1,20 @@
+{
+  "model": "ritual_rug.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 24,
+  "boxes": [
+    {
+      "name": "ritual_rug",
+      "center": [
+        0.0,
+        0.01,
+        0.0
+      ],
+      "half_extents": [
+        1.775,
+        0.01,
+        3.375
+      ]
+    }
+  ]
+}
