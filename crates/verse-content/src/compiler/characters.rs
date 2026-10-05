@@ -1,5 +1,13 @@
 //! Licensed character composition and glTF animation compilation.
-use glam::{Mat4, Quat, Vec3};
+//!
+//! The rig, pose, and clip arithmetic runs in `f64` on glam's scalar types
+//! and rounds to `f32` once, at the end. glam's `f32` quaternions and 4x4
+//! matrices use SIMD whose horizontal sums add in a different order on
+//! aarch64 than on x86_64, and the platform's `sin` rounds differently
+//! between operating systems, so `f32` arithmetic compiled the same sources
+//! to packs that differed in the last bit on different machines. Sines come
+//! from `libm`, which is the same Rust code everywhere.
+use glam::{DMat4 as Mat4, DQuat as Quat, DVec3 as Vec3};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
 use verse_engine::assets::{
@@ -14,12 +22,40 @@ pub const APPEARANCES: [&str; 6] = [
     "superhero-male",
     "superhero-female",
 ];
+/// A position or scale read from a pack.
+fn v3(v: [f32; 3]) -> Vec3 {
+    glam::Vec3::from(v).as_dvec3()
+}
+/// A rotation read from a pack.
+fn q4(q: [f32; 4]) -> Quat {
+    glam::Quat::from_array(q).as_dquat()
+}
+/// A matrix read from a pack.
+fn m4(m: &[f32; 16]) -> Mat4 {
+    glam::Mat4::from_cols_array(m).as_dmat4()
+}
+/// A position or scale written to a pack.
+fn f3(v: Vec3) -> [f32; 3] {
+    v.as_vec3().to_array()
+}
+/// A rotation written to a pack.
+fn f4(q: Quat) -> [f32; 4] {
+    q.as_quat().to_array()
+}
+/// A matrix written to a pack.
+fn f16(m: Mat4) -> [f32; 16] {
+    m.as_mat4().to_cols_array()
+}
+/// A rotation of `angle` radians about the x axis, with `libm`'s sine.
+fn rotation_x(angle: f64) -> Quat {
+    Quat::from_xyzw(libm::sin(angle / 2.), 0., 0., libm::cos(angle / 2.))
+}
+/// A rotation of `angle` radians about the y axis, with `libm`'s sine.
+fn rotation_y(angle: f64) -> Quat {
+    Quat::from_xyzw(0., libm::sin(angle / 2.), 0., libm::cos(angle / 2.))
+}
 fn local(r: RestPose) -> Mat4 {
-    Mat4::from_scale_rotation_translation(
-        r.scale.into(),
-        Quat::from_array(r.rotation),
-        r.translation.into(),
-    )
+    Mat4::from_scale_rotation_translation(v3(r.scale), q4(r.rotation), v3(r.translation))
 }
 fn globals(model: &Model) -> Vec<Mat4> {
     let skin = model.skin.as_ref().unwrap();
@@ -157,7 +193,8 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
             return Err("Cyclic character hierarchy".into());
         }
     }
-    let basis = crate::basis().inverse() * Mat4::from_rotation_y(std::f32::consts::PI);
+    let basis =
+        crate::basis().as_dmat4().inverse() * Mat4::from_quat(rotation_y(std::f64::consts::PI));
     let rest: Vec<_> = order
         .iter()
         .map(|i| {
@@ -198,13 +235,12 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
                 .map(|i| nodes[*i].name().unwrap_or("").to_owned())
                 .collect(),
             rest,
-            inverse_bind: vec![Mat4::IDENTITY.to_cols_array(); nodes.len()],
-            basis: basis.to_cols_array(),
+            inverse_bind: vec![f16(Mat4::IDENTITY); nodes.len()],
+            basis: f16(basis),
         }),
     };
     let global = globals(&model);
-    model.skin.as_mut().unwrap().inverse_bind =
-        global.iter().map(|m| m.inverse().to_cols_array()).collect();
+    model.skin.as_mut().unwrap().inverse_bind = global.iter().map(|m| f16(m.inverse())).collect();
     for node in &nodes {
         let Some(mesh) = node.mesh() else {
             continue;
@@ -221,7 +257,7 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
         }) {
             for (joint, matrix) in joints.iter().zip(matrices) {
                 model.skin.as_mut().unwrap().inverse_bind[*joint] =
-                    Mat4::from_cols_array_2d(&matrix).to_cols_array();
+                    glam::Mat4::from_cols_array_2d(&matrix).to_cols_array();
             }
         }
         for primitive in mesh.primitives() {
@@ -315,11 +351,8 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
                 .into_iter()
                 .enumerate()
                 .map(|(i, p)| Vertex {
-                    position: vertex_basis.transform_point3(p.into()).to_array(),
-                    normal: normal_basis
-                        .transform_vector3(normals[i].into())
-                        .normalize()
-                        .to_array(),
+                    position: f3(vertex_basis.transform_point3(v3(p))),
+                    normal: f3(normal_basis.transform_vector3(v3(normals[i])).normalize()),
                     uv: uvs[i],
                     joints: bone_ids[i].map(|j| joints[j as usize] as u32),
                     weights: weights[i],
@@ -363,7 +396,7 @@ pub fn compose(target: &mut Model, source: Model, head_only: bool) -> Result<(),
         .iter()
         .map(|name| target_skin.names.iter().position(|n| n == name))
         .collect();
-    let basis = Mat4::from_cols_array(&target_skin.basis);
+    let basis = m4(&target_skin.basis);
     let inverse = basis.inverse();
     let global = globals(target);
     let convert: Vec<_> = source_skin
@@ -371,9 +404,7 @@ pub fn compose(target: &mut Model, source: Model, head_only: bool) -> Result<(),
         .iter()
         .enumerate()
         .map(|(i, _)| {
-            mapping[i].map(|j| {
-                basis * global[j] * Mat4::from_cols_array(&source_skin.inverse_bind[i]) * inverse
-            })
+            mapping[i].map(|j| basis * global[j] * m4(&source_skin.inverse_bind[i]) * inverse)
         })
         .collect();
     for mut surface in source.surfaces {
@@ -426,15 +457,17 @@ pub fn compose(target: &mut Model, source: Model, head_only: bool) -> Result<(),
                     let matrix = convert[old].ok_or_else(|| {
                         format!("Missing modular joint {}", source_skin.names[old])
                     })?;
-                    p += matrix.transform_point3(vertex.position.into()) * vertex.weights[k];
-                    normal += matrix.transform_vector3(vertex.normal.into()) * vertex.weights[k];
+                    p +=
+                        matrix.transform_point3(v3(vertex.position)) * f64::from(vertex.weights[k]);
+                    normal +=
+                        matrix.transform_vector3(v3(vertex.normal)) * f64::from(vertex.weights[k]);
                     vertex.joints[k] = mapping[old].unwrap() as u32;
                 } else {
                     vertex.joints[k] = 0;
                 }
             }
-            vertex.position = p.to_array();
-            vertex.normal = normal.normalize_or_zero().to_array();
+            vertex.position = f3(p);
+            vertex.normal = f3(normal.normalize_or_zero());
         }
         target.surfaces.push(surface);
     }
@@ -520,7 +553,7 @@ fn archery(model: &mut Model) -> Result<(), String> {
                 bone,
                 translation: vec![],
                 scale: vec![],
-                rotation: vec![(0., rotation.normalize().to_array())],
+                rotation: vec![(0., f4(rotation.normalize()))],
             });
         }
     }
@@ -529,14 +562,14 @@ fn archery(model: &mut Model) -> Result<(), String> {
     let right = skin.names.iter().position(|n| n == "upperarm_r").unwrap();
     for track in &mut shot.bones {
         if track.bone == right {
-            let drawn = Quat::from_array(track.rotation[0].1);
-            let release = (drawn * Quat::from_rotation_y(-0.25)).to_array();
+            let drawn = track.rotation[0].1;
+            let release = f4(q4(drawn) * rotation_y(-0.25));
             track.rotation = vec![
-                (0., drawn.to_array()),
-                (0.15, drawn.to_array()),
+                (0., drawn),
+                (0.15, drawn),
                 (0.25, release),
                 (0.7, release),
-                (1., drawn.to_array()),
+                (1., drawn),
             ];
         }
     }
@@ -653,6 +686,7 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
         for sample in 0..=32 {
             let phase = sample as f32 / 32.;
             let time = phase * duration;
+            let (phase, stride) = (f64::from(phase), f64::from(stride));
             let crouch = if matches!(id, 5 | 14 | 15) {
                 0.17
             } else if stride != 0. {
@@ -668,7 +702,7 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
                 .iter()
                 .position(|n| n == "pelvis")
                 .ok_or("Missing pelvis")?;
-            let delta = Vec3::Y * (-crouch + 0.005 * (phase * std::f32::consts::TAU * 2.).sin());
+            let delta = Vec3::Y * (-crouch + 0.005 * libm::sin(phase * std::f64::consts::TAU * 2.));
             for i in 0..model.bones.len() {
                 let mut ancestor = i;
                 while ancestor != pelvis && model.bones[ancestor].parent >= 0 {
@@ -679,7 +713,7 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
                 }
             }
             let parent = model.bones[pelvis].parent as usize;
-            let translation = Vec3::from(skin.rest[pelvis].translation)
+            let translation = v3(skin.rest[pelvis].translation)
                 + rest_global[parent].inverse().transform_vector3(delta);
             tracks
                 .entry(pelvis)
@@ -690,7 +724,7 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
                     scale: vec![],
                 })
                 .translation
-                .push((time, translation.to_array()));
+                .push((time, f3(translation)));
             for (side, offset) in [("l", 0.), ("r", 0.5)] {
                 let foot = skin
                     .names
@@ -699,14 +733,14 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
                     .ok_or("Missing foot")?;
                 let p = (phase + offset) % 1.;
                 // Contact occupies most of the cycle; only the returning foot lifts.
-                let stance = stance(id);
+                let stance = f64::from(stance(id));
                 let (forward, lift) = if p < stance {
                     (1. - 2. * p / stance, 0.)
                 } else {
                     let swing = (p - stance) / (1. - stance);
                     (
                         -1. + 2. * swing,
-                        (swing * std::f32::consts::PI).sin()
+                        libm::sin(swing * std::f64::consts::PI)
                             * if matches!(id, 5 | 14 | 15) {
                                 0.18
                             } else {
@@ -756,7 +790,7 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
                     (Some(elbow), Some(wrist)) => shoulder.distance(elbow) + elbow.distance(wrist),
                     _ => 0.55,
                 };
-                let pulse = (phase * std::f32::consts::PI).sin();
+                let pulse = libm::sin(phase * std::f64::consts::PI);
                 let target = match id {
                     25 => shoulder + Vec3::new(-sign * 0.1, -0.12, 0.3),
                     51 => shoulder + Vec3::new(sign * 0.08, -0.28, 0.28),
@@ -809,7 +843,7 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
                             scale: vec![],
                         })
                         .rotation
-                        .push((time, rotation.normalize().to_array()));
+                        .push((time, f4(rotation.normalize())));
                 }
             }
         }
@@ -868,9 +902,7 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
             track.rotation.truncate(1);
         }
         death.bones.retain(|b| b.bone != root);
-        let fallen = (Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)
-            * Quat::from_array(rest.rotation))
-        .to_array();
+        let fallen = f4(rotation_x(std::f64::consts::FRAC_PI_2) * q4(rest.rotation));
         death.bones.push(BoneKeys {
             bone: root,
             translation: vec![],
@@ -894,7 +926,7 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
     // Bow attachments: 2 is the left palm, between the wrist and the middle
     // knuckle, so the grip sits inside the closed fist; 3 is the upper back;
     // 4 is the left elbow, which with the palm gives the bow arm's direction.
-    let basis = Mat4::from_cols_array(&skin.basis);
+    let basis = m4(&skin.basis);
     let at = |name: &str| {
         skin.names.iter().position(|n| n == name).map(|bone| {
             (
@@ -907,7 +939,7 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
         model.attachments.push(Attachment {
             id: 2,
             bone: hand,
-            position: wrist.lerp(knuckle, 0.55).to_array(),
+            position: f3(wrist.lerp(knuckle, 0.55)),
         });
     }
     for (id, name) in [(3, "spine_03"), (4, "lowerarm_l"), (5, "Head")] {
@@ -915,7 +947,7 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
             model.attachments.push(Attachment {
                 id,
                 bone,
-                position: position.to_array(),
+                position: f3(position),
             });
         }
     }
@@ -923,7 +955,7 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
         model.attachments.push(Attachment {
             id: 6,
             bone: hand,
-            position: wrist.lerp(knuckle, 0.55).to_array(),
+            position: f3(wrist.lerp(knuckle, 0.55)),
         });
     }
     super::original::bind_states(model);
@@ -975,30 +1007,21 @@ pub fn retarget_clip(model: &mut Model, path: &Path, id: u16, name: &str) -> Res
             ReadOutputs::Translations(values) => {
                 track.translation = times
                     .into_iter()
-                    .zip(values.map(|v| {
-                        (Vec3::from(v) - Vec3::from(source_t) + Vec3::from(target.translation))
-                            .to_array()
-                    }))
+                    .zip(values.map(|v| f3(v3(v) - v3(source_t) + v3(target.translation))))
                     .collect()
             }
             ReadOutputs::Rotations(values) => {
                 track.rotation = times
                     .into_iter()
                     .zip(values.into_f32().map(|v| {
-                        (Quat::from_array(target.rotation)
-                            * Quat::from_array(source_r).inverse()
-                            * Quat::from_array(v))
-                        .normalize()
-                        .to_array()
+                        f4((q4(target.rotation) * q4(source_r).inverse() * q4(v)).normalize())
                     }))
                     .collect()
             }
             ReadOutputs::Scales(values) => {
                 track.scale = times
                     .into_iter()
-                    .zip(values.map(|v| {
-                        (Vec3::from(v) / Vec3::from(source_s) * Vec3::from(target.scale)).to_array()
-                    }))
+                    .zip(values.map(|v| f3(v3(v) / v3(source_s) * v3(target.scale))))
                     .collect()
             }
             _ => return Err("Unsupported character morph animation".into()),
@@ -1155,7 +1178,7 @@ mod tests {
                     .flat_map(|s| {
                         s.indices.iter().map(|i| {
                             let v = &s.vertices[*i as usize];
-                            let p: Vec3 = v.position.into();
+                            let p: glam::Vec3 = v.position.into();
                             crate::basis()
                                 .transform_point3(
                                     (0..4)

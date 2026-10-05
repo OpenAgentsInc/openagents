@@ -472,14 +472,10 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
     }
 
     if PACK_BYTES != 0 {
-        // The skinned clips' retargeting rounds a few floats differently on
-        // other platforms' math libraries, so the same sources may compile
-        // to a retained reviewed digest rather than the pinned one.
-        assert!(
-            EVERGLADE_PACK_HISTORY.contains(&compiled.sha256.as_str()),
-            "rebuild and repin the pack: {}",
-            compiled.sha256
-        );
+        // The character compilers' arithmetic is portable (f64 on glam's
+        // scalar types, sines from libm), so every machine compiles the
+        // same sources to the same bytes.
+        assert_eq!(compiled.sha256, PACK_SHA256, "rebuild and repin the pack");
         assert_eq!(compiled.bytes.len() as u64, PACK_BYTES);
         let path = root.join(format!("{}.{PACK_EXTENSION}", compiled.sha256));
         let committed = std::fs::read(&path).expect("the matching pack is committed");

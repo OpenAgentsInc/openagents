@@ -709,7 +709,9 @@ impl Builder<'_> {
             SWING_CLIP.1,
         )?;
         let skin = model.skin.as_ref().ok_or("The player has no skin")?;
-        let inverse = Mat4::from_cols_array(&skin.basis).inverse();
+        // In f64, like the importer: glam's f32 matrices round differently
+        // on aarch64 and x86_64.
+        let inverse = Mat4::from_cols_array(&skin.basis).as_dmat4().inverse();
         if model.bones.len() > format::MAX_JOINTS {
             return Err("The player has too many joints".into());
         }
@@ -749,10 +751,14 @@ impl Builder<'_> {
                 .iter()
                 .map(|v| SkinnedVertex {
                     vertex: Vertex {
-                        position: inverse.transform_point3(v.position.into()).to_array(),
+                        position: inverse
+                            .transform_point3(Vec3::from(v.position).as_dvec3())
+                            .as_vec3()
+                            .to_array(),
                         normal: inverse
-                            .transform_vector3(v.normal.into())
+                            .transform_vector3(Vec3::from(v.normal).as_dvec3())
                             .normalize_or_zero()
+                            .as_vec3()
                             .to_array(),
                         uv: v.uv,
                         color: [255; 4],

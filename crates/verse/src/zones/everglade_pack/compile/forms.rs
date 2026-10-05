@@ -11,7 +11,7 @@
 
 use std::collections::BTreeMap;
 
-use glam::{Mat4, Quat, Vec3};
+use glam::{DMat4, DQuat, DVec3, Mat4, Vec3};
 
 use super::{
     Builder, Character, Clip, Joint, SkinnedPrimitive, SkinnedVertex, SourceSet, Track, Vertex,
@@ -339,8 +339,16 @@ impl Builder<'_> {
                     Property::Rotation => {
                         let keys: Vec<(f32, [f32; 4])> = shifted
                             .map(|(t, v)| {
-                                let q = Quat::from_array([v[0], v[1], v[2], v[3]]).normalize();
-                                (t, q.to_array())
+                                // In f64: glam's f32 quaternion sums
+                                // round differently on aarch64 and x86_64.
+                                let q = DQuat::from_xyzw(
+                                    f64::from(v[0]),
+                                    f64::from(v[1]),
+                                    f64::from(v[2]),
+                                    f64::from(v[3]),
+                                )
+                                .normalize();
+                                (t, q.as_quat().to_array())
                             })
                             .collect();
                         track.rotation = reduce_keys(&keys);
@@ -414,7 +422,7 @@ pub fn stride(joints: &[Joint], clip: &Clip) -> f32 {
     let mut high = vec![f32::NEG_INFINITY; joints.len()];
     for s in 0..GAIT_SAMPLES {
         let t = clip.duration * s as f32 / GAIT_SAMPLES as f32;
-        let mut world = vec![Mat4::IDENTITY; joints.len()];
+        let mut world = vec![DMat4::IDENTITY; joints.len()];
         for (i, joint) in joints.iter().enumerate() {
             let track = clip.tracks.iter().find(|k| usize::from(k.joint) == i);
             let (translation, rotation, scale) = match track {
@@ -425,10 +433,11 @@ pub fn stride(joints: &[Joint], clip: &Clip) -> f32 {
                 ),
                 None => (joint.translation, joint.rotation, joint.scale),
             };
-            let local = Mat4::from_scale_rotation_translation(
-                scale.into(),
-                Quat::from_array(rotation).normalize(),
-                translation.into(),
+            let [x, y, z, w] = rotation.map(f64::from);
+            let local = DMat4::from_scale_rotation_translation(
+                Vec3::from(scale).as_dvec3(),
+                DQuat::from_xyzw(x, y, z, w).normalize(),
+                DVec3::from(translation.map(f64::from)),
             );
             world[i] = match usize::try_from(joint.parent) {
                 Ok(p) => world[p] * local,
@@ -436,7 +445,7 @@ pub fn stride(joints: &[Joint], clip: &Clip) -> f32 {
             };
         }
         for &leaf in &leaves {
-            let z = world[leaf].w_axis.z;
+            let z = world[leaf].w_axis.z as f32;
             low[leaf] = low[leaf].min(z);
             high[leaf] = high[leaf].max(z);
         }
