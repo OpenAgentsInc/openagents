@@ -6,8 +6,10 @@ plan in order of payoff, what an agent inventories from the downloaded
 project, and what the license lets us do with it. In short: we study the
 project and build our own models in Blender. Nothing from it ships.
 
-Status on October 5, 2026: the project is still downloading, and nothing in
-it has been inventoried yet.
+Status on October 5, 2026: the download stopped at 17,094 of 19,784 files,
+and the editor-level study list below hasn't started.
+
+The [content index](valley-of-the-ancient-index.md) inventories the download, and [Female character](female-character.md) specifies an original player character informed by Echo.
 
 ## The download
 

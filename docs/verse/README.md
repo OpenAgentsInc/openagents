@@ -24,7 +24,7 @@ a team of agents on their own repository.
 [In-world terminal](in-world-terminal.md) specifies a multiplexed, shareable terminal overlay and in-world screens over NIP-TERM and `coder-vt`, and plans a first demo in Everglade. [Workshop agent](workshop-agent.md) specifies a persistent, named agent you own that works at a desk in the Everglade workshop and on your computers through the Coder host. [Generated models with Blender](blender-pipeline.md) is how
 scripts build and convert models for zone packs; the [asset runbook](asset-runbook.md) is the procedure.
 The [crypt lab](../../assets/verse/generated/chamber/PROVENANCE.md) is a standalone original hall built that way.
-The [UE5 ruins study](ue5-ruins-study.md) uses Epic's Valley of the Ancient as a reference only and plans our ruins kit and renderer work from it.
+The [UE5 ruins study](ue5-ruins-study.md) uses Epic's Valley of the Ancient as a reference only and plans our ruins kit and renderer work from it. The [Valley of the Ancient index](valley-of-the-ancient-index.md) lists the downloaded project's contents, and [Female character](female-character.md) specifies an original female player character.
 
 The [terminal workbench roadmap](../terminal/workbench-roadmap.md) makes
 the Grid's implemented desktop overlay and a standalone install the next
