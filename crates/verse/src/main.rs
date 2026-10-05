@@ -53,6 +53,15 @@ fn main() -> ExitCode {
     if args.first().map(String::as_str) == Some("--seed-rooms") {
         return seed(&args[1..]);
     }
+    if args.first().map(String::as_str) == Some("--chamber") {
+        return match chamber(&args[1..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("verse: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let result = match parse(args.into_iter()) {
         Ok((None, options)) => verse::app::run(&options),
         Ok((Some(shot), options)) => {
@@ -112,6 +121,22 @@ struct Shot {
     camera: FollowCamera,
     board: bool,
     at: Option<f64>,
+}
+
+/// `--chamber CONFIG [--profile NAME]`: the chamber window a RITUAL crossing
+/// opens, in its own process so the Grid window stays.
+fn chamber(args: &[String]) -> Result<(), String> {
+    let usage = "usage: verse --chamber CONFIG [--profile NAME]";
+    let mut args = args.iter();
+    let config = args.next().ok_or(usage)?;
+    let mut profile = "default".to_owned();
+    while let Some(flag) = args.next() {
+        match flag.as_str() {
+            "--profile" => profile = args.next().ok_or(usage)?.clone(),
+            _ => return Err(usage.into()),
+        }
+    }
+    verse::ritual::run(std::path::Path::new(config), &profile)
 }
 
 fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Options), String> {
@@ -175,6 +200,8 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--studio-mute" => options.studio_muted = true,
             "--everglade" => options.everglade = true,
             "--studio-notice" => options.studio_notice = Some(value()?),
+            "--ritual" => options.ritual = Some(value()?.into()),
+            "--no-ritual" => options.ritual = None,
             "--at" => {
                 let v = value()?;
                 at = Some(

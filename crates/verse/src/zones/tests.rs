@@ -550,3 +550,50 @@ fn zone_names_resolve_to_their_shared_worlds() {
     assert_eq!(ZoneId::Everglade.world_id(), "verse-everglade");
     assert_eq!(ZoneId::Lagrange1.world_id(), "verse-lagrange-1");
 }
+
+#[test]
+fn the_ritual_arch_appears_with_a_pinned_chamber_and_a_walk_through_hands_it_over_once() {
+    let mut runtime = WorldRuntime::bare();
+    assert!(runtime.ritual_gate().is_none());
+    assert!(runtime.take_ritual_crossing().is_none());
+    let bare = runtime.grid_portal_mesh().lines.len();
+    let config = std::path::PathBuf::from("/tmp/ritual.json");
+    runtime.set_ritual(Some(config.clone()));
+    let gate = runtime.ritual_gate().expect("the RITUAL arch");
+    assert!(runtime.grid_portal_mesh().lines.len() > bare);
+    assert!(
+        runtime
+            .grid_portal_mesh()
+            .lines
+            .iter()
+            .all(|v| gray(v.color))
+    );
+    // Beyond the blocks, inside the walls, facing the spawn.
+    let (front, away) = gate.front();
+    assert!(gate.at.z > crate::world::SPAWN.z + crate::blocks::STACK_AT[1] as f32 + 4.0);
+    assert!(gate.at.abs().max_element() < crate::world::HALF - 5.0);
+    runtime
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+    let forward = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    let mut crossing = None;
+    for _ in 0..180 {
+        runtime.tick(&forward, 1.0 / 60.0);
+        if let Some(found) = runtime.take_ritual_crossing() {
+            crossing = Some(found);
+            break;
+        }
+    }
+    assert_eq!(crossing.as_ref(), Some(&config));
+    // Still on the Grid, handed over once.
+    assert!(runtime.is_plaza());
+    assert!(runtime.take_ritual_crossing().is_none());
+    // The return places the player in front of the arch, facing away.
+    runtime.return_from_ritual().unwrap();
+    assert!(runtime.player.pos.distance(front) < 0.5);
+    runtime.set_ritual(None);
+    assert!(runtime.ritual_gate().is_none() && runtime.return_from_ritual().is_err());
+}

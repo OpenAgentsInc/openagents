@@ -72,6 +72,9 @@ pub struct Options {
     /// A notice Everglade's caption leads with, such as that no coding
     /// agent can sign in, so the studio's seats cannot work.
     pub studio_notice: Option<String>,
+    /// The pinned chamber the Grid's RITUAL arch joins
+    /// ([`crate::ritual::Config`]); `None` draws no arch.
+    pub ritual: Option<std::path::PathBuf>,
 }
 
 impl Default for Options {
@@ -89,6 +92,7 @@ impl Default for Options {
             studio_muted: false,
             everglade: false,
             studio_notice: None,
+            ritual: crate::ritual::default_config(),
         }
     }
 }
@@ -470,6 +474,8 @@ struct App {
     zone_operators: crate::zones::operators::Operators,
     connection_options: Options,
     plaza_services_paused: bool,
+    /// The chamber window a RITUAL crossing opened, until it closes.
+    chamber: Option<std::process::Child>,
     plaza_presence: (PlayerController, Agent),
     rendered_zone_revision: u64,
     zone_hud: zones::hud::Hud,
@@ -735,6 +741,7 @@ impl App {
             zone_operators,
             connection_options: options.clone(),
             plaza_services_paused: false,
+            chamber: None,
             plaza_presence: (player, agent),
             rendered_zone_revision: 0,
             zone_hud: zones::hud::Hud::default(),
@@ -1174,7 +1181,44 @@ impl App {
     }
 
     fn plaza_interactive(&self) -> bool {
-        self.runtime.is_plaza() && !self.runtime.zone_loading()
+        self.runtime.is_plaza() && !self.runtime.zone_loading() && self.chamber.is_none()
+    }
+
+    /// Opens the pinned chamber when the player walks through the RITUAL
+    /// arch, and puts the player back in front of it when that window
+    /// closes. The Grid's presence, chat, feed, XP, and board pause while
+    /// the chamber is open, as in a zone.
+    fn tick_ritual(&mut self) {
+        if let Some(child) = &mut self.chamber {
+            match child.try_wait() {
+                Ok(None) => return,
+                Ok(Some(status)) => {
+                    if !status.success() {
+                        self.offline_log.push(chat::Line::system(format!(
+                            "The chamber closed with {status}"
+                        )));
+                    }
+                }
+                Err(error) => self
+                    .offline_log
+                    .push(chat::Line::system(format!("The chamber was lost: {error}"))),
+            }
+            self.chamber = None;
+            if let Err(error) = self.runtime.return_from_ritual() {
+                self.offline_log.push(chat::Line::system(error));
+            }
+            return;
+        }
+        let Some(config) = self.runtime.take_ritual_crossing() else {
+            return;
+        };
+        match crate::ritual::open(&config, &self.connection_options.profile) {
+            Ok(child) => {
+                self.chamber = Some(child);
+                self.sync_zone_services(true);
+            }
+            Err(error) => self.offline_log.push(chat::Line::system(error)),
+        }
     }
 
     /// A zone change drops every plaza subscription before the new pose ticks.
@@ -2655,6 +2699,7 @@ impl App {
 
         // Suspend the plaza before a completed download can install a ruins pose.
         self.sync_zone_services(true);
+        self.tick_ritual();
         self.runtime.zone_tick();
         self.open_pending_everglade();
         if self.runtime.zone_revision != self.rendered_zone_revision {

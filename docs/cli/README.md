@@ -583,8 +583,9 @@ Each new key becomes a player on the spawn ring, up to `cap` guest players
 (configured players and guests together stay within 63); a returning key
 keeps its adventurer. A full ring refuses with `Chamber guest capacity
 exceeded`, a blocked ring spot moves the spawn to the next free one, and
-spectators stay enrollment-only. The listener's per-address connection
-budget applies to guests as to anyone else. Saved state recovers guests as
+spectators stay enrollment-only. A key holds one seat however often it
+reconnects, and the listener's budget of eight connections per address
+bounds how many guest seats one address can take at a time. Saved state recovers guests as
 players; removing the policy later refuses recovery, as any changed rights
 do.
 
