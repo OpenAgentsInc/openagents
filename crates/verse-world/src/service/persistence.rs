@@ -276,9 +276,13 @@ impl Store {
         }
         #[cfg(test)]
         self.boundary("before_encode");
-        let checkpoint =
-            String::from_utf8(prepared.encode()?).map_err(|_| "Cannot encode committed chamber")?;
-        let state = journal::expand(checkpoint.as_bytes())?;
+        let (bytes, world) = prepared.encode_with_world()?;
+        let checkpoint = String::from_utf8(bytes).map_err(|_| "Cannot encode committed chamber")?;
+        let mut state: serde_json::Value =
+            serde_json::from_str(&checkpoint).map_err(|_| "Invalid chamber checkpoint")?;
+        *state
+            .get_mut("world")
+            .ok_or("Chamber checkpoint has no world")? = world;
         let hash = journal::hash(&state)?;
         if self.last_hash == Some(hash) {
             if let Err(error) = self.history.synchronize() {

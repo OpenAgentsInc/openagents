@@ -169,12 +169,15 @@ impl Prepared {
         self.game.player_life().instance
     }
     pub(super) fn encode(&self) -> Result<Vec<u8>, String> {
+        self.encode_with_world().map(|(bytes, _)| bytes)
+    }
+    pub(super) fn encode_with_world(&self) -> Result<(Vec<u8>, serde_json::Value), String> {
+        let (world, world_bytes) = self.game.checkpoint_parts()?;
         let ledger = self.rewards.checkpoint();
         let saved = Saved {
             version: 11,
             content: self.content,
-            world: String::from_utf8(self.game.checkpoint()?)
-                .map_err(|_| "Cannot encode saved world")?,
+            world: String::from_utf8(world_bytes).map_err(|_| "Cannot encode saved world")?,
             rewards: ledger.is_none().then(|| self.rewards.transactions()),
             ledger,
             reward_policy: self.reward_policy.clone(),
@@ -210,7 +213,7 @@ impl Prepared {
         if bytes.len() > MAX_BYTES {
             return Err("Saved chamber byte budget exceeded".into());
         }
-        Ok(bytes)
+        Ok((bytes, world))
     }
 }
 pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {

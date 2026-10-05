@@ -49,6 +49,30 @@ fn unchanged_commit_flushes_staged_history_without_acknowledging_future_rewards(
 }
 
 #[test]
+fn prepared_world_matches_encoded_journal_state_including_signed_zero() {
+    let mut gateway = super::tests::prepared();
+    gateway.chamber.game.yaw = -0.0;
+    gateway.chamber.game.message = "A quoted \"world\" with Unicode: λ".into();
+    for _ in 0..4 {
+        let copy = super::super::save::Prepared::capture(&gateway).unwrap();
+        let (bytes, world) = copy.encode_with_world().unwrap();
+        assert_eq!(bytes, copy.encode().unwrap());
+        let expected = journal::expand(&bytes).unwrap();
+        let mut reused: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        reused["world"] = world;
+        assert_eq!(
+            serde_json::to_vec(&reused).unwrap(),
+            serde_json::to_vec(&expected).unwrap()
+        );
+        assert_eq!(
+            journal::hash(&reused).unwrap(),
+            journal::hash(&expected).unwrap()
+        );
+        gateway.tick(1. / 30.).unwrap();
+    }
+}
+
+#[test]
 fn persistence_copy_does_not_follow_later_authority_mutations() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("state");

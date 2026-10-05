@@ -405,6 +405,9 @@ impl Game {
     }
     /// Saves pending combat, controller fences, timers, and presentation clocks.
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
+        self.checkpoint_parts().map(|(_, bytes)| bytes)
+    }
+    pub(crate) fn checkpoint_parts(&self) -> Result<(serde_json::Value, Vec<u8>), String> {
         self.validate_social()?;
         self.validate_roles()?;
         self.simulation.validate()?;
@@ -415,14 +418,14 @@ impl Game {
         if let Some(encounter) = &self.encounter {
             encounter.validate(self)?;
         }
-        let bytes = serde_json::to_vec(&serde_json::json!({
+        let value = serde_json::json!({
             "version": 1, "rules_revision": RULES_REVISION, "world": self,
-        }))
-        .map_err(|e| e.to_string())?;
+        });
+        let bytes = serde_json::to_vec(&value).map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
             return Err("World checkpoint budget exceeded".into());
         }
-        Ok(bytes)
+        Ok((value, bytes))
     }
     /// Restores a versioned checkpoint and rebuilds static collision from its profile.
     pub fn restore(bytes: &[u8]) -> Result<Self, String> {
