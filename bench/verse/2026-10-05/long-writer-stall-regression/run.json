@@ -1,0 +1,24 @@
+{
+  "source_base": "2fc96d9650f8347fd42bd9c54b8b8e38ad9f5e67",
+  "scope": "Real scratch TLS authority, durable store, native worker, and one owned movement timeline",
+  "injected_writer_stall_ms": 1200,
+  "network_delay_each_way_ms": 40,
+  "focused_test": {
+    "passed": 1,
+    "failed": 0,
+    "elapsed_seconds": 4.67,
+    "build_seconds": 718
+  },
+  "delayed_fixture_family": {
+    "passed": 3,
+    "failed": 0,
+    "elapsed_seconds": 4.63
+  },
+  "movement_resets": 0,
+  "correction_p95_m": 0,
+  "limitations": [
+    "One client; no rendered scene or 20-player load.",
+    "A single long writer stall does not reproduce the latest battle failure.",
+    "Full battle acceptance remains incomplete."
+  ]
+}

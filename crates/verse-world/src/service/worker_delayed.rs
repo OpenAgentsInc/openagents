@@ -38,13 +38,17 @@ async fn delay<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 }
 #[tokio::test]
 async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
-    interval_stream(false).await;
+    interval_stream(false, 0, 67, 100).await;
 }
 #[tokio::test]
 async fn durable_writer_stall_preserves_owned_interval_timeline() {
-    interval_stream(true).await;
+    interval_stream(true, 300, 0, 0).await;
 }
-async fn interval_stream(durable_stall: bool) {
+#[tokio::test]
+async fn delayed_route_and_long_writer_stall_preserve_owned_interval_timeline() {
+    interval_stream(true, 1200, 40, 40).await;
+}
+async fn interval_stream(durable_stall: bool, stall_ms: u64, up_ms: u64, down_ms: u64) {
     use super::super::net::tests::{key, start};
     use rustls::pki_types::ServerName;
     use tokio::net::{TcpListener, TcpStream};
@@ -68,7 +72,7 @@ async fn interval_stream(durable_stall: bool) {
         store.inject(Arc::new(move |stage| {
             if stage == "before_encode" && trigger.swap(false, Ordering::AcqRel) {
                 observed.store(true, Ordering::Release);
-                std::thread::sleep(Duration::from_millis(300));
+                std::thread::sleep(Duration::from_millis(stall_ms));
             }
         }));
         let (stop, stopping) = oneshot::channel();
@@ -87,16 +91,8 @@ async fn interval_stream(durable_stall: bool) {
     } else {
         start(&keys).await
     };
-    let up = if durable_stall {
-        Duration::ZERO
-    } else {
-        Duration::from_millis(67)
-    };
-    let down = if durable_stall {
-        Duration::ZERO
-    } else {
-        Duration::from_millis(100)
-    };
+    let up = Duration::from_millis(up_ms);
+    let down = Duration::from_millis(down_ms);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let proxy = tokio::spawn(async move {
@@ -157,7 +153,7 @@ async fn interval_stream(durable_stall: bool) {
     let mut corrections = Vec::new();
     let mut stall_armed = false;
     let mut recent = std::collections::VecDeque::new();
-    while started.elapsed() < Duration::from_secs(3) {
+    while started.elapsed() < Duration::from_secs(if stall_ms > 300 { 4 } else { 3 }) {
         if durable_stall && !stall_armed && started.elapsed() >= Duration::from_secs(1) {
             armed.store(true, Ordering::Release);
             stall_armed = true;
@@ -279,7 +275,7 @@ async fn interval_stream(durable_stall: bool) {
     let p95 = corrections[(corrections.len() as f64 * 0.95).ceil() as usize - 1];
     eprintln!(
         "VERSE_V04_TLS_EVIDENCE {}",
-        serde_json::json!({"up_ms":up.as_millis(),"down_ms":down.as_millis(),"durable_stall_ms":if durable_stall {300} else {0},"bound":bound,"accepted":accepted,"observations":corrections.len(),"p95_m":p95,"maximum_m":corrections.last().unwrap(),"mode_resets":0})
+        serde_json::json!({"up_ms":up.as_millis(),"down_ms":down.as_millis(),"durable_stall_ms":stall_ms,"bound":bound,"accepted":accepted,"observations":corrections.len(),"p95_m":p95,"maximum_m":corrections.last().unwrap(),"mode_resets":0})
     );
     assert!(p95 < 0.1, "Actual delayed TLS correction p95: {p95}");
     let _ = stop.send(());
@@ -292,6 +288,6 @@ async fn interval_stream(durable_stall: bool) {
     if durable_stall {
         assert!(injected.load(Ordering::Acquire));
         assert!(exit.stats.storage_paused_ticks > 0);
-        assert!(exit.stats.commits.maximum_seconds >= 0.3);
+        assert!(exit.stats.commits.maximum_seconds >= stall_ms as f64 / 1000.);
     }
 }
