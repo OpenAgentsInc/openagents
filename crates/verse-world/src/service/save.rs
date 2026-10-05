@@ -172,6 +172,27 @@ impl Prepared {
         self.encode_with_world().map(|(bytes, _)| bytes)
     }
     pub(super) fn encode_with_world(&self) -> Result<(Vec<u8>, serde_json::Value), String> {
+        let (saved, world) = self.materialize()?;
+        let bytes = serde_json::to_vec(&saved).map_err(|_| "Cannot encode saved chamber")?;
+        if bytes.len() > MAX_BYTES {
+            return Err("Saved chamber byte budget exceeded".into());
+        }
+        Ok((bytes, world))
+    }
+    pub(super) fn expanded(&self) -> Result<serde_json::Value, String> {
+        let (mut saved, world) = self.materialize()?;
+        let world_text = std::mem::take(&mut saved.world);
+        let metadata = serde_json::to_vec(&saved).map_err(|_| "Cannot encode saved chamber")?;
+        // Count the exact legacy encoding without allocating its escaped world string.
+        count_world_encoding(metadata.len(), &world_text)?;
+        let mut state: serde_json::Value =
+            serde_json::from_slice(&metadata).map_err(|_| "Invalid chamber checkpoint")?;
+        *state
+            .get_mut("world")
+            .ok_or("Chamber checkpoint has no world")? = world;
+        Ok(state)
+    }
+    fn materialize(&self) -> Result<(Saved, serde_json::Value), String> {
         let (world, world_bytes) = self.game.checkpoint_parts()?;
         let ledger = self.rewards.checkpoint();
         let saved = Saved {
@@ -209,12 +230,31 @@ impl Prepared {
         };
         let grants = grants(&saved.grants, &self.game)?;
         ownership(saved.owners.as_ref().unwrap(), &self.game, &grants)?;
-        let bytes = serde_json::to_vec(&saved).map_err(|_| "Cannot encode saved chamber")?;
-        if bytes.len() > MAX_BYTES {
-            return Err("Saved chamber byte budget exceeded".into());
-        }
-        Ok((bytes, world))
+        Ok((saved, world))
     }
+}
+fn count_world_encoding(metadata_bytes: usize, world: &str) -> Result<usize, String> {
+    struct Counter(usize);
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self
+                .0
+                .checked_add(bytes.len())
+                .filter(|size| *size <= MAX_BYTES)
+                .ok_or_else(|| std::io::Error::other("Saved chamber byte budget exceeded"))?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter(
+        metadata_bytes
+            .checked_sub(2)
+            .ok_or("Invalid chamber metadata encoding")?,
+    );
+    serde_json::to_writer(&mut counter, world).map_err(|_| "Saved chamber byte budget exceeded")?;
+    Ok(counter.0)
 }
 pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
     Prepared::capture(gateway)?.encode()
@@ -421,6 +461,40 @@ mod tests {
             .unwrap();
         g.enroll_spectator(public(&keys[2])).unwrap();
         (g, keys)
+    }
+    #[test]
+    fn expanded_journal_state_matches_the_legacy_checkpoint_representation() {
+        let (mut gateway, _) = fixture();
+        for dt in [0., 0.033, 0.017, 0.1] {
+            gateway.tick(dt).unwrap();
+            let prepared = Prepared::capture(&gateway).unwrap();
+            let mut legacy: serde_json::Value =
+                serde_json::from_slice(&prepared.encode().unwrap()).unwrap();
+            let world = serde_json::from_str(legacy["world"].as_str().unwrap()).unwrap();
+            legacy["world"] = world;
+            let expanded = prepared.expanded().unwrap();
+            assert_eq!(
+                serde_json::to_vec(&expanded).unwrap(),
+                serde_json::to_vec(&legacy).unwrap()
+            );
+        }
+    }
+    #[test]
+    fn counted_checkpoint_encoding_retains_exact_escaping_and_byte_limits() {
+        for world in [
+            "",
+            "plain",
+            "quote\" slash\\ newline\n tab\t",
+            "é界\u{0000}",
+        ] {
+            assert_eq!(
+                count_world_encoding(17, world).unwrap(),
+                15 + serde_json::to_vec(world).unwrap().len()
+            );
+        }
+        let boundary = "x".repeat(MAX_BYTES - 2);
+        assert_eq!(count_world_encoding(2, &boundary).unwrap(), MAX_BYTES);
+        assert!(count_world_encoding(3, &boundary).is_err());
     }
     #[test]
     fn recovery_preserves_characters_combat_and_grants_but_fences_connections() {

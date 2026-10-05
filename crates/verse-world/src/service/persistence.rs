@@ -276,13 +276,7 @@ impl Store {
         }
         #[cfg(test)]
         self.boundary("before_encode");
-        let (bytes, world) = prepared.encode_with_world()?;
-        let checkpoint = String::from_utf8(bytes).map_err(|_| "Cannot encode committed chamber")?;
-        let mut state: serde_json::Value =
-            serde_json::from_str(&checkpoint).map_err(|_| "Invalid chamber checkpoint")?;
-        *state
-            .get_mut("world")
-            .ok_or("Chamber checkpoint has no world")? = world;
+        let state = prepared.expanded()?;
         let hash = journal::hash(&state)?;
         if self.last_hash == Some(hash) {
             if let Err(error) = self.history.synchronize() {
@@ -330,6 +324,8 @@ impl Store {
                     .len()
                     >= journal::LOG_BYTES
             {
+                let checkpoint = String::from_utf8(journal::contract(&state)?)
+                    .map_err(|_| "Cannot encode committed chamber")?;
                 bytes += self.snapshot(revision, checkpoint)?;
                 #[cfg(test)]
                 self.boundary("before_journal_clear");
