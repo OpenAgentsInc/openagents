@@ -327,3 +327,19 @@ applied from the live spec with only the revision name and image changed
 answered 200, the served wasm pins the new pack, and headless Chrome drew
 the sky and the seven-slot hotbar before traffic moved. Rollback:
 `--to-revisions coder-web-61053682b1=100`.
+
+## 2026-10-05: coder-web-addbb9b72f, the druid demo at `/druid`
+
+`openagents.com/druid` serves the Grove full screen (#10611): the same
+Everglade web build and pack as `/everglade`, which starts in the Grove when
+the page's path ends in `/druid`, with the Archdruid's four-row bar
+(#10609) and Wild Shape (#10610). Image
+`openagents/openagents-web:addbb9b72f`, built from GitHub by the automation
+account and applied as `chris@` from the live spec with only the revision
+name and image changed (`CODER_CHAT_SYNC` quoted). On the `new` tag, `/`,
+`/druid`, `/everglade`, `/docs`, `/download`, `/live`, `/stats`,
+`/efficiency`, `/api/stats`, `/terms`, the agent card, the build files, and
+the 27,965,018-byte pack `136a9389…` answered 200, and headless Chrome drew
+the Grove at `/druid` (Wild Shape and a cast from the keys) and Everglade's
+town at `/everglade` over WebGPU before traffic moved. Rollback:
+`--to-revisions coder-web-db7f3ddf47=100`.

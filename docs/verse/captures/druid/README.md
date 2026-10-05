@@ -24,3 +24,4 @@ single row it replaced.
 | `sunburst.jpg` | `spell 36 0.25`: Sunburst over every dummy, with the blinded tags and the log | [#10609](https://github.com/OpenAgentsInc/openagents/issues/10609) |
 | `conditions.jpg` | `spell 19 1.0 6 18 15`: Faerie Fire's outline and tag, Entangle's vines, and Poison Spray | [#10609](https://github.com/OpenAgentsInc/openagents/issues/10609) |
 | `bear.jpg` | `spell 0 0.6 3 12`: Wild Shape as the Brown Bear, biting | [#10609](https://github.com/OpenAgentsInc/openagents/issues/10609) |
+| `live-druid.jpg` | openagents.com/druid on the `new` tag in headless Chrome: Wild Shape: Giant Spider, then Burning Hands (`Alt+6`) | [#10611](https://github.com/OpenAgentsInc/openagents/issues/10611) |
