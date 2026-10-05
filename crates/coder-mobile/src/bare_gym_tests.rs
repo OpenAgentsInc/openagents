@@ -158,6 +158,7 @@ fn the_native_json_path_carries_the_grids_board() {
         scene: preview(),
         renderer: None,
         rendered_zone_revision: 0,
+        layer: std::ptr::null_mut(),
     };
     handle.scene.activate(true).unwrap();
     // Stand before the board, facing it, as walking in would.

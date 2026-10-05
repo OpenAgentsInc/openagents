@@ -195,6 +195,7 @@ fn the_native_json_path_carries_the_results_screens_under_the_packet_cap() {
         scene: scene(true),
         renderer: None,
         rendered_zone_revision: 0,
+        layer: std::ptr::null_mut(),
     };
     handle.scene.activate(true).unwrap();
     stand_before_results(&mut handle.scene);

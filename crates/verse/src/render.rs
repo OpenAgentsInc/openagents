@@ -894,7 +894,7 @@ impl Layer {
 
 /// Which graphics APIs an Android surface tries, in order.
 #[cfg(target_os = "android")]
-mod android {
+pub(crate) mod android {
     /// A system property's value, when it is set and non-empty.
     fn property(name: &std::ffi::CStr) -> Option<String> {
         // PROP_VALUE_MAX in <sys/system_properties.h>.
@@ -910,7 +910,7 @@ mod android {
         Some(value.to_string_lossy().into_owned())
     }
 
-    pub(super) fn backends() -> Vec<wgpu::Backends> {
+    pub(crate) fn backends() -> Vec<wgpu::Backends> {
         match property(c"debug.verse.backend").as_deref() {
             Some("gl") => return vec![wgpu::Backends::GL],
             Some("vulkan") => return vec![wgpu::Backends::VULKAN],

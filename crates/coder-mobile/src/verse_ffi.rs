@@ -126,8 +126,43 @@ pub(crate) fn bare_config_with_gym(
 /// A mounted Verse world and its renderer.
 pub struct VerseHandle {
     pub(crate) scene: Scene,
-    pub(crate) renderer: Option<verse::render::Renderer>,
+    pub(crate) renderer: Option<Surface>,
     pub(crate) rendered_zone_revision: u64,
+    /// The native layer or window the renderer draws on, kept by the host
+    /// for as long as this handle is attached; a zone change reopens it.
+    pub(crate) layer: *mut c_void,
+}
+
+/// The renderer on the native surface: the Grid draws through the engine,
+/// every other zone through the legacy renderer until its own migration.
+pub(crate) enum Surface {
+    Legacy(verse::render::Renderer),
+    Grid(verse::grid_engine::GridEngine),
+}
+
+impl Surface {
+    fn is_grid(&self) -> bool {
+        matches!(self, Self::Grid(_))
+    }
+
+    fn hdr(&self) -> bool {
+        match self {
+            Self::Legacy(renderer) => renderer.hdr(),
+            Self::Grid(_) => false,
+        }
+    }
+
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
+        match self {
+            Self::Legacy(renderer) => renderer.resize(width, height),
+            Self::Grid(engine) => engine.resize(width, height),
+        }
+    }
+}
+
+/// Whether the scene's zone is the Grid, which draws through the engine.
+fn on_grid(scene: &Scene) -> bool {
+    scene.world.is_bare() && scene.world.is_plaza()
 }
 
 /// The initial surface projection, before a world is mounted.
@@ -190,31 +225,58 @@ pub unsafe extern "C" fn coder_verse_create(
 
 #[cfg(target_os = "ios")]
 fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, String> {
-    let viewport = scene.lifecycle.viewport();
-    let atmosphere = scene.world.atmosphere();
-    // The FFI contract keeps the native layer alive for this renderer's mount.
-    let mut renderer = unsafe {
-        verse::render::Renderer::from_metal_layer(
-            layer,
-            viewport.width().max(1),
-            viewport.height().max(1),
-            &scene.world.world.mesh,
-            &scene.atlas,
-            verse::render::RenderOptions {
-                sample_count: 1,
-                max_extent: 4096,
-                // The native host sets an extended linear sRGB color space
-                // on the layer when the screen offers EDR headroom.
-                hdr: scene.hdr_requested,
-            },
-        )
-    }?;
-    renderer.set_atmosphere(atmosphere)?;
-    Ok(VerseHandle {
-        rendered_zone_revision: scene.world.zone_revision,
+    let mut handle = VerseHandle {
         scene,
-        renderer: Some(renderer),
-    })
+        renderer: None,
+        rendered_zone_revision: u64::MAX,
+        layer,
+    };
+    handle.open_renderer()?;
+    Ok(handle)
+}
+
+#[cfg(target_os = "ios")]
+impl VerseHandle {
+    /// Opens the renderer the scene's zone needs on the retained layer.
+    fn open_renderer(&mut self) -> Result<(), String> {
+        let viewport = self.scene.lifecycle.viewport();
+        let width = viewport.width().max(1);
+        let height = viewport.height().max(1);
+        self.renderer = None;
+        // The FFI contract keeps the native layer alive for this renderer's mount.
+        let renderer = if on_grid(&self.scene) {
+            Surface::Grid(unsafe {
+                verse::grid_engine::GridEngine::from_metal_layer(
+                    self.layer,
+                    &self.scene.atlas,
+                    width,
+                    height,
+                )
+            }?)
+        } else {
+            let mut renderer = unsafe {
+                verse::render::Renderer::from_metal_layer(
+                    self.layer,
+                    width,
+                    height,
+                    &self.scene.world.world.mesh,
+                    &self.scene.atlas,
+                    verse::render::RenderOptions {
+                        sample_count: 1,
+                        max_extent: 4096,
+                        // The native host sets an extended linear sRGB color space
+                        // on the layer when the screen offers EDR headroom.
+                        hdr: self.scene.hdr_requested,
+                    },
+                )
+            }?;
+            renderer.set_atmosphere(self.scene.world.atmosphere())?;
+            Surface::Legacy(renderer)
+        };
+        self.renderer = Some(renderer);
+        self.rendered_zone_revision = self.scene.world.zone_revision;
+        Ok(())
+    }
 }
 
 /// On Android, `layer` is an acquired `ANativeWindow` that the caller keeps
@@ -226,6 +288,7 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
         scene,
         renderer: None,
         rendered_zone_revision: u64::MAX,
+        layer: ptr::null_mut(),
     };
     // SAFETY: the caller's contract is the same as `attach_android`'s.
     unsafe { handle.attach_android(layer, viewport.width(), viewport.height(), viewport.scale()) }?;
@@ -262,26 +325,45 @@ impl VerseHandle {
             return Err("Native Verse surface dimensions exceed their bounds".into());
         }
         self.scene.activate(false)?;
-        // SAFETY: the caller keeps the window alive past the renderer.
-        let renderer = unsafe {
-            verse::render::Renderer::from_android_window(
-                window,
-                width,
-                height,
-                &self.scene.world.world.mesh,
-                &self.scene.atlas,
-                verse::render::RenderOptions {
-                    sample_count: 1,
-                    max_extent: 4096,
-                    hdr: false,
-                },
-            )
-        }?;
+        self.layer = window;
+        self.open_renderer(width, height)?;
         self.scene
             .lifecycle
             .resize(viewport)
             .map_err(|error| error.to_string())?;
         self.scene.action(Request::ResetMotion)?;
+        Ok(())
+    }
+
+    /// Opens the renderer the scene's zone needs on the retained window.
+    fn open_renderer(&mut self, width: u32, height: u32) -> Result<(), String> {
+        self.renderer = None;
+        // SAFETY: the caller keeps the window alive past the renderer.
+        let renderer = if on_grid(&self.scene) {
+            Surface::Grid(unsafe {
+                verse::grid_engine::GridEngine::from_android_window(
+                    self.layer,
+                    &self.scene.atlas,
+                    width,
+                    height,
+                )
+            }?)
+        } else {
+            Surface::Legacy(unsafe {
+                verse::render::Renderer::from_android_window(
+                    self.layer,
+                    width,
+                    height,
+                    &self.scene.world.world.mesh,
+                    &self.scene.atlas,
+                    verse::render::RenderOptions {
+                        sample_count: 1,
+                        max_extent: 4096,
+                        hdr: false,
+                    },
+                )
+            }?)
+        };
         self.renderer = Some(renderer);
         // The next frame applies the world's mesh and atmosphere.
         self.rendered_zone_revision = u64::MAX;
@@ -395,7 +477,28 @@ impl VerseHandle {
     pub(crate) fn detach_renderer(&mut self) -> Result<(), String> {
         let result = self.scene.activate(false);
         self.renderer = None;
+        self.layer = ptr::null_mut();
         result
+    }
+
+    /// Reopens the renderer when a zone change moves the scene between the
+    /// engine's Grid and the legacy zones; `Ok(false)` when the zone stayed
+    /// on the renderer it has.
+    fn reopen_for_zone(&mut self) -> Result<bool, String> {
+        let Some(renderer) = &self.renderer else {
+            return Ok(false);
+        };
+        if renderer.is_grid() == on_grid(&self.scene) || self.layer.is_null() {
+            return Ok(false);
+        }
+        #[cfg(target_os = "ios")]
+        self.open_renderer()?;
+        #[cfg(target_os = "android")]
+        {
+            let viewport = self.scene.lifecycle.viewport();
+            self.open_renderer(viewport.width().max(1), viewport.height().max(1))?;
+        }
+        Ok(true)
     }
 
     /// Applies one JSON request and returns the JSON packet that follows it,
@@ -500,44 +603,68 @@ impl VerseHandle {
                 timestamp,
                 headroom,
             } => {
-                let Some(renderer) = &mut self.renderer else {
+                if self.renderer.is_none() {
+                    return Ok(());
+                }
+                let Some(dt) = self.scene.update(timestamp)? else {
                     return Ok(());
                 };
-                renderer.set_headroom(headroom.unwrap_or(1.0) as f32);
-                if let Some(dt) = self.scene.update(timestamp)? {
-                    if self.rendered_zone_revision != self.scene.world.zone_revision {
-                        renderer.replace_world(&self.scene.world.world.mesh)?;
-                        renderer.set_atmosphere(self.scene.world.atmosphere())?;
+                if self.rendered_zone_revision != self.scene.world.zone_revision {
+                    self.reopen_for_zone()?;
+                }
+                match self.renderer.as_mut() {
+                    Some(Surface::Grid(engine)) => {
                         self.rendered_zone_revision = self.scene.world.zone_revision;
+                        let now = std::time::Instant::now();
+                        let peers = self
+                            .scene
+                            .session
+                            .as_mut()
+                            .map_or_else(Vec::new, |session| session.crowd.figures(now, dt));
+                        let dynamic = verse::grid_frame::dynamic(&self.scene.world, &peers, &[]);
+                        let lighting = verse::grid_frame::lighting(&self.scene.world.atmosphere());
+                        let view = self.scene.world.view(engine.aspect());
+                        engine.draw(view, &dynamic, &self.scene.map_ui(), &lighting)?;
+                        self.scene.presented_entities = verse::mesh::Mesh::default();
+                        self.scene.frames = self.scene.frames.saturating_add(1);
                     }
-                    let mut mesh = self.scene.world.dynamic_mesh_with_boards(
-                        true,
-                        self.scene.gym_panel,
-                        self.scene.results_panel,
-                        self.scene.evals_panel,
-                    );
-                    let entities = self
-                        .scene
-                        .session
-                        .as_mut()
-                        .map_or_else(verse::mesh::Mesh::default, |session| {
-                            session.crowd.mesh(std::time::Instant::now(), dt)
-                        });
-                    let entities = if self.scene.world.is_bare() {
-                        bare_entities(entities)
-                    } else {
-                        entities
-                    };
-                    mesh.extend(&entities);
-                    let view = self.scene.world.view(renderer.aspect());
-                    match renderer.draw(view, &mesh, &self.scene.map_ui()) {
-                        verse::render::DrawStatus::Presented => {
-                            self.scene.presented_entities = entities;
-                            self.scene.frames = self.scene.frames.saturating_add(1);
+                    Some(Surface::Legacy(renderer)) => {
+                        renderer.set_headroom(headroom.unwrap_or(1.0) as f32);
+                        if self.rendered_zone_revision != self.scene.world.zone_revision {
+                            renderer.replace_world(&self.scene.world.world.mesh)?;
+                            renderer.set_atmosphere(self.scene.world.atmosphere())?;
+                            self.rendered_zone_revision = self.scene.world.zone_revision;
                         }
-                        verse::render::DrawStatus::Skipped(_) => {}
-                        verse::render::DrawStatus::Error(error) => return Err(error),
+                        let mut mesh = self.scene.world.dynamic_mesh_with_boards(
+                            true,
+                            self.scene.gym_panel,
+                            self.scene.results_panel,
+                            self.scene.evals_panel,
+                        );
+                        let entities = self
+                            .scene
+                            .session
+                            .as_mut()
+                            .map_or_else(verse::mesh::Mesh::default, |session| {
+                                session.crowd.mesh(std::time::Instant::now(), dt)
+                            });
+                        let entities = if self.scene.world.is_bare() {
+                            bare_entities(entities)
+                        } else {
+                            entities
+                        };
+                        mesh.extend(&entities);
+                        let view = self.scene.world.view(renderer.aspect());
+                        match renderer.draw(view, &mesh, &self.scene.map_ui()) {
+                            verse::render::DrawStatus::Presented => {
+                                self.scene.presented_entities = entities;
+                                self.scene.frames = self.scene.frames.saturating_add(1);
+                            }
+                            verse::render::DrawStatus::Skipped(_) => {}
+                            verse::render::DrawStatus::Error(error) => return Err(error),
+                        }
                     }
+                    None => {}
                 }
                 Ok(())
             }
@@ -623,6 +750,7 @@ mod tests {
             scene,
             renderer: None,
             rendered_zone_revision: 0,
+            layer: ptr::null_mut(),
         };
         let credits: serde_json::Value =
             serde_json::from_slice(&handle.call_bytes(br#"{"action":"zone_credits"}"#).unwrap())

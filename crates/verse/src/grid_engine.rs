@@ -1,16 +1,21 @@
-//! The desktop Grid's window on the engine renderer: the pinned pack admitted
-//! once, a presenter on the window, and one `draw` per frame that hands the
-//! assembled [`crate::grid_frame`] to [`crate::imported::Renderer`].
+//! The Grid's surface on the engine renderer: the pinned pack admitted once,
+//! a presenter on the host's surface, and one `draw` per frame that hands
+//! the assembled [`crate::grid_frame`] to [`crate::imported::Renderer`].
+//! The desktop attaches a window; a phone passes its Metal layer or Android
+//! window; a browser passes a surface made from its canvas, on a GPU it
+//! awaited.
 
+#[cfg(feature = "imported-desktop")]
 use std::sync::Arc;
 
 use verse_engine::presentation::Instance;
+#[cfg(feature = "imported-desktop")]
 use winit::window::Window;
 
 use crate::grid_frame;
 use crate::grid_pack;
 use crate::imported::lighting::Lighting;
-use crate::imported::{Renderer, WindowPresenter};
+use crate::imported::{Gpu, Renderer, WindowPresenter};
 use crate::render::View;
 use crate::ui::{Atlas, UiBatch};
 
@@ -23,6 +28,7 @@ pub struct GridEngine {
 impl GridEngine {
     /// Admits the pinned Grid pack and attaches the engine renderer to the
     /// window at its current size.
+    #[cfg(feature = "imported-desktop")]
     pub fn new(
         window: Arc<Window>,
         atlas: &Atlas,
@@ -46,6 +52,101 @@ impl GridEngine {
             presenter,
             size,
         })
+    }
+
+    /// Admits the built-in Grid pack onto `gpu`, opened against `surface`,
+    /// and presents on that surface. The host made both: see [`Gpu::open`]
+    /// and [`Gpu::open_async`].
+    pub fn on_surface(
+        gpu: Gpu,
+        surface: wgpu::Surface<'static>,
+        atlas: &Atlas,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, String> {
+        let prepared = grid_pack::prepare_embedded()?;
+        let statics = grid_frame::statics(prepared.pack());
+        let size = [width.max(1), height.max(1)];
+        let renderer =
+            Renderer::from_prepared_on(gpu, prepared, size[0], size[1], atlas, &statics)?;
+        let presenter = renderer.attach_surface(surface, size)?;
+        Ok(Self {
+            renderer,
+            presenter,
+            size,
+        })
+    }
+
+    /// Opens the engine renderer on an Apple host's `CAMetalLayer`.
+    ///
+    /// # Safety
+    /// `layer` must point to a valid CAMetalLayer on its owning UI thread,
+    /// kept alive and attached until this engine is dropped.
+    #[cfg(target_vendor = "apple")]
+    pub unsafe fn from_metal_layer(
+        layer: *mut core::ffi::c_void,
+        atlas: &Atlas,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, String> {
+        if layer.is_null() {
+            return Err("native Metal layer is null".into());
+        }
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        // SAFETY: the caller owns the layer lifetime and UI-thread confinement.
+        let surface = unsafe {
+            instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer))
+        }
+        .map_err(|e| format!("cannot create a Metal surface: {e}"))?;
+        let gpu = Gpu::open(instance, &surface)?;
+        Self::on_surface(gpu, surface, atlas, width, height)
+    }
+
+    /// Opens the engine renderer on an acquired Android `ANativeWindow`,
+    /// trying the graphics APIs the legacy renderer tries, in its order.
+    ///
+    /// # Safety
+    /// `window` must point to a valid ANativeWindow on its owning UI thread,
+    /// retained until after this engine is dropped.
+    #[cfg(target_os = "android")]
+    pub unsafe fn from_android_window(
+        window: *mut core::ffi::c_void,
+        atlas: &Atlas,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, String> {
+        let window = std::ptr::NonNull::new(window).ok_or("native Android window is null")?;
+        let mut failures = Vec::new();
+        for backends in crate::render::android::backends() {
+            let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+            descriptor.backends = backends;
+            let instance = wgpu::Instance::new(descriptor);
+            let handle = wgpu::rwh::AndroidNdkWindowHandle::new(window);
+            // SAFETY: the caller retains the window through this engine's
+            // drop. A failed attempt drops its surface before the next one.
+            let surface = unsafe {
+                instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
+                    raw_display_handle: Some(wgpu::rwh::AndroidDisplayHandle::new().into()),
+                    raw_window_handle: handle.into(),
+                })
+            };
+            let result = surface
+                .map_err(|error| format!("cannot create an Android surface: {error}"))
+                .and_then(|surface| Gpu::open(instance, &surface).map(|gpu| (gpu, surface)))
+                .and_then(|(gpu, surface)| Self::on_surface(gpu, surface, atlas, width, height));
+            match result {
+                Ok(engine) => return Ok(engine),
+                Err(error) => failures.push(format!("{backends:?}: {error}")),
+            }
+        }
+        Err(failures.join("; "))
+    }
+
+    /// The GPU adapter drawing the Grid.
+    #[must_use]
+    pub fn adapter_name(&self) -> &str {
+        &self.renderer.adapter_name
     }
 
     /// The viewport in pixels.

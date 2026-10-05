@@ -266,3 +266,20 @@ checking:
    chamber window, read `openagents --json chamber status` for
    `population.players: 2`, then close the windows and read that both
    players stand before the arch again with Grid presence restored.
+
+## The phone Grid on the engine renderer, on an iPhone (#10616)
+
+The Grid draws through `verse-engine` on every client: the engine opens on
+an iOS Metal layer, an Android window, and a browser canvas, and the Android
+package and the browser module were built here. This box has no macOS, so
+the iOS build and the Metal surface were not run. To finish checking:
+
+1. Build the OpenAgents iOS app from `main` and open the Grid; the plaza,
+   arches, line figures, and name tags must draw as on the desktop, in the
+   neutral phone palette, with the stick and HUD unchanged.
+2. Rotate the phone and background and foreground the app; the frame must
+   follow the new size and resume after the layer is reattached.
+3. Walk through the Everglade arch and back; the Everglade draws on the
+   legacy renderer and the Grid returns on the engine.
+4. With `openagents verse walkers 10` running, confirm ten walkers with
+   their names move smoothly on the phone's Grid.

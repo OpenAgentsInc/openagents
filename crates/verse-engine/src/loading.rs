@@ -132,8 +132,16 @@ fn open_texture(root: &File, name: &str) -> Result<File, String> {
     // openat returned a new owned descriptor; File closes it on every exit path.
     Ok(unsafe { File::from_raw_fd(descriptor) })
 }
-impl Prepared {
-    pub fn load(pack: Pack, root: &Path, budget: Budget) -> Result<Self, String> {
+/// A pack admitted up to its textures: the manifest digested and the
+/// declared footprint checked, texture bytes still to come.
+struct Staged {
+    pack: Pack,
+    budget: Budget,
+    receipt: Receipt,
+    textures: Vec<Texture>,
+}
+impl Staged {
+    fn begin(pack: Pack, budget: Budget) -> Result<Self, String> {
         budget.validate()?;
         pack.validate()?;
         let admission = if let Some(inventory) = &pack.inventory {
@@ -190,6 +198,104 @@ impl Prepared {
                 .filter(|n| *n <= budget.rgba_total_bytes)
                 .ok_or("Decoded textures exceed their aggregate budget")?;
         }
+        let textures = Vec::with_capacity(pack.textures.len());
+        Ok(Self {
+            pack,
+            budget,
+            receipt,
+            textures,
+        })
+    }
+    /// How many encoded bytes the next texture may still take.
+    fn available(&self) -> u64 {
+        self.budget
+            .encoded_file_bytes
+            .min(self.budget.encoded_total_bytes - self.receipt.encoded_bytes)
+    }
+    /// Checks and decodes the encoded bytes of texture `slot`.
+    fn admit(&mut self, slot: usize, bytes: Vec<u8>) -> Result<(), String> {
+        let texture = &self.pack.textures[slot];
+        if bytes.len() as u64 > self.available() {
+            return Err("Encoded texture exceeds its byte budget".into());
+        }
+        if let Some(inventory) = &self.pack.inventory {
+            let asset = inventory
+                .assets
+                .iter()
+                .find(|a| a.binding == crate::inventory::Binding::Texture { slot })
+                .ok_or("Missing inventory texture")?;
+            if asset.bytes != bytes.len() as u64 {
+                return Err("Inventory encoded texture length mismatch".into());
+            }
+        }
+        let actual_digest = format!("{:x}", Sha256::digest(&bytes));
+        if actual_digest != texture.sha256 {
+            return Err("Texture digest mismatch".into());
+        }
+        let mut decoder = png::Decoder::new(std::io::Cursor::new(&bytes));
+        decoder.set_limits(png::Limits {
+            bytes: self.budget.decoder_workspace_bytes as usize,
+        });
+        let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+        let info = reader.info();
+        if info.width != texture.width
+            || info.height != texture.height
+            || info.color_type != png::ColorType::Rgba
+            || info.bit_depth != png::BitDepth::Eight
+            || info.animation_control.is_some()
+        {
+            return Err("Texture does not match its declared static eight-bit RGBA format".into());
+        }
+        let expected = texture.width as usize * texture.height as usize * 4;
+        if reader.output_buffer_size() != Some(expected) {
+            return Err("Invalid decoded texture size".into());
+        }
+        let mut pixels = vec![0; expected];
+        let output = reader.next_frame(&mut pixels).map_err(|e| e.to_string())?;
+        if output.buffer_size() != expected {
+            return Err("Incomplete decoded texture".into());
+        }
+        reader.finish().map_err(|e| e.to_string())?;
+        self.receipt.encoded_bytes += bytes.len() as u64;
+        self.receipt.textures.push(TextureReceipt {
+            asset: self
+                .pack
+                .inventory
+                .as_ref()
+                .and_then(|i| {
+                    i.assets
+                        .iter()
+                        .find(|a| a.binding == crate::inventory::Binding::Texture { slot })
+                })
+                .map(|a| a.id.clone()),
+            file: texture.file.clone(),
+            sha256: actual_digest,
+            encoded_bytes: bytes.len() as u64,
+            rgba_bytes: expected as u64,
+            width: texture.width,
+            height: texture.height,
+        });
+        self.textures.push(Texture {
+            pixels,
+            width: texture.width,
+            height: texture.height,
+        });
+        Ok(())
+    }
+    fn finish(self) -> Result<Prepared, String> {
+        if self.textures.len() != self.pack.textures.len() {
+            return Err("A declared texture was not admitted".into());
+        }
+        Ok(Prepared {
+            pack: self.pack,
+            textures: self.textures,
+            receipt: self.receipt,
+        })
+    }
+}
+impl Prepared {
+    pub fn load(pack: Pack, root: &Path, budget: Budget) -> Result<Self, String> {
+        let mut staged = Staged::begin(pack, budget)?;
         let root = root.canonicalize().map_err(|e| e.to_string())?;
         if !root.is_dir() {
             return Err("Asset root is not a directory".into());
@@ -200,9 +306,9 @@ impl Prepared {
         if !directory.metadata().map_err(|e| e.to_string())?.is_dir() {
             return Err("Asset root is not a directory".into());
         }
-        let mut textures = Vec::with_capacity(pack.textures.len());
-        for (slot, texture) in pack.textures.iter().enumerate() {
-            let path = root.join(&texture.file);
+        for slot in 0..staged.pack.textures.len() {
+            let name = staged.pack.textures[slot].file.clone();
+            let path = root.join(&name);
             let metadata = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
             if !metadata.file_type().is_file()
                 || path.canonicalize().map_err(|e| e.to_string())?.parent() != Some(root.as_path())
@@ -211,14 +317,12 @@ impl Prepared {
                     "Texture file escapes the admitted root or is not a regular file".into(),
                 );
             }
-            let available = budget
-                .encoded_file_bytes
-                .min(budget.encoded_total_bytes - receipt.encoded_bytes);
+            let available = staged.available();
             if metadata.len() > available {
                 return Err("Encoded texture exceeds its byte budget".into());
             }
             #[cfg(unix)]
-            let file = open_texture(&directory, &texture.file)?;
+            let file = open_texture(&directory, &name)?;
             #[cfg(not(unix))]
             let file = File::open(&path).map_err(|e| e.to_string())?;
             let opened = file.metadata().map_err(|e| e.to_string())?;
@@ -232,78 +336,25 @@ impl Prepared {
             file.take(available + 1)
                 .read_to_end(&mut bytes)
                 .map_err(|e| e.to_string())?;
-            if bytes.len() as u64 > available {
-                return Err("Encoded texture exceeds its byte budget".into());
-            }
-            if let Some(inventory) = &pack.inventory {
-                let asset = inventory
-                    .assets
-                    .iter()
-                    .find(|a| a.binding == crate::inventory::Binding::Texture { slot })
-                    .ok_or("Missing inventory texture")?;
-                if asset.bytes != bytes.len() as u64 {
-                    return Err("Inventory encoded texture length mismatch".into());
-                }
-            }
-            let actual_digest = format!("{:x}", Sha256::digest(&bytes));
-            if actual_digest != texture.sha256 {
-                return Err("Texture digest mismatch".into());
-            }
-            let mut decoder = png::Decoder::new(std::io::Cursor::new(&bytes));
-            decoder.set_limits(png::Limits {
-                bytes: budget.decoder_workspace_bytes as usize,
-            });
-            let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
-            let info = reader.info();
-            if info.width != texture.width
-                || info.height != texture.height
-                || info.color_type != png::ColorType::Rgba
-                || info.bit_depth != png::BitDepth::Eight
-                || info.animation_control.is_some()
-            {
-                return Err(
-                    "Texture does not match its declared static eight-bit RGBA format".into(),
-                );
-            }
-            let expected = texture.width as usize * texture.height as usize * 4;
-            if reader.output_buffer_size() != Some(expected) {
-                return Err("Invalid decoded texture size".into());
-            }
-            let mut pixels = vec![0; expected];
-            let output = reader.next_frame(&mut pixels).map_err(|e| e.to_string())?;
-            if output.buffer_size() != expected {
-                return Err("Incomplete decoded texture".into());
-            }
-            reader.finish().map_err(|e| e.to_string())?;
-            receipt.encoded_bytes += bytes.len() as u64;
-            receipt.textures.push(TextureReceipt {
-                asset: pack
-                    .inventory
-                    .as_ref()
-                    .and_then(|i| {
-                        i.assets
-                            .iter()
-                            .find(|a| a.binding == crate::inventory::Binding::Texture { slot })
-                    })
-                    .map(|a| a.id.clone()),
-                file: texture.file.clone(),
-                sha256: actual_digest,
-                encoded_bytes: bytes.len() as u64,
-                rgba_bytes: expected as u64,
-                width: texture.width,
-                height: texture.height,
-            });
-            textures.push(Texture {
-                pixels,
-                width: texture.width,
-                height: texture.height,
-            });
+            staged.admit(slot, bytes)?;
         }
-        Ok(Self {
-            pack,
-            textures,
-            receipt,
-        })
+        staged.finish()
+    }
+    /// Admits a pack whose texture files are already in memory, named as the
+    /// manifest names them: for a browser, which has no file system, or a
+    /// host with the pack built in. The same digests and budgets apply.
+    pub fn from_bytes(pack: Pack, files: &[(&str, &[u8])], budget: Budget) -> Result<Self, String> {
+        let mut staged = Staged::begin(pack, budget)?;
+        for slot in 0..staged.pack.textures.len() {
+            let name = staged.pack.textures[slot].file.as_str();
+            let bytes = files
+                .iter()
+                .find(|(file, _)| *file == name)
+                .map(|(_, bytes)| *bytes)
+                .ok_or_else(|| format!("Texture file {name} was not supplied"))?;
+            staged.admit(slot, bytes.to_vec())?;
+        }
+        staged.finish()
     }
     pub fn pack(&self) -> &Pack {
         &self.pack
@@ -402,6 +453,43 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
         }
+    }
+    #[test]
+    fn in_memory_files_prepare_as_the_directory_does_and_refuse_a_missing_or_changed_one() {
+        let f = Fixture::new();
+        let files: Vec<(String, Vec<u8>)> = f
+            .pack
+            .textures
+            .iter()
+            .map(|t| (t.file.clone(), std::fs::read(f.root.join(&t.file)).unwrap()))
+            .collect();
+        let borrowed: Vec<(&str, &[u8])> = files
+            .iter()
+            .map(|(n, b)| (n.as_str(), b.as_slice()))
+            .collect();
+        let from_bytes =
+            Prepared::from_bytes(f.pack.clone(), &borrowed, Budget::default()).unwrap();
+        let from_dir = f.load(Budget::default()).unwrap();
+        assert_eq!(
+            from_bytes.receipt().manifest_sha256,
+            from_dir.receipt().manifest_sha256
+        );
+        assert_eq!(
+            serde_json::to_string(&from_bytes.receipt().textures).unwrap(),
+            serde_json::to_string(&from_dir.receipt().textures).unwrap()
+        );
+        assert_eq!(from_bytes.textures()[1].rgba(), &[1; 16]);
+        let missing = match Prepared::from_bytes(f.pack.clone(), &borrowed[..1], Budget::default())
+        {
+            Ok(_) => panic!("a missing texture file was admitted"),
+            Err(e) => e,
+        };
+        assert!(missing.contains("was not supplied"), "{missing}");
+        let changed = [(borrowed[0].0, &b"changed"[..]), borrowed[1]];
+        assert_eq!(
+            Prepared::from_bytes(f.pack.clone(), &changed, Budget::default()).err(),
+            Some("Texture digest mismatch".to_string())
+        );
     }
     #[test]
     fn complete_preparation_is_immutable_ordered_and_bound_to_the_manifest() {

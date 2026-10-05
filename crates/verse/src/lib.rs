@@ -26,7 +26,7 @@ pub mod doors;
 pub mod edr;
 pub mod feed;
 pub(crate) mod gles;
-#[cfg(feature = "imported-desktop")]
+#[cfg(feature = "imported-surface")]
 pub mod grid_engine;
 pub mod grid_frame;
 pub mod grid_pack;
