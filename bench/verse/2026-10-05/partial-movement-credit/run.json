@@ -1,0 +1,26 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "tested_base_revision": "d7ac844ae873df427ef29e049ba96e1ec0d3d185",
+  "source_patch_sha256": "590c2ff94f9c2db7f5bab6cec870da90e303eeecbff92373cd951493458fe404",
+  "wire_version": 28,
+  "checks": {
+    "native_consumer": {
+      "command": "cargo test -p verse --no-default-features --features imported-desktop,remote-chamber --lib -- imported::chamber_session::tests:: --quiet",
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0,
+      "runtime_seconds": 0.99
+    }
+  },
+  "contract": "A credit-limited partial packet follows the previous interval contiguously and retains its recorded input. Local-only prediction still batches six steps. Headless producers account for actual packet steps within the existing 12-step work budget. Admission, expiry, lookahead, and queue bounds are unchanged.",
+  "regressions": [
+    "A four-step credit remainder is transmitted without waiting for another acknowledgment.",
+    "The remainder preserves recorded direction and ends at the verified credit ceiling.",
+    "Another producer wake sends nothing when credit is exhausted and does not advance prediction."
+  ],
+  "limitations": [
+    "An initial regression fixture used an invalid prediction time delta and failed; the corrected fixture uses two valid advances and all focused tests pass.",
+    "Updated client builds and crowded performance acceptance remain pending."
+  ]
+}

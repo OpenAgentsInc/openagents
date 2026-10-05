@@ -544,7 +544,43 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
     assert_eq!(first.segments[0].axes, [1., 0.]);
     assert_eq!(second.segments[0].axes, [0., 1.]);
     assert!(inputs.try_recv().is_err());
+    // Credit can end between packet boundaries; the final four steps must not wait for an ACK.
     let context = session.prediction.context().unwrap();
+    let credit = session.prediction.physics_step() + 4;
+    session
+        .prediction
+        .grant_world_credit(context.0, context.1, credit)
+        .unwrap();
+    session.prediction.advance(12. / 120.).unwrap();
+    session.prediction.advance(10. / 120.).unwrap();
+    session.send_movement_interval().unwrap();
+    let Input::MovementFrame { frame: full_a, .. } = inputs.try_recv().unwrap() else {
+        panic!("Missing full interval")
+    };
+    let Input::MovementFrame { frame: full_b, .. } = inputs.try_recv().unwrap() else {
+        panic!("Missing second full interval")
+    };
+    assert_eq!(full_a.start, second.end().unwrap());
+    assert_eq!(full_a.end().unwrap(), full_b.start);
+    assert!(inputs.try_recv().is_err());
+    session.send_movement_interval().unwrap();
+    let Input::MovementFrame {
+        frame: remainder, ..
+    } = inputs.try_recv().unwrap()
+    else {
+        panic!("Missing credit remainder")
+    };
+    assert_eq!(remainder.start, full_b.end().unwrap());
+    assert_eq!(remainder.steps, 4);
+    assert_eq!(
+        remainder.end().unwrap(),
+        credit + u64::from(verse_world::movement::frames::MAX_STEPS)
+    );
+    assert_eq!(remainder.segments[0].axes, [0., 1.]);
+    let local_step = session.prediction.physics_step();
+    session.send_movement_interval().unwrap();
+    assert!(inputs.try_recv().is_err());
+    assert_eq!(session.prediction.physics_step(), local_step);
     let cursor = session.frame_cursor;
     let token = session.input_token + 1;
     session

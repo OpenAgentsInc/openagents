@@ -837,7 +837,10 @@ impl Session {
                 as u32;
             // Keep local prediction immediate while amortizing durable ordered requests.
             // The complete history retains direction changes, lease expiries, and jump edges.
-            if steps < verse_world::movement::frames::SEND_STEPS
+            // Flush a credit-limited remainder; local-only time still waits for a full batch.
+            if steps == 0
+                || (steps < verse_world::movement::frames::SEND_STEPS
+                    && end == self.prediction.physics_step())
                 || self.input.capacity() == 0
                 || self.pending.len() >= PENDING_LIMIT
             {

@@ -189,15 +189,15 @@ async fn player(
       let credited=world_credit.filter(|(life,epoch,_)|(*life,*epoch)==context).map_or(baseline.world_step,|(_,_,step)|baseline.world_step.max(step));
       let limit=credited.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
       let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::SEND_STEPS)).min(u64::from(verse_world::movement::frames::MAX_STEPS-interval_work)) as u32;
-      if steps<verse_world::movement::frames::SEND_STEPS {break;}
+      if steps==0 {break;}
       let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
        segments:vec![verse_world::movement::frames::Segment {offset:0,axes,yaw:std::f32::consts::PI,until:start+verse_world::movement::HELD_STEPS,jump:false}]};
       frame.validate_payload()?;
       Input::MovementFrame {token,frame}
      } else {Input::TrackedCommand {token,life:hud.life,epoch,intent}};
-     let proposed_end=match &input {Input::MovementFrame {frame,..}=>Some((frame.life,frame.epoch,frame.end()?)),_=>None};
+     let proposed_end=match &input {Input::MovementFrame {frame,..}=>Some(((frame.life,frame.epoch,frame.end()?),frame.steps)),_=>None};
      match send.try_send(input) {
-      Ok(())=>{outstanding.insert(token);if let Some(cursor)=proposed_end {frame_cursor=Some(cursor);interval_work+=verse_world::movement::frames::SEND_STEPS;} if moving {movement+=1;}},
+      Ok(())=>{outstanding.insert(token);if let Some((cursor,steps))=proposed_end {frame_cursor=Some(cursor);interval_work+=steps;} if moving {movement+=1;}},
       Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>{pressure+=1;break;},
       Err(_)=>return Err("Load worker input closed".into()),
      }
