@@ -1,0 +1,33 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": false,
+    "compiled_revisions": {
+      "host": "8f24504ab6",
+      "clients": "8f24504ab6"
+    },
+    "fixture_revision": "8f24504ab6163ff375c26309eeb48c5c9eb5077e",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "stability": "All twenty connections and all processes complete; occupancy samples retain forty live hostile NPCs.",
+  "limits": [
+    "Persistent storage is disabled; persistent backpressure acceptance remains failed.",
+    "Simulation p99 histogram upper bound is 66.667 ms; maximum is 156.014 ms; 0.205920 elapsed seconds are dropped.",
+    "Native frame p95 is 67.599 ms; CPU command finalization p95 is 50.040 ms.",
+    "Prediction correction p95 is 1.067 m; maximum is 2.790 m.",
+    "No contained motor blocks occur; recovery failure containment is not independently exercised.",
+    "Query timings are cumulative wall time on a shared contributor machine. Trajectories differ between runs; this is not an isolated attribution experiment.",
+    "GPU execution and input-to-display latency remain unmeasured."
+  ]
+}
