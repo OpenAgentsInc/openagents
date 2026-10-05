@@ -8,8 +8,8 @@ publish.workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:winit", "dep:arboard", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host", "imported-desktop", "terminal", "crypt"]
-model-host = ["dep:coder", "dep:coder-delegate"]
+desktop = ["dep:winit", "dep:arboard", "verse-zone-everglade/desktop", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host", "imported-desktop", "terminal", "crypt"]
+model-host = ["dep:coder", "dep:coder-delegate", "verse-zone-everglade/model-host"]
 xp-host = ["dep:xp-ledger", "verse-net/xp"]
 replay-host = ["dep:gym", "dep:knowledge"]
 capture = []
@@ -23,7 +23,7 @@ panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 # from a `coder-vt` grid. Native desktop only.
 terminal = ["dep:terminal-gfx", "dep:winit"]
 # The Agent Studio from a live host, over its same-user control socket.
-studio-host = ["dep:openagents-connect"]
+studio-host = ["dep:openagents-connect", "verse-zone-everglade/studio-host"]
 imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface", "verse-pbr/imported-desktop", "verse-imported/imported-desktop"]
 # The engine renderer presenting on a surface the host made (a phone's
 # layer or window, a browser canvas); no window library.
@@ -96,6 +96,10 @@ verse-zone-crypt = { path = "../verse-zone-crypt" }
 # The Ruins zone and its pack loader; `verse` re-exports them as
 # `zones::ruins` and `zones::assets`.
 verse-zone-ruins = { path = "../verse-zone-ruins" }
+# Everglade with its pack, and the Grove on that pack; `verse` re-exports
+# them as `zones::everglade`, `zones::everglade_pack`, and `zones::grove`.
+verse-zone-everglade = { path = "../verse-zone-everglade" }
+verse-zone-grove = { path = "../verse-zone-grove" }
 verse-ruins = { path = "../verse-ruins" }
 glam = "0.30.10"
 resvg = { version = "0.48.1", default-features = false }

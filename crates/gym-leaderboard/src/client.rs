@@ -32,7 +32,7 @@
 //! [`Fetcher`] does the work, blocking; [`Client`] runs it on its own
 //! thread, one request at a time: a new request cancels the one in flight,
 //! and the caller polls for [`Event`]s without blocking, like the Gym
-//! worker in `crates/verse/src/gym.rs`.
+//! worker in `crates/verse-gym/src/gym.rs`.
 
 use std::fmt;
 use std::io::Read;

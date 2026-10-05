@@ -497,7 +497,7 @@ studio task's turn from the script through the task owner's scripted turn
 through the host's own paths with no model spend. `openagents studio down`
 stops the host and removes the directory. `verse --studio-sim` still plays
 the recorded replay
-([`zones/everglade/studio/fixture.rs`](../../crates/verse/src/zones/everglade/studio/fixture.rs))
+([`zones/everglade/studio/fixture.rs`](../../crates/verse-zone-everglade/src/zones/everglade/studio/fixture.rs))
 that drives the `everglade_capture` example's `studio-` views.
 
 The design: a `sim` route in the host runs a scripted team against a scratch

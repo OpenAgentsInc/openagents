@@ -38,7 +38,7 @@ belong in the [iOS](../../bins/coder-ios/README.md) and
 | Rules | Exploration and product interactions | `ruins.wizard-woods.v1`: retained real-time ECS | Construction sandbox: grab, carry, latch | Sandbox: choose a scenario and turn knobs | Exploration; the caption names the station in reach |
 | Assets | Built in | 6.6 MB verified pack, cached on disk | None | None | 13.4 MB verified pack, cached on disk |
 | Network | NIP-MV plaza presence; Gym connection | Local-only | Local-only | Local-only | Local-only |
-| Code | [`world.rs`](../../crates/verse/src/world.rs) | [`zones/ruins.rs`](../../crates/verse-zone-ruins/src/lib.rs), [`verse-ruins`](../../crates/verse-ruins/) | [`zones/lagrange/`](../../crates/verse-zone-lagrange/src/lib.rs), [`pbr`](../../crates/verse-pbr/src/pbr/mod.rs), [`verse-lagrange`](../../crates/verse-lagrange/) | [`zones/lab/`](../../crates/verse-zone-lab/src/lib.rs), [`physics`](../../crates/physics/) | [`zones/everglade/`](../../crates/verse/src/zones/everglade/mod.rs) |
+| Code | [`world.rs`](../../crates/verse/src/world.rs) | [`zones/ruins.rs`](../../crates/verse-zone-ruins/src/lib.rs), [`verse-ruins`](../../crates/verse-ruins/) | [`zones/lagrange/`](../../crates/verse-zone-lagrange/src/lib.rs), [`pbr`](../../crates/verse-pbr/src/pbr/mod.rs), [`verse-lagrange`](../../crates/verse-lagrange/) | [`zones/lab/`](../../crates/verse-zone-lab/src/lib.rs), [`physics`](../../crates/physics/) | [`zones/everglade/`](../../crates/verse-zone-everglade/src/zones/everglade/mod.rs) |
 
 The amber palette rule belongs to the plaza and Coder application UI, not to
 every world. Zone colors belong to Verse's zone implementation. Rust Native
@@ -144,7 +144,7 @@ You walk the plaza character over the glade's generated ground; the camera
 stays above the slope. The map lists the return portal and the studio
 stations, and the caption names the station whose marker you stand at.
 **Plaza** returns. Station coordinates are fixed in
-[`zones/everglade/mod.rs`](../../crates/verse/src/zones/everglade/mod.rs)
+[`zones/everglade/mod.rs`](../../crates/verse-zone-everglade/src/zones/everglade/mod.rs)
 (`STATIONS`); the textured layout replaces the markers at the same points.
 
 ### Crypt controls

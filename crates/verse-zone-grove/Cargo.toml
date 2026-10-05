@@ -1,0 +1,23 @@
+[package]
+name = "verse-zone-grove"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's Grove zone: the druid training field on Everglade's pack, with its dummies, spells, Wild Shape forms, and hotbar."
+
+[dependencies]
+coder-ui = { path = "../coder-ui" }
+glam = "0.30.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+verse-content = { path = "../verse-content", features = ["compiler"] }
+verse-core = { path = "../verse-core" }
+verse-engine = { path = "../verse-engine", features = ["asset-io"] }
+verse-gfx = { path = "../verse-gfx" }
+verse-pbr = { path = "../verse-pbr" }
+verse-world = { path = "../verse-world", features = ["studio"] }
+verse-zone-everglade = { path = "../verse-zone-everglade" }
+
+[lints]
+workspace = true

@@ -2,7 +2,7 @@
 
 Lighter copies of the Everglade pack's heaviest models, which the city draws
 instead of a model once its cell is 60 m or more from the eye
-([`zones::everglade::detail`](../../../../crates/verse/src/zones/everglade/detail.rs)).
+([`zones::everglade::detail`](../../../../crates/verse-zone-everglade/src/zones/everglade/detail.rs)).
 `scripts/blender/everglade_lod.py` makes each one in Blender 5.2.2 LTS from
 the model's admitted glTF in a sibling set, and the pack compiler admits it
 as `lod/<set>.<name>`:

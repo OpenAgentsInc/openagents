@@ -15110,6 +15110,8 @@ dependencies = [
  "verse-ruins",
  "verse-world",
  "verse-zone-crypt",
+ "verse-zone-everglade",
+ "verse-zone-grove",
  "verse-zone-lab",
  "verse-zone-lagrange",
  "verse-zone-ruins",
@@ -15343,6 +15345,52 @@ dependencies = [
  "verse-core",
  "verse-pbr",
  "verse-world",
+]
+
+[[package]]
+name = "verse-zone-everglade"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "coder",
+ "coder-access",
+ "coder-ui",
+ "glam",
+ "gltf",
+ "libc",
+ "miniz_oxide 0.8.9",
+ "openagents-chat-app",
+ "openagents-connect",
+ "physics",
+ "png",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "verse-content",
+ "verse-core",
+ "verse-engine",
+ "verse-gfx",
+ "verse-pbr",
+ "verse-world",
+]
+
+[[package]]
+name = "verse-zone-grove"
+version = "0.1.0"
+dependencies = [
+ "coder-ui",
+ "glam",
+ "serde",
+ "serde_json",
+ "verse-content",
+ "verse-core",
+ "verse-engine",
+ "verse-gfx",
+ "verse-pbr",
+ "verse-world",
+ "verse-zone-everglade",
 ]
 
 [[package]]

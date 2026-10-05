@@ -2,7 +2,7 @@
 
 Status: research and specification, October 4, 2026. Nothing here is
 implemented by this document; a standalone phase D1 demo runs with `verse
---demolition` ([`demolition/`](../../crates/verse/src/zones/everglade/demolition/mod.rs)),
+--demolition` ([`demolition/`](../../crates/verse-zone-everglade/src/zones/everglade/demolition/mod.rs)),
 and Everglade's own town breaks under the same rules
 ([Everglade's town](#everglades-town)).
 The owner asked: "If I have a huge sledgehammer
@@ -132,12 +132,12 @@ plaster and timber, and the remesh would have to rebuild textured surfaces.
 
 | Item | Where | Behavior |
 | --- | --- | --- |
-| Pieces | [`layout.rs`](../../crates/verse/src/zones/everglade/layout.rs), `Piece`, `wall()` | `Plain`, `Base`, `Timber`, `Round`, `Flat`, and `Door` map to `village/Wall_Plaster_*` sections, with separate glass, shutter, and door-frame models. `WALL_TOP` is 3.12 m. |
+| Pieces | [`layout.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout.rs), `Piece`, `wall()` | `Plain`, `Base`, `Timber`, `Round`, `Flat`, and `Door` map to `village/Wall_Plaster_*` sections, with separate glass, shutter, and door-frame models. `WALL_TOP` is 3.12 m. |
 | Buildings | `hall()`, `house()`, `roof()`, `lane()` | The workshop hall (`HALL`, 16 m × 10 m, 26 wall sections), the Stoop Lane cottage (`COTTAGE`, 8 m × 10 m, 18 sections), the reading room (`READING_ROOM`), the open pavilion (`PAVILION`, six posts), and the fenced strongroom. A house adds four `Corner_Exterior_Wood` posts, one `Roof_RoundTiles_8x10`, two `Roof_Front_Brick8` gables, and an optional chimney. |
 | Placement | `Placement` | Model name, ground position, lift, yaw, scale, and a `Collision` kind (`None`, `Bounds`, `Core`, `Opening`). Roofs, corners, and gables have `Collision::None`. |
-| Solids | [`solids.rs`](../../crates/verse/src/zones/everglade/solids.rs), [`social/solids.rs`](../../crates/verse-world/src/social/solids.rs) | Each colliding placement becomes an axis-aligned `Footprint` with a top height; round-tile roofs become analytic gabled `Roof` surfaces. `Solids::set_spell_blocks` already replaces a set of spell-raised blocks at runtime. |
-| Controller | [`social/controller.rs`](../../crates/verse-world/src/social/controller.rs) | A 0.45 m circle pushed out of each footprint along the shallowest axis; `STEP` 0.35 m step-up. Everglade's Wall of Stone draws a turned panel as "a close row of small" posts because "the controller collides with axis-aligned boxes" ([`everglade/spells.rs`](../../crates/verse/src/zones/everglade/spells.rs)). |
-| Pack | [`everglade_pack/`](../../crates/verse/src/zones/everglade_pack/format.rs) | Custom `VTP3` binary: base-color PNGs, then a deflated body of materials, static models with node transforms applied and quantized vertices, one skinned character, and its forms. 480,000-triangle and 12 MiB limits. Pinned by `PACK_SHA256`; `content_digest()` is a hosted instance's content identity. Compiled by `compile.rs` from glTF under `assets/verse/everglade/`. |
+| Solids | [`solids.rs`](../../crates/verse-zone-everglade/src/zones/everglade/solids.rs), [`social/solids.rs`](../../crates/verse-world/src/social/solids.rs) | Each colliding placement becomes an axis-aligned `Footprint` with a top height; round-tile roofs become analytic gabled `Roof` surfaces. `Solids::set_spell_blocks` already replaces a set of spell-raised blocks at runtime. |
+| Controller | [`social/controller.rs`](../../crates/verse-world/src/social/controller.rs) | A 0.45 m circle pushed out of each footprint along the shallowest axis; `STEP` 0.35 m step-up. Everglade's Wall of Stone draws a turned panel as "a close row of small" posts because "the controller collides with axis-aligned boxes" ([`everglade/spells.rs`](../../crates/verse-zone-everglade/src/zones/everglade/spells.rs)). |
+| Pack | [`everglade_pack/`](../../crates/verse-zone-everglade/src/zones/everglade_pack/format.rs) | Custom `VTP3` binary: base-color PNGs, then a deflated body of materials, static models with node transforms applied and quantized vertices, one skinned character, and its forms. 480,000-triangle and 12 MiB limits. Pinned by `PACK_SHA256`; `content_digest()` is a hosted instance's content identity. Compiled by `compile.rs` from glTF under `assets/verse/everglade/`. |
 | Render | [`pbr/textured.rs`](../../crates/verse-pbr/src/pbr/textured.rs) | `merge()` groups placements into `CELL` (8 m) cells per material: one indexed draw per cell, no instancing, uploaded once. |
 | Light | [`pbr/textured_bake.rs`](../../crates/verse-pbr/src/pbr/textured_bake.rs), `Everglade::bake_light` | At load, each static vertex stores sky visibility and one sun bounce; an L1 probe grid with 3 m cells shades characters. Keyed by pack digest; a browser bakes 192 items per frame. |
 | Shadows | `pbr/gpu.rs`, `Everglade` key | Two cascades on Low and Medium, three on High, 2048². With `cache_far_shadows: true`, cascades after the first redraw only when the static caster identity changes. |
@@ -592,7 +592,7 @@ Fire and 20d6 Bludgeoning, rolled once per cast, to every piece within 4 m,
 falling off with distance; what breaks is thrown outward at up to 26 m/s
 for 1.6 s past the yard's 10 m/s cap, and the support graph brings down
 what the blast left unsupported. `R` rebuilds the cottages and refills the
-mana. `crates/verse/src/zones/everglade/demolition/meteor.rs` holds the
+mana. `crates/verse-zone-everglade/src/zones/everglade/demolition/meteor.rs` holds the
 tuning.
 
 ### Everglade's town
@@ -600,10 +600,10 @@ tuning.
 The owner asked: "Add destructibility and Meteor Swarm to the current
 Everglade, same no-cooldown, no-mana." The yard's rules, kit pieces, chunks,
 sledgehammer, and spell now act on Everglade's town
-([`demolition/town.rs`](../../crates/verse/src/zones/everglade/demolition/town.rs)),
-through the shared [`kit.rs`](../../crates/verse/src/zones/everglade/demolition/kit.rs),
-[`hammer.rs`](../../crates/verse/src/zones/everglade/demolition/hammer.rs),
-and [`site.rs`](../../crates/verse/src/zones/everglade/demolition/site.rs).
+([`demolition/town.rs`](../../crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs)),
+through the shared [`kit.rs`](../../crates/verse-zone-everglade/src/zones/everglade/demolition/kit.rs),
+[`hammer.rs`](../../crates/verse-zone-everglade/src/zones/everglade/demolition/hammer.rs),
+and [`site.rs`](../../crates/verse-zone-everglade/src/zones/everglade/demolition/site.rs).
 
 - **Controls.** Key 6 on Everglade's hotbar aims Meteor Swarm (a click or a
   tap casts it, right click or `Esc` cancels) and key 7 swings the
@@ -619,7 +619,7 @@ and [`site.rs`](../../crates/verse/src/zones/everglade/demolition/site.rs).
   north walls.
 - **Carved models.** Everything else the town places except the ground,
   water, plants, and the footbridge and docks is carved
-  ([`carve.rs`](../../crates/verse/src/zones/everglade/demolition/carve.rs)):
+  ([`carve.rs`](../../crates/verse-zone-everglade/src/zones/everglade/demolition/carve.rs)):
   the generated buildings and landmarks, the open pavilion, the stalls, the
   studio's furniture, fences, and props. A carved model is cut on a lattice
   of blocks at most 3.5 m across and 3.2 m tall in its own frame; the

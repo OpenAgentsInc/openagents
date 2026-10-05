@@ -658,6 +658,23 @@ uses, and marks which are implemented and which are only specified.
   (#10631): the PBR pipelines, baking, sky, and textured scenes (`pbr`), the
   world mesh (`mesh`), streamed content residency, and the fog distances.
   `verse` re-exports each module under its old path.
+- `crates/verse-core` — what Verse's zones share, under the world runtime
+  (#10631): the static `World` and the plaza's layout and `GymSite`, zone
+  controls and atmosphere (`zone`), the avatar, the companion agent, the
+  crowd of other players, particle effects, tooltips, scene labels, and the
+  replay's places. `verse` re-exports each module under its old path.
+- `crates/verse-zone-lagrange`, `crates/verse-zone-ruins` (with the Ruins
+  pack loader), `crates/verse-zone-lab`, `crates/verse-zone-everglade`
+  (Everglade with its studio, demolition yard, and pinned pack), and
+  `crates/verse-zone-grove` — one crate a zone, over `verse-core`, so an
+  edit to a zone recompiles that crate and what depends on it. `verse`
+  re-exports each as `zones::<name>`; the tests that walk through the world
+  runtime stay in `verse` as `zones/<name>_tests.rs`. Put a zone's code in
+  its crate and anything two zones share in `verse-core`.
+- `crates/verse-imported` — the chamber's imported content and the RITUAL
+  client (#10631), re-exported as `verse::imported` and `verse::ritual`.
+- `crates/verse-gym` — the Grid's Gym boards, hall, notes, and results
+  panel (#10631), re-exported as `verse::gym*`.
 - `crates/xp-ledger` — the NIP-XP ledger a reader derives
   (`nips/openagents/NIP-XP.md`): trust lists, the per-award re-checks, and
   the knowledge-entry parser the `kb-transfer` rule needs. `knowledge`

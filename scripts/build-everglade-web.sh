@@ -95,7 +95,7 @@ else
 fi
 
 if [ "$with_pack" = true ]; then
-  sha="$(awk -F'"' '/^pub const PACK_SHA256/ { print $2 }' crates/verse/src/zones/everglade_pack.rs)"
+  sha="$(awk -F'"' '/^pub const PACK_SHA256/ { print $2 }' crates/verse-zone-everglade/src/zones/everglade_pack.rs)"
   mkdir -p "$out/everglade/pack"
   cp "assets/verse/everglade/$sha.vtp" "$out/everglade/pack/$sha.vtp"
   cp crates/everglade-web/index.html "$out/index.html"

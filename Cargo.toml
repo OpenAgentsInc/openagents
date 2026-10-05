@@ -77,6 +77,10 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.verse-world]
 opt-level = 3
+[profile.dev.package.verse-zone-everglade]
+opt-level = 3
+[profile.dev.package.verse-zone-grove]
+opt-level = 3
 [profile.dev.package.verse-zone-lab]
 opt-level = 3
 [profile.dev.package.verse-zone-lagrange]

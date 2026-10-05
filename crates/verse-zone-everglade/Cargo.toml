@@ -1,0 +1,50 @@
+[package]
+name = "verse-zone-everglade"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's Everglade zone: the city, Agent Studio, spells, hotbar, wildlife, and demolition yard, with the pinned pack and its compiler."
+
+[features]
+# The scripted Agent Studio team (`verse --studio-sim`).
+model-host = ["dep:coder"]
+# The Agent Studio from a live host, over its same-user control socket.
+studio-host = ["dep:openagents-connect"]
+# The studio's sounds and desktop notices.
+desktop = ["dep:openagents-chat-app"]
+
+[dependencies]
+atif = { path = "../atif" }
+coder = { path = "../coder", optional = true }
+coder-access = { path = "../coder-access", default-features = false }
+coder-ui = { path = "../coder-ui" }
+glam = "0.30.10"
+gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names"] }
+# Deflate for the zone pack's geometry; already in the tree through `png`.
+miniz_oxide = "0.8.9"
+openagents-chat-app = { path = "../openagents-chat-app", optional = true }
+openagents-connect = { path = "../openagents-connect", optional = true }
+physics = { path = "../physics" }
+png = "0.18.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+verse-content = { path = "../verse-content", features = ["compiler"] }
+verse-core = { path = "../verse-core" }
+verse-engine = { path = "../verse-engine", features = ["asset-io"] }
+verse-gfx = { path = "../verse-gfx" }
+verse-pbr = { path = "../verse-pbr" }
+verse-world = { path = "../verse-world", features = ["studio"] }
+
+# Fetching and caching the pinned pack: native only.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+libc = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
+

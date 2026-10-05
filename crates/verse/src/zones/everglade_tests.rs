@@ -1,0 +1,1277 @@
+//! The `everglade` tests that run through the world
+//! runtime, kept in `verse` when the zone moved into its own crate.
+
+use crate::controller::InputState;
+use crate::world::World;
+use crate::zones::everglade::layout::{DESKS, PATHS, TASK_COLUMNS, TASK_WALL};
+use crate::zones::everglade::*;
+use crate::zones::everglade_pack::ZonePack;
+use crate::{
+    runtime::WorldRuntime,
+    zones::{
+        Intent, ZoneId, atmosphere,
+        everglade_pack::{self, DRAWN_TRIANGLE_BUDGET},
+    },
+};
+use glam::Vec3;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
+
+/// The committed, pinned pack.
+fn pack_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(everglade_pack::PACK_DIRECTORY)
+        .join(format!(
+            "{}.{}",
+            everglade_pack::PACK_SHA256,
+            everglade_pack::PACK_EXTENSION
+        ))
+}
+
+/// The pinned pack, decoded once for every test.
+pub(super) fn pack() -> &'static ZonePack {
+    static PACK: OnceLock<ZonePack> = OnceLock::new();
+    PACK.get_or_init(|| ZonePack::load_local(&pack_path()).expect("the committed pack loads"))
+}
+
+/// The zone's static world, built once for every test.
+pub(super) fn world() -> &'static World {
+    static WORLD: OnceLock<World> = OnceLock::new();
+    WORLD.get_or_init(|| Everglade::world(pack()).expect("the layout builds from the pack"))
+}
+
+/// Standing on the plaza's Everglade approach, facing through the arch.
+fn at_everglade_portal() -> WorldRuntime {
+    let mut runtime = WorldRuntime::new();
+    let portal = ZoneId::Plaza
+        .portals()
+        .into_iter()
+        .find(|(destination, _)| *destination == ZoneId::Everglade)
+        .expect("a plaza arch to Everglade")
+        .1;
+    runtime.set_spawn(portal - Vec3::Z * 3.0, 0.0).unwrap();
+    runtime
+}
+
+pub(super) fn entered() -> WorldRuntime {
+    let mut runtime = at_everglade_portal();
+    runtime.install_everglade(pack());
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+    runtime
+}
+
+#[test]
+fn the_everglade_portal_loads_the_pinned_pack_and_returns_to_the_plaza_pose() {
+    let mut runtime = at_everglade_portal();
+    let snapshot = runtime.zone_snapshot(1.0);
+    assert!(snapshot.portal.near);
+    let enter = snapshot.controls.iter().find(|c| c.action == Intent::Enter);
+    assert_eq!(enter.map(|c| c.label.as_str()), Some("Enter Everglade"));
+    // Without zone storage the pack cannot load.
+    assert!(!enter.unwrap().enabled);
+    assert!(runtime.zone_intent(Intent::Enter).is_err());
+    assert!(runtime.is_plaza());
+
+    // A cache that already holds the pinned pack serves the entry offline.
+    let cache = tempfile::tempdir().unwrap();
+    std::fs::copy(
+        pack_path(),
+        cache.path().join(format!(
+            "{}.{}",
+            everglade_pack::PACK_SHA256,
+            everglade_pack::PACK_EXTENSION
+        )),
+    )
+    .unwrap();
+    runtime.configure_zone_cache(cache.path().to_owned());
+    runtime.zone_state.error = None;
+    let pose = runtime.player;
+    let plaza_faces = runtime.world.mesh.faces.len();
+    runtime.zone_intent(Intent::Enter).unwrap();
+    assert!(runtime.zone_loading());
+    assert!(runtime.is_plaza(), "the plaza stays until the pack arrives");
+    let caption = runtime.zone_snapshot(1.0).caption;
+    assert!(caption.starts_with("Loading Everglade"), "{caption}");
+    let deadline = Instant::now() + Duration::from_secs(180);
+    while !runtime.zone_tick() {
+        assert!(
+            runtime.zone_loading(),
+            "load stopped: {:?}",
+            runtime.zone_state.error
+        );
+        assert!(Instant::now() < deadline, "the cached pack did not load");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+    assert_eq!(runtime.zone_revision, 1);
+    assert!(!runtime.zone_loading());
+    assert_eq!(runtime.player.pos, Everglade::spawn());
+    assert_eq!(runtime.zone_label(), "Everglade");
+    assert!(runtime.world.mesh.textured.is_some());
+    assert!(!runtime.world.blockers.is_empty());
+    let inside = runtime.zone_snapshot(1.0);
+    assert_eq!(inside.id, ZoneId::Everglade);
+    assert!(inside.caption.starts_with("Everglade"));
+    assert!(
+        inside
+            .controls
+            .iter()
+            .any(|c| c.action == Intent::Return && c.label == "Plaza")
+    );
+    // Frames draw on the zone's lit stage, which textured meshes need.
+    let dynamic = runtime.zone_dynamic_mesh();
+    assert!(!dynamic.lines.is_empty());
+    let stage = dynamic.neon.expect("a lit stage");
+    assert!(stage.key.is_some());
+    assert_eq!(stage.field, atmosphere(ZoneId::Everglade).color);
+    // A daylight sky replaces the flat field: its horizon is the zone's air,
+    // so fogged ground meets it, and its zenith is bluer than the haze.
+    let day = stage.daylight.expect("a daylight sky");
+    assert!(day.valid());
+    assert_eq!(day.horizon, atmosphere(ZoneId::Everglade).color);
+    assert!(day.zenith[2] > day.zenith[0] && day.zenith[2] > day.horizon[2]);
+    // The Sun stands above the horizon, where the key light comes from.
+    assert!(stage.key.unwrap().dir.y > 0.3);
+    // The zone's low height fog reaches the stage, and the ramp's end is
+    // still where it is total.
+    let fog = stage.height_fog.expect("height fog");
+    assert_eq!(Some(fog), atmosphere(ZoneId::Everglade).height_fog);
+    assert!(fog.validate().is_ok() && fog.falloff > 0.0);
+    assert_eq!(fog.start, stage.fog_start);
+    // Walking works on the generated ground.
+    let start = runtime.player.pos;
+    for _ in 0..20 {
+        runtime.tick(
+            &InputState {
+                forward: true,
+                ..Default::default()
+            },
+            0.05,
+        );
+    }
+    assert!(runtime.player.pos.distance(start) > 3.0);
+    runtime.zone_intent(Intent::Return).unwrap();
+    assert_eq!(runtime.zone, ZoneId::Plaza);
+    assert_eq!(runtime.zone_revision, 2);
+    assert_eq!(runtime.player.pos, pose.pos);
+    assert_eq!(runtime.player.yaw, pose.yaw);
+    assert_eq!(runtime.world.mesh.faces.len(), plaza_faces);
+    assert!(runtime.world.mesh.textured.is_none());
+    assert!(runtime.zone_state.everglade.is_none());
+}
+
+#[test]
+fn pack_bytes_a_browser_downloaded_install_only_when_pinned() {
+    let bytes = std::fs::read(pack_path()).expect("the committed pack reads");
+    let mut runtime = WorldRuntime::new();
+    assert!(runtime.install_everglade_bytes(&bytes[..1024]).is_err());
+    let mut tampered = bytes.clone();
+    tampered[4096] ^= 1;
+    assert!(runtime.install_everglade_bytes(&tampered).is_err());
+    assert_eq!(runtime.zone, ZoneId::Plaza);
+    runtime.install_everglade_bytes(&bytes).unwrap();
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+}
+
+#[test]
+fn a_canceled_load_stays_in_the_plaza() {
+    let mut runtime = at_everglade_portal();
+    let cache = tempfile::tempdir().unwrap();
+    std::fs::copy(
+        pack_path(),
+        cache.path().join(format!(
+            "{}.{}",
+            everglade_pack::PACK_SHA256,
+            everglade_pack::PACK_EXTENSION
+        )),
+    )
+    .unwrap();
+    runtime.configure_zone_cache(cache.path().to_owned());
+    runtime.zone_intent(Intent::Enter).unwrap();
+    assert!(runtime.zone_loading());
+    runtime.zone_intent(Intent::Cancel).unwrap();
+    assert!(!runtime.zone_loading());
+    // A late completion cannot enter the zone after cancellation.
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(!runtime.zone_tick());
+    assert!(runtime.is_plaza());
+    assert!(runtime.zone_state.everglade.is_none());
+}
+
+#[test]
+fn identity_and_atmosphere_are_the_zones_own() {
+    assert_eq!(ZoneId::Everglade.world_id(), "verse-everglade");
+    assert_eq!(ZoneId::Everglade.label(), "Everglade");
+    assert_eq!(ZoneId::Everglade.sign(), "EVERGLADE");
+    assert_eq!(
+        serde_json::to_value(ZoneId::Everglade).unwrap(),
+        "everglade"
+    );
+    let air = atmosphere(ZoneId::Everglade).validate().unwrap();
+    assert_ne!(air, atmosphere(ZoneId::Plaza));
+    // Warm haze: red leads, and green stays above blue.
+    assert!(air.color[0] > air.color[1] && air.color[1] > air.color[2]);
+    // The fog closes the view before the edge of the square.
+    assert!(air.fog_end < HALF_EXTENT * 2.0 * std::f32::consts::SQRT_2);
+    let portal = ZoneId::Everglade.portal();
+    assert_eq!(ZoneId::Everglade.portals().len(), 1);
+    assert_eq!(ZoneId::Everglade.portals()[0].0, ZoneId::Plaza);
+    assert!(portal.x.hypot(portal.z) < CLEARING_RADIUS);
+    assert_eq!(portal.y, height(portal.x, portal.z));
+}
+
+#[test]
+fn no_blocker_covers_a_path() {
+    let blockers = &world().blockers;
+    for [a, b] in PATHS {
+        assert!(
+            crate::nav::segment_clear(a, b, blockers, HALF_EXTENT),
+            "{a:?} to {b:?} is blocked"
+        );
+    }
+    // Every road of the town and the city is walkable along its length.
+    for &(a, b, _) in layout::roads() {
+        assert!(
+            crate::nav::segment_clear(a, b, blockers, HALF_EXTENT),
+            "the road {a:?} to {b:?} is blocked"
+        );
+    }
+    // The paths start at the return portal and reach both doorways.
+    assert_eq!(PATHS[0][0][1], RETURN_PORTAL.z + 1.0);
+    let south = HALL.0[1] - HALL.1[1];
+    assert!(PATHS[2..].iter().all(|[a, b]| a[1] < south && b[1] > south));
+}
+
+#[test]
+fn stations_have_fixed_reachable_points_and_furniture_ahead() {
+    let mut ids = std::collections::BTreeSet::new();
+    let portal = ZoneId::Everglade.portal();
+    let blockers = &world().blockers;
+    let spawn = [Everglade::spawn().x, Everglade::spawn().z];
+    for station in &STATIONS {
+        assert!(ids.insert(station.id), "duplicate {}", station.id);
+        assert!(
+            station
+                .sign
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b' '),
+            "{}",
+            station.sign
+        );
+        let [x, z] = station.at;
+        assert!(
+            x.hypot(z) < CLEARING_RADIUS - 1.0,
+            "{} is not in the clearing",
+            station.id
+        );
+        assert_eq!(station.position().y, 0.0);
+        assert!((x - portal.x).hypot(z - portal.z) > 4.0);
+        assert_eq!(station_near(x, z).map(|s| s.id), Some(station.id));
+        for other in &STATIONS {
+            if other.id != station.id {
+                let d = (other.at[0] - x).hypot(other.at[1] - z);
+                assert!(
+                    d >= STATION_RANGE,
+                    "{} and {} overlap",
+                    station.id,
+                    other.id
+                );
+            }
+        }
+        let route = crate::nav::plan(spawn, station.at, blockers, HALF_EXTENT);
+        assert!(route.is_ok(), "{}: {route:?}", station.id);
+        // Its furniture stands ahead, within reach of the standing point.
+        // The desks station looks between the two middle workbenches, so a
+        // furniture edge within 0.1 m of the line counts.
+        if station.id != "approach" {
+            let ahead = crate::controller::forward(station.facing);
+            let furnished = (5..=35).any(|k| {
+                let p = station.position() + ahead * (k as f32 * 0.1);
+                blockers.iter().any(|b| b.contains(p.x, p.z, 0.1))
+            });
+            assert!(furnished, "nothing stands ahead of {}", station.id);
+        }
+    }
+    assert_eq!(ids.len(), 10);
+    // Inside the hall: the desks, the gallery, and the hearth.
+    for id in ["desks", "library", "oracle"] {
+        let station = STATIONS.iter().find(|s| s.id == id).unwrap();
+        let ([cx, cz], [hx, hz]) = HALL;
+        assert!((station.at[0] - cx).abs() < hx && (station.at[1] - cz).abs() < hz);
+    }
+    // The coordinates the studio workspace builds on do not move.
+    let at = |id: &str| STATIONS.iter().find(|s| s.id == id).unwrap().at;
+    assert_eq!(at("desks"), [0.0, 5.0]);
+    assert_eq!(at("task_wall"), [-7.0, -9.0]);
+    assert_eq!(at("merge"), [10.5, 5.0]);
+}
+
+#[test]
+fn every_seat_reaches_its_desk_and_faces_its_monitor() {
+    let blockers = &world().blockers;
+    let spawn = [Everglade::spawn().x, Everglade::spawn().z];
+    let desks = STATIONS.iter().find(|s| s.id == "desks").unwrap();
+    for desk in DESKS {
+        let route = crate::nav::plan(spawn, desk.seat, blockers, HALF_EXTENT);
+        assert!(route.is_ok(), "{:?}: {route:?}", desk.seat);
+        // The seat itself works beside the standing point, on open floor.
+        let figure = studio::at_desk(&desk);
+        let route = crate::nav::plan(spawn, figure, blockers, HALF_EXTENT);
+        assert!(route.is_ok(), "{figure:?}: {route:?}");
+        // The seat faces +z; its monitor is ahead, facing back at it.
+        let monitor = desk.monitor;
+        assert!(monitor.center.z > desk.seat[1]);
+        assert!((monitor.center.x - desk.seat[0]).abs() < 0.01);
+        let normal = crate::controller::forward(monitor.facing);
+        assert!(normal.z < -0.99);
+        // Every seat is in reach of the desks station.
+        let d = (desk.seat[0] - desks.at[0]).hypot(desk.seat[1] - desks.at[1]);
+        assert!(d <= STATION_RANGE + 1.0, "{:?}", desk.seat);
+    }
+}
+
+#[test]
+fn the_task_wall_faces_its_station_with_a_column_per_state() {
+    let station = STATIONS.iter().find(|s| s.id == "task_wall").unwrap();
+    let toward = (TASK_WALL.center - station.position())
+        .with_y(0.0)
+        .normalize();
+    assert!(crate::controller::forward(station.facing).dot(toward) > 0.99);
+    // The board's face points back at the station.
+    assert!(crate::controller::forward(TASK_WALL.facing).dot(toward) < -0.99);
+    assert_eq!(TASK_COLUMNS.len(), 5);
+    for title in TASK_COLUMNS {
+        assert!(title.bytes().all(|b| b.is_ascii_uppercase()));
+        // Each title fits its column at the board's lettering height.
+        let width = title.len() as f32 * 6.0 * 0.07 / 7.0;
+        assert!(width < (TASK_WALL.size[0] - 0.12) / TASK_COLUMNS.len() as f32);
+    }
+    // Board-space -Z is the face: it maps to the facing direction.
+    let front = TASK_WALL
+        .transform()
+        .transform_vector3(Vec3::NEG_Z)
+        .normalize();
+    assert!(front.dot(crate::controller::forward(TASK_WALL.facing)) > 0.99);
+}
+
+#[test]
+fn the_camera_stays_inside_the_hall_with_the_player() {
+    let focus = Vec3::new(0.0, 1.6, 5.0);
+    // Behind and above: pulled in under the eaves and inside the doors.
+    let eye = keep_eye_inside(focus, Vec3::new(0.0, 4.8, -3.4));
+    assert!(eye.z >= 1.5 - 1e-4 && eye.y <= 2.2 + 1e-4, "{eye}");
+    let direction = (eye - focus).normalize();
+    assert!(direction.dot(Vec3::new(0.0, 3.2, -8.4).normalize()) > 0.999);
+    // Already inside: unchanged.
+    let near = Vec3::new(1.0, 2.0, 3.0);
+    assert_eq!(keep_eye_inside(focus, near), near);
+    // Outside the hall the camera is free.
+    let outside = Vec3::new(0.0, 1.6, -10.0);
+    let far = Vec3::new(0.0, 6.0, -19.0);
+    assert_eq!(keep_eye_inside(outside, far), far);
+    let mut runtime = entered();
+    runtime.set_spawn(Vec3::new(0.0, 0.0, 5.0), 0.0).unwrap();
+    let view = runtime.view(1.6);
+    assert!(view.eye.z >= 1.5 - 1e-4 && view.eye.y <= 2.2 + 1e-4);
+}
+
+#[test]
+fn the_map_lists_the_return_portal_and_the_studio_stations() {
+    let mut hud = crate::minimap::MapHud::default();
+    hud.expanded = true;
+    let map = hud.snapshot_for_zone(
+        [393.0, 852.0],
+        [0.0, -25.0],
+        true,
+        "",
+        None,
+        ZoneId::Everglade,
+    );
+    let ids: Vec<&str> = map.landmarks.iter().map(|l| l.id).collect();
+    assert_eq!(ids[0], "return");
+    assert_eq!(ids.len(), STATIONS.len());
+    for station in STATIONS.iter().filter(|s| s.id != "approach") {
+        assert!(ids.contains(&station.id), "{}", station.id);
+    }
+    assert!(
+        crate::minimap::LANDMARKS
+            .iter()
+            .any(|l| l.id == "everglade" && l.label == "Everglade portal")
+    );
+}
+
+#[test]
+fn walking_and_jumping_follow_the_slope_and_the_camera_stays_above_it() {
+    let mut runtime = entered();
+    // On the rise, facing outward toward the tree ring.
+    let at = Vec3::new(0.0, 0.0, -140.0);
+    runtime
+        .set_spawn(at.with_y(height(at.x, at.z)), std::f32::consts::PI)
+        .unwrap();
+    let start = runtime.player.pos;
+    let forward = InputState {
+        forward: true,
+        ..Default::default()
+    };
+    for _ in 0..30 {
+        runtime.tick(&forward, 0.05);
+    }
+    let p = runtime.player.pos;
+    assert!(p.z < start.z - 5.0);
+    assert!(p.y > start.y + 0.5, "the ground rose: {start} to {p}");
+    assert!((p.y - height(p.x, p.z)).abs() < 1e-4);
+    assert!(!runtime.player.airborne());
+    runtime.tick(
+        &InputState {
+            jump: true,
+            ..Default::default()
+        },
+        0.05,
+    );
+    assert!(runtime.player.pos.y > height(runtime.player.pos.x, runtime.player.pos.z));
+    for _ in 0..60 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    let p = runtime.player.pos;
+    assert!((p.y - height(p.x, p.z)).abs() < 1e-4, "landed on the slope");
+    // Turn to face downhill so the camera sits behind, over rising ground.
+    runtime.player.yaw = 0.0;
+    runtime.camera.distance = crate::camera::MIN_DISTANCE;
+    runtime.camera.pitch = -0.6;
+    let eye = runtime.view(1.0).eye;
+    assert!(eye.y >= height(eye.x, eye.z) + 0.399);
+}
+
+#[test]
+fn walls_stop_the_player_and_the_doorways_let_it_in() {
+    let mut runtime = entered();
+    let forward = InputState {
+        forward: true,
+        ..Default::default()
+    };
+    // Walking north at a window stops outside the south wall.
+    runtime.set_spawn(Vec3::new(-5.0, 0.0, -1.0), 0.0).unwrap();
+    for _ in 0..40 {
+        runtime.tick(&forward, 0.05);
+    }
+    assert!(
+        runtime.player.pos.z < HALL.0[1] - HALL.1[1],
+        "{}",
+        runtime.player.pos
+    );
+    // Walking north through a doorway enters the hall.
+    runtime.set_spawn(Vec3::new(1.0, 0.0, -1.0), 0.0).unwrap();
+    for _ in 0..20 {
+        runtime.tick(&forward, 0.05);
+    }
+    assert!(
+        runtime.player.pos.z > HALL.0[1] - HALL.1[1] + 1.0,
+        "{}",
+        runtime.player.pos
+    );
+}
+
+#[test]
+fn the_caption_names_the_station_in_reach() {
+    let mut runtime = entered();
+    let wall = STATIONS.iter().find(|s| s.id == "task_wall").unwrap();
+    runtime.set_spawn(wall.position(), wall.facing).unwrap();
+    let caption = runtime.zone_snapshot(1.0).caption;
+    assert!(
+        caption.contains("Task Wall · Yard notice board"),
+        "{caption}"
+    );
+    // At most four HUD lines.
+    assert!(caption.lines().count() <= 4);
+}
+
+#[test]
+fn other_zones_intents_are_refused_in_everglade() {
+    let mut runtime = entered();
+    for intent in [
+        Intent::Enter,
+        Intent::Grab,
+        Intent::Tether,
+        Intent::Increase,
+        Intent::Step,
+        Intent::Fireball,
+    ] {
+        assert!(runtime.zone_intent(intent).is_err(), "{intent:?}");
+        assert_eq!(runtime.zone, ZoneId::Everglade);
+    }
+}
+
+#[test]
+fn a_launch_into_everglade_loads_from_anywhere_in_the_plaza() {
+    let mut runtime = WorldRuntime::new();
+    // No zone storage: nothing to load from.
+    assert!(runtime.enter_everglade().is_err());
+    assert!(runtime.is_plaza() && !runtime.zone_loading());
+    let cache = cached_pack();
+    runtime.configure_zone_cache(cache.path().to_path_buf());
+    // At the spawn, far from every portal, the launch still enters.
+    runtime.enter_everglade().unwrap();
+    assert!(runtime.zone_loading());
+    assert!(runtime.enter_everglade().is_err(), "one load at a time");
+    finish_loading(&mut runtime);
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+    assert!(runtime.enter_everglade().is_err(), "only from the plaza");
+}
+
+#[test]
+fn a_studio_notice_leads_the_everglade_caption() {
+    let mut runtime = entered();
+    let wall = STATIONS.iter().find(|s| s.id == "task_wall").unwrap();
+    runtime.set_spawn(wall.position(), wall.facing).unwrap();
+    runtime.set_studio_notice(Some("  No coding agent can sign in.  ".into()));
+    let caption = runtime.zone_snapshot(1.0).caption;
+    assert!(
+        caption.starts_with("No coding agent can sign in. · "),
+        "{caption}"
+    );
+    assert!(caption.contains("Task Wall"), "{caption}");
+    runtime.set_studio_notice(Some("   ".into()));
+    assert!(
+        !runtime
+            .zone_snapshot(1.0)
+            .caption
+            .contains("No coding agent")
+    );
+}
+
+/// A zone cache that already holds the pinned pack, so an entry loads
+/// offline.
+fn cached_pack() -> tempfile::TempDir {
+    let cache = tempfile::tempdir().unwrap();
+    std::fs::copy(
+        pack_path(),
+        cache.path().join(format!(
+            "{}.{}",
+            everglade_pack::PACK_SHA256,
+            everglade_pack::PACK_EXTENSION
+        )),
+    )
+    .unwrap();
+    cache
+}
+
+/// Walks forward for up to `seconds`, stopping once `done` holds.
+fn walk_until(runtime: &mut WorldRuntime, seconds: f32, done: fn(&WorldRuntime) -> bool) -> bool {
+    let forward = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    for _ in 0..(seconds * 60.0) as usize {
+        runtime.tick(&forward, 1.0 / 60.0);
+        if done(runtime) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Polls the loader until the zone installs.
+fn finish_loading(runtime: &mut WorldRuntime) {
+    let deadline = Instant::now() + Duration::from_secs(180);
+    while !runtime.zone_tick() {
+        assert!(
+            runtime.zone_loading(),
+            "load stopped: {:?}",
+            runtime.zone_state.error
+        );
+        assert!(Instant::now() < deadline, "the cached pack did not load");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Stands in front of `gate`, facing through it.
+fn facing(runtime: &mut WorldRuntime, gate: crate::zones::Gate) {
+    let (front, away) = gate.front();
+    runtime
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+}
+
+#[test]
+fn walking_through_the_grids_everglade_arch_loads_the_pack_and_the_grid_arch_returns() {
+    let mut runtime = WorldRuntime::bare();
+    // Without zone storage the Grid has no arch to Everglade.
+    assert!(runtime.everglade_gate().is_none());
+    let cache = cached_pack();
+    runtime.configure_zone_cache(cache.path().to_owned());
+    let gate = runtime
+        .everglade_gate()
+        .expect("the Grid's arch to Everglade");
+    // The Lagrange 1 portal stays hidden: only Everglade's arch draws.
+    assert!(runtime.grid_gate().is_none());
+    let drawn = runtime.grid_portal_mesh();
+    let arch = gate.mesh(ZoneId::Plaza, "EVERGLADE", 0.0);
+    assert_eq!(drawn.lines.len(), arch.lines.len());
+    assert_eq!(drawn.faces.len(), arch.faces.len());
+    // No button: in front of the arch nothing offers to enter.
+    facing(&mut runtime, gate);
+    let snapshot = runtime.zone_snapshot(1.0);
+    assert!(!snapshot.portal.near && snapshot.controls.is_empty());
+    assert!(runtime.zone_intent(Intent::Enter).is_err());
+
+    // Walking into the opening starts the pack load, on the Grid, with the
+    // panel's progress and Cancel.
+    assert!(walk_until(&mut runtime, 3.0, WorldRuntime::zone_loading));
+    assert!(runtime.is_plaza());
+    let loading = runtime.zone_snapshot(1.0);
+    assert!(
+        loading.caption.starts_with("Loading Everglade"),
+        "{}",
+        loading.caption
+    );
+    assert!(loading.controls.iter().any(|c| c.action == Intent::Cancel));
+    finish_loading(&mut runtime);
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+    assert!(runtime.is_bare());
+    assert_eq!(runtime.player.pos, Everglade::spawn());
+    // The panel's return reads The Grid, and the zone's arch is lettered
+    // for it.
+    let inside = runtime.zone_snapshot(1.0);
+    assert!(
+        inside
+            .controls
+            .iter()
+            .any(|c| c.action == Intent::Return && c.label == "The Grid")
+    );
+    let back = crate::zones::Gate::fixed(RETURN_PORTAL);
+    assert_eq!(
+        runtime.grid_portal_mesh().lines.len(),
+        back.mesh(ZoneId::Everglade, "THE GRID", 0.0).lines.len()
+    );
+
+    // Walking through the return arch, once the crossing's one-second
+    // cooldown has passed, comes back in front of the Grid's arch, facing
+    // away, so walking on does not enter again.
+    for _ in 0..70 {
+        runtime.tick(&InputState::default(), 1.0 / 60.0);
+    }
+    facing(&mut runtime, back);
+    assert!(walk_until(&mut runtime, 3.0, WorldRuntime::is_plaza));
+    let (front, away) = gate.front();
+    assert_eq!(runtime.player.pos, front);
+    assert!((runtime.player.yaw - crate::controller::wrap(away)).abs() < 1e-5);
+    assert!(runtime.world.mesh.textured.is_none());
+    assert!(!walk_until(&mut runtime, 1.0, |r| r.zone_loading() || !r.is_plaza()));
+
+    // A failed load offers Retry on the Grid, which loads again; inside,
+    // the panel's The Grid button comes back to the same place.
+    facing(&mut runtime, gate);
+    assert!(walk_until(&mut runtime, 3.0, WorldRuntime::zone_loading));
+    runtime.zone_intent(Intent::Cancel).unwrap();
+    runtime.zone_load_failed("offline");
+    let failed = runtime.zone_snapshot(1.0);
+    let retry = failed.controls.iter().find(|c| c.action == Intent::Retry);
+    assert!(retry.is_some_and(|c| c.enabled), "{:?}", failed.controls);
+    // The canceled worker may still be finishing; Retry until it starts.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while runtime.zone_intent(Intent::Retry).is_err() {
+        assert!(Instant::now() < deadline, "{:?}", runtime.zone_state.error);
+        runtime.zone_load_failed("offline");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    finish_loading(&mut runtime);
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+    runtime.zone_intent(Intent::Return).unwrap();
+    assert!(runtime.is_plaza());
+    assert_eq!(runtime.player.pos, gate.front().0);
+}
+
+#[test]
+fn the_player_is_the_outfitted_character_and_no_companion_follows() {
+    let mut runtime = entered();
+    let idle = crate::controller::InputState::default();
+    for _ in 0..5 {
+        runtime.tick(&idle, 0.05);
+    }
+    let dynamic = runtime.dynamic_mesh();
+    let figure = dynamic.figure.as_ref().expect("the posed character");
+    figure.validate().unwrap();
+    // It stands on the ground where the player does, about as tall as one;
+    // the figure's other vertices are the town's creatures (`wildlife`).
+    let feet = runtime.player.pos;
+    let near = |v: &&crate::pbr::textured::TexturedVertex| {
+        (v.pos[0] - feet.x).hypot(v.pos[2] - feet.z) < 1.2
+    };
+    let (low, high) = figure
+        .vertices
+        .iter()
+        .filter(near)
+        .fold((f32::MAX, f32::MIN), |(lo, hi), v| {
+            (lo.min(v.pos[1]), hi.max(v.pos[1]))
+        });
+    assert!(
+        (low - feet.y).abs() < 0.15,
+        "feet at {low}, ground {}",
+        feet.y
+    );
+    assert!((1.5..2.3).contains(&(high - feet.y)), "head at {high}");
+    assert!(figure.vertices.iter().filter(near).count() > 1000);
+    // No boxy avatar and no spade: no amber edges at the player at all.
+    let spade = runtime.agent.mesh();
+    assert!(
+        dynamic
+            .lines
+            .iter()
+            .all(|v| !spade.lines.iter().any(|s| s.pos == v.pos))
+    );
+    assert!(!runtime.companion_present());
+    assert!(!runtime.companion(1.6).near);
+    assert!(!runtime.pet_companion());
+}
+
+#[test]
+fn zooming_all_the_way_in_looks_through_the_players_eyes_and_hides_the_character() {
+    use crate::camera::{TRANSITION_SECONDS, head};
+    use crate::controller::InputState;
+    use crate::runtime::Action;
+    let mut runtime = entered();
+    runtime.set_spawn(Vec3::new(0.0, 0.0, -29.0), 0.0).unwrap();
+    let idle = InputState::default();
+    let settle = |runtime: &mut WorldRuntime| {
+        for _ in 0..10 {
+            runtime.tick(&idle, TRANSITION_SECONDS / 4.0);
+        }
+    };
+    settle(&mut runtime);
+    // The player's own posed character: every vertex near the feet, with a
+    // body's height between the lowest and the highest.
+    let near_feet = |runtime: &WorldRuntime| {
+        let feet = runtime.player.pos;
+        let figure = runtime.dynamic_mesh().figure.expect("the posed character");
+        figure.validate().unwrap();
+        figure
+            .vertices
+            .iter()
+            .map(|v| Vec3::from(v.pos))
+            .filter(|p| (p.x - feet.x).hypot(p.z - feet.z) < 1.2)
+            .fold((f32::MAX, f32::MIN), |(lo, hi), p| {
+                (lo.min(p.y), hi.max(p.y))
+            })
+    };
+    let (low, high) = near_feet(&runtime);
+    assert!(high - low > 1.5, "the character stands in third person");
+    // The nearest orbit alone stays third person; zooming on enters first.
+    for _ in 0..3 {
+        runtime.apply(Action::Zoom { lines: 5.0 }).unwrap();
+    }
+    assert!(runtime.first_person());
+    settle(&mut runtime);
+    assert!(runtime.hides_avatar());
+    let eye = runtime.view(1.6).eye;
+    assert!(eye.distance(head(runtime.player.pos)) < 1e-4, "{eye}");
+    let (low, high) = near_feet(&runtime);
+    assert!(
+        high - low < 1e-6,
+        "the player's character is hidden, spanning {low}..{high}"
+    );
+    // Looking aside and walking turns the body to the view, so the player
+    // walks where it looks; the eye stays at the head.
+    runtime
+        .apply(Action::Orbit {
+            dx: -200.0,
+            dy: 0.0,
+        })
+        .unwrap();
+    let view_yaw = runtime.player.yaw + runtime.camera.yaw_offset;
+    let start = runtime.player.pos;
+    let walk = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    for _ in 0..20 {
+        runtime.tick(&walk, 0.05);
+    }
+    assert!((runtime.player.yaw - view_yaw).abs() < 1e-4);
+    let moved = runtime.player.pos - start;
+    let heading = crate::controller::forward(view_yaw);
+    assert!(moved.x * heading.x + moved.z * heading.z > 1.0, "{moved}");
+    assert!(runtime.view(1.6).eye.distance(head(runtime.player.pos)) < 1e-4);
+    // Zooming out glides back to the nearest orbit with the character.
+    runtime.apply(Action::Zoom { lines: -2.0 }).unwrap();
+    assert!(!runtime.first_person());
+    settle(&mut runtime);
+    assert!(!runtime.hides_avatar());
+    let (low, high) = near_feet(&runtime);
+    assert!(high - low > 1.5);
+    let eye = runtime.view(1.6).eye;
+    assert!(eye.distance(head(runtime.player.pos)) > 1.5, "{eye}");
+}
+
+#[test]
+fn movement_drives_the_characters_clips() {
+    use crate::controller::InputState;
+    use crate::zones::everglade::player::Motion;
+    let mut runtime = entered();
+    let motion = |runtime: &WorldRuntime| {
+        runtime
+            .zone_state
+            .everglade
+            .as_ref()
+            .and_then(Everglade::player_motion)
+    };
+    runtime.tick(&InputState::default(), 0.05);
+    assert_eq!(motion(&runtime), Some(Motion::Idle));
+    let forward = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    let before = runtime.dynamic_mesh().figure.unwrap().vertices;
+    for _ in 0..4 {
+        runtime.tick(&forward, 0.05);
+    }
+    assert_eq!(motion(&runtime), Some(Motion::Run));
+    // The pose follows the player rather than standing still.
+    assert_ne!(runtime.dynamic_mesh().figure.unwrap().vertices, before);
+    let back = InputState {
+        backward: true,
+        ..InputState::default()
+    };
+    for _ in 0..4 {
+        runtime.tick(&back, 0.05);
+    }
+    assert_eq!(motion(&runtime), Some(Motion::Backpedal));
+    // A sideways step strafes instead of running forward.
+    for (input, strafe) in [
+        (
+            InputState {
+                strafe_left: true,
+                ..InputState::default()
+            },
+            Motion::StrafeLeft,
+        ),
+        (
+            InputState {
+                strafe_right: true,
+                ..InputState::default()
+            },
+            Motion::StrafeRight,
+        ),
+    ] {
+        for _ in 0..4 {
+            runtime.tick(&input, 0.05);
+        }
+        assert_eq!(motion(&runtime), Some(strafe));
+    }
+    runtime.tick(
+        &InputState {
+            jump: true,
+            ..InputState::default()
+        },
+        0.05,
+    );
+    assert_eq!(motion(&runtime), Some(Motion::Jump));
+}
+
+#[test]
+fn a_station_caption_names_the_control_the_device_has() {
+    use crate::runtime::InteractHint;
+    let podium = STATIONS.iter().find(|s| s.id == "podium").unwrap();
+    let at = Vec3::new(podium.at[0], 0.0, podium.at[1]);
+    assert!(Everglade::caption(at, InteractHint::Key).contains("F opens the decisions"));
+    let tap = Everglade::caption(at, InteractHint::Tap);
+    assert!(tap.contains("Tap Decisions to open the decisions"), "{tap}");
+    assert!(!tap.contains("F opens"));
+    let none = Everglade::caption(at, InteractHint::None);
+    assert!(!none.contains("F opens") && !none.contains("Tap"), "{none}");
+    // Away from every station, a device with no panels is not asked to
+    // walk up to one.
+    let away = Vec3::new(55.0, 0.0, 55.0);
+    assert!(!Everglade::caption(away, InteractHint::None).contains("station"));
+    // The OpenAgents app's Grid world opens no panel; Coder's phones tap.
+    assert_eq!(WorldRuntime::bare().interact_hint, InteractHint::None);
+    assert_eq!(WorldRuntime::new().interact_hint, InteractHint::Key);
+}
+
+#[test]
+fn movement_hotbar_levitates_changes_altitude_and_lands() {
+    use crate::controller::InputState;
+    let mut runtime = entered();
+    runtime.zone_intent(Intent::Lower).unwrap_err();
+    // A tap starts levitating 1.5 m up.
+    runtime.everglade_levitate(true).unwrap();
+    runtime.tick(&InputState::default(), 0.05);
+    runtime.everglade_levitate(false).unwrap();
+    for _ in 0..30 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    assert!(runtime.everglade_levitating());
+    let hovering = runtime.player.pos.y;
+    assert!((hovering - 1.5).abs() < 0.01);
+    // Holding Levitate rises at 3 m/s after the first quarter second, and
+    // letting go holds the altitude.
+    runtime.everglade_levitate(true).unwrap();
+    for _ in 0..25 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    runtime.everglade_levitate(false).unwrap();
+    let held = runtime.player.pos.y;
+    assert!(held - hovering > 2.5, "{held}");
+    for _ in 0..30 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    assert!(runtime.everglade_levitating());
+    assert!(
+        (runtime.player.pos.y - held).abs() < 0.05,
+        "{}",
+        runtime.player.pos.y
+    );
+    // A held X descends.
+    for _ in 0..20 {
+        runtime.everglade_climb(-1.0, 0.05);
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    assert!(runtime.player.pos.y < held - 1.0);
+    // A tap while levitating stops: the character drops under gravity,
+    // faster and faster.
+    runtime.everglade_levitate(true).unwrap();
+    runtime.tick(&InputState::default(), 0.05);
+    runtime.everglade_levitate(false).unwrap();
+    assert!(!runtime.everglade_levitating());
+    let before = runtime.player.pos.y;
+    runtime.tick(&InputState::default(), 0.05);
+    let first = before - runtime.player.pos.y;
+    let mid = runtime.player.pos.y;
+    runtime.tick(&InputState::default(), 0.05);
+    assert!(runtime.player.airborne());
+    assert!(mid - runtime.player.pos.y > first, "falls, not floats");
+    for _ in 0..30 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    assert!(!runtime.player.airborne());
+    runtime.zone_intent(Intent::Jump).unwrap();
+    runtime.tick(&InputState::default(), 0.05);
+    assert!(runtime.player.airborne());
+    runtime.zone_intent(Intent::Sprint).unwrap();
+    runtime.tick(
+        &InputState {
+            forward: true,
+            ..InputState::default()
+        },
+        0.05,
+    );
+    assert!(
+        (runtime.player.speed - crate::controller::RUN_SPEED * crate::controller::SPRINT_MULT)
+            .abs()
+            < 0.01
+    );
+    runtime.zone_intent(Intent::Return).unwrap();
+    assert!(runtime.zone_intent(Intent::Levitate).is_err());
+}
+
+#[test]
+fn landing_over_the_hall_comes_down_on_its_roof() {
+    use crate::controller::InputState;
+    let mut runtime = entered();
+    runtime.everglade_levitate(true).unwrap();
+    for _ in 0..80 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    runtime.everglade_levitate(false).unwrap();
+    assert!(runtime.player.pos.y > 8.0, "{}", runtime.player.pos.y);
+    // Drift over the middle of the hall's west roof, then land.
+    let ([cx, cz], [hx, _]) = crate::zones::everglade::HALL;
+    runtime.player.pos.x = cx - hx / 2.0;
+    runtime.player.pos.z = cz;
+    runtime.zone_intent(Intent::Levitate).unwrap();
+    for _ in 0..200 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    assert!(!runtime.player.airborne());
+    assert!(
+        runtime.player.pos.y > crate::zones::everglade::layout::WALL_TOP + 1.0,
+        "landed at {}, inside the hall",
+        runtime.player.pos.y
+    );
+}
+
+#[test]
+fn the_city_is_sixteen_times_the_glade_and_every_door_opens_from_the_spawn() {
+    // The clearing the city stands in has sixteen times the area of the
+    // 34 m glade it grew from, and every doorway stays inside it.
+    assert!(CLEARING_RADIUS * CLEARING_RADIUS >= 16.0 * 34.0 * 34.0);
+    let blockers = &world().blockers;
+    // Within navigation's bound: every blocker counts in a route.
+    assert!(blockers.len() <= 4_096, "{}", blockers.len());
+    let spawn = [Everglade::spawn().x, Everglade::spawn().z];
+    let doors = layout::doors();
+    let fronts = layout::fronts();
+    assert!(doors.len() + fronts.len() >= 70, "{}", doors.len());
+    let mut names = std::collections::BTreeSet::new();
+    // A generated building's door is closed; the step outside it is on
+    // open ground and reached from the spawn.
+    for (name, front) in &fronts {
+        assert!(names.insert(*name), "duplicate {name}");
+        assert!(
+            !blockers.iter().any(|b| b.contains(front[0], front[1], 0.3)),
+            "{name}'s front step is blocked"
+        );
+        let route = crate::nav::plan(spawn, *front, blockers, HALF_EXTENT);
+        assert!(route.is_ok(), "{name}: {route:?}");
+        assert!(front[0].hypot(front[1]) < CLEARING_RADIUS, "{name}");
+    }
+    for (name, outside, inside) in doors {
+        assert!(names.insert(name), "duplicate {name}");
+        let route = crate::nav::plan(spawn, outside, blockers, HALF_EXTENT);
+        assert!(route.is_ok(), "{name}: {route:?}");
+        assert!(
+            crate::nav::segment_clear(outside, inside, blockers, HALF_EXTENT),
+            "{name}'s doorway is blocked"
+        );
+        assert!(outside[0].hypot(outside[1]) < CLEARING_RADIUS, "{name}");
+    }
+    // The ponds stop the player at their banks, and their water draws.
+    for ([x, z], _) in layout::PONDS {
+        assert!(blockers.iter().any(|b| b.contains(x, z, 0.0)));
+    }
+    // Each district has its buildings: dozens of roofs, not one hall,
+    // kit-built and generated.
+    let roofs = layout::placements()
+        .iter()
+        .filter(|p| p.model == layout::HOUSE_ROOF)
+        .count();
+    let generated = layout::generated()
+        .iter()
+        .filter(|i| !i.model.roofs.is_empty())
+        .count();
+    assert!(generated >= 20, "{generated}");
+    assert!(roofs + generated >= 80, "{roofs} + {generated}");
+    // No two city buildings overlap.
+    let rects: Vec<_> = layout::city::BUILDINGS
+        .iter()
+        .map(|b| (b.name, b.rect))
+        .collect();
+    for (i, (a, ([ax, az], [ahx, ahz]))) in rects.iter().enumerate() {
+        for (b, ([bx, bz], [bhx, bhz])) in &rects[i + 1..] {
+            let apart = (ax - bx).abs() >= ahx + bhx + 1.0 || (az - bz).abs() >= ahz + bhz + 1.0;
+            assert!(apart, "{a} and {b} overlap");
+        }
+    }
+    // The observatory stands on its hill's flat top.
+    let observatory = layout::city::BUILDINGS
+        .iter()
+        .find(|b| b.name == "observatory")
+        .unwrap();
+    let ([ox, oz], [ohx, ohz]) = observatory.rect;
+    let top = height(ox, oz);
+    assert!(top > 4.0);
+    for (dx, dz) in [(-ohx, -ohz), (ohx, -ohz), (-ohx, ohz), (ohx, ohz)] {
+        assert!((height(ox + dx, oz + dz) - top).abs() < 1e-3);
+    }
+}
+
+/// Triangles a frame draws from a camera at `eye` looking along `toward`:
+/// with view culling alone, with the fog and detail culling the stage
+/// applies (`pbr::textured::drawn`) but every cell at its near level, as
+/// before the far levels of detail, and with each cell at the level it draws
+/// at. A frame-cost proxy for the town.
+fn drawn_triangles(eye: Vec3, toward: Vec3) -> (u64, u64, u64) {
+    use crate::pbr::textured;
+    let scene = world().mesh.textured.as_ref().unwrap();
+    let merged = scene.merge().unwrap();
+    let view = glam::Mat4::look_to_rh(eye, toward.normalize(), Vec3::Y);
+    let proj =
+        glam::Mat4::perspective_rh(crate::camera::FOV_Y, 16.0 / 9.0, 0.1, crate::camera::FAR);
+    let view_proj = proj * view;
+    let far = atmosphere(ZoneId::Everglade).fog_end;
+    let (mut frustum, mut near, mut drawn) = (0, 0, 0);
+    for b in &merged.batches {
+        let triangles = u64::from(b.count / 3);
+        let far_level = matches!(b.level, textured::Level::Far { .. });
+        if textured::in_frustum(b.min, b.max, view_proj) && !far_level {
+            frustum += triangles;
+        }
+        if textured::drawn(b.min, b.max, view_proj, eye, far) {
+            if !far_level {
+                near += triangles;
+            }
+            if b.level.drawn_from(eye) {
+                drawn += triangles;
+            }
+        }
+    }
+    (frustum, near, drawn)
+}
+
+#[test]
+fn a_frame_draws_a_fraction_of_the_city() {
+    let scene = world().mesh.textured.as_ref().unwrap();
+    let merged = scene.merge().unwrap();
+    let total = merged.indices.len() as u64 / 3;
+    let vertex_bytes =
+        merged.vertices.len() * std::mem::size_of::<crate::pbr::textured::TexturedVertex>();
+    let index_bytes = merged.indices.len() * 4;
+    eprintln!(
+        "Everglade merges {total} triangles in {} cells: {} MB of vertices and indices",
+        merged.batches.len(),
+        (vertex_bytes + index_bytes) / (1 << 20)
+    );
+    let views = [
+        (
+            "spawn",
+            Vec3::new(0.0, 2.6, -24.0),
+            Vec3::new(0.0, -0.15, 1.0),
+        ),
+        (
+            "center",
+            Vec3::new(0.0, 2.6, 20.0),
+            Vec3::new(0.0, -0.1, 1.0),
+        ),
+        (
+            "market",
+            Vec3::new(0.0, 2.6, 50.0),
+            Vec3::new(-1.0, -0.1, 0.0),
+        ),
+        (
+            "lantern",
+            Vec3::new(-60.0, 2.6, -8.0),
+            Vec3::new(1.0, -0.1, 0.2),
+        ),
+        (
+            "brownstone",
+            Vec3::new(-30.0, 2.6, -78.0),
+            Vec3::new(1.0, -0.1, 0.3),
+        ),
+        (
+            "foundry",
+            Vec3::new(64.0, 2.6, 6.0),
+            Vec3::new(-1.0, -0.1, 0.0),
+        ),
+        (
+            "observatory",
+            Vec3::new(64.0, 9.0, -46.0),
+            Vec3::new(-1.0, -0.15, 0.8),
+        ),
+        (
+            "south edge",
+            Vec3::new(0.0, 2.6, -125.0),
+            Vec3::new(0.0, -0.05, 1.0),
+        ),
+    ];
+    for (name, eye, toward) in views {
+        let (frustum, near, drawn) = drawn_triangles(eye, toward);
+        eprintln!(
+            "from the {name}: {frustum} triangles in view, {near} drawn at the near levels, \
+             {drawn} at each cell's level"
+        );
+        assert!(drawn <= near && near <= frustum, "{name}: {drawn}");
+        assert!(drawn <= DRAWN_TRIANGLE_BUDGET, "{name}: {drawn}");
+    }
+}
+
+#[test]
+fn brownstone_row_crosses_glade_run_on_its_footbridge() {
+    let blockers = &world().blockers;
+    // Brownstone Row passes over the stream on the footbridge, and nothing
+    // stops a walker wading across it anywhere else.
+    let ([bx, bz], _) = layout::BRIDGE;
+    assert!(crate::nav::segment_clear(
+        [bx - 6.0, bz],
+        [bx + 6.0, bz],
+        blockers,
+        HALF_EXTENT
+    ));
+    assert!(crate::nav::segment_clear(
+        [-4.0, -102.0],
+        [4.0, -102.0],
+        blockers,
+        HALF_EXTENT
+    ));
+    // The deck climbs and falls a step at a time, so a walker goes over it.
+    let steps = layout::bridge_steps();
+    let mut last = height(bx - 4.0, bz);
+    for (footprint, top) in &steps {
+        assert!((top - last).abs() <= solids::STEP, "{top} after {last}");
+        assert!(footprint.max[0] > footprint.min[0]);
+        last = *top;
+    }
+    assert!((last - height(bx + 4.0, bz)).abs() <= solids::STEP);
+    // Every generated landmark and building is in the pack and placed.
+    let placements = layout::placements();
+    for model in [
+        "generated/observatory",
+        "generated/fountain",
+        "generated/bandshell",
+        "generated/market_stall_red",
+        "generated/market_stall_blue",
+        "generated/library",
+        "generated/tavern",
+        "generated/market_hall",
+        "generated/corner_shop",
+        "generated/l_house",
+        "generated/cottage_tower",
+        "generated/row_townhouse",
+        "generated/townhouse_jettied",
+        "generated/townhouse_balcony",
+        "generated/footbridge",
+    ] {
+        assert!(placements.iter().any(|p| p.model == model), "{model}");
+    }
+    // A generated building's roof is a surface to land on, like a kit
+    // roof.
+    let solids = solids::build(pack(), &placements).unwrap();
+    for instance in layout::generated() {
+        for roof in instance.roofs() {
+            let [x, z] = roof.center;
+            let floor = solids.floor(x, z, 40.0);
+            assert!(floor >= roof.eave - 0.01, "{}: {floor}", instance.name);
+        }
+    }
+}
+
+/// A walker at `from` facing `to` on the zone's solids, walking forward for
+/// `seconds`; returns where it stops and the most it rose above the ground
+/// on the way, m.
+fn walk_across(from: [f32; 2], to: [f32; 2], seconds: f32) -> (Vec3, f32) {
+    use crate::controller::{InputState, PlayerController};
+    static SOLIDS: OnceLock<solids::Solids> = OnceLock::new();
+    let solids = SOLIDS
+        .get_or_init(|| solids::build(pack(), &layout::placements()).expect("the solids build"));
+    let yaw = (to[0] - from[0]).atan2(to[1] - from[1]);
+    let mut player = PlayerController::new(Vec3::new(from[0], 0.0, from[1]), yaw);
+    player.pos.y = solids.floor(from[0], from[1], height(from[0], from[1]));
+    player.set_surface_height(player.pos.y);
+    let input = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    let mut rose = 0.0_f32;
+    for _ in 0..(seconds * 60.0) as usize {
+        solids.step(&mut player, &input, 1.0 / 60.0, HALF_EXTENT, true);
+        rose = rose.max(player.pos.y - height(player.pos.x, player.pos.z));
+    }
+    (player.pos, rose)
+}
+
+#[test]
+fn a_walker_crosses_glade_run_on_the_footbridge_from_either_bank() {
+    let ([bx, bz], _) = layout::BRIDGE;
+    for (from, to) in [
+        ([bx - 7.0, bz], [bx + 7.0, bz]),
+        ([bx + 7.0, bz], [bx - 7.0, bz]),
+    ] {
+        let (end, rose) = walk_across(from, to, 4.0);
+        let crossed = (end.x - bx) * (to[0] - bx).signum();
+        assert!(crossed > 5.0, "from {from:?}, stopped at {end}");
+        assert!((end.z - bz).abs() < 1.5, "kept to the deck: {end}");
+        assert!(rose > 0.4, "over the deck, not under it: {rose} m up");
+    }
+}
+
+#[test]
+fn a_walker_wades_across_glade_run_away_from_the_bridge() {
+    for (from, to) in [
+        ([-5.0, -102.0], [5.0, -102.0]),
+        ([3.0, -56.0], [-5.0, -56.0]),
+    ] {
+        let (end, _) = walk_across(from, to, 4.0);
+        let gone = (end.x - from[0]).abs();
+        assert!(gone > 8.0, "from {from:?}, stopped at {end}");
+    }
+}

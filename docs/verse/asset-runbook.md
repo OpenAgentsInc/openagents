@@ -99,7 +99,7 @@ Before writing code, list what to make and why:
   | Landmark or large hall | under 20,000 (the pack's per-model limit) |
 
   Check the pack's current budgets in
-  [`everglade_pack.rs`](../../crates/verse/src/zones/everglade_pack.rs) and
+  [`everglade_pack.rs`](../../crates/verse-zone-everglade/src/zones/everglade_pack.rs) and
   [Everglade](everglade.md#admission-and-the-zone-pack): pack size,
   committed size, pack triangles, placed and drawn triangles. If a round
   would exceed one, make room first (round 3 shrank the pack from 28 MB to
@@ -217,7 +217,7 @@ admissible as it is.
 
    It writes `<sha256>.vtp`, removes the earlier pack, and prints the
    `PACK_SHA256` and `PACK_BYTES` to pin in
-   [`everglade_pack.rs`](../../crates/verse/src/zones/everglade_pack.rs).
+   [`everglade_pack.rs`](../../crates/verse-zone-everglade/src/zones/everglade_pack.rs).
    Move the old digest into `EVERGLADE_PACK_HISTORY`; never delete history.
    Repin once per round, at the end, after rebasing on other agents' pack
    changes. The compile isn't yet bit-identical across machines (#10622), so
@@ -227,11 +227,11 @@ admissible as it is.
 ## Step 7: Place the models
 
 1. Place them in the zone's layout code; for Everglade, the modules under
-   [`crates/verse/src/zones/everglade/layout/`](../../crates/verse/src/zones/everglade/layout/)
+   [`crates/verse-zone-everglade/src/zones/everglade/layout/`](../../crates/verse-zone-everglade/src/zones/everglade/layout/)
    (`city.rs` for buildings, `greens.rs` and `parks.rs` for parks and
    props, `streets.rs` for street detail). Generated buildings are placed
    through
-   [`layout/generated.rs`](../../crates/verse/src/zones/everglade/layout/generated.rs),
+   [`layout/generated.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/generated.rs),
    which turns each footprint into blockers, its roofs into landing
    surfaces, and its door into a reachable step.
 2. Follow the map's districts. Mix generated buildings with kit-built ones

@@ -4,11 +4,11 @@
 use serde::{Deserialize, Serialize};
 
 pub use verse_zone_crypt as crypt;
+pub use verse_zone_everglade::zones::everglade;
+pub use verse_zone_everglade::zones::everglade_pack;
 pub use verse_zone_ruins::assets;
-pub mod everglade;
-pub mod everglade_pack;
 pub mod gate;
-pub mod grove;
+pub use verse_zone_grove::zones::grove;
 pub mod hud;
 pub use verse_zone_lab as lab;
 pub use verse_zone_lagrange as lagrange;
@@ -17,13 +17,25 @@ pub use verse_zone_ruins as ruins;
 #[cfg(test)]
 mod crypt_tests;
 #[cfg(test)]
+mod everglade_spell_tests;
+#[cfg(test)]
+mod everglade_tests;
+#[cfg(test)]
+mod grove_tests;
+#[cfg(test)]
+mod grove_tower_tests;
+#[cfg(test)]
 mod lab_tests;
 mod runtime;
 mod sight;
 #[cfg(test)]
 mod sight_tests;
 #[cfg(test)]
+mod studio_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod town_tests;
 
 pub(crate) use everglade::Everglade;
 pub use gate::Gate;
@@ -197,28 +209,7 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             fog_end: 90.0,
             height_fog: None,
         },
-        // Warm late-morning haze: the horizon of Everglade's daylight sky,
-        // which fades the tree ring into it. The haze lies low: its density
-        // halves about every 6 m of height, so the hollows fog over before
-        // the ring's high ground, and it brightens toward the Sun.
-        // The Grove stands under Everglade's sky, haze, and light.
-        ZoneId::Everglade | ZoneId::Grove => Atmosphere {
-            color: [0.72, 0.66, 0.50],
-            // The city is about 270 m across: the fog closes past its far
-            // districts, so the tree ring shows as haze from the center,
-            // and the renderer skips every cell beyond it.
-            fog_start: 40.0,
-            fog_end: 180.0,
-            height_fog: Some(verse_engine::lighting::HeightFog {
-                density: 0.005,
-                base: 0.0,
-                falloff: 0.12,
-                start: 40.0,
-                max_opacity: 0.92,
-                sun_strength: 0.4,
-                sun_exponent: 3.0,
-            }),
-        },
+        ZoneId::Everglade | ZoneId::Grove => everglade::ATMOSPHERE,
         // The candlelit hall's near-black air and low fog.
         ZoneId::Crypt => Atmosphere {
             color: crypt::FIELD,

@@ -340,7 +340,7 @@ shows the spell's school color and its initials until one is chosen.
 
 ## Implemented
 
-As of October 5 (#10609), the Grove (`crates/verse/src/zones/grove/`) has
+As of October 5 (#10609), the Grove (`crates/verse-zone-grove/src/zones/grove/`) has
 the four rows above, adapted to the playable demo: no mana, no cooldowns,
 and no charges, so every press casts and a held key recasts six times a
 second.

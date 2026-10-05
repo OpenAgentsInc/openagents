@@ -6,12 +6,12 @@ Delivery step 1 is implemented: the admitted sources under
 `assets/verse/everglade/` and the pack compiler and loader in
 `verse::zones::everglade_pack`. Delivery step 3 is implemented:
 `ZoneId::Everglade` with generated ground and the plaza arch in
-[`zones/everglade/`](../../crates/verse/src/zones/everglade/mod.rs). Delivery
+[`zones/everglade/`](../../crates/verse-zone-everglade/src/zones/everglade/mod.rs). Delivery
 step 4 is implemented: the pack loads on entry, and the layout in
-[`zones/everglade/layout.rs`](../../crates/verse/src/zones/everglade/layout.rs)
+[`zones/everglade/layout.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout.rs)
 places the glade, the workshop, and each station's furniture with their
 blockers. Delivery step 5 is implemented on desktop in
-[`zones/everglade/studio.rs`](../../crates/verse/src/zones/everglade/studio.rs)
+[`zones/everglade/studio.rs`](../../crates/verse-zone-everglade/src/zones/everglade/studio.rs)
 and [`panels/studio.rs`](../../crates/verse/src/panels/studio.rs): seats walk
 between stations from a live host's studio snapshots, and the panels send the
 studio's intents to that host (`verse --everglade`, or `--studio-socket PATH`
@@ -162,7 +162,7 @@ The zone renderer gains textured static meshes:
   and merge into one batch per cell: the city draws in 2,845 batches rather
   than 5,040.
 - The heaviest models have a far level of detail
-  ([`detail`](../../crates/verse/src/zones/everglade/detail.rs)): the
+  ([`detail`](../../crates/verse-zone-everglade/src/zones/everglade/detail.rs)): the
   generated buildings and landmarks, the kit pieces that kit-built houses
   repeat, and the nature kit's and the foliage set's trees and bushes.
   `scripts/blender/everglade_lod.py` makes each from the admitted model
@@ -341,7 +341,7 @@ rocks, logs, stumps, hedges, and planters block walking; shrubs, ferns,
 grass, roots, and ivy don't. None of it breaks but the wall dressing.
 
 The town has ambient wildlife
-([`wildlife`](../../crates/verse/src/zones/everglade/wildlife.rs)): pairs of
+([`wildlife`](../../crates/verse-zone-everglade/src/zones/everglade/wildlife.rs)): pairs of
 songbirds circling over the commons, Main Street, Walden Woods, and
 Fernhollow, and one flitting from crown to crown of the commons' trees;
 ducks paddling on every pond and a frog hopping round each bank; a cat

@@ -551,7 +551,7 @@ desktop moving interval of 100 ms; that interval does not guarantee 10 Hz
 delivery. Lagrange's restorable physics state is not a hosted zone service.
 
 Everglade uses its own height/footprint/roof collision representation in
-[`solids`](../../crates/verse/src/zones/everglade/solids.rs), while the chamber
+[`solids`](../../crates/verse-zone-everglade/src/zones/everglade/solids.rs), while the chamber
 uses shared capsule/mesh queries. Agent Studio seat motion is client presentation.
 These paths cannot be assumed to agree across viewers or transitions.
 
@@ -1447,7 +1447,7 @@ character state; rollback never creates a second active writer.
 
 [`original`](../../crates/verse-imported/src/imported/original.rs),
 [`characters`](../../crates/verse-imported/src/imported/characters.rs), and the
-[`Everglade compiler`](../../crates/verse/src/zones/everglade_pack/compile.rs)
+[`Everglade compiler`](../../crates/verse-zone-everglade/src/zones/everglade_pack/compile.rs)
 are useful Rust content pipelines. Scenes and catalogs can be authored as data,
 and validated reload exists. Geometry, collision profiles, layout, clip mapping,
 icons, and many gameplay definitions still require Rust changes. No integrated
