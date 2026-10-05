@@ -83,7 +83,7 @@ pub struct View {
     pub mine: bool,
     /// Why "Use my keys for everything" can't be turned on now.
     pub mine_blocked: Option<String>,
-    /// "Running on OpenAgents." or "Running on your keys."
+    /// Who pays for model calls, such as "Running on your keys."
     pub status: String,
     /// The last thing a tap said, such as the TypeSafe-only refusal.
     pub notice: Option<String>,
@@ -440,6 +440,9 @@ impl ProviderKeys {
 mod tests {
     use super::*;
 
+    /// The status line while OpenAgents pays for model calls.
+    const OURS: &str = "Model calls are paid by OpenAgents (models.payer ours). To use your keys: openagents settings set models.payer mine";
+
     const KEY: &str = "sk-or-v1-0123456789abcdefWXYZ";
 
     fn works() -> State {
@@ -488,7 +491,7 @@ mod tests {
                 .iter()
                 .all(|row| row.input.secret && row.input.purpose == "provider_key")
         );
-        assert_eq!(view.status, "Running on OpenAgents.");
+        assert_eq!(view.status, OURS);
         // Done is read once.
         assert!(keys.view().done.is_empty());
         assert!(!keys.access().is_mine());
@@ -553,7 +556,7 @@ mod tests {
         keys.remove("openrouter");
         let view = keys.view();
         assert!(!view.mine);
-        assert_eq!(view.status, "Running on OpenAgents.");
+        assert_eq!(view.status, OURS);
         assert!(!keys.access().is_mine());
     }
 
