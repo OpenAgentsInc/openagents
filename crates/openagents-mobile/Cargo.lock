@@ -1748,6 +1748,8 @@ dependencies = [
  "serde_json",
  "tokio",
  "verse",
+ "verse-engine",
+ "verse-world",
 ]
 
 [[package]]
@@ -9200,11 +9202,17 @@ name = "verse-world"
 version = "0.1.0"
 dependencies = [
  "coder-access",
+ "coder-reach",
+ "getrandom 0.3.4",
  "glam",
  "physics",
+ "rustls",
+ "secp256k1 0.31.1",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tokio",
+ "tokio-rustls",
  "verse-engine",
 ]
 
