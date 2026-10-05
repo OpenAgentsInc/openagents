@@ -631,6 +631,18 @@ impl Session {
                     }
                 },
                 Ok(Update::Outcome(r)) => {
+                    if let Some(control) = &r.control {
+                        if self.prediction.context() == Some((control.life.into(), control.epoch))
+                            && self.prediction.movement_profile()
+                                == Some(verse_world::movement::Profile::Frames)
+                        {
+                            self.prediction.grant_world_credit(
+                                control.life.into(),
+                                control.epoch,
+                                control.world_step,
+                            )?;
+                        }
+                    }
                     if self.frame_entry_pending {
                         self.frame_entry_pending = false;
                         if matches!(r.body, Reply::Refused { .. }) {

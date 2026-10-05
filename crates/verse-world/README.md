@@ -413,13 +413,15 @@ It does not confirm movement. The
 owned baseline identifies `profile`, confirmed character `physics_step`, applied
 frame sequence, and observed `world_step`. Prediction retires only the confirmed
 prefix and replays original event times. The native adapter groups completed
-steps into 12-substep (100 ms) packets without dropping intervals or input changes;
+steps into six-substep (50 ms) packets without dropping intervals or input changes;
 local prediction still updates each rendered frame. Transmission waits when a
-packet would exceed the last verified `world_step` plus the existing 12-substep
-authority credit; local elapsed time cannot grant credit during storage pauses.
+packet would exceed the latest authority `world_step`, verified through a snapshot
+or control acknowledgment, plus the existing 12-substep lookahead; local elapsed
+time cannot grant credit during storage pauses.
 The worker binds packets to the shared command sequence before transmission. Legacy CLI and headless movement retains the
-arrival-time profile. Version-26 peers must upgrade both host and client; the ability-event variant
-requires matching event decoders.
+arrival-time profile. Version-27 peers must upgrade both host and client; control
+headers now include authority world time, and ability events require matching
+event decoders.
 
 The serial SDK retries an explicit `stale_tick` refusal only when its verified
 control confirms that admission consumed no sequence, with at most three

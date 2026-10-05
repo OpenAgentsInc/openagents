@@ -52,6 +52,7 @@ pub struct Local {
     recovery: movement::RecoveryObservations,
     collision: SceneCache,
     baseline: Option<Baseline>,
+    world_credit: u64,
     inputs: VecDeque<Input>,
     token: u64,
     tick: u64,
@@ -71,6 +72,7 @@ impl Local {
             recovery: Default::default(),
             collision: SceneCache::new(instance),
             baseline: None,
+            world_credit: 0,
             inputs: VecDeque::new(),
             token: 0,
             tick: 0,
@@ -87,6 +89,7 @@ impl Local {
     }
     pub fn clear(&mut self) {
         self.baseline = None;
+        self.world_credit = 0;
         self.inputs.clear();
         self.character = None;
         self.fraction = 0.;
@@ -189,6 +192,11 @@ impl Local {
         }
         self.character = Some(baseline.character);
         self.yaw = baseline.yaw;
+        self.world_credit = if reset {
+            baseline.world_step
+        } else {
+            self.world_credit.max(baseline.world_step)
+        };
         self.baseline = Some(baseline);
         self.tick = tick;
         self.observation = observation;
@@ -540,6 +548,39 @@ mod tests {
         local.observe(baseline, &source, 4, 4).unwrap();
         assert_eq!(local.movement_frame_limit(), Some(32));
         assert_eq!(local.physics_step(), 36);
+        local
+            .grant_world_credit(baseline.life, baseline.epoch, 28)
+            .unwrap();
+        local.advance(12. / 120.).unwrap();
+        assert_eq!(local.movement_frame_limit(), Some(40));
+        assert!(
+            local
+                .grant_world_credit(baseline.life, baseline.epoch, 20)
+                .is_err()
+        );
+        assert!(
+            local
+                .grant_world_credit(baseline.life, baseline.epoch + 1, 100)
+                .is_err()
+        );
+        let mut foreign = baseline.life;
+        foreign.actor += 1;
+        assert!(
+            local
+                .grant_world_credit(foreign, baseline.epoch, 100)
+                .is_err()
+        );
+        assert_eq!(local.movement_frame_limit(), Some(40));
+        // A delayed full baseline cannot erase time already granted by a verified acknowledgment.
+        local.observe(baseline, &source, 5, 5).unwrap();
+        assert_eq!(local.movement_frame_limit(), Some(40));
+        local.clear();
+        assert!(
+            local
+                .grant_world_credit(baseline.life, baseline.epoch, 100)
+                .is_err()
+        );
+        assert_eq!(local.movement_frame_limit(), None);
     }
 
     #[test]

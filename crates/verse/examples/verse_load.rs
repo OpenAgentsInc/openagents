@@ -113,6 +113,7 @@ async fn player(
     let mut battle_samples = 0u64;
     let mut battle_live_total = 0u64;
     let mut battle_live_min = usize::MAX;
+    let mut world_credit = None;
     let began = tokio::time::Instant::now();
     let result=async {
   loop {
@@ -158,7 +159,8 @@ async fn player(
        continue;
       }
       let start=match frame_cursor {Some((life,old_epoch,start)) if (life,old_epoch)==context=>start,_=>baseline.physics_step};
-      let limit=baseline.world_step.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
+      let credited=world_credit.filter(|(life,epoch,_)|(*life,*epoch)==context).map_or(baseline.world_step,|(_,_,step)|baseline.world_step.max(step));
+      let limit=credited.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
       let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::SEND_STEPS)) as u32;
       if steps<verse_world::movement::frames::SEND_STEPS {continue;}
       let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
@@ -197,6 +199,7 @@ async fn player(
       Err(message)=>{outstanding.remove(&token);refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"frame_binding","message":message}));}},
      },
      Update::Outcome(response)=>{
+      if let Some(c)=&response.control {world_credit=Some((verse_engine::core::LifeId::from(c.life),c.epoch,c.world_step));}
       if let Some((started,ability,entry,token))=pending.pop_front() {
        if let Some(token)=token {outstanding.remove(&token);}
        if entry.is_some() && frame_entry==entry && matches!(&response.body,Reply::Refused {..}) {frame_entry=None;}

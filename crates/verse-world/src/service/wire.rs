@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 26;
+pub const VERSION: u16 = 27;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -223,6 +223,7 @@ impl State {
                 .as_ref()
                 .is_some_and(|s| s.center != actor.actor.position.to_array())
                 || movement.life != control.life.into()
+                || movement.world_step != control.world_step
                 || movement.epoch != control.epoch
                 || movement.applied_sequence > control.accepted_sequence
                 || (movement.profile == crate::movement::Profile::Arrival
@@ -377,6 +378,8 @@ impl Request {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Control {
+    /// Authority physics time, available only after this response is verified.
+    pub world_step: u64,
     pub life: Life,
     pub epoch: u64,
     /// Highest admitted envelope, including subsequent gameplay refusals.
@@ -567,6 +570,7 @@ impl Gateway {
             Err(message) => (0, Err(("protocol", message))),
         };
         let control = self.admission(connection).ok().map(|a| Control {
+            world_step: self.game().physics_steps,
             life: a.actor().into(),
             epoch: a.epoch(),
             accepted_sequence: a.accepted_sequence(),
@@ -836,6 +840,7 @@ impl Gateway {
                     unreachable!()
                 };
                 let control = self.admission(id).ok().map(|a| Control {
+                    world_step: self.game().physics_steps,
                     life: a.actor().into(),
                     epoch: a.epoch(),
                     accepted_sequence: a.accepted_sequence(),
@@ -1587,6 +1592,7 @@ mod tests {
             generation: 0,
         };
         let control = Some(Control {
+            world_step: 0,
             life,
             epoch: 1,
             accepted_sequence: 0,

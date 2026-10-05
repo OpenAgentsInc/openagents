@@ -802,6 +802,7 @@ mod tests {
             }],
         };
         let mut control = super::super::wire::Control {
+            world_step: 0,
             life: life.into(),
             epoch: 3,
             accepted_sequence: 1,
@@ -1158,6 +1159,7 @@ mod tests {
             intent: Intent::Jump,
         };
         let mut control = super::super::wire::Control {
+            world_step: 0,
             life: life.into(),
             epoch: 1,
             accepted_sequence: 0,

@@ -257,6 +257,7 @@ impl Gateway {
                     (
                         *id,
                         super::wire::Control {
+                            world_step: self.game().physics_steps,
                             life: admission.actor().into(),
                             epoch: admission.epoch(),
                             accepted_sequence: admission.accepted_sequence(),

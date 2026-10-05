@@ -452,7 +452,8 @@ impl Client {
                 return Err("Chamber response control identity mismatch".into());
             }
             if let Some(previous) = &self.control {
-                if control.life.actor != previous.life.actor
+                if control.world_step < previous.world_step
+                    || control.life.actor != previous.life.actor
                     || control.life.generation < previous.life.generation
                     || control.epoch < previous.epoch
                     || (control.epoch == previous.epoch
@@ -2591,6 +2592,7 @@ mod tests {
             generation: 0,
         };
         let control = Control {
+            world_step: 4,
             life,
             epoch: 2,
             accepted_sequence: 3,
@@ -2629,7 +2631,7 @@ mod tests {
         let mut response = response;
         response.control.as_mut().unwrap().accepted_sequence = 4;
         assert!(client.validate(2, &request, &response).is_ok());
-        for field in 0..6 {
+        for field in 0..7 {
             let mut bad = response.clone();
             match field {
                 0 => bad.version += 1,
@@ -2637,7 +2639,8 @@ mod tests {
                 2 => bad.instance += 1,
                 3 => bad.tick -= 1,
                 4 => bad.control.as_mut().unwrap().epoch -= 1,
-                _ => bad.control.as_mut().unwrap().accepted_sequence -= 2,
+                5 => bad.control.as_mut().unwrap().accepted_sequence -= 2,
+                _ => bad.control.as_mut().unwrap().world_step -= 1,
             }
             assert!(client.validate(2, &request, &bad).is_err());
         }

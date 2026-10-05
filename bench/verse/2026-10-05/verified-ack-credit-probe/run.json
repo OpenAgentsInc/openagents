@@ -1,0 +1,76 @@
+{
+  "schema": "verse.movement.credit.evidence.v1",
+  "acceptance": "focused-only",
+  "tested_base_revision": "dc0acabd49ed7f803495730dbee2412b868426ae",
+  "tested_source_patch_sha256": "743d1c3262a57a34e23aea4a3b885c7c9657c618d007327b94ca5cdbc2046c40",
+  "wire_version": 27,
+  "limits": {
+    "lookahead_steps": 12,
+    "lag_steps": 32,
+    "bootstrap_lag_steps": 48,
+    "movement_send_steps": 6,
+    "maximum_queued_frames": 16
+  },
+  "before": {
+    "wire_version": 26,
+    "source_patch_sha256": "77255aeeebdaab1f18cb7be1a30be057a0a7e14eff89063c48d26e7bb16545a7",
+    "up_ms": 67,
+    "down_ms": 100,
+    "production_verified_credit_cap": true,
+    "failure": "Interval mode expired under supported latency",
+    "last_frame_baseline": {
+      "elapsed_ms": 856,
+      "world_step": 172,
+      "confirmed_step": 140,
+      "epoch": 4
+    },
+    "reset_baseline": {
+      "elapsed_ms": 1033,
+      "world_step": 192,
+      "confirmed_step": 192,
+      "epoch": 5,
+      "profile": "arrival"
+    }
+  },
+  "after": [
+    {
+      "up_ms": 67,
+      "down_ms": 100,
+      "durable_stall_ms": 0,
+      "bound": 59,
+      "accepted": 56,
+      "observations": 16,
+      "p95_m": 0.0,
+      "maximum_m": 0.0,
+      "mode_resets": 0
+    },
+    {
+      "up_ms": 0,
+      "down_ms": 0,
+      "durable_stall_ms": 300,
+      "bound": 56,
+      "accepted": 55,
+      "observations": 53,
+      "p95_m": 0.0,
+      "maximum_m": 0.0,
+      "mode_resets": 0
+    }
+  ],
+  "verification": {
+    "selected_probes_passed": 4,
+    "affected_world_checks_passed": 138,
+    "platform": "Linux x86_64",
+    "command": "cargo test -p verse-world --features service-net --lib -- service::client:: service::wire:: service::net:: service::worker:: service::replication:: service::replica:: service::view:: service::realm:: prediction::local::",
+    "scope": [
+      "Control response time is monotonic and snapshots match it.",
+      "Credit remains tied to the active actor life and epoch.",
+      "Elapsed local time and stale or foreign credit cannot extend transmission.",
+      "Ordered persistence and lifecycle fences remain enforced."
+    ]
+  },
+  "limitations": [
+    "These controlled one-player TLS probes do not establish 20-player/40-NPC battle acceptance.",
+    "The native and load adapters still require builds and a complete capture.",
+    "A single injected storage pause does not model repeated disk stalls, arbitrary jitter, or a soak."
+  ]
+}

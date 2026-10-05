@@ -1081,6 +1081,7 @@ mod tests {
         };
         let mut snapshot = response(1);
         snapshot.control = Some(Control {
+            world_step: 0,
             life,
             epoch: 1,
             accepted_sequence: 0,
@@ -1273,6 +1274,7 @@ mod tests {
         };
         let mut snapshot = response(1);
         snapshot.control = Some(Control {
+            world_step: 0,
             life,
             epoch: 1,
             accepted_sequence: 0,
@@ -1381,6 +1383,7 @@ mod tests {
         };
         let mut snapshot = response(1);
         snapshot.control = Some(Control {
+            world_step: 0,
             life,
             epoch: 1,
             accepted_sequence: 0,

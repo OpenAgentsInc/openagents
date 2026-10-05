@@ -12,10 +12,28 @@ impl Local {
     pub fn movement_frame_limit(&self) -> Option<u64> {
         self.baseline
             .filter(|b| b.profile == Profile::Frames)
-            .map(|b| {
+            .map(|_| {
                 self.step
-                    .min(b.world_step.saturating_add(u64::from(MAX_STEPS)))
+                    .min(self.world_credit.saturating_add(u64::from(MAX_STEPS)))
             })
+    }
+    /// Admits verified authority time only for the active owned interval context.
+    pub fn grant_world_credit(
+        &mut self,
+        life: LifeId,
+        epoch: u64,
+        world_step: u64,
+    ) -> Result<(), String> {
+        if self.context() != Some((life, epoch))
+            || self.movement_profile() != Some(Profile::Frames)
+            || world_step < self.world_credit
+        {
+            return Err(
+                "Movement time credit is stale or belongs to another control context".into(),
+            );
+        }
+        self.world_credit = world_step;
+        Ok(())
     }
     pub fn physics_step(&self) -> u64 {
         self.step

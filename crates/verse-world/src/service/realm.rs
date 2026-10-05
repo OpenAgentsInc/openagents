@@ -580,6 +580,7 @@ impl Realm {
                 instance: lease.instance,
                 tick: gateway.game().authority_tick,
                 control: gateway.admission(id).ok().map(|a| super::wire::Control {
+                    world_step: gateway.game().physics_steps,
                     life: a.actor().into(),
                     epoch: a.epoch(),
                     accepted_sequence: a.accepted_sequence(),

@@ -1097,6 +1097,7 @@ mod tests {
                 locked.progress = 0;
                 data.quest_log = vec![offer, active, return_quest, locked];
                 data.validate(&Some(verse_world::service::wire::Control {
+                    world_step: 0,
                     life: data.life,
                     epoch: 1,
                     accepted_sequence: 0,

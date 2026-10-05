@@ -38,11 +38,65 @@ async fn delay<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 }
 #[tokio::test]
 async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
+    interval_stream(false).await;
+}
+#[tokio::test]
+async fn durable_writer_stall_preserves_owned_interval_timeline() {
+    interval_stream(true).await;
+}
+async fn interval_stream(durable_stall: bool) {
     use super::super::net::tests::{key, start};
     use rustls::pki_types::ServerName;
     use tokio::net::{TcpListener, TcpStream};
     let keys = [key(218), key(219), key(220)];
-    let (host_address, tls, host_stop, host) = start(&keys).await;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let armed = Arc::new(AtomicBool::new(false));
+    let injected = Arc::new(AtomicBool::new(false));
+    let (host_address, tls, host_stop, host) = if durable_stall {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = super::super::net::tests::tls();
+        let mut store =
+            super::super::persistence::Store::open(&directory.path().join("state"), [8; 32], 120)
+                .unwrap();
+        let trigger = armed.clone();
+        let observed = injected.clone();
+        store.inject(Arc::new(move |stage| {
+            if stage == "before_encode" && trigger.swap(false, Ordering::AcqRel) {
+                observed.store(true, Ordering::Release);
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        }));
+        let (stop, stopping) = oneshot::channel();
+        let host = tokio::spawn(super::super::net::serve_durable(
+            listener,
+            server_tls,
+            super::super::net::tests::gateway(&keys)
+                .with_content([8; 32])
+                .unwrap(),
+            store,
+            async {
+                let _ = stopping.await;
+            },
+        ));
+        (address, connector, stop, host)
+    } else {
+        start(&keys).await
+    };
+    let up = if durable_stall {
+        Duration::ZERO
+    } else {
+        Duration::from_millis(67)
+    };
+    let down = if durable_stall {
+        Duration::ZERO
+    } else {
+        Duration::from_millis(100)
+    };
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let proxy = tokio::spawn(async move {
@@ -53,15 +107,16 @@ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
         let (client_read, client_write) = client.into_split();
         let (authority_read, authority_write) = authority.into_split();
         tokio::join!(
-            delay(client_read, authority_write, Duration::from_millis(67)),
-            delay(authority_read, client_write, Duration::from_millis(100))
+            delay(client_read, authority_write, up),
+            delay(authority_read, client_write, down)
         )
     });
-    let mut client = Client::connect(
+    let mut client = Client::connect_with_content(
         address,
         ServerName::try_from("localhost").unwrap(),
         tls.config().clone(),
         120,
+        durable_stall.then_some([8; 32]),
         &keys[0],
     )
     .await
@@ -100,7 +155,13 @@ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
     let mut bound = 0;
     let mut accepted = 0;
     let mut corrections = Vec::new();
+    let mut stall_armed = false;
+    let mut recent = std::collections::VecDeque::new();
     while started.elapsed() < Duration::from_secs(3) {
+        if durable_stall && !stall_armed && started.elapsed() >= Duration::from_secs(1) {
+            armed.store(true, Ordering::Release);
+            stall_armed = true;
+        }
         while let Ok(update) = output.try_recv() {
             match update {
                 Update::FrameBound { binding, .. } => {
@@ -108,6 +169,19 @@ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
                     bound += 1;
                 }
                 Update::Outcome(response) => {
+                    if let Some(control) = &response.control {
+                        if local.context() == Some((control.life.into(), control.epoch))
+                            && local.movement_profile() == Some(Profile::Frames)
+                        {
+                            local
+                                .grant_world_credit(
+                                    control.life.into(),
+                                    control.epoch,
+                                    control.world_step,
+                                )
+                                .unwrap();
+                        }
+                    }
                     assert!(matches!(response.body, Reply::Accepted));
                     accepted += 1;
                 }
@@ -116,6 +190,16 @@ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
                         panic!();
                     };
                     let next = state.movement.unwrap();
+                    recent.push_back(serde_json::json!({"elapsed_ms":started.elapsed().as_millis(),"world_step":next.world_step,"confirmed_step":next.physics_step,"local_step":local.physics_step(),"next_frame":next_frame,"credit_limit":local.movement_frame_limit(),"epoch":next.epoch,"bound":bound,"accepted":accepted}));
+                    if recent.len() > 12 {
+                        recent.pop_front();
+                    }
+                    if next.epoch != baseline.epoch || next.profile != Profile::Frames {
+                        eprintln!(
+                            "VERSE_INTERVAL_RESET {}",
+                            serde_json::to_string(&recent).unwrap()
+                        );
+                    }
                     assert_eq!(
                         (next.life, next.epoch, next.profile),
                         (baseline.life, baseline.epoch, Profile::Frames),
@@ -166,8 +250,12 @@ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
                 .unwrap();
             next_input = now + Duration::from_millis(33);
         }
-        let steps = local.physics_step().saturating_sub(next_frame).min(12) as u32;
-        if steps >= 4 && input.capacity() > 0 {
+        let steps = local
+            .movement_frame_limit()
+            .unwrap()
+            .saturating_sub(next_frame)
+            .min(u64::from(crate::movement::frames::SEND_STEPS)) as u32;
+        if steps >= crate::movement::frames::SEND_STEPS && input.capacity() > 0 {
             let frame = local.movement_frame(next_frame, steps).unwrap();
             token += 1;
             input
@@ -187,7 +275,7 @@ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
     let p95 = corrections[(corrections.len() as f64 * 0.95).ceil() as usize - 1];
     eprintln!(
         "VERSE_V04_TLS_EVIDENCE {}",
-        serde_json::json!({"up_ms":67,"down_ms":100,"bound":bound,"accepted":accepted,"observations":corrections.len(),"p95_m":p95,"maximum_m":corrections.last().unwrap(),"mode_resets":0})
+        serde_json::json!({"up_ms":up.as_millis(),"down_ms":down.as_millis(),"durable_stall_ms":if durable_stall {300} else {0},"bound":bound,"accepted":accepted,"observations":corrections.len(),"p95_m":p95,"maximum_m":corrections.last().unwrap(),"mode_resets":0})
     );
     assert!(p95 < 0.1, "Actual delayed TLS correction p95: {p95}");
     let _ = stop.send(());
@@ -195,5 +283,11 @@ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
     proxy.abort();
     let _ = proxy.await;
     let _ = host_stop.send(());
-    host.await.unwrap();
+    let exit = host.await.unwrap();
+    assert!(exit.failure.is_none(), "{:?}", exit.failure);
+    if durable_stall {
+        assert!(injected.load(Ordering::Acquire));
+        assert!(exit.stats.storage_paused_ticks > 0);
+        assert!(exit.stats.commits.maximum_seconds >= 0.3);
+    }
 }
