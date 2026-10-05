@@ -1,0 +1,55 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "compiled_revision": "8838dd1f4f58f0c54a086a9e06407864d0ae13a8",
+  "pushed_driver_commit": "31b157b998",
+  "checks": {
+    "three_examples_build": "passed",
+    "python_syntax": "passed",
+    "formatting": "passed"
+  },
+  "observations": [
+    "All 19 headless clients observe interval snapshots and record minimum live hostile occupancy 40.",
+    "18 headless clients complete; player 18 fails. Native and host exit 0, load exits 1."
+  ],
+  "failed_players": [
+    {
+      "player": 18,
+      "status": "failed",
+      "failure_stage": "observation",
+      "omitted_latency_samples": 0,
+      "snapshots": 233,
+      "snapshot_bytes": 16590377,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 153,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "confirmed_time_intervals",
+      "observed_frame_snapshots": 82,
+      "movement_inputs": 105,
+      "input_pressure": 0,
+      "refusals": 73,
+      "accepted_casts": {
+        "Fireball": 2,
+        "Light": 1,
+        "Magic Missile": 1,
+        "Shield": 1,
+        "Shoot Bow": 1
+      },
+      "minimum_hp": 8,
+      "binding_to_outcome_ms": {
+        "samples": 131,
+        "p95": 322.04791700000004,
+        "max": 485.969583
+      }
+    }
+  ],
+  "limits": [
+    "Current load receipt records failure stage but suppresses the underlying worker error; precise cause is unproven.",
+    "Shared hardware, no persistence, no GPU timestamps, and confirmed-time headless intervals without native prediction do not establish full acceptance."
+  ]
+}
