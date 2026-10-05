@@ -11,7 +11,7 @@ use pty::{Program, Session, Sessions};
 use select::Selection;
 
 /// The overlay's help line.
-pub const HELP: &str = "Enter runs a command or asks OpenAgents   Ctrl+B then: j/k blocks · y copy · d collapse · r rerun · % \" split · arrows focus · x close · z zoom · c n p tabs · o OpenAgents Terminal · [ copy · / search · ? stats · Esc world   Ctrl+` world";
+pub const HELP: &str = "Enter runs a command or asks OpenAgents   Ctrl+B then: j/k blocks · y copy · d collapse · r rerun · t fix typo · % \" split · arrows focus · x close · z zoom · c n p tabs · o OpenAgents Terminal · [ copy · / search · ? stats · Esc world   Ctrl+` world";
 
 /// The longest a frame spends applying output, across panes.
 pub const UPDATE_BUDGET: Duration = Duration::from_millis(3);
@@ -967,6 +967,7 @@ impl Application {
             Some('y') => self.copy_block(),
             Some('d') => self.collapse_block(),
             Some('r') => self.rerun_block(),
+            Some('t') => self.type_correction(),
             Some('?') => self.stats.shown = !self.stats.shown,
             Some('[') => self.enter_copy(false),
             Some('/') => self.enter_copy(true),

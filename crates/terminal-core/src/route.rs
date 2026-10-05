@@ -46,7 +46,7 @@ impl Word {
 }
 
 /// zsh's builtins and reserved words, which never appear on `PATH`.
-const BUILTINS: &[&str] = &[
+pub(crate) const BUILTINS: &[&str] = &[
     ".",
     ":",
     "[",
@@ -229,13 +229,13 @@ impl Table {
 }
 
 #[cfg(unix)]
-fn executable(path: &std::path::Path) -> bool {
+pub(crate) fn executable(path: &std::path::Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path)
         .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
 }
 #[cfg(not(unix))]
-fn executable(path: &std::path::Path) -> bool {
+pub(crate) fn executable(path: &std::path::Path) -> bool {
     path.is_file()
 }
 

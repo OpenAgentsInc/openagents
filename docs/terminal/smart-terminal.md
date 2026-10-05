@@ -309,6 +309,13 @@ and stops at the first rule that applies:
    Lev, Laya, or Kev can replace the score here later, and no shell line
    ever leaves the computer to be classified.
 
+When the shell does not find a command, the terminal offers the closest
+names from that shell's own table, builtins, and `PATH` executables, at
+most three of the equally close ones (`crates/terminal-core/src/correct.rs`).
+F7 on the sheet, or Ctrl+B then t in the panes, types the corrected line
+without pressing Enter, and again for the next choice. Nothing runs until
+you press Enter, and what the mistyped command already did stays done.
+
 The label before the input line (`SHELL >` or `ASK   >`) updates as you
 type, so ENTER always does what it shows. What a question means stays the
 chat router's decision (`chat-router-v1`,

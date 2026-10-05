@@ -651,3 +651,52 @@ fn negotiated_bracketed_paste_and_full_screen_programs_take_a_paste_at_once() {
     .unwrap();
     assert_eq!(transport.input.lock().unwrap().concat(), b"one\rtwo");
 }
+
+#[cfg(unix)]
+#[test]
+fn a_missing_command_offers_corrections_that_run_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    let git = bin.path().join("git");
+    std::fs::write(&git, "").unwrap();
+    std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let transport = Arc::new(Fake::default());
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.toggle();
+    app.ensure_started();
+    app.paper.on = false;
+    let table = format!("p:{}\na:\nf:", bin.path().display());
+    transport.output.lock().unwrap().push_back(
+        format!(
+            "\x1b]777;openagents;table;{}\x07\x1b]133;A\x07$ \x1b]133;B\x07gti status\r\n\x1b]777;openagents;command;{}\x07\x1b]133;C\x07gti: command not found\r\n\x1b]133;D;127\x07\x1b]133;A\x07$ ",
+            hex(&table),
+            hex("gti status")
+        )
+        .into_bytes(),
+    );
+    app.tick();
+    let notice = app.notice.clone().unwrap_or_default();
+    assert!(
+        notice.contains("types `git status` without running it"),
+        "{notice}"
+    );
+    // Typed at the prompt, without Enter; again, it replaces itself.
+    app.type_correction();
+    assert_eq!(transport.input.lock().unwrap().concat(), b"git status");
+    transport.input.lock().unwrap().clear();
+    app.type_correction();
+    let mut again = vec![0x7f; "git status".len()];
+    again.extend_from_slice(b"git status");
+    assert_eq!(transport.input.lock().unwrap().concat(), again);
+    // The sheet puts it on the input line, and sends nothing.
+    transport.input.lock().unwrap().clear();
+    app.paper.on = true;
+    press(
+        &mut app,
+        // The sheet reads the logical key; the code has no F7.
+        crate::input::KeyCode::F1,
+        crate::input::NamedKey::F7,
+    );
+    assert_eq!(app.paper.input, "git status");
+    assert!(transport.input.lock().unwrap().is_empty());
+}

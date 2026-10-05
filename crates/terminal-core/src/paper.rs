@@ -24,7 +24,7 @@ use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
 /// The key strip, always shown on the sheet's last row.
-pub const KEYS: &str = "F1 HELP  F2 CONTEXT  F3 COPY  F5 RUN AS SHELL  F6 ASK  F8 PANES  F10 QUIT  ENTER CONFIRM  ESC REJECT  PGUP PGDN SCROLL";
+pub const KEYS: &str = "F1 HELP  F2 CONTEXT  F3 COPY  F5 RUN AS SHELL  F6 ASK  F7 FIX  F8 PANES  F10 QUIT  ENTER CONFIRM  ESC REJECT  PGUP PGDN SCROLL";
 
 const HELP: &[&str] = &[
     "HELP (F1 or ESC returns to the transcript)",
@@ -37,7 +37,9 @@ const HELP: &[&str] = &[
     "F3   copy the last command and its output",
     "F5   run the input line as a shell command, whatever its label says",
     "F6   send the input line to OpenAgents; on an empty line, ask about the",
-    "     last failed command",
+    "     last failed command; what it already did stays done",
+    "F7   after a command the shell did not find, put the closest command",
+    "     on the input line, without running it; again for the next one",
     "F8   switch to panes and tabs; F8 there returns to this sheet",
     "F10  quit",
     "",
@@ -302,6 +304,24 @@ impl Application {
                 } else {
                     self.paper_take_line();
                     self.paper_ask(&line);
+                }
+                return true;
+            }
+            Some(NamedKey::F7) => {
+                // An empty line, or one F7 filled, takes the next choice;
+                // a line the person typed stays theirs.
+                let filled =
+                    self.smart.correction.as_ref().is_some_and(|correction| {
+                        correction.choices.lines.contains(&self.paper.input)
+                    });
+                if self.paper.input.trim().is_empty() || filled {
+                    match self.next_correction() {
+                        Some(line) => self.paper.set_input(line),
+                        None => {
+                            self.notice =
+                                Some("No correction is offered for the last command.".into());
+                        }
+                    }
                 }
                 return true;
             }
@@ -982,9 +1002,18 @@ impl Application {
             None => "CONTEXT directory only".into(),
         };
         let last = match (&self.notice, self.last_block()) {
-            (_, Some(block)) if block.status == Some(127) => {
-                "LAST not a command; F6 asks OpenAgents about it".to_owned()
-            }
+            (_, Some(block)) if block.status == Some(127) => match self
+                .smart
+                .correction
+                .as_ref()
+                .filter(|correction| correction.block == block.id)
+            {
+                Some(correction) => format!(
+                    "LAST not a command; F7 types `{}`, F6 asks OpenAgents",
+                    ascii(&correction.choices.lines[0])
+                ),
+                None => "LAST not a command; F6 asks OpenAgents about it".to_owned(),
+            },
             (Some(notice), _) => format!("LAST {}", ascii(notice)),
             _ => "LAST -".into(),
         };

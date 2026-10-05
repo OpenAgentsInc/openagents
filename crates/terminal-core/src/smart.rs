@@ -39,6 +39,18 @@ impl Worker {
     }
 }
 
+/// Corrections offered for the command block `block` in `pane`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Correction {
+    pub pane: PaneId,
+    pub block: u64,
+    pub choices: crate::correct::Choices,
+    /// The choice the next request types.
+    pub next: usize,
+    /// The choice typed into the shell last, still on its prompt.
+    pub typed: Option<String>,
+}
+
 #[derive(Default)]
 pub struct Smart {
     pub draft: Option<Draft>,
@@ -57,6 +69,9 @@ pub struct Smart {
     pub shell_override: Option<(PaneId, String)>,
     /// A command the shell did not find: Enter on the empty prompt asks.
     pub offer_ask: Option<(PaneId, String)>,
+    /// Corrections for that command, which the person may type at the
+    /// prompt ([`crate::correct`]).
+    pub correction: Option<Correction>,
     offered: Option<(PaneId, u64)>,
 }
 
@@ -384,9 +399,98 @@ impl super::Overlay {
         }
         self.smart.offered = Some((pane_id, block.id));
         self.smart.offer_ask = Some((pane_id, block.command.clone()));
+        let (id, command) = (block.id, block.command.clone());
+        let table = self
+            .panes
+            .get(&pane_id)
+            .and_then(|pane| pane.session.blocks.table.as_deref())
+            .map(crate::route::Table::parse)
+            .unwrap_or_default();
+        self.smart.correction =
+            crate::correct::choices(&table, &command).map(|choices| Correction {
+                pane: pane_id,
+                block: id,
+                choices,
+                next: 0,
+                typed: None,
+            });
+        self.notice = Some(match &self.smart.correction {
+            Some(correction) => format!(
+                "`{command}` is not a command here. Ctrl+B then t types `{}` without running it{}; Enter on the empty prompt asks OpenAgents.",
+                correction.choices.lines[0],
+                more(&correction.choices),
+            ),
+            None => format!(
+                "`{command}` is not a command here. Press Enter on the empty prompt to ask OpenAgents instead."
+            ),
+        });
+    }
+
+    /// The next correction for the focused pane's missing command, cycling
+    /// through the choices, or `None` when none is offered for it.
+    pub fn next_correction(&mut self) -> Option<String> {
+        let focus = self.focus_id()?;
+        let latest = self
+            .panes
+            .get(&focus)?
+            .session
+            .blocks
+            .records
+            .back()
+            .map(|block| block.id);
+        let correction =
+            self.smart.correction.as_mut().filter(|correction| {
+                correction.pane == focus && Some(correction.block) == latest
+            })?;
+        let line = correction.choices.lines[correction.next].clone();
+        correction.next = (correction.next + 1) % correction.choices.lines.len();
+        Some(line)
+    }
+
+    /// Types the next correction at the focused shell's prompt without
+    /// pressing Enter, replacing the one typed before.
+    pub fn type_correction(&mut self) {
+        let Some(pane_id) = self.focus_id() else {
+            return;
+        };
+        let Some(pane) = self.panes.get(&pane_id) else {
+            return;
+        };
+        if !pane.session.blocks.at_prompt || pane.session.vt.alternate_screen() {
+            self.notice = Some("A correction types only at the shell prompt.".into());
+            return;
+        }
+        let typed = self
+            .smart
+            .correction
+            .as_ref()
+            .and_then(|correction| correction.typed.clone());
+        let buffer = pane.session.blocks.buffer.clone();
+        if let Some(buffer) = &buffer
+            && !buffer.is_empty()
+            && Some(buffer) != typed.as_ref()
+        {
+            self.notice = Some("Clear the prompt first; a correction replaces only itself.".into());
+            return;
+        }
+        let Some(line) = self.next_correction() else {
+            self.notice = Some("No correction is offered for this pane.".into());
+            return;
+        };
+        let mut bytes = Vec::new();
+        if let Some(typed) = &typed {
+            // Erase the choice typed before, one character at a time.
+            bytes.extend(std::iter::repeat_n(0x7f, typed.chars().count()));
+        }
+        if let Some(pane) = self.panes.get(&pane_id) {
+            bytes.extend(pane.session.vt.paste(&line));
+        }
+        self.send_to(pane_id, &bytes);
+        if let Some(correction) = &mut self.smart.correction {
+            correction.typed = Some(line.clone());
+        }
         self.notice = Some(format!(
-            "`{}` is not a command here. Press Enter on the empty prompt to ask OpenAgents instead.",
-            block.command
+            "Typed `{line}`; nothing ran. Enter runs it as a new command."
         ));
     }
 
@@ -684,4 +788,12 @@ fn is_modifier_key(code: crate::input::KeyCode) -> bool {
             | KeyCode::CapsLock
             | KeyCode::Fn
     )
+}
+
+/// How many more equally close names there are than shown, as a clause.
+fn more(choices: &crate::correct::Choices) -> String {
+    match choices.total {
+        1 => String::new(),
+        total => format!(" (again for the next of {total} equally close names)"),
+    }
 }
