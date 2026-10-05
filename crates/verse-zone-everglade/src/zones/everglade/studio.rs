@@ -110,6 +110,11 @@ const PLATE_OUT: f32 = 0.2;
 const BEACON: f32 = 7.0;
 /// The most characters a nameplate line shows.
 const PLATE_CHARS: usize = 24;
+/// The workshop agent's seat name, which a desktop window adds as a
+/// resident seat (`crate::workshop`).
+pub const WORKSHOP_AGENT: &str = "ada";
+/// How near the workshop agent the player stands to talk to her, m.
+pub const TALK_REACH: f32 = 2.4;
 
 /// Where a view's studio comes from: a host connection, or a fixture.
 ///
@@ -674,6 +679,12 @@ pub struct Studio {
     /// In a hosted instance, the NIP-HOST rights the viewer's grant holds,
     /// which its panels need; a lone viewer's panels follow its source.
     grant: Option<Vec<Right>>,
+    /// The studio as the source last sent it, before resident seats join.
+    hosted: Option<Snapshot>,
+    /// Seats this computer draws beside the source's, such as the workshop
+    /// agent at its desk (`docs/verse/workshop-agent.md`). A source seat of
+    /// the same name wins.
+    resident: Vec<wire::Seat>,
 }
 
 impl Default for Studio {
@@ -696,6 +707,8 @@ impl Default for Studio {
             marked: None,
             authority: None,
             grant: None,
+            hosted: None,
+            resident: Vec::new(),
         }
     }
 }
@@ -736,7 +749,12 @@ impl Studio {
                 source.stop();
             }
         }
+        if active && !self.resident.is_empty() {
+            let blockers = self.blockers.clone();
+            self.show(self.merged(), &blockers);
+        }
         if !active {
+            self.hosted = None;
             self.snapshot = None;
             self.seats.clear();
             self.boards = boards::live(None);
@@ -868,10 +886,46 @@ impl Studio {
         self.status.as_ref()
     }
 
-    /// Takes `snapshot` as the studio now: seats walk to their stations,
-    /// say what changed ([`speeches`]), and the boards redraw. A seat seen
-    /// for the first time stands at its station at once.
+    /// Sets the seats this computer draws beside the source's, such as
+    /// the workshop agent. While the studio observes, they join the view at
+    /// once, with or without a source.
+    pub fn set_resident(&mut self, seats: Vec<wire::Seat>) {
+        if self.resident == seats {
+            return;
+        }
+        self.resident = seats;
+        if self.active {
+            let blockers = self.blockers.clone();
+            self.show(self.merged(), &blockers);
+        }
+    }
+
+    /// The source's studio with the resident seats added.
+    fn merged(&self) -> Snapshot {
+        let mut snapshot = self.hosted.clone().unwrap_or_else(|| Snapshot {
+            stream: "resident".into(),
+            sequence: 0,
+            view: View::default(),
+        });
+        for seat in &self.resident {
+            if !snapshot.view.seats.iter().any(|s| s.seat == seat.seat) {
+                snapshot.view.seats.push(seat.clone());
+            }
+        }
+        snapshot
+    }
+
+    /// Takes `snapshot` from the source as the studio now, with the
+    /// resident seats added: seats walk to their stations, say what
+    /// changed ([`speeches`]), and the boards redraw. A seat seen for the
+    /// first time stands at its station at once.
     pub fn apply(&mut self, snapshot: Snapshot, blockers: &[Footprint]) {
+        self.hosted = Some(snapshot);
+        self.show(self.merged(), blockers);
+    }
+
+    /// Shows `snapshot`, the source's studio with the resident seats.
+    fn show(&mut self, snapshot: Snapshot, blockers: &[Footprint]) {
         if self.snapshot.as_ref() == Some(&snapshot) {
             return;
         }

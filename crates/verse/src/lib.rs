@@ -18,6 +18,8 @@ pub mod blocks;
 pub use verse_net::blocklist;
 #[cfg(feature = "model-host")]
 pub mod brain;
+#[cfg(feature = "desktop")]
+pub mod workshop;
 pub use verse_gfx::camera;
 pub use verse_net::chat;
 pub mod controller;

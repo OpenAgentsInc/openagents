@@ -18,6 +18,8 @@ mod gym;
 pub use gym::{GymPanel, gym_panel};
 mod studio;
 pub use studio::{StudioStrip, studio_strip};
+mod workshop;
+pub use workshop::{WORKSHOP_ROWS, workshop_cols, workshop_panel};
 
 use std::collections::VecDeque;
 

@@ -89,6 +89,10 @@ pub struct Options {
     /// A notice Everglade's caption leads with, such as that no coding
     /// agent can sign in, so the studio's seats cannot work.
     pub studio_notice: Option<String>,
+    /// A request to hand the workshop agent once she is at her desk, as
+    /// if the player walked up to her, opened her panel, and typed it
+    /// (`--workshop-ask`), for a demo or a capture.
+    pub workshop_ask: Option<String>,
     /// The pinned chamber the Grid's RITUAL arch joins
     /// ([`crate::ritual::Config`]); `None` draws no arch.
     pub ritual: Option<std::path::PathBuf>,
@@ -118,6 +122,7 @@ impl Default for Options {
             frame_times: false,
             terminal_stress: None,
             studio_notice: None,
+            workshop_ask: None,
             ritual: crate::ritual::default_config(),
             #[cfg(feature = "remote-chamber")]
             chamber: None,
@@ -583,6 +588,12 @@ struct App {
     panel_shift: bool,
     /// The terminal overlay (T), its panes, and their sessions.
     terminal: crate::terminal::Overlay,
+    /// The workshop agent at her desk in Everglade, her panel, and the
+    /// pane she drives.
+    workshop: crate::workshop::Workshop,
+    /// When `--workshop-ask`'s typed request is sent: a few seconds after
+    /// the player reaches her, so a capture shows the request first.
+    workshop_send_at: Option<Instant>,
     /// Whether the terminal overlay took the left button's last press.
     terminal_press: bool,
     /// A scripted terminal stress run, when one was asked for.
@@ -950,6 +961,8 @@ impl App {
             studio_target: None,
             panel_shift: false,
             terminal: terminal_overlay(),
+            workshop: crate::workshop::Workshop::default(),
+            workshop_send_at: None,
             terminal_press: false,
             stress: options
                 .terminal_stress
@@ -1205,6 +1218,89 @@ impl App {
         let (size, aspect) = self.viewport()?;
         self.runtime
             .studio_pick(aspect, self.cursor[0] / size[0], self.cursor[1] / size[1])
+    }
+
+    /// Loads the workshop agent in Everglade, drives her pane, and puts
+    /// her seat in the studio, once a frame.
+    fn step_workshop(&mut self) {
+        let in_glade =
+            self.runtime.zone == zones::ZoneId::Everglade && self.runtime.studio().active();
+        if in_glade {
+            self.workshop.load();
+        } else {
+            self.workshop.open = false;
+        }
+        self.workshop.frame(&mut self.terminal);
+        self.runtime.set_studio_resident(self.workshop.seats());
+        // `--workshop-ask`: walk up to her and say it, once she stands at
+        // her desk.
+        let name = crate::workshop::NAME;
+        if in_glade
+            && self.workshop.loaded()
+            && self.connection_options.workshop_ask.is_some()
+            && !self.runtime.studio().seat_walking(name)
+            && let Some(at) = self.runtime.studio().seat_position(name)
+            && let Some(text) = self.connection_options.workshop_ask.take()
+        {
+            let toward = Vec3::new(0.0 - at.x, 0.0, 8.0 - at.z).normalize_or(Vec3::Z);
+            self.runtime.player.pos = at + toward * 1.8;
+            self.runtime.player.yaw = (-toward.x).atan2(-toward.z);
+            self.workshop.open = true;
+            self.workshop.input = text;
+            self.workshop_send_at = Some(Instant::now() + std::time::Duration::from_secs(6));
+        }
+        if self.workshop_send_at.is_some_and(|at| Instant::now() >= at) {
+            self.workshop_send_at = None;
+            self.workshop.open = true;
+            self.workshop.key(crate::workshop::PanelKey::Enter);
+        }
+    }
+
+    /// Whether the player stands near enough to the workshop agent to
+    /// talk to her.
+    fn near_workshop_agent(&self) -> bool {
+        self.runtime.zone == zones::ZoneId::Everglade
+            && self
+                .runtime
+                .studio()
+                .seat_position(crate::workshop::NAME)
+                .is_some_and(|at| {
+                    crate::workshop::Workshop::within_reach(self.runtime.player.pos, at)
+                })
+    }
+
+    /// Hands a key to the workshop agent's panel while it is open. Every
+    /// key is consumed then. A repeated or synthetic ENTER or ESC never
+    /// answers a proposal.
+    fn workshop_key(&mut self, event: &winit::event::KeyEvent, synthetic: bool) -> bool {
+        use crate::workshop::PanelKey;
+        if !self.workshop.open {
+            return false;
+        }
+        if event.state != ElementState::Pressed {
+            return true;
+        }
+        let PhysicalKey::Code(code) = event.physical_key else {
+            return true;
+        };
+        let key = match code {
+            KeyCode::Enter | KeyCode::NumpadEnter => PanelKey::Enter,
+            KeyCode::Escape => PanelKey::Escape,
+            KeyCode::Backspace => PanelKey::Backspace,
+            KeyCode::PageUp => PanelKey::PageUp,
+            KeyCode::PageDown => PanelKey::PageDown,
+            _ => {
+                for c in event.text.as_deref().unwrap_or("").chars() {
+                    self.workshop.key(PanelKey::Char(c));
+                }
+                return true;
+            }
+        };
+        if (event.repeat || synthetic) && matches!(key, PanelKey::Enter | PanelKey::Escape) {
+            return true;
+        }
+        self.workshop.key(key);
+        true
     }
 
     /// Opens the terminal overlay with focus, or hides it. Hidden, its
@@ -2496,7 +2592,14 @@ impl App {
                     return;
                 }
             }
-            // In Everglade the interact key opens the station in reach.
+            // In Everglade the interact key next to the workshop agent
+            // opens her panel; elsewhere it opens the station in reach.
+            if code == KeyCode::KeyF && self.near_workshop_agent() {
+                self.workshop.open = true;
+                self.keys = Keys::default();
+                self.climb = 0.0;
+                return;
+            }
             if code == KeyCode::KeyF
                 && let Some(kind) = self.runtime.studio_panel_here()
             {
@@ -3206,6 +3309,7 @@ impl App {
         }
         self.update_gym(true);
         self.runtime.update_studio(true, dt);
+        self.step_workshop();
         self.studio_signals();
         self.refresh_studio_panel();
         self.step_agents(dt);
@@ -3456,6 +3560,28 @@ impl App {
                     )
                     .badge
                 });
+                // The workshop agent's panel, anchored to the bottom edge.
+                if self.workshop.open {
+                    let cols = hud::workshop_cols(atlas, size, self.scale);
+                    // It stands on the hotbar, which stays visible; while
+                    // the terminal's panes show, it sits under them in the
+                    // hotbar's place.
+                    let logical = size.map(|v| v / self.scale);
+                    let tray = zones::everglade::hotbar::frame(logical, HOTBAR_BOTTOM);
+                    let (bottom, top) = if self.terminal.open {
+                        (
+                            0.0,
+                            (size[1] * 0.82).round() + atlas.line + 8.0 * self.scale,
+                        )
+                    } else {
+                        ((size[1] - tray[1] * self.scale).max(0.0), 0.0)
+                    };
+                    let room = size[1] - bottom - top - 28.0 * self.scale;
+                    let count = ((room / atlas.line.max(1.0)).floor().max(0.0) as usize)
+                        .clamp(5, hud::WORKSHOP_ROWS);
+                    let rows = self.workshop.rows(cols, count);
+                    let _ = hud::workshop_panel(&mut ui, atlas, size, self.scale, bottom, &rows);
+                }
                 if let (Some(map_atlas), Some(map_frame)) = (&self.map_atlas, &self.map_frame) {
                     ui.vertices.extend(
                         self.map
@@ -3524,7 +3650,10 @@ impl App {
                     ui.vertices
                         .extend(self.zone_hud.draw(atlas, frame, self.scale).vertices);
                 }
+                // The workshop agent's panel takes the hotbar's place while
+                // it sits under the terminal's panes.
                 if self.in_bare_everglade()
+                    && !(self.workshop.open && self.terminal.open)
                     && let (Some(atlas), Some(slots)) =
                         (&self.map_atlas, self.runtime.everglade_hotbar())
                 {
@@ -4125,6 +4254,9 @@ impl ApplicationHandler for App {
                         event.text.as_deref(),
                     )
                 {
+                    return;
+                }
+                if self.workshop_key(&event, is_synthetic) {
                     return;
                 }
                 if self.chat.open {

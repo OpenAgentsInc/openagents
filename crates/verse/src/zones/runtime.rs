@@ -1379,7 +1379,15 @@ impl WorldRuntime {
                 let label = crate::zones::everglade::button_label(&panel);
                 add("interact", label, Intent::Interact, true);
             }
-            let caption = Everglade::caption(self.player.pos, self.interact_hint);
+            let mut caption = Everglade::caption(self.player.pos, self.interact_hint);
+            let agent = crate::zones::everglade::studio::WORKSHOP_AGENT;
+            if self.interact_hint == crate::runtime::InteractHint::Key
+                && let Some(at) = self.zone_state.studio.seat_position(agent)
+                && (at.x - self.player.pos.x).hypot(at.z - self.player.pos.z)
+                    <= crate::zones::everglade::studio::TALK_REACH
+            {
+                caption = format!("Everglade\nF talks to {agent}, the workshop agent");
+            }
             match &self.zone_state.studio_notice {
                 Some(notice) if caption.is_empty() => notice.clone(),
                 Some(notice) => format!("{notice} · {caption}"),
@@ -1877,6 +1885,12 @@ impl WorldRuntime {
         let studio = &mut self.zone_state.studio;
         studio.set_active(active);
         studio.poll(dt, &self.world.blockers);
+    }
+
+    /// Seats this computer draws in the studio beside the host's, such as
+    /// the workshop agent ([`Studio::set_resident`]).
+    pub fn set_studio_resident(&mut self, seats: Vec<coder_access::studio::Seat>) {
+        self.zone_state.studio.set_resident(seats);
     }
 
     /// The Agent Studio as Everglade draws it.

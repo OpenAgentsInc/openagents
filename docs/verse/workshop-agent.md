@@ -1,10 +1,21 @@
 # Workshop agent
 
-Status: proposal, October 5, 2026. This page implements nothing. It
+Status: proposal, October 5, 2026, with a phase 1 demo implemented. It
 specifies a persistent agent that you own, that has a desk in the Everglade
 workshop, and that does work on your computers through the Coder host. It
 builds on the [Agent Studio](agent-studio.md), which is implemented, and on
 NIPs that are drafts; each section says which parts exist.
+
+The phase 1 demo runs in desktop Verse on this computer: `ada` sits at the
+last desk in the workshop, and you walk up and press F to talk to her. Her
+record and journal are in `~/.openagents/host/agents/ada/`
+([`coder::task::agent`](../../crates/coder/src/task/agent.rs)). She plans
+with Microcoder's step on the first provider with capacity, types read-only
+commands into a terminal pane titled `driven by ada`, and asks CONFIRM or
+REJECT for anything else ([`verse::workshop`](../../crates/verse/src/workshop.rs)).
+In this demo the request runs in the Verse process, not through the
+`studio.agent.*` NIP-HOST operations, and she has no key, attestation,
+memory, or task mode yet.
 
 ## Contents
 

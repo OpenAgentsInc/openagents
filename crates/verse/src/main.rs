@@ -40,6 +40,12 @@
 //! `--studio-notice <text>` leads Everglade's caption with a notice;
 //! `openagents studio up` passes both.
 //!
+//! In Everglade's workshop, `ada`, the workshop agent, sits at the last
+//! desk; walk up to her and press F to talk (`docs/verse/workshop-agent.md`).
+//! `--workshop-ask <text>` walks you up to her once she is at her desk,
+//! types that request into her panel, and sends it six seconds later, for
+//! a demo or a capture.
+//!
 //! `--demolition` opens straight into the demolition yard instead: two kit
 //! cottages on Everglade's ground to knock down with a sledgehammer. A
 //! quick left click or `1` swings, `2` aims Meteor Swarm at a circle of
@@ -229,6 +235,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             }
             "--frame-times" => options.frame_times = true,
             "--studio-notice" => options.studio_notice = Some(value()?),
+            "--workshop-ask" => options.workshop_ask = Some(value()?),
             "--ritual" => options.ritual = Some(value()?.into()),
             "--no-ritual" => options.ritual = None,
             "--at" => {
