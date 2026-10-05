@@ -89,7 +89,7 @@ const PLANE_VERTEX_BYTES: usize = 13;
 const STEPS: f32 = u16::MAX as f32;
 const MAX_NAME_BYTES: usize = 96;
 const MAX_TEXTURES: usize = 64;
-const MAX_MATERIALS: usize = 256;
+const MAX_MATERIALS: usize = 512;
 const MAX_MODELS: usize = 256;
 const MAX_PRIMITIVES: usize = 16;
 /// Most joints in a character; joint indices are bytes.
@@ -97,7 +97,7 @@ pub const MAX_JOINTS: usize = 256;
 /// Most clips in a character.
 pub const MAX_CLIPS: usize = 8;
 /// Most forms in a pack.
-pub const MAX_FORMS: usize = 8;
+pub const MAX_FORMS: usize = 16;
 /// Most keys on one channel of one track.
 pub const MAX_KEYS: usize = 4096;
 /// The longest clip, in seconds.

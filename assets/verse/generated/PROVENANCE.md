@@ -15,8 +15,8 @@ following [the pipeline](../../../docs/verse/blender-pipeline.md). The
 giant spider, the bear, the wolf, and the eagle are admitted as the pack's
 Wild Shape forms by `scripts/blender/beasts_admit.py`
 ([`assets/verse/everglade/beasts/`](../everglade/beasts/README.md)). The
-rat, frog, snake, and wasp, the training dummies, and the sledgehammer are
-not admitted.
+training dummies and the sledgehammer are not admitted. Everglade's ambient
+wildlife (`wildlife/`) is admitted as forms the same way.
 
 All models use 1 unit = 1 m and glTF's +Y up, with the origin at the center
 of the base. A model's front faces glTF +Z.
@@ -65,6 +65,25 @@ The sledgehammer's origin is the handle's butt, with the handle along +Y, so
 a hand can hold it. The fountain's water is the separate `Fountain_Water`
 and `Fountain_Spill` materials, and the warded dummy's runes are the emissive
 `Dummy_Rune` material.
+
+## Wildlife
+
+`scripts/blender/wildlife.py` builds Everglade's ambient creatures into
+`wildlife/`. The songbird, the duck, and the cat are generated from
+primitives on simple rigs, every solid weighted to one bone. The rat, frog,
+snake, and wasp are lighter copies of the Easy Animated Enemy Pack's, made
+by `enemy_pack.py`'s `convert` with smaller triangle budgets and only the
+clips the town plays.
+
+| File | Triangles | Clips |
+| --- | ---: | --- |
+| `songbird.glb` | 188 | idle, flap |
+| `duck.glb` | 330 | idle, walk (paddling) |
+| `cat.glb` | 448 | idle |
+| `rat.glb` | 686 (from 4,004) | idle, walk, run |
+| `frog.glb` | 686 (from 4,920) | idle, jump |
+| `snake.glb` | 686 (from 1,618) | idle, walk |
+| `wasp.glb` | 488 (from 3,736) | fly |
 
 ## Street furniture
 
@@ -127,6 +146,8 @@ them to `town/`:
 | `lamp_double.glb` | 176 | Two-armed lamps on Well Square and in the Lantern Quarter |
 | `shop_sign.glb` | 168 | Signs before Main Street's shops |
 | `park_bench.glb` | 156 | Well Square, Lantern Pond, and the commons walk |
+| `fruit_tree_bloom.glb` | 356 | Orchards in spring blossom |
+| `cafe_umbrella.glb` | 160 | Café parasols by Lantern Pond |
 
 ## Kit pieces
 

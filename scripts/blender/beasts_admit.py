@@ -34,6 +34,13 @@ scripts/blender/enemy_pack.py.
 
 bear, wolf, eagle: generated from primitives by scripts/blender/animals.py.
 
+songbird, duck, cat: Everglade's ambient wildlife, generated from
+primitives by scripts/blender/wildlife.py.
+
+rat, frog, snake, wasp: Everglade's ambient wildlife, lighter copies of the
+Rat, Frog, Snake, and Wasp from the same Easy Animated Enemy Pack,
+converted by scripts/blender/wildlife.py.
+
 License:
 CC0 1.0 Universal (CC0 1.0)
 Public Domain Dedication
@@ -46,6 +53,9 @@ MODELS = [
     ("bear.glb", "bear"),
     ("wolf.glb", "wolf"),
     ("eagle.glb", "eagle"),
+] + [
+    (f"wildlife/{name}.glb", name)
+    for name in ["songbird", "duck", "cat", "rat", "frog", "snake", "wasp"]
 ]
 
 
@@ -105,7 +115,7 @@ def main():
         "schema": "openagents.verse.source-manifest.v1",
         "creator": "OpenAgents",
         "license": "CC0-1.0",
-        "package": "Verse Wild Shape beasts: the Giant Spider from Quaternius's Easy Animated Enemy Pack, and generated bear, wolf, and eagle",
+        "package": "Verse Wild Shape beasts and Everglade wildlife: creatures from Quaternius's Easy Animated Enemy Pack, and generated animals",
         "files": dict(sorted(files.items())),
         "originals": dict(sorted(originals.items())),
         "transforms": dict(sorted(transforms.items())),

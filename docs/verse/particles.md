@@ -56,6 +56,7 @@ is low, which a straight-alpha PNG can't store.
 | `fireball` | 4 × 4 of 128 px | 0–15 | An explosion from a white-hot core through rolling orange fire to sooty smoke: a Principled Volume in a sphere, density from a radial falloff broken by 4D noise, heat driving a black-body-like emission ramp. |
 | `smoke` | 4 × 4 of 128 px | 0–15 | A pale puff billowing out and thinning, lit by a sun from above and a soft sky. Particles tint it (soot, dust, steam). |
 | `sparks` | 2 × 2 of 256 px | 0 spark, 1 flare, 2 ring, 3 dust | A white-hot dot with a horizontal streak for velocity-stretched sparks; a soft glow with six faint rays; a shockwave ring broken by noise; a lit, wispy dust puff. |
+| `butterfly` | 4 × 4 of 128 px | 0–7 orange, 8–15 lemon | Two butterflies' wingbeats, from wings spread flat up to nearly closed and down, seen from above and a little behind: lit wing surfaces with dark rims. |
 
 ### Describe effects
 
@@ -85,6 +86,7 @@ Colors work the same way with `[r, g, b]` values, and keyed colors are
 | `direction`, `spread` | `[0, 1, 0]`, 0 | Launch direction in the effect's frame and the widest angle from it, in degrees. |
 | `inherit` | 0 | How much of the effect's velocity particles keep. |
 | `gravity`, `drag` | 0 | Upward acceleration (m/s², negative falls) and speed lost per second. |
+| `wander` | 0 | A random push each moment, m/s², in a direction drawn afresh every step, so particles flutter about; pair it with `drag`. |
 | `scale`, `color`, `alpha` | 1, white, 1 | Curves over life. |
 | `rotate` | `true` | Start each particle at a random angle. |
 | `stretch`, `stretch_max` | 0, 50 | Lay the quad along the velocity, the tail as long as this many seconds of flight, at most `stretch_max` m. |
@@ -210,3 +212,4 @@ or converted; every sprite here is our own Blender render.
 | `scorch_embers` | Each scorch mark | Smoldering embers and smoke wisps |
 | `debris_dust` | The demolition site's dust puffs, through `fx::Style` | One lit dust puff |
 | `chimney_smoke` | Everglade's chimneys, the bakehouse's stack, and the smithy's forge (`layout::details::chimneys`) | A thin, pale plume leaning downwind |
+| `butterflies` | Every other spring and summer flower drift in Everglade | Orange and lemon butterflies wandering over the flowers |

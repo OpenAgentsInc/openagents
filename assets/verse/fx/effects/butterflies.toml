@@ -1,0 +1,51 @@
+# Butterflies over Everglade's spring and summer flower drifts: a few at a
+# time flutter up out of the flowers, wander over them, and settle away.
+# Each drift runs one; the orange and the lemon butterflies are separate
+# emitters, so a drift shows both.
+description = "A few butterflies fluttering over a flower drift."
+
+[[emitter]]
+name = "orange"
+sheet = "butterfly"
+frames = [0, 7]
+animate = "loop"
+fps = 9.0
+blend = "alpha"
+light = "lit"
+rate = 0.25
+life = [6.0, 9.0]
+shape = "disc"
+radius = 1.4
+direction = [0.0, 1.0, 0.0]
+spread = 70.0
+speed = [0.3, 0.6]
+gravity = 0.0
+drag = 0.9
+wander = 2.4
+size = [0.07, 0.09]
+alpha = [[0.0, 0.0], [0.1, 1.0], [0.85, 1.0], [1.0, 0.0]]
+rotate = false
+priority = 0
+
+[[emitter]]
+name = "lemon"
+sheet = "butterfly"
+frames = [8, 15]
+animate = "loop"
+fps = 10.0
+blend = "alpha"
+light = "lit"
+rate = 0.18
+life = [6.0, 9.0]
+shape = "disc"
+radius = 1.4
+direction = [0.0, 1.0, 0.0]
+spread = 70.0
+speed = [0.3, 0.6]
+gravity = 0.0
+drag = 0.9
+wander = 2.4
+size = [0.06, 0.08]
+alpha = [[0.0, 0.0], [0.1, 1.0], [0.85, 1.0], [1.0, 0.0]]
+rotate = false
+priority = 0

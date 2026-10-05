@@ -107,6 +107,10 @@ def materials():
         "gold": kit.mat("Prop_FlowerGold", (0.75, 0.42, 0.02), 0.7),
         "lantern_red": kit.mat("Prop_PaperRed", (0.8, 0.12, 0.06), 0.6),
         "lantern_cream": kit.mat("Prop_PaperCream", (0.95, 0.78, 0.45), 0.6),
+        # The fourth round's: blossom and awning colors.
+        "blossom": kit.mat("Prop_Blossom", (0.92, 0.55, 0.66), 0.8),
+        "blossom_white": kit.mat("Prop_BlossomWhite", (0.95, 0.88, 0.9), 0.8),
+        "awning_teal": kit.mat("Prop_AwningTeal", (0.05, 0.38, 0.36), 0.9),
     }
 
 
@@ -642,6 +646,47 @@ def park_bench(m):
         kit.box("BackSlat", (1.8, 0.04, 0.1), (0, 0.27, z), m["oak"])
 
 
+# --- Fourth round: blossom and parasols ------------------------------
+
+
+def fruit_tree_bloom(m):
+    """An orchard tree in spring bloom: pink and white blossom clouds."""
+    kit.cyl("Trunk", 0.16, 1.7, (0, 0, 0.85), m["bark"], verts=5, r2=0.11)
+    for i, (x, y, z) in enumerate(((0.55, 0.0, 2.3), (-0.5, 0.3, 2.4))):
+        kit.cyl("Bough%d" % i, 0.07, 1.1, (x * 0.5, y * 0.5, 1.85), m["bark"], verts=4, r2=0.04,
+                rot=(y * 0.9, -x * 0.9, 0))
+    kit.ball("Crown", 1.3, (0, 0, 2.65), m["blossom"], segs=8, rings=5, scale=(1, 1, 0.75))
+    rng = random.Random(43)
+    for i in range(7):
+        a = rng.uniform(0, 2 * math.pi)
+        r = rng.uniform(0.7, 1.15)
+        kit.ball("Puff%d" % i, rng.uniform(0.38, 0.55), (r * math.cos(a), r * math.sin(a), rng.uniform(2.45, 3.2)),
+                 m["blossom_white" if i % 3 == 0 else "blossom"], segs=6, rings=4)
+
+
+def cafe_umbrella(m):
+    """A café parasol over a round table, in teal and cream gores."""
+    kit.cyl("Pole", 0.03, 2.3, (0, 0, 1.15), m["iron"], verts=5)
+    kit.cyl("Base", 0.22, 0.06, (0, 0, 0.03), m["iron"], verts=8)
+    for k in range(8):
+        a0, a1 = k * math.pi / 4, (k + 1) * math.pi / 4
+        import bmesh
+        bm = bmesh.new()
+        top = bm.verts.new((0, 0, 2.45))
+        p0 = bm.verts.new((1.25 * math.cos(a0), 1.25 * math.sin(a0), 2.05))
+        p1 = bm.verts.new((1.25 * math.cos(a1), 1.25 * math.sin(a1), 2.05))
+        bm.faces.new((top, p0, p1))
+        me = bpy.data.meshes.new("Gore%d" % k)
+        bm.to_mesh(me)
+        bm.free()
+        o = bpy.data.objects.new("Gore%d" % k, me)
+        bpy.context.scene.collection.objects.link(o)
+        o.data.materials.append(m["awning_teal" if k % 2 == 0 else "cream_cloth"])
+        kit.solidify(o, 0.02)
+    kit.cyl("Table", 0.42, 0.04, (0, 0, 0.74), m["paint_white"], verts=10)
+    kit.cyl("TableLeg", 0.04, 0.72, (0, 0, 0.36), m["iron"], verts=5)
+
+
 PROPS = {
     "flower_patch_spring": lambda m: flower_patch(m, SEASONS["flower_patch_spring"], 51),
     "flower_patch_summer": lambda m: flower_patch(m, SEASONS["flower_patch_summer"], 52),
@@ -675,6 +720,8 @@ PROPS = {
     "poplar_low": poplar_low,
     "spruce_low": spruce_low,
     "fruit_tree": fruit_tree,
+    "fruit_tree_bloom": fruit_tree_bloom,
+    "cafe_umbrella": cafe_umbrella,
     "bush_round": bush_round,
 }
 

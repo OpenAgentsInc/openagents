@@ -166,7 +166,9 @@ The zone renderer gains textured static meshes:
   view draws 190,000 to 360,000 triangles rather than 240,000 to 1,040,000
   (`tests::a_frame_draws_a_fraction_of_the_city`): from the Lantern Quarter,
   305,000 rather than 808,000. Captures at walking distances show no
-  change.
+  change. With the fourth round's trees and dressing, a street view draws
+  210,000 to 410,000 (the Lantern Quarter 355,000), and the city merges
+  2,268,146 triangles in 153 MiB.
 - Everglade's atmosphere has its own colors: an afternoon daylight sky
   (`pbr::Daylight`) from warm horizon haze to a blue zenith, with a low,
   warm sun that draws long shadows across the streets, a Sun in the key
@@ -287,8 +289,29 @@ Lantern Pond and along the commons walk; and drifts of spring flowers on
 the commons, summer flowers on the town's lawns, and autumn flowers at the
 woods' edges. Wood smoke rises from the bakehouse's stack, the smithy's
 forge, and the chimneys of the cottages, cabins, taverns, and townhouses
-(`chimney_smoke`, [Particle effects](particles.md)). Each piece stands only
-on open ground: off every road, walk, building, pond, and station.
+(`chimney_smoke`, [Particle effects](particles.md)). The fourth round
+(`layout::greens`), with the room the far levels of detail made, wooded
+the commons with 16 more park trees and set trees in the verges of Main
+Street, Library Way, and Brownstone Row; planted two orchards of
+blossoming fruit trees west of the Lantern Quarter and one by the
+beekeeper's hut; put café parasols on Lantern Pond's bank; laid a
+stepping-stone path with lamps and benches up Observatory Hill; and
+thickened Fernhollow's glen round the Fern Pond with ferns, broad-leaved
+plants, mossy rocks, and toadstools. Each piece stands only on open
+ground: off every road, walk, building, pond, and station.
+
+The town has ambient wildlife
+([`wildlife`](../../crates/verse/src/zones/everglade/wildlife.rs)): pairs of
+songbirds circling over the commons, Main Street, Walden Woods, and
+Fernhollow, and one flitting from crown to crown of the commons' trees;
+ducks paddling on every pond and a frog hopping round each bank; a cat
+sitting on a garden fence; rats running along Main Street and Foundry
+Road; a snake in Walden Woods; and wasps round the beekeeper's hives.
+Butterflies flutter over every other spring and summer flower drift
+(`butterflies`, [Particle effects](particles.md)). Each creature is one of
+the pack's forms on a route that depends on the clock alone, drawn in the
+frame's figure with the characters and lit by the baked probes; one
+farther than 60 m from the player is neither posed nor drawn.
 
 | District | Built from | Roads |
 | --- | --- | --- |

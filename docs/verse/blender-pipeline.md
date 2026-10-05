@@ -78,7 +78,7 @@ sources by anyone. So the rule is:
 | Bandshell, boathouse, market stalls with awnings | Generated from simple solids with the kits' textures | The Commons, Lantern Quarter |
 | Training dummy variants (armored, warded) | Kit dummy plus generated plates and runes | The Grove's dummy types |
 | Stylized bear, wolf, eagle | Generated low-poly bodies on a simple rig, or a CC0 pack converted once found | Wild Shape, until real packs exist |
-| Rat, frog, snake, wasp | Convert from the same CC0 pack | Ambient wildlife in Everglade's woods |
+| Rat, frog, snake, wasp | Convert from the same CC0 pack | Ambient wildlife in Everglade's town and woods |
 
 Generated buildings reuse the village kit's textures, so they sit with the
 kit's pieces. Low-poly animals with a simple rig and a few keyed actions
@@ -217,10 +217,15 @@ A third round on the same day made room first, then added variety:
 - `market_stall.py` gained green and gold stalls, and builds only the
   variants it is given by name.
 
-The animals and the training dummies are not admitted. The creatures are
-skinned and animated, and the pack holds static models and the one player
-character; ambient wildlife needs skinned props in the pack format first.
-The Grove's dummies are its own concern.
+The pack's forms hold the skinned, animated creatures: the Wild Shape
+beasts and, since the fourth round, Everglade's ambient wildlife.
+`wildlife.py` builds a songbird, a mallard, and a sitting cat from
+primitives, and lighter copies of the enemy pack's rat, frog, snake, and
+wasp (686 triangles or fewer, and only the clips the town plays);
+`beasts_admit.py` admits them beside the beasts. `town_props.py` gained
+`fruit_tree_bloom` and `cafe_umbrella`, and `fx/butterfly.py` renders the
+butterflies' sprite sheet. The training dummies are the Grove's own
+concern.
 
 ### Levels of detail
 

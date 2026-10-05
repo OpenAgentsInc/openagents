@@ -32,6 +32,7 @@ pub mod spells;
 pub mod studio;
 #[cfg(test)]
 mod tests;
+pub mod wildlife;
 
 use crate::{
     controller::{Footprint, InputState, PlayerController},
@@ -109,8 +110,11 @@ pub(crate) struct Everglade {
     /// The town's destructible buildings, once the zone's static scene is
     /// in place ([`Self::start_town`]).
     town: Option<Box<demolition::town::Town>>,
-    /// Wood smoke rising from the town's chimneys (`layout::details`).
+    /// Wood smoke rising from the town's chimneys (`layout::details`), and
+    /// butterflies over its flower drifts.
     smoke: Option<crate::fx::Particles>,
+    /// The town's ambient creatures ([`wildlife`]).
+    wildlife: Option<Box<wildlife::Wildlife>>,
 }
 
 impl Everglade {
@@ -121,17 +125,34 @@ impl Everglade {
     ///
     /// Returns a message when the pack's character cannot play.
     pub fn new(pack: &ZonePack, at: &PlayerController) -> Result<Self, String> {
-        let mut zone = Self::with_solids(pack, at, solids::build(pack, &layout::placements())?)?;
-        zone.smoke = Some(Self::chimney_smoke());
+        let placements = layout::placements();
+        let mut zone = Self::with_solids(pack, at, solids::build(pack, &placements)?)?;
+        zone.smoke = Some(Self::chimney_smoke(&placements));
+        let creatures = wildlife::creatures(pack, &placements);
+        zone.wildlife = Some(Box::new(wildlife::Wildlife::new(pack, creatures)?));
         Ok(zone)
     }
 
     /// One plume of smoke over each of the town's chimneys, already risen,
-    /// so the town is not seen lighting its fires.
-    fn chimney_smoke() -> crate::fx::Particles {
+    /// so the town is not seen lighting its fires, and butterflies over
+    /// every other spring and summer flower drift among `placements`.
+    fn chimney_smoke(placements: &[layout::Placement]) -> crate::fx::Particles {
         let mut smoke = crate::fx::Particles::new(0x5E0C_E1AD);
         for [x, y, z] in layout::details::chimneys() {
             smoke.start("chimney_smoke", crate::fx::Spawn::at(Vec3::new(x, y, z)));
+        }
+        let drifts = placements.iter().filter(|p| {
+            matches!(
+                p.model,
+                "generated/flower_patch_spring" | "generated/flower_patch_summer"
+            )
+        });
+        for p in drifts.step_by(2) {
+            let [x, z] = p.at;
+            smoke.start(
+                "butterflies",
+                crate::fx::Spawn::at(Vec3::new(x, height(x, z) + 0.5, z)),
+            );
         }
         for _ in 0..32 {
             smoke.tick(0.25, height);
@@ -168,6 +189,7 @@ impl Everglade {
             demolition: None,
             town: None,
             smoke: None,
+            wildlife: None,
         })
     }
 
@@ -292,6 +314,8 @@ impl Everglade {
     ///
     /// Returns a message when the pack lacks a kit model.
     pub fn start_demolition(&mut self, pack: &ZonePack) -> Result<(), String> {
+        // The yard has no ponds, trees, or hives for the town's creatures.
+        self.wildlife = None;
         let mut yard = demolition::Demolition::new(pack)?;
         yard.set_track(
             self.cast
@@ -727,6 +751,15 @@ impl Everglade {
             cast.set_swing(chop);
             cast.advance(at, seats, dt);
         }
+        // The characters' scene, joined to the creatures' once they draw.
+        let mut cast_scene = self.cast.as_ref().map(|cast| cast.figure().scene);
+        if let Some(wildlife) = &mut self.wildlife {
+            wildlife.tick(dt, at.pos);
+            if let Some(scene) = &cast_scene {
+                wildlife.prepare(scene);
+                cast_scene = wildlife.joined(scene).or(cast_scene);
+            }
+        }
         let solids = self.town.as_mut().and_then(|town| {
             town.tick(dt, at);
             town.take_solids()
@@ -736,7 +769,7 @@ impl Everglade {
             self.refresh_blocks();
         }
         if let Some(town) = &mut self.town {
-            town.prepare(self.cast.as_ref().map(|cast| cast.figure().scene).as_ref());
+            town.prepare(cast_scene.as_ref());
         }
         let blocks = self.demolition.as_mut().and_then(|yard| {
             yard.tick(dt, at);
@@ -806,6 +839,9 @@ impl Everglade {
                     let mut vertices = figure.vertices.as_ref().clone();
                     probes.shade(&mut vertices);
                     figure.vertices = Arc::new(vertices);
+                }
+                if let Some(wildlife) = &self.wildlife {
+                    figure = wildlife.figure(figure, self.probes.as_deref());
                 }
                 if let Some(yard) = &self.demolition {
                     figure = yard.figure(Some(figure));

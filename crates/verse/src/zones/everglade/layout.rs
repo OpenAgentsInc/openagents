@@ -24,6 +24,7 @@ use verse_world::social::everglade::DESK_SEATS;
 pub mod city;
 pub mod details;
 pub mod generated;
+pub mod greens;
 pub mod parks;
 pub mod streets;
 

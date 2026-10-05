@@ -271,9 +271,20 @@ impl Particles {
             }
         }
         // Step.
+        let mut rng = self.rng;
         for p in &mut self.particles {
             let e = &library.effects[p.effect as usize].emitters[p.emitter as usize];
             p.age += dt;
+            if e.wander > 0.0 {
+                let mut unit = || {
+                    rng ^= rng << 13;
+                    rng ^= rng >> 17;
+                    rng ^= rng << 5;
+                    (rng >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
+                };
+                let push = Vec3::new(unit(), unit(), unit());
+                p.vel += push * e.wander * dt;
+            }
             p.vel.y += e.gravity * p.scale.max(0.05) * dt;
             p.vel *= (1.0 - e.drag * dt).max(0.0);
             p.at += p.vel * dt;
@@ -290,6 +301,7 @@ impl Particles {
                 }
             }
         }
+        self.rng = rng;
         self.particles.retain(|p| p.age < p.life);
         // A stopped effect is gone once its last particle is.
         let mut live: Vec<u64> = self.particles.iter().map(|p| p.owner).collect();

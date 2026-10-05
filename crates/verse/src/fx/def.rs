@@ -266,6 +266,11 @@ pub struct Emitter {
     /// How fast speed bleeds away, 1/s.
     #[serde(default)]
     pub drag: f32,
+    /// A random push each moment, m/s², in a direction drawn afresh every
+    /// step, so a particle wanders like a fluttering butterfly; pair it
+    /// with drag to keep the wandering slow.
+    #[serde(default)]
+    pub wander: f32,
     /// Half the quad's size at birth, m, at random between the two.
     pub size: [f32; 2],
     /// The size's factor over life.
@@ -397,6 +402,7 @@ impl Emitter {
             (self.duration, "duration"),
             (self.radius, "radius"),
             (self.drag, "drag"),
+            (self.wander, "wander"),
             (self.stretch, "stretch"),
             (self.stretch_max, "stretch_max"),
             (self.bounce, "bounce"),

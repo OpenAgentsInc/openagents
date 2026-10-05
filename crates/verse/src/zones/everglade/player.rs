@@ -1087,6 +1087,37 @@ impl Beast {
         rig.skin(&joints, root, None, &mut self.vertices);
     }
 
+    /// How far `motion`'s clip carries the form in one loop at its modeled
+    /// size, m, and how long the loop lasts, s.
+    #[must_use]
+    pub fn stride(&self, motion: Motion) -> (f32, f32) {
+        let clip = self.rig.clip(Play::Motion(motion));
+        (clip.distance, clip.duration)
+    }
+
+    /// Poses the form at `at` facing `yaw`, `scale` times its modeled size,
+    /// `time` seconds into `motion`'s clip (or its stand-in), looping, after
+    /// `dt` seconds of the clock, so a change of clip blends.
+    pub fn pose(&mut self, at: Vec3, yaw: f32, scale: f32, motion: Motion, time: f32, dt: f32) {
+        let clip = self.rig.clip(Play::Motion(motion));
+        let time = if time.is_finite() {
+            time.rem_euclid(clip.duration.max(1e-3))
+        } else {
+            0.0
+        };
+        let joints = self
+            .actor
+            .hold_at(&self.rig, clip, time, dt)
+            .unwrap_or_default();
+        let root = Mat4::from_scale_rotation_translation(
+            Vec3::splat(scale),
+            Quat::from_rotation_y(yaw),
+            at,
+        );
+        self.vertices.clear();
+        self.rig.skin(&joints, root, None, &mut self.vertices);
+    }
+
     /// The posed vertices, in [`Self::figure`]'s order.
     #[must_use]
     pub fn vertices(&self) -> &[TexturedVertex] {

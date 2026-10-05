@@ -898,11 +898,16 @@ fn the_player_is_the_outfitted_character_and_no_companion_follows() {
     let dynamic = runtime.dynamic_mesh();
     let figure = dynamic.figure.as_ref().expect("the posed character");
     figure.validate().unwrap();
-    // It stands on the ground where the player does, about as tall as one.
+    // It stands on the ground where the player does, about as tall as one;
+    // the figure's other vertices are the town's creatures (`wildlife`).
     let feet = runtime.player.pos;
+    let near = |v: &&crate::pbr::textured::TexturedVertex| {
+        (v.pos[0] - feet.x).hypot(v.pos[2] - feet.z) < 1.2
+    };
     let (low, high) = figure
         .vertices
         .iter()
+        .filter(near)
         .fold((f32::MAX, f32::MIN), |(lo, hi), v| {
             (lo.min(v.pos[1]), hi.max(v.pos[1]))
         });
@@ -912,10 +917,7 @@ fn the_player_is_the_outfitted_character_and_no_companion_follows() {
         feet.y
     );
     assert!((1.5..2.3).contains(&(high - feet.y)), "head at {high}");
-    assert!(figure.vertices.iter().all(|v| {
-        let p = Vec3::from(v.pos);
-        (p.x - feet.x).hypot(p.z - feet.z) < 1.2
-    }));
+    assert!(figure.vertices.iter().filter(near).count() > 1000);
     // No boxy avatar and no spade: no amber edges at the player at all.
     let spade = runtime.agent.mesh();
     assert!(
@@ -1464,4 +1466,78 @@ fn brownstone_row_crosses_glade_run_on_its_footbridge() {
             assert!(floor >= roof.eave - 0.01, "{}: {floor}", instance.name);
         }
     }
+}
+
+#[test]
+fn the_towns_creatures_live_by_the_water_the_trees_and_the_hives() {
+    use super::player::Motion;
+    use super::wildlife::{CULL, Creature, Route, Wildlife, creatures};
+    let placements = layout::placements();
+    let all = creatures(pack(), &placements);
+    for form in [
+        "beasts/songbird",
+        "beasts/duck",
+        "beasts/frog",
+        "beasts/cat",
+        "beasts/rat",
+        "beasts/snake",
+        "beasts/wasp",
+    ] {
+        assert!(pack().form(form).is_some(), "{form}");
+        assert!(all.iter().any(|c| c.form == form), "{form}");
+    }
+    // Every route keeps its creature where it belongs over a minute: ducks
+    // on the water, birds over the roofs while circling, the rest on the
+    // ground or a little above it.
+    for Creature { form, route, .. } in &all {
+        for step in 0..120 {
+            let m = route.at(step as f32 * 0.5);
+            let ground = height(m.at.x, m.at.z);
+            assert!(m.at.is_finite() && m.yaw.is_finite(), "{form}");
+            match (*form, route) {
+                ("beasts/duck", _) => {
+                    let wet = layout::PONDS
+                        .iter()
+                        .any(|(c, r)| (m.at.x - c[0]).hypot(m.at.z - c[1]) < r - 0.5);
+                    assert!(wet, "a duck leaves the water at {}", m.at);
+                }
+                ("beasts/songbird", Route::Circle { .. }) => {
+                    assert!(m.at.y > ground + 10.0, "{form} at {}", m.at);
+                }
+                _ => assert!(
+                    m.at.y >= ground - 0.05,
+                    "{form} under the ground at {}",
+                    m.at
+                ),
+            }
+        }
+    }
+    // A pacing rat walks, then rests.
+    let rat = all.iter().find(|c| c.form == "beasts/rat").unwrap();
+    let motions: Vec<Motion> = (0..40).map(|i| rat.route.at(i as f32).motion).collect();
+    assert!(motions.contains(&Motion::Walk) && motions.contains(&Motion::Idle));
+    // Near Lantern Pond the ducks, the frog, and the circling birds pose;
+    // far ones fold away.
+    let mut wildlife = Wildlife::new(pack(), all.clone()).unwrap();
+    assert_eq!(wildlife.creatures().len(), all.len());
+    let [px, pz] = layout::PONDS[0].0;
+    let eye = Vec3::new(px, height(px, pz) + 2.0, pz - 10.0);
+    wildlife.tick(0.1, eye);
+    let near = all
+        .iter()
+        .filter(|c| c.route.at(0.1 + c.phase).at.distance(eye) <= CULL)
+        .count();
+    assert!(near >= 4 && near < all.len(), "{near}");
+    assert_eq!(wildlife.drawn(), near);
+    // They join the characters' figure, which still validates.
+    let zone = Everglade::new(
+        pack(),
+        &crate::controller::PlayerController::new(Vec3::ZERO, 0.0),
+    )
+    .unwrap();
+    let cast = zone.cast_figure().unwrap();
+    wildlife.prepare(&cast.scene);
+    let figure = wildlife.figure(cast.clone(), None);
+    figure.validate().unwrap();
+    assert!(figure.vertices.len() > cast.vertices.len());
 }

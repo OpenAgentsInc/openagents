@@ -6,6 +6,13 @@ scripts/blender/enemy_pack.py.
 
 bear, wolf, eagle: generated from primitives by scripts/blender/animals.py.
 
+songbird, duck, cat: Everglade's ambient wildlife, generated from
+primitives by scripts/blender/wildlife.py.
+
+rat, frog, snake, wasp: Everglade's ambient wildlife, lighter copies of the
+Rat, Frog, Snake, and Wasp from the same Easy Animated Enemy Pack,
+converted by scripts/blender/wildlife.py.
+
 License:
 CC0 1.0 Universal (CC0 1.0)
 Public Domain Dedication

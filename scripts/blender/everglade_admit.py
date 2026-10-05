@@ -144,6 +144,8 @@ MODELS = [
         "lamp_double",
         "shop_sign",
         "park_bench",
+        "fruit_tree_bloom",
+        "cafe_umbrella",
     ]
 ]
 
