@@ -45,6 +45,9 @@ const RAISE: f64 = 0.35;
 const SUBSTEP: f64 = 1.0 / 120.0;
 /// The chamber's granite color (`prop-stone`).
 const GRANITE: [f32; 3] = [0.5, 0.49, 0.46];
+/// The upward speed Wind Wall gives a player inside it, m/s: enough to
+/// clear the wall's top and rise a few meters over it before falling.
+const WIND_LIFT: f32 = 11.0;
 /// Feather Fall's drifting feathers.
 const FEATHERS: usize = 8;
 const FEATHER: [f32; 3] = [0.95, 0.93, 0.86];
@@ -405,8 +408,9 @@ impl Spells {
     /// `dt` seconds that started with the feet at `feet` moving at `speed`,
     /// m/s. Inside Reverse Gravity's cylinder its field replaces the
     /// controller's gravity and a roof overhead stops the rise; elsewhere
-    /// Wind Wall's updraft lifts the airborne player inside it, and Feather
-    /// Fall's drag caps the descent until the player lands.
+    /// Wind Wall's updraft throws the player who walks into it upward, on
+    /// the ground or in the air, and Feather Fall's drag caps the descent
+    /// until the player lands.
     pub fn after_step(
         &mut self,
         player: &mut PlayerController,
@@ -452,7 +456,13 @@ impl Spells {
             player.set_surface_height(floor);
             return;
         }
-        if !player.airborne() {
+        let in_wind = matches!(&self.concentration, Some(Concentration::Wind { wall, .. })
+        if wall.in_area(
+            player.pos.as_dvec3(),
+            f64::from(RADIUS),
+            f64::from(AVATAR_HEIGHT),
+        ));
+        if !player.airborne() && !in_wind {
             // A warded landing ends the spell on the player.
             if let Some(effect) = &mut self.feather {
                 effect.land(PLAYER, self.time);
@@ -461,14 +471,11 @@ impl Spells {
         }
         let after = player.vertical_speed();
         let mut v = after;
-        if let Some(Concentration::Wind { wall, .. }) = &self.concentration
-            && wall.in_area(
-                player.pos.as_dvec3(),
-                f64::from(RADIUS),
-                f64::from(AVATAR_HEIGHT),
-            )
-        {
-            v += wind::HEAVY_UPDRAFT as f32 * dt;
+        if in_wind {
+            // The chamber's heavy-creature updraft is gentler than this
+            // controller's gravity; in the glade the wall throws the player
+            // up and keeps lifting while they stay in it.
+            v = v.max(WIND_LIFT);
         }
         if let Some(effect) = &mut self.feather
             && let Some(drag) = effect.drag(
