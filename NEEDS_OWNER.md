@@ -1,5 +1,18 @@
 # Owner checks
 
+## Shared Everglade on two devices (#10553)
+
+On the Mac that runs the Coder host, grant two devices `world` (and one of
+them `observe`), start `openagents chamber host host.json` with
+`"transport": {"type": "reach"}` and `"profile": "everglade"`, and join from
+two computers with `verse --join FILE` (a build with
+`--features remote-chamber`). Confirm both see the studio's seats at the same
+places and each other's avatars, that `W`, `S`, `A`, `D`, `Q`, and `E` walk
+and turn the avatar in the expected directions, and that the `world`-only
+device opens no studio panel. The binary-level two-client check passes over
+REACH with a scripted studio; the facing and keyboard mapping need a person
+at a window.
+
 ## Desktop composer (#10004)
 
 In a Mac build from current `main`, select the Japanese input source using the

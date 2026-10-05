@@ -34,6 +34,10 @@ pub struct Config {
     /// Explicit hosted social rules. Omission retains the combat profile.
     #[serde(default)]
     pub social_profile: Option<crate::play::social::Profile>,
+    /// A hosted social profile the host builds itself, instead of spelling
+    /// one out in `social_profile`: `"profile": "everglade"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Named>,
     #[serde(default)]
     pub state_dir: Option<PathBuf>,
     #[serde(default)]
@@ -59,6 +63,14 @@ pub enum Transport {
         #[serde(default)]
         websocket: bool,
     },
+}
+/// A hosted social profile named in the configuration.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Named {
+    /// Everglade's heightfield and studio seats
+    /// ([`crate::social::hosted::everglade_profile`]).
+    Everglade,
 }
 impl Default for Transport {
     fn default() -> Self {
@@ -115,8 +127,16 @@ impl Config {
         if bytes.is_empty() || bytes.len() > 64 * 1024 {
             return Err("Host configuration exceeds its byte budget".into());
         }
-        let config: Self =
+        let mut config: Self =
             serde_json::from_slice(bytes).map_err(|_| "Invalid chamber host configuration")?;
+        if let Some(named) = config.profile {
+            if config.social_profile.is_some() {
+                return Err("profile and social_profile do not go together".into());
+            }
+            config.social_profile = Some(match named {
+                Named::Everglade => crate::social::hosted::everglade_profile()?,
+            });
+        }
         config.validate()?;
         Ok(config)
     }
@@ -339,6 +359,7 @@ mod tests {
             guests: None,
             authored_combat_health: false,
             social_profile: None,
+            profile: None,
             state_dir: None,
             rewards: Vec::new(),
             progression: Default::default(),
@@ -353,6 +374,19 @@ mod tests {
         ))
         .unwrap();
         Game::combat_in(scene, false, instance).unwrap()
+    }
+    #[test]
+    fn a_named_everglade_profile_resolves_to_the_shared_social_profile() {
+        let mut value = serde_json::to_value(config()).unwrap();
+        value["profile"] = serde_json::json!("everglade");
+        let resolved = Config::from_json(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(
+            resolved.social_profile,
+            Some(crate::social::hosted::everglade_profile().unwrap())
+        );
+        value["social_profile"] =
+            serde_json::to_value(crate::social::hosted::everglade_profile().unwrap()).unwrap();
+        assert!(Config::from_json(&serde_json::to_vec(&value).unwrap()).is_err());
     }
     #[test]
     fn social_host_configuration_binds_rules_and_refuses_changed_recovery() {

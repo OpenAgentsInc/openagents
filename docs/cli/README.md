@@ -635,6 +635,17 @@ openagents chamber move 0,1 --to 192.0.2.10:7400 --instance 170 --reach HOST --w
 a revoked grant, or an old epoch is refused at the handshake, and a
 revocation closes an open connection within seconds.
 
+With `"profile": "everglade"` in `host.json`, the chamber hosts Everglade
+under the social rules instead of combat. The scene must hold only friendly
+actors, with no cues and `cut_at` 0. The chamber reads the Agent Studio of
+the Coder host on the same computer over its control socket
+(`--studio-socket PATH` names another) and walks the studio's seats for
+every viewer. `chamber status` then reports a `social` object with the seat
+poses and, over REACH, the `panels` this device's grant opens: `world` alone
+opens none. Desktop Verse built with the `remote-chamber` feature joins with
+`verse --join FILE`, where the file names `address`, `instance`, `host`,
+`store`, and optionally `content` and `websocket`.
+
 ## Zone (Lagrange construction)
 
 The Lagrange zone is a pure simulation (`crates/verse-lagrange`), so the

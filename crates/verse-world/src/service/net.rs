@@ -37,6 +37,12 @@ const AUTH: Duration = Duration::from_secs(30);
 const IDLE: Duration = Duration::from_secs(60);
 const REQUESTS_PER_SECOND: u32 = 120;
 
+/// Work the trusted host does on the authority's tick, right after the
+/// simulation steps, with the step's seconds: a hosted Everglade instance
+/// publishes its studio seat poses through it
+/// (`crate::social::hosted::StudioFeed`). No wire request reaches it.
+pub type Tick = Box<dyn FnMut(&mut Gateway, f32) + Send>;
+
 /// Transport metrics; skipped elapsed time is not silently simulated later.
 #[derive(Clone, Debug, Default)]
 pub struct Stats {
@@ -227,7 +233,7 @@ pub async fn serve<F: Future<Output = ()>>(
     shutdown: F,
 ) -> Exit {
     let listen = Listen::Tls(TlsAcceptor::from(tls));
-    serve_with_store(listener, listen, gateway, None, shutdown).await
+    serve_with_store(listener, listen, gateway, None, None, shutdown).await
 }
 /// Commits world mutations before replies and stops on any durability failure.
 pub async fn serve_durable<F: Future<Output = ()>>(
@@ -238,13 +244,27 @@ pub async fn serve_durable<F: Future<Output = ()>>(
     shutdown: F,
 ) -> Exit {
     let listen = Listen::Tls(TlsAcceptor::from(tls));
-    serve_with_store(listener, listen, gateway, Some(store), shutdown).await
+    serve_with_store(listener, listen, gateway, Some(store), None, shutdown).await
+}
+/// [`serve`] or, with `store`, [`serve_durable`], running `tick` on every
+/// authority tick after the simulation steps.
+pub async fn serve_ticked<F: Future<Output = ()>>(
+    listener: TcpListener,
+    tls: Arc<ServerConfig>,
+    gateway: Gateway,
+    store: Option<Store>,
+    tick: Tick,
+    shutdown: F,
+) -> Exit {
+    let listen = Listen::Tls(TlsAcceptor::from(tls));
+    serve_with_store(listener, listen, gateway, store, Some(tick), shutdown).await
 }
 pub(super) async fn serve_with_store<F: Future<Output = ()>>(
     listener: TcpListener,
     listen: Listen,
     mut gateway: Gateway,
     store: Option<Store>,
+    mut hook: Option<Tick>,
     shutdown: F,
 ) -> Exit {
     let mut stats = Stats::default();
@@ -390,6 +410,9 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                     stats.dropped_seconds += elapsed - dt;
                     let tick = Instant::now();
                     if let Err(error) = gateway.tick(dt as f32) {failure = Some(error); break;}
+                    if let Some(hook) = hook.as_mut() {
+                        hook(&mut gateway, dt as f32);
+                    }
                     stats.simulation.record(tick.elapsed().as_secs_f64());
                     stats.ticks += 1;
                 } else {

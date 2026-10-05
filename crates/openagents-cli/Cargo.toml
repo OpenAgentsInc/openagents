@@ -83,9 +83,9 @@ tempfile = "3"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 # `openagents pay serve --routes FILE`.
 toml = "0.9"
-verse = { path = "../verse", default-features = false, features = ["xp-host", "remote-chamber"] }
+verse = { path = "../verse", default-features = false, features = ["xp-host", "remote-chamber", "studio-host"] }
 verse-engine = { path = "../verse-engine" }
-verse-world = { path = "../verse-world", features = ["service-net", "service-reach"] }
+verse-world = { path = "../verse-world", features = ["service-net", "service-reach", "studio"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 verse-lagrange = { path = "../verse-lagrange" }

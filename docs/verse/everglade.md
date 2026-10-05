@@ -201,6 +201,11 @@ Everglade is the Agent Studio's place in the world:
 - The OpenAgents app's Grid opens Everglade through a walk-in arch, with the
   shared pack loader's progress, Cancel, and Retry; see
   [the Grid's portal to Everglade](mobile.md#the-grids-portal-to-everglade).
+- A shared instance runs on a chamber host (`"profile": "everglade"`) beside
+  the Coder host. The host walks the seats from the studio snapshot, and every
+  viewer draws them where the host places them. A viewer's NIP-HOST `world`
+  right admits walking only; panels need `observe`, `operate`, and `review`.
+  See [Verse networking](networking.md#plan), step 3.
 
 ## Delivery
 

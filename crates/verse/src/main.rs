@@ -201,6 +201,8 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--studio-mute" => options.studio_muted = true,
             "--everglade" => options.everglade = true,
             "--grove" => options.grove = true,
+            #[cfg(feature = "remote-chamber")]
+            "--join" => options.chamber = Some(value()?.into()),
             "--studio-notice" => options.studio_notice = Some(value()?),
             "--ritual" => options.ritual = Some(value()?.into()),
             "--no-ritual" => options.ritual = None,

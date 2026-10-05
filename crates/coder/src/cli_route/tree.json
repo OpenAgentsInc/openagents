@@ -9491,7 +9491,7 @@
               "host"
             ],
             "usage": [
-              "host CONFIG.json [--state DIR] [--root DIR] [--keys DIR | --keychain] [--label TEXT] [--loopback-test]"
+              "host CONFIG.json [--state DIR] [--root DIR] [--keys DIR | --keychain] [--label TEXT] [--loopback-test] [--studio-socket PATH]"
             ],
             "forms": [
               {
@@ -9541,11 +9541,18 @@
                     "kind": "option",
                     "name": "loopback-test",
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "studio-socket",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Run a chamber host on this machine until stopped: the configuration names the scene, pack, and transport. Over TLS (the default) it also names the certificate and key (DER) and enrolled keys. Over REACH (transport type `reach`) the Coder host's key and access store admit devices with the `world` right; the access options are the ones `openagents host serve` takes, and --label names the instance in the owner directory when the keys include the owner key.",
+            "summary": "Run a chamber host on this machine until stopped: the configuration names the scene, pack, and transport. Over TLS (the default) it also names the certificate and key (DER) and enrolled keys. Over REACH (transport type `reach`) the Coder host's key and access store admit devices with the `world` right; the access options are the ones `openagents host serve` takes, and --label names the instance in the owner directory when the keys include the owner key. With profile `everglade` it hosts Everglade under the social rules, bound to the pinned Everglade pack, and walks the Agent Studio's seats from the Coder host's control socket on this computer (--studio-socket overrides it).",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -10088,6 +10095,14 @@
         {
           "kind": "option",
           "name": "loopback-test",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "studio-socket",
+          "value": "PATH",
+          "open": true,
           "optional": true,
           "repeated": true
         },

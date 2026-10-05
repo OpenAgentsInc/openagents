@@ -5,12 +5,15 @@
 //! instance read one copy: the player [`controller`], ground
 //! [`nav`]igation, Everglade's heightfield and studio places
 //! ([`everglade`]), the zone's [`solids`], the studio [`seats`]' walk, and
-//! the social rules profile's authority ([`world`]). With the `studio`
+//! the social rules profile's authority ([`world`]). [`hosted`] builds the
+//! closed profile a chamber host serves Everglade under and feeds it the
+//! studio's seats. With the `studio`
 //! feature, [`studio`] places a NIP-HOST studio snapshot's seats, drives
 //! them for every viewer, and checks the studio rights a panel needs.
 
 pub mod controller;
 pub mod everglade;
+pub mod hosted;
 pub mod nav;
 pub mod seats;
 pub mod solids;

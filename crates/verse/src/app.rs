@@ -78,6 +78,10 @@ pub struct Options {
     /// The pinned chamber the Grid's RITUAL arch joins
     /// ([`crate::ritual::Config`]); `None` draws no arch.
     pub ritual: Option<std::path::PathBuf>,
+    /// A hosted Everglade instance to join over REACH instead of walking
+    /// the local world (`--join FILE`, [`crate::hosted::Join`]).
+    #[cfg(feature = "remote-chamber")]
+    pub chamber: Option<std::path::PathBuf>,
 }
 
 impl Default for Options {
@@ -97,6 +101,8 @@ impl Default for Options {
             grove: false,
             studio_notice: None,
             ritual: crate::ritual::default_config(),
+            #[cfg(feature = "remote-chamber")]
+            chamber: None,
         }
     }
 }
@@ -568,6 +574,10 @@ struct App {
     everglade_pending: Option<zones::ZoneId>,
     /// A held Up (1) or Down (-1) while levitating in Everglade, or 0.
     climb: f32,
+    /// The hosted instance this window walks in, and the heading its
+    /// keyboard steers.
+    #[cfg(feature = "remote-chamber")]
+    hosted: Option<(crate::hosted::Link, f32)>,
 }
 
 /// The replay list: the retained `beats-winner` runs and which is chosen.
@@ -733,6 +743,15 @@ impl App {
             ));
         }
         runtime.set_studio_notice(options.studio_notice.clone());
+        #[cfg(feature = "remote-chamber")]
+        let hosted = match &options.chamber {
+            Some(path) => {
+                let heading = runtime.player.yaw;
+                let link = crate::hosted::Join::read(path)?.open(&mut runtime)?;
+                Some((link, heading))
+            }
+            None => None,
+        };
         let zone_operators = zone_operators_for(session.as_ref());
         Ok(Self {
             window: None,
@@ -816,6 +835,8 @@ impl App {
             window_focused: true,
             everglade_pending: None,
             climb: 0.0,
+            #[cfg(feature = "remote-chamber")]
+            hosted,
         })
     }
 
@@ -2788,6 +2809,15 @@ impl App {
                 self.climb = 0.0;
             }
         }
+        #[cfg(feature = "remote-chamber")]
+        if let Some((link, heading)) = &mut self.hosted {
+            link.steer_input(&input, heading, dt);
+            if let Err(error) = link.pump(&mut self.runtime) {
+                self.error = Some(error);
+                self.hosted = None;
+                self.runtime.leave_hosted_social();
+            }
+        }
         self.update_gym(true);
         self.runtime.update_studio(true, dt);
         self.studio_signals();
@@ -2815,7 +2845,13 @@ impl App {
             );
         }
         if let Some(session) = &mut self.session {
-            session.tick(now, &self.runtime.player, &self.runtime.agent);
+            if self.runtime.is_hosted() {
+                // Other players come from the host's snapshots; the
+                // relay's crowd keeps discovery but draws no pose here.
+                session.tick_world(now, &mut self.runtime);
+            } else {
+                session.tick(now, &self.runtime.player, &self.runtime.agent);
+            }
             if let Some(found) = session.scan_result(now, &self.runtime.agent) {
                 self.runtime.agent.look_around(&found);
             }
