@@ -1,0 +1,31 @@
+{
+  "acceptance": "failed",
+  "reason": "Steady native frame and server simulation budgets pass this capture, but repeated epochs, correction outliers, and storage stalls leave movement and full acceptance unproven.",
+  "steady_frame_p95_ms": 14.810666,
+  "steady_frame_max_ms": 32.310292,
+  "steady_snapshot_age_p95_ms": 163.333167,
+  "steady_gpu_p95_ms": 10.112333,
+  "server_simulation_max_ms": 27.18,
+  "storage_paused_seconds": 2.586789,
+  "storage_paused_ticks": 80,
+  "storage_refused_requests": 91,
+  "headless_observed_frame_snapshots_range": [
+    288,
+    326
+  ],
+  "headless_movement_inputs_range": [
+    387,
+    434
+  ],
+  "remote_scratch_removed": true,
+  "limits": [
+    "Same pinned server; clients also include physics indexing and renderer extraction. Shared hardware and different trajectories prevent an isolated causal comparison.",
+    "Linux CPU and Mac client CPU remain shared; SSH forwarding adds transport overhead.",
+    "Histogram upper bounds are not exact percentiles.",
+    "No injected delay or jitter; impaired-network acceptance remains separate.",
+    "Two out-of-order GPU results are excluded; input-to-display remains unmeasured.",
+    "Native control_epoch resets total 38; aggregate reasons do not identify every expiry. Ordinary correction p95 is zero, maximum 1.036954 m.",
+    "A 7433.41 ms startup frame is excluded from steady-state timing. No native death or respawn occurs in this capture.",
+    "Two blocked motor advances occur on the unchanged pre-V14 server; they remain separate correctness evidence."
+  ]
+}

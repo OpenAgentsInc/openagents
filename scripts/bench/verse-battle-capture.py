@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Record a temporary twenty-player battle with one native primary window through a controlled TLS route."""
-import argparse, hashlib, json, os, pathlib, shlex, shutil, socket, subprocess, tempfile, time
+import argparse, hashlib, json, os, pathlib, shlex, shutil, socket, subprocess, sys, tempfile, time
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--asset-dir',type=pathlib.Path,required=True)
 parser.add_argument('--binaries',type=pathlib.Path,required=True)
@@ -124,12 +124,15 @@ sample_receipt={'requested':args.sample_host,'status':'not_started',
 try:
     log=open(root/'host.log','w');logs.append(log)
     if args.ssh_host:
-        remote_root=remote('mktemp -d /tmp/verse-battle-host-XXXXXXXX',capture_output=True,text=True).stdout.strip()
-        if not remote_root.startswith('/tmp/verse-battle-host-') or '/' in remote_root[len('/tmp/'):]:
+        candidate=remote('mktemp -d /tmp/verse-battle-host-XXXXXXXX',capture_output=True,text=True).stdout.strip()
+        if not candidate.startswith('/tmp/verse-battle-host-') or '/' in candidate[len('/tmp/'):]:
             raise RuntimeError('Unexpected remote scratch path')
+        remote_root=candidate
         remote('mkdir '+shlex.quote(remote_root+'/assets')+' '+shlex.quote(remote_root+'/home'))
+        tar_flags=['--no-xattrs','--no-mac-metadata'] if sys.platform=='darwin' else []
         with tempfile.TemporaryFile() as bundle:
-            subprocess.run(['tar','-cf','-', '-C',str(assets),'.'],stdout=bundle,check=True)
+            subprocess.run(['tar',*tar_flags,'-cf','-', '-C',str(assets),'.'],stdout=bundle,check=True,
+                           env={**os.environ,'COPYFILE_DISABLE':'1'})
             bundle.seek(0)
             remote('tar -xf - -C '+shlex.quote(remote_root+'/assets'),stdin=bundle)
         port_script='import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'
@@ -143,7 +146,8 @@ try:
             remote_config['state_dir']=remote_root+'/state'
         (root/'remote-host.json').write_text(json.dumps(remote_config))
         with tempfile.TemporaryFile() as bundle:
-            subprocess.run(['tar','-cf','-', '-C',str(root),'battle.json','cert.der','tls.der','remote-host.json'],stdout=bundle,check=True)
+            subprocess.run(['tar',*tar_flags,'-cf','-', '-C',str(root),'battle.json','cert.der','tls.der','remote-host.json'],stdout=bundle,check=True,
+                           env={**os.environ,'COPYFILE_DISABLE':'1'})
             bundle.seek(0)
             remote('tar -xf - -C '+shlex.quote(remote_root),stdin=bundle)
         command=("trap 'kill -TERM \"$fixture_pid\" 2>/dev/null; wait \"$fixture_pid\"' EXIT; "
