@@ -444,6 +444,38 @@ mod meteor_swarm {
     }
 
     #[test]
+    fn walking_and_jumping_through_the_cast_still_brings_the_meteors_down_where_aimed() {
+        let mut site = site();
+        let mut player = caster();
+        let mut swarm = Swarm::default();
+        let at = Vec3::new(-6.0, 0.0, -16.0);
+        swarm.target().unwrap();
+        swarm.aim_at(at, &player);
+        assert!(swarm.confirm(&player));
+        let dt = 1.0 / 60.0;
+        let mut seconds = 0.0;
+        let mut landed = Vec::new();
+        while swarm.casting() || swarm.meteors_left() > 0 || seconds < 0.1 {
+            // Walking away to the east, and hopping.
+            player.pos.x += 0.08;
+            player.pos.y = if (seconds * 2.0_f32).fract() < 0.5 {
+                0.6
+            } else {
+                0.0
+            };
+            swarm.tick(dt, &player, &mut site);
+            landed.extend(swarm.take_impacts());
+            seconds += dt;
+            assert!(seconds < 6.0, "the strike ends");
+        }
+        assert_eq!(landed.len(), meteor::METEORS, "every meteor fell");
+        for impact in &landed {
+            let flat = Vec3::new(impact.at.x - at.x, 0.0, impact.at.z - at.z);
+            assert!(flat.length() <= meteor::AREA + 0.5, "{impact:?}");
+        }
+    }
+
+    #[test]
     fn cancelling_spends_nothing() {
         let mut site = site();
         let player = caster();
@@ -458,15 +490,15 @@ mod meteor_swarm {
         swarm.target().unwrap();
         swarm.target().unwrap();
         assert!(!swarm.targeting());
-        // A cast the caster walks out of is interrupted.
+        // A cast stopped partway, as Esc stops it, spends nothing.
         swarm.target().unwrap();
         swarm.aim_at(Vec3::new(-6.0, 0.0, -16.0), &player);
         assert!(swarm.confirm(&player));
-        let mut walked = player.clone();
+        let walked = player.clone();
         for _ in 0..30 {
-            walked.pos.x += 0.05;
             swarm.tick(1.0 / 60.0, &walked, &mut site);
         }
+        swarm.cancel();
         assert!(!swarm.casting());
         for _ in 0..240 {
             swarm.tick(1.0 / 60.0, &walked, &mut site);

@@ -36,6 +36,10 @@ pub const LEVEL: f32 = 3.2;
 /// A collision column's side, m: narrow enough that a 0.45 m character
 /// can't stand inside a curved wall or clip a corner.
 pub const COLUMN: f32 = 0.25;
+/// Models cut finer, so a strike takes a crater out of their side and a
+/// cut through one side leaves a hinge: the concrete tower, three blocks
+/// across and a level every 2.5 m.
+pub const FINE: [(&str, f32, f32); 1] = [("generated/concrete_tower", 2.1, 2.5)];
 
 /// Models that stay as placed: the ground and its paving, plants, rocks,
 /// water, and the walkways over the water.
@@ -98,13 +102,27 @@ impl Lattice {
     /// The lattice of a model with `bounds` placed at `scale`.
     #[must_use]
     pub fn of(bounds: ([f32; 3], [f32; 3]), scale: f32) -> Self {
+        Self::sized(bounds, scale, CELL, LEVEL)
+    }
+
+    /// The lattice of model `name` with `bounds` placed at `scale`: finer
+    /// for the models in [`FINE`].
+    #[must_use]
+    pub fn of_model(name: &str, bounds: ([f32; 3], [f32; 3]), scale: f32) -> Self {
+        match FINE.iter().find(|(model, ..)| *model == name) {
+            Some(&(_, cell, level)) => Self::sized(bounds, scale, cell, level),
+            None => Self::of(bounds, scale),
+        }
+    }
+
+    fn sized(bounds: ([f32; 3], [f32; 3]), scale: f32, cell: f32, level: f32) -> Self {
         let min = Vec3::from(bounds.0);
         let extent = (Vec3::from(bounds.1) - min).max(Vec3::splat(1e-3));
         let count = |e: f32, side: f32| ((e * scale.abs() / side).ceil().max(1.0) as usize).min(64);
         let n = [
-            count(extent.x, CELL),
-            count(extent.y, LEVEL),
-            count(extent.z, CELL),
+            count(extent.x, cell),
+            count(extent.y, level),
+            count(extent.z, cell),
         ];
         Self {
             min,
@@ -256,7 +274,8 @@ pub fn split_model(pack: &ZonePack, name: &str, scale: f32) -> Result<Arc<Split>
     let model = pack
         .model(name)
         .ok_or_else(|| format!("The Everglade pack has no {name}"))?;
-    let lattice = Lattice::of(model.bounds(), scale);
+    let lattice = Lattice::of_model(name, model.bounds(), scale);
+
     let mut triangles = Vec::new();
     for primitive in &model.primitives {
         let mut vertices: Vec<TexturedVertex> = primitive

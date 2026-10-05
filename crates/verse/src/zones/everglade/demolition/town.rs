@@ -40,7 +40,7 @@ use super::carve::{self, Lattice, Split};
 use super::chunks::{self, ChunkMesh};
 use super::hammer::{self, Hammer};
 use super::kit::{self, CORNER_TRIM, Draft, SEAM, WALL_TOP};
-use super::meteor::{self, Swarm};
+use super::meteor::{self, Strike, Swarm};
 use super::site::{Blow, Cuboid, Link, Matter, PieceSpec, Role, Side, Site, Status, Target};
 use super::{BREAK, HIT, join};
 use crate::controller::{Footprint, PlayerController};
@@ -451,8 +451,21 @@ impl Target for Wreck {
     }
 
     fn explode(&mut self, center: Vec3, radius: f32, damage: i32, speed: f32) -> Vec<Blow> {
+        self.explode_facing(center, radius, damage, speed, Vec3::ZERO)
+    }
+
+    fn explode_facing(
+        &mut self,
+        center: Vec3,
+        radius: f32,
+        damage: i32,
+        speed: f32,
+        face: Vec3,
+    ) -> Vec<Blow> {
         self.lift_near(&[center], radius);
-        let blows = self.site.explode(center, radius, damage, speed);
+        let blows = self
+            .site
+            .explode_facing(center, radius, damage, speed, face);
         self.note(&blows);
         blows
     }
@@ -659,6 +672,30 @@ impl Town {
         placements: &[Placement],
         world: Arc<TexturedScene>,
     ) -> Result<Self, String> {
+        Self::build(pack, placements, world, true)
+    }
+
+    /// The destructible models among `placements` outside Everglade's
+    /// town, such as the Grove's tower: no city walls, boards, ponds, or
+    /// footbridge, only the placements' own solids.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack lacks a placed model.
+    pub fn standalone(
+        pack: &ZonePack,
+        placements: &[Placement],
+        world: Arc<TexturedScene>,
+    ) -> Result<Self, String> {
+        Self::build(pack, placements, world, false)
+    }
+
+    fn build(
+        pack: &ZonePack,
+        placements: &[Placement],
+        world: Arc<TexturedScene>,
+        everglade: bool,
+    ) -> Result<Self, String> {
         let surveyed: Vec<Surveyed> = survey(placements)
             .into_iter()
             .enumerate()
@@ -679,9 +716,16 @@ impl Town {
             .filter(|(index, _)| !members.contains(index))
             .map(|(_, placement)| *placement)
             .collect();
-        let mut base = solids::build(pack, &others)?;
-        let mut city: Vec<Option<(Footprint, f32)>> =
-            layout::city::kit_blocks().into_iter().map(Some).collect();
+        let mut base = if everglade {
+            solids::build(pack, &others)?
+        } else {
+            solids::build_with(pack, &others, &[])?
+        };
+        let mut city: Vec<Option<(Footprint, f32)>> = if everglade {
+            layout::city::kit_blocks().into_iter().map(Some).collect()
+        } else {
+            Vec::new()
+        };
         let mut taken: Vec<(Footprint, f32)> = Vec::new();
         // Chunk shapes, cut once each and shared by every piece like it,
         // and each house's paint.
@@ -959,10 +1003,20 @@ impl Town {
     ///
     /// Returns why the spell can't be cast now.
     pub fn meteor_swarm(&mut self, player: &PlayerController) -> Result<(), String> {
+        self.target(Strike::Meteors, player)
+    }
+
+    /// Enters `strike`'s targeting with the circle ahead of `player`,
+    /// switches to it, or leaves it.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the spell can't be cast now.
+    pub fn target(&mut self, strike: Strike, player: &PlayerController) -> Result<(), String> {
         if self.hammer.swinging() {
             return Err("Finish the swing first".into());
         }
-        self.swarm.target()?;
+        self.swarm.target_with(strike)?;
         if self.swarm.targeting() && self.swarm.aim().is_none() {
             self.swarm.aim_ahead(player, AHEAD);
         }
@@ -983,9 +1037,9 @@ impl Town {
             return false;
         }
         let solids = &self.current;
-        match meteor::surface_hit(origin, direction, &|x, z| solids.top(x, z)) {
-            Some(ground) => {
-                self.swarm.aim_at(ground, player);
+        match meteor::surface_aim(origin, direction, &|x, z| solids.top(x, z)) {
+            Some(aim) => {
+                self.swarm.aim_on(aim, player);
                 true
             }
             None => false,
@@ -1031,6 +1085,42 @@ impl Town {
         self.sync();
     }
 
+    /// Where the spell's strikes landed since the last call.
+    pub fn take_impacts(&mut self) -> Vec<meteor::Impact> {
+        self.swarm.take_impacts()
+    }
+
+    /// An explosion of `damage` within `radius` of `center` from another
+    /// spell, such as a lightning bolt: it chips what it reaches and lets
+    /// tall buildings topple. Returns the blows.
+    pub fn blast(&mut self, center: Vec3, radius: f32, damage: i32, face: Vec3) -> Vec<Blow> {
+        let blows = self
+            .wreck
+            .explode_facing(center, radius, damage, 10.0, face);
+        self.number(&blows);
+        blows
+    }
+
+    /// Floats the hardest of `blows`' numbers.
+    fn number(&mut self, blows: &[Blow]) {
+        let mut blows = blows.to_vec();
+        blows.sort_by(|a, b| b.damage.cmp(&a.damage));
+        for blow in blows.iter().take(8) {
+            self.floaters.push(Floater {
+                at: blow.at + Vec3::Y * 0.8,
+                text: blow.damage.to_string(),
+                color: if blow.broke { BREAK } else { HIT },
+                start: self.clock,
+            });
+        }
+    }
+
+    /// Whether `point` is within `reach` of a building something can break.
+    #[must_use]
+    pub fn touches(&self, point: Vec3, reach: f32) -> bool {
+        self.wreck.touches(point, reach)
+    }
+
     /// Advances the hammer, the spell, the rules, and what draws; lets go
     /// of buildings that rest; and notes when the solids change. `player`
     /// is the player's controller.
@@ -1049,19 +1139,18 @@ impl Town {
                 });
             }
         }
-        let mut blows = self.swarm.tick(dt, player, &mut self.wreck);
-        blows.sort_by(|a, b| b.damage.cmp(&a.damage));
-        for blow in blows.iter().take(8) {
-            self.floaters.push(Floater {
-                at: blow.at + Vec3::Y * 0.8,
-                text: blow.damage.to_string(),
-                color: if blow.broke { BREAK } else { HIT },
-                start: self.clock,
-            });
-        }
+        let blows = self.swarm.tick(dt, player, &mut self.wreck);
+        self.number(&blows);
         let now = self.clock;
         self.floaters.retain(|f| now - f.start < FLOAT);
         self.wreck.site.tick(dt);
+        // A toppled top striking the ground: dust, a blast of debris, and
+        // a jolt.
+        for crash in self.wreck.site.take_crashes() {
+            self.swarm.burst("tower_crash", crash.at);
+            self.swarm.quake(0.6 + 0.4 * crash.size);
+        }
+
         self.warm(player);
         self.settle(player);
         self.sync();

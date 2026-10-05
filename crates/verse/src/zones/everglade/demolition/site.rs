@@ -14,7 +14,10 @@
 //! support is decided by rules over grid adjacency instead of welds.
 
 use glam::{DQuat, DVec3, Mat4, Vec3};
-use physics::{Body, BodyId, BodyKind, Collider, Filter, Material, Shape, Uniform, World};
+use physics::{
+    Body, BodyId, BodyKind, Collider, Filter, Joint, JointId, JointKind, Material, Shape, Uniform,
+    World,
+};
 use std::collections::BTreeMap;
 
 /// Physics step, s, as the chamber's spell world.
@@ -49,6 +52,43 @@ const THROWN: f64 = 1.6;
 const BLAST_UPWARD: f64 = 38.0;
 /// Speed at which an unsupported wall's top starts to tip outward, m/s.
 const TIP: f64 = 0.9;
+/// Speed under which a fallen top's blocks are damped toward rest, m/s,
+/// and how much of their motion a step keeps.
+const SETTLE_SPEED: f64 = 1.5;
+const SETTLE_DAMPING: f64 = 0.95;
+/// Debris slower than [`FREEZE_SPEED`] m/s for [`FREEZE_AFTER`] s is
+/// frozen in place as a fixed body until something strikes near it, so a
+/// rubble pile whose last few pieces still rock costs the solver nothing.
+const FREEZE_SPEED: f64 = 0.6;
+const FREEZE_AFTER: f64 = 1.5;
+/// How near a piece that breaks or comes loose rouses frozen debris, m.
+const ROUSE: f64 = 3.0;
+/// Levels a carved building needs, and how many times taller than wide it
+/// must be, for its top to topple as one body when its base is undercut.
+const TALL_LEVELS: u8 = 4;
+const TALL_RATIO: f64 = 1.8;
+/// The share of a tall building's level, by footprint, that must still
+/// stand to carry what is over it; below it, or when the weight over the
+/// level is no longer over what stands of it, the top topples.
+pub const TOPPLE_LEFT: f64 = 0.4;
+/// Tilt at which a toppling top leaves its hinge and falls free, degrees.
+const HINGE_RELEASE: f64 = 24.0;
+/// Speed, rad/s, at which a toppling top starts to turn over its hinge.
+const TIP_SPIN: f64 = 0.4;
+/// Fastest a toppling top moves, m/s and rad/s: a 30 m tower's top falls
+/// faster than the yard's debris cap.
+const FALL_SPEED: f64 = 32.0;
+const FALL_SPIN: f64 = 4.0;
+/// Tilt past which a toppling top that touches the ground breaks up,
+/// degrees.
+const CRASH_TILT: f64 = 32.0;
+/// Most seconds a top leans without reaching the ground before it breaks
+/// up where it lies.
+const FALL_LIMIT: f64 = 8.0;
+/// Speed above which a block of a top that crashes breaks into its chunks,
+/// m/s, and most blocks one crash breaks.
+const CRASH_SHATTER: f64 = 4.0;
+const CRASH_BREAKS: usize = 12;
 
 /// Plaster, timber, and stone surfaces.
 const MATERIAL: Material = Material {
@@ -219,6 +259,48 @@ pub struct Piece {
     pub status: Status,
     /// One entry per spec chunk once broken.
     pub chunks: Vec<Chunk>,
+    /// While it is part of a toppling top, its frame in that body's frame:
+    /// an offset and a rotation.
+    pub local: Option<(DVec3, DQuat)>,
+    /// Whether it fell as part of a top and lies loose where it crashed,
+    /// at any tilt, rather than breaking past a tilt limit.
+    pub rubble: bool,
+}
+
+impl Piece {
+    fn standing(body: BodyId, hit_points: i32) -> Self {
+        Self {
+            body,
+            hit_points,
+            status: Status::Standing,
+            chunks: Vec::new(),
+            local: None,
+            rubble: false,
+        }
+    }
+}
+
+/// A tall building's top toppling as one body over the hinge its undercut
+/// level left.
+#[derive(Clone, Debug, PartialEq)]
+struct Fall {
+    body: BodyId,
+    /// The pieces it carries.
+    members: Vec<usize>,
+    /// The two point joints on its hinge line while it turns over it.
+    joints: Vec<JointId>,
+    /// Which way it tips, and when it began, s.
+    toward: DVec3,
+    since: f64,
+}
+
+/// A toppled top striking the ground, for its dust, its sound, and the
+/// camera's shake.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Crash {
+    pub at: Vec3,
+    /// How hard, from 0 to 1.
+    pub size: f32,
 }
 
 /// A puff of dust: where it is, how it drifts, and how old it is.
@@ -238,11 +320,13 @@ enum Push {
     /// The chunks nearest `point` take `push`, as from a hammer blow.
     Along { point: DVec3, push: DVec3 },
     /// Every chunk flies away from `center` at up to `speed`, falling off
-    /// to nothing at `radius`, as from an explosion.
+    /// to nothing at `radius`, as from an explosion; out along `face`, a
+    /// struck wall's outward normal, when it isn't zero.
     From {
         center: DVec3,
         speed: f64,
         radius: f64,
+        face: DVec3,
     },
 }
 
@@ -283,6 +367,18 @@ pub struct Site {
     /// Bodies an explosion threw, and until when they may outrun
     /// [`MAX_SPEED`], s; sorted by body.
     thrown: Vec<(BodyId, f64)>,
+    /// Tall buildings' tops toppling now.
+    falls: Vec<Fall>,
+    /// The piece each toppling top's collider stands for, by collider.
+    parts: BTreeMap<u32, Vec<usize>>,
+    /// Tops that struck the ground since the last [`Site::take_crashes`].
+    crashes: Vec<Crash>,
+    /// Where the last explosion was, to tip a top cut evenly away from it.
+    last_blast: Option<DVec3>,
+    /// How long each slow debris body has been slow, s, and the debris
+    /// frozen in place, by body.
+    resting: BTreeMap<u32, f64>,
+    frozen: std::collections::BTreeSet<u32>,
 }
 
 impl Site {
@@ -305,6 +401,12 @@ impl Site {
             pending: 0.0,
             revision: 0,
             thrown: Vec::new(),
+            falls: Vec::new(),
+            parts: BTreeMap::new(),
+            crashes: Vec::new(),
+            last_blast: None,
+            resting: BTreeMap::new(),
+            frozen: std::collections::BTreeSet::new(),
         };
         site.raise();
         site
@@ -359,17 +461,19 @@ impl Site {
             let id = self.world.add(body);
             self.add_piece_colliders(index, id);
             self.own(id, Some(index));
-            self.pieces.push(Piece {
-                body: id,
-                hit_points: self.specs[index].hit_points,
-                status: Status::Standing,
-                chunks: Vec::new(),
-            });
+            self.pieces
+                .push(Piece::standing(id, self.specs[index].hit_points));
         }
         self.index_buildings();
         self.puffs.clear();
         self.pending = 0.0;
         self.thrown.clear();
+        self.falls.clear();
+        self.parts.clear();
+        self.crashes.clear();
+        self.last_blast = None;
+        self.resting.clear();
+        self.frozen.clear();
     }
 
     /// Piece `index`'s body as built: static, where it was placed.
@@ -452,6 +556,16 @@ impl Site {
         self.owner.get(id.0 as usize).copied().flatten()
     }
 
+    /// The piece collider number `index` on body `body` stands for: the
+    /// body's piece, or one piece of a toppling top.
+    fn collider_owner(&self, index: usize, body: BodyId) -> Option<usize> {
+        self.owner_of(body).or_else(|| {
+            self.parts
+                .get(&(index as u32))
+                .and_then(|p| p.first().copied())
+        })
+    }
+
     /// Groups the pieces by building and finds each building's top story.
     fn index_buildings(&mut self) {
         self.members.clear();
@@ -475,12 +589,8 @@ impl Site {
             let id = self.world.add(body);
             self.add_piece_colliders(index, id);
             self.own(id, Some(index));
-            self.pieces.push(Piece {
-                body: id,
-                hit_points: self.specs[index].hit_points,
-                status: Status::Standing,
-                chunks: Vec::new(),
-            });
+            self.pieces
+                .push(Piece::standing(id, self.specs[index].hit_points));
         }
         self.index_buildings();
         start..self.specs.len()
@@ -492,6 +602,11 @@ impl Site {
     /// the rest, so removed bodies don't linger in it. Piece indices
     /// change; the kept pieces keep their order.
     pub fn retain(&mut self, keep: impl Fn(&PieceSpec) -> bool) {
+        // A toppling top lies down as rubble first: its pieces share one
+        // body, which the rebuilt world keeps per piece.
+        while !self.falls.is_empty() {
+            self.crash(0, false);
+        }
         let fresh = self.ground();
         let old = std::mem::replace(&mut self.world, fresh);
         let then = old.time();
@@ -500,6 +615,16 @@ impl Site {
         let pieces = std::mem::take(&mut self.pieces);
         self.owner.clear();
         self.thrown.clear();
+        self.resting.clear();
+        let frozen = std::mem::take(&mut self.frozen);
+        // Frozen debris moves again in the rebuilt world.
+        let thaw = |id: BodyId| {
+            let mut body = old[id];
+            if frozen.contains(&id.0) {
+                body.kind = BodyKind::Dynamic;
+            }
+            body
+        };
         let ground = BodyId(0);
         for (spec, mut piece) in specs.into_iter().zip(pieces) {
             if !keep(&spec) {
@@ -509,7 +634,7 @@ impl Site {
             self.specs.push(spec);
             match piece.status {
                 Status::Standing | Status::Loose => {
-                    let id = self.world.add(old[piece.body]);
+                    let id = self.world.add(thaw(piece.body));
                     self.add_piece_colliders(index, id);
                     self.own(id, Some(index));
                     piece.body = id;
@@ -522,7 +647,7 @@ impl Site {
                             continue;
                         }
                         let cuboid = self.specs[index].chunks[k];
-                        chunk.body = self.add_chunk(old[chunk.body], &cuboid);
+                        chunk.body = self.add_chunk(thaw(chunk.body), &cuboid);
                         chunk.until = chunk.until - then + now;
                     }
                 }
@@ -578,8 +703,8 @@ impl Site {
     /// nearest first, with the nearest point on each.
     fn near(&self, point: DVec3, reach: f64) -> Vec<(usize, f64, DVec3)> {
         let mut found: Vec<(usize, f64, DVec3)> = Vec::new();
-        for collider in self.world.colliders() {
-            let Some(index) = self.owner_of(collider.body) else {
+        for (c, collider) in self.world.colliders().iter().enumerate() {
+            let Some(index) = self.collider_owner(c, collider.body) else {
                 continue;
             };
             let on = collider.closest_point(&self.world, point);
@@ -620,7 +745,7 @@ impl Site {
         let damage = 2 * (self.roll(6) + self.roll(6) + 3);
         if self.pieces[piece].status == Status::Loose {
             let body = self.pieces[piece].body;
-            self.world.wake(body);
+            self.rouse(body);
             self.world[body].apply_impulse_at(push * BLOW * 2.0, point);
         }
         self.dust(point.as_vec3(), 4, 0.6, self.specs[piece].matter);
@@ -660,10 +785,15 @@ impl Site {
     /// says.
     fn shatter(&mut self, piece: usize, push: Push) {
         let id = self.pieces[piece].body;
-        let body = self.world[id];
-        wake_near(&mut self.world, id);
-        self.world.remove_body(id);
-        self.own(id, None);
+        let body = self.piece_state(piece);
+        if self.pieces[piece].local.is_some() {
+            self.detach(piece);
+        } else {
+            wake_near(&mut self.world, id);
+            self.rouse_near(body.pos);
+            self.world.remove_body(id);
+            self.own(id, None);
+        }
         let spec = &self.specs[piece];
         let total: f64 = spec
             .chunks
@@ -697,12 +827,13 @@ impl Site {
                     center,
                     speed,
                     radius,
+                    face,
                 } => {
                     let k = (1.0 - pos.distance(center) / radius).clamp(0.0, 1.0);
                     // At least a third of the speed, so a chunk at the
                     // edge of the blast still leaves its piece.
                     let speed = speed * (0.35 + 0.65 * k) * (0.8 + 0.4 * self.unit().abs());
-                    (blast_direction(center, pos) * speed + spread * 2.0, k)
+                    (blast_direction(center, pos, face) * speed + spread * 2.0, k)
                 }
             };
             chunk.vel = body.vel + omega.cross(pos - body.pos) + kick + spread;
@@ -770,7 +901,7 @@ impl Site {
             .filter(|&b| self.world[b].pos.distance(at) < radius)
             .collect();
         for body in bodies {
-            self.world.wake(body);
+            self.rouse(body);
             let b = &mut self.world[body];
             let scale = (b.mass / 60.0).min(1.0);
             b.apply_impulse_at((push + DVec3::Y * 0.3) * impulse * scale, at);
@@ -781,10 +912,15 @@ impl Site {
     #[must_use]
     pub fn touches(&self, point: Vec3, reach: f32) -> bool {
         let point = point.as_dvec3();
-        self.world.colliders().iter().any(|collider| {
-            self.owner_of(collider.body).is_some()
-                && collider.closest_point(&self.world, point).distance(point) <= f64::from(reach)
-        })
+        self.world
+            .colliders()
+            .iter()
+            .enumerate()
+            .any(|(c, collider)| {
+                self.collider_owner(c, collider.body).is_some()
+                    && collider.closest_point(&self.world, point).distance(point)
+                        <= f64::from(reach)
+            })
     }
 
     /// An explosion at `center`: every piece within `radius` takes
@@ -793,7 +929,23 @@ impl Site {
     /// chunks in reach are thrown the same way. Returns a blow for each
     /// piece it reached, nearest first.
     pub fn explode(&mut self, center: Vec3, radius: f32, damage: i32, speed: f32) -> Vec<Blow> {
+        self.explode_facing(center, radius, damage, speed, Vec3::ZERO)
+    }
+
+    /// [`Self::explode`] on a wall whose outward normal is `face`: what
+    /// breaks spalls out of the wall's face, a crater around `center`,
+    /// rather than flying on into the building.
+    pub fn explode_facing(
+        &mut self,
+        center: Vec3,
+        radius: f32,
+        damage: i32,
+        speed: f32,
+        face: Vec3,
+    ) -> Vec<Blow> {
         let c = center.as_dvec3();
+        let face = face.as_dvec3().normalize_or_zero();
+        self.last_blast = Some(c);
         let (radius, speed) = (f64::from(radius), f64::from(speed));
         let mut blows = Vec::new();
         for (piece, distance, point) in self.near(c, radius) {
@@ -810,6 +962,7 @@ impl Site {
                     center: c,
                     speed,
                     radius,
+                    face,
                 },
             );
             blows.push(Blow {
@@ -824,6 +977,8 @@ impl Site {
         let mut bodies: Vec<BodyId> = Vec::new();
         for piece in &self.pieces {
             match piece.status {
+                // A toppling top is far too heavy to throw.
+                Status::Loose if piece.local.is_some() => {}
                 Status::Loose => bodies.push(piece.body),
                 Status::Broken => {
                     bodies.extend(piece.chunks.iter().filter(|c| !c.gone).map(|c| c.body));
@@ -837,8 +992,8 @@ impl Site {
             if k <= 0.0 {
                 continue;
             }
-            self.world.wake(id);
-            let kick = blast_direction(c, at) * speed * k * 0.7;
+            self.rouse(id);
+            let kick = blast_direction(c, at, face) * speed * k * 0.7;
             let body = &mut self.world[id];
             // A chunk this blast just threw keeps its speed.
             if body.vel.length() < kick.length() {
@@ -875,6 +1030,11 @@ impl Site {
     /// and a chimney its roof span.
     pub fn support(&mut self) {
         loop {
+            // A tall building cut through on one side tips over whole
+            // before its loose blocks would fall one by one.
+            if self.topple() {
+                continue;
+            }
             let blocks = self.block_holds();
             let falling: Vec<usize> = (0..self.pieces.len())
                 .filter(|&i| {
@@ -897,6 +1057,488 @@ impl Site {
                 }
             }
         }
+    }
+
+    /// Topples the top of the first tall carved building whose level is
+    /// cut through enough that it can't carry what stands over it. Returns
+    /// whether one toppled.
+    ///
+    /// A carved building at least [`TALL_LEVELS`] levels high and
+    /// [`TALL_RATIO`] times taller than wide topples when less than
+    /// [`TOPPLE_LEFT`] of a level's footprint still stands under standing
+    /// blocks, or when the center of mass of the blocks over the level is
+    /// no longer over what stands of it. The level's blocks on the cut side of the top's center of
+    /// mass are crushed; those behind it stay as the hinge. Every standing
+    /// block over the level becomes one dynamic body with a box collider
+    /// per block, pinned to the hinge's edge by two point joints so it
+    /// turns over the edge toward the cut, until it leans past
+    /// [`HINGE_RELEASE`] and falls free. It breaks up when it strikes the
+    /// ground ([`Self::crash`]).
+    fn topple(&mut self) -> bool {
+        let buildings: Vec<usize> = self.members.keys().copied().collect();
+        for building in buildings {
+            if let Some(level) = self.undercut(building) {
+                self.fell(building, level);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// The lowest level of a tall carved `building` too cut through to
+    /// carry the standing blocks over it, if any.
+    fn undercut(&self, building: usize) -> Option<u8> {
+        let members = self.members.get(&building)?;
+        let blocks: Vec<(usize, u8)> = members
+            .iter()
+            .filter_map(|&i| match self.specs[i].role {
+                Role::Block { level } => Some((i, level)),
+                _ => None,
+            })
+            .collect();
+        let top = blocks.iter().map(|b| b.1).max()?;
+        if top + 1 < TALL_LEVELS {
+            return None;
+        }
+        let (mut lo, mut hi) = (DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY));
+        for &(i, _) in &blocks {
+            let spec = &self.specs[i];
+            let half = world_half(spec.orientation, spec.size * 0.5);
+            lo = lo.min(spec.center - half);
+            hi = hi.max(spec.center + half);
+        }
+        let wide = (hi.x - lo.x).max(hi.z - lo.z).max(0.1);
+        if hi.y - lo.y < TALL_RATIO * wide {
+            return None;
+        }
+        let area = |i: usize| self.specs[i].size.x * self.specs[i].size.z;
+        for level in 0..top {
+            let above: Vec<usize> = blocks
+                .iter()
+                .filter(|&&(i, l)| l > level && self.standing(i))
+                .map(|&(i, _)| i)
+                .collect();
+            if above.is_empty() {
+                return None;
+            }
+            let (mut full, mut left) = (0.0, 0.0);
+            let (mut lo, mut hi) = (DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY));
+            for &(i, l) in &blocks {
+                if l == level {
+                    full += area(i);
+                    if self.standing(i) {
+                        left += area(i);
+                        let spec = &self.specs[i];
+                        let half = world_half(spec.orientation, spec.size * 0.5);
+                        lo = lo.min(spec.center - half);
+                        hi = hi.max(spec.center + half);
+                    }
+                }
+            }
+            if full <= 0.0 {
+                continue;
+            }
+            // Too little left to carry it, or what is left no longer under
+            // the weight over it.
+            let mass: f64 = above.iter().map(|&i| self.specs[i].mass).sum();
+            let com = above
+                .iter()
+                .map(|&i| self.specs[i].center * self.specs[i].mass)
+                .sum::<DVec3>()
+                / mass.max(1e-6);
+            let inset = 0.3;
+            let under = com.x > lo.x + inset
+                && com.x < hi.x - inset
+                && com.z > lo.z + inset
+                && com.z < hi.z - inset;
+            if left < TOPPLE_LEFT * full || !under {
+                return Some(level);
+            }
+        }
+        None
+    }
+
+    /// Topples every standing block of `building` over `level`.
+    fn fell(&mut self, building: usize, level: u8) {
+        let members = self.members.get(&building).cloned().unwrap_or_default();
+        let level_of = |spec: &PieceSpec| match spec.role {
+            Role::Block { level } => Some(level),
+            _ => None,
+        };
+        let at_level: Vec<usize> = members
+            .iter()
+            .copied()
+            .filter(|&i| level_of(&self.specs[i]) == Some(level))
+            .collect();
+        let upper: Vec<usize> = members
+            .iter()
+            .copied()
+            .filter(|&i| self.standing(i) && level_of(&self.specs[i]).is_some_and(|l| l > level))
+            .collect();
+        let flat = |v: DVec3| DVec3::new(v.x, 0.0, v.z);
+        let weigh = |set: &mut dyn Iterator<Item = usize>| {
+            let (mut sum, mut total) = (DVec3::ZERO, 0.0);
+            for i in set {
+                let a = self.specs[i].size.x * self.specs[i].size.z;
+                sum += self.specs[i].center * a;
+                total += a;
+            }
+            (total > 0.0).then(|| sum / total)
+        };
+        let middle = weigh(&mut at_level.iter().copied()).unwrap_or(DVec3::ZERO);
+        let gone = weigh(&mut at_level.iter().copied().filter(|&i| !self.standing(i)));
+        // It tips toward the cut, or away from the blast that cut it evenly.
+        let toward = gone
+            .map(|g| flat(g - middle))
+            .filter(|g| g.length() > 0.3)
+            .and_then(DVec3::try_normalize)
+            .or_else(|| {
+                self.last_blast
+                    .and_then(|b| flat(b - middle).try_normalize())
+            })
+            .unwrap_or(DVec3::X);
+        let mass: f64 = upper
+            .iter()
+            .map(|&i| self.specs[i].mass)
+            .sum::<f64>()
+            .max(1.0);
+        let com = upper
+            .iter()
+            .map(|&i| self.world[self.pieces[i].body].pos * self.specs[i].mass)
+            .sum::<DVec3>()
+            / mass;
+        let side = |p: DVec3| (p - middle).dot(toward);
+        let depth = |spec: &PieceSpec, along: DVec3| {
+            world_half(spec.orientation, spec.size * 0.5).dot(along.abs())
+        };
+        // The level's blocks on the cut side of the top's weight are
+        // crushed under it; the rest are the hinge.
+        let cell = at_level
+            .iter()
+            .map(|&i| depth(&self.specs[i], toward))
+            .fold(0.0_f64, f64::max);
+        let crush: Vec<usize> = at_level
+            .iter()
+            .copied()
+            .filter(|&i| self.standing(i) && side(self.specs[i].center) > side(com) - cell)
+            .collect();
+        for &i in &crush {
+            let at = self.specs[i].center;
+            self.shatter(
+                i,
+                Push::Along {
+                    point: at,
+                    push: toward * 2.0 - DVec3::Y,
+                },
+            );
+        }
+        let hinge: Vec<usize> = at_level
+            .iter()
+            .copied()
+            .filter(|&i| self.standing(i))
+            .collect();
+        // The top: one body at its center of mass, a box for each block.
+        let (mut lo, mut hi) = (DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY));
+        let mut boxes = Vec::with_capacity(upper.len());
+        for &i in &upper {
+            let body = self.world[self.pieces[i].body];
+            let spec = &self.specs[i];
+            let (mut a, mut b) = (DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY));
+            for c in &spec.colliders {
+                let h = world_half(c.rotation, c.half);
+                a = a.min(c.center - h);
+                b = b.max(c.center + h);
+            }
+            if !a.is_finite() || !b.is_finite() {
+                a = -spec.size * 0.5;
+                b = spec.size * 0.5;
+            }
+            let offset = body.pos - com;
+            let center = offset + body.orientation * ((a + b) * 0.5);
+            let half = ((b - a) * 0.5).max(DVec3::splat(0.05));
+            let h = world_half(body.orientation, half);
+            lo = lo.min(center - h);
+            hi = hi.max(center + h);
+            boxes.push((i, offset, body.orientation, center, half));
+        }
+        let mut top = Body::new(mass, Body::box_inertia(mass, hi - lo), com);
+        let axis = DVec3::Y.cross(toward).normalize_or(DVec3::Z);
+        top.omega = axis * TIP_SPIN;
+        let id = self.world.add(top);
+        // One box for each level's blocks together, so a tall top is a
+        // dozen colliders rather than a hundred.
+        let mut levels: BTreeMap<u8, (DVec3, DVec3, Vec<usize>)> = BTreeMap::new();
+        for &(i, offset, rotation, center, half) in &boxes {
+            let old = self.pieces[i].body;
+            self.world.remove_body(old);
+            self.own(old, None);
+            let h = world_half(rotation, half);
+            let entry = levels
+                .entry(level_of(&self.specs[i]).unwrap_or(0))
+                .or_insert((
+                    DVec3::splat(f64::INFINITY),
+                    DVec3::splat(f64::NEG_INFINITY),
+                    Vec::new(),
+                ));
+            entry.0 = entry.0.min(center - h);
+            entry.1 = entry.1.max(center + h);
+            entry.2.push(i);
+            let piece = &mut self.pieces[i];
+            piece.body = id;
+            piece.local = Some((offset, rotation));
+            piece.status = Status::Loose;
+        }
+        for (_, (a, b, members)) in levels {
+            let collider = self.world.add_collider(
+                Collider::new(
+                    id,
+                    Shape::Cuboid {
+                        half: ((b - a) * 0.5).max(DVec3::splat(0.05)),
+                    },
+                )
+                .at((a + b) * 0.5, DQuat::IDENTITY)
+                .with_material(MATERIAL),
+            );
+            self.parts.insert(collider.0, members);
+        }
+        // The hinge: the edge of what still stands nearest the cut, at the
+        // top's foot, held by two joints to the ground's fixed body.
+        let mut joints = Vec::new();
+        if !hinge.is_empty() {
+            let edge = hinge
+                .iter()
+                .map(|&i| side(self.specs[i].center) + depth(&self.specs[i], toward))
+                .fold(f64::NEG_INFINITY, f64::max);
+            let across = hinge
+                .iter()
+                .map(|&i| {
+                    (self.specs[i].center - middle).dot(axis).abs() + depth(&self.specs[i], axis)
+                })
+                .fold(0.5_f64, f64::max);
+            let foot = boxes
+                .iter()
+                .map(|&(_, _, rotation, center, half)| {
+                    com.y + center.y - world_half(rotation, half).y
+                })
+                .fold(f64::INFINITY, f64::min);
+            let pivot = flat(middle) + toward * edge + DVec3::Y * foot;
+            // Already turning over the hinge, not about its own middle.
+            self.world[id].vel = (axis * TIP_SPIN).cross(com - pivot);
+            let ground = self.world[BodyId(0)].pos;
+            for end in [-1.0, 1.0] {
+                let at = pivot + axis * across * 0.8 * end;
+                joints.push(self.world.add_joint(Joint::new(
+                    id,
+                    at - com,
+                    BodyId(0),
+                    at - ground,
+                    JointKind::Point,
+                )));
+            }
+            let matter = self.specs[hinge[0]].matter;
+            self.dust(pivot.as_vec3(), 10, 2.0, matter);
+        }
+        wake_near(&mut self.world, id);
+        self.falls.push(Fall {
+            body: id,
+            members: upper,
+            joints,
+            toward,
+            since: self.world.time(),
+        });
+        self.revision += 1;
+    }
+
+    /// Piece `piece`'s body as it moves now: its own body, or for a piece of
+    /// a toppling top, a body at its place in the top moving with it.
+    fn piece_state(&self, piece: usize) -> Body {
+        let p = &self.pieces[piece];
+        let body = self.world[p.body];
+        let Some((offset, rotation)) = p.local else {
+            return body;
+        };
+        let mut state = body;
+        let pos = body.to_world(offset);
+        state.vel = body.vel + body.omega_world().cross(pos - body.pos);
+        state.omega = rotation.inverse() * body.omega;
+        state.pos = pos;
+        state.orientation = body.orientation * rotation;
+        state.mass = self.specs[piece].mass;
+        state
+    }
+
+    /// Stops the colliders a toppling top carries for `piece`.
+    fn drop_parts(&mut self, piece: usize) {
+        let mut empty = Vec::new();
+        for (&c, members) in &mut self.parts {
+            members.retain(|&p| p != piece);
+            if members.is_empty() {
+                empty.push(c);
+            }
+        }
+        for c in empty {
+            self.parts.remove(&c);
+            self.world.collider_mut(physics::ColliderId(c)).filter = Filter::NONE;
+        }
+    }
+
+    /// Takes `piece` out of its toppling top: its collider stops colliding,
+    /// and a top left with no pieces is removed.
+    fn detach(&mut self, piece: usize) {
+        self.drop_parts(piece);
+        self.pieces[piece].local = None;
+        if let Some(f) = self.falls.iter().position(|f| f.members.contains(&piece)) {
+            self.falls[f].members.retain(|&m| m != piece);
+            if self.falls[f].members.is_empty() {
+                let fall = self.falls.remove(f);
+                for joint in fall.joints {
+                    self.world.remove_joint(joint);
+                }
+                self.world.remove_body(fall.body);
+            }
+        }
+    }
+
+    /// Toppling top `index` strikes the ground: each of its blocks becomes a
+    /// loose body of its own moving as it moved, and with `shatter`, the
+    /// fastest of them, which struck hardest, break into their chunks.
+    fn crash(&mut self, index: usize, shatter: bool) {
+        let fall = self.falls.remove(index);
+        for &joint in &fall.joints {
+            self.world.remove_joint(joint);
+        }
+        let mut moving: Vec<(f64, usize)> = Vec::with_capacity(fall.members.len());
+        let mut lowest = DVec3::splat(f64::INFINITY);
+        for &m in &fall.members {
+            let state = self.piece_state(m);
+            if state.pos.y < lowest.y {
+                lowest = state.pos;
+            }
+            let spec = &self.specs[m];
+            let mut body = Body::new(
+                spec.mass,
+                Body::box_inertia(spec.mass, spec.size),
+                state.pos,
+            );
+            body.orientation = state.orientation;
+            body.prev_orientation = state.orientation;
+            let spread = DVec3::new(self.unit(), self.unit().abs(), self.unit()) * 0.6;
+            body.vel = state.vel + spread;
+            body.omega = state.omega;
+            let id = self.world.add(body);
+            // One box for the block, the bounds of its chunks' boxes.
+            let (a, b) = self.specs[m].colliders.iter().fold(
+                (DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY)),
+                |(a, b), c| {
+                    let h = world_half(c.rotation, c.half);
+                    (a.min(c.center - h), b.max(c.center + h))
+                },
+            );
+            let (center, half) = if a.is_finite() && b.is_finite() {
+                ((a + b) * 0.5, ((b - a) * 0.5).max(DVec3::splat(0.05)))
+            } else {
+                (DVec3::ZERO, self.specs[m].size * 0.5)
+            };
+            self.world.add_collider(
+                Collider::new(id, Shape::Cuboid { half })
+                    .at(center, DQuat::IDENTITY)
+                    .with_material(MATERIAL),
+            );
+            self.own(id, Some(m));
+            self.drop_parts(m);
+            let piece = &mut self.pieces[m];
+            piece.body = id;
+            piece.local = None;
+            piece.rubble = true;
+            moving.push((state.vel.length(), m));
+        }
+        self.world.remove_body(fall.body);
+        self.revision += 1;
+        if !shatter {
+            return;
+        }
+        // The blocks that came down fastest, the far end, burst apart.
+        moving.sort_by(|a, b| b.0.total_cmp(&a.0));
+        for &(speed, m) in moving.iter().take(CRASH_BREAKS) {
+            if speed < CRASH_SHATTER {
+                break;
+            }
+            let at = self.world[self.pieces[m].body].pos;
+            let matter = self.specs[m].matter;
+            self.shatter(
+                m,
+                Push::Along {
+                    point: at,
+                    push: DVec3::Y * (1.0 + 0.2 * speed) + fall.toward * 0.15 * speed,
+                },
+            );
+            self.dust(at.as_vec3(), 2, 2.4, matter);
+        }
+        for &(_, m) in moving.iter().step_by(3) {
+            if self.pieces[m].status == Status::Loose {
+                let at = self.world[self.pieces[m].body].pos.as_vec3();
+                let matter = self.specs[m].matter;
+                self.dust(at, 2, 2.0, matter);
+            }
+        }
+        let size = (fall.members.len() as f32 / 40.0).clamp(0.3, 1.0);
+        self.crashes.push(Crash {
+            at: lowest.as_vec3(),
+            size,
+        });
+    }
+
+    /// Leaves each toppling top's hinge once it leans far enough, and
+    /// breaks up the ones that struck the ground or have leaned too long.
+    fn tend_falls(&mut self) {
+        let now = self.world.time();
+        let mut index = 0;
+        while index < self.falls.len() {
+            let body = self.world[self.falls[index].body];
+            let tilt = (body.orientation * DVec3::Y)
+                .dot(DVec3::Y)
+                .clamp(-1.0, 1.0)
+                .acos();
+            if !self.falls[index].joints.is_empty() && tilt > HINGE_RELEASE.to_radians() {
+                let joints = std::mem::take(&mut self.falls[index].joints);
+                for joint in joints {
+                    self.world.remove_joint(joint);
+                }
+            }
+            let fall = &self.falls[index];
+            let grounded = self.world.contacts.iter().any(|r| {
+                (r.body_a == fall.body && r.body_b == BodyId(0))
+                    || (r.body_b == fall.body && r.body_a == BodyId(0))
+            });
+            let still = body.vel.length() < 0.15 && now - fall.since > 2.0;
+            if (grounded && tilt > CRASH_TILT.to_radians())
+                || tilt > 80f64.to_radians()
+                || now - fall.since > FALL_LIMIT
+                || still
+            {
+                self.crash(index, true);
+                self.support();
+                continue;
+            }
+            index += 1;
+        }
+    }
+
+    /// The physics world's counts and timings for its last step.
+    #[must_use]
+    pub fn stats(&self) -> physics::StepStats {
+        self.world.stats
+    }
+
+    /// How many tall buildings' tops are toppling now.
+    #[must_use]
+    pub fn toppling(&self) -> usize {
+        self.falls.len()
+    }
+
+    /// The toppled tops that struck the ground since the last call.
+    pub fn take_crashes(&mut self) -> Vec<Crash> {
+        std::mem::take(&mut self.crashes)
     }
 
     /// Whether each standing carved block is held up: it stands on the
@@ -1179,6 +1821,29 @@ impl Site {
         wake_near(&mut self.world, id);
     }
 
+    /// Wakes body `id`, and moves it again if it was frozen at rest.
+    fn rouse(&mut self, id: BodyId) {
+        if self.frozen.remove(&id.0) && !self.world[id].removed {
+            self.world[id].kind = BodyKind::Dynamic;
+        }
+        self.resting.remove(&id.0);
+        self.world.wake(id);
+    }
+
+    /// Moves frozen debris within [`ROUSE`] m of `at` again, so nothing is
+    /// left resting on what is gone.
+    fn rouse_near(&mut self, at: DVec3) {
+        let near: Vec<u32> = self
+            .frozen
+            .iter()
+            .copied()
+            .filter(|&b| self.world[BodyId(b)].pos.distance(at) < ROUSE)
+            .collect();
+        for b in near {
+            self.rouse(BodyId(b));
+        }
+    }
+
     /// Advances the yard by `dt` seconds of wall time.
     pub fn tick(&mut self, dt: f32) {
         self.age_dust(dt);
@@ -1215,13 +1880,40 @@ impl Site {
                     .thrown
                     .binary_search_by_key(&(index as u32), |(id, _)| id.0)
                     .is_ok();
-                let (speed, spin) = if thrown {
+                let falling = self.falls.iter().any(|f| f.body.0 as usize == index);
+                let (speed, spin) = if falling {
+                    (FALL_SPEED, FALL_SPIN)
+                } else if thrown {
                     (BLAST_SPEED, MAX_SPIN * 2.0)
                 } else {
                     (MAX_SPEED, MAX_SPIN)
                 };
                 body.vel = body.vel.clamp_length_max(speed);
                 body.omega = body.omega.clamp_length_max(spin);
+                // A chunk or a fallen top's block is debris; a fallen
+                // top's blocks barely moving come to rest quickly.
+                let (debris, rubble) = match self.owner.get(index).copied().flatten() {
+                    None => (!falling, false),
+                    Some(piece) => (self.pieces[piece].rubble, self.pieces[piece].rubble),
+                };
+                if rubble && body.vel.length() < SETTLE_SPEED {
+                    body.vel *= SETTLE_DAMPING;
+                    body.omega *= SETTLE_DAMPING;
+                }
+                if debris {
+                    let slow = body.vel.length() < FREEZE_SPEED
+                        && body.omega.length() < 2.0 * FREEZE_SPEED;
+                    let rest = self.resting.entry(index as u32).or_insert(0.0);
+                    *rest = if slow { *rest + STEP } else { 0.0 };
+                    if *rest > FREEZE_AFTER {
+                        body.kind = BodyKind::Static;
+                        body.vel = DVec3::ZERO;
+                        body.omega = DVec3::ZERO;
+                        body.sleeping = false;
+                        self.frozen.insert(index as u32);
+                        self.resting.remove(&(index as u32));
+                    }
+                }
             }
         }
         // Impacts: the summed contact impulse between each pair of bodies.
@@ -1250,14 +1942,17 @@ impl Site {
             }
         }
         for (piece, damage, point) in hurt {
-            if self.pieces[piece].status != Status::Broken {
+            // A fallen top's blocks broke up when it struck; tumbling on
+            // their pile doesn't break them further.
+            if self.pieces[piece].status != Status::Broken && !self.pieces[piece].rubble {
                 self.dust(point.as_vec3(), 2, 0.8, self.specs[piece].matter);
                 self.damage(piece, damage, point, DVec3::ZERO);
             }
         }
         // A loose piece that has fallen past its tilt limit breaks.
         for piece in 0..self.pieces.len() {
-            if self.pieces[piece].status != Status::Loose {
+            let state = &self.pieces[piece];
+            if state.status != Status::Loose || state.local.is_some() || state.rubble {
                 continue;
             }
             let spec = &self.specs[piece];
@@ -1281,6 +1976,7 @@ impl Site {
                 self.support();
             }
         }
+        self.tend_falls();
         let time = self.world.time();
         for piece in &mut self.pieces {
             for chunk in &mut piece.chunks {
@@ -1407,7 +2103,13 @@ impl Site {
     /// The world pose of a standing or loose piece's body.
     #[must_use]
     pub fn piece_pose(&self, piece: usize) -> Mat4 {
-        self.body_pose(self.pieces[piece].body)
+        let pose = self.body_pose(self.pieces[piece].body);
+        match self.pieces[piece].local {
+            Some((offset, rotation)) => {
+                pose * Mat4::from_rotation_translation(rotation.as_quat(), offset.as_vec3())
+            }
+            None => pose,
+        }
     }
 
     /// The world pose of chunk `index` of a broken piece, or `None` while
@@ -1422,12 +2124,28 @@ impl Site {
 
 /// Which way an explosion at `center` throws something at `at`: outward
 /// and [`BLAST_UPWARD`] degrees up, or straight up at the center.
-fn blast_direction(center: DVec3, at: DVec3) -> DVec3 {
+fn blast_direction(center: DVec3, at: DVec3, face: DVec3) -> DVec3 {
+    if face != DVec3::ZERO {
+        // Off a wall: out of its face, spreading from the strike, and up.
+        let spread = (at - center).reject_from(face).normalize_or_zero();
+        return (face + spread * 0.55 + DVec3::Y * 0.35).normalize();
+    }
     let up = BLAST_UPWARD.to_radians();
     match DVec3::new(at.x - center.x, 0.0, at.z - center.z).try_normalize() {
         Some(out) => out * up.cos() + DVec3::Y * up.sin(),
         None => DVec3::Y,
     }
+}
+
+/// The half extents along the world's axes of a box with half extents
+/// `half` turned by `rotation`.
+fn world_half(rotation: DQuat, half: DVec3) -> DVec3 {
+    let m = glam::DMat3::from_quat(rotation);
+    DVec3::new(
+        m.row(0).abs().dot(half),
+        m.row(1).abs().dot(half),
+        m.row(2).abs().dot(half),
+    )
 }
 
 /// Wakes every sleeping body whose colliders come near `body`'s, so what
@@ -1463,6 +2181,18 @@ pub trait Target {
     fn touches(&self, point: Vec3, reach: f32) -> bool;
     /// An explosion at `center`, as [`Site::explode`].
     fn explode(&mut self, center: Vec3, radius: f32, damage: i32, speed: f32) -> Vec<Blow>;
+    /// An explosion on a wall facing `face`, as [`Site::explode_facing`].
+    fn explode_facing(
+        &mut self,
+        center: Vec3,
+        radius: f32,
+        damage: i32,
+        speed: f32,
+        face: Vec3,
+    ) -> Vec<Blow> {
+        let _ = face;
+        self.explode(center, radius, damage, speed)
+    }
     /// A hammer blow along `path`, as [`Site::strike`].
     fn strike(&mut self, path: &[Vec3], push: Vec3, reach: f32) -> Option<Blow>;
     /// A die roll from 1 to `sides`.
@@ -1476,6 +2206,17 @@ impl Target for Site {
 
     fn explode(&mut self, center: Vec3, radius: f32, damage: i32, speed: f32) -> Vec<Blow> {
         Site::explode(self, center, radius, damage, speed)
+    }
+
+    fn explode_facing(
+        &mut self,
+        center: Vec3,
+        radius: f32,
+        damage: i32,
+        speed: f32,
+        face: Vec3,
+    ) -> Vec<Blow> {
+        Site::explode_facing(self, center, radius, damage, speed, face)
     }
 
     fn strike(&mut self, path: &[Vec3], push: Vec3, reach: f32) -> Option<Blow> {

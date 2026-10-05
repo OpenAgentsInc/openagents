@@ -2462,11 +2462,13 @@ impl App {
                 self.zone_action(ZoneIntent::Return);
                 return;
             }
-            // Everglade's town: Escape leaves Meteor Swarm's aim or stops
-            // its cast, and R restores the buildings.
-            if self.in_bare_everglade()
+            // Everglade's town and the Grove: Escape leaves Meteor Swarm's
+            // aim or stops its cast, and R restores the buildings or the
+            // Grove's tower.
+            if (self.in_bare_everglade()
                 && self.runtime.zone == zones::ZoneId::Everglade
-                && !self.runtime.in_demolition()
+                && !self.runtime.in_demolition())
+                || (self.in_bare_grove() && self.runtime.grove_swarm().is_some())
             {
                 if code == KeyCode::Escape && self.runtime.demolition_cancel() {
                     return;
@@ -3610,6 +3612,12 @@ impl App {
                             layout,
                             &status,
                             &lines,
+                        );
+                    }
+                    // Meteor Swarm's or the Thunderbolt's help and cast bar.
+                    if let Some(swarm) = self.runtime.grove_swarm() {
+                        zones::everglade::demolition::hotbar::draw_aim(
+                            &mut bar, atlas, logical, &swarm,
                         );
                     }
                     if let Some(index) = tip {

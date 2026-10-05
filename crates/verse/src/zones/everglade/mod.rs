@@ -113,6 +113,10 @@ pub(crate) struct Everglade {
     /// The town's destructible buildings, once the zone's static scene is
     /// in place ([`Self::start_town`]).
     town: Option<Box<demolition::town::Town>>,
+    /// The figure scene the town's chunks join when another zone draws its
+    /// own characters, such as the Grove's dummies; the character's
+    /// otherwise.
+    figure_scene: Option<Arc<TexturedScene>>,
     /// Wood smoke rising from the town's chimneys (`layout::details`), and
     /// butterflies over its flower drifts.
     smoke: Option<crate::fx::Particles>,
@@ -192,6 +196,7 @@ impl Everglade {
             extra_blocks: Vec::new(),
             demolition: None,
             town: None,
+            figure_scene: None,
             smoke: None,
             wildlife: None,
         })
@@ -220,10 +225,78 @@ impl Everglade {
         Ok(())
     }
 
+    /// Lets Meteor Swarm, the Thunderbolt, and the sledgehammer break the
+    /// destructible models among `placements` outside Everglade's town,
+    /// drawn in `scene`, such as the Grove's concrete tower
+    /// ([`demolition::town::Town::standalone`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack lacks a placed model.
+    pub fn start_wreckage(
+        &mut self,
+        pack: &ZonePack,
+        placements: &[layout::Placement],
+        scene: Arc<TexturedScene>,
+    ) -> Result<(), String> {
+        let mut town = demolition::town::Town::standalone(pack, placements, scene)?;
+        town.set_track(
+            self.cast
+                .as_ref()
+                .and_then(player::Cast::swing_track)
+                .cloned(),
+        );
+        if let Some(solids) = town.take_solids() {
+            self.solids = solids;
+            self.refresh_blocks();
+        }
+        self.town = Some(Box::new(town));
+        Ok(())
+    }
+
     /// The town's destructible buildings, once started.
     #[must_use]
     pub fn town(&self) -> Option<&demolition::town::Town> {
         self.town.as_deref()
+    }
+
+    /// Joins the town's chunks to `scene`'s figures from now on rather
+    /// than the character's, for a zone that draws its own figure.
+    pub fn set_figure_scene(&mut self, scene: Option<Arc<TexturedScene>>) {
+        self.figure_scene = scene;
+    }
+
+    /// `figure`, a figure of the scene [`Self::set_figure_scene`] named,
+    /// followed by the town's drawn chunks, lit by the baked probes.
+    #[must_use]
+    pub fn with_town(&self, figure: crate::pbr::textured::Figure) -> crate::pbr::textured::Figure {
+        match &self.town {
+            Some(town) => town.figure(figure, self.probes.as_deref()),
+            None => figure,
+        }
+    }
+
+    /// The town's destructible buildings to act on, once started.
+    pub fn town_mut(&mut self) -> Option<&mut demolition::town::Town> {
+        self.town.as_deref_mut()
+    }
+
+    /// Enters `strike`'s targeting for `player` in the town, switches to
+    /// it, or leaves it.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the spell can't be cast now, or that there is nothing
+    /// here to cast it at.
+    pub fn target_strike(
+        &mut self,
+        strike: demolition::meteor::Strike,
+        player: &PlayerController,
+    ) -> Result<(), String> {
+        match (&mut self.demolition, &mut self.town) {
+            (None, Some(town)) => town.target(strike, player),
+            _ => Err(format!("{} needs something to break", strike.name())),
+        }
     }
 
     /// Meteor Swarm's state, in the demolition yard or the town.
@@ -810,7 +883,7 @@ impl Everglade {
             self.refresh_blocks();
         }
         if let Some(town) = &mut self.town {
-            town.prepare(cast_scene.as_ref());
+            town.prepare(self.figure_scene.as_ref().or(cast_scene.as_ref()));
         }
         let blocks = self.demolition.as_mut().and_then(|yard| {
             yard.tick(dt, at);

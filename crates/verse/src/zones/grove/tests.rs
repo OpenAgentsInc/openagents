@@ -122,8 +122,8 @@ fn the_grove_opens_with_its_hotbar_and_no_cooldowns() {
     assert!(runtime.everglade_hotbar().is_none());
     let bar = runtime.grove_bar().expect("the Grove's bar");
     assert!(bar.slots.iter().all(|s| s.cooldown == 0.0));
-    // Four rows of twelve: 46 abilities and two empty slots.
-    assert_eq!(bar.spells.iter().flatten().count(), 46);
+    // Four rows of twelve, every slot holding an ability.
+    assert_eq!(bar.spells.iter().flatten().count(), 48);
     assert_eq!(super::hotbar::key('1', 0), Some(Intent::GroveSlot(0)));
     assert_eq!(super::hotbar::key('=', 3), Some(Intent::GroveSlot(47)));
     assert_eq!(

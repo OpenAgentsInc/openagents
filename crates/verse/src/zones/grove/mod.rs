@@ -40,6 +40,8 @@ pub mod slots;
 #[cfg(test)]
 mod tests;
 pub(crate) mod thunder;
+#[cfg(test)]
+mod tower_tests;
 
 use super::Intent;
 use super::everglade::{self, Everglade, layout::Placement, player::Beast};
@@ -74,6 +76,29 @@ pub const MAX_EFFECTS: usize = 64;
 pub const MAX_FLOATERS: usize = 48;
 /// Poison's damage each second on a poisoned dummy.
 const POISON_TICK: f32 = 3.0;
+/// How near a lightning strike must come to the tower to chip it, m, and
+/// the chip's blast radius, m.
+const CHIP_REACH: f32 = 1.5;
+const CHIP_RADIUS: f32 = 1.8;
+/// How long a Meteor Swarm cast's meteors keep landing, s: a dummy takes
+/// one cast's damage once within it.
+const SWARM_WINDOW: f32 = 2.0;
+
+/// A strike the Grove's own lightning makes on the tower, if it reaches
+/// it: Call Lightning's bolt at a point, or Lightning Bolt's line.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Chip {
+    At {
+        at: Vec3,
+        damage: i32,
+    },
+    Line {
+        from: Vec3,
+        toward: Vec3,
+        length: f32,
+        damage: i32,
+    },
+}
 
 /// The Grove's placements as one list, for the static scene and the solids.
 #[must_use]
@@ -153,6 +178,10 @@ pub(crate) struct Grove {
     last_y: f32,
     /// Where the player stood at the last tick.
     feet: Vec3,
+    /// The strikes the Grove's lightning makes on the tower this frame.
+    chips: Vec<Chip>,
+    /// Each dummy a Meteor Swarm cast hurt, and when.
+    swarmed: Vec<(usize, f32)>,
 }
 
 /// What one roll did to one dummy.
@@ -214,6 +243,8 @@ impl Grove {
             roared: f32::NEG_INFINITY,
             last_y: 0.0,
             feet: SPAWN,
+            chips: Vec::new(),
+            swarmed: Vec::new(),
         })
     }
 
@@ -494,6 +525,12 @@ impl Grove {
     /// areas, and the beast's shape.
     fn long_rest(&mut self, player: &mut PlayerController, glade: &mut Everglade) {
         glade.long_rest();
+        // The tower stands whole again.
+        if let Some(town) = glade.town_mut() {
+            town.restore();
+        }
+        self.chips.clear();
+        self.swarmed.clear();
         self.end_shape(player, glade);
         for dummy in &mut self.dummies {
             dummy.reset();
@@ -665,6 +702,7 @@ impl Grove {
             beast.advance(player, shape.form.scale(), attack, aloft, dt);
         }
         self.land_bolts();
+        self.break_things(glade);
         let gravity = glade.spells().reverse_gravity().cloned();
         for dummy in &mut self.dummies {
             dummy.tick(dt, now, gravity.as_ref());
@@ -688,6 +726,56 @@ impl Grove {
         self.fx.tick(dt, everglade::height);
         self.floaters.retain(|f| now - f.start < draw::FLOAT);
         glade.set_extra_blocks(self.dummies.iter().map(Dummy::block).collect());
+    }
+
+    /// Lands the Grove's lightning on the tower where it reaches it, and
+    /// Meteor Swarm's and the Thunderbolt's strikes on the dummies: each
+    /// rolls its damage and save against every dummy in its blast.
+    fn break_things(&mut self, glade: &mut Everglade) {
+        let chips = std::mem::take(&mut self.chips);
+        let Some(town) = glade.town_mut() else {
+            return;
+        };
+        for chip in chips {
+            match chip {
+                Chip::At { at, damage } => {
+                    if town.touches(at, CHIP_REACH) {
+                        town.blast(at, CHIP_RADIUS, damage, Vec3::ZERO);
+                    }
+                }
+                Chip::Line {
+                    from,
+                    toward,
+                    length,
+                    damage,
+                } => {
+                    let steps = (length / 0.5).ceil() as usize;
+                    if let Some(at) = (0..=steps)
+                        .map(|i| from + toward * (i as f32 * 0.5))
+                        .find(|p| town.touches(*p, 0.3))
+                    {
+                        town.blast(at, CHIP_RADIUS, damage, -toward);
+                    }
+                }
+            }
+        }
+        let now = self.time;
+        self.swarmed.retain(|&(_, t)| now - t < SWARM_WINDOW);
+        for impact in town.take_impacts() {
+            let spell = match impact.strike {
+                everglade::demolition::meteor::Strike::Meteors => Spell::MeteorSwarm,
+                everglade::demolition::meteor::Strike::Lightning => Spell::Thunderbolt,
+            };
+            for i in self.within(impact.at, impact.radius) {
+                if spell == Spell::MeteorSwarm {
+                    if self.swarmed.iter().any(|&(d, _)| d == i) {
+                        continue;
+                    }
+                    self.swarmed.push((i, now));
+                }
+                self.strike(spell, i);
+            }
+        }
     }
 
     /// Keeps faerie light on each outlined dummy and puts it out when the
@@ -719,6 +807,13 @@ impl Grove {
             }
         }
         self.glows = glows;
+    }
+
+    /// The scene the field's figures belong to, which the tower's chunks
+    /// join.
+    #[must_use]
+    pub fn figure_scene(&self) -> Arc<crate::pbr::textured::TexturedScene> {
+        self.model.scene()
     }
 
     /// The player's character, or the beast the druid wears, and the

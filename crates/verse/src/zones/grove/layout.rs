@@ -15,6 +15,11 @@ const GRASS_CLUMPS: usize = 40;
 const FLOWERS: u32 = 18;
 /// Plants at the meadow's edge.
 const EDGE_PLANTS: usize = 14;
+/// The concrete tower that Meteor Swarm and the Thunderbolt break and
+/// topple: in the field past the dummies, in plain view from the spawn,
+/// its door toward it.
+pub const TOWER: [f32; 2] = [-4.0, 21.0];
+pub const TOWER_MODEL: &str = "generated/concrete_tower";
 
 /// Every placement in the Grove.
 #[must_use]
@@ -104,6 +109,12 @@ pub fn placements() -> Vec<Placement> {
         50,
     );
     scatter(&mut out, &PLANTS, EDGE_PLANTS, 26.0, 33.0, 51);
+    out.push(Placement::new(
+        TOWER_MODEL,
+        TOWER,
+        std::f32::consts::PI,
+        Collision::None,
+    ));
     out
 }
 
@@ -114,6 +125,7 @@ fn open(at: [f32; 2]) -> bool {
     !FIELD.iter().any(|&(_, p)| near(p, 2.5))
         && !near([super::SPAWN.x, super::SPAWN.z], 2.0)
         && !near([RETURN_PORTAL.x, RETURN_PORTAL.z], 4.0)
+        && !near(TOWER, 5.0)
 }
 
 /// Places `count` pieces of ground cover, cycling through `models`, at

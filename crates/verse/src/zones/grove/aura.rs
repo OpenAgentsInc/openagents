@@ -250,6 +250,12 @@ impl Grove {
             start: now,
         });
         self.burst("grove_lightning", at + Vec3::Y * 0.2);
+        // A bolt beside the tower chips it, with the dice's average.
+        let (count, sides) = Spell::CallLightning.def().dice;
+        self.chips.push(super::Chip::At {
+            at: at + Vec3::Y * 0.9,
+            damage: (count * (sides + 1) / 2) as i32,
+        });
         for i in self.within(at + Vec3::Y * 0.9, 5.0 * FT) {
             self.strike(Spell::CallLightning, i);
         }

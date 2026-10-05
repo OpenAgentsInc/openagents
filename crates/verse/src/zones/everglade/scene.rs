@@ -123,7 +123,11 @@ pub(crate) fn build_painted(
         let model = pack
             .model(placement.model)
             .ok_or_else(|| format!("The Everglade pack has no {}", placement.model))?;
-        Ok(Some(Lattice::of(model.bounds(), placement.scale)))
+        Ok(Some(Lattice::of_model(
+            placement.model,
+            model.bounds(),
+            placement.scale,
+        )))
     };
     for (placement, &carved) in placements.iter().zip(&carved) {
         let colors = paint(placement);

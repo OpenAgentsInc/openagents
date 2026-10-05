@@ -4,6 +4,7 @@
   "license": "CC0-1.0",
   "package": "Verse generated models (scripts/blender), built with the Medieval Village MegaKit Standard",
   "files": {
+    "T_Concrete_BaseColor.png": "ab433b66168a52c18417710d861408b1d54ddca84650f867b1d58328981ac56b",
     "bakery.bin": "ce69a57377b7788a2cb0fe9ba7aa11e73e14bbc32cd4f7442124797b92ed5547",
     "bakery.gltf": "ef4d856b3e1e3a63a2074dc7bfcf234b543229475e128a5fca8f006798562234",
     "bandshell.bin": "68d96a6c12166247dfd5aa6a29c7c88d3c0fc3f3821ce3d1d9f7a9745a3cc446",
@@ -28,6 +29,8 @@
     "cafe_umbrella.gltf": "8a6324c93cabd97297ffe515410aec5659b99927747e5980f4e593dfde634f43",
     "clock_tower.bin": "4b71c3b2b5f15b944934d23c2a870afe20b03dcb46c0ea25ddb6041b4d073a8c",
     "clock_tower.gltf": "6a1cfea85b69f21907a948d9d633ed6964e059258cda35da7814bc3f50cbfdbb",
+    "concrete_tower.bin": "9f8bc715a3f356eef74188de7a3f2a4fde82a97eb75b69c1ed51c44d4a3902d9",
+    "concrete_tower.gltf": "9bd47941305a532e471c8219f89f03faafe8744d0fb554ea2359f08062c549fb",
     "corner_shop.bin": "231af0065b28a7b79f81390e44f322104f2c66330f255c7d86d76d72c48e1ed2",
     "corner_shop.gltf": "08a110186fe59845a99b8214d9fdf6558b206fcd9f08eeffd0eff0743614b556",
     "cottage_thatch.bin": "0abcf6f9e0f01dfd04fe3eb583aa4b6d75184afa780282ba3c7a08ca0864403d",
@@ -173,6 +176,7 @@
     "windmill.gltf": "afbe391defa280de814f4dd74cbc3ff7d35afe78261789f6536ddb352d2581f9"
   },
   "originals": {
+    "T_Concrete_BaseColor.png": "ab433b66168a52c18417710d861408b1d54ddca84650f867b1d58328981ac56b",
     "bakery.bin": "42205b986062f7ea7cb09c9ee2360c6c03dd18842f4b679d903ba577b1e51537",
     "bakery.gltf": "42205b986062f7ea7cb09c9ee2360c6c03dd18842f4b679d903ba577b1e51537",
     "bandshell.bin": "cdd525761ca0cd428edced921e079f02c30389e82c63221fbd539c6aa3bcbb95",
@@ -197,6 +201,8 @@
     "cafe_umbrella.gltf": "095aecb08925d8dabcc4bb19242c6efb9d98c160689bf2b751fe5d31d8a0966f",
     "clock_tower.bin": "55c4bc6b5b968d92dd0a4ece7d14291947af6bd5627deaa731b93f1840b02c5d",
     "clock_tower.gltf": "55c4bc6b5b968d92dd0a4ece7d14291947af6bd5627deaa731b93f1840b02c5d",
+    "concrete_tower.bin": "da8eac0a76e6035bdae0dd40500092f72370fa639f74382fb66efa2e12315d64",
+    "concrete_tower.gltf": "da8eac0a76e6035bdae0dd40500092f72370fa639f74382fb66efa2e12315d64",
     "corner_shop.bin": "d114d44642e52c5f6228b35722438ae640d9eff794cb04b1928d7accff5a3a18",
     "corner_shop.gltf": "d114d44642e52c5f6228b35722438ae640d9eff794cb04b1928d7accff5a3a18",
     "cottage_thatch.bin": "734380e971b60f08bf096d955e72ab50e8ee0f09af764dd5b8e45840ff8ac026",
@@ -366,6 +372,8 @@
     "cafe_umbrella.gltf": "converted from assets/verse/generated/town/cafe_umbrella.glb by scripts/blender/everglade_admit.py: separate buffer, embedded images replaced by the village set's admitted images with base-color factors",
     "clock_tower.bin": "converted from assets/verse/generated/buildings/clock_tower.glb by scripts/blender/everglade_admit.py: separate buffer, embedded images replaced by the village set's admitted images with base-color factors",
     "clock_tower.gltf": "converted from assets/verse/generated/buildings/clock_tower.glb by scripts/blender/everglade_admit.py: separate buffer, embedded images replaced by the village set's admitted images with base-color factors",
+    "concrete_tower.bin": "converted from assets/verse/generated/tower/concrete_tower.glb by scripts/blender/tower_admit.py with everglade_admit.py's conversion: separate buffer, its embedded image written beside it as a PNG",
+    "concrete_tower.gltf": "converted from assets/verse/generated/tower/concrete_tower.glb by scripts/blender/tower_admit.py with everglade_admit.py's conversion: separate buffer, its embedded image written beside it as a PNG",
     "corner_shop.bin": "converted from assets/verse/generated/buildings/corner_shop.glb by scripts/blender/everglade_admit.py: separate buffer, embedded images replaced by the village set's admitted images with base-color factors",
     "corner_shop.gltf": "converted from assets/verse/generated/buildings/corner_shop.glb by scripts/blender/everglade_admit.py: separate buffer, embedded images replaced by the village set's admitted images with base-color factors",
     "cottage_thatch.bin": "converted from assets/verse/generated/buildings/cottage_thatch.glb by scripts/blender/everglade_admit.py: separate buffer, embedded images replaced by the village set's admitted images with base-color factors",

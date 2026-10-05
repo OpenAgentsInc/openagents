@@ -585,7 +585,8 @@ buildings. `2` on the yard's hotbar aims Meteor Swarm: a pulsing ring of
 fire 6 m in radius follows the cursor on the ground, up to 36 m from the
 player; a click or tap casts it, and right click, `Esc`, or `2` cancels. It
 is a level 9 spell under the [combat model](combat-model.md): 75 of 100
-mana, a 90 s cooldown, and a 2.5 s cast bar that moving interrupts. Six
+mana, a 90 s cooldown, and a 2.5 s cast bar that the caster may walk and
+jump through; the meteors still fall where the ring was. Six
 meteors fall through the circle, and each explosion deals the SRD's 20d6
 Fire and 20d6 Bludgeoning, rolled once per cast, to every piece within 4 m,
 falling off with distance; what breaks is thrown outward at up to 26 m/s
@@ -660,6 +661,46 @@ and [`site.rs`](../../crates/verse/src/zones/everglade/demolition/site.rs).
   which panics in a browser, so the first strike that raised a building
   stopped the page; it now reads the page's clock. A figure's images are
   cooked once and reused when the town's chunk buffers grow.
+
+### Vertical targeting and toppling towers
+
+The owner asked to aim Meteor Swarm at the side of a tall concrete tower,
+take a chunk out of it, and watch the rest tip over and crumble. The
+Grove (`verse --grove`) has the tower in its field past the dummies, and
+Everglade has one at the north-west edge of the clearing (`layout::TOWER`).
+
+- **The tower.** `generated/concrete_tower` is a Reference model from
+  [`concrete_tower.py`](../../scripts/blender/concrete_tower.py): a hollow
+  5.6 m poured-concrete shaft with floor slabs every 5 m, slit windows, a
+  door, and a parapet platform 28.5 m up, under a baked formwork texture.
+  It is carved finer than other models (`carve::FINE`): three blocks
+  across and a level every 2.5 m.
+- **Vertical targeting.** The ring follows whatever the cursor's ray meets
+  in the solids (`meteor::surface_aim`): on the ground or a roof it lies
+  flat, and on a wall it stands against the wall, 3 m in radius, while
+  the wall is within 36 m of the caster's eyes. The meteors then fly in on
+  a slant from the sky in front of the wall and burst on its face, and
+  what breaks spalls out of the face.
+- **The Thunderbolt.** The Grove's `=` on row 4 (Meteor Swarm is on `-`)
+  aims the same way and calls one thick, branching bolt down on the ring
+  after a 1.2 s cast: 20d10 against the tower within 3.4 m, and 12d10
+  lightning, half on a Dexterity save, to the dummies there. Lightning
+  Bolt and Call Lightning chip the tower where they meet it.
+- **Toppling.** A carved building at least four levels high and 1.8 times
+  taller than wide topples when the center of mass of the blocks over a
+  level is no longer over what stands of that level, as when a strike cuts
+  away one face and the sides beside it, or when less than 40 percent of
+  the level's footprint still stands (`Site::topple`). The
+  level's blocks on the cut side of the top's center of mass are crushed;
+  the rest are the hinge. Every standing block over the level becomes one
+  dynamic body with a box per block, held to the hinge's edge by two point
+  joints, so it turns over the edge toward the cut. Past 24 degrees it
+  leaves the hinge and falls free; when it strikes the ground it breaks
+  into loose blocks moving as they moved, the 40 fastest burst into
+  chunks, dust rolls out, and the camera shakes.
+- **Casting while moving.** Neither spell's cast bar is interrupted by
+  walking or jumping, in the yard, the town, or the Grove.
+- **Restoring.** `R` and the Grove's Long Rest stand the tower back up.
 
 ### D2: Structural collapse and leaning
 

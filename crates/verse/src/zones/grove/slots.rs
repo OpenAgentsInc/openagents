@@ -4,9 +4,10 @@
 //!
 //! Row 1 holds Wild Shape and the druid's features, row 2 the cantrips and
 //! levels 1 and 2, row 3 levels 2 to 7, and row 4 levels 8 and 9, Speak
-//! with Animals, and the chosen land's six spells on keys 5 to 0. In a
-//! beast's shape, or Shapechange's dragon, its attacks take row 2's first
-//! slots, and the other rows still cast, as Beast Spells allows. The tooltip sentences are our own
+//! with Animals, the chosen land's six spells on keys 5 to 0, and Meteor
+//! Swarm and the Thunderbolt on - and =. In a beast's shape, or
+//! Shapechange's dragon, its attacks take row 2's first slots, and the
+//! other rows still cast, as Beast Spells allows. The tooltip sentences are our own
 //! summaries of SRD 5.2.1; the numbers on a card come from [`Spell::def`].
 
 use super::kit::{Land, Spell};
@@ -30,7 +31,7 @@ pub enum Entry {
 
 /// The bar, row by row, in the druid's own shape.
 pub const LAYOUT: [[Entry; COLUMNS]; ROWS] = {
-    use Entry::{Empty, Land as L, Spell as S};
+    use Entry::{Land as L, Spell as S};
     use Spell as K;
     [
         [
@@ -86,8 +87,8 @@ pub const LAYOUT: [[Entry; COLUMNS]; ROWS] = {
             L(3),
             L(4),
             L(5),
-            Empty,
-            Empty,
+            S(K::MeteorSwarm),
+            S(K::Thunderbolt),
         ],
     ]
 };
@@ -283,6 +284,14 @@ pub const fn info(spell: Spell) -> (&'static str, &'static str) {
         S::SpeakWithAnimals => (
             "speak-with-animals-icon",
             "Hear what the meadow's birds have to say about the dummies.",
+        ),
+        S::MeteorSwarm => (
+            "meteor-swarm-icon",
+            "Aim at the ground or a wall, even the tower's side, and click: six blazing meteors blast craters out of whatever they hit, and an undercut tower topples.",
+        ),
+        S::Thunderbolt => (
+            "thunderbolt-icon",
+            "Aim at the ground or a wall and click: a huge bolt of lightning blasts a chunk out of what it strikes and shocks the dummies there.",
         ),
         S::FireBolt => (
             "fire-bolt-icon",

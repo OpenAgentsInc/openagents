@@ -157,6 +157,12 @@ impl Model {
     /// its place; then each of `dummies` standing where it is, wobbling
     /// after a hit and lying over while down. When the character's scene
     /// changed under it, the dummies draw without the character.
+    /// The scene every figure of the field belongs to.
+    #[must_use]
+    pub fn scene(&self) -> Arc<TexturedScene> {
+        self.scene.clone()
+    }
+
     pub fn figure(
         &self,
         cast: Option<&Figure>,

@@ -729,6 +729,10 @@ fn on_road(x: f32, z: f32, margin: f32) -> bool {
 
 /// Where the lounge bench and the wagon stand.
 const BENCH: [f32; 2] = [-25.6, -20.0];
+/// The concrete lookout tower at the north-west edge of the clearing, in
+/// open ground well off the roads and the workshop, for Meteor Swarm to
+/// topple.
+pub const TOWER: [f32; 2] = [-45.0, 84.0];
 const WAGON: [f32; 2] = [11.0, -23.0];
 
 /// Whether loose ground cover may grow at `(x, z)`: off the floors, the
@@ -746,6 +750,7 @@ fn open_ground(x: f32, z: f32) -> bool {
         && !near(BENCH, 4.0)
         && !near([WAGON[0], WAGON[1] - 1.0], 4.5)
         && !STATIONS.iter().any(|s| near(s.at, 2.2))
+        && !near(TOWER, 5.0)
 }
 
 /// Every placement in the glade.
@@ -760,6 +765,12 @@ pub fn placements() -> Vec<Placement> {
     town(&mut out);
     paths(&mut out);
     glade(&mut out);
+    out.push(Placement::new(
+        "generated/concrete_tower",
+        TOWER,
+        0.0,
+        Collision::None,
+    ));
     out
 }
 

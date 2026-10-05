@@ -274,6 +274,13 @@ pub const ICONS: &[Icon] = &[
         "Lorc",
         METEOR
     ),
+    // The Grove's Thunderbolt: Lightning Bolt's artwork in white-gold.
+    icon!(
+        "thunderbolt-icon",
+        "lorc/lightning-frequency.svg",
+        "Lorc",
+        SUNLIGHT
+    ),
     icon!(
         "reverse-gravity-icon",
         "delapouite/gravitation.svg",

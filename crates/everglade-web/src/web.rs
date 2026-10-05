@@ -717,6 +717,10 @@ impl Page {
             if let Some((status, lines)) = self.runtime.grove_log() {
                 zones::grove::hotbar::draw_log(&mut ui, atlas, size, 0.0, layout, &status, &lines);
             }
+            // Meteor Swarm's or the Thunderbolt's help and cast bar.
+            if let Some(swarm) = self.runtime.grove_swarm() {
+                zones::everglade::demolition::hotbar::draw_aim(&mut ui, atlas, size, &swarm);
+            }
             if let Some(index) = tip {
                 zones::grove::hotbar::draw_tip(&mut ui, atlas, size, 0.0, layout, &bar, index);
             }
@@ -1013,7 +1017,11 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 event.prevent_default();
                 return;
             }
-            if down && event.code() == "KeyR" && page.runtime.everglade_swarm().is_some() {
+            if down
+                && event.code() == "KeyR"
+                && (page.runtime.everglade_swarm().is_some()
+                    || page.runtime.grove_swarm().is_some())
+            {
                 let _ = page.runtime.zone_intent(zones::Intent::Rebuild);
                 event.prevent_default();
                 return;

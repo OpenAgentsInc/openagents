@@ -1,0 +1,26 @@
+{
+  "model": "concrete_tower.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the base",
+  "triangles": 2022,
+  "boxes": [
+    {
+      "name": "shaft",
+      "center": [
+        0.0,
+        14.25,
+        0.0
+      ],
+      "half_extents": [
+        2.8,
+        14.25,
+        2.8
+      ]
+    }
+  ],
+  "roofs": [],
+  "front": [
+    0.0,
+    3.6
+  ],
+  "inside": null
+}

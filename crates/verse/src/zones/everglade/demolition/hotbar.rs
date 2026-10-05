@@ -36,10 +36,15 @@ pub const TIPS: [Tip; 3] = [
 /// The line of help over the bar for Meteor Swarm's `status`.
 #[must_use]
 pub fn help(status: &meteor::Status) -> &'static str {
-    if status.targeting {
-        "Click the ground to call down Meteor Swarm · right click or Esc cancels"
+    let lightning = status.strike == meteor::Strike::Lightning;
+    if status.targeting && lightning {
+        "Click a wall or the ground to call down Thunderbolt · right click or Esc cancels"
+    } else if status.targeting {
+        "Click the ground or a wall to call down Meteor Swarm · right click or Esc cancels"
+    } else if status.casting.is_some() && lightning {
+        "Casting Thunderbolt · keep moving if you like · Esc stops it"
     } else if status.casting.is_some() {
-        "Casting Meteor Swarm · moving or Esc stops it"
+        "Casting Meteor Swarm · keep moving if you like · Esc stops it"
     } else {
         "Click or 1 swings the sledgehammer · 2 Meteor Swarm · R rebuilds"
     }
@@ -244,7 +249,7 @@ pub fn draw_cast(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], swarm: &meteor
         CAST,
         u,
     );
-    let title = "Meteor Swarm";
+    let title = swarm.strike.name();
     ui.text(
         atlas,
         (size[0] - atlas.measure(title)) * 0.5,
@@ -275,7 +280,22 @@ pub fn draw_town(
     draw_cast(ui, atlas, size, swarm);
 }
 
+/// Draws a targeting strike's line of help and its cast bar into `ui`
+/// for a zone with its own bar, such as the Grove: the help just over the
+/// cast bar's place.
+pub fn draw_aim(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], swarm: &meteor::Status) {
+    if !swarm.targeting && swarm.casting.is_none() {
+        return;
+    }
+    let help = help(swarm);
+    let x = (size[0] - atlas.measure(help)) * 0.5;
+    let y = size[1] * 0.68 - 2.5 * atlas.line - 6.0;
+    ui.text(atlas, x, y, help, HINT);
+    draw_cast(ui, atlas, size, swarm);
+}
+
 /// A framed bar at `[left, top, width, height]` filled `k` of the way
+
 /// with `fill` over `well`.
 fn meter(
     ui: &mut UiBatch,

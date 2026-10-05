@@ -1,0 +1,69 @@
+# A toppled tower's top striking the ground: a wall of dust rolling out
+# along the ground, grit thrown up, and a pall rising. Every emitter fires
+# once.
+description = "A tower crashing down: a rolling dust ring, thrown grit, and a rising pall."
+
+[[emitter]]
+name = "shock"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+blend = "alpha"
+light = "lit"
+burst = 36
+life = [2.0, 3.4]
+shape = "ring"
+radius = 2.0
+radial = [7.0, 13.0]
+speed = [0.4, 1.6]
+drag = 1.6
+size = [1.6, 2.4]
+scale = [[0.0, 0.5], [0.3, 1.6], [1.0, 2.8]]
+color = [0.62, 0.6, 0.56]
+alpha = [[0.0, 0.0], [0.08, 0.8], [1.0, 0.0]]
+spin = [-0.4, 0.4]
+priority = 6
+
+[[emitter]]
+name = "grit"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+blend = "alpha"
+light = "lit"
+burst = 24
+life = [1.0, 2.0]
+shape = "sphere"
+radius = 2.0
+spread = 50.0
+speed = [4.0, 10.0]
+gravity = -6.0
+drag = 0.9
+size = [0.6, 1.0]
+scale = [[0.0, 0.6], [0.5, 1.4], [1.0, 1.8]]
+color = [0.55, 0.53, 0.5]
+alpha = [[0.0, 0.0], [0.08, 0.85], [1.0, 0.0]]
+spin = [-0.8, 0.8]
+priority = 5
+
+[[emitter]]
+name = "pall"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+delay = 0.2
+burst = 12
+life = [4.0, 6.5]
+shape = "sphere"
+radius = 3.0
+spread = 70.0
+speed = [0.8, 2.4]
+gravity = 0.4
+drag = 0.6
+size = [2.4, 3.4]
+scale = [[0.0, 0.6], [0.4, 1.5], [1.0, 2.6]]
+color = [[0.0, [0.5, 0.48, 0.45]], [1.0, [0.62, 0.61, 0.6]]]
+alpha = [[0.0, 0.0], [0.1, 0.75], [0.6, 0.5], [1.0, 0.0]]
+spin = [-0.3, 0.3]
+priority = 4

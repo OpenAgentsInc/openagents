@@ -93,6 +93,11 @@ impl Grove {
         if let Some(form) = Form::of(spell) {
             return self.take_shape(form, player, glade);
         }
+        // Meteor Swarm and the Thunderbolt aim with the cursor at a wall
+        // or the ground, and a click calls them down.
+        if let Some(strike) = spell.strike() {
+            return glade.target_strike(strike, player);
+        }
         if spell.beast() {
             let shape = self.shape.ok_or_else(|| {
                 format!(
@@ -345,6 +350,17 @@ impl Grove {
                     let _ = self
                         .fx
                         .start(hit_look(spell), Spawn::at(hand).along(forward));
+                    // Lightning chips the tower where the line meets it,
+                    // with the dice's average.
+                    if def.kind == Damage::Lightning {
+                        let (count, sides) = def.dice;
+                        self.chips.push(super::Chip::Line {
+                            from: hand,
+                            toward: forward,
+                            length,
+                            damage: (count * (sides + 1) / 2) as i32,
+                        });
+                    }
                     for i in 0..self.dummies.len() {
                         let d = &self.dummies[i];
                         let to = d.center() - feet;

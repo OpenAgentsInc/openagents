@@ -12,6 +12,7 @@
 //! up.
 
 use super::super::Intent;
+use super::super::everglade::demolition::meteor;
 use super::dummies::Condition;
 
 /// How often a held hotbar key recasts, s: six casts a second.
@@ -83,6 +84,10 @@ pub enum Spell {
     StormOfVengeance,
     Shapechange,
     SpeakWithAnimals,
+    // Row 4's last keys: the spells that break buildings, aimed at a wall
+    // or the ground with the cursor.
+    MeteorSwarm,
+    Thunderbolt,
     // The Circle of the Land's spells.
     FireBolt,
     BurningHands,
@@ -337,7 +342,7 @@ impl Land {
 impl Spell {
     /// Every ability, in bar order, then the land spells and the beasts'
     /// attacks.
-    pub const ALL: [Self; 73] = {
+    pub const ALL: [Self; 75] = {
         use Spell as S;
         [
             S::WildShapeBear,
@@ -380,6 +385,8 @@ impl Spell {
             S::StormOfVengeance,
             S::Shapechange,
             S::SpeakWithAnimals,
+            S::MeteorSwarm,
+            S::Thunderbolt,
             S::FireBolt,
             S::BurningHands,
             S::Blur,
@@ -794,6 +801,33 @@ impl Spell {
             }
             S::Shapechange => ("Shapechange", 9, 0.0, (0, 0), D::Force, AUTO, Caster),
             S::SpeakWithAnimals => ("Speak with Animals", 1, 0.0, (0, 0), D::Force, AUTO, Caster),
+            // Meteor Swarm: each meteor's 40-foot sphere is 20d6 fire and
+            // 20d6 bludgeoning, half on a Dexterity save; here a 4 m blast
+            // where each meteor bursts ([`meteor::BLAST`]), and a dummy
+            // takes one cast's damage once.
+            S::MeteorSwarm => {
+                def.extra = Some((20, 6, D::Bludgeoning));
+                (
+                    "Meteor Swarm",
+                    9,
+                    meteor::RANGE,
+                    (20, 6),
+                    D::Fire,
+                    save(Dex, true),
+                    Burst(meteor::BLAST),
+                )
+            }
+            // The Grove's own Thunderbolt, a huge Call Lightning strike:
+            // 12d10 lightning in a 3.4 m blast, half on a Dexterity save.
+            S::Thunderbolt => (
+                "Thunderbolt",
+                7,
+                meteor::RANGE,
+                (12, 10),
+                D::Lightning,
+                save(Dex, true),
+                Burst(meteor::BOLT_BLAST),
+            ),
             // A 120-foot bolt: an attack roll for 4d10 fire at level 17+.
             S::FireBolt => ("Fire Bolt", 0, 120.0 * FT, (4, 10), D::Fire, SPELL, Bolt),
             // A 15-foot cone: 3d6 fire, half on a Dexterity save.
@@ -1160,6 +1194,17 @@ impl Spell {
         }
     }
 
+    /// What a spell aimed with the cursor at a wall or the ground calls
+    /// down on the town's buildings, for the two that break them.
+    #[must_use]
+    pub const fn strike(self) -> Option<meteor::Strike> {
+        match self {
+            Self::MeteorSwarm => Some(meteor::Strike::Meteors),
+            Self::Thunderbolt => Some(meteor::Strike::Lightning),
+            _ => None,
+        }
+    }
+
     /// Whether the spell needs a dummy in front of the druid.
     #[must_use]
     pub fn needs_target(self) -> bool {
@@ -1208,7 +1253,11 @@ impl Spell {
         !self.shape()
             && !matches!(
                 self,
-                Self::ChooseLand | Self::LongRest | Self::SpeakWithAnimals
+                Self::ChooseLand
+                    | Self::LongRest
+                    | Self::SpeakWithAnimals
+                    | Self::MeteorSwarm
+                    | Self::Thunderbolt
             )
     }
 

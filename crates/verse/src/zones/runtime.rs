@@ -317,6 +317,8 @@ impl WorldRuntime {
         spawn.yaw = super::grove::SPAWN_YAW;
         let built = super::grove::glade(pack, &spawn).and_then(|mut glade| {
             let grove = super::grove::Grove::new(pack, &glade)?;
+            // The tower's chunks draw in the field's figure.
+            glade.set_figure_scene(Some(grove.figure_scene()));
             glade.set_extra_blocks(
                 grove
                     .dummies
@@ -335,6 +337,13 @@ impl WorldRuntime {
         };
         if let Some(scene) = &world.mesh.textured {
             glade.bake_light(scene.clone());
+            // The concrete tower breaks under Meteor Swarm and the
+            // Thunderbolt; a Grove whose tower can't is still a Grove.
+            if let Err(error) =
+                glade.start_wreckage(pack, &super::grove::placements(), scene.clone())
+            {
+                eprintln!("verse: the Grove's tower stays whole: {error}");
+            }
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
@@ -888,7 +897,7 @@ impl WorldRuntime {
     /// demolition yard or Everglade's town.
     #[must_use]
     pub(crate) fn demolition_shake(&self) -> Vec3 {
-        if self.zone != ZoneId::Everglade {
+        if !self.breaks_things() {
             return Vec3::ZERO;
         }
         self.zone_state
@@ -901,7 +910,7 @@ impl WorldRuntime {
     /// yard or Everglade's town.
     #[must_use]
     pub fn demolition_targeting(&self) -> bool {
-        self.zone == ZoneId::Everglade
+        self.breaks_things()
             && self
                 .zone_state
                 .everglade
@@ -962,7 +971,7 @@ impl WorldRuntime {
 
     /// Casts Meteor Swarm at its circle. Returns whether the cast began.
     pub fn demolition_confirm(&mut self) -> bool {
-        if self.zone != ZoneId::Everglade {
+        if !self.breaks_things() {
             return false;
         }
         let player = self.player.clone();
@@ -975,13 +984,47 @@ impl WorldRuntime {
     /// Leaves Meteor Swarm's targeting or stops its cast, spending
     /// nothing. Returns whether there was either to stop.
     pub fn demolition_cancel(&mut self) -> bool {
-        if self.zone != ZoneId::Everglade {
+        if !self.breaks_things() {
             return false;
         }
         self.zone_state
             .everglade
             .as_mut()
             .is_some_and(Everglade::cancel_swarm)
+    }
+
+    /// Whether this zone has things Meteor Swarm breaks: Everglade's town
+    /// or yard, or the Grove's tower.
+    fn breaks_things(&self) -> bool {
+        matches!(self.zone, ZoneId::Everglade | ZoneId::Grove)
+    }
+
+    /// How many tall buildings' tops are toppling now in Everglade's town
+    /// or the Grove, and the chunks alive; `None` where nothing breaks.
+    #[must_use]
+    pub fn toppling(&self) -> Option<(usize, usize)> {
+        if !self.breaks_things() {
+            return None;
+        }
+        let site = self.zone_state.everglade.as_ref()?.town()?.site();
+        let chunks = site
+            .pieces()
+            .iter()
+            .flat_map(|p| &p.chunks)
+            .filter(|c| !c.gone)
+            .count();
+        Some((site.toppling(), chunks))
+    }
+
+    /// Meteor Swarm's or the Thunderbolt's state in the Grove, for the
+    /// line of help and the cast bar over its bar; `None` elsewhere.
+    #[must_use]
+    pub fn grove_swarm(&self) -> Option<super::everglade::demolition::meteor::Status> {
+        if self.zone != ZoneId::Grove {
+            return None;
+        }
+        let glade = self.zone_state.everglade.as_ref()?;
+        Some(glade.town()?.swarm().status())
     }
 
     /// The demolition yard's hotbar, or `None` outside the yard.
@@ -2040,7 +2083,7 @@ impl WorldRuntime {
             // figure, the glade's spells, and the field's bars and effects.
             mesh.extend(glade.dynamic());
             mesh.extend(&crate::mesh::Mesh {
-                figure: Some(grove.figure(glade)),
+                figure: Some(glade.with_town(grove.figure(glade))),
                 ..crate::mesh::Mesh::default()
             });
             mesh.extend(&glade.spell_mesh(&self.player));
