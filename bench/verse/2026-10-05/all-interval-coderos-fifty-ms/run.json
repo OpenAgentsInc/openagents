@@ -1,0 +1,32 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "host_revision": "7546bf426d",
+  "client_revision": "a1a05de003",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "movement_send_steps": 6,
+  "wire_version": 26,
+  "timings": {
+    "frame_p95_ms": 18.669667,
+    "gpu_p95_ms": 10.728125,
+    "verified_snapshot_age_p95_ms": 139.750708,
+    "verified_snapshot_age_max_ms": 465.590875,
+    "command_turnaround_p95_ms": 157.469167,
+    "movement_expiries": 525,
+    "native_control_epoch_resets": 6,
+    "storage_paused_seconds": 1.129215,
+    "storage_commit_max_ms": 312.518
+  },
+  "limitations": [
+    "Shared server and client CPUs, different battle trajectories and upstream client changes prevent isolated causal comparison.",
+    "No injected network impairment or input-to-display measurement.",
+    "Frame p95, authority freshness stalls, and movement expiries miss the smooth battle target."
+  ],
+  "validation": [
+    "All client and host exits zero.",
+    "Every headless worker observed 20 players and minimum 40 live hostiles.",
+    "15050 headless movement inputs; native 829 command turnaround samples."
+  ]
+}
