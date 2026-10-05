@@ -224,12 +224,17 @@ impl Sender {
         index: &Index,
     ) -> Result<Packet, String> {
         let refresh_due = tick.saturating_sub(self.outer_tick) >= 6;
-        let previous = if refresh_due {
+        let needs_history = spatial::needs_outer_history(&state, control);
+        let previous = if refresh_due || !needs_history {
             None
         } else {
             self.previous(ack, control)
         };
-        let refresh = refresh_due || previous.is_none();
+        let acknowledged = self
+            .saved
+            .iter()
+            .any(|s| Some(s.id) == ack && s.fence == fence(control));
+        let refresh = refresh_due || !acknowledged || (needs_history && previous.is_none());
         let state = scoped(state, control, previous.as_ref(), refresh, index)?;
         let packet = self.packet(state, control, instance, tick, ack)?;
         if refresh {

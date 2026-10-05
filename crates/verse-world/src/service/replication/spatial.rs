@@ -74,14 +74,8 @@ pub(crate) fn scope(
     let index = Index::new(&state);
     scoped(state, control, previous, tick % 6 == 0, &index)
 }
-pub(crate) fn scoped(
-    mut state: State,
-    control: &Option<Control>,
-    previous: Option<&State>,
-    refresh_outer: bool,
-    index: &Index,
-) -> Result<State, String> {
-    let center = control
+fn center(state: &State, control: &Option<Control>) -> Vec3 {
+    control
         .as_ref()
         .and_then(|c| state.presentation.actors.iter().find(|a| a.life == c.life))
         .or_else(|| {
@@ -92,7 +86,24 @@ pub(crate) fn scoped(
                 .find(|a| a.actor.model == "adventurer")
         })
         .map(|a| a.actor.position)
-        .unwrap_or(Vec3::ZERO);
+        .unwrap_or(Vec3::ZERO)
+}
+/// Previous transforms are needed only for actors outside the near update band.
+pub(super) fn needs_outer_history(state: &State, control: &Option<Control>) -> bool {
+    let center = center(state, control);
+    state.presentation.actors.iter().any(|pose| {
+        !control.as_ref().is_some_and(|c| c.life == pose.life)
+            && !near(pose.actor.position, center, 32.)
+    })
+}
+pub(crate) fn scoped(
+    mut state: State,
+    control: &Option<Control>,
+    previous: Option<&State>,
+    refresh_outer: bool,
+    index: &Index,
+) -> Result<State, String> {
+    let center = center(&state, control);
     let mut sources = index.sources(center);
     if let Some(control) = control {
         sources.extend(

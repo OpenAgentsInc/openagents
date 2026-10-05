@@ -583,3 +583,69 @@ async fn pipeline_refuses_second_replaceable_request_but_preserves_reliable_read
     let exit = host.await.unwrap();
     assert!(exit.failure.is_none());
 }
+
+#[test]
+fn near_band_history_skip_preserves_packets_across_distance_and_ack_changes() {
+    let mut gateway = gateway(&[key(1), key(2), key(3)]);
+    let connection = join(&mut gateway, 1);
+    let mut source = state(&mut gateway, connection);
+    let control = request(&mut gateway, connection, 2, Body::Snapshot {}).control;
+    add_far(&mut source, 1);
+    let center = source
+        .presentation
+        .actors
+        .iter()
+        .find(|pose| Some(pose.life) == control.as_ref().map(|c| c.life))
+        .unwrap()
+        .actor
+        .position;
+    let mut optimized = Sender::default();
+    let mut reference = Sender::default();
+    let mut receiver = Receiver::default();
+    for tick in 0u64..24 {
+        let distance = match tick % 8 {
+            0..=2 => 31.,
+            3..=5 => 33.,
+            _ => 50.,
+        };
+        let position = center + glam::Vec3::X * distance;
+        source.snapshot.actors.last_mut().unwrap().pos = position.to_array();
+        source
+            .presentation
+            .actors
+            .last_mut()
+            .unwrap()
+            .actor
+            .position = position;
+        if distance == 31. {
+            assert!(!spatial::needs_outer_history(&source, &control));
+        }
+        let ack = if tick == 9 { None } else { receiver.ack() };
+        let due = tick.saturating_sub(reference.outer_tick) >= 6;
+        let previous = if due {
+            None
+        } else {
+            reference.previous(ack, &control)
+        };
+        let refresh = due || previous.is_none();
+        let index = Index::new(&source);
+        let expected =
+            scoped(source.clone(), &control, previous.as_ref(), refresh, &index).unwrap();
+        let expected = reference
+            .packet(expected, &control, 120, tick, ack)
+            .unwrap();
+        if refresh {
+            reference.outer_tick = tick;
+        }
+        let actual = optimized
+            .project(source.clone(), &control, 120, tick, ack, &index)
+            .unwrap();
+        assert_eq!(
+            serde_json::to_vec(&actual).unwrap(),
+            serde_json::to_vec(&expected).unwrap(),
+            "Packet changed at tick {tick}"
+        );
+        assert_eq!(optimized.outer_tick, reference.outer_tick);
+        receiver.admit(&actual, 120, tick, &control).unwrap();
+    }
+}
