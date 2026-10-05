@@ -66,6 +66,14 @@ pub enum Update {
     Outcome(Response),
 }
 
+// A verified lifecycle change fences every old interval; none can be replayed.
+fn interval_control_changed(
+    frame: &crate::movement::frames::Frame,
+    control: Option<&super::wire::Control>,
+) -> bool {
+    control.is_some_and(|c| c.life != frame.life.into() || c.epoch != frame.epoch)
+}
+
 /// Reuses only recent verified response control; server admission still checks every command.
 fn fresh_control(
     input: &Input,
@@ -354,8 +362,14 @@ pub async fn run(
                             next_inventory = tokio::time::Instant::now() + Duration::from_secs(1);
                             Update::Inventory(response)
                         }
-                        Body::MovementFrame { .. } => {
-                            if let Reply::Refused { message, .. } = &response.body { return Err(format!("Movement interval refused; reconnect before sending another interval: {message}")); }
+                        Body::MovementFrame { frame } => {
+                            if let Reply::Refused { message, .. } = &response.body {
+                                if !interval_control_changed(&frame, response.control.as_ref()) {
+                                    return Err(format!("Movement interval refused; reconnect before sending another interval: {message}"));
+                                }
+                                // Report the refusal once. Pipeline control already fences queued
+                                // old inputs; periodic replication supplies the new baseline.
+                            }
                             Update::Outcome(response)
                         },
                         Body::Command { .. } => Update::Outcome(response),
@@ -421,6 +435,45 @@ mod tests {
     };
     use rustls::pki_types::ServerName;
     use tokio::time::timeout;
+
+    #[test]
+    fn interval_recovery_requires_verified_lifecycle_change() {
+        use crate::movement::frames::{Frame, Segment};
+        let life = verse_engine::core::LifeId {
+            instance: 120,
+            actor: 14,
+            generation: 0,
+        };
+        let frame = Frame {
+            life,
+            epoch: 3,
+            sequence: 1,
+            tick: 1,
+            start: 0,
+            steps: 4,
+            segments: vec![Segment {
+                offset: 0,
+                axes: [0., 1.],
+                yaw: 0.,
+                until: 60,
+                jump: false,
+            }],
+        };
+        let mut control = super::super::wire::Control {
+            life: life.into(),
+            epoch: 3,
+            accepted_sequence: 1,
+        };
+        assert!(!interval_control_changed(&frame, None));
+        assert!(!interval_control_changed(&frame, Some(&control)));
+        control.accepted_sequence += 1;
+        assert!(!interval_control_changed(&frame, Some(&control)));
+        control.epoch += 1;
+        assert!(interval_control_changed(&frame, Some(&control)));
+        control.epoch = frame.epoch;
+        control.life.generation += 1;
+        assert!(interval_control_changed(&frame, Some(&control)));
+    }
 
     #[tokio::test]
     async fn worker_binds_complete_intervals_and_snapshots_confirm_only_completed_time() {
