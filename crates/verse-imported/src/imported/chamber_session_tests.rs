@@ -509,7 +509,7 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
             .distance(gateway.game().actor_position(life.actor).unwrap())
             < 0.0001
     );
-    // A delayed render wake-up drains two contiguous packets and preserves both turns.
+    // A delayed render wake-up combines both turns into one bounded request.
     gateway.tick(0.1).unwrap();
     updates
         .try_send(Update::Snapshot(request(
@@ -535,14 +535,13 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
     let Input::MovementFrame { frame: first, .. } = inputs.try_recv().unwrap() else {
         panic!("Missing first catch-up interval");
     };
-    let Input::MovementFrame { frame: second, .. } = inputs.try_recv().unwrap() else {
-        panic!("Missing second catch-up interval");
-    };
     assert_eq!(first.start, start);
-    assert_eq!(first.end().unwrap(), second.start);
-    assert_eq!(second.end().unwrap(), start + 12);
+    assert_eq!(first.steps, verse_world::movement::frames::MAX_STEPS);
+    assert_eq!(first.end().unwrap(), start + 12);
+    assert_eq!(first.segments.len(), 2);
+    assert_eq!(first.segments[1].offset, 6);
     assert_eq!(first.segments[0].axes, [1., 0.]);
-    assert_eq!(second.segments[0].axes, [0., 1.]);
+    assert_eq!(first.segments[1].axes, [0., 1.]);
     assert!(inputs.try_recv().is_err());
     // Credit can end between packet boundaries; the final four steps must not wait for an ACK.
     let context = session.prediction.context().unwrap();
@@ -557,11 +556,8 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
     let Input::MovementFrame { frame: full_a, .. } = inputs.try_recv().unwrap() else {
         panic!("Missing full interval")
     };
-    let Input::MovementFrame { frame: full_b, .. } = inputs.try_recv().unwrap() else {
-        panic!("Missing second full interval")
-    };
-    assert_eq!(full_a.start, second.end().unwrap());
-    assert_eq!(full_a.end().unwrap(), full_b.start);
+    assert_eq!(full_a.start, first.end().unwrap());
+    assert_eq!(full_a.steps, verse_world::movement::frames::MAX_STEPS);
     assert!(inputs.try_recv().is_err());
     session.send_movement_interval().unwrap();
     let Input::MovementFrame {
@@ -570,7 +566,7 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
     else {
         panic!("Missing credit remainder")
     };
-    assert_eq!(remainder.start, full_b.end().unwrap());
+    assert_eq!(remainder.start, full_a.end().unwrap());
     assert_eq!(remainder.steps, 4);
     assert_eq!(
         remainder.end().unwrap(),

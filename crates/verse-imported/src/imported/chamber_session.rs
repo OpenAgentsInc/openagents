@@ -827,47 +827,42 @@ impl Session {
             .prediction
             .movement_frame_limit()
             .ok_or("Movement interval time credit is unavailable")?;
-        // Drain at most one authority work budget without dropping completed history.
-        for _ in
-            0..verse_world::movement::frames::MAX_STEPS / verse_world::movement::frames::SEND_STEPS
+        // One request carries the complete available history within one authority work budget.
+        let steps = end
+            .saturating_sub(start)
+            .min(u64::from(verse_world::movement::frames::MAX_STEPS)) as u32;
+        // Keep local prediction immediate while amortizing durable ordered requests.
+        // The complete history retains direction changes, lease expiries, and jump edges.
+        // Flush a credit-limited remainder; local-only time still waits for a full batch.
+        if steps == 0
+            || (steps < verse_world::movement::frames::SEND_STEPS
+                && end == self.prediction.physics_step())
+            || self.input.capacity() == 0
+            || self.pending.len() >= PENDING_LIMIT
         {
-            let steps = end
-                .saturating_sub(start)
-                .min(u64::from(verse_world::movement::frames::SEND_STEPS))
-                as u32;
-            // Keep local prediction immediate while amortizing durable ordered requests.
-            // The complete history retains direction changes, lease expiries, and jump edges.
-            // Flush a credit-limited remainder; local-only time still waits for a full batch.
-            if steps == 0
-                || (steps < verse_world::movement::frames::SEND_STEPS
-                    && end == self.prediction.physics_step())
-                || self.input.capacity() == 0
-                || self.pending.len() >= PENDING_LIMIT
-            {
-                break;
+            return Ok(());
+        }
+        let frame = self.prediction.movement_frame(start, steps)?;
+        let token = self
+            .input_token
+            .checked_add(1)
+            .ok_or("Input token exhausted")?;
+        match self.input.try_send(Input::MovementFrame { token, frame }) {
+            Ok(()) => {
+                self.input_token = token;
+                start += u64::from(steps);
+                self.frame_cursor = Some((life, epoch, start));
+                self.frame_bindings.insert(token, (life, epoch));
+                self.pending.push_back((None, Some(token)));
             }
-            let frame = self.prediction.movement_frame(start, steps)?;
-            let token = self
-                .input_token
-                .checked_add(1)
-                .ok_or("Input token exhausted")?;
-            match self.input.try_send(Input::MovementFrame { token, frame }) {
-                Ok(()) => {
-                    self.input_token = token;
-                    start += u64::from(steps);
-                    self.frame_cursor = Some((life, epoch, start));
-                    self.frame_bindings.insert(token, (life, epoch));
-                    self.pending.push_back((None, Some(token)));
-                }
-                Err(mpsc::error::TrySendError::Full(_)) => {
-                    self.status = "Input queue is busy".into();
-                    break;
-                }
-                Err(mpsc::error::TrySendError::Closed(_)) => {
-                    return Err("Chamber connection stopped".into());
-                }
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                self.status = "Input queue is busy".into();
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                return Err("Chamber connection stopped".into());
             }
         }
+
         Ok(())
     }
 

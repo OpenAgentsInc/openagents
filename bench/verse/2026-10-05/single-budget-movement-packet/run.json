@@ -1,0 +1,28 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "tested_base_revision": "13440a5da79a484368e607bc139525d392201995",
+  "source_patch_sha256": "ac8438a883c8a61b7a32ec71b812b81d52f5dd96680fcf98cd60f16f07200826",
+  "wire_version": 28,
+  "checks": {
+    "native_consumer": {
+      "command": "cargo test -p verse-imported --features imported-desktop,remote-chamber --lib -- imported::chamber_session::tests:: --quiet",
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0,
+      "runtime_seconds": 0.92,
+      "build_wall_seconds": 319
+    }
+  },
+  "contract": "Each producer wake sends at most one movement interval covering up to the existing 12-step authority budget. Native intervals retain every recorded direction change and jump edge. Local-only elapsed time still waits for a six-step minimum batch; credit-limited remainders remain allowed. Cursors advance only after successful enqueue. Casts and movement share a load-driver wake.",
+  "regressions": [
+    "A delayed native wake emits one twelve-step interval with two distinct directions at their recorded offsets and no second packet.",
+    "A contiguous four-step credit remainder preserves direction and stops at the verified ceiling.",
+    "Existing chamber-session binding, reconciliation, and context fencing checks pass."
+  ],
+  "limitations": [
+    "The owning native consumer moved into verse-imported upstream; this check targets that crate.",
+    "Updated client example builds and crowded performance acceptance remain pending.",
+    "Fewer requests per catch-up wake do not establish that dispatch latency is solved."
+  ]
+}

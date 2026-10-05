@@ -167,7 +167,7 @@ async fn player(
      }
      let mut interval_work=0;
      // Casts and complete movement intervals share a wake-up, not a production slot.
-     for emission in 0..if movement_frames {1+verse_world::movement::frames::MAX_STEPS/verse_world::movement::frames::SEND_STEPS} else {1} {
+     for emission in 0..if movement_frames {2} else {1} {
      let intent=if emission==0 {intent.clone()} else {Intent::Move {axes,yaw:std::f32::consts::PI}};
      token=token.checked_add(1).ok_or("Load input identities exhausted")?;
      let moving=matches!(intent,Intent::Move {..});
@@ -188,7 +188,7 @@ async fn player(
       let start=match frame_cursor {Some((life,old_epoch,start)) if (life,old_epoch)==context=>start,_=>baseline.physics_step};
       let credited=world_credit.filter(|(life,epoch,_)|(*life,*epoch)==context).map_or(baseline.world_step,|(_,_,step)|baseline.world_step.max(step));
       let limit=credited.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
-      let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::SEND_STEPS)).min(u64::from(verse_world::movement::frames::MAX_STEPS-interval_work)) as u32;
+      let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::MAX_STEPS)).min(u64::from(verse_world::movement::frames::MAX_STEPS-interval_work)) as u32;
       if steps==0 {break;}
       let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
        segments:vec![verse_world::movement::frames::Segment {offset:0,axes,yaw:std::f32::consts::PI,until:start+verse_world::movement::HELD_STEPS,jump:false}]};
