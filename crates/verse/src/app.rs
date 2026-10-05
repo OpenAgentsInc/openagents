@@ -2295,7 +2295,7 @@ impl App {
         true
     }
 
-    fn key(&mut self, code: KeyCode, pressed: bool, event_loop: &ActiveEventLoop) {
+    fn key(&mut self, code: KeyCode, pressed: bool, _event_loop: &ActiveEventLoop) {
         if self.runtime.zone_loading() {
             if pressed && code == KeyCode::Escape {
                 self.zone_action(ZoneIntent::Cancel);
@@ -2567,7 +2567,11 @@ impl App {
             KeyCode::PageUp if pressed && self.board_open => self.scroll_board(-8),
             KeyCode::Escape if pressed && self.board_open => self.board_open = false,
             KeyCode::Escape if pressed && replaying => self.replay = None,
-            KeyCode::Escape if pressed => self.quit(event_loop),
+            // Escape hides the terminal overlay; it never quits Verse, so a
+            // stray press can't end the terminal's sessions. Closing the
+            // window (Cmd+Q on macOS) quits.
+            KeyCode::Escape if pressed && self.terminal.open => self.toggle_terminal(),
+            KeyCode::Escape => {}
             _ => {}
         }
     }
