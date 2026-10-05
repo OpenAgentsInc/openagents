@@ -1,0 +1,48 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "compiled_revisions": {
+    "host": "c06635d96d",
+    "headless_clients": "bd516cd46d211a46390df6ed769fc2f6de1da200",
+    "native_client": "8838dd1f4f58f0c54a086a9e06407864d0ae13a8"
+  },
+  "checks": {
+    "load_driver_build": "passed",
+    "all_process_exits": 0,
+    "headless_completions": 19,
+    "minimum_live_hostiles_all_headless": 40
+  },
+  "native": {
+    "frame_interval_ms": {
+      "samples": 4239,
+      "omitted": 0,
+      "median": 9.991333,
+      "p95": 17.017417,
+      "max": 3618.324125
+    },
+    "prediction_correction_meters": {
+      "samples": 187,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.0
+    },
+    "reset_reasons": {
+      "control_epoch": 21
+    },
+    "binding_to_outcome_ms": {
+      "samples": 537,
+      "omitted": 0,
+      "median": 148.071875,
+      "p95": 232.98525,
+      "max": 1453.610459
+    }
+  },
+  "retained_clock_expiry_messages": 1,
+  "limits": [
+    "Refusal traces retain only the first 32 messages per player; this is not a complete expiry count.",
+    "Same host/native binaries as preceding run but shared hardware and trajectories prevent isolated causal comparison.",
+    "Headless movement uses existing authority lookahead without native prediction or rendering.",
+    "Frame p95 exceeds 16.7 ms; persistence and GPU timing disabled; continuous interval control and input-to-display latency remain unproven."
+  ]
+}
