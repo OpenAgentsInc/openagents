@@ -1,0 +1,16 @@
+{
+  "build_started_revision": "ed587e5194f9581898d9c9566496f16a0f27e4d8",
+  "compiled_revisions": {
+    "verse_host": "ed587e5194",
+    "verse_remote": "32323eeec7",
+    "verse_load": "ed587e5194+driver-recovery"
+  },
+  "source_overrides": {
+    "crates/verse/examples/verse_load.rs": "b7f35faa4b34c66582a5bd3bb4fadf3231cd6681110f69a904a2044d6b9b2768"
+  },
+  "sha256": {
+    "verse_host": "064769b54006862e35ada154b4ea604ea3316fcff5f440fac848478020771713",
+    "verse_remote": "288a291865b3553f09b9649a0c07fbd9e5bdba248bad082b41c9a56e1294fd66",
+    "verse_load": "559f12397cf0046e5f3510e55af5095174dedaa53aa974650050fd7a5fcbf645"
+  }
+}

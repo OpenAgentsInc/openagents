@@ -1,7 +1,7 @@
 //! Bounded authenticated movement and combat load using the native replication worker.
 use serde::Deserialize;
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     net::SocketAddr,
     path::PathBuf,
     sync::Arc,
@@ -93,6 +93,7 @@ async fn player(
     let mut frame_entry = None;
     let mut observed_frame_snapshots = 0u64;
     let mut pending = VecDeque::new();
+    let mut outstanding = BTreeSet::new();
     let mut latency = Vec::new();
     let mut omitted_latency = 0u64;
     let mut casts = BTreeMap::<String, u64>::new();
@@ -147,9 +148,9 @@ async fn player(
       let context=(baseline.life,baseline.epoch);
       if baseline.profile!=verse_world::movement::Profile::Frames {
        frame_cursor=None;
-       if baseline.character.support.is_some() && baseline.held.axes(baseline.physics_step)==[0.;2] && frame_entry!=Some(context) {
+       if baseline.character.support.is_some() && baseline.held.axes(baseline.physics_step)==[0.;2] && frame_entry!=Some(context) && outstanding.is_empty() && pending.is_empty() {
         match send.try_send(Input::BeginMovementFrames {life:baseline.life,epoch:baseline.epoch}) {
-         Ok(())=>{frame_entry=Some(context);pending.push_back((tokio::time::Instant::now(),None));},
+         Ok(())=>{frame_entry=Some(context);pending.push_back((tokio::time::Instant::now(),None,Some(context),None));},
          Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>pressure+=1,
          Err(_)=>return Err("Load worker input closed".into()),
         }
@@ -167,7 +168,7 @@ async fn player(
      } else {Input::TrackedCommand {token,life:hud.life,epoch,intent}};
      let proposed_end=match &input {Input::MovementFrame {frame,..}=>Some((frame.life,frame.epoch,frame.end()?)),_=>None};
      match send.try_send(input) {
-      Ok(())=>{if let Some(cursor)=proposed_end {frame_cursor=Some(cursor);} if moving {movement+=1;}},
+      Ok(())=>{outstanding.insert(token);if let Some(cursor)=proposed_end {frame_cursor=Some(cursor);} if moving {movement+=1;}},
       Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>pressure+=1,
       Err(_)=>return Err("Load worker input closed".into()),
      }
@@ -187,21 +188,24 @@ async fn player(
       }
       state=Some(latest);
      }
-     Update::CommandBound {binding,..}=>match binding {
-      Ok(command)=>{let ability=match command.intent {Intent::Cast {ability,..}=>Some(ability.label().to_string()),_=>None};pending.push_back((tokio::time::Instant::now(),ability));},
-      Err(message)=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"command_binding","message":message}));}},
+     Update::CommandBound {token,binding}=>match binding {
+      Ok(command)=>{let ability=match command.intent {Intent::Cast {ability,..}=>Some(ability.label().to_string()),_=>None};pending.push_back((tokio::time::Instant::now(),ability,None,Some(token)));},
+      Err(message)=>{outstanding.remove(&token);refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"command_binding","message":message}));}},
      },
-     Update::FrameBound {binding,..}=>match binding {
-      Ok(_)=>pending.push_back((tokio::time::Instant::now(),None)),
-      Err(message)=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"frame_binding","message":message}));}},
+     Update::FrameBound {token,binding}=>match binding {
+      Ok(_)=>pending.push_back((tokio::time::Instant::now(),None,None,Some(token))),
+      Err(message)=>{outstanding.remove(&token);refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"frame_binding","message":message}));}},
      },
      Update::Outcome(response)=>{
-      if let Some((started,ability))=pending.pop_front() {
+      if let Some((started,ability,entry,token))=pending.pop_front() {
+       if let Some(token)=token {outstanding.remove(&token);}
+       if entry.is_some() && frame_entry==entry && matches!(&response.body,Reply::Refused {..}) {frame_entry=None;}
        if !sample(&mut latency,started.elapsed().as_secs_f64()*1000.) {omitted_latency+=1;}
        match response.body {Reply::Accepted=>{if let Some(ability)=ability {*casts.entry(ability).or_default()+=1;}},Reply::Refused {message,code,..}=>{refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"outcome","message":message,"code":code,"tick":response.tick,"control":response.control}));}},_=>{}}
       }
      }
-     Update::Events {..}|Update::Inventory(_)|Update::MovementSuperseded {..}=>{},
+     Update::MovementSuperseded {token,..}=>{outstanding.remove(&token);},
+     Update::Events {..}|Update::Inventory(_)=>{},
     }
    }
   }

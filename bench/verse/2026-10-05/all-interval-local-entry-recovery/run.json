@@ -1,0 +1,18 @@
+{
+  "acceptance": "failed",
+  "reason": "All clients complete and observe interval movement, but simulation, storage pauses, and snapshot age miss lag acceptance.",
+  "compiled_revisions": {
+    "host": "ed587e5194",
+    "native": "32323eeec7",
+    "load": "ed587e5194+driver-recovery"
+  },
+  "steady_frame_p95_ms": 14.1515,
+  "steady_gpu_p95_ms": 9.362042,
+  "steady_snapshot_age_p95_ms": 1520.570417,
+  "limits": [
+    "Load driver source override is pinned by SHA-256 in binaries.json.",
+    "Shared hardware and different battle trajectories prevent an isolated causal comparison.",
+    "No injected network delay; impaired-network acceptance remains separate.",
+    "Input-to-display is unmeasured; one out-of-order GPU result is excluded."
+  ]
+}
