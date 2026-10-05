@@ -23,7 +23,7 @@
 //! Opaque and masked cells cast sun or key shadows; blended cells do not.
 //!
 //! The shaders are the textured entries of `photo.wgsl`. They use only the
-//! OpenGL ES 3.0 features every backend requests (see `crate::gles`), so
+//! OpenGL ES 3.0 features every backend requests (see `verse_gfx::gles`), so
 //! desktops and phones draw the same thing.
 
 use std::collections::BTreeMap;
@@ -198,7 +198,7 @@ pub enum Pass {
 }
 
 impl Pass {
-    pub(crate) const ALL: [Self; 3] = [Self::Opaque, Self::Masked, Self::Blended];
+    pub const ALL: [Self; 3] = [Self::Opaque, Self::Masked, Self::Blended];
 }
 
 /// A textured material.
@@ -425,7 +425,7 @@ impl TexturedScene {
     }
 
     /// Distinct image/cutoff recipes; an opaque user never inherits another material's mask.
-    pub(crate) fn mip_variants(&self) -> std::collections::BTreeSet<verse_engine::mips::Variant> {
+    pub fn mip_variants(&self) -> std::collections::BTreeSet<verse_engine::mips::Variant> {
         use verse_engine::mips::{Role, Variant};
         let mut variants: std::collections::BTreeSet<_> = self
             .materials
@@ -455,7 +455,7 @@ impl TexturedScene {
     /// # Errors
     ///
     /// Returns the validation error when the scene is out of bounds.
-    pub(crate) fn merge(&self) -> Result<Merged, String> {
+    pub fn merge(&self) -> Result<Merged, String> {
         self.validate()?;
         type Cell = (Vec<TexturedVertex>, Vec<u32>);
         let mut cells: BTreeMap<(Pass, usize, i32, i32), Cell> = BTreeMap::new();
@@ -780,7 +780,7 @@ impl Figure {
 
     /// The figure's mesh as uploaded: its bind-pose vertices, its indices
     /// offset into one buffer, and one batch per primitive.
-    pub(crate) fn merged(&self) -> Merged {
+    pub fn merged(&self) -> Merged {
         let mut merged = Merged::default();
         for mesh in &self.scene.meshes {
             for p in &mesh.primitives {
@@ -807,7 +807,7 @@ impl Figure {
 /// A merged scene: world-space vertices and indices, and the cells that
 /// draw ranges of them.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct Merged {
+pub struct Merged {
     pub vertices: Vec<TexturedVertex>,
     pub indices: Vec<u32>,
     pub batches: Vec<Batch>,
@@ -815,7 +815,7 @@ pub(crate) struct Merged {
 
 /// One cell of one material: a range of the merged indices and its bounds.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Batch {
+pub struct Batch {
     pub material: usize,
     pub first: u32,
     pub count: u32,
@@ -827,7 +827,7 @@ pub(crate) struct Batch {
 /// cells of one material draw together, then blended cells from the
 /// farthest center to the nearest, so nearer glass composites over farther
 /// glass. `visible` drops culled cells.
-pub(crate) fn draw_order(
+pub fn draw_order(
     batches: &[Batch],
     materials: &[TexturedMaterial],
     eye: Vec3,
@@ -856,7 +856,7 @@ pub(crate) fn draw_order(
 /// Whether the box from `min` to `max` may intersect the view of
 /// `view_proj`, a projection with depth from 0 to 1 (Gribb and Hartmann,
 /// "Fast Extraction of Viewing Frustum Planes", 2001).
-pub(crate) fn in_frustum(min: Vec3, max: Vec3, view_proj: Mat4) -> bool {
+pub fn in_frustum(min: Vec3, max: Vec3, view_proj: Mat4) -> bool {
     let rows = view_proj.transpose();
     let planes = [
         rows.w_axis + rows.x_axis,
@@ -876,7 +876,7 @@ pub(crate) fn in_frustum(min: Vec3, max: Vec3, view_proj: Mat4) -> bool {
 /// Whether the box from `min` to `max` lies within the side planes of
 /// `view_proj`, ignoring its near and far planes: a shadow map's caster
 /// test, since a caster beyond the light's near plane still shades.
-pub(crate) fn in_slab(min: Vec3, max: Vec3, view_proj: Mat4) -> bool {
+pub fn in_slab(min: Vec3, max: Vec3, view_proj: Mat4) -> bool {
     let rows = view_proj.transpose();
     let planes = [
         rows.w_axis + rows.x_axis,
@@ -896,13 +896,13 @@ pub(crate) fn in_slab(min: Vec3, max: Vec3, view_proj: Mat4) -> bool {
 /// A cell of small ground cover drops out a few tens of meters off, where
 /// it would cover a pixel or two, while a cell of buildings or trees draws
 /// until the fog.
-pub(crate) const DETAIL: f32 = 1.0 / 90.0;
+pub const DETAIL: f32 = 1.0 / 90.0;
 
 /// Whether a cell's box from `min` to `max` draws from `eye` under
 /// `view_proj` when fog is total at `far` meters: it is in view, some of it
 /// is nearer than `far`, and it is not too small to see at its distance
 /// ([`DETAIL`]). An infinite `far` keeps every cell in view.
-pub(crate) fn drawn(min: Vec3, max: Vec3, view_proj: Mat4, eye: Vec3, far: f32) -> bool {
+pub fn drawn(min: Vec3, max: Vec3, view_proj: Mat4, eye: Vec3, far: f32) -> bool {
     if !in_frustum(min, max, view_proj) {
         return false;
     }
@@ -915,7 +915,7 @@ pub(crate) fn drawn(min: Vec3, max: Vec3, view_proj: Mat4, eye: Vec3, far: f32) 
 
 /// How a pass's cells rasterize.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Raster {
+pub struct Raster {
     /// The fragment entry in `photo.wgsl`.
     pub entry: &'static str,
     /// Faces culled; `None` draws both sides.
@@ -929,7 +929,7 @@ pub(crate) struct Raster {
 }
 
 /// The raster state of a pass for single- or double-sided materials.
-pub(crate) fn raster(pass: Pass, double_sided: bool) -> Raster {
+pub fn raster(pass: Pass, double_sided: bool) -> Raster {
     let cull = (!double_sided).then_some(wgpu::Face::Back);
     match pass {
         Pass::Opaque => Raster {
@@ -957,7 +957,7 @@ pub(crate) fn raster(pass: Pass, double_sided: bool) -> Raster {
 }
 
 /// The material uniform `photo.wgsl` declares as `TexturedMaterial`.
-pub(crate) fn uniform(material: &TexturedMaterial) -> [[f32; 4]; 2] {
+pub fn uniform(material: &TexturedMaterial) -> [[f32; 4]; 2] {
     [
         material.base_color,
         [
@@ -969,11 +969,11 @@ pub(crate) fn uniform(material: &TexturedMaterial) -> [[f32; 4]; 2] {
     ]
 }
 
-pub(crate) fn srgb_to_linear() -> &'static [f32; 256] {
+pub fn srgb_to_linear() -> &'static [f32; 256] {
     static TABLE: std::sync::OnceLock<[f32; 256]> = std::sync::OnceLock::new();
     TABLE.get_or_init(|| std::array::from_fn(|i| verse_engine::mips::srgb_to_linear()[i] as f32))
 }
-pub(crate) fn material_role(material: &TexturedMaterial) -> verse_engine::mips::Role {
+pub fn material_role(material: &TexturedMaterial) -> verse_engine::mips::Role {
     match material.alpha {
         AlphaMode::Mask { cutoff } => {
             verse_engine::mips::Role::masked(cutoff, material.base_color[3])
@@ -1006,7 +1006,7 @@ fn coverage(rgba: &[u8], cutoff: f32, scale: f32) -> f32 {
 }
 /// Cook sRGB color with the material's effective mask comparison.
 #[cfg(test)]
-pub(crate) fn mip_chain(
+pub fn mip_chain(
     image: &BaseColorImage,
     cutoff: Option<f32>,
     max: u32,

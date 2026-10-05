@@ -16,7 +16,7 @@ const SHADERS: [(&str, &str, &[Constant]); 5] = [
     ("ui.wgsl", crate::ui::SHADER, &[]),
     (
         "pbr/photo.wgsl",
-        include_str!("pbr/photo.wgsl"),
+        include_str!("../../verse-pbr/src/pbr/photo.wgsl"),
         &[
             ("DIRECT", &[0.0, 1.0]),
             ("DEBUG", &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
@@ -25,7 +25,11 @@ const SHADERS: [(&str, &str, &[Constant]); 5] = [
             ("SCREEN", &[0.0, 1.0]),
         ],
     ),
-    ("pbr/post.wgsl", include_str!("pbr/post.wgsl"), &[]),
+    (
+        "pbr/post.wgsl",
+        include_str!("../../verse-pbr/src/pbr/post.wgsl"),
+        &[],
+    ),
     ("present.wgsl", include_str!("present.wgsl"), &[]),
 ];
 
@@ -226,7 +230,7 @@ fn default_variants_are_valid_and_translate_to_metal() {
 #[test]
 fn daylight_sky_validates_without_textures() {
     for gles in [false, true] {
-        let source = wgsl(include_str!("pbr/photo.wgsl"), gles);
+        let source = wgsl(include_str!("../../verse-pbr/src/pbr/photo.wgsl"), gles);
         let (module, info) = parse("pbr/photo.wgsl", &source);
         let entry = module
             .entry_points
@@ -256,7 +260,7 @@ fn daylight_sky_validates_without_textures() {
 /// `default_variants_are_valid_and_translate_to_metal` covers Metal.
 #[test]
 fn the_sky_light_and_height_fog_translate_for_webgl2() {
-    let source = wgsl(include_str!("pbr/photo.wgsl"), true);
+    let source = wgsl(include_str!("../../verse-pbr/src/pbr/photo.wgsl"), true);
     let (module, info) = parse("photo", &source);
     for set in constant_sets(&[("DIRECT", &[0.0, 1.0])]) {
         for entry in [
@@ -298,7 +302,7 @@ fn the_sky_light_and_height_fog_translate_for_webgl2() {
 /// wrong branch.
 #[test]
 fn variants_differ_only_where_gles_needs_them() {
-    let photo = include_str!("pbr/photo.wgsl");
+    let photo = include_str!("../../verse-pbr/src/pbr/photo.wgsl");
     let default = wgsl(photo, false);
     let gles = wgsl(photo, true);
     assert!(default.contains("@interpolate(linear)"));
@@ -320,7 +324,7 @@ fn variants_differ_only_where_gles_needs_them() {
 /// textured entries that read the cascades need no extension.
 #[test]
 fn sun_cascades_sample_a_depth_array_on_glsl_es() {
-    let source = wgsl(include_str!("pbr/photo.wgsl"), true);
+    let source = wgsl(include_str!("../../verse-pbr/src/pbr/photo.wgsl"), true);
     let (module, info) = parse("photo", &source);
     for pcss in [0.0, 1.0] {
         let mut set = naga::back::PipelineConstants::default();
@@ -339,7 +343,7 @@ fn sun_cascades_sample_a_depth_array_on_glsl_es() {
 /// this keeps the test above honest about what it detects.
 #[test]
 fn the_default_photo_shader_does_not_translate_to_glsl_es() {
-    let source = wgsl(include_str!("pbr/photo.wgsl"), false);
+    let source = wgsl(include_str!("../../verse-pbr/src/pbr/photo.wgsl"), false);
     let (module, info) = parse("photo", &source);
     let set = naga::back::PipelineConstants::default();
     let error = |stage, entry| {
@@ -365,7 +369,7 @@ fn the_default_photo_shader_does_not_translate_to_glsl_es() {
 /// ones discard, so opaque and blended draws keep early depth rejection.
 #[test]
 fn textured_entries_translate_and_only_masked_entries_discard() {
-    let source = wgsl(include_str!("pbr/photo.wgsl"), true);
+    let source = wgsl(include_str!("../../verse-pbr/src/pbr/photo.wgsl"), true);
     let (module, info) = parse("photo", &source);
     let set = naga::back::PipelineConstants::default();
     for (stage, entry) in [

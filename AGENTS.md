@@ -654,6 +654,10 @@ uses, and marks which are implemented and which are only specified.
   (#10631): the relay link, identities, NIP-MV frames, chat, the chat feed,
   and the XP client (`xp` feature, which `verse`'s `xp-host` enables).
   `verse` re-exports each module under its old path.
+- `crates/verse-pbr` — Verse's physical renderer, split out of `verse`
+  (#10631): the PBR pipelines, baking, sky, and textured scenes (`pbr`), the
+  world mesh (`mesh`), streamed content residency, and the fog distances.
+  `verse` re-exports each module under its old path.
 - `crates/xp-ledger` — the NIP-XP ledger a reader derives
   (`nips/openagents/NIP-XP.md`): trust lists, the per-award re-checks, and
   the knowledge-entry parser the `kb-transfer` rule needs. `knowledge`

@@ -45,6 +45,9 @@ verse-gfx = { path = "../verse-gfx" }
 # The relay link, identities, NIP-MV frames, chat, the feed, and the XP
 # client; `verse` re-exports each module under its old path.
 verse-net = { path = "../verse-net" }
+# The PBR pipelines, the world mesh, and streamed content residency;
+# `verse` re-exports each module under its old path.
+verse-pbr = { path = "../verse-pbr" }
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
 coder-delegate = { path = "../coder-delegate", optional = true }

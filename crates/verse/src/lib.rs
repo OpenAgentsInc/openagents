@@ -48,7 +48,7 @@ pub use verse_net::identity;
 pub mod imported;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod loopback;
-pub mod mesh;
+pub use verse_pbr::mesh;
 pub mod minimap;
 pub use verse_net::mv;
 pub mod nav;
@@ -57,7 +57,7 @@ pub use verse_gfx::palette;
 pub use verse_net::net;
 #[cfg(feature = "panels")]
 pub mod panels;
-pub mod pbr;
+pub use verse_pbr::pbr;
 pub mod pillar;
 pub use verse_gfx::profiling;
 pub mod render;
@@ -68,7 +68,7 @@ pub mod session;
 pub mod shared;
 pub mod spectator;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod streaming;
+pub use verse_pbr::streaming;
 pub mod tooltip;
 pub use verse_gfx::ui;
 pub mod world;

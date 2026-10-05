@@ -519,7 +519,7 @@ pub fn bake_probes(bvh: &Bvh, s: &ProbeSettings) -> ProbeGrid {
 
 /// Replaces probes buried inside geometry with the mean of valid neighbors,
 /// so light does not leak from inside solid parts.
-pub(crate) fn dilate(data: &mut [[f32; 12]], valid: &[bool], dims: [u32; 3]) {
+pub fn dilate(data: &mut [[f32; 12]], valid: &[bool], dims: [u32; 3]) {
     let index =
         |x: i64, y: i64, z: i64| (x + y * dims[0] as i64 + z * (dims[0] * dims[1]) as i64) as usize;
     let mut ok = valid.to_vec();

@@ -18,7 +18,7 @@ use verse_engine::lighting::{Curve, GRADE_LUT_FLOOR, GRADE_LUT_SIZE, Grade, grad
 use wgpu::util::DeviceExt;
 
 /// The most bloom mip levels, from half resolution down.
-pub(crate) const BLOOM_LEVELS: u32 = 6;
+pub const BLOOM_LEVELS: u32 = 6;
 
 /// The uniform block of `post.wgsl`.
 #[repr(C)]
@@ -65,7 +65,7 @@ fn table_output(ceiling: f32) -> [f32; 4] {
 
 /// What the output pass does to one frame.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Look {
+pub struct Look {
     /// Fraction of bloom energy mixed in.
     pub bloom: f32,
     /// Local exposure strength; 0 turns it off.
@@ -87,7 +87,7 @@ pub(crate) struct Look {
 }
 
 /// Pipelines and the grade table for one device and pair of formats.
-pub(crate) struct Output {
+pub struct Output {
     hdr: wgpu::TextureFormat,
     layout: wgpu::BindGroupLayout,
     down: wgpu::RenderPipeline,
@@ -103,7 +103,7 @@ pub(crate) struct Output {
 }
 
 /// Size-dependent bloom targets and bind groups for one scene texture.
-pub(crate) struct OutputTargets {
+pub struct OutputTargets {
     bloom_views: Vec<wgpu::TextureView>,
     /// The adapted-luminance textures the adapt pass writes in turn.
     adapt: [wgpu::TextureView; 2],
@@ -121,7 +121,7 @@ pub(crate) struct OutputTargets {
 }
 
 /// The two 1×1 adapted-luminance textures the adapt pass alternates between.
-pub(crate) fn adapt_textures(
+pub fn adapt_textures(
     device: &wgpu::Device,
     format: wgpu::TextureFormat,
 ) -> [wgpu::TextureView; 2] {

@@ -24,28 +24,28 @@ use super::gpu::DEPTH;
 
 /// The trace and resolve targets: red ambient occlusion, green contact
 /// shadow.
-pub(crate) const OCCLUSION: wgpu::TextureFormat = wgpu::TextureFormat::Rg8Unorm;
+pub const OCCLUSION: wgpu::TextureFormat = wgpu::TextureFormat::Rg8Unorm;
 
 /// The occlusion search radius, m.
-pub(crate) const AO_RADIUS: f32 = 0.6;
+pub const AO_RADIUS: f32 = 0.6;
 /// The largest screen radius the search covers, in full-resolution pixels,
 /// so a surface close to the camera does not search half the screen.
-pub(crate) const AO_MAX_PIXELS: f32 = 96.0;
+pub const AO_MAX_PIXELS: f32 = 96.0;
 /// The fraction of the radius over which a distant occluder fades out.
-pub(crate) const AO_FALLOFF: f32 = 0.4;
+pub const AO_FALLOFF: f32 = 0.4;
 /// The contact shadow ray's length, m: long enough to reach under a prop or
 /// a foot, short enough to leave larger shadows to the shadow map.
-pub(crate) const CONTACT_LENGTH: f32 = 0.3;
+pub const CONTACT_LENGTH: f32 = 0.3;
 /// How far behind the depth buffer a ray sample may lie and still count as
 /// blocked, m.
-pub(crate) const CONTACT_THICKNESS: f32 = 0.08;
+pub const CONTACT_THICKNESS: f32 = 0.08;
 /// The ray starts this far along the surface normal, m.
-pub(crate) const CONTACT_BIAS: f32 = 0.01;
+pub const CONTACT_BIAS: f32 = 0.01;
 
 /// The `Screen` uniform in `screen.wgsl`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
-pub(crate) struct ScreenUniform {
+pub struct ScreenUniform {
     view_proj: [[f32; 4]; 4],
     inv_view_proj: [[f32; 4]; 4],
     eye: [f32; 4],
@@ -78,7 +78,7 @@ impl ScreenUniform {
 }
 
 /// The trace and resolve pipelines and their uniform.
-pub(crate) struct ScreenGpu {
+pub struct ScreenGpu {
     uniform: wgpu::Buffer,
     trace_layout: wgpu::BindGroupLayout,
     resolve_layout: wgpu::BindGroupLayout,
@@ -87,7 +87,7 @@ pub(crate) struct ScreenGpu {
 }
 
 /// Size-dependent screen-space targets.
-pub(crate) struct ScreenTargets {
+pub struct ScreenTargets {
     /// The prepass depth: full resolution, single sample, readable.
     pub depth: wgpu::TextureView,
     traced: wgpu::TextureView,

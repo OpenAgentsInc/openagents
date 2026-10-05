@@ -25,9 +25,9 @@
 
 pub mod bake;
 pub mod environment;
-pub(crate) mod gpu;
-pub(crate) mod output;
-pub(crate) mod screen;
+pub mod gpu;
+pub mod output;
+pub mod screen;
 pub mod sky;
 pub mod textured;
 pub mod textured_bake;
@@ -417,9 +417,9 @@ impl Neon {
     #[must_use]
     pub fn plaza(time: f32) -> Self {
         Self {
-            field: crate::palette::field(),
-            fog_start: crate::render::FOG_START,
-            fog_end: crate::render::FOG_END,
+            field: verse_gfx::palette::field(),
+            fog_start: crate::fog::FOG_START,
+            fog_end: crate::fog::FOG_END,
             line_gain: 1.8,
             line_width: 1.6,
             bloom: 0.07,
@@ -436,9 +436,9 @@ impl Neon {
     #[must_use]
     pub fn neutral(time: f32) -> Self {
         Self {
-            field: crate::palette::neutral(crate::palette::field()),
-            fog_start: crate::render::BARE_FOG_START,
-            fog_end: crate::render::BARE_FOG_END,
+            field: verse_gfx::palette::neutral(verse_gfx::palette::field()),
+            fog_start: crate::fog::BARE_FOG_START,
+            fog_end: crate::fog::BARE_FOG_END,
             ..Self::plaza(time)
         }
     }

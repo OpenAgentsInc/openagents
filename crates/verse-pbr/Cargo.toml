@@ -1,0 +1,27 @@
+[package]
+name = "verse-pbr"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's physical renderer: PBR pipelines, baking, sky, textured scenes, the world mesh, and streamed content residency."
+
+[dependencies]
+bytemuck = { version = "1.25", features = ["derive"] }
+coder-ui = { path = "../coder-ui" }
+glam = "0.30.10"
+gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names"] }
+png = "0.18.1"
+pollster = "0.4"
+serde = { version = "1", features = ["derive"] }
+verse-engine = { path = "../verse-engine", features = ["asset-io"] }
+verse-gfx = { path = "../verse-gfx" }
+wgpu = "29.0.4"
+
+[dev-dependencies]
+tempfile = "3"
+# The shader tests validate WGSL with the naga release wgpu uses.
+naga = { version = "29.0.4", features = ["wgsl-in", "glsl-out", "msl-out"] }
+
+[lints]
+workspace = true

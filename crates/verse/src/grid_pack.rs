@@ -303,7 +303,7 @@ fn admit(pack: &mut Pack, dir: &Path) -> Result<(), String> {
         include_bytes!("world.rs"),
         include_bytes!("avatar.rs"),
         include_bytes!("agent.rs"),
-        include_bytes!("mesh.rs"),
+        include_bytes!("../../verse-pbr/src/mesh.rs"),
         include_bytes!("../../verse-gfx/src/palette.rs"),
         include_bytes!("zones/mod.rs"),
         include_bytes!("zones/gate.rs"),

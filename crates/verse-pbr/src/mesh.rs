@@ -8,7 +8,7 @@ use bytemuck::{Pod, Zeroable};
 use coder_ui::theme::Intensity;
 use glam::{Mat4, Vec3};
 
-use crate::palette;
+use verse_gfx::palette;
 
 /// One vertex: world position, linear color, and how much fog applies.
 #[repr(C)]

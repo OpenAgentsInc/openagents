@@ -19,7 +19,7 @@ white and gray, is hidden for now
 zone-agnostic [`physics`](../../crates/physics/) crate for rigid bodies, fixed
 stepping, and restorable world state; the scene, input mapping, and rendering
 live in [`zones/lagrange/`](../../crates/verse/src/zones/lagrange/), drawn by
-the renderer's physical path ([`pbr`](../../crates/verse/src/pbr/mod.rs)).
+the renderer's physical path ([`pbr`](../../crates/verse-pbr/src/pbr/mod.rs)).
 
 ## Two clocks
 

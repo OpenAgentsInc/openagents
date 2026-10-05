@@ -461,7 +461,7 @@ buildings hide farther lines. Fog fades distant lines into the field. A
 ridge line at 900 m ignores the fog and marks the horizon.
 
 **Neon stage.** The plaza draws through the renderer's physical path
-([`pbr`](../../crates/verse/src/pbr/mod.rs), `Neon`) without changing a
+([`pbr`](../../crates/verse-pbr/src/pbr/mod.rs), `Neon`) without changing a
 color. Lines are emissive in their ladder colors, 1.8 times brighter at
 the core, so they glow through energy-conserving bloom, and they are
 antialiased screen-space strips instead of one-pixel hardware lines. The
@@ -577,7 +577,7 @@ cargo test -p verse --lib gles
 | [`src/replay.rs`](../../crates/verse/src/replay.rs) | Run replays: events to visits, the shared clock, the `beats-winner` list, the ghost, and the HUD lines. |
 | [`verse-net/src/feed.rs`](../../crates/verse-net/src/feed.rs) | The NOSTR tab: public notes from damus and primal, filtering, pacing, and stand-ins. |
 | [`verse-gfx/src/ui.rs`](../../crates/verse-gfx/src/ui.rs), [`verse-gfx/src/ui.wgsl`](../../crates/verse-gfx/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
-| [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
+| [`verse-pbr/src/mesh.rs`](../../crates/verse-pbr/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
 | [`verse-gfx/src/palette.rs`](../../crates/verse-gfx/src/palette.rs) | The amber ladder in linear light. |
 | [`src/zones/`](../../crates/verse/src/zones/mod.rs) | Curated zone identities, portals, manifest admission, lazy Ruins loading, palette/fog, the Ruins hotbar, and the Lagrange 1 scene. |
 | [`verse-ruins`](../../crates/verse-ruins/) | Retained Wizard Woods ECS simulation, exact source terrain, and portable host adapter. |

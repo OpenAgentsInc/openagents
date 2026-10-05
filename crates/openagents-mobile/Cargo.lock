@@ -9143,6 +9143,7 @@ dependencies = [
  "verse-gfx",
  "verse-lagrange",
  "verse-net",
+ "verse-pbr",
  "verse-ruins",
  "verse-world",
  "web-time",
@@ -9206,6 +9207,22 @@ dependencies = [
  "verse-gfx",
  "webpki-roots 1.0.9",
  "xp-ledger",
+]
+
+[[package]]
+name = "verse-pbr"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "coder-ui",
+ "glam",
+ "gltf",
+ "png",
+ "pollster",
+ "serde",
+ "verse-engine",
+ "verse-gfx",
+ "wgpu",
 ]
 
 [[package]]

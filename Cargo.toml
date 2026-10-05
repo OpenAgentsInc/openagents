@@ -63,6 +63,8 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.verse-net]
 opt-level = 3
+[profile.dev.package.verse-pbr]
+opt-level = 3
 [profile.dev.package.verse-world]
 opt-level = 3
 [profile.dev.package.physics]

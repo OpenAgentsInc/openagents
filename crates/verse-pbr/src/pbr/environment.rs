@@ -181,7 +181,7 @@ pub fn sky(day: &Daylight, sun: Vec3, coverage: f32, d: Vec3) -> Vec3 {
 
 /// The sky light on the GPU: the prefiltered cube, and the irradiance
 /// coefficients the frame uniform carries.
-pub(crate) struct SkyLightGpu {
+pub struct SkyLightGpu {
     pub view: wgpu::TextureView,
     /// [`Sh9::uniform`] of the baked light.
     pub sh: [[f32; 4]; 9],

@@ -84,7 +84,7 @@ Lab use:
   reports 0.02 ms asleep and 0.06 to 0.08 ms per frame while rolling.
 
 The ball is drawn through the physical renderer on the neon stage. A studio
-[`pbr::Key`](../../crates/verse/src/pbr/mod.rs) lights lit geometry with
+[`pbr::Key`](../../crates/verse-pbr/src/pbr/mod.rs) lights lit geometry with
 Lagrange 1's shading: a shadowed key light (4,200 lux, 0.035 rad source, so
 soft contact shadows), an unshadowed rim light behind, and a dim ambient sky,
 pre-exposed at EV 10 so white reads near display white beside the lines. The

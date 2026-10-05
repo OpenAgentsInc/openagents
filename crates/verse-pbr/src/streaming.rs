@@ -37,7 +37,7 @@ pub struct Source {
 }
 impl Source {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         root: &Path,
         manifest: Manifest,
         budget: Budget,
@@ -110,7 +110,7 @@ impl Source {
         Ok(())
     }
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn rebind(
+    pub fn rebind(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -127,11 +127,7 @@ impl Source {
     }
     /// At most the admitted number of source completions and upload bytes per frame.
     /// A time budget stops before the next driver call; a call already in progress is measured.
-    pub(crate) fn pump(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> Result<(), String> {
+    pub fn pump(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<(), String> {
         let start = Instant::now();
         let budget = self.residency.budget();
         let mut frame = Frame::default();
@@ -252,7 +248,7 @@ impl Source {
         self.last_frame = frame;
         Ok(())
     }
-    pub(crate) fn draw<'a>(
+    pub fn draw<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         globals: &'a wgpu::BindGroup,

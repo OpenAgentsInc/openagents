@@ -44,7 +44,7 @@ use verse_engine::lighting::{
 use verse_engine::quality::{Platform, Probe, Quality, ShadowFilter, Tier};
 use verse_engine::render_graph::{PhotoPass, PhotoPlan};
 
-pub(crate) const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+pub const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const SHADOW_SIZE: u32 = 2048;
 
 #[repr(C)]
@@ -143,7 +143,7 @@ struct StarInstance {
 }
 
 /// A growable vertex buffer.
-pub(crate) struct Stream {
+pub struct Stream {
     pub buffer: wgpu::Buffer,
     pub count: u32,
     capacity: u64,
@@ -186,7 +186,7 @@ impl Stream {
 
 /// How the adapter can run the physical path.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Capability {
+pub struct Capability {
     /// The floating-point scene format, when one is renderable and filterable.
     pub hdr: Option<wgpu::TextureFormat>,
     pub samples: u32,
@@ -287,7 +287,7 @@ impl Capability {
         } else {
             1
         };
-        let gles = crate::gles::is_gles(adapter.get_info().backend);
+        let gles = verse_gfx::gles::is_gles(adapter.get_info().backend);
         let probe = Probe {
             platform: Platform::current(),
             gles,
@@ -357,7 +357,7 @@ struct Prepass {
 
 /// Textured static meshes on the GPU: merged vertices and indices uploaded
 /// once, and one bind group per material.
-pub(crate) struct TexturedGpu {
+pub struct TexturedGpu {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     batches: Vec<textured::Batch>,
@@ -377,7 +377,7 @@ impl TexturedGpu {
 }
 
 /// Size-dependent targets for the physical path.
-pub(crate) struct PhotoTargets {
+pub struct PhotoTargets {
     size: [u32; 2],
     msaa: Option<wgpu::TextureView>,
     scene: wgpu::TextureView,
@@ -403,7 +403,7 @@ impl PhotoTargets {
 }
 
 /// GPU state for the physical path, created on the first physical frame.
-pub(crate) struct Photo {
+pub struct Photo {
     capability: Capability,
     output_format: wgpu::TextureFormat,
     frame: wgpu::Buffer,
@@ -744,7 +744,7 @@ impl Photo {
         let module = shader(
             device,
             "verse photo",
-            &crate::gles::wgsl(include_str!("photo.wgsl"), capability.gles),
+            &verse_gfx::gles::wgsl(include_str!("photo.wgsl"), capability.gles),
         );
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("verse photo"),
@@ -1226,7 +1226,7 @@ impl Photo {
             return Ok(());
         }
         self.sky_textures = load_sky(device, queue)?;
-        let stars = sky::parse_stars(include_bytes!("../../assets/lagrange/stars.bin"))?;
+        let stars = sky::parse_stars(include_bytes!("../../../verse/assets/lagrange/stars.bin"))?;
         let instances: Vec<StarInstance> = stars
             .iter()
             .map(|s| StarInstance {
@@ -1412,7 +1412,10 @@ impl Photo {
     }
 
     /// A figure's batches in drawing order, never culled.
-    fn figure_order(figure: Option<&TexturedGpu>, view: crate::render::View) -> Vec<usize> {
+    fn figure_order(
+        figure: Option<&TexturedGpu>,
+        view: verse_engine::presentation::View,
+    ) -> Vec<usize> {
         figure.map_or_else(Vec::new, |gpu| {
             textured::draw_order(&gpu.batches, &gpu.materials, view.eye, |_| true)
         })
@@ -1423,7 +1426,7 @@ impl Photo {
     /// large enough to see ([`textured::drawn`]).
     fn textured_order(
         textured: Option<&TexturedGpu>,
-        view: crate::render::View,
+        view: verse_engine::presentation::View,
         far: f32,
     ) -> Vec<usize> {
         textured.map_or_else(Vec::new, |gpu| {
@@ -1572,7 +1575,7 @@ impl Photo {
         encoder: &mut wgpu::CommandEncoder,
         output: &wgpu::TextureView,
         targets: &mut PhotoTargets,
-        view: crate::render::View,
+        view: verse_engine::presentation::View,
         stage: Stage<'_>,
         world: Batches<'_>,
         ui: Option<(&wgpu::RenderPipeline, &wgpu::BindGroup, &wgpu::Buffer, u32)>,
@@ -1619,7 +1622,7 @@ impl Photo {
         encoder: &mut wgpu::CommandEncoder,
         output: &wgpu::TextureView,
         targets: &mut PhotoTargets,
-        view: crate::render::View,
+        view: verse_engine::presentation::View,
         sky: &Sky,
         world: Batches<'_>,
     ) {
@@ -1838,7 +1841,7 @@ impl Photo {
     /// The shadow of a stage's key light: cascades that follow the camera
     /// when the key sets a shadow distance and the camera is a perspective
     /// one, else one map over the key's fixed region.
-    fn key_shadow(&self, key: &super::Key, view: crate::render::View) -> Cascades {
+    fn key_shadow(&self, key: &super::Key, view: verse_engine::presentation::View) -> Cascades {
         let toward = key.dir.normalize_or(Vec3::Y);
         let fixed = || fit_box(toward, key.shadow_center, key.shadow_half, SHADOW_SIZE);
         let Some(distance) = key.shadow_distance else {
@@ -2039,7 +2042,7 @@ impl Photo {
         encoder: &mut wgpu::CommandEncoder,
         output: &wgpu::TextureView,
         targets: &mut PhotoTargets,
-        view: crate::render::View,
+        view: verse_engine::presentation::View,
         neon: &Neon,
         world: Batches<'_>,
     ) {
@@ -2301,7 +2304,7 @@ impl Photo {
 
 /// The scene a physical frame shows.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Stage<'a> {
+pub enum Stage<'a> {
     Space(&'a Sky),
     Neon(&'a Neon),
 }
@@ -2324,7 +2327,7 @@ fn static_identity(world: &Batches<'_>) -> u64 {
 
 /// Reversed depth (Reed 2015): map depth d to 1 − d so a float buffer keeps
 /// micrometer precision near the camera and across the scene.
-pub(crate) fn reversed_depth() -> Mat4 {
+pub fn reversed_depth() -> Mat4 {
     Mat4::from_cols(
         glam::Vec4::X,
         glam::Vec4::Y,
@@ -2334,7 +2337,7 @@ pub(crate) fn reversed_depth() -> Mat4 {
 }
 
 /// The retained geometry a physical frame draws.
-pub(crate) struct Batches<'a> {
+pub struct Batches<'a> {
     #[cfg(not(target_arch = "wasm32"))]
     pub streamed: Option<(&'a crate::streaming::Source, &'a wgpu::BindGroup)>,
     pub lit: (&'a wgpu::Buffer, u32),
@@ -2415,7 +2418,7 @@ fn scene_group(
 
 /// IEEE 754 binary16 bits for `value`, rounding to nearest.
 #[must_use]
-pub(crate) fn half(value: f32) -> u16 {
+pub fn half(value: f32) -> u16 {
     let bits = value.to_bits();
     let sign = ((bits >> 16) & 0x8000) as u16;
     let exponent = ((bits >> 23) & 0xff) as i32;
@@ -2714,7 +2717,10 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
             device,
             queue,
             "earth day",
-            decode(include_bytes!("../../assets/lagrange/earth_day.png"), false)?,
+            decode(
+                include_bytes!("../../../verse/assets/lagrange/earth_day.png"),
+                false,
+            )?,
             srgb,
         ),
         upload_mipped(
@@ -2722,7 +2728,7 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
             queue,
             "earth clouds",
             decode(
-                include_bytes!("../../assets/lagrange/earth_clouds.png"),
+                include_bytes!("../../../verse/assets/lagrange/earth_clouds.png"),
                 true,
             )?,
             r8,
@@ -2732,7 +2738,7 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
             queue,
             "earth water",
             decode(
-                include_bytes!("../../assets/lagrange/earth_water.png"),
+                include_bytes!("../../../verse/assets/lagrange/earth_water.png"),
                 true,
             )?,
             r8,
@@ -2742,7 +2748,7 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
             queue,
             "moon albedo",
             decode(
-                include_bytes!("../../assets/lagrange/moon_albedo.png"),
+                include_bytes!("../../../verse/assets/lagrange/moon_albedo.png"),
                 false,
             )?,
             srgb,
@@ -2751,7 +2757,10 @@ fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::Texture
             device,
             queue,
             "milky way",
-            decode(include_bytes!("../../assets/lagrange/milky_way.png"), false)?,
+            decode(
+                include_bytes!("../../../verse/assets/lagrange/milky_way.png"),
+                false,
+            )?,
             srgb,
         ),
     ])
@@ -2808,7 +2817,7 @@ mod tests {
     #[test]
     fn the_frame_uniform_matches_the_shader() {
         for gles in [false, true] {
-            let source = crate::gles::wgsl(include_str!("photo.wgsl"), gles);
+            let source = verse_gfx::gles::wgsl(include_str!("photo.wgsl"), gles);
             let module = naga::front::wgsl::parse_str(&source).unwrap();
             let mut layouter = naga::proc::Layouter::default();
             layouter.update(module.to_ctx()).unwrap();
@@ -2879,22 +2888,26 @@ mod tests {
 
     #[test]
     fn bundled_sky_textures_decode_at_their_documented_sizes() {
-        let (w, h, px) =
-            decode(include_bytes!("../../assets/lagrange/earth_day.png"), false).unwrap();
+        let (w, h, px) = decode(
+            include_bytes!("../../../verse/assets/lagrange/earth_day.png"),
+            false,
+        )
+        .unwrap();
         assert_eq!((w, h, px.len()), (2048, 1024, 2048 * 1024 * 4));
         let (w, h, px) = decode(
-            include_bytes!("../../assets/lagrange/earth_clouds.png"),
+            include_bytes!("../../../verse/assets/lagrange/earth_clouds.png"),
             true,
         )
         .unwrap();
         assert_eq!((w, h, px.len()), (2048, 1024, 2048 * 1024));
         let (w, h, _) = decode(
-            include_bytes!("../../assets/lagrange/moon_albedo.png"),
+            include_bytes!("../../../verse/assets/lagrange/moon_albedo.png"),
             false,
         )
         .unwrap();
         assert_eq!((w, h), (2048, 1024));
-        let stars = sky::parse_stars(include_bytes!("../../assets/lagrange/stars.bin")).unwrap();
+        let stars =
+            sky::parse_stars(include_bytes!("../../../verse/assets/lagrange/stars.bin")).unwrap();
         assert!(stars.len() > 9_000);
     }
 }
