@@ -348,6 +348,27 @@ pub const COTTAGE_THATCH: Model = Model {
     inside: None,
 };
 
+/// The hipped house. Its landing surface is the middle of the long
+/// slopes; past it the hips fall away to the eaves, onto the walls' top.
+pub const HIP_HOUSE: Model = Model {
+    name: "generated/hip_house",
+    blocks: &[[-5.1, 5.1, -8.1, 0.1, 6.12]],
+    roofs: &[gable([0.0, -4.0], true, [4.5, 2.0], 6.12, 8.52)],
+    front: [-0.5, 0.9],
+    inside: None,
+};
+
+/// The gambrel barn. Its landing surface is the shallow upper roof between
+/// the knees, and a block under the steep lower slopes stops a lander near
+/// their surface.
+pub const GAMBREL_BARN: Model = Model {
+    name: "generated/gambrel_barn",
+    blocks: &[[-5.2, 5.2, -12.2, 0.2, 3.6], [-4.4, 4.4, -12.2, 0.2, 4.9]],
+    roofs: &[gable([0.0, -6.0], false, [3.3, 6.35], 5.9, 7.1)],
+    front: [2.6, 1.0],
+    inside: None,
+};
+
 /// One generated model placed in the town.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Instance {

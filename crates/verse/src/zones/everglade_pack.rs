@@ -33,9 +33,9 @@ pub use format::{
 use pinned::PinnedFile;
 
 /// Exact content identity of the reviewed Everglade pack.
-pub const PACK_SHA256: &str = "0f05290ed5632d488337d115609aa7dd2d3df8b2765fd6e030a3657c60395ee3";
+pub const PACK_SHA256: &str = "e7c14a2626117be6723832ba6519edc14daad7a06da9de834def7ee633e3aa25";
 /// Transfer size of the reviewed Everglade pack.
-pub const PACK_BYTES: u64 = 8537860;
+pub const PACK_BYTES: u64 = 8660942;
 /// The most triangles the Everglade layout may place, counting each placement.
 /// The city is sixteen times the first glade's area and places about 1.8
 /// million with the ground, which merges to about 111 MiB, under the
@@ -56,6 +56,7 @@ pub const PACK_EXTENSION: &str = "vtp";
 // zones share the cache directory; arbitrary digest names are not ours.
 const EVERGLADE_PACK_HISTORY: &[&str] = &[
     PACK_SHA256,
+    "0f05290ed5632d488337d115609aa7dd2d3df8b2765fd6e030a3657c60395ee3",
     "baa1a9ef9837d2a21b705cf5ef9657b07216ce47f889e511523caadd0be7f78b",
     "136a938924805db23211d5c98ac9a072b2b62ec7373b9ffa12f8eba59917912b",
     "a49bdf62aa3c014548bbc375fc66546030b4ee733e4832502dfd389533ea9f59",

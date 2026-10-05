@@ -18,9 +18,9 @@
 
 use super::generated::{
     BAKERY, BOARDWALK_CAFE, BOATHOUSE, CLOCK_TOWER, CORNER_SHOP, COTTAGE_THATCH, COTTAGE_TOWER,
-    FARMHOUSE, FOUNTAIN, GAZEBO, GREENHOUSE, GUILD_HALL, Instance, L_HOUSE, LOG_CABIN, LOOKOUT,
-    MARKET_HALL, MEETING_HALL, MUSIC_HALL, Model, OBSERVATORY, ROW_TOWNHOUSE, SMITHY, TAVERN,
-    TOWNHOUSE_BALCONY, TOWNHOUSE_JETTIED, WINDMILL,
+    FARMHOUSE, FOUNTAIN, GAMBREL_BARN, GAZEBO, GREENHOUSE, GUILD_HALL, HIP_HOUSE, Instance,
+    L_HOUSE, LOG_CABIN, LOOKOUT, MARKET_HALL, MEETING_HALL, MUSIC_HALL, Model, OBSERVATORY,
+    ROW_TOWNHOUSE, SMITHY, TAVERN, TOWNHOUSE_BALCONY, TOWNHOUSE_JETTIED, WINDMILL,
 };
 use super::{
     Collision, DOOR_HALF, EAST, NORTH, Piece, Placement, SOUTH, WALL_TOP, WEST, dress, height,
@@ -112,7 +112,7 @@ use Side::{East as E, North as N, South as S, West as W};
 use Style::{Plaster, Stone, Timber};
 
 /// Every building of the city, by district.
-pub const BUILDINGS: [Building; 62] = [
+pub const BUILDINGS: [Building; 65] = [
     // Main Street's far blocks, on its north side.
     building("corner shop", [-88.0, 55.0], 8.0, S, 46.0, 2, Plaster),
     building("bakehouse", [-72.0, 55.0], 8.0, S, 46.0, 1, Timber),
@@ -208,6 +208,20 @@ pub const BUILDINGS: [Building; 62] = [
         Timber,
     ),
     building("fern cabin", [88.0, 93.0], 8.0, S, 86.0, 1, Timber),
+    // The third round: two hipped houses on Well Square, south of Hearth
+    // Road between the Lantern Quarter and Stoop Lane, and the barn east
+    // of the farm's paddock.
+    building("well house west", [-75.0, -28.0], 8.0, E, -66.0, 2, Plaster),
+    building(
+        "well house south",
+        [-60.0, -42.0],
+        10.0,
+        N,
+        -33.0,
+        2,
+        Plaster,
+    ),
+    building("barn", [58.0, -105.0], 10.0, N, -96.0, 1, Timber),
 ];
 
 /// The beekeeper's hut by the orchard.
@@ -255,7 +269,7 @@ const fn stand_in(
 /// and Stoop Lane, the open market hall on the Fountain Plaza, the tavern
 /// in the Lantern Quarter, terraces of row houses on Brownstone Row, the
 /// observatory on its hill, and the cottage with its tower in Walden Woods.
-pub const STAND_INS: [StandIn; 34] = [
+pub const STAND_INS: [StandIn; 37] = [
     stand_in("corner shop", "corner shop", &CORNER_SHOP, 0.0),
     stand_in("bakehouse", "bakehouse", &BAKERY, 0.0),
     stand_in("tailor", "tailor", &TOWNHOUSE_BALCONY, 0.0),
@@ -314,6 +328,9 @@ pub const STAND_INS: [StandIn; 34] = [
         0.0,
     ),
     stand_in("fern cabin", "fern cabin", &LOG_CABIN, 0.0),
+    stand_in("well house west", "well house west", &HIP_HOUSE, 0.0),
+    stand_in("well house south", "well house south", &HIP_HOUSE, 0.0),
+    stand_in("barn", "barn", &GAMBREL_BARN, 0.0),
 ];
 
 /// Generated models that stand on open ground rather than in a building's
@@ -420,7 +437,7 @@ fn grounds_rects() -> impl Iterator<Item = ([f32; 2], [f32; 2])> {
 }
 
 /// The city's streets: each a segment and its half width, m.
-pub const STREETS: [([f32; 2], [f32; 2], f32); 23] = [
+pub const STREETS: [([f32; 2], [f32; 2], f32); 24] = [
     // Main Street's far blocks.
     ([-100.0, 46.0], [-34.0, 46.0], 1.6),
     ([44.0, 46.0], [104.0, 46.0], 1.6),
@@ -459,6 +476,9 @@ pub const STREETS: [([f32; 2], [f32; 2], f32); 23] = [
     ([8.0, -96.0], [34.0, -96.0], 1.0),
     ([64.0, 77.0], [66.0, 82.0], 0.9),
     ([66.0, 82.0], [87.0, 86.0], 0.9),
+    // Stoop Lane's western lane, on south across Hearth Road to Well
+    // Square.
+    ([-60.0, -23.0], [-60.0, -8.0], 1.2),
 ];
 
 /// The Fountain Plaza's paving: center and half extents, m.
@@ -474,7 +494,7 @@ pub fn reserved() -> impl Iterator<Item = ([f32; 2], [f32; 2])> {
     all()
         .map(|b| b.rect)
         .chain(grounds_rects())
-        .chain([PLAZA, GARDEN, ORCHARD])
+        .chain([PLAZA, GARDEN, ORCHARD, super::WELL_SQUARE])
 }
 
 /// The centers of a building's doorways on its wall line: a double door in

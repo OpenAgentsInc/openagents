@@ -209,3 +209,4 @@ or converted; every sprite here is our own Blender render.
 | `cast_embers` | Meteor Swarm's cast | Embers and motes rising around the caster |
 | `scorch_embers` | Each scorch mark | Smoldering embers and smoke wisps |
 | `debris_dust` | The demolition site's dust puffs, through `fx::Style` | One lit dust puff |
+| `chimney_smoke` | Everglade's chimneys, the bakehouse's stack, and the smithy's forge (`layout::details::chimneys`) | A thin, pale plume leaning downwind |

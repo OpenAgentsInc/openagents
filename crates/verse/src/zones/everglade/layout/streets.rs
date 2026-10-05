@@ -81,6 +81,8 @@ pub fn build(out: &mut Vec<Placement>) {
     super::parks::build(out, &mut placed);
     meadows(out, &mut placed);
     park(out, &mut placed);
+    // The third round last, so the earlier rounds keep their places.
+    super::details::build(out, &mut placed);
     woods(out);
 }
 

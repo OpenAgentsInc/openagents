@@ -53,7 +53,7 @@ The observatory and the bandshell sample the village kit's
 | `fountain.glb` | `fountain.py` | 2,460 | |
 | `observatory.glb` | `observatory.py` | 2,888 | |
 | `bandshell.glb` | `bandshell.py` | 1,380 | |
-| `market_stall_red.glb`, `market_stall_blue.glb` | `market_stall.py` | 1,916 each | |
+| `market_stall_red.glb`, `market_stall_blue.glb`, `market_stall_green.glb`, `market_stall_gold.glb` | `market_stall.py` | 1,916 each | |
 | `training_dummy.glb` | `training_dummy.py` | 936 | |
 | `training_dummy_armored.glb` | `training_dummy.py` | 2,128 | |
 | `training_dummy_warded.glb` | `training_dummy.py` | 1,860 | |
@@ -122,6 +122,11 @@ them to `town/`:
 | `spruce_low.glb` | 112 | Walden Woods, Fernhollow, and the forest belt |
 | `fruit_tree.glb` | 282 | The orchard |
 | `bush_round.glb` | 126 | The woods and the clearing's edge |
+| `flower_patch_spring.glb`, `flower_patch_summer.glb`, `flower_patch_autumn.glb` | 440 each | Seasonal flower drifts on the commons, the town's lawns, and the woods' edges |
+| `lantern_string.glb` | 552 | Paper lanterns across Lantern Road |
+| `lamp_double.glb` | 176 | Two-armed lamps on Well Square and in the Lantern Quarter |
+| `shop_sign.glb` | 168 | Signs before Main Street's shops |
+| `park_bench.glb` | 156 | Well Square, Lantern Pond, and the commons walk |
 
 ## Kit pieces
 

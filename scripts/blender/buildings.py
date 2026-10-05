@@ -205,6 +205,7 @@ def make_materials(scheme):
         "boards": _material("Boards", color=(0.34, 0.22, 0.13), rough=0.9),
         "coals": _material("Coals", color=(1.0, 0.45, 0.12), emit=(1.0, 0.4, 0.1)),
         "white_paint": _material("WhitePaint", color=(0.92, 0.91, 0.86), rough=0.6),
+        "barn": _material("BarnRed", color=(0.50, 0.11, 0.07), rough=0.9),
         "glass_clear": _clear_glass(),
     }
     mats["redbrick"] = mats["stone"]
@@ -1879,6 +1880,128 @@ def cottage_thatch():
     b = thatched("cottage_thatch", {"plaster": "terracotta", "roof": "red", "timber": "mid"}, 6, 5,
                  ["W", "D", "W"], ("PSP", "PSP"), "PFP", rise=2.6)
     b.front = (-1.0, -0.9)
+    return b
+
+
+# --------------------------------------------------------------------------
+# Third round: other roof shapes
+
+
+def hip_roof(b, w, d, z, rise, center=(0.0, 0.0), over=0.5, mat="tiles"):
+    """A hipped roof over a `w` by `d` plan, its ridge along X: two
+    trapezoidal slopes, two triangular hips, and a soffit underneath.
+    Returns the ridge's height."""
+    cx, cy = center
+    hx, hy = w / 2 + over, d / 2 + over
+    ridge = max(0.0, hx - hy)
+    zr = z + rise
+    p = lambda x, y, zz: (cx + x, cy + y, zz)  # noqa: E731
+    polys = [
+        [p(-hx, -hy, z), p(hx, -hy, z), p(ridge, 0, zr), p(-ridge, 0, zr)],
+        [p(hx, hy, z), p(-hx, hy, z), p(-ridge, 0, zr), p(ridge, 0, zr)],
+        [p(-hx, hy, z), p(-hx, -hy, z), p(-ridge, 0, zr)],
+        [p(hx, -hy, z), p(hx, hy, z), p(ridge, 0, zr)],
+    ]
+    b.solid("HipRoof", poly_mesh("HipRoof", polys, b.mats[mat], tile=2.0))
+    soffit = [[p(-hx, -hy, z - 0.12), p(-hx, hy, z - 0.12), p(hx, hy, z - 0.12), p(hx, -hy, z - 0.12)]]
+    b.solid("Soffit", poly_mesh("Soffit", soffit, b.mats["wood"], tile=2.0))
+    # Fascia boards round the eaves close the gap to the soffit.
+    for lo, hi in (((-hx, -hy - 0.02), (hx, -hy + 0.04)), ((-hx, hy - 0.04), (hx, hy + 0.02)),
+                   ((-hx - 0.02, -hy), (-hx + 0.04, hy)), ((hx - 0.04, -hy), (hx + 0.02, hy))):
+        b.beam((cx + lo[0], cy + lo[1], z - 0.14), (cx + hi[0], cy + hi[1], z + 0.02), band=DARK_WOOD)
+    return zr
+
+
+@building
+def hip_house():
+    """A square-set two-storey house under a hipped roof, with shuttered
+    windows, a round-topped door, and a lantern by it: a shape no kit
+    roof gives."""
+    b = Building("hip_house", {"plaster": "sky", "roof": "slate", "timber": "dark"})
+    w, d = 10, 8
+    b.box_storey(w, d, 0, ["S", "W", "D", "W", "S"], sides=("PSPP", "PPSP"), back="PFPFP")
+    b.box_storey(w, d, STOREY, ["t", "W", "W", "W", "t"], sides=("PWPP", "PPWP"), back="PFPFP")
+    top = 2 * STOREY + WALL_TOP
+    ridge = hip_roof(b, w, d, top, 2.4, center=(0, d / 2))
+    b.chimney(-2.6, d / 2 + 1.2)
+    lantern(b, 1.0, -0.05, 2.4)
+    border(b, -5, 5, -0.05)
+    b.collide("house", (-w / 2 - 0.1, -0.1, 0), (w / 2 + 0.1, d + 0.1, top))
+    # The landing surface follows the long slopes; the hips fall away
+    # inside its ends.
+    b.roofs.append(((0.0, d / 2), True, (d / 2 + 0.5, 2.0), top, ridge))
+    b.front = (-0.5, -0.9)
+    return b
+
+
+def gambrel_slab(b, a, c, length, cy, mat, thick=0.16, before=0.0, after=0.0):
+    """One plane of a gambrel roof from (x, z) `a` to `c`, with `a` west of
+    `c`, `length` long along Y, extended `before` and `after` along it."""
+    dx, dz = c[0] - a[0], c[1] - a[1]
+    run = math.hypot(dx, dz)
+    xf = (Matrix.Translation(Vector((a[0], cy, a[1]))) @ Matrix.Rotation(math.atan2(-dz, dx), 4, "Y"))
+    b.solid("Gambrel", box_mesh("Gambrel", (-before, -length / 2, -thick), (run + after, length / 2, 0.0),
+                                b.mats[mat], tile=2.0, xf=xf))
+
+
+@building
+def gambrel_barn():
+    """A red board barn for the farm under a gambrel roof, steep below its
+    knees and shallow above, with big doors and a hayloft door in its
+    front gable and a cupola on the ridge."""
+    b = Building("gambrel_barn", {"plaster": "white", "roof": "charcoal", "timber": "dark"})
+    w, d, wall = 10.0, 12.0, 3.6
+    hx = w / 2
+    b.block((-hx - 0.2, -0.2, 0), (hx + 0.2, d + 0.2, 0.3), "stone", name="Footing", scale=2.6)
+    # Board walls, the front open for its doors.
+    b.block((-hx, -0.1, 0.3), (-1.7, 0.1, wall), "barn", name="Wall")
+    b.block((1.7, -0.1, 0.3), (hx, 0.1, wall), "barn", name="Wall")
+    b.block((-1.7, -0.1, 3.1), (1.7, 0.1, wall), "barn", name="Wall")
+    b.block((-hx, d - 0.1, 0.3), (hx, d + 0.1, wall), "barn", name="Wall")
+    for sx in (-1, 1):
+        b.block((sx * hx - 0.1, 0.1, 0.3), (sx * hx + 0.1, d - 0.1, wall), "barn", name="Wall")
+    # The doors: two board leaves with white frames and cross braces.
+    for sx in (-1, 1):
+        x0, x1 = sorted((0.0, sx * 1.6))
+        b.block((x0, -0.16, 0.3), (x1, -0.06, 3.05), "barn", name="Door")
+        for lo, hi in (((x0, -0.2, 0.3), (x1, -0.14, 0.42)), ((x0, -0.2, 2.93), (x1, -0.14, 3.05)),
+                       ((x0, -0.2, 0.3), (x0 + 0.12, -0.14, 3.05)), ((x1 - 0.12, -0.2, 0.3), (x1, -0.14, 3.05))):
+            b.block(lo, hi, "white_paint", name="DoorFrame")
+        mid = (x0 + x1) / 2
+        m = Matrix.Translation(Vector((mid, -0.17, 1.675))) @ Matrix.Rotation(math.atan2(2.6, 1.5), 4, "Y")
+        b.solid("Brace", box_mesh("Brace", (-1.5, -0.03, -0.06), (1.5, 0.03, 0.06), b.mats["white_paint"], xf=m))
+    # The gambrel: eaves at the walls, knees 2.3 m higher and 1.7 m in, and
+    # a shallow pitch to the ridge.
+    eave, knee, ridge_z = (hx, wall), (hx - 1.7, wall + 2.3), wall + 3.5
+    for side in (-1, 1):
+        lower = ((side * eave[0], eave[1]), (side * knee[0], knee[1]))
+        upper = ((side * knee[0], knee[1]), (0.0, ridge_z))
+        for (a, c), over in ((lower, 0.45), (upper, 0.0)):
+            if side > 0:
+                a, c = c, a
+            before, after = (over, 0.0) if side < 0 else (0.0, over)
+            gambrel_slab(b, a, c, d + 0.7, d / 2, "tiles", before=before, after=after)
+    for y, flip in ((-0.1, False), (d + 0.1, True)):
+        pent = [(-hx, y, wall), (hx, y, wall), (knee[0], y, knee[1] - 0.1), (0.0, y, ridge_z - 0.12),
+                (-knee[0], y, knee[1] - 0.1)]
+        b.solid("Gable", poly_mesh("Gable", [pent[::-1] if flip else pent], b.mats["barn"]))
+    # The hayloft door and its frame.
+    b.block((-0.7, -0.1, 4.2), (0.7, -0.02, 5.6), "barn", name="Loft")
+    for lo, hi in (((-0.8, -0.14, 4.1), (0.8, -0.06, 4.2)), ((-0.8, -0.14, 5.6), (0.8, -0.06, 5.7)),
+                   ((-0.8, -0.14, 4.1), (-0.7, -0.06, 5.7)), ((0.7, -0.14, 4.1), (0.8, -0.06, 5.7))):
+        b.block(lo, hi, "white_paint", name="LoftFrame")
+    b.beam((-0.08, -0.9, 5.75), (0.08, 0.0, 5.9), band=DARK_WOOD, name="HayBeam")
+    # A louvred cupola on the ridge.
+    b.block((-0.6, d / 2 - 0.6, ridge_z - 0.2), (0.6, d / 2 + 0.6, ridge_z + 0.9), "white_paint", name="Cupola")
+    b.solid("CupolaRoof", cone_mesh("CupolaRoof", (0, d / 2), 1.0, ridge_z + 0.9, ridge_z + 1.7, 4,
+                                    b.mats["tiles"], rings=1, rot=math.pi / 4))
+    b.collide("barn", (-hx - 0.2, -0.2, 0), (hx + 0.2, d + 0.2, wall))
+    # Under the steep lower slopes, so a lander stops near their surface.
+    b.collide("loft", (-hx + 0.6, -0.2, 0), (hx - 0.6, d + 0.2, 4.9))
+    # The landing surface is the shallow upper roof, from knee to knee;
+    # the steep lower slopes shed a lander onto the walls' tops.
+    b.roofs.append(((0.0, d / 2), False, (knee[0], d / 2 + 0.35), knee[1], ridge_z))
+    b.front = (2.6, -1.0)
     return b
 
 

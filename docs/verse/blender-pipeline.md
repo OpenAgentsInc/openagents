@@ -155,6 +155,8 @@ includes them, scaled to fit its grid.
 | `boathouse` | 2,570 | Boathouse with its arch to the water |
 | `greenhouse` | 790 | Glasshouse with see-through glass |
 | `gazebo` | 378 | Open octagonal gazebo |
+| `hip_house` | 10,770 | Two storeys under a hipped roof (`hip_roof`), shuttered windows |
+| `gambrel_barn` | 374 | Red board barn under a gambrel roof, big doors, hayloft door, cupola |
 
 ## Admitted into Everglade
 
@@ -199,6 +201,21 @@ A second round on the same day brought the town closer to its map:
 - The building scripts add five plaster colors (sage, sky, butter,
   terracotta, and lilac) and four roof colors (teal, charcoal, ochre, and
   plum), which the admission maps onto the neutral luma images.
+
+A third round on the same day made room first, then added variety:
+
+- The pack shrank from 28.0 MB to 8.5 MB ([Everglade](everglade.md#admission-and-the-zone-pack)):
+  quantized, deflated geometry and textures at their on-screen size.
+- `buildings.py` gained two roof shapes no kit piece gives: `hip_house`
+  under a hipped roof (`hip_roof`) and `gambrel_barn` under a gambrel
+  (`gambrel_slab`). Their footprints' landing roofs follow the hip's long
+  slopes and the gambrel's shallow upper roof.
+- `town_props.py` gained seasonal flower drifts
+  (`flower_patch_spring`, `_summer`, and `_autumn`), `lantern_string`
+  (paper lanterns on a cord between two posts), `lamp_double` (a two-armed
+  lamp post), `shop_sign` (a painted sign on a post), and `park_bench`.
+- `market_stall.py` gained green and gold stalls, and builds only the
+  variants it is given by name.
 
 The animals and the training dummies are not admitted. The creatures are
 skinned and animated, and the pack holds static models and the one player

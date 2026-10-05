@@ -108,6 +108,8 @@ pub(crate) struct Everglade {
     /// The town's destructible buildings, once the zone's static scene is
     /// in place ([`Self::start_town`]).
     town: Option<Box<demolition::town::Town>>,
+    /// Wood smoke rising from the town's chimneys (`layout::details`).
+    smoke: Option<crate::fx::Particles>,
 }
 
 impl Everglade {
@@ -118,7 +120,22 @@ impl Everglade {
     ///
     /// Returns a message when the pack's character cannot play.
     pub fn new(pack: &ZonePack, at: &PlayerController) -> Result<Self, String> {
-        Self::with_solids(pack, at, solids::build(pack, &layout::placements())?)
+        let mut zone = Self::with_solids(pack, at, solids::build(pack, &layout::placements())?)?;
+        zone.smoke = Some(Self::chimney_smoke());
+        Ok(zone)
+    }
+
+    /// One plume of smoke over each of the town's chimneys, already risen,
+    /// so the town is not seen lighting its fires.
+    fn chimney_smoke() -> crate::fx::Particles {
+        let mut smoke = crate::fx::Particles::new(0x5E0C_E1AD);
+        for [x, y, z] in layout::details::chimneys() {
+            smoke.start("chimney_smoke", crate::fx::Spawn::at(Vec3::new(x, y, z)));
+        }
+        for _ in 0..32 {
+            smoke.tick(0.25, height);
+        }
+        smoke
     }
 
     /// The zone's movement, spells, and characters over `solids`, for a
@@ -149,6 +166,7 @@ impl Everglade {
             extra_blocks: Vec::new(),
             demolition: None,
             town: None,
+            smoke: None,
         })
     }
 
@@ -630,6 +648,9 @@ impl Everglade {
     #[must_use]
     pub fn spell_mesh_from(&self, player: &PlayerController, eye: Vec3) -> Mesh {
         let mut mesh = self.spells.mesh(player, eye);
+        if let Some(smoke) = &self.smoke {
+            smoke.draw(&mut mesh.sprites);
+        }
         let hold = self.cast.as_ref().and_then(player::Cast::hold);
         if let Some(yard) = &self.demolition {
             mesh.extend(&yard.mesh(player, eye, hold));
@@ -690,6 +711,9 @@ impl Everglade {
     pub fn tick(&mut self, dt: f32, at: &PlayerController, seats: &[studio::SeatFigure]) {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.rendered = Self::stage(self.elapsed);
+        if let Some(smoke) = &mut self.smoke {
+            smoke.tick(dt, height);
+        }
         if self.spells.tick(dt) {
             self.refresh_blocks();
         }

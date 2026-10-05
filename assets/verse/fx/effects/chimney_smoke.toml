@@ -1,0 +1,26 @@
+# Wood smoke from Everglade's chimneys, the bakehouse's oven stack, and
+# the smithy's forge: a thin, pale plume that leans downwind and thins as
+# it climbs. Every chimney runs one, so it stays a few puffs each.
+description = "A thin plume of wood smoke from a chimney."
+
+[[emitter]]
+name = "plume"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+rate = 1.4
+life = [5.0, 7.5]
+shape = "sphere"
+radius = 0.15
+direction = [0.25, 1.0, 0.1]
+spread = 12.0
+speed = [0.6, 0.9]
+gravity = 0.08
+drag = 0.25
+size = [0.55, 0.85]
+scale = [[0.0, 0.5], [0.4, 1.6], [1.0, 3.2]]
+color = [0.62, 0.61, 0.6]
+alpha = [[0.0, 0.0], [0.08, 0.7], [0.55, 0.4], [1.0, 0.0]]
+spin = [-0.15, 0.15]
+priority = 0

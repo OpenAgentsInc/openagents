@@ -1,9 +1,10 @@
 """Build market stalls with striped awnings and write them as binary glTF.
 
 Run headless:
-    Blender -b --factory-startup --python scripts/blender/market_stall.py -- [OUT_DIR]
+    Blender -b --factory-startup --python scripts/blender/market_stall.py -- [OUT_DIR] [NAME ...]
 
-Writes two color variants, `market_stall_red.glb` and `market_stall_blue.glb`:
+Writes four color variants, `market_stall_red.glb`, `market_stall_blue.glb`,
+`market_stall_green.glb`, and `market_stall_gold.glb` (or only the NAMEs given):
 a timber frame, a plank counter with crates and produce, and a sloped
 awning of alternating stripes ending in a scalloped valance. The counter
 faces -Y in Blender, which is +Z (glTF's front) after export. 2.4 m wide.
@@ -19,6 +20,8 @@ import kit  # noqa: E402
 VARIANTS = {
     "market_stall_red": ((0.72, 0.14, 0.12), (0.93, 0.87, 0.72)),
     "market_stall_blue": ((0.16, 0.3, 0.6), (0.93, 0.87, 0.72)),
+    "market_stall_green": ((0.16, 0.42, 0.18), (0.93, 0.87, 0.72)),
+    "market_stall_gold": ((0.85, 0.6, 0.1), (0.62, 0.16, 0.12)),
 }
 
 W, D = 2.4, 1.3  # footprint
@@ -98,7 +101,9 @@ def build(name, stripe_a, stripe_b):
 def main():
     a = kit.args()
     folder = a[0] if a else os.path.join(kit.REPO, "assets", "verse", "generated")
-    for name, (stripe_a, stripe_b) in VARIANTS.items():
+    names = a[1:] or list(VARIANTS)
+    for name in names:
+        stripe_a, stripe_b = VARIANTS[name]
         build(name, stripe_a, stripe_b)
         kit.export(os.path.join(folder, name + ".glb"))
 

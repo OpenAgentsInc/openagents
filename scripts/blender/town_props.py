@@ -96,6 +96,17 @@ def materials():
         "cabbage": kit.mat("Prop_Cabbage", (0.22, 0.4, 0.12), 0.8),
         "hive": kit.mat("Prop_HiveWhite", (0.86, 0.82, 0.68), 0.8),
         "honey": kit.mat("Prop_Honey", (0.8, 0.5, 0.08), 0.6),
+        # The third round's: street_props.py's lamp glow and sign paint, and
+        # flower and lantern colors of its own.
+        "glow": kit.mat("Prop_LampGlow", (1.0, 0.62, 0.22), 0.3),
+        "sign_paint": kit.mat("Prop_SignPaint", (0.6, 0.45, 0.2), 0.8),
+        "orange": kit.mat("Prop_FlowerOrange", (0.9, 0.32, 0.04), 0.7),
+        "blue": kit.mat("Prop_FlowerBlue", (0.12, 0.25, 0.75), 0.7),
+        "rust": kit.mat("Prop_FlowerRust", (0.5, 0.12, 0.03), 0.7),
+        "plum": kit.mat("Prop_FlowerPlum", (0.38, 0.06, 0.2), 0.7),
+        "gold": kit.mat("Prop_FlowerGold", (0.75, 0.42, 0.02), 0.7),
+        "lantern_red": kit.mat("Prop_PaperRed", (0.8, 0.12, 0.06), 0.6),
+        "lantern_cream": kit.mat("Prop_PaperCream", (0.95, 0.78, 0.45), 0.6),
     }
 
 
@@ -529,7 +540,116 @@ def bush_round(m):
                  scale=(1, 1, 0.85))
 
 
+# --- Third round: seasons, lanterns, signs, and benches ----------------------
+
+
+# Each patch's bloom colors: spring pastels, high-summer reds, and autumn
+# golds and plums.
+SEASONS = {
+    "flower_patch_spring": ("pink", "white", "yellow", "blue"),
+    "flower_patch_summer": ("red", "orange", "yellow", "red"),
+    "flower_patch_autumn": ("rust", "gold", "plum", "orange"),
+}
+
+
+def flower_patch(m, colors, seed):
+    """A 3 m drift of one season's flowers over a low leafy mound.
+
+    The lawns repeat it by the dozen, so its blooms are double pyramids and it
+    stays near 440 triangles."""
+    rng = random.Random(seed)
+    mounds = []
+    for i in range(4):
+        a = 2 * math.pi * i / 4 + rng.uniform(-0.3, 0.3)
+        r = 0.0 if i == 0 else rng.uniform(0.7, 0.9)
+        size = rng.uniform(0.65, 0.8)
+        center = (r * math.cos(a), r * math.sin(a))
+        mounds.append((center, size))
+        kit.ball("Mound%d" % i, size, (center[0], center[1], 0.0), m["leaf" if i % 2 else "leaf_dark"],
+                 segs=5, rings=3, scale=(1, 1, 0.5))
+    # Blooms sit on the mounds' crowns, thickest at their tops.
+    for i in range(30):
+        (cx, cy), size = mounds[i % len(mounds)]
+        a = rng.uniform(0, 2 * math.pi)
+        t = math.sqrt(rng.uniform(0, 1)) * 0.8
+        z = 0.5 * size * math.sqrt(max(0.0, 1 - t * t)) + 0.04
+        kit.ball("Bloom", rng.uniform(0.08, 0.11), (cx + t * size * math.cos(a), cy + t * size * math.sin(a), z),
+                 m[colors[i % len(colors)]], segs=3, rings=2)
+
+
+def lantern_string(m):
+    """Paper lanterns on a cord between two posts, 8 m apart and 3.6 m
+    tall, to hang across the Lantern Quarter's streets."""
+    length, height, sag = 8.0, 3.6, 0.5
+    for sx in (-1, 1):
+        kit.cyl("Post", 0.07, height + 0.2, (sx * length / 2, 0, (height + 0.2) / 2), m["oak_dark"], verts=6)
+        kit.box("Arm", (0.35, 0.06, 0.06), (sx * (length / 2 - 0.15), 0, height), m["oak_dark"])
+    segments = 8
+    for i in range(segments):
+        t0, t1 = i / segments, (i + 1) / segments
+        x0, x1 = -length / 2 + length * t0, -length / 2 + length * t1
+        z0, z1 = height - sag * math.sin(math.pi * t0), height - sag * math.sin(math.pi * t1)
+        kit.box("Cord", (math.hypot(x1 - x0, z1 - z0), 0.015, 0.015), ((x0 + x1) / 2, 0, (z0 + z1) / 2),
+                m["sack"], rot=(0, -math.atan2(z1 - z0, x1 - x0), 0))
+    lanterns = 7
+    for i in range(lanterns):
+        t = (i + 1) / (lanterns + 1)
+        x = -length / 2 + length * t
+        z = height - sag * math.sin(math.pi * t) - 0.3
+        paper = ("lantern_red", "lantern_cream", "glow")[i % 3]
+        kit.ball("Lantern", 0.17, (x, 0, z), m[paper], segs=6, rings=4, scale=(1, 1, 1.25))
+        kit.cyl("LanternCap", 0.08, 0.06, (x, 0, z + 0.22), m["iron"], verts=6)
+
+
+def lamp_double(m):
+    """A tall iron lamp post with a crossarm and a lantern hanging from
+    each end, for the Lantern Quarter's corners."""
+    kit.cyl("Base", 0.24, 0.35, (0, 0, 0.175), m["iron"], verts=8, r2=0.16)
+    kit.cyl("Post", 0.07, 3.6, (0, 0, 2.05), m["iron"], verts=6)
+    kit.box("Arm", (1.6, 0.06, 0.06), (0, 0, 3.8), m["iron"])
+    kit.cyl("Finial", 0.06, 0.4, (0, 0, 4.05), m["iron"], verts=6, r2=0.01)
+    for sx in (-1, 1):
+        x = sx * 0.72
+        kit.box("Hook", (0.03, 0.03, 0.22), (x, 0, 3.66), m["iron"])
+        kit.box("Glass", (0.26, 0.26, 0.34), (x, 0, 3.32), m["glow"])
+        kit.box("Floor", (0.32, 0.32, 0.04), (x, 0, 3.13), m["iron"])
+        kit.cyl("Cap", 0.25, 0.18, (x, 0, 3.58), m["iron"], verts=4, r2=0.02, rot=(0, 0, math.pi / 4))
+
+
+def shop_sign(m):
+    """A post by a shop's walk with an arm and a painted board swinging
+    from it, its emblem a gilded disc."""
+    kit.cyl("Post", 0.07, 3.0, (0, 0, 1.5), m["oak_dark"], verts=6)
+    kit.box("Arm", (1.2, 0.07, 0.08), (0.55, 0, 2.85), m["oak_dark"])
+    kit.box("Brace", (0.6, 0.05, 0.05), (0.25, 0, 2.6), m["oak_dark"], rot=(0, math.radians(-38), 0))
+    for x in (0.38, 0.92):
+        kit.box("Chain", (0.02, 0.02, 0.2), (x, 0, 2.72), m["iron"])
+    kit.box("Board", (0.75, 0.06, 0.5), (0.65, 0, 2.38), m["sign_paint"], bevel=0.02)
+    kit.cyl("Emblem", 0.15, 0.02, (0.65, -0.04, 2.38), m["gold"], verts=8, rot=(math.pi / 2, 0, 0))
+    kit.cyl("Emblem", 0.15, 0.02, (0.65, 0.04, 2.38), m["gold"], verts=8, rot=(math.pi / 2, 0, 0))
+
+
+def park_bench(m):
+    """A park bench of oak slats on cast-iron ends, 1.8 m long."""
+    for sx in (-1, 1):
+        x = sx * 0.8
+        kit.box("Leg", (0.06, 0.5, 0.45), (x, 0, 0.225), m["iron"])
+        kit.box("Back", (0.06, 0.06, 0.5), (x, 0.24, 0.7), m["iron"])
+        kit.box("Arm", (0.06, 0.5, 0.05), (x, 0.0, 0.66), m["iron"])
+    for i, y in enumerate((-0.17, -0.05, 0.07, 0.19)):
+        kit.box("Slat", (1.8, 0.1, 0.04), (0, y, 0.46), m["oak"])
+    for z in (0.62, 0.78, 0.92):
+        kit.box("BackSlat", (1.8, 0.04, 0.1), (0, 0.27, z), m["oak"])
+
+
 PROPS = {
+    "flower_patch_spring": lambda m: flower_patch(m, SEASONS["flower_patch_spring"], 51),
+    "flower_patch_summer": lambda m: flower_patch(m, SEASONS["flower_patch_summer"], 52),
+    "flower_patch_autumn": lambda m: flower_patch(m, SEASONS["flower_patch_autumn"], 53),
+    "lantern_string": lantern_string,
+    "lamp_double": lamp_double,
+    "shop_sign": shop_sign,
+    "park_bench": park_bench,
     "statue": statue,
     "sculpture": sculpture,
     "sundial": sundial,

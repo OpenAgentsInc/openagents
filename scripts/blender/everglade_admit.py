@@ -56,6 +56,8 @@ MODELS = [
     ("bandshell.glb", "bandshell"),
     ("market_stall_red.glb", "market_stall_red"),
     ("market_stall_blue.glb", "market_stall_blue"),
+    ("market_stall_green.glb", "market_stall_green"),
+    ("market_stall_gold.glb", "market_stall_gold"),
     ("buildings/townhouse_jettied.glb", "townhouse_jettied"),
     ("buildings/townhouse_balcony.glb", "townhouse_balcony"),
     ("buildings/row_townhouse.glb", "row_townhouse"),
@@ -83,6 +85,8 @@ MODELS = [
         "gazebo",
         "farmhouse",
         "cottage_thatch",
+        "hip_house",
+        "gambrel_barn",
     ]
 ] + [
     ("kit/roof_round_tiles_8x10.glb", "roof_round_tiles_8x10"),
@@ -133,6 +137,13 @@ MODELS = [
         "spruce_low",
         "fruit_tree",
         "bush_round",
+        "flower_patch_spring",
+        "flower_patch_summer",
+        "flower_patch_autumn",
+        "lantern_string",
+        "lamp_double",
+        "shop_sign",
+        "park_bench",
     ]
 ]
 

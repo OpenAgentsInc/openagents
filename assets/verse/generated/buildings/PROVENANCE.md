@@ -99,6 +99,8 @@ logs, a bread oven, a forge, windmill sails, and glazing.
 | `gazebo.glb` | 378 | White, teal, light | Open octagonal gazebo with railings and a tiled roof |
 | `farmhouse.glb` | 5,486 | White, thatch, dark | Long timber-framed farmhouse under thatch |
 | `cottage_thatch.glb` | 3,645 | Terracotta, thatch, mid | Small thatched cottage with shutters |
+| `hip_house.glb` | 10,770 | Sky, slate, dark | Two storeys under a hipped roof, with a chimney and a door lantern |
+| `gambrel_barn.glb` | 374 | Barn red, charcoal | Board barn under a gambrel roof with big doors, a hayloft door, and a cupola |
 
 Each `<name>.footprint.json` lists axis-aligned collision boxes in the glb's
 frame: 1 unit = 1 m, +Y up, +Z out of the front door, and the origin on the

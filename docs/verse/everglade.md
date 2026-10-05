@@ -215,7 +215,7 @@ Row's footbridge, into Walden Woods.
 The city's buildings are a table in `layout::city`. Most are the workshop's
 own kit pieces, one to three stories under round-tile roofs, painted in
 varied plaster and roof colors, and each wall run blocks walking as one
-footprint. Thirty-four places hold a whole generated building instead
+footprint. Thirty-seven places hold a whole generated building instead
 (`city::STAND_INS`), mixed among the kit-built ones: jettied and balconied
 townhouses on Main Street, Stoop Lane, and in the Creative District, corner
 shops at Main Street's corners, the bakehouse with its bread oven on Main
@@ -227,7 +227,9 @@ the smithy and its open forge in the Foundry, the clock tower on its little
 square on Library Way, the windmill and the thatched farmhouse on the farm
 lane, log cabins in the long meadow and by the Fern Pond, the lookout tower
 in Fernhollow, the cottage with its round tower and the woodcutter's
-thatched cottage in Walden Woods, and the observatory on its hill; the
+thatched cottage in Walden Woods, two hipped houses on Well Square, the
+red gambrel barn east of the farm's paddock, and the observatory on its
+hill; the
 Stacks is the generated library. Three more stand on open ground
 (`city::GROUNDS`): the boathouse on Lantern Pond's north bank, the
 glasshouse by the community garden, and the gazebo on the commons' east
@@ -252,24 +254,33 @@ undergrowth that sets the woods apart: ferns, mossy rocks, fallen logs,
 stumps, and toadstools in Walden Woods among dark spruces and pale birches,
 and denser spruce and birch round the Fern Pond. The forest belt mixes
 pines with spruces, oaks, birches, and poplars, and round bushes line the
-clearing's edge. Each piece stands only on open ground: off every road,
-walk, building, pond, and station.
+clearing's edge. The third round (`layout::details`) adds Well Square, a
+second, smaller plaza south of Hearth Road with a well, benches, two-armed
+lamps, and flowers; paper lanterns strung across Lantern Road and more
+two-armed lamps in the Lantern Quarter; painted signs before Main Street's
+shops; green and gold stalls on Main Street; the barn's yard; benches round
+Lantern Pond and along the commons walk; and drifts of spring flowers on
+the commons, summer flowers on the town's lawns, and autumn flowers at the
+woods' edges. Wood smoke rises from the bakehouse's stack, the smithy's
+forge, and the chimneys of the cottages, cabins, taverns, and townhouses
+(`chimney_smoke`, [Particle effects](particles.md)). Each piece stands only
+on open ground: off every road, walk, building, pond, and station.
 
 | District | Built from | Roads |
 | --- | --- | --- |
 | The Commons | Lantern Pond with reeds, stones, lily pads, a jetty, and a rowboat, the generated boathouse on its north bank, benches, park trees, wildflowers, the generated bandshell, the gazebo on the east lawn | The commons walk, west of the hall |
-| Main Street | Twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), the generated bakehouse with its bread oven, two generated corner shops and three townhouses among them, red and blue market stalls, lamps, flower boxes, bunting, street trees | Main Street, about 200 m long, cobbled |
+| Main Street | Twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), the generated bakehouse with its bread oven, two generated corner shops and three townhouses among them, red, blue, green, and gold market stalls, lamps, painted shop signs, flower boxes, bunting, street trees | Main Street, about 200 m long, cobbled |
 | Fountain Plaza | A cobbled plaza with the generated fountain, stalls, barrels, a hand cart, two cafés with tables out front, planters, the generated market hall with its stock under the arcade | Market Way |
 | Creative District | The Makers' Hall, a studio, two generated Boardwalk Cafés with tables on their decks, the Atelier Hall, the Sculpture Walk's statues, sculpture, and sundial | Studio Road |
 | The Foundry | The Server Barn and fab yard, a workshop, the Fab Hall, the generated smithy with its open forge, an annex | Foundry Road |
 | Knowledge District | The Stacks (the generated library up its steps), the Old College, the generated clock tower on its square, the college hall, the archive, the map room, an L-shaped seminar house, the generated observatory on Observatory Hill, Reed Pond and its jetty, the long meadow's wildflowers and its log cabin | Library Way |
 | Stoop Lane | Ten homes and townhouses, four of them generated, with lanterns, flower boxes, and little gardens, the cottage, a well | Stoop Lane, Hearth Road |
-| Lantern Quarter | The generated Music Hall, meeting hall, tavern, and guild hall, the choir house, the pubs, an L-shaped house, bunting, a well | Hearth Road, Lantern Road |
+| Lantern Quarter | The generated Music Hall, meeting hall, tavern, and guild hall, the choir house, the pubs, an L-shaped house, bunting, paper lanterns across Lantern Road, two-armed lamps, a well; Well Square with its two hipped houses, well, and benches | Hearth Road, Lantern Road |
 | Brownstone Row | Four two-story brownstones with stoops, two terraces of generated row houses, six row houses, the community garden behind its picket fence with the glasshouse, the footbridge over Glade Run | Brownstone Row |
 | Walden Woods | The writing and code cabins, the generated cottage with its tower, the woodcutter's thatched cottage, the prototype shed, the Thinking Pond and its jetty, stands of pines, spruces, and birches over ferns, mossy rocks, fallen logs, stumps, and toadstools | The woods paths, Lantern Road |
 | Fernhollow | The lookout tower and the log cabin by the Fern Pond, spruces, birches, and pines over ferns, mossy rocks, and toadstools | The Fernhollow path |
 | Gardens and orchards | Fenced beds, an orchard of fruit trees behind a dry-stone wall with a gate, the beekeeper's hut and hives | The orchard lane |
-| The farm | The generated windmill and thatched farmhouse, a rail-fenced paddock with a haystack and bales, vegetable beds | The farm lane, south from Brownstone Row |
+| The farm | The generated windmill, thatched farmhouse, and gambrel barn with bales and a cart in its yard, a rail-fenced paddock with a haystack and bales, vegetable beds | The farm lane, south from Brownstone Row |
 
 The studio's stations stay where they were:
 
