@@ -3051,6 +3051,8 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "verse",
+ "verse-engine",
+ "verse-world",
 ]
 
 [[package]]

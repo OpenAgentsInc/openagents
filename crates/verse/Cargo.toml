@@ -25,6 +25,8 @@ imported-surface = []
 native-audio = ["dep:cpal"]
 hosted-social = ["verse-world/service-auth"]
 remote-chamber = ["hosted-social", "verse-world/service-reach", "tokio/signal"]
+# An in-process chamber host over memory streams, for other crates' tests.
+chamber-loopback = ["remote-chamber", "tokio/io-util"]
 # The browser build (`wasm32-unknown-unknown`), used without default
 # features: WebGL2 as well as WebGPU. Network, threads, processes, and disk
 # are native-only by target, so this feature only adds what the web needs.

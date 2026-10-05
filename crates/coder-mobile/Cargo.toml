@@ -21,7 +21,11 @@ rust-native = { path = "../rust-native", features = ["ffi", "shaping"] }
 # `xp-host` is Verse's read-only NIP-XP reader: levels over players' heads.
 # `studio-host` is Everglade's live studio worker, which the phone's studio
 # panels drive over a paired computer's link (`src/studio_panel.rs`).
-verse = { path = "../verse", default-features = false, features = ["xp-host", "studio-host", "imported-surface"] }
+verse = { path = "../verse", default-features = false, features = ["xp-host", "studio-host", "imported-surface", "remote-chamber"] }
+# The chamber's shared controls and abilities, and the engine scene the
+# chamber content is placed around.
+verse-world = { path = "../verse-world", default-features = false }
+verse-engine = { path = "../verse-engine" }
 # The paired computer's NIP-HOST link and its errors, for the studio panels.
 coder-host = { path = "../coder-host", default-features = false }
 nostr = { path = "../nostr" }
@@ -53,6 +57,8 @@ coder-history = { path = "../coder-history", features = ["host"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["macros", "sync"] }
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+# The chamber tests play an in-process chamber host.
+verse = { path = "../verse", default-features = false, features = ["chamber-loopback"] }
 
 [lints]
 workspace = true

@@ -1,6 +1,13 @@
-//! Native mounting for an already authenticated chamber transport.
-use super::{Renderer, WindowPresenter, chamber, controls, overlay};
-use crate::{render, ui::Atlas};
+//! Native mounting for an already authenticated chamber transport. The
+//! shared [`chamber_session::Session`] owns the worker, the replica, and
+//! prediction; this window adds the keyboard and mouse, the panels, and the
+//! recorder.
+use super::{
+    Renderer, WindowPresenter, chamber,
+    chamber_session::{self, Note, Session, Stopped},
+    controls, overlay,
+};
+use crate::ui::Atlas;
 use glam::Vec3;
 use std::{
     collections::HashSet,
@@ -8,16 +15,13 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::sync::{mpsc, oneshot};
 use verse_engine::{assets::Pack, director::Scene};
 use verse_world::{
     Intent,
     play::Ability,
     service::{
         client::Client,
-        event_cursor::Cursor,
-        view::{Camera, View},
-        worker::{self, Input, Update},
+        worker::{self, Input},
     },
 };
 use winit::{
@@ -52,50 +56,26 @@ pub fn run_recorded(
     if let Some(options) = &record {
         options.validate()?;
     }
-    scene.validate()?;
-    let instance = client.instance();
-    let view = View::new(instance, 10., 0)?;
-    let cursor = Cursor::new(instance);
     let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
     event_loop.set_control_flow(ControlFlow::Poll);
-    let (input, inputs, updates, output) = worker::channels();
-    let (stop, stopping) = oneshot::channel();
     let observer = worker::Observer::default();
-    let observation = record.as_ref().map(|_| observer.clone());
-    let thread = std::thread::spawn(move || {
-        runtime.block_on(async move {
-            if let Some(observer) = observation {
-                worker::run_profiled(
-                    client,
-                    cursor,
-                    worker::NATIVE_CADENCE,
-                    inputs,
-                    updates,
-                    stopping,
-                    observer,
-                )
-                .await
-            } else {
-                worker::run(
-                    client,
-                    cursor,
-                    worker::NATIVE_CADENCE,
-                    inputs,
-                    updates,
-                    stopping,
-                )
-                .await
-            }
-        })
-    });
-    let mut app = App::new(pack, atlas, scene, dir, view, input, output);
+    let session = Session::start_observed(
+        client,
+        runtime,
+        &scene,
+        record.as_ref().map(|_| observer.clone()),
+    )?;
+    let mut app = App::new(pack, atlas, scene, dir, session);
+    if record.is_some() {
+        app.session.observe();
+    }
     app.record = record;
     app.observer = observer;
     let result = event_loop.run_app(&mut app).map_err(|e| e.to_string());
-    let _ = stop.send(());
-    let worker_result = thread
-        .join()
-        .map_err(|_| "Remote chamber worker panicked".to_string())?;
+    let worker_result = match app.session.close() {
+        Stopped::Closed => Ok(()),
+        Stopped::Failed(error) => Err(error),
+    };
     let recording_result = app.finish_recording();
     result?;
     worker_result?;
@@ -109,29 +89,20 @@ struct App {
     atlas: Atlas,
     scene: Scene,
     dir: PathBuf,
-    view: View,
+    session: Session,
     character_panel: super::character_panel::Panel,
     giver_panel: super::giver_panel::Panel,
-    input: mpsc::Sender<Input>,
-    output: mpsc::Receiver<Update>,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     presenter: Option<WindowPresenter>,
-    controls: controls::ClassicControls,
-    camera: controls::Camera,
-    yaw: f32,
     keys: HashSet<KeyCode>,
     pointer: [f32; 2],
-    last: Instant,
-    next_move: Instant,
-    received_at: Instant,
     observer: worker::Observer,
     latest_verified_snapshot: Option<Instant>,
     warmup_completed_at: Option<Instant>,
     last_input_handled: Option<Instant>,
-    owned_life: Option<verse_engine::core::LifeId>,
-    owned_teleport: Option<f32>,
-    status: String,
+    /// The owned life the window last released input for.
+    seen_life: Option<verse_engine::core::LifeId>,
     error: Option<String>,
     record: Option<super::remote_record::Options>,
     recorder: Option<super::remote_record::Recorder>,
@@ -139,62 +110,31 @@ struct App {
     next_capture: Instant,
     next_demo: f32,
     demo_slot: usize,
-    pending: std::collections::VecDeque<(Option<Ability>, Option<u64>)>,
-    prediction: verse_world::prediction::Local,
-    input_token: u64,
-    frame_cursor: Option<(verse_engine::core::LifeId, u64, u64)>,
-    frame_bindings: std::collections::BTreeMap<u64, (verse_engine::core::LifeId, u64)>,
-    frame_entry: Option<(verse_engine::core::LifeId, u64)>,
-    frame_entry_pending: bool,
     profile: super::remote_record::Profile,
-    accepted_casts: std::collections::BTreeMap<String, u64>,
-    respawn_attempts: Vec<verse_engine::core::LifeId>,
-    owned_life_changes: u64,
-    damage_events: u64,
     demo_trace: Vec<serde_json::Value>,
-    dialogue_events: u64,
     min_hp: i32,
     recorded_world_start: Option<f32>,
 }
 impl App {
-    fn new(
-        pack: Pack,
-        atlas: Atlas,
-        scene: Scene,
-        dir: PathBuf,
-        view: View,
-        input: mpsc::Sender<Input>,
-        output: mpsc::Receiver<Update>,
-    ) -> Self {
-        let instance = view.instance();
+    fn new(pack: Pack, atlas: Atlas, scene: Scene, dir: PathBuf, session: Session) -> Self {
         Self {
             pack,
             atlas,
             scene,
             dir,
-            view,
+            session,
             character_panel: Default::default(),
             giver_panel: Default::default(),
-            input,
-            output,
             window: None,
             renderer: None,
             presenter: None,
-            controls: controls::ClassicControls::default(),
-            camera: controls::Camera::default(),
-            yaw: std::f32::consts::PI,
             keys: HashSet::new(),
             pointer: [0.; 2],
-            last: Instant::now(),
-            next_move: Instant::now(),
-            received_at: Instant::now(),
             observer: worker::Observer::default(),
             latest_verified_snapshot: None,
             warmup_completed_at: None,
             last_input_handled: None,
-            owned_life: None,
-            owned_teleport: None,
-            status: String::new(),
+            seen_life: None,
             error: None,
             record: None,
             recorder: None,
@@ -202,20 +142,8 @@ impl App {
             next_capture: Instant::now(),
             next_demo: 0.,
             demo_slot: 0,
-            pending: std::collections::VecDeque::new(),
-            prediction: verse_world::prediction::Local::new(instance),
-            input_token: 0,
-            frame_cursor: None,
-            frame_bindings: Default::default(),
-            frame_entry: None,
-            frame_entry_pending: false,
             profile: Default::default(),
-            accepted_casts: Default::default(),
-            respawn_attempts: vec![],
-            owned_life_changes: 0,
-            damage_events: 0,
             demo_trace: vec![],
-            dialogue_events: 0,
             min_hp: i32::MAX,
             recorded_world_start: None,
         }
@@ -226,455 +154,88 @@ impl App {
         event_loop.exit();
     }
     fn unlocked(&self) -> bool {
-        self.view.camera_handoff()
-            || self
-                .view
-                .replica()
-                .latest()
-                .is_some_and(|s| s.presentation.time >= self.scene.cut_at)
+        self.session.unlocked(&self.scene)
     }
     fn controlled(&self) -> bool {
-        self.unlocked()
-            && self
-                .view
-                .replica()
-                .latest()
-                .and_then(|s| s.hud.as_ref())
-                .is_some_and(|h| h.resources.hp > 0)
+        self.session.controlled(&self.scene)
+    }
+    fn in_play(&self) -> bool {
+        self.unlocked() && self.session.hud().is_some()
     }
     fn send(&mut self, input: Input) {
-        if self.pending.len() >= 64 {
-            self.status = "Input queue is busy".into();
-            return;
-        }
-        if let Input::Command(intent @ (Intent::Move { .. } | Intent::Jump)) = &input {
-            if self.prediction.movement_profile() == Some(verse_world::movement::Profile::Frames) {
-                let Some(token) = self.input_token.checked_add(1) else {
-                    self.status = "Input token exhausted".into();
-                    return;
-                };
-                self.input_token = token;
-                if let Err(message) = self.prediction.queue(token, intent.clone()) {
-                    self.prediction.clear();
-                    self.status = message;
-                }
-                return;
-            }
-            if self.frame_entry.is_some() && self.frame_entry == self.prediction.context() {
-                return;
-            }
-        }
-        let (input, predicted) = match input {
-            Input::Command(intent @ (Intent::Move { .. } | Intent::Jump))
-                if self.prediction.context().is_some()
-                    && self.view.replica().control().is_some() =>
-            {
-                let control = self.view.replica().control().unwrap();
-                self.input_token = match self.input_token.checked_add(1) {
-                    Some(token) => token,
-                    None => {
-                        self.status = "Input token exhausted".into();
-                        return;
-                    }
-                };
-                (
-                    Input::TrackedCommand {
-                        token: self.input_token,
-                        life: control.life.into(),
-                        epoch: control.epoch,
-                        intent: intent.clone(),
-                    },
-                    Some((self.input_token, intent)),
-                )
-            }
-            input => (input, None),
-        };
-        let ability = match &input {
-            Input::Command(Intent::Cast { ability, .. }) => Some(*ability),
-            _ => None,
-        };
-        match self.input.try_send(input) {
-            Ok(()) => {
-                self.status.clear();
-                let token = predicted.as_ref().map(|p| p.0);
-                if let Some((token, intent)) = predicted {
-                    if let Err(message) = self.prediction.queue(token, intent) {
-                        self.prediction.clear();
-                        self.status = message;
-                    }
-                }
-                self.pending.push_back((ability, token));
-            }
-            Err(mpsc::error::TrySendError::Full(_)) => self.status = "Input queue is busy".into(),
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                self.status = "Chamber connection stopped".into()
-            }
-        }
-    }
-    fn send_movement_interval(&mut self) -> Result<(), String> {
-        let Some((life, epoch)) = self.prediction.context() else {
-            self.frame_cursor = None;
-            return Ok(());
-        };
-        if self.prediction.movement_profile() != Some(verse_world::movement::Profile::Frames) {
-            self.frame_cursor = None;
-            return Ok(());
-        }
-        let start = match self.frame_cursor {
-            Some((old_life, old_epoch, start)) if life == old_life && epoch == old_epoch => start,
-            _ => {
-                let start = self.prediction.physics_step();
-                self.frame_cursor = Some((life, epoch, start));
-                start
-            }
-        };
-        let end = self
-            .prediction
-            .movement_frame_limit()
-            .ok_or("Movement interval time credit is unavailable")?;
-        let steps = end
-            .saturating_sub(start)
-            .min(u64::from(verse_world::movement::frames::MAX_STEPS)) as u32;
-        // Keep local prediction immediate while amortizing durable ordered requests.
-        // The complete history retains direction changes, lease expiries, and jump edges.
-        if steps < verse_world::movement::frames::MAX_STEPS
-            || self.input.capacity() == 0
-            || self.pending.len() >= 64
-        {
-            return Ok(());
-        }
-        let frame = self.prediction.movement_frame(start, steps)?;
-        let token = self
-            .input_token
-            .checked_add(1)
-            .ok_or("Input token exhausted")?;
-        match self.input.try_send(Input::MovementFrame { token, frame }) {
-            Ok(()) => {
-                self.input_token = token;
-                self.frame_cursor = Some((life, epoch, start + u64::from(steps)));
-                self.frame_bindings.insert(token, (life, epoch));
-                self.pending.push_back((None, Some(token)));
-            }
-            Err(mpsc::error::TrySendError::Full(_)) => self.status = "Input queue is busy".into(),
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                return Err("Chamber connection stopped".into());
-            }
-        }
-        Ok(())
+        self.session.send(input);
     }
     fn cast(&mut self, ability: Ability) {
-        if !self.controlled() {
-            return;
-        }
-        let target = self.view.target();
-        let state = self.view.replica().latest().unwrap();
-        let hud = state.hud.as_ref().unwrap();
-        let player = state
-            .presentation
-            .actors
-            .iter()
-            .find(|p| verse_engine::core::LifeId::from(p.life) == hud.life)
-            .map_or(Vec3::ZERO, |p| p.actor.position);
-        let target_position = target.and_then(|life| {
-            state
-                .presentation
-                .actors
-                .iter()
-                .find(|p| verse_engine::core::LifeId::from(p.life) == life)
-                .map(|p| p.actor.position)
-        });
-        let aim = horizontal_aim(player, target_position, self.camera.direction());
-        self.send(Input::Command(Intent::Cast {
-            ability,
-            target,
-            aim: aim.to_array(),
-        }));
+        self.session.cast(&self.scene, ability);
     }
+    /// Applies the worker's updates, feeds the recorder the session's notes,
+    /// and frees the pointer when the owned life changes.
     fn consume(&mut self) -> Result<(), String> {
-        for _ in 0..worker::UPDATE_CAPACITY {
-            match self.output.try_recv() {
-                Ok(Update::Snapshot(r)) => {
-                    let previous_pose = self.prediction.pose();
-                    let previous_timing = self.record.as_ref().map(|_| self.prediction.timing());
-                    self.view.push_snapshot(&r)?;
-                    self.received_at = Instant::now();
-                    let state = self.view.replica().latest().unwrap();
-                    let context = self
-                        .view
-                        .replica()
-                        .control()
-                        .map(|c| (c.life.into(), c.epoch));
-                    let teleport = context.and_then(|(life, _)| {
-                        state
-                            .presentation
-                            .actors
-                            .iter()
-                            .find(|p| verse_engine::core::LifeId::from(p.life) == life)
-                            .and_then(|p| p.teleport_stamp)
-                    });
-                    let reset_reason = if !self.controlled() {
-                        "unavailable_or_dead"
-                    } else if context.map(|c| c.0) != self.prediction.context().map(|c| c.0) {
-                        "life_or_reconnect"
-                    } else if teleport != self.owned_teleport {
-                        "teleport"
-                    } else {
-                        "control_epoch"
-                    };
-                    let discontinuity = teleport != self.owned_teleport
-                        || context != self.prediction.context()
-                        || !self.controlled();
-                    if discontinuity && previous_pose.is_some() && self.record.is_some() {
-                        self.profile.reset_observations += 1;
-                        *self.profile.reset_reasons.entry(reset_reason).or_default() += 1;
-                    }
-                    if teleport != self.owned_teleport {
-                        self.prediction.clear();
-                    }
-                    self.owned_teleport = teleport;
-                    if context != self.prediction.context() || !self.controlled() {
-                        self.prediction.clear();
-                    }
-                    if self.controlled() {
-                        if let (Some(baseline), Some(geometry)) =
-                            (state.movement, state.collision.as_ref())
-                        {
-                            self.prediction
-                                .observe(baseline, geometry, r.tick, r.request_id)?;
-                            if baseline.profile == verse_world::movement::Profile::Frames
-                                && self.frame_cursor.is_none_or(|(life, epoch, _)| {
-                                    life != baseline.life || epoch != baseline.epoch
-                                })
-                            {
-                                self.frame_cursor =
-                                    Some((baseline.life, baseline.epoch, baseline.physics_step));
-                            }
-                        } else if self.prediction.context().is_some() {
-                            if let Some(geometry) = state.collision.as_ref() {
-                                self.prediction
-                                    .update_geometry(geometry, r.tick, r.request_id)?;
-                            }
-                        }
-                    }
-                    if self.record.is_some() {
-                        self.prediction.advance(0.)?;
-                        if let (Some(before), Some(after)) = (previous_pose, self.prediction.pose())
-                        {
-                            {
-                                self.profile.correction(
-                                    f64::from(before.position.distance(after.position)),
-                                    discontinuity,
-                                    serde_json::json!({"tick":r.tick,"request_id":r.request_id,
-                                        "life":after.life,"epoch":after.epoch,"previous_life":before.life,"previous_epoch":before.epoch,"reset_reason":if discontinuity {Some(reset_reason)} else {None},
-                                        "before":before.position,"after":after.position,
-                                        "pending":self.prediction.pending(),"baseline":state.movement,
-                                        "timing_before":previous_timing,"timing_after":self.prediction.timing()}),
-                                );
-                            }
-                        }
-                    }
-                    let life = self
-                        .view
-                        .replica()
-                        .latest()
-                        .and_then(|s| s.hud.as_ref())
-                        .map(|h| h.life);
-                    if life != self.owned_life {
-                        if self.owned_life.is_some() && life.is_some() {
-                            self.owned_life_changes += 1;
-                        }
-                        self.owned_life = life;
-                        if let Some(pose) = self.view.replica().latest().and_then(|s| {
-                            s.presentation
-                                .actors
-                                .iter()
-                                .find(|p| Some(verse_engine::core::LifeId::from(p.life)) == life)
-                        }) {
-                            self.yaw = pose.actor.yaw;
-                            self.camera.yaw = self.yaw;
-                        }
-                        self.release_pointer();
-                    }
+        let result = self.session.consume(&self.scene);
+        for note in self.session.take_notes() {
+            self.note(note);
+        }
+        result?;
+        let life = self.session.owned_life();
+        if life != self.seen_life {
+            self.seen_life = life;
+            // The session already stopped the character and cleared its controls.
+            self.release_cursor();
+        }
+        Ok(())
+    }
+    fn note(&mut self, note: Note) {
+        let profile = &mut self.profile;
+        match note {
+            Note::Reset(reason) => {
+                profile.reset_observations += 1;
+                *profile.reset_reasons.entry(reason).or_default() += 1;
+            }
+            Note::Correction {
+                distance,
+                discontinuity,
+                detail,
+            } => profile.correction(distance, discontinuity, detail),
+            Note::Retirement { distance, detail } => profile.retirement(distance, detail),
+            Note::Refusal(detail) => profile.refusal(detail),
+            Note::Bound { token, at } => {
+                if profile.bindings.len() < 64 {
+                    profile.bindings.insert(token, at);
                 }
-                Ok(Update::Events { delivery, .. }) => {
-                    self.view.push_events(&delivery)?;
-                    for event in &delivery.events {
-                        match event.kind {
-                            verse_world::events::Kind::Damage { .. } => self.damage_events += 1,
-                            verse_world::events::Kind::Dialogue { .. } => self.dialogue_events += 1,
-                            _ => {}
-                        }
-                    }
-                }
-                Ok(Update::Inventory(r)) => self.view.push_inventory(&r)?,
-                Ok(Update::MovementSuperseded { token, replacement }) => {
-                    let before = self.prediction.pose();
-                    self.pending.retain(|(_, pending)| *pending != Some(token));
-                    if self.prediction.contains(token) {
-                        if let Err(message) = self.prediction.supersede(token, replacement) {
-                            self.prediction.clear();
-                            self.status = message;
-                        }
-                    }
-                    if self.record.is_some() {
-                        if let (Some(before), Some(after)) = (before, self.prediction.pose()) {
-                            if before.life == after.life && before.epoch == after.epoch {
-                                self.profile.retirement(f64::from(before.position.distance(after.position)),
-                                    serde_json::json!({"token":token,"replacement":replacement,
-                                        "reason":"Unsent movement superseded","pending":self.prediction.pending()}));
-                            }
-                        }
-                    }
-                }
-                Ok(Update::FrameBound { token, binding }) => {
-                    let submitted = self.frame_bindings.remove(&token);
-                    match binding {
-                        Ok(frame) => {
-                            if self.prediction.context() == Some((frame.life, frame.epoch)) {
-                                self.prediction.bind_movement_frame(&frame)?;
-                            }
-                            if self.record.is_some() && self.profile.bindings.len() < 64 {
-                                self.profile.bindings.insert(token, Instant::now());
-                            }
-                        }
-                        Err(message) => {
-                            self.pending.retain(|(_, pending)| *pending != Some(token));
-                            if self.record.is_some() {
-                                self.profile
-                                    .refusal(serde_json::json!({"stage":"frame_binding",
-                                "token":token,"message":message,"submitted_context":submitted,
-                                "context":self.prediction.context()}));
-                            }
-                            if submitted.is_none() || submitted == self.prediction.context() {
-                                self.prediction.clear();
-                                self.frame_cursor = None;
-                            }
-                            self.status = message;
-                        }
-                    }
-                }
-                Ok(Update::CommandBound { token, binding }) => match binding {
-                    Ok(command) => {
-                        if self.record.is_some() && self.profile.bindings.len() < 64 {
-                            self.profile.bindings.insert(token, Instant::now());
-                        }
-                        if self.prediction.context() == Some((command.actor, command.epoch))
-                            && self.prediction.contains(token)
-                        {
-                            if let Err(message) = self.prediction.bind(token, &command) {
-                                self.prediction.clear();
-                                self.status = message;
-                            }
-                        }
-                    }
-                    Err(message) => {
-                        let before = self.prediction.pose();
-                        self.pending.retain(|(_, pending)| *pending != Some(token));
-                        self.prediction.reject(token);
-                        if self.record.is_some() {
-                            self.prediction.advance(0.)?;
-                            if let (Some(before), Some(after)) = (before, self.prediction.pose()) {
-                                if before.life == after.life && before.epoch == after.epoch {
-                                    self.profile.retirement(
-                                        f64::from(before.position.distance(after.position)),
-                                        serde_json::json!({"token":token,"reason":message,
-                                            "life":after.life,"epoch":after.epoch,
-                                            "before":before.position,"after":after.position,
-                                            "pending":self.prediction.pending()}),
-                                    );
-                                }
-                            }
-                        }
-                        self.profile.bindings.remove(&token);
-                        self.status = message;
-                    }
-                },
-                Ok(Update::Outcome(r)) => {
-                    if self.frame_entry_pending {
-                        self.frame_entry_pending = false;
-                        if matches!(r.body, verse_world::service::wire::Reply::Refused { .. }) {
-                            self.frame_entry = None;
-                        }
-                    }
-                    let (ability, token) = self.pending.pop_front().unwrap_or_default();
-                    if let Some(started) = token.and_then(|t| self.profile.bindings.remove(&t)) {
-                        self.profile
-                            .bound_to_outcome_ms
-                            .add(started.elapsed().as_secs_f64() * 1000.);
-                    }
-                    if matches!(r.body, verse_world::service::wire::Reply::Refused { .. }) {
-                        if let Some(token) = token {
-                            self.prediction.reject(token);
-                        }
-                    }
-                    if matches!(r.body, verse_world::service::wire::Reply::Accepted) {
-                        if let Some(ability) = ability {
-                            *self
-                                .accepted_casts
-                                .entry(ability.label().into())
-                                .or_default() += 1;
-                        }
-                    }
-                    if matches!(
-                        r.body,
-                        verse_world::service::wire::Reply::QuestClaimed { .. }
-                    ) {
-                        self.status = "Quest completed".into();
-                    }
-                    if matches!(
-                        r.body,
-                        verse_world::service::wire::Reply::OutfitEquipped { .. }
-                    ) {
-                        self.status = "Outfit updated".into();
-                    }
-                    if matches!(
-                        r.body,
-                        verse_world::service::wire::Reply::GearEquipped { .. }
-                    ) {
-                        self.status = "Equipment updated".into();
-                    }
-                    if matches!(r.body, verse_world::service::wire::Reply::ItemUsed { .. }) {
-                        self.status = "Item used".into();
-                    }
-                    if let verse_world::service::wire::Reply::Refused { message, .. } = r.body {
-                        if self.record.is_some() {
-                            self.profile
-                                .refusal(serde_json::json!({"stage":"authority_outcome",
-                                "token":token,"ability":ability.map(|a|a.label()),"message":message,
-                                "request_id":r.request_id,"tick":r.tick,"control":r.control,
-                                "context":self.prediction.context()}));
-                        }
-                        self.status = message;
-                    }
-                }
-                Err(mpsc::error::TryRecvError::Empty) => break,
-                Err(mpsc::error::TryRecvError::Disconnected) => {
-                    self.prediction.clear();
-                    return Err("Chamber update stream stopped".into());
+            }
+            Note::Unbound(token) => {
+                profile.bindings.remove(&token);
+            }
+            Note::Outcome { token, at } => {
+                if let Some(started) = token.and_then(|t| profile.bindings.remove(&t)) {
+                    profile
+                        .bound_to_outcome_ms
+                        .add(at.duration_since(started).as_secs_f64() * 1000.);
                 }
             }
         }
-        Ok(())
     }
     fn redraw(&mut self) -> Result<(), String> {
         let started = Instant::now();
         self.consume()?;
         if !self.controlled()
-            && (self.controls.looking() || self.controls.autorun || !self.keys.is_empty())
+            && (self.session.controls.looking()
+                || self.session.controls.autorun
+                || !self.keys.is_empty())
         {
             self.release_pointer();
         }
         let now = Instant::now();
-        if let Some(hud) = self.view.replica().latest().and_then(|s| s.hud.as_ref()) {
+        if let Some(hud) = self.session.hud() {
             self.min_hp = self.min_hp.min(hud.resources.hp);
         }
         self.demo();
-        let frame_interval_ms = now.duration_since(self.last).as_secs_f64() * 1000.;
-        let dt = now.duration_since(self.last).as_secs_f32().min(0.1);
+        let interval = self.session.tick();
+        let frame_interval_ms = interval.as_secs_f64() * 1000.;
+        let dt = interval.as_secs_f32().min(0.1);
         if self.record.is_some() {
             self.profile.frame_interval_ms.add(frame_interval_ms);
         }
-        self.last = now;
         let held = controls::Held {
             forward: self.keys.contains(&KeyCode::KeyW),
             backward: self.keys.contains(&KeyCode::KeyS),
@@ -683,9 +244,7 @@ impl App {
             strafe_left: self.keys.contains(&KeyCode::KeyQ),
             strafe_right: self.keys.contains(&KeyCode::KeyE),
         };
-        let axes = self
-            .controls
-            .step(held, dt, &mut self.yaw, &mut self.camera);
+        let axes = self.session.turn(held, dt);
         let axes = if self.record.as_ref().is_some_and(|o| o.movement) {
             super::remote_record::movement_axes(
                 self.record_started
@@ -694,173 +253,31 @@ impl App {
         } else {
             axes
         };
-        if self.controlled() && self.pending.is_empty() {
-            if let Some(baseline) = self.view.replica().latest().and_then(|s| s.movement) {
-                let context = (baseline.life, baseline.epoch);
-                if baseline.profile == verse_world::movement::Profile::Arrival
-                    && baseline.character.support.is_some()
-                    && baseline.held.axes(baseline.physics_step) == [0.; 2]
-                    && self.frame_entry != Some(context)
-                {
-                    if self
-                        .input
-                        .try_send(Input::BeginMovementFrames {
-                            life: baseline.life,
-                            epoch: baseline.epoch,
-                        })
-                        .is_ok()
-                    {
-                        self.frame_entry = Some(context);
-                        self.frame_entry_pending = true;
-                        self.pending.push_back((None, None));
-                    }
-                }
-            }
-        }
         let movement_ready = !self.record.as_ref().is_some_and(|o| o.movement_frames)
-            || self.prediction.movement_profile() == Some(verse_world::movement::Profile::Frames);
-        if self.controlled() && movement_ready && now >= self.next_move && self.input.capacity() > 0
-        {
-            self.send(Input::Command(Intent::Move {
-                axes,
-                yaw: self.yaw,
-            }));
-            self.next_move = now + Duration::from_millis(33);
-        }
-        if let Err(message) = self.prediction.advance(f64::from(dt).min(0.1)) {
-            self.prediction.clear();
-            self.status = message;
-        }
-        self.send_movement_interval()?;
-        let mut predicted = self.prediction.pose();
-        if let Some(pose) = &mut predicted {
-            pose.yaw = self.yaw;
-        }
+            || self.session.movement_frames();
+        self.session.steer(&self.scene, axes, dt, movement_ready)?;
         let size = self.window.as_ref().unwrap().inner_size();
         if size.width == 0 || size.height == 0 {
             return Ok(());
         }
         let width = 720. * size.width as f32 / size.height as f32;
-        let origin = verse_engine::source_position(self.scene.origin);
-        let time = self
-            .view
-            .replica()
-            .latest()
-            .map_or(0., |s| s.presentation.time);
-        let alpha = (now.duration_since(self.received_at).as_secs_f32()
-            / worker::NATIVE_CADENCE.as_secs_f32())
-        .clamp(0., 1.);
-        let sampled = self.view.replica().sample(alpha)?;
-        let time = sampled.as_ref().map_or(time, |s| s.time);
-        let cinematic = self.scene.frame(time);
-        let mut camera = authored_camera(&cinematic);
-        let mut focus = self
-            .view
-            .replica()
-            .latest()
-            .and_then(|s| s.hud.as_ref())
-            .and_then(|h| {
-                sampled
-                    .as_ref()?
-                    .actors
-                    .iter()
-                    .find(|p| verse_engine::core::LifeId::from(p.life) == h.life)
-            })
-            .map_or(cinematic.target, |p| p.actor.position);
-        if let Some(pose) = predicted {
-            focus = pose.position;
-        }
-        if self.unlocked()
-            && self
-                .view
-                .replica()
-                .latest()
-                .is_some_and(|s| s.hud.is_some())
-        {
-            camera.target = focus + Vec3::Y * 1.5;
-            camera.eye = camera.target - self.camera.direction() * self.camera.distance.max(0.01);
-            camera.fov = 60.;
-        }
-        let rendered = chamber::remote_scene_predicted(
+        let mut frame = self.session.frame_in(
             &self.pack,
-            &self.view,
-            alpha,
-            camera,
-            origin,
-            self.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE),
-            focus,
-            predicted,
+            &self.atlas,
+            &self.scene,
+            [size.width, size.height],
+            [width, 720.],
         )?;
-        let mut ui = crate::ui::UiBatch::default();
-        let mut instances = vec![];
-        let mut lighting = chamber::lighting(origin);
-        let projection = glam::Mat4::perspective_rh(
-            camera.fov.to_radians(),
-            size.width as f32 / size.height as f32,
-            0.1,
-            1000.,
-        ) * glam::Mat4::look_at_rh(camera.eye, camera.target, Vec3::Y);
-        if let Some(rendered) = rendered {
-            let heights = self
-                .pack
-                .models
-                .iter()
-                .map(|(id, m)| (id.clone(), m.height))
-                .collect();
-            ui = overlay::cinematic_with_focus(
+        if self.in_play() {
+            self.giver_panel
+                .draw(&mut frame.ui, &self.atlas, self.session.view());
+            self.character_panel.draw(
+                &mut frame.ui,
                 &self.atlas,
-                &rendered.frame,
-                &heights,
-                projection,
-                width,
-                720.,
-                &self.view.quest_markers(),
-                focus,
-                self.view.target(),
-            );
-            overlay::damage_numbers_from_values(
-                &mut ui,
-                &self.atlas,
-                &self.view.damage_numbers(alpha)?,
-                rendered.frame.time,
-                &rendered.frame,
-                &heights,
-                projection,
+                self.session.view().inventory(),
                 width,
                 720.,
             );
-            if let Some(hud) = self.view.replica().latest().and_then(|s| s.hud.as_ref()) {
-                overlay::owned_hud(
-                    &mut ui,
-                    &self.atlas,
-                    hud,
-                    &rendered.frame,
-                    self.unlocked(),
-                    width,
-                    720.,
-                )?;
-            }
-            if let Some(target) = self.view.target() {
-                overlay::target_hud(&mut ui, &self.atlas, &rendered.frame, target, width, 720.)?;
-            }
-            instances = rendered.instances;
-            lighting = rendered.lighting;
-        } else {
-            ui.text(&self.atlas, 20., 20., "Waiting for chamber state", [1.; 4]);
-        }
-        if !self.status.is_empty() {
-            ui.text(&self.atlas, 20., 126., &self.status, [1., 0.8, 0.4, 1.]);
-        }
-        if self.unlocked()
-            && self
-                .view
-                .replica()
-                .latest()
-                .is_some_and(|s| s.hud.is_some())
-        {
-            self.giver_panel.draw(&mut ui, &self.atlas, &self.view);
-            self.character_panel
-                .draw(&mut ui, &self.atlas, self.view.inventory(), width, 720.);
         }
         let render_started = Instant::now();
         let preparation_ms = started.elapsed().as_secs_f64() * 1000.;
@@ -873,15 +290,7 @@ impl App {
         }
         renderer.resize(size.width, size.height)?;
         renderer.set_overlay_size(width, 720.);
-        renderer.draw_live(
-            render::View {
-                view_proj: projection,
-                eye: camera.eye,
-            },
-            &instances,
-            &ui,
-            &lighting,
-        )?;
+        renderer.draw_live(frame.view, &frame.instances, &frame.ui, &frame.lighting)?;
         let present_started = Instant::now();
         renderer.present_window(self.presenter.as_mut().unwrap(), [size.width, size.height])?;
         if self.record.is_some() {
@@ -946,11 +355,11 @@ impl App {
                     at.elapsed().as_secs_f64() * 1000.,
                 );
             }
-            if self.view.replica().latest().is_some() {
+            if let Some(age) = self.session.snapshot_age() {
                 self.profile.measurements.record(
                     frame,
                     "rendered_snapshot_applied_age_ms",
-                    self.received_at.elapsed().as_secs_f64() * 1000.,
+                    age.as_secs_f64() * 1000.,
                 );
             }
             if let Some(at) = self.last_input_handled.take() {
@@ -981,10 +390,10 @@ impl App {
                 .render_submission_ms
                 .add(render_started.elapsed().as_secs_f64() * 1000.);
         }
-        if self.view.replica().latest().is_some() && self.record.is_some() {
+        if self.session.view().replica().latest().is_some() && self.record.is_some() {
             if self.record_started.is_none() {
                 self.record_started = Some(now);
-                self.recorded_world_start = Some(time);
+                self.recorded_world_start = Some(frame.time);
             }
             if now >= self.next_capture {
                 self.recorder.as_mut().unwrap().submit(
@@ -1003,35 +412,27 @@ impl App {
         if !self.record.as_ref().is_some_and(|o| o.controller) {
             return;
         }
-        let Some(state) = self.view.replica().latest() else {
-            return;
-        };
-        let Some(hud) = state.hud.as_ref() else {
+        let Some(hud) = self.session.hud() else {
             return;
         };
         if respawn_ready(
             self.record.as_ref().is_some_and(|o| o.respawn),
             hud.resources.hp,
             hud.life,
-            &self.respawn_attempts,
-            self.pending.is_empty() && self.input.capacity() == worker::INPUT_CAPACITY,
+            self.session.respawn_attempts(),
+            self.session.idle(),
         ) {
-            let life = hud.life;
-            let before = self.pending.len();
-            self.send(Input::Respawn);
-            if self.pending.len() > before {
-                self.respawn_attempts.push(life);
-            }
+            self.session.respawn();
             return;
         }
         if !self.controlled() {
             return;
         }
-        let state = self.view.replica().latest().unwrap();
+        let state = self.session.view().replica().latest().unwrap();
         let hud = state.hud.as_ref().unwrap();
         if state.presentation.time < self.next_demo
             || hud.casting.is_some()
-            || self.input.capacity() != worker::INPUT_CAPACITY
+            || !self.session.input_idle()
         {
             return;
         }
@@ -1056,31 +457,8 @@ impl App {
         if !hud.slots.iter().any(|s| s.ability == ability && s.ready) {
             return;
         }
-        let player = state
-            .presentation
-            .actors
-            .iter()
-            .find(|p| verse_engine::core::LifeId::from(p.life) == hud.life)
-            .map_or(Vec3::ZERO, |p| p.actor.position);
-        let target = state
-            .presentation
-            .actors
-            .iter()
-            .filter(|p| {
-                p.health > 0
-                    && p.visible
-                    && p.actor.nameplate
-                    && !p.actor.friendly
-                    && p.actor.model != "adventurer"
-            })
-            .min_by(|a, b| {
-                a.actor
-                    .position
-                    .distance_squared(player)
-                    .total_cmp(&b.actor.position.distance_squared(player))
-            })
-            .map(|p| verse_engine::core::LifeId::from(p.life));
-        match self.view.select_target(target) {
+        let target = self.session.nearest_hostile();
+        match self.session.view_mut().select_target(target) {
             Ok(()) => self.cast(ability),
             Err(error) => {
                 if self.demo_trace.len() < 64 {
@@ -1095,7 +473,9 @@ impl App {
             let dropped = recorder.dropped;
             let stats = recorder.finish()?;
             let options = self.record.as_ref().unwrap();
-            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","profile":self.profile.summary(),"frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"capture_measurements":stats.timings,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"window_failure":self.error,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":(self.min_hp != i32::MAX).then_some(self.min_hp),"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"programmatic_movement":options.movement,"programmatic_movement_frames":options.movement_frames,"respawn_attempts":self.respawn_attempts,"owned_life_changes":self.owned_life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"device_profile":self.renderer.as_ref().map(|r|&r.device_profile),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_inventory":self.view.inventory(),"final_state":self.view.replica().latest()});
+            let session = &self.session;
+            let view = session.view();
+            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","profile":self.profile.summary(),"frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"capture_measurements":stats.timings,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":session.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":session.pending(),"final_status":session.status,"window_failure":self.error,"damage_events":session.damage_events,"dialogue_events":session.dialogue_events,"minimum_owned_hp":(self.min_hp != i32::MAX).then_some(self.min_hp),"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"programmatic_movement":options.movement,"programmatic_movement_frames":options.movement_frames,"respawn_attempts":session.respawn_attempts(),"owned_life_changes":session.life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"device_profile":self.renderer.as_ref().map(|r|&r.device_profile),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_inventory":view.inventory(),"final_state":view.replica().latest()});
             std::fs::write(
                 options.output.with_extension("json"),
                 serde_json::to_vec_pretty(&proof)
@@ -1105,19 +485,16 @@ impl App {
         }
         Ok(())
     }
-    fn release_pointer(&mut self) {
+    fn release_cursor(&mut self) {
         self.keys.clear();
-        self.controls.clear();
         if let Some(window) = &self.window {
             let _ = window.set_cursor_grab(CursorGrabMode::None);
             window.set_cursor_visible(true);
         }
-        if self.controlled() {
-            self.send(Input::Command(Intent::Move {
-                axes: [0.; 2],
-                yaw: self.yaw,
-            }));
-        }
+    }
+    fn release_pointer(&mut self) {
+        self.release_cursor();
+        self.session.release(&self.scene);
     }
 }
 impl ApplicationHandler for App {
@@ -1168,8 +545,10 @@ impl ApplicationHandler for App {
         if let DeviceEvent::MouseMotion { delta } = event {
             if self.controlled() {
                 self.last_input_handled.get_or_insert_with(Instant::now);
-                self.controls
-                    .motion([delta.0, delta.1], &mut self.yaw, &mut self.camera);
+                let session = &mut self.session;
+                session
+                    .controls
+                    .motion([delta.0, delta.1], &mut session.yaw, &mut session.camera);
             }
         }
     }
@@ -1193,28 +572,21 @@ impl ApplicationHandler for App {
                         self.keys.insert(key);
                         match key {
                             KeyCode::Escape => {
-                                if self.view.interaction().is_some() {
-                                    self.view.close_giver();
+                                if self.session.view().interaction().is_some() {
+                                    self.session.view_mut().close_giver();
                                 } else if !self.character_panel.close() {
                                     event_loop.exit();
                                 }
                             }
-                            KeyCode::KeyB | KeyCode::KeyI | KeyCode::KeyL
-                                if self.unlocked()
-                                    && self
-                                        .view
-                                        .replica()
-                                        .latest()
-                                        .is_some_and(|s| s.hud.is_some()) =>
-                            {
-                                self.view.close_giver();
+                            KeyCode::KeyB | KeyCode::KeyI | KeyCode::KeyL if self.in_play() => {
+                                self.session.view_mut().close_giver();
                                 self.character_panel.toggle(if key == KeyCode::KeyL {
                                     super::character_panel::Kind::Quests
                                 } else {
                                     super::character_panel::Kind::Inventory
                                 });
-                                self.controls.left = false;
-                                self.controls.right = false;
+                                self.session.controls.left = false;
+                                self.session.controls.right = false;
                                 let window = self.window.as_ref().unwrap();
                                 let _ = window.set_cursor_grab(CursorGrabMode::None);
                                 window.set_cursor_visible(true);
@@ -1225,16 +597,21 @@ impl ApplicationHandler for App {
                                 let size = self.window.as_ref().unwrap().inner_size();
                                 self.character_panel.page(
                                     key == KeyCode::PageDown,
-                                    self.view.inventory(),
+                                    self.session.view().inventory(),
                                     720. * size.width as f32 / size.height.max(1) as f32,
                                     720.,
                                 );
                             }
                             KeyCode::KeyF if self.unlocked() => {
-                                let givers: Vec<_> =
-                                    self.view.quest_markers().keys().copied().collect();
+                                let givers: Vec<_> = self
+                                    .session
+                                    .view()
+                                    .quest_markers()
+                                    .keys()
+                                    .copied()
+                                    .collect();
                                 for giver in givers {
-                                    if self.view.open_giver(giver).is_ok() {
+                                    if self.session.view_mut().open_giver(giver).is_ok() {
                                         self.giver_panel.reset();
                                         self.character_panel.close();
                                         self.release_pointer();
@@ -1243,13 +620,13 @@ impl ApplicationHandler for App {
                                 }
                             }
                             KeyCode::Tab => {
-                                self.view.cycle_target();
+                                self.session.view_mut().cycle_target();
                             }
                             KeyCode::Space if self.controlled() => {
                                 self.send(Input::Command(Intent::Jump))
                             }
                             KeyCode::NumLock if self.controlled() => {
-                                self.controls.autorun = !self.controls.autorun
+                                self.session.controls.autorun = !self.session.controls.autorun
                             }
                             _ => {
                                 if let Some(ability) = key_ability(key) {
@@ -1269,11 +646,15 @@ impl ApplicationHandler for App {
                 let width = 720. * size.width as f32 / size.height.max(1) as f32;
                 if self.character_panel.contains(self.pointer, width, 720.) {
                     if amount != 0. {
-                        self.character_panel
-                            .page(amount < 0., self.view.inventory(), width, 720.);
+                        self.character_panel.page(
+                            amount < 0.,
+                            self.session.view().inventory(),
+                            width,
+                            720.,
+                        );
                     }
                 } else {
-                    self.camera.zoom(amount);
+                    self.session.camera.zoom(amount);
                 }
             }
             WindowEvent::MouseInput { state, button, .. } if self.unlocked() => {
@@ -1281,16 +662,18 @@ impl ApplicationHandler for App {
                 let down = state == ElementState::Pressed;
                 let size = self.window.as_ref().unwrap().inner_size();
                 let width = 720. * size.width as f32 / size.height.max(1) as f32;
-                if down && self.giver_panel.contains(&self.view, self.pointer) {
+                if down && self.giver_panel.contains(self.session.view(), self.pointer) {
                     if button == MouseButton::Left {
-                        match self.giver_panel.click(&self.view, self.pointer) {
+                        match self.giver_panel.click(self.session.view(), self.pointer) {
                             Some(super::giver_panel::Action::Accept(quest, giver)) => {
                                 self.send(Input::AcceptQuest(quest, giver))
                             }
                             Some(super::giver_panel::Action::Claim(quest)) => {
                                 self.send(Input::ClaimQuest(quest))
                             }
-                            Some(super::giver_panel::Action::Close) => self.view.close_giver(),
+                            Some(super::giver_panel::Action::Close) => {
+                                self.session.view_mut().close_giver()
+                            }
                             None => {}
                         }
                     }
@@ -1300,7 +683,7 @@ impl ApplicationHandler for App {
                     if button == MouseButton::Left {
                         self.character_panel.click(
                             self.pointer,
-                            self.view.inventory(),
+                            self.session.view().inventory(),
                             width,
                             720.,
                         );
@@ -1323,7 +706,7 @@ impl ApplicationHandler for App {
                     return;
                 }
                 if button == MouseButton::Left && down {
-                    if let Some(hud) = self.view.replica().latest().and_then(|s| s.hud.as_ref()) {
+                    if let Some(hud) = self.session.hud() {
                         let size = self.window.as_ref().unwrap().inner_size();
                         let width = 720. * size.width as f32 / size.height.max(1) as f32;
                         if overlay::owned_respawn_at(
@@ -1351,14 +734,15 @@ impl ApplicationHandler for App {
                     }
                 }
                 if self.controlled() && matches!(button, MouseButton::Left | MouseButton::Right) {
-                    self.controls.button(
+                    let session = &mut self.session;
+                    session.controls.button(
                         button == MouseButton::Right,
                         down,
-                        &mut self.yaw,
-                        &self.camera,
+                        &mut session.yaw,
+                        &session.camera,
                     );
                     let window = self.window.as_ref().unwrap();
-                    if self.controls.looking() {
+                    if self.session.controls.looking() {
                         let _ = window
                             .set_cursor_grab(CursorGrabMode::Locked)
                             .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined));
@@ -1390,11 +774,6 @@ impl ApplicationHandler for App {
         }
     }
 }
-fn horizontal_aim(player: Vec3, target: Option<Vec3>, camera: Vec3) -> Vec3 {
-    let mut direction = target.map_or(camera, |target| target - player);
-    direction.y = 0.;
-    direction.normalize_or(Vec3::NEG_Z)
-}
 fn key_ability(key: KeyCode) -> Option<Ability> {
     let index = match key {
         KeyCode::Digit1 => 0,
@@ -1411,13 +790,6 @@ fn key_ability(key: KeyCode) -> Option<Ability> {
     };
     Some(Ability::ALL[index])
 }
-fn authored_camera(frame: &verse_engine::director::Frame) -> Camera {
-    Camera {
-        eye: frame.eye,
-        target: frame.target,
-        fov: frame.fov.to_degrees(),
-    }
-}
 fn respawn_ready(
     enabled: bool,
     hp: i32,
@@ -1430,6 +802,8 @@ fn respawn_ready(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chamber_session::horizontal_aim;
+    use verse_world::service::view::View;
     #[test]
     fn cinematic_camera_converts_scene_radians_to_native_degrees() {
         let scene = Scene::from_json(include_bytes!(
@@ -1438,7 +812,7 @@ mod tests {
         .unwrap();
         for time in [0., 40.] {
             let frame = scene.frame(time);
-            let camera = authored_camera(&frame);
+            let camera = chamber_session::authored_camera(&frame);
             assert!((camera.fov - 57.29578).abs() < 0.001);
             assert_eq!(camera.eye, frame.eye);
             assert_eq!(camera.target, frame.target);
@@ -1483,22 +857,7 @@ mod tests {
         );
     }
     #[test]
-    fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() {
-        use secp256k1::{Keypair, Secp256k1, SecretKey};
-        use verse_world::service::{
-            Chamber,
-            auth::{ConnectionId, Gateway},
-            wire::{Body, Request, Response, VERSION},
-        };
-        fn request(g: &mut Gateway, id: ConnectionId, serial: u64, body: Body) -> Response {
-            let bytes = serde_json::to_vec(&Request {
-                version: VERSION,
-                request_id: serial,
-                body,
-            })
-            .unwrap();
-            serde_json::from_slice(&g.dispatch_json(id, 0, &bytes).unwrap()).unwrap()
-        }
+    fn the_window_mounts_the_shared_session_and_its_recorder_reads_notes() {
         let dir = tempfile::tempdir().unwrap();
         let pack = super::super::original::generate(dir.path()).unwrap();
         let atlas = super::super::original::atlas().unwrap();
@@ -1506,434 +865,9 @@ mod tests {
             "../../../../assets/verse/original/ritual.json"
         ))
         .unwrap();
-        let mut game = verse_world::play::Game::combat_in(scene.clone(), false, 160).unwrap();
-        game.time = scene.cut_at;
-        game.tick(1. / 30., [0.; 2]).unwrap();
-        let mut gateway = Gateway::new(Chamber::new(game).unwrap()).unwrap();
-        let key = Keypair::from_secret_key(
-            &Secp256k1::new(),
-            &SecretKey::from_byte_array([101; 32]).unwrap(),
-        );
-        let public = key.x_only_public_key().0.serialize();
-        gateway.enroll_primary(public).unwrap();
-        let (connection, challenge) = gateway.open(0).unwrap();
-        let signature = Secp256k1::new()
-            .sign_schnorr_no_aux_rand(&challenge.signing_digest(public), &key)
-            .to_byte_array();
-        gateway
-            .authenticate(connection, 0, public, signature)
-            .unwrap();
-        let (input, mut inputs, updates, output) = worker::channels();
-        let mut app = App::new(
-            pack,
-            atlas,
-            scene,
-            dir.path().into(),
-            View::new(160, 10., 0).unwrap(),
-            input,
-            output,
-        );
-        app.record = Some(super::super::remote_record::Options {
-            output: dir.path().join("unused.mp4"),
-            seconds: 30,
-            controller: false,
-            respawn: false,
-            movement: false,
-            movement_frames: false,
-        });
-        updates
-            .try_send(Update::Snapshot(request(
-                &mut gateway,
-                connection,
-                1,
-                Body::Snapshot {},
-            )))
-            .unwrap();
-        app.consume().unwrap();
-        // The first owned-life observation releases pointer input with a tracked stop.
-        let Input::TrackedCommand { token, intent, .. } = inputs.try_recv().unwrap() else {
-            panic!("Missing tracked stop");
-        };
-        let command = gateway
-            .admission(connection)
-            .unwrap()
-            .command(gateway.game().authority_tick, intent)
-            .unwrap();
-        updates
-            .try_send(Update::CommandBound {
-                token,
-                binding: Ok(command.clone()),
-            })
-            .unwrap();
-        updates
-            .try_send(Update::Outcome(request(
-                &mut gateway,
-                connection,
-                2,
-                Body::Command {
-                    command: command.into(),
-                },
-            )))
-            .unwrap();
-        gateway.tick(1. / 30.).unwrap();
-        updates
-            .try_send(Update::Snapshot(request(
-                &mut gateway,
-                connection,
-                3,
-                Body::Snapshot {},
-            )))
-            .unwrap();
-        app.consume().unwrap();
-        let life = gateway.admission(connection).unwrap().actor();
-        let start = gateway.game().actor_position(life.actor).unwrap();
-        app.send(Input::Command(Intent::Move {
-            axes: [1., 0.],
-            yaw: 0.,
-        }));
-        let Input::TrackedCommand {
-            token,
-            life: submitted,
-            epoch,
-            intent,
-        } = inputs.try_recv().unwrap()
-        else {
-            panic!("Missing tracked movement");
-        };
-        assert_eq!(submitted, life);
-        assert_eq!(epoch, gateway.admission(connection).unwrap().epoch());
-        app.prediction.advance(1. / 30.).unwrap();
-        let pose = app.prediction.pose().unwrap();
-        assert!(pose.position.x > start.x);
-        assert_eq!(gateway.game().actor_position(life.actor).unwrap(), start);
-        let camera = Camera {
-            eye: pose.position + Vec3::new(0., 3., 8.),
-            target: pose.position + Vec3::Y * 1.5,
-            fov: 60.,
-        };
-        let rendered = chamber::remote_scene_predicted(
-            &app.pack,
-            &app.view,
-            1.,
-            camera,
-            Vec3::ZERO,
-            false,
-            pose.position,
-            Some(pose),
-        )
-        .unwrap()
-        .unwrap();
-        assert_eq!(
-            rendered
-                .frame
-                .actors
-                .iter()
-                .find(|a| a.life == Some(life))
-                .unwrap()
-                .actor
-                .position,
-            pose.position
-        );
-        let command = gateway
-            .admission(connection)
-            .unwrap()
-            .command(gateway.game().authority_tick, intent)
-            .unwrap();
-        updates
-            .try_send(Update::CommandBound {
-                token,
-                binding: Ok(command.clone()),
-            })
-            .unwrap();
-        updates
-            .try_send(Update::Outcome(request(
-                &mut gateway,
-                connection,
-                4,
-                Body::Command {
-                    command: command.into(),
-                },
-            )))
-            .unwrap();
-        let pending = request(&mut gateway, connection, 5, Body::Snapshot {});
-        let verse_world::service::wire::Reply::Snapshot { state } = &pending.body else {
-            panic!("Missing pending snapshot");
-        };
-        assert!(state.movement.is_none());
-        assert!(state.collision.is_some());
-        updates.try_send(Update::Snapshot(pending)).unwrap();
-        app.consume().unwrap();
-        app.prediction.advance(0.).unwrap();
-        assert_eq!(app.prediction.observation(), 5);
-        assert_eq!(app.prediction.pending(), 1);
-        gateway.tick(1. / 30.).unwrap();
-        updates
-            .try_send(Update::Snapshot(request(
-                &mut gateway,
-                connection,
-                6,
-                Body::Snapshot {},
-            )))
-            .unwrap();
-        app.consume().unwrap();
-        app.prediction.advance(0.).unwrap();
-        assert_eq!(app.prediction.pending(), 0);
-        assert!(app.pending.is_empty());
-        assert!(
-            app.prediction
-                .pose()
-                .unwrap()
-                .position
-                .distance(gateway.game().actor_position(life.actor).unwrap())
-                < 0.0001
-        );
-        // Teleport while another movement input is admitted but not yet applied.
-        app.send(Input::Command(Intent::Move {
-            axes: [0., 1.],
-            yaw: 0.,
-        }));
-        let Input::TrackedCommand { token, intent, .. } = inputs.try_recv().unwrap() else {
-            panic!("Missing pending move");
-        };
-        let command = gateway
-            .admission(connection)
-            .unwrap()
-            .command(gateway.game().authority_tick, intent)
-            .unwrap();
-        updates
-            .try_send(Update::CommandBound {
-                token,
-                binding: Ok(command.clone()),
-            })
-            .unwrap();
-        updates
-            .try_send(Update::Outcome(request(
-                &mut gateway,
-                connection,
-                7,
-                Body::Command {
-                    command: command.into(),
-                },
-            )))
-            .unwrap();
-        app.consume().unwrap();
-        app.prediction.advance(1. / 30.).unwrap();
-        assert_eq!(app.prediction.pending(), 1);
-        app.send(Input::Command(Intent::Cast {
-            ability: Ability::MistyStep,
-            target: None,
-            aim: [1., 0., 0.],
-        }));
-        let Input::Command(intent) = inputs.try_recv().unwrap() else {
-            panic!("Missing teleport cast");
-        };
-        let command = gateway
-            .admission(connection)
-            .unwrap()
-            .command(gateway.game().authority_tick, intent)
-            .unwrap();
-        let outcome = request(
-            &mut gateway,
-            connection,
-            8,
-            Body::Command {
-                command: command.into(),
-            },
-        );
-        assert!(matches!(
-            outcome.body,
-            verse_world::service::wire::Reply::Accepted
-        ));
-        updates.try_send(Update::Outcome(outcome)).unwrap();
-        let snapshot = request(&mut gateway, connection, 9, Body::Snapshot {});
-        let verse_world::service::wire::Reply::Snapshot { state } = &snapshot.body else {
-            panic!("Missing teleport snapshot");
-        };
-        assert!(state.movement.is_none());
-        assert!(
-            state
-                .presentation
-                .actors
-                .iter()
-                .find(|a| a.life.actor == life.actor)
-                .unwrap()
-                .teleport_stamp
-                .is_some()
-        );
-        updates.try_send(Update::Snapshot(snapshot)).unwrap();
-        app.consume().unwrap();
-        assert!(app.prediction.pose().is_none());
-        assert_eq!(app.prediction.pending(), 0);
-        assert_eq!(app.profile.reset_observations, 1);
-        assert!(app.profile.bindings.is_empty());
-        gateway.tick(1. / 30.).unwrap();
-        updates
-            .try_send(Update::Snapshot(request(
-                &mut gateway,
-                connection,
-                10,
-                Body::Snapshot {},
-            )))
-            .unwrap();
-        app.consume().unwrap();
-        app.prediction.advance(0.).unwrap();
-        assert!(
-            app.prediction
-                .pose()
-                .unwrap()
-                .position
-                .distance(gateway.game().actor_position(life.actor).unwrap())
-                < 0.0001
-        );
-        // The native interval path preserves local event times until transport binding.
-        while inputs.try_recv().is_ok() {}
-        let life = gateway.admission(connection).unwrap().actor();
-        let stop_command = gateway
-            .admission(connection)
-            .unwrap()
-            .command(
-                gateway.game().authority_tick,
-                Intent::Move {
-                    axes: [0.; 2],
-                    yaw: 0.,
-                },
-            )
-            .unwrap();
-        gateway.submit(connection, stop_command).unwrap();
-        gateway.tick(1. / 30.).unwrap();
-        let entry_epoch = gateway.admission(connection).unwrap().epoch();
-        let begin = request(
-            &mut gateway,
-            connection,
-            300,
-            Body::BeginMovementFrames {
-                life: life.into(),
-                epoch: entry_epoch,
-            },
-        );
-        assert!(matches!(
-            begin.body,
-            verse_world::service::wire::Reply::Snapshot { .. }
-        ));
-        updates
-            .try_send(Update::Snapshot(request(
-                &mut gateway,
-                connection,
-                301,
-                Body::Snapshot {},
-            )))
-            .unwrap();
-        app.consume().unwrap();
-        assert_eq!(
-            app.prediction.movement_profile(),
-            Some(verse_world::movement::Profile::Frames)
-        );
-        app.send(Input::Command(Intent::Move {
-            axes: [1., 0.],
-            yaw: 0.,
-        }));
-        assert!(inputs.try_recv().is_err());
-        app.prediction.advance(4. / 120.).unwrap();
-        app.send_movement_interval().unwrap();
-        assert!(inputs.try_recv().is_err());
-        app.send(Input::Command(Intent::Move {
-            axes: [0., 1.],
-            yaw: 0.,
-        }));
-        app.prediction.advance(8. / 120.).unwrap();
-        app.send_movement_interval().unwrap();
-        let Input::MovementFrame { token, mut frame } = inputs.try_recv().unwrap() else {
-            panic!("Missing complete interval")
-        };
-        assert_eq!(frame.steps, verse_world::movement::frames::MAX_STEPS);
-        assert_eq!(frame.segments.len(), 2);
-        assert_eq!(frame.segments[0].axes, [1., 0.]);
-        assert_eq!(frame.segments[1].offset, 4);
-        assert_eq!(frame.segments[1].axes, [0., 1.]);
-        assert_eq!(frame.sequence, 0);
-        frame.sequence = gateway.admission(connection).unwrap().accepted_sequence() + 1;
-        frame.tick = gateway.game().authority_tick;
-        updates
-            .try_send(Update::FrameBound {
-                token,
-                binding: Ok(frame.clone()),
-            })
-            .unwrap();
-        app.consume().unwrap();
-        let response = request(&mut gateway, connection, 302, Body::MovementFrame { frame });
-        assert!(matches!(
-            response.body,
-            verse_world::service::wire::Reply::Accepted
-        ));
-        updates.try_send(Update::Outcome(response)).unwrap();
-        app.consume().unwrap();
-        gateway.tick(0.1).unwrap();
-        updates
-            .try_send(Update::Snapshot(request(
-                &mut gateway,
-                connection,
-                303,
-                Body::Snapshot {},
-            )))
-            .unwrap();
-        app.consume().unwrap();
-        app.prediction.advance(0.).unwrap();
-        assert!(
-            app.prediction
-                .pose()
-                .unwrap()
-                .position
-                .distance(gateway.game().actor_position(life.actor).unwrap())
-                < 0.0001
-        );
-        let context = app.prediction.context().unwrap();
-        let cursor = app.frame_cursor;
-        let token = app.input_token + 1;
-        app.frame_bindings.insert(token, (context.0, context.1 - 1));
-        app.pending.push_back((None, Some(token)));
-        updates
-            .try_send(Update::FrameBound {
-                token,
-                binding: Err("Movement interval control changed before transmission".into()),
-            })
-            .unwrap();
-        app.consume().unwrap();
-        assert_eq!(app.prediction.context(), Some(context));
-        assert_eq!(app.frame_cursor, cursor);
-        assert!(!app.frame_bindings.contains_key(&token));
-        assert!(
-            !app.pending
-                .iter()
-                .any(|(_, pending)| *pending == Some(token))
-        );
-        app.frame_bindings.insert(token + 1, context);
-        updates
-            .try_send(Update::FrameBound {
-                token: token + 1,
-                binding: Err("Current interval binding failed".into()),
-            })
-            .unwrap();
-        app.consume().unwrap();
-        assert!(app.prediction.context().is_none());
-        assert!(app.frame_cursor.is_none());
-        drop(updates);
-        assert!(app.consume().is_err());
-        assert!(app.prediction.pose().is_none());
-    }
-
-    #[test]
-    fn bounded_native_input_reports_pressure_and_closed_update_streams() {
-        let dir = tempfile::tempdir().unwrap();
-        let pack = super::super::original::generate(dir.path()).unwrap();
-        let atlas = super::super::original::atlas().unwrap();
-        let scene = Scene::from_json(include_bytes!(
-            "../../../../assets/verse/original/ritual.json"
-        ))
-        .unwrap();
-        let view = View::new(160, 10., 0).unwrap();
-        let (input, mut inputs, updates, output) = worker::channels();
-        let mut app = App::new(pack, atlas, scene, dir.path().into(), view, input, output);
-        assert!(!app.controlled());
+        let (input, inputs, updates, output) = worker::channels();
+        let session = Session::attached(View::new(160, 10., 0).unwrap(), input, output);
+        let mut app = App::new(pack, atlas, scene, dir.path().into(), session);
         app.record = Some(super::super::remote_record::Options {
             output: dir.path().join("capture.mp4"),
             seconds: 30,
@@ -1942,43 +876,21 @@ mod tests {
             movement: false,
             movement_frames: false,
         });
+        assert!(!app.controlled());
         app.demo();
-        assert!(app.respawn_attempts.is_empty());
-        app.cast(Ability::Fireball);
-        assert!(inputs.try_recv().is_err());
-        for _ in 0..worker::INPUT_CAPACITY {
-            app.send(Input::Command(Intent::Jump));
-        }
-        app.send(Input::Command(Intent::Jump));
-        assert_eq!(app.status, "Input queue is busy");
-        for _ in 0..worker::INPUT_CAPACITY {
-            assert!(matches!(
-                inputs.try_recv(),
-                Ok(Input::Command(Intent::Jump))
-            ));
-        }
-        assert!(inputs.try_recv().is_err());
+        assert!(app.session.respawn_attempts().is_empty());
+        app.note(Note::Bound {
+            token: 7,
+            at: Instant::now(),
+        });
+        app.note(Note::Outcome {
+            token: Some(7),
+            at: Instant::now(),
+        });
+        app.note(Note::Reset("teleport"));
+        assert!(app.profile.bindings.is_empty());
+        assert_eq!(app.profile.reset_observations, 1);
         drop(inputs);
-        app.send(Input::Respawn);
-        assert_eq!(app.status, "Chamber connection stopped");
-        assert!(app.consume().is_ok());
-        app.pending.clear();
-        app.pending.push_back((Some(Ability::Shield), None));
-        app.pending.push_back((None, Some(17)));
-        app.pending.push_back((None, Some(18)));
-        app.status.clear();
-        updates
-            .try_send(Update::MovementSuperseded {
-                token: 17,
-                replacement: 18,
-            })
-            .unwrap();
-        app.consume().unwrap();
-        assert_eq!(
-            app.pending.iter().copied().collect::<Vec<_>>(),
-            vec![(Some(Ability::Shield), None), (None, Some(18))]
-        );
-        assert!(app.status.is_empty());
         drop(updates);
         assert!(app.consume().is_err());
     }

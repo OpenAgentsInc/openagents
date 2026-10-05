@@ -11,6 +11,10 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 mod admission;
 pub mod chamber;
+#[cfg(all(feature = "remote-chamber", any(test, feature = "chamber-loopback")))]
+pub mod chamber_loopback;
+#[cfg(feature = "remote-chamber")]
+pub mod chamber_session;
 #[cfg(feature = "remote-chamber")]
 pub mod character_panel;
 pub mod characters;

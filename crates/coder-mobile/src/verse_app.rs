@@ -66,6 +66,10 @@ pub(crate) struct Config {
     /// `synthetic_gym` preview as Coder's.
     #[serde(default)]
     pub bare: bool,
+    /// The chamber the Grid's RITUAL arch opens: a `verse::ritual::Config`
+    /// JSON file on this device. Without it the arch is closed.
+    #[serde(default)]
+    pub ritual: Option<String>,
     /// Levels come from the labeled tutorial fixture rather than the relay
     /// ([`verse::xp::fixture::tutorial_events`]), for simulator checks.
     #[serde(default)]
@@ -107,6 +111,14 @@ pub(crate) enum Request {
     },
     ResetMotion,
     RecenterCamera,
+    /// Leave the shared chamber and return to the Grid at the RITUAL arch.
+    LeaveChamber,
+    /// Cast the chamber hotbar's slot (0-based) at the selected target.
+    ChamberCast {
+        slot: usize,
+    },
+    /// Ask the chamber for a new character after death.
+    ChamberRespawn,
     /// Load and enter Everglade from the Grid without walking to its arch,
     /// for scripted checks (`--verse-script everglade`).
     EnterEverglade,
@@ -862,6 +874,8 @@ pub(crate) struct Scene {
     studio_revisions: u64,
     pub frames: u64,
     pub error: Option<String>,
+    /// The shared chamber, from the RITUAL arch until the return.
+    pub(crate) chamber: Option<crate::chamber::Play>,
 }
 
 /// The ledger the XP preview shows: six tutorial reproductions of 50 XP
@@ -897,6 +911,21 @@ fn playtest_preview(secret: secp256k1::SecretKey) -> Result<verse::xp::Snapshot,
 
 /// Added to the moving interval for the crowd's drawing delay.
 const BARE_PRESENCE_MARGIN: Duration = Duration::from_millis(300);
+
+/// The chamber hotbar's abilities, in slot order.
+const CHAMBER_SLOTS: [verse_world::play::Ability; 4] = [
+    verse_world::play::Ability::Bow,
+    verse_world::play::Ability::FireBolt,
+    verse_world::play::Ability::MagicMissile,
+    verse_world::play::Ability::Shield,
+];
+
+/// What a touch on the chamber HUD hit.
+enum ChamberHit {
+    Slot(usize),
+    Leave,
+    Respawn,
+}
 
 impl Scene {
     pub fn new(config: Config) -> Result<Self, String> {
@@ -948,6 +977,9 @@ impl Scene {
             world.interact_hint = verse::runtime::InteractHint::Tap;
             world
         };
+        if config.bare {
+            world.set_ritual(config.ritual.as_deref().map(std::path::PathBuf::from));
+        }
         if let Some(directory) = config.zone_cache_directory {
             if directory.is_empty()
                 || directory.len() > 4096
@@ -1062,6 +1094,7 @@ impl Scene {
             studio_revisions: 0,
             frames: 0,
             error: initial_error,
+            chamber: None,
         })
     }
 
@@ -1073,6 +1106,13 @@ impl Scene {
         if changed {
             self.reset_motion();
             self.frame_timestamp = None;
+        }
+        if let Some(chamber) = &mut self.chamber {
+            if active {
+                chamber.resume();
+            } else {
+                chamber.suspend();
+            }
         }
         if !active {
             self.world.zone_cancel_loading();
@@ -1319,6 +1359,24 @@ impl Scene {
         // The bare world draws no map or door controls to touch, and zone
         // controls only while a zone loads or inside the zone a portal leads
         // to.
+        if self.chamber.is_some() {
+            if matches!(phase, PointerPhase::Down)
+                && let Some(hit) = self.chamber_hud_hit(point)
+            {
+                self.cancel_taps();
+                match hit {
+                    ChamberHit::Slot(slot) => self.chamber_cast(slot),
+                    ChamberHit::Leave => self.leave_chamber()?,
+                    ChamberHit::Respawn => {
+                        if let Some(session) = self.chamber.as_mut().and_then(|c| c.session_mut()) {
+                            session.respawn();
+                        }
+                    }
+                }
+                return Ok(());
+            }
+            return self.pointer_at(id, phase, x, y, self.pointer_clock.elapsed().as_secs_f64());
+        }
         if matches!(phase, PointerPhase::Down)
             && self.everglade_hotbar_shown()
             && let Some(index) = verse::zones::everglade::hotbar::slot_under(
@@ -1952,6 +2010,16 @@ impl Scene {
         self.sync_zone_session()?;
         let camera_dt = self.frame_timestamp.map_or(0.0, |last| timestamp - last);
         self.frame_timestamp = Some(timestamp);
+        if let Some(config) = self.world.take_ritual_crossing() {
+            self.reset_zone_inputs();
+            self.chamber = Some(crate::chamber::Play::open(config, self.secret));
+            // The Grid's presence pauses while the player is in the chamber.
+            self.session = None;
+        }
+        if self.chamber.is_some() {
+            self.step_chamber(camera_dt as f32, input)?;
+            return Ok(Some(dt));
+        }
         if self.spawn_pending {
             self.gym_board.set_active(false);
             self.results.set_active(false);
@@ -2130,6 +2198,17 @@ impl Scene {
                 Ok(())
             }
             Request::EnterEverglade => self.world.enter_everglade(),
+            Request::LeaveChamber => self.leave_chamber(),
+            Request::ChamberCast { slot } => {
+                self.chamber_cast(slot);
+                Ok(())
+            }
+            Request::ChamberRespawn => {
+                if let Some(session) = self.chamber.as_mut().and_then(|c| c.session_mut()) {
+                    session.respawn();
+                }
+                Ok(())
+            }
             Request::GoStation { station } => self.go_station(&station),
             Request::RecenterCamera => {
                 self.reset_motion();
@@ -2648,6 +2727,11 @@ impl Scene {
     }
 
     pub fn map_ui(&self) -> verse::ui::UiBatch {
+        if self.chamber.is_some() {
+            let mut ui = self.chamber_ui();
+            ui.vertices.extend(self.stick_ui().vertices);
+            return ui;
+        }
         if self.world.is_bare() {
             // Loading controls take the Grid's neutral palette; Everglade's
             // hotbar is the chamber's icon tray. Both stand above the sticks.
@@ -2766,6 +2850,241 @@ impl Scene {
     }
 
     /// The hotbar's distance above the screen's bottom edge: above the sticks.
+    /// The player is in the shared chamber (connecting, joined, or failed).
+    pub(crate) fn in_chamber(&self) -> bool {
+        self.chamber.is_some()
+    }
+
+    /// The chamber's engine frame for a viewport of `size` pixels, while
+    /// the session is joined.
+    pub(crate) fn chamber_frame(
+        &self,
+        size: [u32; 2],
+    ) -> Result<Option<verse::imported::chamber_session::Frame>, String> {
+        match &self.chamber {
+            Some(play) => play.frame(size),
+            None => Ok(None),
+        }
+    }
+
+    /// Steps the chamber one frame: the sticks steer and turn the shared
+    /// character; a failed connection returns the player to the Grid.
+    fn step_chamber(&mut self, camera_dt: f32, input: Option<InputState>) -> Result<(), String> {
+        let input = if self.panel_open() {
+            InputState::default()
+        } else {
+            input.unwrap_or_else(|| self.input())
+        };
+        let held = verse::imported::chamber_session::Held {
+            forward: input.forward,
+            backward: input.backward,
+            strafe_left: input.strafe_left,
+            strafe_right: input.strafe_right,
+            turn_left: false,
+            turn_right: false,
+        };
+        let look = self.chamber_look(camera_dt);
+        let Some(play) = &mut self.chamber else {
+            return Ok(());
+        };
+        if !self.lifecycle.active() {
+            return Ok(());
+        }
+        let joined = play.step(held);
+        let scene = play.content.as_ref().map(|c| c.scene.clone());
+        if joined && let Some(session) = play.session_mut() {
+            if look != [0.0, 0.0] {
+                session.camera.yaw -= look[0];
+                session.camera.pitch = (session.camera.pitch + look[1]).clamp(-1.2, 1.2);
+                session.yaw = session.camera.yaw;
+            }
+            if input.jump
+                && let Some(scene) = &scene
+            {
+                session.jump(scene);
+            }
+            play.frames = play.frames.saturating_add(1);
+        }
+        if let Some(message) = play.failed() {
+            let message = message.to_owned();
+            self.leave_chamber()?;
+            self.error = Some(message);
+        }
+        Ok(())
+    }
+
+    /// The look stick's turn for this frame, in radians: yaw then pitch.
+    fn chamber_look(&mut self, dt: f32) -> [f32; 2] {
+        let held = self
+            .look_stick_touch()
+            .map(|(_, touch)| touch.latest)
+            .filter(|_| self.lifecycle.active() && !self.panel_open());
+        let Some(point) = held else {
+            self.look_rate = [0.0, 0.0];
+            return [0.0, 0.0];
+        };
+        let target = self.look_stick_target(point);
+        let dt = if dt.is_finite() {
+            dt.clamp(0.0, 0.1)
+        } else {
+            0.0
+        };
+        let k = 1.0 - (-dt / LOOK_STICK_SMOOTHING_SECONDS).exp();
+        for (rate, target) in self.look_rate.iter_mut().zip(target) {
+            *rate += (target - *rate) * k;
+        }
+        [self.look_rate[0] * dt, self.look_rate[1] * dt]
+    }
+
+    fn chamber_cast(&mut self, slot: usize) {
+        let Some(play) = &mut self.chamber else {
+            return;
+        };
+        let Some(ability) = CHAMBER_SLOTS.get(slot).copied() else {
+            return;
+        };
+        let Some(scene) = play.content.as_ref().map(|c| c.scene.clone()) else {
+            return;
+        };
+        if let Some(session) = play.session_mut() {
+            if session.view().target().is_none() {
+                session.target_nearest();
+            }
+            session.cast(&scene, ability);
+        }
+    }
+
+    /// Leaves the chamber: stops its worker and stands the player in front
+    /// of the RITUAL arch, as closing the desktop window does.
+    fn leave_chamber(&mut self) -> Result<(), String> {
+        let Some(mut play) = self.chamber.take() else {
+            return Ok(());
+        };
+        play.suspend();
+        self.reset_zone_inputs();
+        self.world.return_from_ritual()?;
+        self.sync_zone_session()
+    }
+
+    /// The chamber hotbar's slots, laid out above the right stick in
+    /// logical points: `(x, y, size)` for each slot.
+    fn chamber_slots(&self) -> Vec<[f32; 3]> {
+        let size = self.lifecycle.viewport().logical_size();
+        let slot = 52.0;
+        let gap = 8.0;
+        let bottom = self.hotbar_bottom() + 16.0;
+        let total = CHAMBER_SLOTS.len() as f32 * slot + (CHAMBER_SLOTS.len() as f32 - 1.0) * gap;
+        let x0 = (size[0] - total) / 2.0;
+        (0..CHAMBER_SLOTS.len())
+            .map(|i| [x0 + i as f32 * (slot + gap), size[1] - bottom - slot, slot])
+            .collect()
+    }
+
+    /// The Leave button's rectangle, top right under the insets.
+    fn chamber_leave_rect(&self) -> [f32; 4] {
+        let size = self.lifecycle.viewport().logical_size();
+        [
+            size[0] - self.insets[1] - 96.0,
+            self.insets[0] + 12.0,
+            84.0,
+            36.0,
+        ]
+    }
+
+    fn chamber_hud_hit(&self, point: [f32; 2]) -> Option<ChamberHit> {
+        let inside = |r: [f32; 4]| {
+            point[0] >= r[0]
+                && point[0] <= r[0] + r[2]
+                && point[1] >= r[1]
+                && point[1] <= r[1] + r[3]
+        };
+        if inside(self.chamber_leave_rect()) {
+            return Some(ChamberHit::Leave);
+        }
+        let dead = self
+            .chamber
+            .as_ref()
+            .and_then(|c| c.session())
+            .is_some_and(|s| s.dead());
+        if dead {
+            let size = self.lifecycle.viewport().logical_size();
+            if inside([size[0] / 2.0 - 70.0, size[1] / 2.0 - 20.0, 140.0, 40.0]) {
+                return Some(ChamberHit::Respawn);
+            }
+        }
+        for (i, [x, y, w]) in self.chamber_slots().into_iter().enumerate() {
+            if inside([x, y, w, w]) {
+                return Some(ChamberHit::Slot(i));
+            }
+        }
+        None
+    }
+
+    /// The chamber's phone HUD in pixels: the hotbar, Leave, the
+    /// connection state, and Respawn after death. The authority's own HUD
+    /// (health, target, quests) comes with the engine frame.
+    fn chamber_ui(&self) -> verse::ui::UiBatch {
+        let mut ui = verse::ui::UiBatch::default();
+        let Some(play) = &self.chamber else {
+            return ui;
+        };
+        let scale = self.lifecycle.viewport().scale();
+        let atlas = &self.atlas;
+        let px = |v: f32| v * scale;
+        let [lx, ly, lw, lh] = self.chamber_leave_rect();
+        ui.rect(atlas, px(lx), px(ly), px(lw), px(lh), [0.1, 0.1, 0.12, 0.8]);
+        ui.text(atlas, px(lx + 12.0), px(ly + 9.0), "LEAVE", [1.0; 4]);
+        let size = self.lifecycle.viewport().logical_size();
+        if !play.joined() {
+            let message = play
+                .failed()
+                .map_or("Entering the chamber", |_| "The chamber refused");
+            ui.text(
+                atlas,
+                px(size[0] / 2.0 - 80.0),
+                px(size[1] / 2.0),
+                message,
+                [1.0; 4],
+            );
+            return ui;
+        }
+        for (i, [x, y, w]) in self.chamber_slots().into_iter().enumerate() {
+            ui.rect(atlas, px(x), px(y), px(w), px(w), [0.1, 0.1, 0.12, 0.7]);
+            ui.text(
+                atlas,
+                px(x + 6.0),
+                px(y + 4.0),
+                &format!("{}", i + 1),
+                [1.0, 0.9, 0.6, 1.0],
+            );
+            ui.text(
+                atlas,
+                px(x + 6.0),
+                px(y + w - 18.0),
+                CHAMBER_SLOTS[i].label(),
+                [0.9, 0.9, 0.9, 1.0],
+            );
+        }
+        if play.session().is_some_and(|s| s.dead()) {
+            ui.rect(
+                atlas,
+                px(size[0] / 2.0 - 70.0),
+                px(size[1] / 2.0 - 20.0),
+                px(140.0),
+                px(40.0),
+                [0.3, 0.05, 0.05, 0.85],
+            );
+            ui.text(
+                atlas,
+                px(size[0] / 2.0 - 36.0),
+                px(size[1] / 2.0 - 8.0),
+                "RESPAWN",
+                [1.0; 4],
+            );
+        }
+        ui
+    }
+
     fn hotbar_bottom(&self) -> f32 {
         self.insets[2] + STICK_MARGIN_POINTS + 2.0 * STICK_RADIUS_POINTS
     }
@@ -3502,6 +3821,7 @@ mod tests {
             bare: false,
             xp_preview: false,
             gym_notes: false,
+            ritual: None,
         })
         .unwrap()
     }
@@ -3734,6 +4054,7 @@ mod tests {
             bare: false,
             xp_preview: false,
             gym_notes: false,
+            ritual: None,
         })
         .unwrap()
     }
@@ -3813,6 +4134,7 @@ mod tests {
             bare: false,
             xp_preview: false,
             gym_notes: false,
+            ritual: None,
         })
         .unwrap();
         restored.activate(true).unwrap();
@@ -4707,6 +5029,7 @@ mod tests {
             bare: true,
             xp_preview: false,
             gym_notes: false,
+            ritual: None,
         };
         // Online, it selects the public relay unless another is named.
         let online = Scene::new(config(None, false)).unwrap();
@@ -4796,6 +5119,7 @@ mod tests {
             bare: true,
             xp_preview: false,
             gym_notes: false,
+            ritual: None,
         }
     }
 
@@ -4820,11 +5144,65 @@ mod tests {
             bare: true,
             xp_preview: false,
             gym_notes: false,
+            ritual: None,
         })
         .unwrap();
         scene.activate(true).unwrap();
         scene.update(1.0).unwrap();
         scene
+    }
+
+    #[test]
+    fn the_ritual_arch_opens_the_chamber_and_a_refused_connection_returns_to_the_grid() {
+        let mut scene = Scene::new(Config {
+            ritual: Some("/nonexistent/ritual.json".into()),
+            ..bare_config(None)
+        })
+        .unwrap();
+        scene.activate(true).unwrap();
+        scene.update(1.0).unwrap();
+        let gate = scene.world.ritual_gate().expect("the RITUAL arch");
+        let (front, away) = gate.front();
+        scene
+            .world
+            .place_player(front, away + std::f32::consts::PI)
+            .unwrap();
+        let forward = InputState {
+            forward: true,
+            ..InputState::default()
+        };
+        let mut t = 1.0;
+        let mut entered = false;
+        for _ in 0..240 {
+            t += 1.0 / 60.0;
+            scene.update_with_input(t, Some(forward.clone())).unwrap();
+            if scene.in_chamber() {
+                entered = true;
+                break;
+            }
+        }
+        assert!(entered, "walking through the arch opens the chamber");
+        // The Grid's presence rests while the chamber is open, and the HUD
+        // says the chamber is being entered.
+        assert!(scene.session.is_none());
+        assert!(scene.chamber_frame([800, 1200]).unwrap().is_none());
+        assert!(!scene.map_ui().vertices.is_empty());
+        // The connection fails on its thread; the next frames return the
+        // player to the Grid in front of the arch with the reason shown.
+        let mut returned = false;
+        for _ in 0..300 {
+            t += 1.0 / 60.0;
+            scene.update_with_input(t, None).unwrap();
+            if !scene.in_chamber() {
+                returned = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(returned, "a refused chamber returns the player");
+        assert!(scene.error.is_some());
+        assert!(scene.world.is_plaza());
+        assert!(scene.world.player.pos.distance(front) < 0.5);
     }
 
     #[test]
