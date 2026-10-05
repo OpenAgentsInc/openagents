@@ -1,0 +1,448 @@
+{
+  "schema": "verse.battle.acceptance.evidence.v1",
+  "acceptance": "failed",
+  "compiled_revisions": {
+    "host": "4a4a128cf8bd78fdfa014c88d6049e91686058f0",
+    "native_client": "98d816f4d6b37cc36f1da8200f22d2eb328e963b",
+    "headless_clients": "98d816f4d6b37cc36f1da8200f22d2eb328e963b"
+  },
+  "wire_version": 28,
+  "workload": {
+    "players": 20,
+    "live_hostiles": 40,
+    "persistent": true,
+    "delay_mode": "scheduled",
+    "delay_ms": 40,
+    "jitter_ms": 20
+  },
+  "movement_expiry": {
+    "total": 309,
+    "admission": 1,
+    "primary_tick": 15,
+    "additional_tick": 293,
+    "bootstrap": 1,
+    "omitted": 277
+  },
+  "steady_measurements": {
+    "client_preparation_cpu_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.36070800000000003,
+      "p95": 1.322583,
+      "p99": 1.657917,
+      "maximum": 5.4527079999999994
+    },
+    "command_finish_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.393375,
+      "p95": 5.647125,
+      "p99": 7.038583,
+      "maximum": 9.662125000000001
+    },
+    "command_turnaround_ms": {
+      "samples": 727,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 167.036208,
+      "p95": 214.794375,
+      "p99": 251.82716599999998,
+      "maximum": 309.79116600000003
+    },
+    "command_verified_to_sample_ms": {
+      "samples": 730,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 5.575875,
+      "p95": 14.94125,
+      "p99": 18.703375,
+      "maximum": 22.086042
+    },
+    "events_turnaround_ms": {
+      "samples": 195,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 169.873833,
+      "p95": 222.86054199999998,
+      "p99": 253.65995800000002,
+      "maximum": 270.478916
+    },
+    "events_verified_to_sample_ms": {
+      "samples": 196,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 6.0735,
+      "p95": 13.914124999999999,
+      "p99": 20.971708,
+      "maximum": 25.933791000000003
+    },
+    "frame_interval_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 10.755749999999999,
+      "p95": 19.597916,
+      "p99": 25.00825,
+      "maximum": 32.94
+    },
+    "gpu_overlay_ms": {
+      "samples": 3637,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.017625,
+      "p95": 0.097042,
+      "p99": 6.996791,
+      "maximum": 13.139458
+    },
+    "gpu_query_poll_cpu_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.01225,
+      "p95": 0.430709,
+      "p99": 0.539833,
+      "maximum": 10.033042
+    },
+    "gpu_shadow_ms": {
+      "samples": 3637,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 1.513417,
+      "p95": 2.183959,
+      "p99": 3.442625,
+      "maximum": 8.735917
+    },
+    "gpu_total_ms": {
+      "samples": 3637,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 2.345958,
+      "p95": 12.060417,
+      "p99": 14.066875,
+      "maximum": 16.950958
+    },
+    "gpu_world_ms": {
+      "samples": 3637,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.657708,
+      "p95": 10.209,
+      "p99": 12.196375,
+      "maximum": 14.899625
+    },
+    "input_channel_depth": {
+      "samples": 1194,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 1.0,
+      "maximum": 7.0
+    },
+    "inventory_turnaround_ms": {
+      "samples": 39,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 169.416875,
+      "p95": 236.974458,
+      "p99": 252.871542,
+      "maximum": 252.871542
+    },
+    "inventory_verified_to_sample_ms": {
+      "samples": 39,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.324166,
+      "p95": 19.681082999999997,
+      "p99": 20.962457999999998,
+      "maximum": 20.962457999999998
+    },
+    "overlay_encode_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0022500000000000003,
+      "p95": 0.003708,
+      "p99": 0.005,
+      "maximum": 0.035500000000000004
+    },
+    "pending_requests": {
+      "samples": 1194,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 5.0,
+      "p95": 6.0,
+      "p99": 7.0,
+      "maximum": 7.0
+    },
+    "prepare_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 2.714834,
+      "p95": 3.6785419999999998,
+      "p99": 4.284417,
+      "maximum": 8.134792000000001
+    },
+    "present_call_cpu_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0165,
+      "p95": 0.027292,
+      "p99": 0.045083000000000005,
+      "maximum": 10.089374999999999
+    },
+    "presentation_encode_cpu_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.110708,
+      "p95": 0.194666,
+      "p99": 0.218333,
+      "maximum": 2.068166
+    },
+    "presentation_queue_submit_cpu_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.044,
+      "p95": 0.43116600000000005,
+      "p99": 0.548542,
+      "maximum": 1.179166
+    },
+    "queue_submit_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.770625,
+      "p95": 11.219125,
+      "p99": 17.183917,
+      "maximum": 26.132084
+    },
+    "rendered_snapshot_applied_age_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 94.72016699999999,
+      "p95": 193.933541,
+      "p99": 260.383292,
+      "maximum": 442.215084
+    },
+    "sdk_verified_snapshot_age_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 89.956417,
+      "p95": 189.059625,
+      "p99": 254.97204200000002,
+      "maximum": 436.346208
+    },
+    "shadow_encode_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.566666,
+      "p95": 0.882667,
+      "p99": 1.0939590000000001,
+      "maximum": 3.1142499999999997
+    },
+    "snapshot_turnaround_ms": {
+      "samples": 228,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 173.12908299999998,
+      "p95": 222.64675,
+      "p99": 253.260459,
+      "maximum": 267.809625
+    },
+    "snapshot_verified_to_sample_ms": {
+      "samples": 229,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 5.448958,
+      "p95": 13.904625000000001,
+      "p99": 19.0095,
+      "maximum": 21.013417
+    },
+    "surface_acquire_cpu_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.078709,
+      "p95": 6.2252089999999995,
+      "p99": 9.124792,
+      "maximum": 17.598292
+    },
+    "surface_configure_cpu_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "maximum": 0.0
+    },
+    "total_draw_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 8.970166,
+      "p95": 18.273208,
+      "p99": 23.557334,
+      "maximum": 32.2635
+    },
+    "update_channel_depth": {
+      "samples": 1194,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 2.0,
+      "p99": 3.0,
+      "maximum": 4.0
+    },
+    "window_present_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.255083,
+      "p95": 6.729792,
+      "p99": 9.598458,
+      "maximum": 18.365458
+    },
+    "world_encode_ms": {
+      "samples": 3641,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.157,
+      "p95": 0.264292,
+      "p99": 0.352834,
+      "maximum": 2.4816249999999997
+    }
+  },
+  "reset_reasons": {
+    "control_epoch": 21,
+    "teleport": 1
+  },
+  "prediction_correction_meters": {
+    "samples": 220,
+    "omitted": 0,
+    "median": 0.0,
+    "p95": 0.0,
+    "max": 0.28111985325813293
+  },
+  "load_summary": {
+    "completed": 19,
+    "minimum_observed_maximum_players": 20,
+    "minimum_live_hostiles": 40,
+    "movement_inputs": 26900,
+    "input_pressure": 0
+  },
+  "proxy": {
+    "schema": "verse.delayed-route.v2",
+    "delay_ms": 40,
+    "jitter_ms": 20,
+    "delay_mode": "scheduled",
+    "delay_queue_capacity": 32,
+    "delay_queue_peak": 5,
+    "connections": 20,
+    "upstream_bytes": 11244024,
+    "downstream_bytes": 206291825,
+    "forwarded_chunks": 60159,
+    "errors": 6,
+    "refused_connections": 0,
+    "error_details": [
+      {
+        "elapsed_seconds": 83.734834417,
+        "direction": "downstream",
+        "type": "ConnectionResetError",
+        "errno": 54
+      },
+      {
+        "elapsed_seconds": 83.73790662500001,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 54
+      },
+      {
+        "elapsed_seconds": 83.73893662500001,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 54
+      },
+      {
+        "elapsed_seconds": 83.73915875,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 54
+      },
+      {
+        "elapsed_seconds": 83.749651708,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 54
+      },
+      {
+        "elapsed_seconds": 83.749693083,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 54
+      }
+    ],
+    "omitted_error_details": 0,
+    "limits": [
+      "Delay applies to each TCP read chunk, not decrypted game messages.",
+      "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+      "Serial mode adds delay after each read and also limits chunk throughput.",
+      "TCP preserves byte order; this fixture does not simulate packet loss."
+    ],
+    "wall_seconds": 83.86032625
+  },
+  "exits": {
+    "clients": {
+      "primary": 0,
+      "load": 0
+    },
+    "host": 0,
+    "proxy": 0
+  },
+  "limitations": [
+    "Movement expiry target is not met.",
+    "A shared-load run cannot establish causality against earlier runs.",
+    "Input-to-display latency and one-way network age are not measured.",
+    "Only the native primary renders; headless players establish server workload, not multi-device rendering performance.",
+    "Histogram quantiles in host.log are upper bounds.",
+    "Six proxy errors are retained without causal classification. Context histories retain at most eight transitions; omitted counts are recorded per player."
+  ],
+  "diagnosis": "Actor 240 epoch 2 producer cursor reaches 728 at verified credit 716 while confirmed step remains 688. The producer accounts for partial packet remainders, but multiple requests are outstanding and one local interval is queued. The first server expiry occurs at world step 724 with an empty authority queue. Investigate worker dispatch and ordered response delay; producer exhaustion alone does not explain this sample.",
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "98d816f4d6b37cc36f1da8200f22d2eb328e963b",
+      "verse_load": "98d816f4d6b37cc36f1da8200f22d2eb328e963b"
+    },
+    "wire_version": 28,
+    "sha256": {
+      "verse_remote": "f7ff405271605325ed43bfd54f0fbba4830aa2a1e2cc2a1fc2830b76559dd015",
+      "verse_load": "ad9b82dd2f3f6ee932c63f6afba5e2a370f6b233f5ffecca508eb4af34e7dccc"
+    },
+    "client_platform": "macOS arm64",
+    "client_features": [
+      "imported-desktop",
+      "remote-chamber"
+    ],
+    "movement_send_steps": 6,
+    "authority_credit_source": "verified control.credit_step",
+    "periodic_reads_reserve_gameplay_slot": true,
+    "tracked_teleport_barrier": true,
+    "obsolete_inputs_retire_without_reads": true,
+    "independent_checkpoint_credit": true,
+    "bounded_interval_batch_steps": 12,
+    "casts_preserve_movement_production": true,
+    "producer_timing_window_capacity": 128,
+    "tested_load_base": "98d816f4d6b37cc36f1da8200f22d2eb328e963b",
+    "producer_transition_capacity": 8,
+    "credit_remainder_packets": true
+  }
+}

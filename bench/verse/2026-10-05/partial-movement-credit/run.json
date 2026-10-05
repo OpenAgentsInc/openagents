@@ -21,6 +21,37 @@
   ],
   "limitations": [
     "An initial regression fixture used an invalid prediction time delta and failed; the corrected fixture uses two valid advances and all focused tests pass.",
-    "Updated client builds and crowded performance acceptance remain pending."
-  ]
+    "The delayed crowded capture completes, but fails performance acceptance with 309 movement expiries; see ../all-interval-coderos-partial-credit-scheduled/run.json."
+  ],
+  "published_revision": "98d816f4d6b37cc36f1da8200f22d2eb328e963b",
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "98d816f4d6b37cc36f1da8200f22d2eb328e963b",
+      "verse_load": "98d816f4d6b37cc36f1da8200f22d2eb328e963b"
+    },
+    "wire_version": 28,
+    "sha256": {
+      "verse_remote": "f7ff405271605325ed43bfd54f0fbba4830aa2a1e2cc2a1fc2830b76559dd015",
+      "verse_load": "ad9b82dd2f3f6ee932c63f6afba5e2a370f6b233f5ffecca508eb4af34e7dccc"
+    },
+    "client_platform": "macOS arm64",
+    "client_features": [
+      "imported-desktop",
+      "remote-chamber"
+    ],
+    "movement_send_steps": 6,
+    "authority_credit_source": "verified control.credit_step",
+    "periodic_reads_reserve_gameplay_slot": true,
+    "tracked_teleport_barrier": true,
+    "obsolete_inputs_retire_without_reads": true,
+    "independent_checkpoint_credit": true,
+    "bounded_interval_batch_steps": 12,
+    "casts_preserve_movement_production": true,
+    "producer_timing_window_capacity": 128,
+    "tested_load_base": "98d816f4d6b37cc36f1da8200f22d2eb328e963b",
+    "producer_transition_capacity": 8,
+    "credit_remainder_packets": true,
+    "status": "complete",
+    "wall_seconds": 321
+  }
 }

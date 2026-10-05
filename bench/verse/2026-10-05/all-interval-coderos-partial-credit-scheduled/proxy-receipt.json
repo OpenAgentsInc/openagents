@@ -1,0 +1,60 @@
+{
+  "schema": "verse.delayed-route.v2",
+  "delay_ms": 40,
+  "jitter_ms": 20,
+  "delay_mode": "scheduled",
+  "delay_queue_capacity": 32,
+  "delay_queue_peak": 5,
+  "connections": 20,
+  "upstream_bytes": 11244024,
+  "downstream_bytes": 206291825,
+  "forwarded_chunks": 60159,
+  "errors": 6,
+  "refused_connections": 0,
+  "error_details": [
+    {
+      "elapsed_seconds": 83.734834417,
+      "direction": "downstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.73790662500001,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.73893662500001,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.73915875,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.749651708,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.749693083,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    }
+  ],
+  "omitted_error_details": 0,
+  "limits": [
+    "Delay applies to each TCP read chunk, not decrypted game messages.",
+    "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+    "Serial mode adds delay after each read and also limits chunk throughput.",
+    "TCP preserves byte order; this fixture does not simulate packet loss."
+  ],
+  "wall_seconds": 83.86032625
+}
