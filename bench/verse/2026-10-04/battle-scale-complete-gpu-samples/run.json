@@ -1,0 +1,51 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 30,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": true,
+    "compiled_revisions": {
+      "host": "ad37ac9d3f",
+      "clients": "ad37ac9d3f"
+    },
+    "fixture_revision": "ad37ac9d3faa8e3a0a60a52dbe7dc0fd36561690",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "build": {
+    "cargo_profile": "dev",
+    "package_opt_level_3": [
+      "verse",
+      "verse-engine",
+      "verse-world",
+      "physics",
+      "wgpu",
+      "wgpu-core",
+      "wgpu-hal",
+      "naga"
+    ],
+    "limits": [
+      "Development-profile package overrides already optimize the listed engine crates; the Cargo banner alone does not describe their optimization."
+    ]
+  },
+  "stability": "All twenty connections and processes complete; occupancy samples retain forty live hostile NPCs.",
+  "limits": [
+    "1281 GPU frames submitted, 1278 valid completed samples retained, one out-of-order sample rejected, and two pending. No coalescing loss, map errors, or ring-busy frames occur.",
+    "279 updates deliver multiple completed samples; all are included in the GPU distribution.",
+    "GPU span p95 is 6.435 ms; CPU command finalization p95 19.152 ms; native frame p95 28.056 ms. The 16.7 ms target remains unmet.",
+    "GPU boundary spans include inter-pass gaps; GPU timing remains opt-in.",
+    "Correction p95 is 0.444 m, maximum 1.062 m; battle movement acceptance remains unproved.",
+    "Simulation p99 histogram upper bound is 33.333 ms, maximum 130.534 ms.",
+    "Storage is disabled; headless movement is legacy, not the interval lane.",
+    "Thirty-second shared-hardware run is not an isolated client benchmark or persistent soak. Input-to-display latency remains unmeasured."
+  ]
+}
