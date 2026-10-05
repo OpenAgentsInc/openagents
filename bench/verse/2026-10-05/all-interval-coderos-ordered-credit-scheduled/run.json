@@ -72,7 +72,7 @@
     "Repeatability, impaired-network, input-to-display, and soak acceptance remain unproven.",
     "One completed baseline does not establish full roadmap acceptance.",
     "Proxy delay applies to ordered TCP chunks and does not simulate packet loss.",
-    "Scheduled propagation delay preserves order and bounds buffering; receipt records one shutdown connection reset."
+    "Scheduled propagation delay preserves order and bounds buffering; the one recorded connection reset still requires classification."
   ],
   "movement_inputs": 15191,
   "producer_pressure": 0,
@@ -97,5 +97,6 @@
     "p95": 1.0,
     "p99": 5.0,
     "maximum": 7.0
-  }
+  },
+  "proxy_error_classification": "unresolved"
 }
