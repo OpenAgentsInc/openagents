@@ -72,6 +72,13 @@ opt-level = 3
 [profile.dev.package.naga]
 opt-level = 3
 
+# Metal command encoding repeatedly checks Objective-C method signatures.
+# Optimize the bridge and encoding parser while retaining debug assertions.
+[profile.dev.package.objc2]
+opt-level = 3
+[profile.dev.package.objc2-encode]
+opt-level = 3
+
 # The profile `scripts/build-plugin-guests.sh` builds Wasm guests with. The
 # guests are checked in and inlined into `programs/evidence-guests.json`,
 # so size is a review cost. No native build uses it.

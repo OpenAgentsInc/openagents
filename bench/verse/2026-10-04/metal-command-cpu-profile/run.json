@@ -1,0 +1,60 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": true,
+    "compiled_revisions": {
+      "host": "ad37ac9d3f",
+      "clients": "ad37ac9d3f"
+    },
+    "fixture_revision": "dde8f7df1231ebfc5eb8069e4c19cd4bc5aa22cd",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "cpu_sample": {
+    "main_thread_samples": 1759,
+    "command_finish_samples": 1182,
+    "observation": "Metal command encoding repeatedly calls objc2 signature verification and objc2-encode parsing.",
+    "artifact": "steady-stack.txt"
+  },
+  "baseline": {
+    "frame_interval_ms": {
+      "samples": 1731,
+      "omitted": 0,
+      "median": 32.258792,
+      "p95": 43.281958,
+      "max": 7561.039958
+    },
+    "command_finish_ms": {
+      "samples": 1731,
+      "omitted": 0,
+      "median": 22.834332999999997,
+      "p95": 30.429792,
+      "max": 145.877
+    },
+    "gpu_total_ms": {
+      "samples": 1730,
+      "omitted": 0,
+      "median": 2.0285,
+      "p95": 7.662458,
+      "max": 27.955417
+    }
+  },
+  "limits": [
+    "Sample captures CPU call stacks, not input-to-display latency.",
+    "Native client, host, and load generator share hardware; CPU sampling and a later dependency build overlap this diagnostic run.",
+    "Binary source ad37ac9d3f predates selected-only nameplates and current upstream service work.",
+    "Storage is disabled; headless clients use legacy movement.",
+    "No twenty-player battle acceptance or roadmap completion is claimed."
+  ]
+}

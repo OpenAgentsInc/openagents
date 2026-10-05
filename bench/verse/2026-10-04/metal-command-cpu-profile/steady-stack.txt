@@ -1,0 +1,362 @@
+Steady-state sample: native client, three seconds, 1 ms interval.
+Selected render call path and collapsed summaries; loaded-image inventory omitted.
+
+    +                                         !     :                     |   1738 _RNvMs_NtNtNtCs2Dj6B6WXQes_5winit13platform_impl5macos13event_handlerNtB4_12EventHandler12handle_event  (in verse_remote) + 340  [0x1015aad08]
+    +                                         !     :                     |     1738 _RNvXsu_NtCslJsSqIQKwiA_5alloc5boxedINtB5_3BoxDG_INtNtNtCsgtPOCBgevO_4core3ops8function5FnMutTINtNtCs2Dj6B6WXQes_5winit5event5EventNtNtNtNtB1y_13platform_impl5macos9app_state23HandlePendingUserEventsERL0_NtNtB1y_10event_loop15ActiveEventLoopEEp6OutputuEL_EIBL_TB1t_RB3f_EE8call_mutB1y_  (in verse_remote) + 84  [0x1015ed918]
+    +                                         !     :                     |       1738 _RNCINvNtNtNtCs2Dj6B6WXQes_5winit13platform_impl5macos10event_loop14map_user_eventuNCINvMs4_NtBa_10event_loopINtB1r_9EventLoopuE7run_appNtNtNtCs1Xggz9mHYcJ_5verse8imported13remote_window3AppE0E0B2f_  (in verse_remote) + 736  [0x100fcc714]
+    +                                         !     :                     |         1582 _RNvXs_NtNtCs1Xggz9mHYcJ_5verse8imported13remote_windowNtB4_3AppNtNtCs2Dj6B6WXQes_5winit11application18ApplicationHandler12window_event  (in verse_remote) + 8212  [0x100f55978]
+    +                                         !     :                     |         + 1579 _RNvMs3_NtCs1Xggz9mHYcJ_5verse8importedNtB5_8Renderer9draw_live  (in verse_remote) + 164  [0x100fe89c0]
+    +                                         !     :                     |         + ! 1578 _RNvMs3_NtCs1Xggz9mHYcJ_5verse8importedNtB5_8Renderer18draw_live_resolved  (in verse_remote) + 204  [0x100fe2ca8]
+    +                                         !     :                     |         + ! : 1182 _RNvMs3_NtCs1Xggz9mHYcJ_5verse8importedNtB5_8Renderer10draw_frame  (in verse_remote) + 17740  [0x100fe0684]
+    +                                         !     :                     |         + ! : | 1182 _RNvMNtNtCsaOUL3nbWUCQ_4wgpu3api15command_encoderNtB2_14CommandEncoder6finish  (in verse_remote) + 40  [0x101277f88]
+    +                                         !     :                     |         + ! : |   1182 _RNvXsI_NtNtCsaOUL3nbWUCQ_4wgpu7backend9wgpu_coreNtB5_18CoreCommandEncoderNtNtB9_8dispatch23CommandEncoderInterface6finish  (in verse_remote) + 60  [0x101260984]
+    +                                         !     :                     |         + ! : |     1182 _RNvMsh_NtCs4tGja8HPLGF_9wgpu_core7commandNtNtB7_6global6Global22command_encoder_finish  (in verse_remote) + 72  [0x10131ad48]
+    +                                         !     :                     |         + ! : |       1137 _RNvMs9_NtCs4tGja8HPLGF_9wgpu_core7commandNtB5_14CommandEncoder6finish  (in verse_remote) + 1408  [0x10136e8d0]
+    +                                         !     :                     |         + ! : |       + 573 _RNvNtNtCs4tGja8HPLGF_9wgpu_core7command6render18encode_render_pass  (in verse_remote) + 14120  [0x1013a9364]
+    +                                         !     :                     |         + ! : |       + ! 287 _RNvMs3_NtNtCs4tGja8HPLGF_9wgpu_core7command6bundleNtB5_12RenderBundle7execute  (in verse_remote) + 400  [0x1012e20f8]
+    +                                         !     :                     |         + ! : |       + ! : 219 _RNvXs2_NtNtCskykxz3ZGoQe_8wgpu_hal5metal7commandNtB7_14CommandEncoderNtB9_14CommandEncoder14set_bind_group  (in verse_remote) + 488  [0x1013de894]
+    +                                         !     :                     |         + ! : |       + ! : | 105 _RNvMs0_NtNtCskykxz3ZGoQe_8wgpu_hal5metal7commandNtB7_14CommandEncoder23update_bind_group_state  (in verse_remote) + 1284  [0x1013d5648]
+    +                                         !     :                     |         + ! : |       + ! : | + 104 _RNvMs_NtNtCskykxz3ZGoQe_8wgpu_hal5metal7commandNtB4_7Encoder11set_texture  (in verse_remote) + 264  [0x1013f86f4]
+    +                                         !     :                     |         + ! : |       + ! : | + ! 104 _RNvNtNtCs5Baeohg2PCz_5objc27runtime16message_receiver14msg_send_check  (in verse_remote) + 116  [0x101cc0b38]
+    +                                         !     :                     |         + ! : |       + ! : | + !   103 _RNvNtNtCs5Baeohg2PCz_5objc27runtime16message_receiver20msg_send_check_class  (in verse_remote) + 124  [0x101cc0bcc]
+    +                                         !     :                     |         + ! : |       + ! : | + !   : 26 _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 952  [0x101cc87f8]
+    +                                         !     :                     |         + ! : |       + ! : | + !   : | 26 _RNvXs_NtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB4_18MethodEncodingIterNtNtNtNtCsgtPOCBgevO_4core4iter6traits8iterator8Iterator4next  (in verse_remote) + 68  [0x101cc18f4]
+    +                                         !     :                     |         + ! : |       + ! : | + !   : |   12 _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter16extract_encoding  (in verse_remote) + 44  [0x101cc02a4]
+    +                                         !     :                     |         + ! : |       + ! : | + !   : |   + 8 _RNvMNtCscAxbPxxCHR7_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 76  [0x101cd04a4]
+    +                                         !     :                     |         + ! : |       + ! : | + !   : |   + ! 7 _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser22parse_encoding_or_none  (in verse_remote) + 40  [0x101cd7608]
+
+Total number in stack (recursive counted multiple, when >=5):
+        231       _platform_memmove  (in libsystem_platform.dylib) + 0  [0x186a393c0]
+        226       _RNvXs_NtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB4_18MethodEncodingIterNtNtNtNtCsgtPOCBgevO_4core4iter6traits8iterator8Iterator4next  (in verse_remote) + 68  [0x101cc18f4]
+        152       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter16extract_encoding  (in verse_remote) + 44  [0x101cc02a4]
+        150       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter16extract_encoding  (in verse_remote) + 212  [0x101cc034c]
+        129       _RNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout  (in verse_remote) + 44  [0x101cc0ca8]
+        122       _RINvMNtCsgtPOCBgevO_4core3stre18trim_start_matchesNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0EBU_  (in verse_remote) + 56  [0x101cbdf68]
+        122       _RNvXso_NtNtCsgtPOCBgevO_4core3str7patternINtB5_21CharPredicateSearcherNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_8Searcher11next_rejectB1e_  (in verse_remote) + 24  [0x101ccec7c]
+        120       _RNvMNtCscAxbPxxCHR7_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 76  [0x101cd04a4]
+        119       _RNvYINtNtNtCsgtPOCBgevO_4core3str7pattern19MultiCharEqSearcherNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_8Searcher11next_rejectB16_  (in verse_remote) + 40  [0x101cced3c]
+        105       _RNvNtNtCs5Baeohg2PCz_5objc27runtime16message_receiver14msg_send_check  (in verse_remote) + 116  [0x101cc0b38]
+        101       _RNvNtNtCs5Baeohg2PCz_5objc27runtime16message_receiver20msg_send_check_class  (in verse_remote) + 124  [0x101cc0bcc]
+        92       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser22parse_encoding_or_none  (in verse_remote) + 40  [0x101cd7608]
+        76       _RNvXs8_NtNtCsgtPOCBgevO_4core3str7patternINtB5_19MultiCharEqSearcherNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_8Searcher4nextB1c_  (in verse_remote) + 148  [0x101cce464]
+        66       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 388  [0x101cc85c4]
+        65       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser11parse_inner  (in verse_remote) + 0  [0x101cd625c]
+        59       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 664  [0x101cc86d8]
+        58       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter15verify_receiver  (in verse_remote) + 44  [0x101cc004c]
+        57       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter10verify_sel  (in verse_remote) + 44  [0x101cbfd00]
+        57       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 100  [0x101cc84a4]
+        57       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 952  [0x101cc87f8]
+        56       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter14extract_return  (in verse_remote) + 40  [0x101cbff54]
+        55       _RNvNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPp20offset_from_unsigned18precondition_checkCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cc96a4]
+        50       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 1044  [0x101cc8854]
+        47       _RNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB5_3Sel19number_of_arguments  (in verse_remote) + 40  [0x101cc05f8]
+        47       _RNvXs3_NtNtCsgtPOCBgevO_4core3str4iterNtB5_11CharIndicesNtNtNtNtB9_4iter6traits8iterator8Iterator4nextCs5Baeohg2PCz_5objc2  (in verse_remote) + 132  [0x101cca450]
+        46       _RNvMNtCscAxbPxxCHR7_12objc2_encode8encodingNtB2_8Encoding17equivalent_to_box  (in verse_remote) + 56  [0x101cd4dd4]
+        46       _RNvXs1_NtNtNtCsgtPOCBgevO_4core4iter8adapters6filterINtB5_6FilterINtNtNtBb_5slice4iter4IterhENCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB1B_3Sel19number_of_arguments0ENtNtNtB9_6traits8iterator8Iterator5countB1D_  (in verse_remote) + 208  [0x101cca294]
+        42       _RNvMNtCscAxbPxxCHR7_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 64  [0x101cd0498]
+        42       _RNvMs3_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser24strip_leading_qualifiers  (in verse_remote) + 24  [0x101cd550c]
+        39       _RNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout  (in verse_remote) + 248  [0x101cc0d74]
+        39       _RNvXs3_NtNtCsgtPOCBgevO_4core3str4iterNtB5_11CharIndicesNtNtNtNtB9_4iter6traits8iterator8Iterator4nextCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cca3cc]
+        38       _RNvXs3_NtNtCsgtPOCBgevO_4core3str7patternNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0NtB5_11MultiCharEq7matchesBL_  (in verse_remote) + 28  [0x101cc1698]
+        38       _RNvXs8_NtNtCsgtPOCBgevO_4core3str7patternINtB5_19MultiCharEqSearcherNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_8Searcher4nextB1c_  (in verse_remote) + 324  [0x101cce514]
+        37       _RINvMNtCsgtPOCBgevO_4core3stre5parseiECs5Baeohg2PCz_5objc2  (in verse_remote) + 28  [0x101cbe020]
+        37       _RNvNtNtCs5Baeohg2PCz_5objc27runtime16message_receiver20msg_send_check_class  (in verse_remote) + 72  [0x101cc0b98]
+        36       _RINvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB7_4IterhENtNtNtNtBb_4iter6traits8iterator8Iterator4foldjNCINvNtNtBX_8adapters3map8map_foldRhjjNCINvNvXs1_NtB1J_6filterINtB2p_6FilterppEBR_5count8to_usizeB2a_NCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB3n_3Sel19number_of_arguments0E0NCINvXsK_NtBV_5accumjNtB4y_3Sum3sumINtB1H_3MapBE_B2e_EE0E0EB3p_  (in verse_remote) + 316  [0x101ccb0bc]
+        36       _RNvMss_NtCs5Baeohg2PCz_5objc27runtimeNtB5_8AnyClass15instance_methodB7_  (in verse_remote) + 32  [0x101cc08b0]
+        34       _RNvMs2_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser8try_peek  (in verse_remote) + 48  [0x101cd5244]
+        34       _RNvXsi_NtCsgtPOCBgevO_4core3numiNtNtNtB7_3str6traits7FromStr8from_strCs5Baeohg2PCz_5objc2  (in verse_remote) + 36  [0x101ccaa08]
+        29       _RNCINvNtNtNtCsgtPOCBgevO_4core4iter8adapters3map8map_foldRhjjNCINvNvXs1_NtB6_6filterINtB18_6FilterppENtNtNtB8_6traits8iterator8Iterator5count8to_usizeBT_NCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB2z_3Sel19number_of_arguments0E0NCINvXsK_NtB1F_5accumjNtB3K_3Sum3sumINtB4_3MapINtNtNtBa_5slice4iter4IterhEBX_EE0E0B2B_  (in verse_remote) + 60  [0x101cc3d68]
+        29       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser22parse_encoding_or_none  (in verse_remote) + 52  [0x101cd7614]
+        28       _RINvNtNtCsgtPOCBgevO_4core3str11validations15next_code_pointINtNtNtB6_5slice4iter4IterhEECs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cc2f80]
+        27       _RINvMs2_NtCscAxbPxxCHR7_12objc2_encode5parseNtB6_6Parser13consume_whileNCNvMs3_B6_BG_24strip_leading_qualifiers0EB8_  (in verse_remote) + 120  [0x101cd459c]
+        27       _RINvNtNtCsgtPOCBgevO_4core3str11validations15next_code_pointINtNtNtB6_5slice4iter4IterhEECs5Baeohg2PCz_5objc2  (in verse_remote) + 36  [0x101cc2fa4]
+        27       _RINvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB7_4IterhENtNtNtNtBb_4iter6traits8iterator8Iterator4foldjNCINvNtNtBX_8adapters3map8map_foldRhjjNCINvNvXs1_NtB1J_6filterINtB2p_6FilterppEBR_5count8to_usizeB2a_NCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB3n_3Sel19number_of_arguments0E0NCINvXsK_NtBV_5accumjNtB4y_3Sum3sumINtB1H_3MapBE_B2e_EE0E0EB3p_  (in verse_remote) + 0  [0x101ccaf80]
+        27       _RNCNvMs3_NtCscAxbPxxCHR7_12objc2_encode5parseNtB7_6Parser24strip_leading_qualifiers0B9_  (in verse_remote) + 44  [0x101cd4c74]
+        27       _RNvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB6_4IterhENtNtNtNtBa_4iter6traits8iterator8Iterator4nextCscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 0  [0x101cd34c0]
+        26       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter16extract_encoding  (in verse_remote) + 56  [0x101cc02b0]
+        26       _RNvXs8_NtNtCsgtPOCBgevO_4core3str7patternINtB5_19MultiCharEqSearcherNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_8Searcher4nextB1c_  (in verse_remote) + 0  [0x101cce3d0]
+        25       _RINvMNtCsgtPOCBgevO_4core5sliceSh3getjECscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 56  [0x101cceea4]
+        25       _RNvMNtCsgtPOCBgevO_4core5sliceSh8containsCscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 60  [0x101cd0804]
+        25       _RNvNtNtCsgtPOCBgevO_4core5slice6memchr6memchrCscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 0  [0x101cd85e4]
+        25       _RNvXs0_NtNtCsgtPOCBgevO_4core5slice5indexjINtB5_10SliceIndexShE3getCscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 0  [0x101cd8b68]
+        25       _RNvXsg_NtNtCsgtPOCBgevO_4core5slice3cmphNtB5_13SliceContains14slice_containsCscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 40  [0x101cd3c44]
+        24       DYLD-STUB$$memcpy  (in verse_remote) + 0  [0x101d7ec18]
+        24       _RNvMsj_NtCsgtPOCBgevO_4core3numi16from_ascii_radixCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cc7b3c]
+        23       _RNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0B7_  (in verse_remote) + 0  [0x101cbfb68]
+        23       _RNvXs8_NtNtCsgtPOCBgevO_4core3str7patternINtB5_19MultiCharEqSearcherNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_8Searcher4nextB1c_  (in verse_remote) + 268  [0x101cce4dc]
+        23       class_getInstanceMethod  (in libobjc.A.dylib) + 64  [0x1865dcb10]
+        22       method_t* getMethodFromListArray<method_list_t**>(method_list_t**, unsigned int, objc_selector*)  (in libobjc.A.dylib) + 0  [0x1865fa7a4]
+        21       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser11parse_inner  (in verse_remote) + 68  [0x101cd62a0]
+        21       _RNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout  (in verse_remote) + 164  [0x101cc0d20]
+        20       _RINvNtCscAxbPxxCHR7_12objc2_encode6helper17compare_encodingsNtNtB4_8encoding8EncodingNtNtB4_12encoding_box11EncodingBoxEB4_  (in verse_remote) + 384  [0x101ccf85c]
+        20       _RNCINvNvXs1_NtNtNtCsgtPOCBgevO_4core4iter8adapters6filterINtBa_6FilterppENtNtNtBe_6traits8iterator8Iterator5count8to_usizeRhNCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB26_3Sel19number_of_arguments0E0B28_  (in verse_remote) + 36  [0x101cc6a04]
+        20       _RNCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB7_3Sel19number_of_arguments0B9_  (in verse_remote) + 0  [0x101cbfad4]
+        20       _RNvXs2_NtNtCsgtPOCBgevO_4core3str6traitseINtNtNtB9_3ops5index5IndexINtNtBI_5range7RangeTojEE5indexCs5Baeohg2PCz_5objc2  (in verse_remote) + 56  [0x101cc5154]
+        20       _xzm_free  (in libsystem_malloc.dylib) + 0  [0x18684d06c]
+        19       _RNvMNtCsgtPOCBgevO_4core5sliceSNtNtCscAxbPxxCHR7_12objc2_encode6helper9Primitive8containsBx_  (in verse_remote) + 60  [0x101cd07bc]
+        19       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 1592  [0x101cc8a78]
+        19       _RNvNtCs5Baeohg2PCz_5objc26verify25relaxed_equivalent_to_box  (in verse_remote) + 524  [0x101cc8dd0]
+        18       _RNvXs8_NtNtCsgtPOCBgevO_4core3str6traitsINtNtNtB9_3ops5range7RangeTojEINtNtNtB9_5slice5index10SliceIndexeE5indexCs5Baeohg2PCz_5objc2  (in verse_remote) + 52  [0x101cc5644]
+        17       _RNvMNtCscAxbPxxCHR7_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 144  [0x101cd04e8]
+        17       _RNvXs8_NtNtCsgtPOCBgevO_4core3str6traitsINtNtNtB9_3ops5range7RangeTojEINtNtNtB9_5slice5index10SliceIndexeE3getCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cc54d0]
+        16       _RINvMNtCsgtPOCBgevO_4core3stre18trim_start_matchesNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0EBU_  (in verse_remote) + 44  [0x101cbdf5c]
+        16       _RNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0B7_  (in verse_remote) + 32  [0x101cbfb88]
+        16       _RNvMNtNtCsgtPOCBgevO_4core4char7methodsc14is_ascii_digitCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cc7678]
+        16       _RNvMNtNtCsgtPOCBgevO_4core4char7methodsc8to_digitCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cc76dc]
+        16       _RNvMsj_NtCsgtPOCBgevO_4core3numi16from_ascii_radixCs5Baeohg2PCz_5objc2  (in verse_remote) + 1848  [0x101cc8274]
+        16       _RNvXs5_NtCs6TNIXVaeDJm_10serde_json4readNtB5_9SliceReadNtB5_4Read9parse_str  (in verse_remote) + 40  [0x101c9357c]
+        15       _RINvMs2_NtCscAxbPxxCHR7_12objc2_encode5parseNtB6_6Parser13consume_whileNCNvMs3_B6_BG_24strip_leading_qualifiers0EB8_  (in verse_remote) + 32  [0x101cd4544]
+        15       _RNvMs2_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser4peek  (in verse_remote) + 24  [0x101cd510c]
+        15       _RNvMs2_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser9remaining  (in verse_remote) + 48  [0x101cd5288]
+        15       class_getInstanceMethod  (in libobjc.A.dylib) + 124  [0x1865dcb4c]
+        14       _RNCINvNtNtNtCsgtPOCBgevO_4core4iter8adapters3map8map_foldRhjjNCINvNvXs1_NtB6_6filterINtB18_6FilterppENtNtNtB8_6traits8iterator8Iterator5count8to_usizeBT_NCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB2z_3Sel19number_of_arguments0E0NCINvXsK_NtB1F_5accumjNtB3K_3Sum3sumINtB4_3MapINtNtNtBa_5slice4iter4IterhEBX_EE0E0B2B_  (in verse_remote) + 0  [0x101cc3d2c]
+        14       _RNvMNtCscAxbPxxCHR7_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 136  [0x101cd04e0]
+        14       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter10verify_sel  (in verse_remote) + 416  [0x101cbfe74]
+        14       _RNvXs2_NtNtCsgtPOCBgevO_4core3str6traitseINtNtNtB9_3ops5index5IndexINtNtBI_5range9RangeFromjEE5indexCscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 56  [0x101cd3668]
+        14       _RNvXsf_NtNtCsgtPOCBgevO_4core5slice3cmpNtNtCscAxbPxxCHR7_12objc2_encode6helper9PrimitiveNtB5_13SliceContains14slice_containsBF_  (in verse_remote) + 108  [0x101cd3c10]
+        14       _RNvXsp_NtCsgtPOCBgevO_4core6resultINtB5_6ResultNtNtCscAxbPxxCHR7_12objc2_encode5parse10ParseInnerNtBL_9ErrorKindENtNtNtB7_3ops9try_trait3Try6branchBN_  (in verse_remote) + 132  [0x101cd3dfc]
+        13       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value3serNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtB7_3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_remote) + 696  [0x101801358]
+        13       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter15verify_receiver  (in verse_remote) + 416  [0x101cc01c0]
+        13       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter16extract_encoding  (in verse_remote) + 200  [0x101cc0340]
+        13       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 868  [0x101cc87a4]
+        12       _RINvNtCskC31LtX6uSf_16objc2_foundation6string13init_with_strNtNtNtB4_9generated10___NSString8NSStringEB4_  (in verse_remote) + 252  [0x101cba7b8]
+        12       _RINvXNtNtCs5Baeohg2PCz_5objc215___macro_helpers17msg_send_retainedINtNtB5_13method_family12MethodFamilyKh3_EINtB3_7MsgSendINtNtNtB7_2rc22allocated_partial_init9AllocatedNtNtNtCskC31LtX6uSf_16objc2_foundation9generated10___NSString8NSStringEINtNtB21_8retained8RetainedB2H_EE12send_messageTPNtNtCsgtPOCBgevO_4core3ffi6c_voidjjEEB2N_  (in verse_remote) + 224  [0x101cb5700]
+        12       _RNvMs0_NtCskC31LtX6uSf_16objc2_foundation6stringNtNtNtB7_9generated10___NSString8NSString8from_str  (in verse_remote) + 44  [0x101cb7ab0]
+        12       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 0  [0x101cc8440]
+        12       _RNvXs3_NtNtCsgtPOCBgevO_4core3str4iterNtB5_11CharIndicesNtNtNtNtB9_4iter6traits8iterator8Iterator4nextCs5Baeohg2PCz_5objc2  (in verse_remote) + 96  [0x101cca42c]
+        12       _RNvXsp_NtCsgtPOCBgevO_4core6resultINtB5_6ResultNtNtCscAxbPxxCHR7_12objc2_encode12encoding_box11EncodingBoxNtNtBN_5parse10ParseErrorENtNtNtB7_3ops9try_trait3Try6branchCs5Baeohg2PCz_5objc2  (in verse_remote) + 176  [0x101cc5d88]
+        12       _RNvXsp_NtCsgtPOCBgevO_4core6resultINtB5_6ResultNtNtCscAxbPxxCHR7_12objc2_encode5parse10ParseInnerNtBL_9ErrorKindENtNtNtB7_3ops9try_trait3Try6branchBN_  (in verse_remote) + 116  [0x101cd3dec]
+        12       _platform_memset  (in libsystem_platform.dylib) + 0  [0x186a390f0]
+        12       start_wqthread  (in libsystem_pthread.dylib) + 8  [0x186a2ac10]
+        11       _RINvNtCscAxbPxxCHR7_12objc2_encode6helper17compare_encodingsNtNtB4_8encoding8EncodingNtNtB4_12encoding_box11EncodingBoxEB4_  (in verse_remote) + 104  [0x101ccf744]
+        11       _RINvYONtNtCs5Baeohg2PCz_5objc27runtime9AnyObjectNtNtB6_16message_receiver15MessageReceiver12send_messageTPNtNtCsgtPOCBgevO_4core3ffi6c_voidjjEONtNtNtCskC31LtX6uSf_16objc2_foundation9generated10___NSString8NSStringEB2n_  (in verse_remote) + 160  [0x101cb6b80]
+        11       _RINvYQINtNtCs6TNIXVaeDJm_10serde_json3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEENtNtCs95MRL9ERuTW_10serde_core3ser10Serializer11collect_seqRIBR_NtNtB9_5value5ValueEECs6QdLU3ngKge_11verse_world  (in verse_remote) + 204  [0x101808424]
+        11       _RNCINvNtNtNtCsgtPOCBgevO_4core4iter8adapters3map8map_foldRhjjNCINvNvXs1_NtB6_6filterINtB18_6FilterppENtNtNtB8_6traits8iterator8Iterator5count8to_usizeBT_NCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB2z_3Sel19number_of_arguments0E0NCINvXsK_NtB1F_5accumjNtB3K_3Sum3sumINtB4_3MapINtNtNtBa_5slice4iter4IterhEBX_EE0E0B2B_  (in verse_remote) + 116  [0x101cc3da0]
+        11       _RNCINvNvXs1_NtNtNtCsgtPOCBgevO_4core4iter8adapters6filterINtBa_6FilterppENtNtNtBe_6traits8iterator8Iterator5count8to_usizeRhNCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB26_3Sel19number_of_arguments0E0B28_  (in verse_remote) + 0  [0x101cc69e0]
+        11       _RNCINvXsK_NtNtNtCsgtPOCBgevO_4core4iter6traits5accumjNtB8_3Sum3sumINtNtNtBc_8adapters3map3MapINtNtNtBe_5slice4iter4IterhENCINvNvXs1_NtB17_6filterINtB26_6FilterppENtNtBa_8iterator8Iterator5count8to_usizeRhNCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB3o_3Sel19number_of_arguments0E0EE0B3q_  (in verse_remote) + 0  [0x101cbfa8c]
+        11       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser22parse_encoding_or_none  (in verse_remote) + 268  [0x101cd76ec]
+        11       _RNvNtCs5Baeohg2PCz_5objc26verify25relaxed_equivalent_to_box  (in verse_remote) + 0  [0x101cc8bc4]
+        11       _RNvNvMs9_NtCsgtPOCBgevO_4core3numj13unchecked_add18precondition_checkCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cc9704]
+        11       _RNvXNtNtCskykxz3ZGoQe_8wgpu_hal7dynamic6deviceNtNtB6_5metal6DeviceNtB2_9DynDevice13create_bufferCs4tGja8HPLGF_9wgpu_core  (in verse_remote) + 32  [0x10130021c]
+        11       _RNvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB6_4IterNtNtCscAxbPxxCHR7_12objc2_encode8encoding8EncodingENtNtNtNtBa_4iter6traits8iterator8Iterator4nextBS_  (in verse_remote) + 0  [0x101cd3388]
+        11       _RNvXs8_NtNtCsgtPOCBgevO_4core3str7patternINtB5_19MultiCharEqSearcherNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_8Searcher4nextB1c_  (in verse_remote) + 112  [0x101cce440]
+        11       _RNvXs_NtNtNtCsgtPOCBgevO_4core4iter8adapters9enumerateINtB4_9EnumerateINtNtNtBa_5slice4iter4IterNtNtCscAxbPxxCHR7_12objc2_encode8encoding8EncodingEENtNtNtB8_6traits8iterator8Iterator4nextCs5Baeohg2PCz_5objc2  (in verse_remote) + 28  [0x101cc5724]
+        11       mach_msg2_internal  (in libsystem_kernel.dylib) + 76  [0x1869fe574]
+        11       mach_msg2_trap  (in libsystem_kernel.dylib) + 0  [0x1869ebc2c]
+        10       _RINvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB6_9SliceRead15parse_str_byteseINvB6_6as_strBD_EEB8_  (in verse_remote) + 88  [0x101c8ec14]
+        10       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeQINtNtB7_2de12DeserializerNtNtB7_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_remote) + 424  [0x10181dc48]
+        10       _RINvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB7_4IterhENtNtNtNtBb_4iter6traits8iterator8Iterator4foldjNCINvNtNtBX_8adapters3map8map_foldRhjjNCINvNvXs1_NtB1J_6filterINtB2p_6FilterppEBR_5count8to_usizeB2a_NCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB3n_3Sel19number_of_arguments0E0NCINvXsK_NtBV_5accumjNtB4y_3Sum3sumINtB1H_3MapBE_B2e_EE0E0EB3p_  (in verse_remote) + 360  [0x101ccb0e8]
+        10       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter16extract_encoding  (in verse_remote) + 364  [0x101cc03e4]
+        10       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter16extract_encoding  (in verse_remote) + 384  [0x101cc03f8]
+        10       _RNvMs2_NtNtCsaOUL3nbWUCQ_4wgpu3api5queueNtB5_5Queue12write_buffer  (in verse_remote) + 56  [0x101271470]
+        10       _RNvMs4_NtCscAxbPxxCHR7_12objc2_encode6helperNtB5_6Helper3new  (in verse_remote) + 0  [0x101cd1cd8]
+        10       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser22parse_encoding_or_none  (in verse_remote) + 284  [0x101cd76fc]
+        10       _RNvMs6_NtNtCs4tGja8HPLGF_9wgpu_core6device5queueNtNtB9_6global6Global18queue_write_buffer  (in verse_remote) + 148  [0x10131a7ec]
+        10       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 288  [0x101cc8560]
+        10       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 72  [0x101cc8488]
+        10       _RNvXs6_NtCscAxbPxxCHR7_12objc2_encode6helperNtNtB7_8encoding8EncodingNtB5_12EncodingType6helper  (in verse_remote) + 24  [0x101cd95dc]
+        10       io_connect_method  (in IOKit) + 520  [0x18ad88ff4]
+        10       lookUpImpOrForward  (in libobjc.A.dylib) + 420  [0x1865d6010]
+        9       _RINvMNtCsgtPOCBgevO_4core3stre18trim_start_matchesNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0EBU_  (in verse_remote) + 0  [0x101cbdf30]
+        9       _RINvMNtCsgtPOCBgevO_4core5sliceSh3getjECscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 0  [0x101ccee6c]
+        9       _RINvYQINtNtCs6TNIXVaeDJm_10serde_json2de12DeserializerNtNtB9_4read9SliceReadENtNtCs95MRL9ERuTW_10serde_core2de12Deserializer24___deserialize_content_v1NtNtNtNtCseM0go9keaNd_5serde7private2de7content14ContentVisitorECs6QdLU3ngKge_11verse_world  (in verse_remote) + 436  [0x10184e440]
+        9       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser11parse_inner  (in verse_remote) + 52  [0x101cd6290]
+        9       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser22parse_encoding_or_none  (in verse_remote) + 132  [0x101cd7664]
+        9       _RNvMs5_NtNtCs4tGja8HPLGF_9wgpu_core6device5queueNtB5_5Queue12write_buffer  (in verse_remote) + 344  [0x101384784]
+        9       _RNvMsl_NtCs4tGja8HPLGF_9wgpu_core8resourceNtB5_13StagingBuffer3new  (in verse_remote) + 104  [0x10133c32c]
+        9       _RNvNvNtNtCsgtPOCBgevO_4core4char7convert18from_u32_unchecked18precondition_checkCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cc4bb4]
+        9       _RNvXs3_NtNtCsgtPOCBgevO_4core3str4iterNtB5_11CharIndicesNtNtNtNtB9_4iter6traits8iterator8Iterator4nextCs5Baeohg2PCz_5objc2  (in verse_remote) + 248  [0x101cca4c4]
+        9       _RNvXs9_NtNtCsgtPOCBgevO_4core3str6traitsINtNtNtB9_3ops5range9RangeFromjEINtNtNtB9_5slice5index10SliceIndexeE5indexCscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 56  [0x101cd9930]
+        9       _RNvXsp_NtCsgtPOCBgevO_4core6resultINtB5_6ResultNtNtCscAxbPxxCHR7_12objc2_encode12encoding_box11EncodingBoxNtNtBN_5parse10ParseErrorENtNtNtB7_3ops9try_trait3Try6branchCs5Baeohg2PCz_5objc2  (in verse_remote) + 160  [0x101cc5d78]
+        9       _RNvXsr_NtNtCsgtPOCBgevO_4core3str7patternNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0NtB5_7Pattern13into_searcherBL_  (in verse_remote) + 60  [0x101cc1b40]
+        9       _dispatch_event_loop_poke  (in libdispatch.dylib) + 336  [0x186896eb0]
+        9       _dispatch_kq_poll  (in libdispatch.dylib) + 220  [0x186897a64]
+        9       _pthread_wqthread  (in libsystem_pthread.dylib) + 292  [0x186a2bec0]
+        9       kevent_id  (in libsystem_kernel.dylib) + 0  [0x1869eda6c]
+        9       objc_msgSend  (in libobjc.A.dylib) + 0  [0x1865d5800]
+        8       -[AGXBuffer initWithDevice:length:alignment:options:isSuballocDisabled:pinnedGPULocation:]  (in AGXMetalG17X) + 32  [0x113575a50]
+        8       -[AGXBuffer(Internal) initWithDevice:length:alignment:options:isSuballocDisabled:resourceInArgs:pinnedGPULocation:]  (in AGXMetalG17X) + 44  [0x113575f6c]
+        8       -[IOGPUMetalResource initWithDevice:remoteStorageResource:options:args:argsSize:]  (in IOGPU) + 484  [0x1abb1890c]
+        8       IOConnectCallMethod  (in IOKit) + 236  [0x18ad88dc0]
+        8       IOGPUResourceCreate  (in IOGPU) + 248  [0x1abb1f878]
+        8       _RINvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB7_4IterNtNtCscAxbPxxCHR7_12objc2_encode6helper9PrimitiveENtNtNtNtBb_4iter6traits8iterator8Iterator3anyNCNvXsf_NtB9_3cmpBP_NtB2u_13SliceContains14slice_contains0EBT_  (in verse_remote) + 0  [0x101cd0188]
+        8       _RINvXs4_NtCs6TNIXVaeDJm_10serde_json6numberNtB6_6NumberNtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtB8_3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_remote) + 336  [0x1017f470c]
+        8       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser11parse_inner  (in verse_remote) + 1100  [0x101cd66a8]
+        8       _RNvMs7_NtCsG1osKCWFNu_7physics7queriesNtB5_5Scene5sweep  (in verse_remote) + 0  [0x101b85028]
+        8       _RNvNtCsG1osKCWFNu_7physics7queries12segment_pair  (in verse_remote) + 924  [0x101b88568]
+        8       _RNvXs_NtCs61F2TY4yojp_4zmij7privatedNtB4_6Sealed20write_to_zmij_buffer  (in verse_remote) + 28  [0x101cae434]
+        8       _RNvXs_NtNtCskykxz3ZGoQe_8wgpu_hal5metal6deviceNtB6_6DeviceNtB8_6Device13create_buffer  (in verse_remote) + 316  [0x1013e3d64]
+        8       _RNvYINtNtNtCsgtPOCBgevO_4core3str7pattern19MultiCharEqSearcherNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_8Searcher11next_rejectB16_  (in verse_remote) + 0  [0x101cced14]
+        7       <deduplicated_symbol>  (in verse_remote) + 336  [0x101b9f27c]
+        7       _RINvMNtCsgtPOCBgevO_4core6optionINtB3_6OptionhE5ok_orNtNtCscAxbPxxCHR7_12objc2_encode5parse9ErrorKindEBT_  (in verse_remote) + 0  [0x101cceeb0]
+        7       _RINvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB7_4IterNtNtCscAxbPxxCHR7_12objc2_encode6helper9PrimitiveENtNtNtNtBb_4iter6traits8iterator8Iterator3anyNCNvXsf_NtB9_3cmpBP_NtB2u_13SliceContains14slice_contains0EBT_  (in verse_remote) + 140  [0x101cd0214]
+        7       _RNvMs2_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser4peek  (in verse_remote) + 36  [0x101cd5118]
+        7       _RNvMs2_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser8is_empty  (in verse_remote) + 24  [0x101cd51a0]
+        7       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser11parse_inner  (in verse_remote) + 1084  [0x101cd6698]
+        7       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser22parse_encoding_or_none  (in verse_remote) + 0  [0x101cd75e0]
+        7       _RNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout  (in verse_remote) + 260  [0x101cc0d80]
+        7       _RNvXs_NtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB4_18MethodEncodingIterNtNtNtNtCsgtPOCBgevO_4core4iter6traits8iterator8Iterator4next  (in verse_remote) + 88  [0x101cc1908]
+        7       _RNvXsf_NtNtCsgtPOCBgevO_4core5slice3cmpNtNtCscAxbPxxCHR7_12objc2_encode6helper9PrimitiveNtB5_13SliceContains14slice_containsBF_  (in verse_remote) + 0  [0x101cd3ba4]
+        7       _RNvXsp_NtCsgtPOCBgevO_4core6resultINtB5_6ResultIBx_TNtNtCscAxbPxxCHR7_12objc2_encode12encoding_box11EncodingBoxINtNtB7_6option6OptioniEENtNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18EncodingParseErrorEB2a_ENtNtNtB7_3ops9try_trait3Try6branchB2g_  (in verse_remote) + 180  [0x101cc5c54]
+        7       _RNvXsr_NtNtCsgtPOCBgevO_4core3str7patternNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0NtB5_7Pattern13into_searcherBL_  (in verse_remote) + 40  [0x101cc1b2c]
+        7       _dispatch_root_queue_drain_deferred_wlh  (in libdispatch.dylib) + 284  [0x186887e34]
+        7       _dispatch_workloop_worker_thread  (in libdispatch.dylib) + 720  [0x186887734]
+        7       _free  (in libsystem_malloc.dylib) + 0  [0x18685cc4c]
+        7       _xzm_xzone_malloc_tiny  (in libsystem_malloc.dylib) + 0  [0x186851ed4]
+        7       lookUpImpOrForward  (in libobjc.A.dylib) + 0  [0x1865d5e6c]
+        6       <deduplicated_symbol>  (in verse_remote) + 0  [0x101b9f12c]
+        6       _RINvMNtCsgtPOCBgevO_4core6resultINtB3_6ResultiNtNtNtB5_3num5error13ParseIntErrorE3mapINtNtB5_6option6OptioniENcNtB1l_4Some0ECs5Baeohg2PCz_5objc2  (in verse_remote) + 80  [0x101cc200c]
+        6       _RINvNtCscAxbPxxCHR7_12objc2_encode6helper17compare_encodingsNtNtB4_8encoding8EncodingNtNtB4_12encoding_box11EncodingBoxEB4_  (in verse_remote) + 120  [0x101ccf754]
+        6       _RINvNtCsgtPOCBgevO_4core3ptr9drop_glueINtNtCs1D5hTPqbNzf_8indexmap5inner4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueEECs6QdLU3ngKge_11verse_world  (in verse_remote) + 160  [0x1018f669c]
+        6       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_remote) + 1280  [0x1018d70c0]
+        6       _RINvXsj_NtNtNtCseM0go9keaNd_5serde7private2de7contentNtB6_14ContentVisitorNtNtCs95MRL9ERuTW_10serde_core2de7Visitor9visit_mapINtNtCs6TNIXVaeDJm_10serde_json2de9MapAccessNtNtB24_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_remote) + 336  [0x101876928]
+        6       _RNvMNtCscAxbPxxCHR7_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 244  [0x101cd054c]
+        6       _RNvMNtCscAxbPxxCHR7_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 260  [0x101cd055c]
+        6       _RNvMNtCsgtPOCBgevO_4core3stre8is_emptyCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cbfc10]
+        6       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter16extract_encoding  (in verse_remote) + 184  [0x101cc0330]
+        6       _RNvMs0_NtNtCskykxz3ZGoQe_8wgpu_hal5metal7commandNtB7_14CommandEncoder23update_bind_group_state  (in verse_remote) + 428  [0x1013d52f0]
+        6       _RNvMs3_NtNtCsgtPOCBgevO_4core3ffi5c_strNtB5_4CStr8from_ptrCs5Baeohg2PCz_5objc2  (in verse_remote) + 88  [0x101ccc458]
+        6       _RNvMs4_NtCslJsSqIQKwiA_5alloc7raw_vecNtB5_11RawVecInner11finish_growCsG1osKCWFNu_7physics  (in verse_remote) + 168  [0x101d708cc]
+        6       _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode6helperINtB5_6HelperNtNtB7_12encoding_box11EncodingBoxE8from_box  (in verse_remote) + 0  [0x101cd22f8]
+        6       _RNvMs_NtCs1D5hTPqbNzf_8indexmap5innerINtB4_4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE11insert_fullCs6QdLU3ngKge_11verse_world  (in verse_remote) + 1716  [0x10185a610]
+        6       _RNvMs_NtNtCskykxz3ZGoQe_8wgpu_hal5metal7commandNtB4_7Encoder10set_buffer  (in verse_remote) + 272  [0x1013f858c]
+        6       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 1332  [0x101cc8974]
+        6       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 1688  [0x101cc8ad8]
+        6       _RNvXs3_NtNtCsgtPOCBgevO_4core3str4iterNtB5_11CharIndicesNtNtNtNtB9_4iter6traits8iterator8Iterator4nextCs5Baeohg2PCz_5objc2  (in verse_remote) + 352  [0x101cca52c]
+        6       _RNvXs7_NtCscAxbPxxCHR7_12objc2_encode6helperNtNtB7_12encoding_box11EncodingBoxNtB5_12EncodingType6helper  (in verse_remote) + 24  [0x101cd36dc]
+        6       _RNvXs7_NtNtCsgtPOCBgevO_4core3str7patternINtB5_18MultiCharEqPatternNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_7Pattern13into_searcherB1b_  (in verse_remote) + 0  [0x101cce340]
+        6       _RNvXs9_NtNtCsgtPOCBgevO_4core3str6traitsINtNtNtB9_3ops5range9RangeFromjEINtNtNtB9_5slice5index10SliceIndexeE3getCscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 0  [0x101cd97a8]
+        6       _RNvXs9_NtNtCsgtPOCBgevO_4core3str6traitsINtNtNtB9_3ops5range9RangeFromjEINtNtNtB9_5slice5index10SliceIndexeE5indexCscAxbPxxCHR7_12objc2_encode  (in verse_remote) + 0  [0x101cd98f8]
+        6       _RNvXsp_NtCsgtPOCBgevO_4core6resultINtB5_6ResultNtNtCscAxbPxxCHR7_12objc2_encode12encoding_box11EncodingBoxNtNtBN_5parse10ParseErrorENtNtNtB7_3ops9try_trait3Try6branchCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cc5cd8]
+        6       _RNvXsp_NtCsgtPOCBgevO_4core6resultINtB5_6ResultTNtNtCscAxbPxxCHR7_12objc2_encode12encoding_box11EncodingBoxINtNtB7_6option6OptioniEENtNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18EncodingParseErrorENtNtNtB7_3ops9try_trait3Try6branchB2c_  (in verse_remote) + 156  [0x101cc5e34]
+        6       _xzm_free  (in libsystem_malloc.dylib) + 352  [0x18684d1cc]
+        5       +[FPCAMetalLayerState commandBufferCreate:creationTime:]  (in FramePacing) + 172  [0x2483a78f8]
+        5       -[AGXBuffer(Internal) initWithDevice:length:alignment:pointerTag:options:isSuballocDisabled:resourceInArgs:pinnedGPULocation:]  (in AGXMetalG17X) + 460  [0x113575ea8]
+        5       -[AGXG17XFamilyBlitContext copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:]  (in AGXMetalG17X) + 432  [0x1135de344]
+        5       -[AGXG17XFamilyCommandBuffer initWithQueue:retainedReferences:]  (in AGXMetalG17X) + 64  [0x1135fe6c8]
+        5       -[AGXG17XFamilyCommandQueue commandBuffer]  (in AGXMetalG17X) + 44  [0x113602afc]
+        5       -[IOGPUMetalBuffer initWithDevice:pointer:length:alignment:options:sysMemSize:gpuAddress:gpuTag:args:argsSize:deallocator:]  (in IOGPU) + 60  [0x1abb03c04]
+        5       -[IOGPUMetalBuffer initWithDevice:pointer:length:alignment:options:sysMemSize:gpuAddress:gpuTag:placementSparsePageSize:placementSparseResidencyBytes:args:argsSize:deallocator:]  (in IOGPU) + 480  [0x1abb03e38]
+        5       -[IOGPUMetalCommandBuffer initWithQueue:retainedReferences:synchronousDebugMode:]  (in IOGPU) + 112  [0x1abb04df8]
+        5       -[_MTLCommandBuffer initWithQueue:retainedReferences:synchronousDebugMode:]  (in Metal) + 1004  [0x1930a2e18]
+        5       _RINvCs61F2TY4yojp_4zmij5writedEB2_  (in verse_remote) + 1024  [0x101caa564]
+        5       _RINvMs2_NtCsG1osKCWFNu_7physics7queriesNtB6_4Mesh5visitNCNvMs7_B6_NtB6_5Scene5sweeps_0EB8_  (in verse_remote) + 668  [0x101b756f0]
+        5       _RINvMs3_NtCs6TNIXVaeDJm_10serde_json4readNtB6_9SliceRead15parse_str_byteseINvB6_6as_strBD_EEB8_  (in verse_remote) + 1280  [0x101c8f0bc]
+        5       _RINvNtCscAxbPxxCHR7_12objc2_encode6helper17compare_encodingsNtNtB4_8encoding8EncodingNtNtB4_12encoding_box11EncodingBoxEB4_  (in verse_remote) + 376  [0x101ccf854]
+        5       _RINvNtCsgtPOCBgevO_4core3ptr9drop_glueNtNtCscAxbPxxCHR7_12objc2_encode12encoding_box11EncodingBoxEBE_  (in verse_remote) + 0  [0x101ccfed0]
+        5       _RINvXNtNtCs6TNIXVaeDJm_10serde_json5value3serNtB5_5ValueNtNtCs95MRL9ERuTW_10serde_core3ser9Serialize9serializeQINtNtB7_3ser10SerializerQINtNtCslJsSqIQKwiA_5alloc3vec3VechEEECs6QdLU3ngKge_11verse_world  (in verse_remote) + 528  [0x1018012b0]
+        5       _RINvXNvXNtNtCs6TNIXVaeDJm_10serde_json5value2deNtB8_5ValueNtNtCs95MRL9ERuTW_10serde_core2de11Deserialize11deserializeNtB3_12ValueVisitorNtBW_7Visitor9visit_mapINtNtBa_2de9MapAccessNtNtBa_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_remote) + 1160  [0x1018d7048]
+        5       _RINvXs6_NtNtCs95MRL9ERuTW_10serde_core2de5implsNtNtCslJsSqIQKwiA_5alloc6string6StringNtB8_11Deserialize11deserializeINtNtCs6TNIXVaeDJm_10serde_json2de6MapKeyNtNtB1V_4read9SliceReadEECs6QdLU3ngKge_11verse_world  (in verse_remote) + 68  [0x10186b0c4]
+        5       _RNCNvXsf_NtNtCsgtPOCBgevO_4core5slice3cmpNtNtCscAxbPxxCHR7_12objc2_encode6helper9PrimitiveNtB7_13SliceContains14slice_contains0BH_  (in verse_remote) + 44  [0x101cd044c]
+        5       _RNvMNtCscAxbPxxCHR7_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 0  [0x101cd0458]
+        5       _RNvMNtCscAxbPxxCHR7_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote) + 56  [0x101cd0490]
+        5       _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter14extract_return  (in verse_remote) + 80  [0x101cbff7c]
+        5       _RNvMs2_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser3new  (in verse_remote) + 0  [0x101cd50d0]
+        5       _RNvMs3_NtCslJsSqIQKwiA_5alloc7raw_vecINtB5_6RawVecNtNtCsG1osKCWFNu_7physics8walkable4CellE8grow_oneBQ_  (in verse_remote) + 60  [0x101d70658]
+        5       _RNvMs5_NtNtCs4tGja8HPLGF_9wgpu_core6device5queueNtB5_5Queue12write_buffer  (in verse_remote) + 808  [0x101384954]
+        5       _RNvMs5_NtNtCs4tGja8HPLGF_9wgpu_core6device5queueNtB5_5Queue25write_staging_buffer_impl  (in verse_remote) + 628  [0x101386108]
+        5       _RNvMs7_NtCsG1osKCWFNu_7physics7queriesNtB5_5Scene5sweep  (in verse_remote) + 3108  [0x101b85c4c]
+        5       _RNvMs_NtCs1D5hTPqbNzf_8indexmap5innerINtB4_4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE11insert_fullCs6QdLU3ngKge_11verse_world  (in verse_remote) + 0  [0x101859f5c]
+        5       _RNvMsm_NtCs5Baeohg2PCz_5objc27runtimeNtB5_6Method5types  (in verse_remote) + 56  [0x101cc07ac]
+        5       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 1364  [0x101cc8994]
+        5       _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote) + 260  [0x101cc8544]
+        5       _RNvNvNtNtCsgtPOCBgevO_4core5slice3raw14from_raw_parts18precondition_checkCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cc9964]
+        5       _RNvXNtNtCskykxz3ZGoQe_8wgpu_hal7dynamic7commandNtNtB6_5metal14CommandEncoderNtB2_17DynCommandEncoder21copy_buffer_to_bufferCs4tGja8HPLGF_9wgpu_core  (in verse_remote) + 316  [0x101302e08]
+        5       _RNvXs0_Cs61F2TY4yojp_4zmijdNtB5_11FloatTraits9to_digitsB5_  (in verse_remote) + 28  [0x101cae138]
+        5       _RNvXs2_NtNtCskykxz3ZGoQe_8wgpu_hal5metal7commandNtB7_14CommandEncoderNtB9_14CommandEncoder14begin_encoding  (in verse_remote) + 488  [0x1013de420]
+        5       _RNvXs2_NtNtCskykxz3ZGoQe_8wgpu_hal5metal7commandNtB7_14CommandEncoderNtB9_14CommandEncoder14begin_encoding  (in verse_remote) + 624  [0x1013de4a8]
+        5       _RNvXs_NtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB4_18MethodEncodingIterNtNtNtNtCsgtPOCBgevO_4core4iter6traits8iterator8Iterator4next  (in verse_remote) + 0  [0x101cc18b0]
+        5       _RNvXs_NtNtCskykxz3ZGoQe_8wgpu_hal5metal6deviceNtB6_6DeviceNtB8_6Device13create_buffer  (in verse_remote) + 296  [0x1013e3d50]
+        5       _RNvXs_NtNtCskykxz3ZGoQe_8wgpu_hal5metal6deviceNtB6_6DeviceNtB8_6Device13create_buffer  (in verse_remote) + 340  [0x1013e3d7c]
+        5       _RNvXs_NtNtCskykxz3ZGoQe_8wgpu_hal5metal6deviceNtB6_6DeviceNtB8_6Device13create_buffer  (in verse_remote) + 400  [0x1013e3db8]
+        5       _RNvXsi_NtCsgtPOCBgevO_4core3numiNtNtNtB7_3str6traits7FromStr8from_strCs5Baeohg2PCz_5objc2  (in verse_remote) + 0  [0x101cca9e4]
+        5       _RNvXsl_NtCscAxbPxxCHR7_12objc2_encode6helperNtB5_9PrimitiveNtNtCsgtPOCBgevO_4core3cmp9PartialEq2eqB7_  (in verse_remote) + 0  [0x101cd3c84]
+        5       _RNvXsp_NtCsgtPOCBgevO_4core6resultINtB5_6ResultTNtNtCscAxbPxxCHR7_12objc2_encode12encoding_box11EncodingBoxINtNtB7_6option6OptioniEENtNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18EncodingParseErrorENtNtNtB7_3ops9try_trait3Try6branchB2c_  (in verse_remote) + 176  [0x101cc5e48]
+        5       _RNvYINvNtCs6TNIXVaeDJm_10serde_json4read6as_strNtB5_9SliceReadEINtNtNtCsgtPOCBgevO_4core3ops8function6FnOnceTRBJ_RShEE9call_onceB7_  (in verse_remote) + 40  [0x101c98f80]
+        5       __workq_kernreturn  (in libsystem_kernel.dylib) + 0  [0x1869ed9e8]
+        5       _pthread_wqthread  (in libsystem_pthread.dylib) + 368  [0x186a2bf0c]
+        5       _realloc  (in libsystem_malloc.dylib) + 452  [0x18685ce90]
+        5       _xzm_xzone_malloc  (in libsystem_malloc.dylib) + 0  [0x18684c8c0]
+        5       iokit_user_client_trap  (in IOKit) + 0  [0x18ada4ad8]
+        5       start_wqthread  (in libsystem_pthread.dylib) + 0  [0x186a2ac08]
+        5       std::__function::__func<-[AGXG17XFamilyBlitContext copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:]::$_8, void (AGX::LegacyBlitContext<AGX::HAL300::Encoders, AGX::HAL300::Classes, AGX::HAL300::ObjClasses>*&)>::operator()(AGX::LegacyBlitContext<AGX::HAL300::Encoders, AGX::HAL300::Classes, AGX::HAL300::ObjClasses>*&)  (in AGXMetalG17X) + 76  [0x1135de490]
+
+Sort by top of stack, same collapsed (when >= 5):
+        __workq_kernreturn  (in libsystem_kernel.dylib)        8253
+        mach_msg2_trap  (in libsystem_kernel.dylib)        2047
+        kevent  (in libsystem_kernel.dylib)        1677
+        write  (in libsystem_kernel.dylib)        1361
+        _platform_memmove  (in libsystem_platform.dylib)        355
+        semaphore_wait_trap  (in libsystem_kernel.dylib)        281
+        start_wqthread  (in libsystem_pthread.dylib)        217
+        _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser11parse_inner  (in verse_remote)        95
+        __semwait_signal  (in libsystem_kernel.dylib)        60
+        _RNvNvMNtNtCsgtPOCBgevO_4core3ptr9const_ptrPp20offset_from_unsigned18precondition_checkCs5Baeohg2PCz_5objc2  (in verse_remote)        59
+        _RINvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB7_4IterhENtNtNtNtBb_4iter6traits8iterator8Iterator4foldjNCINvNtNtBX_8adapters3map8map_foldRhjjNCINvNvXs1_NtB1J_6filterINtB2p_6FilterppEBR_5count8to_usizeB2a_NCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB3n_3Sel19number_of_arguments0E0NCINvXsK_NtBV_5accumjNtB4y_3Sum3sumINtB1H_3MapBE_B2e_EE0E0EB3p_  (in verse_remote)        48
+        _RNvXs3_NtNtCsgtPOCBgevO_4core3str4iterNtB5_11CharIndicesNtNtNtNtB9_4iter6traits8iterator8Iterator4nextCs5Baeohg2PCz_5objc2  (in verse_remote)        44
+        kevent_id  (in libsystem_kernel.dylib)        37
+        <deduplicated_symbol>  (in verse_remote)        33
+        _RNvNtNtCsgtPOCBgevO_4core5slice6memchr6memchrCscAxbPxxCHR7_12objc2_encode  (in verse_remote)        31
+        _RNvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB6_4IterhENtNtNtNtBa_4iter6traits8iterator8Iterator4nextCscAxbPxxCHR7_12objc2_encode  (in verse_remote)        31
+        _RNvXs8_NtNtCsgtPOCBgevO_4core3str7patternINtB5_19MultiCharEqSearcherNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_8Searcher4nextB1c_  (in verse_remote)        30
+        _RINvNtNtCsgtPOCBgevO_4core3str11validations15next_code_pointINtNtNtB6_5slice4iter4IterhEECs5Baeohg2PCz_5objc2  (in verse_remote)        29
+        _RNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0B7_  (in verse_remote)        27
+        iokit_user_client_trap  (in IOKit)        27
+        _RNCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB7_3Sel19number_of_arguments0B9_  (in verse_remote)        26
+        _RNvXs0_NtNtCsgtPOCBgevO_4core5slice5indexjINtB5_10SliceIndexShE3getCscAxbPxxCHR7_12objc2_encode  (in verse_remote)        26
+        method_t* getMethodFromListArray<method_list_t**>(method_list_t**, unsigned int, objc_selector*)  (in libobjc.A.dylib)        26
+        _RNvMsj_NtCsgtPOCBgevO_4core3numi16from_ascii_radixCs5Baeohg2PCz_5objc2  (in verse_remote)        25
+        DYLD-STUB$$memcpy  (in verse_remote)        24
+        _xzm_free  (in libsystem_malloc.dylib)        21
+        _RNvXs8_NtNtCsgtPOCBgevO_4core3str6traitsINtNtNtB9_3ops5range7RangeTojEINtNtNtB9_5slice5index10SliceIndexeE3getCs5Baeohg2PCz_5objc2  (in verse_remote)        19
+        _RNCINvNtNtNtCsgtPOCBgevO_4core4iter8adapters3map8map_foldRhjjNCINvNvXs1_NtB6_6filterINtB18_6FilterppENtNtNtB8_6traits8iterator8Iterator5count8to_usizeBT_NCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB2z_3Sel19number_of_arguments0E0NCINvXsK_NtB1F_5accumjNtB3K_3Sum3sumINtB4_3MapINtNtNtBa_5slice4iter4IterhEBX_EE0E0B2B_  (in verse_remote)        18
+        _RNvMNtNtCsgtPOCBgevO_4core4char7methodsc14is_ascii_digitCs5Baeohg2PCz_5objc2  (in verse_remote)        18
+        _RNvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB6_4IterNtNtCscAxbPxxCHR7_12objc2_encode8encoding8EncodingENtNtNtNtBa_4iter6traits8iterator8Iterator4nextBS_  (in verse_remote)        18
+        _RNvMNtNtCsgtPOCBgevO_4core4char7methodsc8to_digitCs5Baeohg2PCz_5objc2  (in verse_remote)        17
+        _RNCINvNvXs1_NtNtNtCsgtPOCBgevO_4core4iter8adapters6filterINtBa_6FilterppENtNtNtBe_6traits8iterator8Iterator5count8to_usizeRhNCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB26_3Sel19number_of_arguments0E0B28_  (in verse_remote)        16
+        _platform_memset  (in libsystem_platform.dylib)        16
+        _RNvNtCs5Baeohg2PCz_5objc26verify25relaxed_equivalent_to_box  (in verse_remote)        15
+        _RNvNvMs9_NtCsgtPOCBgevO_4core3numj13unchecked_add18precondition_checkCs5Baeohg2PCz_5objc2  (in verse_remote)        15
+        __CFRunLoopDoTimer  (in CoreFoundation)        14
+        _RNCINvXsK_NtNtNtCsgtPOCBgevO_4core4iter6traits5accumjNtB8_3Sum3sumINtNtNtBc_8adapters3map3MapINtNtNtBe_5slice4iter4IterhENCINvNvXs1_NtB17_6filterINtB26_6FilterppENtNtBa_8iterator8Iterator5count8to_usizeRhNCNvMs2_NtCs5Baeohg2PCz_5objc27runtimeNtB3o_3Sel19number_of_arguments0E0EE0B3q_  (in verse_remote)        13
+        _RNvMs7_NtCsG1osKCWFNu_7physics7queriesNtB5_5Scene5sweep  (in verse_remote)        12
+        _RNvNtCs5Baeohg2PCz_5objc26verify23verify_method_signature  (in verse_remote)        12
+        _RINvMNtCsgtPOCBgevO_4core5sliceSh3getjECscAxbPxxCHR7_12objc2_encode  (in verse_remote)        10
+        _RNvMs4_NtCscAxbPxxCHR7_12objc2_encode6helperNtB5_6Helper3new  (in verse_remote)        10
+        objc_msgSend  (in libobjc.A.dylib)        10
+        _RINvMNtCsgtPOCBgevO_4core3stre18trim_start_matchesNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0EBU_  (in verse_remote)        9
+        _RINvXs0_NtNtNtCsgtPOCBgevO_4core4iter8adapters3mapINtB6_3MapINtNtB8_9enumerate9EnumerateINtNtNtBc_5slice4iter4IterNtNtCshdIy2VA85zy_12verse_engine6assets4BoneEENCNvNtB1S_9animation6samples0_0ENtNtNtBa_6traits8iterator8Iterator4folduNCINvNvB34_8for_each4callNtB2C_5LocalNCINvMsj_NtCslJsSqIQKwiA_5alloc3vecINtB4s_3VecB47_E14extend_trustedBM_E0E0EB1S_  (in verse_remote)        9
+        _RNvNvNtNtCsgtPOCBgevO_4core4char7convert18from_u32_unchecked18precondition_checkCs5Baeohg2PCz_5objc2  (in verse_remote)        9
+        _RINvMNtCsgtPOCBgevO_4core6optionINtB3_6OptionhE5ok_orNtNtCscAxbPxxCHR7_12objc2_encode5parse9ErrorKindEBT_  (in verse_remote)        8
+        _RINvXs2J_NtNtCsgtPOCBgevO_4core5slice4iterINtB7_4IterNtNtCscAxbPxxCHR7_12objc2_encode6helper9PrimitiveENtNtNtNtBb_4iter6traits8iterator8Iterator3anyNCNvXsf_NtB9_3cmpBP_NtB2u_13SliceContains14slice_contains0EBT_  (in verse_remote)        8
+        _RNvYINtNtNtCsgtPOCBgevO_4core3str7pattern19MultiCharEqSearcherNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_8Searcher11next_rejectB16_  (in verse_remote)        8
+        lookUpImpOrForward  (in libobjc.A.dylib)        8
+        _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser22parse_encoding_or_none  (in verse_remote)        7
+        _RNvXsf_NtNtCsgtPOCBgevO_4core5slice3cmpNtNtCscAxbPxxCHR7_12objc2_encode6helper9PrimitiveNtB5_13SliceContains14slice_containsBF_  (in verse_remote)        7
+        _free  (in libsystem_malloc.dylib)        7
+        _xzm_xzone_malloc_tiny  (in libsystem_malloc.dylib)        7
+        _RNvMNtCsgtPOCBgevO_4core3stre8is_emptyCs5Baeohg2PCz_5objc2  (in verse_remote)        6
+        _RNvMs3_NtCs1Xggz9mHYcJ_5verse8importedNtB5_8Renderer10draw_frame  (in verse_remote)        6
+        _RNvMs5_NtCscAxbPxxCHR7_12objc2_encode6helperINtB5_6HelperNtNtB7_12encoding_box11EncodingBoxE8from_box  (in verse_remote)        6
+        _RNvMs_NtNtCs1Xggz9mHYcJ_5verse8imported7cullingNtB4_10BoneBounds5posed  (in verse_remote)        6
+        _RNvXs7_NtNtCsgtPOCBgevO_4core3str7patternINtB5_18MultiCharEqPatternNCNvNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iter18parse_stack_layout0ENtB5_7Pattern13into_searcherB1b_  (in verse_remote)        6
+        _RNvXs9_NtNtCsgtPOCBgevO_4core3str6traitsINtNtNtB9_3ops5range9RangeFromjEINtNtNtB9_5slice5index10SliceIndexeE3getCscAxbPxxCHR7_12objc2_encode  (in verse_remote)        6
+        _RNvXs9_NtNtCsgtPOCBgevO_4core3str6traitsINtNtNtB9_3ops5range9RangeFromjEINtNtNtB9_5slice5index10SliceIndexeE5indexCscAxbPxxCHR7_12objc2_encode  (in verse_remote)        6
+        _RNvXsp_NtCsgtPOCBgevO_4core6resultINtB5_6ResultNtNtCscAxbPxxCHR7_12objc2_encode12encoding_box11EncodingBoxNtNtBN_5parse10ParseErrorENtNtNtB7_3ops9try_trait3Try6branchCs5Baeohg2PCz_5objc2  (in verse_remote)        6
+        madvise  (in libsystem_kernel.dylib)        6
+        <deduplicated_symbol>  (in libsystem_malloc.dylib)        5
+        _RINvNtCsgtPOCBgevO_4core3ptr9drop_glueNtNtCscAxbPxxCHR7_12objc2_encode12encoding_box11EncodingBoxEBE_  (in verse_remote)        5
+        _RNvMNtCscAxbPxxCHR7_12objc2_encode12encoding_boxNtB2_11EncodingBox17from_start_of_str  (in verse_remote)        5
+        _RNvMNtNtCs1Xggz9mHYcJ_5verse8imported7cullingNtB2_6Bounds7visible  (in verse_remote)        5
+        _RNvMNtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB2_18MethodEncodingIter16extract_encoding  (in verse_remote)        5
+        _RNvMs2_NtCscAxbPxxCHR7_12objc2_encode5parseNtB5_6Parser3new  (in verse_remote)        5
+        _RNvMs_NtCs1D5hTPqbNzf_8indexmap5innerINtB4_4CoreNtNtCslJsSqIQKwiA_5alloc6string6StringNtNtCs6TNIXVaeDJm_10serde_json5value5ValueE11insert_fullCs6QdLU3ngKge_11verse_world  (in verse_remote)        5
+        _RNvNtCshdIy2VA85zy_12verse_engine9animation8matrices  (in verse_remote)        5
+        _RNvNtNtCs4tGja8HPLGF_9wgpu_core7command6render18encode_render_pass  (in verse_remote)        5
+        _RNvNvNtNtCsgtPOCBgevO_4core5slice3raw14from_raw_parts18precondition_checkCs5Baeohg2PCz_5objc2  (in verse_remote)        5
+        _RNvXs_NtNtCs5Baeohg2PCz_5objc27runtime20method_encoding_iterNtB4_18MethodEncodingIterNtNtNtNtCsgtPOCBgevO_4core4iter6traits8iterator8Iterator4next  (in verse_remote)        5
+        _RNvXsi_NtCsgtPOCBgevO_4core3numiNtNtNtB7_3str6traits7FromStr8from_strCs5Baeohg2PCz_5objc2  (in verse_remote)        5
+        _RNvXsl_NtCscAxbPxxCHR7_12objc2_encode6helperNtB5_9PrimitiveNtNtCsgtPOCBgevO_4core3cmp9PartialEq2eqB7_  (in verse_remote)        5
+        _xzm_xzone_malloc  (in libsystem_malloc.dylib)        5
+        mach_absolute_time  (in libsystem_kernel.dylib)        5
+

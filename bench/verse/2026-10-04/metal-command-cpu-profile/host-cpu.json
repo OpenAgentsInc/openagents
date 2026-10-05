@@ -1,0 +1,339 @@
+{
+  "schema": "verse.host.cpu-observation.v1",
+  "samples": [
+    {
+      "elapsed_seconds": 0.005146082999999635,
+      "cumulative_cpu_seconds": 2.15
+    },
+    {
+      "elapsed_seconds": 0.009868790999998822,
+      "cumulative_cpu_seconds": 2.16
+    },
+    {
+      "elapsed_seconds": 1.0169369999999986,
+      "cumulative_cpu_seconds": 2.76
+    },
+    {
+      "elapsed_seconds": 2.031986332999999,
+      "cumulative_cpu_seconds": 3.54
+    },
+    {
+      "elapsed_seconds": 3.0486427910000007,
+      "cumulative_cpu_seconds": 4.25
+    },
+    {
+      "elapsed_seconds": 4.063131374999999,
+      "cumulative_cpu_seconds": 5.06
+    },
+    {
+      "elapsed_seconds": 5.068966915999999,
+      "cumulative_cpu_seconds": 5.86
+    },
+    {
+      "elapsed_seconds": 6.076687708,
+      "cumulative_cpu_seconds": 6.6
+    },
+    {
+      "elapsed_seconds": 7.085514040999998,
+      "cumulative_cpu_seconds": 7.37
+    },
+    {
+      "elapsed_seconds": 8.093778708,
+      "cumulative_cpu_seconds": 8.18
+    },
+    {
+      "elapsed_seconds": 9.102489457999999,
+      "cumulative_cpu_seconds": 8.98
+    },
+    {
+      "elapsed_seconds": 10.111944499999998,
+      "cumulative_cpu_seconds": 9.78
+    },
+    {
+      "elapsed_seconds": 11.121852040999999,
+      "cumulative_cpu_seconds": 10.72
+    },
+    {
+      "elapsed_seconds": 12.140264624999999,
+      "cumulative_cpu_seconds": 11.68
+    },
+    {
+      "elapsed_seconds": 13.152899958,
+      "cumulative_cpu_seconds": 12.61
+    },
+    {
+      "elapsed_seconds": 14.162351875,
+      "cumulative_cpu_seconds": 13.48
+    },
+    {
+      "elapsed_seconds": 15.174206832999998,
+      "cumulative_cpu_seconds": 14.4
+    },
+    {
+      "elapsed_seconds": 16.18162375,
+      "cumulative_cpu_seconds": 15.34
+    },
+    {
+      "elapsed_seconds": 17.195264291,
+      "cumulative_cpu_seconds": 16.18
+    },
+    {
+      "elapsed_seconds": 18.206971791,
+      "cumulative_cpu_seconds": 17.0
+    },
+    {
+      "elapsed_seconds": 19.232981833000004,
+      "cumulative_cpu_seconds": 17.85
+    },
+    {
+      "elapsed_seconds": 20.260186541000003,
+      "cumulative_cpu_seconds": 18.73
+    },
+    {
+      "elapsed_seconds": 21.302384333,
+      "cumulative_cpu_seconds": 19.58
+    },
+    {
+      "elapsed_seconds": 22.343227875000004,
+      "cumulative_cpu_seconds": 20.34
+    },
+    {
+      "elapsed_seconds": 23.373777166000004,
+      "cumulative_cpu_seconds": 21.02
+    },
+    {
+      "elapsed_seconds": 24.431906083,
+      "cumulative_cpu_seconds": 21.81
+    },
+    {
+      "elapsed_seconds": 25.460194916,
+      "cumulative_cpu_seconds": 22.61
+    },
+    {
+      "elapsed_seconds": 26.485416375,
+      "cumulative_cpu_seconds": 23.46
+    },
+    {
+      "elapsed_seconds": 27.516099708,
+      "cumulative_cpu_seconds": 24.33
+    },
+    {
+      "elapsed_seconds": 28.527550750000003,
+      "cumulative_cpu_seconds": 25.28
+    },
+    {
+      "elapsed_seconds": 29.544273791000002,
+      "cumulative_cpu_seconds": 26.22
+    },
+    {
+      "elapsed_seconds": 30.553018082999998,
+      "cumulative_cpu_seconds": 27.14
+    },
+    {
+      "elapsed_seconds": 31.560157500000003,
+      "cumulative_cpu_seconds": 28.1
+    },
+    {
+      "elapsed_seconds": 32.568393583,
+      "cumulative_cpu_seconds": 28.99
+    },
+    {
+      "elapsed_seconds": 33.578260666,
+      "cumulative_cpu_seconds": 29.92
+    },
+    {
+      "elapsed_seconds": 34.594277208,
+      "cumulative_cpu_seconds": 30.89
+    },
+    {
+      "elapsed_seconds": 35.600774083000005,
+      "cumulative_cpu_seconds": 31.86
+    },
+    {
+      "elapsed_seconds": 36.616381666,
+      "cumulative_cpu_seconds": 32.79
+    },
+    {
+      "elapsed_seconds": 37.627936125,
+      "cumulative_cpu_seconds": 33.72
+    },
+    {
+      "elapsed_seconds": 38.635450916,
+      "cumulative_cpu_seconds": 34.68
+    },
+    {
+      "elapsed_seconds": 39.642035791,
+      "cumulative_cpu_seconds": 35.65
+    },
+    {
+      "elapsed_seconds": 40.650218541,
+      "cumulative_cpu_seconds": 36.58
+    },
+    {
+      "elapsed_seconds": 41.662421416,
+      "cumulative_cpu_seconds": 37.51
+    },
+    {
+      "elapsed_seconds": 42.674158125,
+      "cumulative_cpu_seconds": 38.34
+    },
+    {
+      "elapsed_seconds": 43.686579083,
+      "cumulative_cpu_seconds": 39.27
+    },
+    {
+      "elapsed_seconds": 44.701509041,
+      "cumulative_cpu_seconds": 40.21
+    },
+    {
+      "elapsed_seconds": 45.716802625,
+      "cumulative_cpu_seconds": 41.17
+    },
+    {
+      "elapsed_seconds": 46.725969583,
+      "cumulative_cpu_seconds": 42.12
+    },
+    {
+      "elapsed_seconds": 47.738410708,
+      "cumulative_cpu_seconds": 43.05
+    },
+    {
+      "elapsed_seconds": 48.753925958,
+      "cumulative_cpu_seconds": 43.98
+    },
+    {
+      "elapsed_seconds": 49.80168625,
+      "cumulative_cpu_seconds": 44.82
+    },
+    {
+      "elapsed_seconds": 50.84702458300001,
+      "cumulative_cpu_seconds": 45.45
+    },
+    {
+      "elapsed_seconds": 51.869206332999994,
+      "cumulative_cpu_seconds": 46.22
+    },
+    {
+      "elapsed_seconds": 52.918885875,
+      "cumulative_cpu_seconds": 47.07
+    },
+    {
+      "elapsed_seconds": 53.977165041000006,
+      "cumulative_cpu_seconds": 47.88
+    },
+    {
+      "elapsed_seconds": 55.008379125000005,
+      "cumulative_cpu_seconds": 48.6
+    },
+    {
+      "elapsed_seconds": 56.021148999999994,
+      "cumulative_cpu_seconds": 49.4
+    },
+    {
+      "elapsed_seconds": 57.036627916,
+      "cumulative_cpu_seconds": 50.36
+    },
+    {
+      "elapsed_seconds": 58.04480425,
+      "cumulative_cpu_seconds": 51.3
+    },
+    {
+      "elapsed_seconds": 59.054825041,
+      "cumulative_cpu_seconds": 52.23
+    },
+    {
+      "elapsed_seconds": 60.069112583000006,
+      "cumulative_cpu_seconds": 53.18
+    },
+    {
+      "elapsed_seconds": 61.077554332999995,
+      "cumulative_cpu_seconds": 54.12
+    },
+    {
+      "elapsed_seconds": 62.10958195800001,
+      "cumulative_cpu_seconds": 54.98
+    },
+    {
+      "elapsed_seconds": 63.119884375,
+      "cumulative_cpu_seconds": 55.82
+    },
+    {
+      "elapsed_seconds": 64.135658916,
+      "cumulative_cpu_seconds": 56.7
+    },
+    {
+      "elapsed_seconds": 65.152285625,
+      "cumulative_cpu_seconds": 57.61
+    },
+    {
+      "elapsed_seconds": 66.160940916,
+      "cumulative_cpu_seconds": 58.56
+    },
+    {
+      "elapsed_seconds": 67.16887466600001,
+      "cumulative_cpu_seconds": 59.44
+    },
+    {
+      "elapsed_seconds": 68.181523291,
+      "cumulative_cpu_seconds": 60.35
+    },
+    {
+      "elapsed_seconds": 69.19375158300001,
+      "cumulative_cpu_seconds": 61.21
+    },
+    {
+      "elapsed_seconds": 70.203361375,
+      "cumulative_cpu_seconds": 62.1
+    },
+    {
+      "elapsed_seconds": 71.2092565,
+      "cumulative_cpu_seconds": 62.91
+    },
+    {
+      "elapsed_seconds": 72.221887708,
+      "cumulative_cpu_seconds": 63.79
+    },
+    {
+      "elapsed_seconds": 73.235523291,
+      "cumulative_cpu_seconds": 64.7
+    },
+    {
+      "elapsed_seconds": 74.249485041,
+      "cumulative_cpu_seconds": 65.6
+    },
+    {
+      "elapsed_seconds": 75.258768,
+      "cumulative_cpu_seconds": 66.5
+    },
+    {
+      "elapsed_seconds": 76.269410041,
+      "cumulative_cpu_seconds": 67.36
+    },
+    {
+      "elapsed_seconds": 77.278042416,
+      "cumulative_cpu_seconds": 68.24
+    },
+    {
+      "elapsed_seconds": 78.289826666,
+      "cumulative_cpu_seconds": 69.09
+    },
+    {
+      "elapsed_seconds": 79.296075041,
+      "cumulative_cpu_seconds": 69.95
+    },
+    {
+      "elapsed_seconds": 80.31269533300001,
+      "cumulative_cpu_seconds": 70.84
+    },
+    {
+      "elapsed_seconds": 89.996887458,
+      "cumulative_cpu_seconds": 79.06
+    }
+  ],
+  "sample_errors": 0,
+  "limits": [
+    "External process CPU time includes all host threads, not isolated simulation stages.",
+    "CPU time precision depends on the system ps implementation.",
+    "Samples cover native capture and load completion; startup is excluded."
+  ]
+}
