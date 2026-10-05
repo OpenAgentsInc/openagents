@@ -1,0 +1,39 @@
+# Bubbles breaking on a amber crypt-lab cauldron: small glints that swell
+# and pop just above the liquid, with a few droplets thrown up. Runs until
+# stopped.
+description = "Bubbles popping on a glowing amber liquid."
+
+[[emitter]]
+name = "pops"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 5.0
+rate = 9.0
+life = [0.25, 0.5]
+shape = "disc"
+radius = 0.4
+speed = [0.02, 0.06]
+size = [0.03, 0.07]
+scale = [[0.0, 0.4], [0.7, 1.0], [1.0, 1.6]]
+color = [1.0, 0.7, 0.25]
+alpha = [[0.0, 0.0], [0.6, 1.0], [1.0, 0.0]]
+priority = 3
+
+[[emitter]]
+name = "droplets"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 6.0
+rate = 3.0
+life = [0.3, 0.5]
+shape = "disc"
+radius = 0.3
+spread = 30.0
+speed = [0.5, 0.9]
+gravity = -3.0
+size = [0.008, 0.014]
+stretch = 0.03
+color = [1.0, 0.7, 0.25]
+alpha = [1.0, 0.8, 0.0]
+priority = 2

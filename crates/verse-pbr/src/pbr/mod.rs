@@ -36,7 +36,7 @@ use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Vec3};
-pub use verse_engine::lighting::HeightFog;
+pub use verse_engine::lighting::{Grade, HeightFog};
 
 /// Solar illuminance at Sun–Earth L1, lux. The solar constant (1361 W/m²) at
 /// 0.99 AU with a luminous efficacy of about 94 lm/W.
@@ -295,6 +295,68 @@ pub struct Neon {
     /// distance where fog is total. Without it the stage keeps the amber
     /// world's ramp.
     pub height_fog: Option<HeightFog>,
+    /// Local point lights, such as candles and braziers, that light the
+    /// stage's lit and textured geometry beside the key. They cast no
+    /// shadows. Lamps with zero intensity are off.
+    pub lamps: [Lamp; MAX_LAMPS],
+    /// The output pass's grade.
+    pub grade: Grade,
+}
+
+/// The most lamps one neon stage carries.
+pub const MAX_LAMPS: usize = 32;
+
+/// A point light on a neon stage, unshadowed.
+///
+/// Its light falls off with the inverse square of distance and is windowed
+/// to zero at `range` (Karis 2013), so a lamp lights only what is near it.
+/// The renderer scales its candela by the key's exposure, as it does the
+/// key's lux, so lamps need a [`Key`] to draw.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lamp {
+    /// World position in meters.
+    pub position: Vec3,
+    /// Linear color, multiplied with `intensity`.
+    pub color: [f32; 3],
+    /// Luminous intensity, candela.
+    pub intensity: f32,
+    /// Distance where the light reaches zero, meters.
+    pub range: f32,
+}
+
+impl Lamp {
+    /// A lamp that gives no light.
+    pub const OFF: Self = Self {
+        position: Vec3::ZERO,
+        color: [0.0; 3],
+        intensity: 0.0,
+        range: 1.0,
+    };
+
+    /// Whether the lamp gives light and every value is finite.
+    #[must_use]
+    pub fn lit(&self) -> bool {
+        self.position.is_finite()
+            && self.color.iter().all(|c| c.is_finite() && *c >= 0.0)
+            && self.intensity.is_finite()
+            && self.intensity > 0.0
+            && self.range.is_finite()
+            && self.range > 0.0
+    }
+
+    /// This lamp with a candle's flicker at `time` seconds: two slow
+    /// swells and a faster gutter, out of phase for each `seed`, between
+    /// about 0.75 and 1.1 of its intensity.
+    #[must_use]
+    pub fn flickering(self, time: f32, seed: u32) -> Self {
+        let phase = seed as f32 * 1.618;
+        let swell = (time * 2.3 + phase).sin() * 0.06 + (time * 3.7 + phase * 2.1).sin() * 0.05;
+        let gutter = ((time * 11.0 + phase * 3.3).sin() * (time * 17.0 + phase).sin()).max(0.0);
+        Self {
+            intensity: self.intensity * (1.0 + swell - gutter * 0.18),
+            ..self
+        }
+    }
 }
 
 /// A stylized daytime sky for a neon stage, in the stage's display-linear
@@ -428,6 +490,8 @@ impl Neon {
             key: None,
             daylight: None,
             height_fog: None,
+            lamps: [Lamp::OFF; MAX_LAMPS],
+            grade: Grade::STAGE,
         }
     }
 
@@ -471,6 +535,61 @@ pub struct Sky {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A lamp gives light only when it is finite, bright, and in range, and
+    /// its flicker stays a gentle swell around its intensity.
+    #[test]
+    fn lamps_light_only_when_valid_and_flicker_within_bounds() {
+        assert!(!Lamp::OFF.lit());
+        assert!(Neon::plaza(0.0).lamps.iter().all(|lamp| !lamp.lit()));
+        let candle = Lamp {
+            position: Vec3::new(1.0, 1.0, 0.0),
+            color: [1.0, 0.6, 0.3],
+            intensity: 4.0,
+            range: 5.0,
+        };
+        assert!(candle.lit());
+        assert!(
+            !Lamp {
+                range: 0.0,
+                ..candle
+            }
+            .lit()
+        );
+        assert!(
+            !Lamp {
+                intensity: f32::NAN,
+                ..candle
+            }
+            .lit()
+        );
+        assert!(
+            !Lamp {
+                color: [-1.0, 0.0, 0.0],
+                ..candle
+            }
+            .lit()
+        );
+        let mut seen = (f32::INFINITY, 0.0f32);
+        for step in 0..2_000 {
+            let lit = candle.flickering(step as f32 * 0.013, 3);
+            assert_eq!(lit.position, candle.position);
+            seen = (seen.0.min(lit.intensity), seen.1.max(lit.intensity));
+        }
+        assert!(
+            seen.0 >= candle.intensity * 0.7 && seen.1 <= candle.intensity * 1.15,
+            "{seen:?}"
+        );
+        assert!(
+            seen.1 - seen.0 > candle.intensity * 0.1,
+            "the flame barely moves: {seen:?}"
+        );
+        // Two lamps flicker out of step.
+        assert_ne!(
+            candle.flickering(1.0, 0).intensity,
+            candle.flickering(1.0, 1).intensity
+        );
+    }
 
     /// Only zones that opt in draw a daylight sky; the plaza and the bare
     /// world keep their flat field.

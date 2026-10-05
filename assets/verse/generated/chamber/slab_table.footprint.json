@@ -1,19 +1,19 @@
 {
   "model": "slab_table.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
-  "triangles": 104,
+  "triangles": 2242,
   "boxes": [
     {
       "name": "slab_table",
       "center": [
         0.0,
-        0.448,
+        0.572,
         0.0
       ],
       "half_extents": [
-        1.175,
-        0.448,
-        0.43
+        1.2,
+        0.572,
+        0.89
       ]
     }
   ]

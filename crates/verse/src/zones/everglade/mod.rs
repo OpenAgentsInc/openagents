@@ -437,6 +437,7 @@ impl Everglade {
                     ground: [0.10, 0.11, 0.07],
                 }),
                 height_fog: air.height_fog,
+                ..Neon::plaza(time)
             }),
             ..Mesh::default()
         }

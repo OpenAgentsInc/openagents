@@ -1,19 +1,19 @@
 {
   "model": "cobweb.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
-  "triangles": 72,
+  "triangles": 851,
   "boxes": [
     {
       "name": "cobweb",
       "center": [
-        0.0,
-        0.6,
-        0.0
+        0.549,
+        -0.617,
+        -0.549
       ],
       "half_extents": [
-        0.82,
-        0.6,
-        0.639
+        0.553,
+        0.621,
+        0.553
       ]
     }
   ]

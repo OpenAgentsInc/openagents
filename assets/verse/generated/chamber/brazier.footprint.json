@@ -1,0 +1,20 @@
+{
+  "model": "brazier.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 1810,
+  "boxes": [
+    {
+      "name": "brazier",
+      "center": [
+        0.0,
+        0.592,
+        0.0
+      ],
+      "half_extents": [
+        0.485,
+        0.592,
+        0.485
+      ]
+    }
+  ]
+}

@@ -1,267 +1,2004 @@
 {
   "model": "crypt_hall.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
-  "triangles": 1376,
+  "triangles": 10708,
   "boxes": [
     {
-      "name": "column_-12.5_-16",
+      "name": "dais_0",
       "center": [
-        -12.5,
-        2.7,
-        16.0
-      ],
-      "half_extents": [
-        0.42,
-        2.7,
-        0.42
-      ]
-    },
-    {
-      "name": "column_-12.5_0",
-      "center": [
-        -12.5,
-        2.7,
-        0.0
-      ],
-      "half_extents": [
-        0.42,
-        2.7,
-        0.42
-      ]
-    },
-    {
-      "name": "column_-12.5_16",
-      "center": [
-        -12.5,
-        2.7,
-        -16.0
-      ],
-      "half_extents": [
-        0.42,
-        2.7,
-        0.42
-      ]
-    },
-    {
-      "name": "column_12.5_-16",
-      "center": [
-        12.5,
-        2.7,
-        16.0
-      ],
-      "half_extents": [
-        0.42,
-        2.7,
-        0.42
-      ]
-    },
-    {
-      "name": "column_12.5_0",
-      "center": [
-        12.5,
-        2.7,
-        0.0
-      ],
-      "half_extents": [
-        0.42,
-        2.7,
-        0.42
-      ]
-    },
-    {
-      "name": "column_12.5_16",
-      "center": [
-        12.5,
-        2.7,
-        -16.0
-      ],
-      "half_extents": [
-        0.42,
-        2.7,
-        0.42
-      ]
-    },
-    {
-      "name": "column_cap_-12.5_-16",
-      "center": [
-        -12.5,
-        5.25,
-        16.0
-      ],
-      "half_extents": [
-        0.575,
-        0.11,
-        0.575
-      ]
-    },
-    {
-      "name": "column_cap_-12.5_0",
-      "center": [
-        -12.5,
-        5.25,
-        0.0
-      ],
-      "half_extents": [
-        0.575,
-        0.11,
-        0.575
-      ]
-    },
-    {
-      "name": "column_cap_-12.5_16",
-      "center": [
-        -12.5,
-        5.25,
-        -16.0
-      ],
-      "half_extents": [
-        0.575,
-        0.11,
-        0.575
-      ]
-    },
-    {
-      "name": "column_cap_12.5_-16",
-      "center": [
-        12.5,
-        5.25,
-        16.0
-      ],
-      "half_extents": [
-        0.575,
-        0.11,
-        0.575
-      ]
-    },
-    {
-      "name": "column_cap_12.5_0",
-      "center": [
-        12.5,
-        5.25,
-        0.0
-      ],
-      "half_extents": [
-        0.575,
-        0.11,
-        0.575
-      ]
-    },
-    {
-      "name": "column_cap_12.5_16",
-      "center": [
-        12.5,
-        5.25,
-        -16.0
-      ],
-      "half_extents": [
-        0.575,
-        0.11,
-        0.575
-      ]
-    },
-    {
-      "name": "ledge_east",
-      "center": [
-        19.15,
-        3.15,
-        0.0
-      ],
-      "half_extents": [
-        0.575,
+        0.0,
         0.09,
-        28.0
-      ]
-    },
-    {
-      "name": "ledge_west",
-      "center": [
-        -19.15,
-        3.15,
-        0.0
+        -7.3
       ],
       "half_extents": [
-        0.575,
+        2.2,
         0.09,
-        28.0
+        1.3
       ]
     },
     {
-      "name": "wall_door_east",
+      "name": "dais_1",
       "center": [
-        11.0,
-        2.9,
-        30.275
+        0.0,
+        0.27,
+        -7.65
       ],
       "half_extents": [
-        9.0,
-        2.9,
-        0.275
+        1.8,
+        0.09,
+        0.95
       ]
     },
     {
-      "name": "wall_door_west",
+      "name": "door_leaves",
       "center": [
-        -11.0,
-        2.9,
-        30.275
+        0.0,
+        1.7,
+        8.832
       ],
       "half_extents": [
-        9.0,
-        2.9,
-        0.275
+        1.2,
+        1.7,
+        0.07
       ]
     },
     {
-      "name": "wall_east",
+      "name": "door_plate_-0.28",
       "center": [
-        20.275,
-        2.9,
+        -0.28,
+        1.15,
+        8.932
+      ],
+      "half_extents": [
+        0.09,
+        0.09,
+        0.01
+      ]
+    },
+    {
+      "name": "door_plate_0.28",
+      "center": [
+        0.28,
+        1.15,
+        8.932
+      ],
+      "half_extents": [
+        0.09,
+        0.09,
+        0.01
+      ]
+    },
+    {
+      "name": "door_ring_-0.28",
+      "center": [
+        -0.28,
+        1.05,
+        8.962
+      ],
+      "half_extents": [
+        0.116,
+        0.116,
+        0.016
+      ]
+    },
+    {
+      "name": "door_ring_0.28",
+      "center": [
+        0.28,
+        1.05,
+        8.962
+      ],
+      "half_extents": [
+        0.116,
+        0.116,
+        0.016
+      ]
+    },
+    {
+      "name": "door_seam",
+      "center": [
+        0.0,
+        1.7,
+        8.913
+      ],
+      "half_extents": [
+        0.015,
+        1.675,
+        0.01
+      ]
+    },
+    {
+      "name": "door_strap_0.45",
+      "center": [
+        0.0,
+        0.45,
+        8.922
+      ],
+      "half_extents": [
+        1.15,
+        0.055,
+        0.015
+      ]
+    },
+    {
+      "name": "door_strap_1.5",
+      "center": [
+        0.0,
+        1.5,
+        8.922
+      ],
+      "half_extents": [
+        1.15,
+        0.055,
+        0.015
+      ]
+    },
+    {
+      "name": "door_strap_2.55",
+      "center": [
+        0.0,
+        2.55,
+        8.922
+      ],
+      "half_extents": [
+        1.098,
+        0.055,
+        0.015
+      ]
+    },
+    {
+      "name": "door_stud_0.45_-1",
+      "center": [
+        -0.21,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_0.45_-2",
+      "center": [
+        -0.42,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_0.45_-3",
+      "center": [
+        -0.63,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_0.45_-4",
+      "center": [
+        -0.84,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_0.45_-5",
+      "center": [
+        -1.05,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_0.45_0",
+      "center": [
+        -0.0,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_0.45_1",
+      "center": [
+        0.21,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_0.45_2",
+      "center": [
+        0.42,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_0.45_3",
+      "center": [
+        0.63,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_0.45_4",
+      "center": [
+        0.84,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_0.45_5",
+      "center": [
+        1.05,
+        0.45,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_-1",
+      "center": [
+        -0.21,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_-2",
+      "center": [
+        -0.42,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_-3",
+      "center": [
+        -0.63,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_-4",
+      "center": [
+        -0.84,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_-5",
+      "center": [
+        -1.05,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_0",
+      "center": [
+        -0.0,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_1",
+      "center": [
+        0.21,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_2",
+      "center": [
+        0.42,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_3",
+      "center": [
+        0.63,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_4",
+      "center": [
+        0.84,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_1.5_5",
+      "center": [
+        1.05,
+        1.5,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_-1",
+      "center": [
+        -0.2,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_-2",
+      "center": [
+        -0.399,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_-3",
+      "center": [
+        -0.599,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_-4",
+      "center": [
+        -0.798,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_-5",
+      "center": [
+        -0.998,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_0",
+      "center": [
+        -0.0,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_1",
+      "center": [
+        0.2,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_2",
+      "center": [
+        0.399,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_3",
+      "center": [
+        0.599,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_4",
+      "center": [
+        0.798,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_stud_2.55_5",
+      "center": [
+        0.998,
+        2.55,
+        8.943
+      ],
+      "half_extents": [
+        0.021,
+        0.028,
+        0.024
+      ]
+    },
+    {
+      "name": "door_threshold",
+      "center": [
+        0.0,
+        0.01,
+        8.875
+      ],
+      "half_extents": [
+        1.35,
+        0.03,
+        0.325
+      ]
+    },
+    {
+      "name": "pillar_abacus_e_-1.9",
+      "center": [
+        5.7,
+        4.32,
+        1.9
+      ],
+      "half_extents": [
+        0.56,
+        0.09,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_abacus_e_-5.6",
+      "center": [
+        5.7,
+        4.32,
+        5.6
+      ],
+      "half_extents": [
+        0.56,
+        0.09,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_abacus_e_1.9",
+      "center": [
+        5.7,
+        4.32,
+        -1.9
+      ],
+      "half_extents": [
+        0.56,
+        0.09,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_abacus_e_5.6",
+      "center": [
+        5.7,
+        4.32,
+        -5.6
+      ],
+      "half_extents": [
+        0.56,
+        0.09,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_abacus_w_-1.9",
+      "center": [
+        -5.7,
+        4.32,
+        1.9
+      ],
+      "half_extents": [
+        0.56,
+        0.09,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_abacus_w_-5.6",
+      "center": [
+        -5.7,
+        4.32,
+        5.6
+      ],
+      "half_extents": [
+        0.56,
+        0.09,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_abacus_w_1.9",
+      "center": [
+        -5.7,
+        4.32,
+        -1.9
+      ],
+      "half_extents": [
+        0.56,
+        0.09,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_abacus_w_5.6",
+      "center": [
+        -5.7,
+        4.32,
+        -5.6
+      ],
+      "half_extents": [
+        0.56,
+        0.09,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_capital_e_-1.9",
+      "center": [
+        5.7,
+        4.07,
+        1.9
+      ],
+      "half_extents": [
+        0.546,
+        0.17,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_capital_e_-5.6",
+      "center": [
+        5.7,
+        4.07,
+        5.6
+      ],
+      "half_extents": [
+        0.546,
+        0.17,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_capital_e_1.9",
+      "center": [
+        5.7,
+        4.07,
+        -1.9
+      ],
+      "half_extents": [
+        0.546,
+        0.17,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_capital_e_5.6",
+      "center": [
+        5.7,
+        4.07,
+        -5.6
+      ],
+      "half_extents": [
+        0.546,
+        0.17,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_capital_w_-1.9",
+      "center": [
+        -5.7,
+        4.07,
+        1.9
+      ],
+      "half_extents": [
+        0.546,
+        0.17,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_capital_w_-5.6",
+      "center": [
+        -5.7,
+        4.07,
+        5.6
+      ],
+      "half_extents": [
+        0.546,
+        0.17,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_capital_w_1.9",
+      "center": [
+        -5.7,
+        4.07,
+        -1.9
+      ],
+      "half_extents": [
+        0.546,
+        0.17,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_capital_w_5.6",
+      "center": [
+        -5.7,
+        4.07,
+        -5.6
+      ],
+      "half_extents": [
+        0.546,
+        0.17,
+        0.56
+      ]
+    },
+    {
+      "name": "pillar_neck_e_-1.9",
+      "center": [
+        5.7,
+        3.88,
+        1.9
+      ],
+      "half_extents": [
+        0.41,
+        0.04,
+        0.4
+      ]
+    },
+    {
+      "name": "pillar_neck_e_-5.6",
+      "center": [
+        5.7,
+        3.88,
+        5.6
+      ],
+      "half_extents": [
+        0.41,
+        0.04,
+        0.4
+      ]
+    },
+    {
+      "name": "pillar_neck_e_1.9",
+      "center": [
+        5.7,
+        3.88,
+        -1.9
+      ],
+      "half_extents": [
+        0.41,
+        0.04,
+        0.4
+      ]
+    },
+    {
+      "name": "pillar_neck_e_5.6",
+      "center": [
+        5.7,
+        3.88,
+        -5.6
+      ],
+      "half_extents": [
+        0.41,
+        0.04,
+        0.4
+      ]
+    },
+    {
+      "name": "pillar_neck_w_-1.9",
+      "center": [
+        -5.7,
+        3.88,
+        1.9
+      ],
+      "half_extents": [
+        0.41,
+        0.04,
+        0.4
+      ]
+    },
+    {
+      "name": "pillar_neck_w_-5.6",
+      "center": [
+        -5.7,
+        3.88,
+        5.6
+      ],
+      "half_extents": [
+        0.41,
+        0.04,
+        0.4
+      ]
+    },
+    {
+      "name": "pillar_neck_w_1.9",
+      "center": [
+        -5.7,
+        3.88,
+        -1.9
+      ],
+      "half_extents": [
+        0.41,
+        0.04,
+        0.4
+      ]
+    },
+    {
+      "name": "pillar_neck_w_5.6",
+      "center": [
+        -5.7,
+        3.88,
+        -5.6
+      ],
+      "half_extents": [
+        0.41,
+        0.04,
+        0.4
+      ]
+    },
+    {
+      "name": "pillar_plinth_e_-1.9",
+      "center": [
+        5.7,
+        0.17,
+        1.9
+      ],
+      "half_extents": [
+        0.475,
+        0.17,
+        0.475
+      ]
+    },
+    {
+      "name": "pillar_plinth_e_-5.6",
+      "center": [
+        5.7,
+        0.17,
+        5.6
+      ],
+      "half_extents": [
+        0.475,
+        0.17,
+        0.475
+      ]
+    },
+    {
+      "name": "pillar_plinth_e_1.9",
+      "center": [
+        5.7,
+        0.17,
+        -1.9
+      ],
+      "half_extents": [
+        0.475,
+        0.17,
+        0.475
+      ]
+    },
+    {
+      "name": "pillar_plinth_e_5.6",
+      "center": [
+        5.7,
+        0.17,
+        -5.6
+      ],
+      "half_extents": [
+        0.475,
+        0.17,
+        0.475
+      ]
+    },
+    {
+      "name": "pillar_plinth_w_-1.9",
+      "center": [
+        -5.7,
+        0.17,
+        1.9
+      ],
+      "half_extents": [
+        0.475,
+        0.17,
+        0.475
+      ]
+    },
+    {
+      "name": "pillar_plinth_w_-5.6",
+      "center": [
+        -5.7,
+        0.17,
+        5.6
+      ],
+      "half_extents": [
+        0.475,
+        0.17,
+        0.475
+      ]
+    },
+    {
+      "name": "pillar_plinth_w_1.9",
+      "center": [
+        -5.7,
+        0.17,
+        -1.9
+      ],
+      "half_extents": [
+        0.475,
+        0.17,
+        0.475
+      ]
+    },
+    {
+      "name": "pillar_plinth_w_5.6",
+      "center": [
+        -5.7,
+        0.17,
+        -5.6
+      ],
+      "half_extents": [
+        0.475,
+        0.17,
+        0.475
+      ]
+    },
+    {
+      "name": "pillar_shaft_e_-1.9",
+      "center": [
+        5.7,
+        2.13,
+        1.9
+      ],
+      "half_extents": [
+        0.351,
+        1.75,
+        0.36
+      ]
+    },
+    {
+      "name": "pillar_shaft_e_-5.6",
+      "center": [
+        5.7,
+        2.13,
+        5.6
+      ],
+      "half_extents": [
+        0.351,
+        1.75,
+        0.36
+      ]
+    },
+    {
+      "name": "pillar_shaft_e_1.9",
+      "center": [
+        5.7,
+        2.13,
+        -1.9
+      ],
+      "half_extents": [
+        0.351,
+        1.75,
+        0.36
+      ]
+    },
+    {
+      "name": "pillar_shaft_e_5.6",
+      "center": [
+        5.7,
+        2.13,
+        -5.6
+      ],
+      "half_extents": [
+        0.351,
+        1.75,
+        0.36
+      ]
+    },
+    {
+      "name": "pillar_shaft_w_-1.9",
+      "center": [
+        -5.7,
+        2.13,
+        1.9
+      ],
+      "half_extents": [
+        0.351,
+        1.75,
+        0.36
+      ]
+    },
+    {
+      "name": "pillar_shaft_w_-5.6",
+      "center": [
+        -5.7,
+        2.13,
+        5.6
+      ],
+      "half_extents": [
+        0.351,
+        1.75,
+        0.36
+      ]
+    },
+    {
+      "name": "pillar_shaft_w_1.9",
+      "center": [
+        -5.7,
+        2.13,
+        -1.9
+      ],
+      "half_extents": [
+        0.351,
+        1.75,
+        0.36
+      ]
+    },
+    {
+      "name": "pillar_shaft_w_5.6",
+      "center": [
+        -5.7,
+        2.13,
+        -5.6
+      ],
+      "half_extents": [
+        0.351,
+        1.75,
+        0.36
+      ]
+    },
+    {
+      "name": "pillar_torus_e_-1.9",
+      "center": [
+        5.7,
+        0.4,
+        1.9
+      ],
+      "half_extents": [
+        0.47,
+        0.067,
+        0.47
+      ]
+    },
+    {
+      "name": "pillar_torus_e_-5.6",
+      "center": [
+        5.7,
+        0.4,
+        5.6
+      ],
+      "half_extents": [
+        0.47,
+        0.067,
+        0.47
+      ]
+    },
+    {
+      "name": "pillar_torus_e_1.9",
+      "center": [
+        5.7,
+        0.4,
+        -1.9
+      ],
+      "half_extents": [
+        0.47,
+        0.067,
+        0.47
+      ]
+    },
+    {
+      "name": "pillar_torus_e_5.6",
+      "center": [
+        5.7,
+        0.4,
+        -5.6
+      ],
+      "half_extents": [
+        0.47,
+        0.067,
+        0.47
+      ]
+    },
+    {
+      "name": "pillar_torus_w_-1.9",
+      "center": [
+        -5.7,
+        0.4,
+        1.9
+      ],
+      "half_extents": [
+        0.47,
+        0.067,
+        0.47
+      ]
+    },
+    {
+      "name": "pillar_torus_w_-5.6",
+      "center": [
+        -5.7,
+        0.4,
+        5.6
+      ],
+      "half_extents": [
+        0.47,
+        0.067,
+        0.47
+      ]
+    },
+    {
+      "name": "pillar_torus_w_1.9",
+      "center": [
+        -5.7,
+        0.4,
+        -1.9
+      ],
+      "half_extents": [
+        0.47,
+        0.067,
+        0.47
+      ]
+    },
+    {
+      "name": "pillar_torus_w_5.6",
+      "center": [
+        -5.7,
+        0.4,
+        -5.6
+      ],
+      "half_extents": [
+        0.47,
+        0.067,
+        0.47
+      ]
+    },
+    {
+      "name": "wall_face_east",
+      "center": [
+        6.275,
+        2.2,
         0.0
       ],
       "half_extents": [
         0.275,
-        2.9,
-        30.275
+        2.2,
+        8.6
       ]
     },
     {
-      "name": "wall_far",
+      "name": "wall_face_entrance",
       "center": [
         0.0,
-        2.9,
-        -30.275
+        2.2,
+        8.875
       ],
       "half_extents": [
-        20.0,
-        2.9,
+        6.0,
+        2.2,
         0.275
       ]
     },
     {
-      "name": "wall_lintel",
+      "name": "wall_face_far",
       "center": [
         0.0,
-        4.55,
-        30.275
+        2.2,
+        -8.875
       ],
       "half_extents": [
+        6.0,
+        2.2,
+        0.275
+      ]
+    },
+    {
+      "name": "wall_face_west",
+      "center": [
+        -6.275,
+        2.2,
+        0.0
+      ],
+      "half_extents": [
+        0.275,
+        2.2,
+        8.6
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-0.45",
+      "center": [
+        0.0,
+        5.996,
+        9.175
+      ],
+      "half_extents": [
+        0.455,
+        1.596,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-0.91",
+      "center": [
+        -0.681,
+        5.996,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.596,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-1.38",
+      "center": [
+        -1.144,
+        5.984,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.584,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-1.84",
+      "center": [
+        -1.606,
+        5.964,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.564,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-2.30",
+      "center": [
+        -2.069,
+        5.935,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.535,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-2.76",
+      "center": [
+        -2.531,
+        5.897,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.497,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-3.23",
+      "center": [
+        -2.994,
+        5.848,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.448,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-3.69",
+      "center": [
+        -3.456,
+        5.788,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.388,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-4.15",
+      "center": [
+        -3.919,
+        5.715,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.315,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-4.61",
+      "center": [
+        -4.381,
+        5.625,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.225,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-5.08",
+      "center": [
+        -4.844,
+        5.513,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.113,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-5.54",
+      "center": [
+        -5.306,
+        5.37,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        0.97,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_-6.00",
+      "center": [
+        -5.769,
+        5.17,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        0.77,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_0.45",
+      "center": [
+        0.681,
+        5.996,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.596,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_0.91",
+      "center": [
+        1.144,
+        5.984,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.584,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_1.38",
+      "center": [
+        1.606,
+        5.964,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.564,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_1.84",
+      "center": [
+        2.069,
+        5.935,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.535,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_2.30",
+      "center": [
+        2.531,
+        5.897,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.497,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_2.76",
+      "center": [
+        2.994,
+        5.848,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.448,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_3.23",
+      "center": [
+        3.456,
+        5.788,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.388,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_3.69",
+      "center": [
+        3.919,
+        5.715,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.315,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_4.15",
+      "center": [
+        4.381,
+        5.625,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.225,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_4.61",
+      "center": [
+        4.844,
+        5.513,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.113,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_5.08",
+      "center": [
+        5.306,
+        5.37,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        0.97,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_entrance_5.54",
+      "center": [
+        5.769,
+        5.17,
+        9.175
+      ],
+      "half_extents": [
+        0.236,
+        0.77,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-0.91",
+      "center": [
+        -0.681,
+        5.996,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.596,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-1.38",
+      "center": [
+        -1.144,
+        5.984,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.584,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-1.84",
+      "center": [
+        -1.606,
+        5.964,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.564,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-2.30",
+      "center": [
+        -2.069,
+        5.935,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.535,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-2.76",
+      "center": [
+        -2.531,
+        5.897,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.497,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-3.23",
+      "center": [
+        -2.994,
+        5.848,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.448,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-3.69",
+      "center": [
+        -3.456,
+        5.788,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.388,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-4.15",
+      "center": [
+        -3.919,
+        5.715,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.315,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-4.61",
+      "center": [
+        -4.381,
+        5.625,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.225,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-5.08",
+      "center": [
+        -4.844,
+        5.513,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.113,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-5.54",
+      "center": [
+        -5.306,
+        5.37,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        0.97,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_-6.00",
+      "center": [
+        -5.769,
+        5.17,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        0.77,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_0.45",
+      "center": [
+        0.681,
+        5.996,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.596,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_0.91",
+      "center": [
+        1.144,
+        5.984,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.584,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_1.38",
+      "center": [
+        1.606,
+        5.964,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.564,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_1.84",
+      "center": [
+        2.069,
+        5.935,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.535,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_2.30",
+      "center": [
+        2.531,
+        5.897,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.497,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_2.76",
+      "center": [
+        2.994,
+        5.848,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.448,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_3.23",
+      "center": [
+        3.456,
+        5.788,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.388,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_3.69",
+      "center": [
+        3.919,
+        5.715,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.315,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_4.15",
+      "center": [
+        4.381,
+        5.625,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.225,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_4.61",
+      "center": [
+        4.844,
+        5.513,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        1.113,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_5.08",
+      "center": [
+        5.306,
+        5.37,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        0.97,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_5.54",
+      "center": [
+        5.769,
+        5.17,
+        -9.175
+      ],
+      "half_extents": [
+        0.236,
+        0.77,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_head",
+      "center": [
+        0.0,
+        6.971,
+        -9.175
+      ],
+      "half_extents": [
+        0.45,
+        0.621,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_gable_far_sill",
+      "center": [
+        0.0,
+        4.8,
+        -9.175
+      ],
+      "half_extents": [
+        0.455,
+        0.4,
+        0.575
+      ]
+    },
+    {
+      "name": "wall_recess_back",
+      "center": [
+        0.0,
         2.0,
-        1.25,
-        0.275
+        -9.25
+      ],
+      "half_extents": [
+        1.7,
+        2.1,
+        0.1
       ]
     },
     {
-      "name": "wall_west",
+      "name": "wall_shell_east",
       "center": [
-        -20.275,
-        2.9,
+        6.85,
+        3.95,
         0.0
       ],
       "half_extents": [
-        0.275,
-        2.9,
-        30.275
+        0.3,
+        4.05,
+        9.75
+      ]
+    },
+    {
+      "name": "wall_shell_entrance",
+      "center": [
+        0.0,
+        2.2,
+        9.45
+      ],
+      "half_extents": [
+        7.15,
+        2.2,
+        0.3
+      ]
+    },
+    {
+      "name": "wall_shell_far",
+      "center": [
+        0.0,
+        2.2,
+        -9.45
+      ],
+      "half_extents": [
+        7.15,
+        2.2,
+        0.3
+      ]
+    },
+    {
+      "name": "wall_shell_west",
+      "center": [
+        -6.85,
+        3.95,
+        0.0
+      ],
+      "half_extents": [
+        0.3,
+        4.05,
+        9.75
       ]
     }
-  ]
+  ],
+  "window": {
+    "center": [
+      0.0,
+      5.78,
+      -9.174999999999999
+    ],
+    "half_width": 0.45
+  }
 }

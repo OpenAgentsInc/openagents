@@ -213,3 +213,9 @@ or converted; every sprite here is our own Blender render.
 | `debris_dust` | The demolition site's dust puffs, through `fx::Style` | One lit dust puff |
 | `chimney_smoke` | Everglade's chimneys, the bakehouse's stack, and the smithy's forge (`layout::details::chimneys`) | A thin, pale plume leaning downwind |
 | `butterflies` | Every other spring and summer flower drift in Everglade | Orange and lemon butterflies wandering over the flowers |
+| `crypt_steam` | The crypt lab's cauldrons (`examples/crypt_lab.rs`) | Pale steam curling up from the liquid |
+| `cauldron_bubbles_green`, `_red`, `_amber` | The crypt lab's cauldrons | Bubbles popping on the glowing liquid, droplets thrown up |
+| `brazier_fire` | The crypt lab's brazier | Low flames, smoke, and sparks over the coals |
+| `candle_glow` | Every candle flame in the crypt lab | A small warm halo that swells and gutters |
+| `crypt_dust` | The crypt lab's moonbeam | Dust motes drifting slowly in the light |
+| `crypt_fog` | The crypt lab's floor | Faint fog sheets creeping low, and wisps lifting off them |

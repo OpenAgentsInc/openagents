@@ -1,19 +1,19 @@
 {
   "model": "candelabrum_tall.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
-  "triangles": 776,
+  "triangles": 2876,
   "boxes": [
     {
       "name": "candelabrum_tall",
       "center": [
         0.0,
-        0.892,
+        0.942,
         0.0
       ],
       "half_extents": [
-        0.43,
-        0.892,
-        0.449
+        0.296,
+        0.942,
+        0.303
       ]
     }
   ]

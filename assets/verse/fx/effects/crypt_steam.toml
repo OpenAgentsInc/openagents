@@ -1,0 +1,24 @@
+# Steam over a crypt-lab cauldron: a slow, pale column that curls and thins
+# under the vault. Runs until stopped.
+description = "Pale steam rising slowly from a cauldron's surface."
+
+[[emitter]]
+name = "steam"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+rate = 2.6
+life = [3.5, 5.0]
+shape = "disc"
+radius = 0.32
+speed = [0.25, 0.45]
+gravity = 0.06
+drag = 0.3
+wander = 0.15
+size = [0.22, 0.32]
+scale = [[0.0, 0.5], [0.4, 1.5], [1.0, 2.6]]
+color = [0.42, 0.42, 0.38]
+alpha = [[0.0, 0.0], [0.15, 0.32], [0.6, 0.18], [1.0, 0.0]]
+spin = [-0.25, 0.25]
+priority = 2

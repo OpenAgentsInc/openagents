@@ -1,19 +1,19 @@
 {
   "model": "bone_scatter.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
-  "triangles": 116,
+  "triangles": 4646,
   "boxes": [
     {
       "name": "bone_scatter",
       "center": [
-        -0.0,
-        0.094,
+        0.0,
+        0.189,
         0.0
       ],
       "half_extents": [
-        0.193,
-        0.094,
-        0.163
+        0.592,
+        0.189,
+        0.686
       ]
     }
   ]

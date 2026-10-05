@@ -1,0 +1,20 @@
+{
+  "model": "sarcophagus.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 2204,
+  "boxes": [
+    {
+      "name": "sarcophagus",
+      "center": [
+        0.0,
+        0.652,
+        0.0
+      ],
+      "half_extents": [
+        1.331,
+        0.652,
+        0.722
+      ]
+    }
+  ]
+}

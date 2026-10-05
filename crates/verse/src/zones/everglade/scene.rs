@@ -357,6 +357,7 @@ fn add_material(scene: &mut TexturedScene, look: &Look) -> usize {
         roughness,
         alpha,
         double_sided: look.double_sided,
+        emissive: 0.0,
     })
 }
 

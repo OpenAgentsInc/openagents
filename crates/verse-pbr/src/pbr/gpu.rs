@@ -99,6 +99,12 @@ struct Frame {
     cascade_params: [f32; 4],
     /// The camera's view axis, along which view depth is measured.
     view_forward: [f32; 4],
+    /// x lamp count; y the scale from emitted luminance to the shaded
+    /// signal (the key's exposure on a neon stage, 1 in space).
+    lamp_params: [f32; 4],
+    /// Per lamp: position and range (m), then pre-exposed color times
+    /// candela.
+    lamps: [[f32; 4]; 2 * super::MAX_LAMPS],
 }
 
 impl Frame {
@@ -1852,6 +1858,7 @@ impl Photo {
                 [p.dims[0] as f32, p.dims[1] as f32, p.dims[2] as f32, 1.0]
             }),
             params: [camera.star_gain, sky.time, pixel_angle, 1.0],
+            lamp_params: [0.0, 1.0, 0.0, 0.0],
             metering: [
                 0.18,
                 2f32.powf(camera.ev100 - camera.ev_max),
@@ -2291,6 +2298,20 @@ impl Photo {
                 .extend(key.rim_angular_radius)
                 .to_array();
             uniform.earth_light = [rim, rim, rim, 0.0];
+            uniform.lamp_params = [0.0, exposure, 0.0, 0.0];
+            let mut count = 0;
+            for lamp in neon.lamps.iter().filter(|lamp| lamp.lit()) {
+                let gain = lamp.intensity * exposure;
+                uniform.lamps[count * 2] = lamp.position.extend(lamp.range).to_array();
+                uniform.lamps[count * 2 + 1] = [
+                    lamp.color[0] * gain,
+                    lamp.color[1] * gain,
+                    lamp.color[2] * gain,
+                    0.0,
+                ];
+                count += 1;
+            }
+            uniform.lamp_params[0] = count as f32;
             uniform.probe_origin = probes.origin.extend(probes.cell).to_array();
             uniform.probe_dims = [
                 probes.dims[0] as f32,
@@ -2455,7 +2476,7 @@ impl Photo {
                 gain_min: 1.0,
                 gain_max: 1.0,
                 // The plaza keeps its standard-range look on HDR displays.
-                grade: Grade::STAGE,
+                grade: neon.grade,
                 time: neon.time,
             },
         );

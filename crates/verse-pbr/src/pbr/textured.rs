@@ -233,6 +233,9 @@ pub struct TexturedMaterial {
     /// Draw back faces too: leaves, cloth, and other single-sheet surfaces.
     /// Back faces shade with the normal turned toward the eye.
     pub double_sided: bool,
+    /// Emitted luminance per unit of base color, cd/m²: a flame, embers, or
+    /// a glowing liquid. Zero emits nothing.
+    pub emissive: f32,
 }
 
 impl Default for TexturedMaterial {
@@ -245,6 +248,7 @@ impl Default for TexturedMaterial {
             roughness: 1.0,
             alpha: AlphaMode::Opaque,
             double_sided: false,
+            emissive: 0.0,
         }
     }
 }
@@ -257,6 +261,7 @@ impl TexturedMaterial {
             || !unit(self.metallic)
             || !unit(self.roughness)
             || !unit(self.alpha.cutoff())
+            || !(self.emissive.is_finite() && (0.0..=MAX_EMISSIVE).contains(&self.emissive))
         {
             return Err("textured material has an invalid image or factor".into());
         }
@@ -966,6 +971,7 @@ impl TexturedScene {
             roughness: pbr.roughness_factor(),
             alpha,
             double_sided: material.double_sided(),
+            emissive: emissive(&material),
         };
         imported
             .validate(self.images.len())
@@ -1000,12 +1006,11 @@ impl TexturedScene {
                 format!("{}#image{}", path.display(), image.index())
             }
         };
-        let recipe_name = match role {
-            verse_engine::mips::Role::Mask { cutoff } => {
-                format!("{name} [mask cutoff {cutoff:08x}]")
-            }
-            _ => name.clone(),
+        let recipe = match role {
+            verse_engine::mips::Role::Mask { cutoff } => format!(" [mask cutoff {cutoff:08x}]"),
+            _ => String::new(),
         };
+        let recipe_name = format!("{name}{recipe}");
         if let Some(index) = self.images.iter().position(|i| i.name == recipe_name) {
             return Ok(index);
         }
@@ -1030,6 +1035,19 @@ impl TexturedScene {
             MAX_IMAGE_SIZE,
             role,
         );
+        // Files built by one script often pack the same image; share it.
+        if let Some(index) = self.images.iter().position(|i| {
+            i.width == image.width
+                && i.height == image.height
+                && if recipe.is_empty() {
+                    !i.name.contains(" [mask cutoff ")
+                } else {
+                    i.name.ends_with(&recipe)
+                }
+                && i.rgba == image.rgba
+        }) {
+            return Ok(index);
+        }
         Ok(self.add_image(image))
     }
 }
@@ -1275,9 +1293,27 @@ pub fn uniform(material: &TexturedMaterial) -> [[f32; 4]; 2] {
             material.metallic,
             material.roughness,
             material.alpha.cutoff(),
-            0.0,
+            material.emissive,
         ],
     ]
+}
+
+/// The brightest emission a material may carry, cd/m²: about a candle
+/// flame's luminance.
+pub const MAX_EMISSIVE: f32 = 20_000.0;
+
+/// A glTF material's emission as luminance per unit of base color: the
+/// brightest channel of its emissive factor times its
+/// `KHR_materials_emissive_strength`, read as cd/m².
+fn emissive(material: &gltf::Material<'_>) -> f32 {
+    let factor = material.emissive_factor().into_iter().fold(0.0, f32::max);
+    let strength = material.emissive_strength().unwrap_or(1.0);
+    let value = factor * strength;
+    if value.is_finite() {
+        value.clamp(0.0, MAX_EMISSIVE)
+    } else {
+        0.0
+    }
 }
 
 pub fn srgb_to_linear() -> &'static [f32; 256] {
@@ -1779,5 +1815,49 @@ mod tests {
         scene.place(table, Mat4::from_translation(Vec3::new(2.0, 0.0, 0.0)));
         let merged = scene.merge().unwrap();
         assert_eq!(merged.batches.len(), 4);
+    }
+
+    fn chamber(name: &str) -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/verse/generated/chamber")
+            .join(format!("{name}.glb"))
+    }
+
+    #[test]
+    fn files_that_pack_the_same_image_share_it_and_keep_their_emission() {
+        let mut scene = TexturedScene::default();
+        scene.import_gltf(&chamber("cauldron_green")).unwrap();
+        let images = scene.images.len();
+        scene.import_gltf(&chamber("cauldron_red")).unwrap();
+        // The two cauldrons pack the same iron, stone, and wood images.
+        assert_eq!(scene.images.len(), images);
+        let glowing: Vec<f32> = scene
+            .materials
+            .iter()
+            .map(|m| m.emissive)
+            .filter(|&e| e > 0.0)
+            .collect();
+        // Each liquid, its froth, and the embers glow; nothing else does.
+        assert_eq!(glowing.len(), 6, "{glowing:?}");
+        assert!(glowing.iter().all(|&e| (50.0..=MAX_EMISSIVE).contains(&e)));
+        let flames = TexturedScene::default().import_gltf(&chamber("floor_candles"));
+        assert!(flames.is_ok());
+    }
+
+    #[test]
+    fn emission_rides_in_the_material_uniform_and_is_bounded() {
+        let glowing = TexturedMaterial {
+            emissive: 120.0,
+            ..TexturedMaterial::default()
+        };
+        assert_eq!(uniform(&glowing)[1][3], 120.0);
+        assert!(glowing.validate(0).is_ok());
+        for bad in [-1.0, f32::NAN, MAX_EMISSIVE * 2.0] {
+            let material = TexturedMaterial {
+                emissive: bad,
+                ..TexturedMaterial::default()
+            };
+            assert!(material.validate(0).is_err(), "{bad}");
+        }
     }
 }

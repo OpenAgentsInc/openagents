@@ -127,6 +127,7 @@ impl Ruins {
             key: Some(Self::key()),
             daylight: None,
             height_fog: air.height_fog,
+            ..Neon::plaza(time)
         }
     }
 

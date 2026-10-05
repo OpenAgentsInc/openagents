@@ -1,0 +1,20 @@
+{
+  "model": "iron_cage.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 2332,
+  "boxes": [
+    {
+      "name": "iron_cage",
+      "center": [
+        0.0,
+        1.157,
+        0.0
+      ],
+      "half_extents": [
+        0.575,
+        1.157,
+        0.575
+      ]
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+# Fire in a crypt brazier: low tongues of flame over the coals, a little
+# smoke, and sparks spiralling up into the dark. Runs until stopped.
+description = "Low flames, smoke, and rising sparks over a brazier's coals."
+
+[[emitter]]
+name = "flames"
+sheet = "fireball"
+frames = [1, 12]
+animate = "life"
+luminance = 6.0
+rate = 34.0
+life = [0.3, 0.5]
+shape = "disc"
+radius = 0.26
+spread = 12.0
+speed = [0.6, 1.0]
+gravity = 1.2
+drag = 0.6
+size = [0.07, 0.12]
+scale = [[0.0, 0.6], [0.35, 1.1], [1.0, 0.9]]
+color = [[1.0, 0.82, 0.5], [1.0, 0.48, 0.14], [0.5, 0.2, 0.08]]
+alpha = [[0.0, 1.0], [0.7, 0.8], [1.0, 0.0]]
+additive = [1.0, 0.9, 0.5]
+spin = [-1.5, 1.5]
+priority = 5
+
+[[emitter]]
+name = "smoke"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+delay = 0.3
+rate = 2.0
+life = [2.5, 3.5]
+shape = "disc"
+radius = 0.2
+speed = [0.5, 0.8]
+gravity = 0.15
+drag = 0.4
+size = [0.2, 0.3]
+scale = [0.6, 1.4, 2.4]
+color = [0.12, 0.11, 0.1]
+alpha = [0.0, 0.35, 0.0]
+spin = [-0.3, 0.3]
+priority = 2
+
+[[emitter]]
+name = "sparks"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 30.0
+rate = 7.0
+life = [0.8, 1.5]
+shape = "disc"
+radius = 0.22
+spread = 20.0
+speed = [0.8, 1.6]
+gravity = 0.3
+drag = 0.4
+wander = 1.5
+size = [0.008, 0.014]
+stretch = 0.02
+color = [1.0, 0.55, 0.18]
+alpha = [1.0, 0.8, 0.0]
+priority = 3

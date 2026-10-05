@@ -1,0 +1,20 @@
+{
+  "model": "lectern.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 694,
+  "boxes": [
+    {
+      "name": "lectern",
+      "center": [
+        0.0,
+        0.609,
+        0.0
+      ],
+      "half_extents": [
+        0.357,
+        0.609,
+        0.255
+      ]
+    }
+  ]
+}

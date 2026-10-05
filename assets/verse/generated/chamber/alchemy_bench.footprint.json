@@ -1,19 +1,19 @@
 {
   "model": "alchemy_bench.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
-  "triangles": 224,
+  "triangles": 3112,
   "boxes": [
     {
       "name": "alchemy_bench",
       "center": [
         0.0,
-        0.55,
+        0.625,
         0.0
       ],
       "half_extents": [
-        0.7,
-        0.55,
-        0.35
+        0.9,
+        0.625,
+        0.38
       ]
     }
   ]

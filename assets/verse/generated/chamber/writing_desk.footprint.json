@@ -1,0 +1,20 @@
+{
+  "model": "writing_desk.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 1830,
+  "boxes": [
+    {
+      "name": "writing_desk",
+      "center": [
+        0.0,
+        0.532,
+        0.0
+      ],
+      "half_extents": [
+        0.7,
+        0.532,
+        0.36
+      ]
+    }
+  ]
+}

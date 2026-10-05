@@ -1544,123 +1544,207 @@ fn offscreen(
     headroom: f32,
     overlay: Option<&crate::overlay::OverlayImage>,
 ) -> Result<Vec<u8>, String> {
-    let texel = format
-        .block_copy_size(None)
-        .ok_or("capture format has no fixed size")?;
-    let atmosphere = atmosphere.validate()?;
-    validate_extent(width, height, RenderOptions::default().max_extent)?;
-    validate_frame(view, dynamic, ui)?;
-    if let Some(scene) = &world.textured {
-        scene.validate()?;
+    Offscreen::with_format(width, height, world, atlas, atmosphere, format, headroom)?
+        .render_with_overlay(view, dynamic, ui, overlay)
+}
+
+/// A renderer without a window that keeps its device and its uploaded world
+/// between frames, so a sequence of frames (a video) costs one upload.
+#[cfg(feature = "capture")]
+pub struct Offscreen {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    scene: Scene,
+    targets: Targets,
+    texture: wgpu::Texture,
+    output: wgpu::TextureView,
+    readback: wgpu::Buffer,
+    width: u32,
+    height: u32,
+    row: u32,
+    texel: u32,
+    settled: bool,
+}
+
+#[cfg(feature = "capture")]
+impl Offscreen {
+    /// A renderer of `world` at `width` by `height` in sRGB RGBA8, as
+    /// [`capture_rgba`] draws.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when no GPU is available or the world is invalid.
+    pub fn new(
+        width: u32,
+        height: u32,
+        world: &Mesh,
+        atlas: &Atlas,
+        atmosphere: crate::zones::Atmosphere,
+    ) -> Result<Self, String> {
+        Self::with_format(width, height, world, atlas, atmosphere, CAPTURE_FORMAT, 1.0)
     }
-    let instance = instance();
-    let (adapter, device, queue) = open(&instance, None)?;
-    validate_extent(width, height, device.limits().max_texture_dimension_2d)?;
-    let mut scene = Scene::new(&device, &queue, &adapter, format, world, atlas, 4);
-    scene.atmosphere = atmosphere;
-    scene.headroom = headroom;
-    let mut targets = Targets::new(&device, format, width, height, scene.samples);
-    let panel = match overlay {
-        Some(image) => {
-            let mut panel = crate::overlay::Overlay::new(&device, format);
-            panel.set(&device, &queue, Some(image))?;
-            Some(panel)
+
+    fn with_format(
+        width: u32,
+        height: u32,
+        world: &Mesh,
+        atlas: &Atlas,
+        atmosphere: crate::zones::Atmosphere,
+        format: wgpu::TextureFormat,
+        headroom: f32,
+    ) -> Result<Self, String> {
+        let texel = format
+            .block_copy_size(None)
+            .ok_or("capture format has no fixed size")?;
+        let atmosphere = atmosphere.validate()?;
+        validate_extent(width, height, RenderOptions::default().max_extent)?;
+        if let Some(scene) = &world.textured {
+            scene.validate()?;
         }
-        None => None,
-    };
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("verse capture"),
-        size: extent(width, height),
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    });
-    let output = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-    let row = (width * texel).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
-        * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-    let readback = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("verse capture readback"),
-        size: u64::from(row) * u64::from(height),
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-
-    // A physical frame adapts its exposure over frames; settle it first.
-    if dynamic.sky.is_some() {
-        for _ in 0..3 {
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("verse capture warm-up"),
-            });
-            scene.encode(
-                &device,
-                &queue,
-                &mut encoder,
-                &output,
-                &mut targets,
-                view,
-                dynamic,
-                ui,
-            );
-            queue.submit([encoder.finish()]);
-        }
-    }
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("verse capture"),
-    });
-    scene.encode(
-        &device,
-        &queue,
-        &mut encoder,
-        &output,
-        &mut targets,
-        view,
-        dynamic,
-        ui,
-    );
-    if let Some(panel) = &panel {
-        panel.encode(&queue, &mut encoder, &output, targets.size);
-    }
-    encoder.copy_texture_to_buffer(
-        wgpu::TexelCopyTextureInfo {
-            texture: &texture,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        wgpu::TexelCopyBufferInfo {
-            buffer: &readback,
-            layout: wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(row),
-                rows_per_image: Some(height),
-            },
-        },
-        extent(width, height),
-    );
-    queue.submit([encoder.finish()]);
-
-    let slice = readback.slice(..);
-    slice.map_async(wgpu::MapMode::Read, |_| {});
-    device
-        .poll(wgpu::PollType::Wait {
-            submission_index: None,
-            timeout: None,
+        let instance = instance();
+        let (adapter, device, queue) = open(&instance, None)?;
+        validate_extent(width, height, device.limits().max_texture_dimension_2d)?;
+        let mut scene = Scene::new(&device, &queue, &adapter, format, world, atlas, 4);
+        scene.atmosphere = atmosphere;
+        scene.headroom = headroom;
+        let targets = Targets::new(&device, format, width, height, scene.samples);
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("verse capture"),
+            size: extent(width, height),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let output = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let row = (width * texel).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+            * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("verse capture readback"),
+            size: u64::from(row) * u64::from(height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        Ok(Self {
+            device,
+            queue,
+            scene,
+            targets,
+            texture,
+            output,
+            readback,
+            width,
+            height,
+            row,
+            texel,
+            settled: false,
         })
-        .map_err(|e| format!("the GPU did not finish: {e}"))?;
-    let mapped = slice.get_mapped_range();
-    let mut pixels = Vec::with_capacity((width * height * texel) as usize);
-    for y in 0..height as usize {
-        let start = y * row as usize;
-        pixels.extend_from_slice(&mapped[start..start + width as usize * texel as usize]);
     }
-    drop(mapped);
-    readback.unmap();
 
-    Ok(pixels)
+    /// Renders one frame and returns its tightly packed texels, rows top
+    /// first.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the frame is invalid or the GPU fails.
+    pub fn render(&mut self, view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<Vec<u8>, String> {
+        self.render_with_overlay(view, dynamic, ui, None)
+    }
+
+    fn render_with_overlay(
+        &mut self,
+        view: View,
+        dynamic: &Mesh,
+        ui: &UiBatch,
+        overlay: Option<&crate::overlay::OverlayImage>,
+    ) -> Result<Vec<u8>, String> {
+        validate_frame(view, dynamic, ui)?;
+        let (device, queue) = (&self.device, &self.queue);
+        let panel = match overlay {
+            Some(image) => {
+                let format = self.texture.format();
+                let mut panel = crate::overlay::Overlay::new(device, format);
+                panel.set(device, queue, Some(image))?;
+                Some(panel)
+            }
+            None => None,
+        };
+        // A physical frame adapts its exposure over frames; settle it first.
+        if dynamic.sky.is_some() && !self.settled {
+            for _ in 0..3 {
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("verse capture warm-up"),
+                });
+                self.scene.encode(
+                    device,
+                    queue,
+                    &mut encoder,
+                    &self.output,
+                    &mut self.targets,
+                    view,
+                    dynamic,
+                    ui,
+                );
+                queue.submit([encoder.finish()]);
+            }
+        }
+        self.settled = true;
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("verse capture"),
+        });
+        self.scene.encode(
+            device,
+            queue,
+            &mut encoder,
+            &self.output,
+            &mut self.targets,
+            view,
+            dynamic,
+            ui,
+        );
+        if let Some(panel) = &panel {
+            panel.encode(queue, &mut encoder, &self.output, self.targets.size);
+        }
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &self.readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(self.row),
+                    rows_per_image: Some(self.height),
+                },
+            },
+            extent(self.width, self.height),
+        );
+        queue.submit([encoder.finish()]);
+
+        let slice = self.readback.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            })
+            .map_err(|e| format!("the GPU did not finish: {e}"))?;
+        let mapped = slice.get_mapped_range();
+        let line = self.width as usize * self.texel as usize;
+        let mut pixels = Vec::with_capacity(line * self.height as usize);
+        for y in 0..self.height as usize {
+            let start = y * self.row as usize;
+            pixels.extend_from_slice(&mapped[start..start + line]);
+        }
+        drop(mapped);
+        self.readback.unmap();
+        Ok(pixels)
+    }
 }
 
 /// Renders one frame into an extended-range (RGBA16F, linear) target, as an

@@ -1,0 +1,22 @@
+# Dust motes hanging in a shaft of light: tiny specks drifting and turning
+# slowly, catching the light only now and then. Runs until stopped.
+description = "Dust motes drifting in a shaft of moonlight."
+
+[[emitter]]
+name = "motes"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 1.6
+rate = 14.0
+life = [6.0, 9.0]
+shape = "sphere"
+radius = 0.9
+speed = [0.0, 0.03]
+gravity = -0.01
+drag = 0.6
+wander = 0.04
+size = [0.006, 0.014]
+color = [0.75, 0.82, 1.0]
+alpha = [[0.0, 0.0], [0.2, 0.9], [0.5, 0.3], [0.8, 1.0], [1.0, 0.0]]
+priority = 1

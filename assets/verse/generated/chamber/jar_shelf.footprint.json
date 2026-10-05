@@ -1,0 +1,20 @@
+{
+  "model": "jar_shelf.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 3502,
+  "boxes": [
+    {
+      "name": "jar_shelf",
+      "center": [
+        0.0,
+        1.041,
+        0.0
+      ],
+      "half_extents": [
+        0.79,
+        1.041,
+        0.22
+      ]
+    }
+  ]
+}

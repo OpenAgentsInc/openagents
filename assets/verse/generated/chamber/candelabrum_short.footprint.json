@@ -1,19 +1,19 @@
 {
   "model": "candelabrum_short.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
-  "triangles": 264,
+  "triangles": 1066,
   "boxes": [
     {
       "name": "candelabrum_short",
       "center": [
         0.0,
-        0.218,
+        0.194,
         0.0
       ],
       "half_extents": [
-        0.152,
-        0.218,
-        0.16
+        0.182,
+        0.194,
+        0.146
       ]
     }
   ]

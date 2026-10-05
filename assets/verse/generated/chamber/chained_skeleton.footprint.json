@@ -1,0 +1,20 @@
+{
+  "model": "chained_skeleton.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
+  "triangles": 4328,
+  "boxes": [
+    {
+      "name": "chained_skeleton",
+      "center": [
+        0.022,
+        0.89,
+        0.505
+      ],
+      "half_extents": [
+        0.602,
+        0.91,
+        0.505
+      ]
+    }
+  ]
+}

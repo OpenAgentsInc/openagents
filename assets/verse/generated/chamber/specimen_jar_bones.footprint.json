@@ -1,19 +1,19 @@
 {
   "model": "specimen_jar_bones.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z toward the entrance, origin at the base center",
-  "triangles": 708,
+  "triangles": 1228,
   "boxes": [
     {
       "name": "specimen_jar_bones",
       "center": [
         0.0,
-        0.542,
+        0.326,
         0.0
       ],
       "half_extents": [
-        0.3,
-        0.542,
-        0.3
+        0.21,
+        0.326,
+        0.21
       ]
     }
   ]

@@ -82,6 +82,11 @@ struct Frame {
     cascade_params: vec4<f32>,
     // xyz the camera's view axis, along which view depth is measured.
     view_forward: vec4<f32>,
+    // x lamp count; y the scale from emitted luminance to the shaded signal.
+    lamp_params: vec4<f32>,
+    // Per lamp (`pbr::Lamp`): position and range (m), then pre-exposed color
+    // times candela.
+    lamps: array<vec4<f32>, 64>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -724,13 +729,15 @@ struct Shading {
     // `screen_terms`: x scales ambient light only, y the sun's direct light
     // only. Both are one where nothing traced them.
     screen: vec2<f32>,
+    // Emitted luminance (cd/m²), added before exposure and fog.
+    emit: vec3<f32>,
 };
 
 @fragment
 fn fs_lit(i: LitOut) -> @location(0) vec4<f32> {
     let ao = vec3<f32>(clamp(i.params.w, 0.0, 1.0));
     let screen = screen_terms(i.clip.xy);
-    return vec4<f32>(shade(Shading(i.world, i.normal, i.tangent, i.local, i.color, i.params, i.clip.xy, ao, screen)), 1.0);
+    return vec4<f32>(shade(Shading(i.world, i.normal, i.tangent, i.local, i.color, i.params, i.clip.xy, ao, screen, vec3<f32>(0.0))), 1.0);
 }
 
 // The exposed, fogged color of one lit fragment.
@@ -873,6 +880,26 @@ fn shade(i: Shading) -> vec3<f32> {
             shadow_seen = shadow;
         }
     }
+    // Lamps: unshadowed point lights, inverse square windowed to zero at
+    // their range (Karis 2013).
+    let lamp_count = i32(f.lamp_params.x);
+    for (var k = 0; k < lamp_count; k++) {
+        let at = f.lamps[k * 2];
+        let to = at.xyz - i.world;
+        let d2 = max(dot(to, to), 1e-4);
+        let l = to * inverseSqrt(d2);
+        let nol = dot(n, l);
+        let window = clamp(1.0 - pow(d2 / (at.w * at.w), 2.0), 0.0, 1.0);
+        if nol <= 0.0 || window <= 0.0 {
+            continue;
+        }
+        let h = normalize(l + v);
+        let noh = max(dot(n, h), 0.0);
+        let voh = max(dot(v, h), 0.0);
+        let spec = d_ggx(noh, a2) * v_smith(nov, nol, a2) * f_schlick(f0, voh) * energy;
+        let e = f.lamps[k * 2 + 1].rgb * (window * window / (d2 + 0.01));
+        radiance += (diffuse_color / PI + spec) * e * nol;
+    }
     direct_part = radiance;
 
     let r = reflect(-v, n);
@@ -902,6 +929,7 @@ fn shade(i: Shading) -> vec3<f32> {
     }
     radiance += diffuse_color / PI * irr;
     radiance += lr * e_spec * so;
+    radiance += i.emit * f.lamp_params.y;
 
     if DEBUG == 1u {
         radiance = direct_part;
@@ -935,7 +963,8 @@ fn shade(i: Shading) -> vec3<f32> {
 struct TexturedMaterial {
     // Linear base color factor; alpha multiplies the image's alpha.
     base: vec4<f32>,
-    // x metallic; y perceptual roughness; z alpha cutoff; w unused.
+    // x metallic; y perceptual roughness; z alpha cutoff; w emitted
+    // luminance per unit of base color (cd/m²).
     params: vec4<f32>,
 };
 
@@ -1000,7 +1029,8 @@ fn textured_shade(world: vec3<f32>, normal: vec3<f32>, pixel: vec2<f32>, base: v
     // Code 0 has no anisotropy; any tangent across the normal will do.
     let across = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 0.0, 1.0), abs(n.x) > 0.9);
     let params = vec4<f32>(material.params.x, material.params.y, 0.0, clamp(ambient.w, 0.0, 1.0));
-    return shade(Shading(world, n, cross(n, across), world, base, params, pixel, max(ambient.rgb, vec3<f32>(0.0)), screen));
+    let emit = base * material.params.w;
+    return shade(Shading(world, n, cross(n, across), world, base, params, pixel, max(ambient.rgb, vec3<f32>(0.0)), screen, emit));
 }
 
 @fragment
