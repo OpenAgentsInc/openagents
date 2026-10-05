@@ -285,6 +285,13 @@ impl GridEngine {
         &self.renderer.adapter_name
     }
 
+    /// What the renderer admitted on this device: quality tier, shadow
+    /// layout, pose block, and budgets.
+    #[must_use]
+    pub fn device_profile(&self) -> &serde_json::Value {
+        &self.renderer.device_profile
+    }
+
     /// The viewport in pixels.
     #[must_use]
     pub fn size(&self) -> [f32; 2] {

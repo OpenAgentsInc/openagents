@@ -339,6 +339,37 @@ fn sun_cascades_sample_a_depth_array_on_glsl_es() {
     }
 }
 
+/// The engine renderer's scene shader, which draws the Grid, as GLES and
+/// WebGL2 compile it: the pose block cut to the 254 bones a 16 KiB uniform
+/// block holds (`verse_pbr::imported` admission), every entry point
+/// translated without an extension, and local shadows read from a 2D depth
+/// array rather than a cube array.
+#[test]
+fn the_engine_scene_shader_translates_to_glsl_es_300() {
+    let source = include_str!("../../verse-pbr/src/imported/scene.wgsl").replace(
+        "bones:array<mat4x4<f32>,256>",
+        "bones:array<mat4x4<f32>,254>",
+    );
+    let (module, info) = parse("imported/scene.wgsl", &source);
+    let set = naga::back::PipelineConstants::default();
+    for (stage, entry) in [
+        (naga::ShaderStage::Vertex, "vs"),
+        (naga::ShaderStage::Fragment, "fs"),
+        (naga::ShaderStage::Fragment, "shadow_fs"),
+    ] {
+        let (glsl, _) = write_gles(&module, &info, stage, entry, &set)
+            .unwrap_or_else(|e| panic!("{entry}: {e}"));
+        assert!(!glsl.contains("#extension"), "{entry}");
+        assert!(!glsl.contains("CubeArray"), "{entry}");
+        if entry != "shadow_fs" {
+            assert!(glsl.contains("[254]"), "{entry}: the pose block is cut");
+        }
+        if entry == "fs" {
+            assert!(glsl.contains("sampler2DArrayShadow"), "{entry}");
+        }
+    }
+}
+
 /// The GLES variants exist because the default side does not translate:
 /// this keeps the test above honest about what it detects.
 #[test]

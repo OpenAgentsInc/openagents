@@ -808,7 +808,19 @@ impl Renderer {
         }
         let samples = admission.samples;
         let shadow_layer_count = admission.quality.local_shadow_views();
+        let shadow_texture_layers = admission.shadow_texture_layers();
         let shadow_size = admission.quality.local_shadow_size();
+        if let Some((name, model)) = pack
+            .models
+            .iter()
+            .find(|(_, model)| model.bones.len() > admission.pose_bones as usize)
+        {
+            return Err(format!(
+                "Model {name} has {} bones; this device's pose block holds {}",
+                model.bones.len(),
+                admission.pose_bones
+            ));
+        }
         let geometry_bytes = pack_receipt.vertices * std::mem::size_of::<GpuVertex>() as u64
             + pack_receipt.indices * 4
             + static_instances
@@ -929,7 +941,7 @@ impl Renderer {
             size: wgpu::Extent3d {
                 width: shadow_size,
                 height: shadow_size,
-                depth_or_array_layers: shadow_layer_count,
+                depth_or_array_layers: shadow_texture_layers,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -945,7 +957,7 @@ impl Renderer {
             size: wgpu::Extent3d {
                 width: shadow_size,
                 height: shadow_size,
-                depth_or_array_layers: shadow_layer_count,
+                depth_or_array_layers: shadow_texture_layers,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -1106,7 +1118,9 @@ impl Renderer {
         let scene_format = admission.scene;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Verse imported WGSL"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("scene.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                admission.scene_shader(include_str!("scene.wgsl")).into(),
+            ),
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
@@ -1257,6 +1271,12 @@ impl Renderer {
         device_profile["quality"] = admission.quality.tier.name().into();
         device_profile["scene_format"] = format!("{:?}", admission.scene).into();
         device_profile["shadow_views"] = shadow_layer_count.into();
+        device_profile["shadow_view_dimension"] = "D2Array".into();
+        device_profile["shadow_texture_layers"] = shadow_texture_layers.into();
+        device_profile["local_shadows"] = admission.local_shadows().into();
+        device_profile["pose_bones"] = admission.pose_bones.into();
+        device_profile["pose_block_bytes"] = admission.pose_bytes().into();
+        device_profile["instanced_poses"] = instanced_shadows.is_some().into();
         device_profile["mip_recipe_version"] = verse_engine::mips::RECIPE_VERSION.into();
         device_profile["mip_variants"] = variants.len().into();
         device_profile["shadow_size"] = shadow_size.into();
@@ -1636,9 +1656,11 @@ impl Renderer {
         self.marker_events.clear();
         let view = world.view();
         let mut lighting = world.lighting().clone();
-        lighting.shadowed = lighting
-            .shadowed
-            .min(self.admission.quality.local_shadow_views() as usize / 6);
+        lighting.shadowed = lighting.shadowed.min(if self.admission.local_shadows() {
+            self.admission.quality.local_shadow_views() as usize / 6
+        } else {
+            0
+        });
         let lighting = &lighting;
         let selected = self.select_optional(world.instances().instances())?;
         let dropped_effects = selected
@@ -1687,9 +1709,15 @@ impl Renderer {
             let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &self.pose_layout,
+                // The shader's pose block may hold fewer bones than the
+                // buffer (GLES), so the binding covers only the block.
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: buffer.as_entire_binding(),
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &buffer,
+                        offset: 0,
+                        size: std::num::NonZeroU64::new(self.admission.pose_bytes()),
+                    }),
                 }],
             });
             self.actors.push(Actor {

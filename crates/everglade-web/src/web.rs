@@ -381,6 +381,11 @@ async fn run_grid(
         "Grid: engine renderer on {}",
         engine.adapter_name()
     )));
+    // The admitted shadow and pose layout, for a downlevel (WebGL2) report.
+    web_sys::console::info_1(&JsValue::from_str(&format!(
+        "Grid: device profile {}",
+        engine.device_profile()
+    )));
     hide_status(&document);
     let page = Rc::new(RefCell::new(Page {
         canvas,
