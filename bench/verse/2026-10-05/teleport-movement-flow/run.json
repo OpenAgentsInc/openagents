@@ -1,0 +1,41 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "tested_base_revision": "d6d4f87a54ac1dcab20735947fdfc070c1766be3",
+  "source_patch_sha256": "23d2d26a85c4aa6c0d2951ea0e61aeb0a97ce55cea1845adaf91e12f26af3c6d",
+  "wire_version": 28,
+  "platform": "Linux x86_64",
+  "checks": {
+    "before_fix": {
+      "test": "refused_teleport_keeps_movement_flowing_before_its_reply",
+      "failed": 1,
+      "runtime_seconds": 0.4
+    },
+    "worker": {
+      "command": "cargo test -p verse-world --features service-net --lib -- service::worker::tests:: --quiet",
+      "passed": 20,
+      "failed": 0,
+      "runtime_seconds": 3.12,
+      "build_wall_seconds": 96
+    },
+    "formatting": {
+      "command": "cargo fmt -p verse-world",
+      "status": "passed"
+    },
+    "whitespace": {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  },
+  "contract": "Complete movement frames can follow a pending teleport on the ordered connection. Refused teleports retain the same context and admit those frames. Successful teleports reject old-context frames at authority. Other queued commands and lifecycle requests remain blocked until the teleport reply; sending a movement frame does not clear that barrier. Existing channel, pipeline, interval work, credit, and expiry bounds remain.",
+  "regressions": [
+    "A withheld refused teleport reply no longer prevents the next movement frame from reaching the authority.",
+    "A successful teleport rejects the following old-context frame before its reply is released.",
+    "Both tests require delivery of both authoritative outcomes and clean worker shutdown.",
+    "The pre-send ordered-input regression and post-reply retirement of old-context commands pass."
+  ],
+  "limitations": [
+    "Updated native and headless clients and a new persistent delayed 20/40 capture remain required.",
+    "Prior barrier evidence remains historical; this change deliberately refines the barrier to allow epoch-checked movement frames."
+  ]
+}

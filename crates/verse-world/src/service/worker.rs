@@ -302,6 +302,7 @@ async fn run_impl(
         let mut inventory_pending = false;
         let mut refreshed = false;
         let mut barrier = false;
+        let mut teleport_barrier = false;
         let mut input_closed = false;
         let mut read_backoff = ReadBackoff::new(tokio::time::Instant::now());
         loop {
@@ -311,7 +312,14 @@ async fn run_impl(
             if input_closed && client.pending() == 0 {
                 return Ok(());
             }
-            if staged.is_some() && client.available() && !barrier {
+            // Frames remain epoch-checked at authority during a teleport reply wait.
+            // Other inputs wait so a successful teleport cannot bind later commands.
+            if staged.is_some()
+                && client.available()
+                && (!barrier
+                    || (teleport_barrier
+                        && matches!(staged.as_ref(), Some(Input::MovementFrame { .. }))))
+            {
                 let input = staged.take().expect("Staged chamber input");
                 let (input, retired) = coalesce_movement(input, &mut inputs, &mut deferred);
                 for token in retired {
@@ -479,7 +487,10 @@ async fn run_impl(
                         }
                     };
                     client.send(body)?;
-                    barrier = lifecycle;
+                    if lifecycle {
+                        barrier = true;
+                        teleport_barrier = teleport;
+                    }
                 }
             }
             // Schedule from the actual send time so quick replies cannot miss a phased polling tick.
@@ -549,10 +560,11 @@ async fn run_impl(
                         Body::Command { command } => {
                             if matches!(command.intent, super::wire::Action::Cast { ability: Ability::MistyStep, .. }) {
                                 barrier = false;
+                                teleport_barrier = false;
                             }
                             Update::Outcome(response)
                         },
-                        _ => { barrier = false; Update::Outcome(response) }
+                        _ => { barrier = false; teleport_barrier = false; Update::Outcome(response) }
                     };
                     updates.send(update).await.map_err(|_| "Chamber update consumer closed")?;
                     if let Some(entry)=entry { if matches!(entry.body,Reply::Snapshot {..}) { updates.send(Update::Snapshot(entry)).await.map_err(|_| "Chamber update consumer closed")?; } }
@@ -584,7 +596,7 @@ async fn run_impl(
                 }
                 input = async {
                     match deferred.take() { Some(input) => Some(input), None => inputs.recv().await }
-                }, if !input_closed && staged.is_none() && client.available() && !barrier => {
+                }, if !input_closed && staged.is_none() && client.available() && (!barrier || teleport_barrier) => {
                     match input {
                         Some(input) => staged = Some(input),
                         None => input_closed = true,
@@ -909,7 +921,180 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tracked_teleport_waits_for_its_reply_before_binding_old_epoch_movement() {
+    async fn refused_teleport_keeps_movement_flowing_before_its_reply() {
+        teleport_movement_reply(false).await;
+    }
+    #[tokio::test]
+    async fn successful_teleport_rejects_old_context_movement_before_its_reply() {
+        teleport_movement_reply(true).await;
+    }
+    async fn teleport_movement_reply(accepted: bool) {
+        use crate::service::net::{
+            read_frame,
+            tests::{gateway, tls},
+            write_frame,
+        };
+        use crate::service::wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request};
+        use tokio::net::TcpListener;
+        use tokio_rustls::TlsAcceptor;
+        let keys = [key(227), key(228), key(229)];
+        let mut gateway = gateway(&keys);
+        gateway.tick(0.05).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let (peer_ready, readiness) = oneshot::channel();
+        let (peer_stop, peer_stopping) = oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = TlsAcceptor::from(server_tls).accept(socket).await.unwrap();
+            let (id, hello) = gateway.open_json(0).unwrap();
+            write_frame(&mut socket, &hello, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let auth = read_frame(&mut socket, MAX_REQUEST_BYTES).await.unwrap();
+            let response = gateway.dispatch_json(id, 0, &auth).unwrap();
+            write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            loop {
+                let bytes = read_frame(&mut socket, MAX_REQUEST_BYTES).await.unwrap();
+                let request = Request::decode(&bytes).unwrap();
+                let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
+                if let Body::Command { command } = request.body {
+                    assert!(matches!(
+                        command.intent,
+                        super::super::wire::Action::Cast {
+                            ability: Ability::MistyStep,
+                            ..
+                        }
+                    ));
+                    let refusal: Response = serde_json::from_slice(&response).unwrap();
+                    assert_eq!(matches!(refusal.body, Reply::Accepted), accepted);
+                    let movement = timeout(
+                        Duration::from_millis(200),
+                        read_frame(&mut socket, MAX_REQUEST_BYTES),
+                    )
+                    .await
+                    .expect("Movement stalled behind refused teleport reply")
+                    .unwrap();
+                    let Request {
+                        body: Body::MovementFrame { frame },
+                        ..
+                    } = Request::decode(&movement).unwrap()
+                    else {
+                        panic!("Expected movement behind teleport");
+                    };
+                    assert_eq!(
+                        refusal.control.as_ref().unwrap().epoch == frame.epoch,
+                        !accepted
+                    );
+                    let moved = gateway.dispatch_json(id, 0, &movement).unwrap();
+                    let reply: Response = serde_json::from_slice(&moved).unwrap();
+                    assert_eq!(matches!(reply.body, Reply::Accepted), !accepted);
+                    if accepted {
+                        assert!(matches!(reply.body, Reply::Refused { .. }));
+                    }
+                    write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                        .await
+                        .unwrap();
+                    write_frame(&mut socket, &moved, MAX_RESPONSE_BYTES)
+                        .await
+                        .unwrap();
+                    peer_ready.send(()).unwrap();
+                    let _ = peer_stopping.await;
+                    return;
+                }
+                write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                    .await
+                    .unwrap();
+            }
+        });
+        let mut client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let entry = client.begin_movement_frames().await.unwrap();
+        let Reply::Snapshot { state } = entry.body else {
+            panic!("Interval entry refused");
+        };
+        let baseline = state.movement.unwrap();
+        let (input, inputs, updates, mut output) = channels();
+        input
+            .send(Input::TrackedCommand {
+                token: 1,
+                life: baseline.life,
+                epoch: baseline.epoch,
+                intent: Intent::Cast {
+                    ability: Ability::MistyStep,
+                    target: None,
+                    aim: if accepted { [0., 0., 1.] } else { [0.; 3] },
+                },
+            })
+            .await
+            .unwrap();
+        input
+            .send(Input::MovementFrame {
+                token: 2,
+                frame: crate::movement::frames::Frame {
+                    life: baseline.life,
+                    epoch: baseline.epoch,
+                    sequence: 0,
+                    tick: 0,
+                    start: baseline.physics_step,
+                    steps: 6,
+                    segments: vec![crate::movement::frames::Segment {
+                        offset: 0,
+                        axes: [0.; 2],
+                        yaw: 0.,
+                        until: baseline.physics_step + crate::movement::HELD_STEPS,
+                        jump: false,
+                    }],
+                },
+            })
+            .await
+            .unwrap();
+        let (stop, stopping) = oneshot::channel();
+        let task = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            NATIVE_CADENCE,
+            inputs,
+            updates,
+            stopping,
+        ));
+        timeout(Duration::from_secs(3), async {
+            readiness.await.unwrap();
+            let mut outcomes = 0;
+            while outcomes < 2 {
+                if let Update::Outcome(response) = output.recv().await.unwrap() {
+                    let expected_acceptance = if outcomes == 0 { accepted } else { !accepted };
+                    assert_eq!(
+                        matches!(response.body, Reply::Accepted),
+                        expected_acceptance
+                    );
+                    if !expected_acceptance {
+                        assert!(matches!(response.body, Reply::Refused { .. }));
+                    }
+                    outcomes += 1;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let _ = stop.send(());
+        task.await.unwrap().unwrap();
+        let _ = peer_stop.send(());
+        peer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn tracked_teleport_waits_for_its_reply_before_binding_old_epoch_commands() {
         use crate::service::net::{
             read_frame,
             tests::{gateway, tls},
@@ -1058,27 +1243,6 @@ mod tests {
             })
             .await
             .unwrap();
-        input
-            .send(Input::MovementFrame {
-                token: 3,
-                frame: crate::movement::frames::Frame {
-                    life: control.life.into(),
-                    epoch: control.epoch,
-                    sequence: 0,
-                    tick: 0,
-                    start: baseline.physics_step,
-                    steps: 6,
-                    segments: vec![crate::movement::frames::Segment {
-                        offset: 0,
-                        axes: [0., 0.],
-                        yaw: 0.,
-                        until: baseline.physics_step + crate::movement::HELD_STEPS,
-                        jump: false,
-                    }],
-                },
-            })
-            .await
-            .unwrap();
         for (token, ability) in [(4, Ability::MistyStep), (5, Ability::Bow)] {
             input
                 .send(Input::TrackedCommand {
@@ -1119,14 +1283,6 @@ mod tests {
                             assert_eq!(epoch, control.epoch);
                         }
                     }
-                    Update::FrameBound { token: 3, binding } => {
-                        assert!(
-                            accepted,
-                            "Old movement bound before teleport acknowledgment"
-                        );
-                        assert!(binding.is_err());
-                        retired.push(3);
-                    }
                     Update::CommandBound {
                         token: token @ (4 | 5),
                         binding,
@@ -1137,8 +1293,8 @@ mod tests {
                     }
                     _ => {}
                 }
-                if retired.len() == 3 {
-                    assert_eq!(retired, vec![3, 4, 5]);
+                if retired.len() == 2 {
+                    assert_eq!(retired, vec![4, 5]);
                     break;
                 }
             }
