@@ -1556,6 +1556,20 @@ impl App {
     }
 
     /// Backgrounding invalidates loading and input even when no frame can run.
+    /// Forgets the mouse buttons held. A window manager can take a press
+    /// or its release for itself (a double-click on the title bar or the
+    /// zoom button maximizes the window), which would leave a button
+    /// looking held: the view would keep orbiting, hotbar cards would not
+    /// show, and clicks would not register.
+    fn release_buttons(&mut self) {
+        if self.keys.left_button || self.keys.right_button {
+            self.keys.left_button = false;
+            self.keys.right_button = false;
+            self.capture(false);
+        }
+        self.swing_press = None;
+    }
+
     fn suspend_world(&mut self) {
         self.runtime.zone_cancel_loading();
         self.sync_zone_services(false);
@@ -4022,6 +4036,7 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => self.quit(event_loop),
             WindowEvent::Resized(size) => {
+                self.release_buttons();
                 self.companion_press = None;
                 self.door_press = None;
                 self.door_hud.clear_contacts();
@@ -4163,6 +4178,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Focused(focused) => {
                 self.window_focused = focused;
+                self.release_buttons();
                 if !focused {
                     self.suspend_world();
                     self.runtime.grove_release();
@@ -4306,6 +4322,18 @@ mod tests {
             ..Options::default()
         })
         .expect("offline desktop state")
+    }
+
+    #[test]
+    fn a_resize_or_focus_change_forgets_a_held_button() {
+        let mut app = offline_app();
+        // Maximizing can deliver a press without its release.
+        app.keys.left_button = true;
+        app.release_buttons();
+        assert!(!app.keys.left_button && !app.keys.right_button);
+        app.keys.right_button = true;
+        app.release_buttons();
+        assert!(!app.keys.left_button && !app.keys.right_button);
     }
 
     #[test]
