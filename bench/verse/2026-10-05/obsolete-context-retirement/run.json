@@ -1,0 +1,42 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "published_revision": "0572efb4c52ed7738b71baef7c19fb8f6fc2c035",
+  "tested_base_revision": "1deffb1ab3",
+  "source_patch_sha256": "96e73f92349a36f0411e3e37b19c449e8d56e408e406d433b855d32507cc7077",
+  "target": "Linux x86_64",
+  "checks": {
+    "command": "cargo test -p verse-world --features service-net --lib -- service::worker:: service::net:: service::client::tests::context_and_control",
+    "passed": 40,
+    "failed": 0,
+    "runtime_seconds": 5.18
+  },
+  "regression": "After acknowledging an accepted teleport, the real TLS peer withholds every later read reply. Old-epoch movement, teleport, and bow inputs retire locally in token order without reaching the authority.",
+  "limitations": [
+    "Focused checks do not establish crowded performance acceptance.",
+    "The crowded delayed run is separate acceptance evidence."
+  ],
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "0572efb4c52ed7738b71baef7c19fb8f6fc2c035",
+      "verse_load": "0572efb4c52ed7738b71baef7c19fb8f6fc2c035"
+    },
+    "wire_version": 27,
+    "sha256": {
+      "verse_remote": "bb5ff02f89d083afd7f2c4622f49b414e496ab38183018d00fd30301c9a989a1",
+      "verse_load": "554b19bba745489ac09cde91953ce79a3a2645c828ee2d1086dc6eafb0335b10"
+    },
+    "client_platform": "macOS arm64",
+    "client_features": [
+      "imported-desktop",
+      "remote-chamber"
+    ],
+    "movement_send_steps": 6,
+    "authority_credit_source": "verified snapshots and control acknowledgments",
+    "periodic_reads_reserve_gameplay_slot": true,
+    "tracked_teleport_barrier": true,
+    "obsolete_inputs_retire_without_reads": true,
+    "status": "complete",
+    "wall_seconds": 379
+  }
+}
