@@ -223,8 +223,13 @@ impl Sender {
         ack: Option<Baseline>,
         index: &Index,
     ) -> Result<Packet, String> {
-        let previous = self.previous(ack, control);
-        let refresh = previous.is_none() || tick.saturating_sub(self.outer_tick) >= 6;
+        let refresh_due = tick.saturating_sub(self.outer_tick) >= 6;
+        let previous = if refresh_due {
+            None
+        } else {
+            self.previous(ack, control)
+        };
+        let refresh = refresh_due || previous.is_none();
         let state = scoped(state, control, previous.as_ref(), refresh, index)?;
         let packet = self.packet(state, control, instance, tick, ack)?;
         if refresh {

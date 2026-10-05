@@ -1,0 +1,38 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "not_established",
+  "sample_status": "complete",
+  "compiled_revisions": {
+    "host": "c06635d96d",
+    "headless_clients": "bd516cd46d211a46390df6ed769fc2f6de1da200",
+    "native_client": "8838dd1f4f58f0c54a086a9e06407864d0ae13a8"
+  },
+  "native": {
+    "frame_interval_ms": {
+      "samples": 2476,
+      "omitted": 0,
+      "median": 12.453708,
+      "p95": 25.536333000000003,
+      "max": 9013.447875
+    },
+    "prediction_correction_meters": {
+      "samples": 190,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.02611902356147766
+    },
+    "reset_reasons": {
+      "control_epoch": 16,
+      "teleport": 1
+    }
+  },
+  "findings": [
+    "Main-thread sample includes 1946 of 3910 stacks in event waiting and 953 in dispatch_json; inclusive counts overlap and do not measure isolated wall time.",
+    "Active work includes JSON allocation/hashing and capsule sweeps. Sender::project still reconstructs previous State on outer-band refresh ticks although spatial scoping does not use it on those ticks."
+  ],
+  "limits": [
+    "Sampling adds overhead, shared hardware is not isolated, persistence and GPU timing disabled.",
+    "Five-second sample does not capture every tick spike or prove causal performance change."
+  ]
+}

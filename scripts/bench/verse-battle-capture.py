@@ -9,7 +9,7 @@ parser.add_argument('--client-compiled-revision',help='Compiled revision of the 
 parser.add_argument('--load-compiled-revision',help='Compiled revision of the headless load driver')
 parser.add_argument('--seconds',type=int,default=60)
 parser.add_argument('--players',type=int,default=20)
-parser.add_argument('--movement-frames',action='store_true',help='Require interval movement for the native recording controller')
+parser.add_argument('--movement-frames',action='store_true',help='Request interval movement for native and headless battle clients')
 parser.add_argument('--sample-host',action='store_true',help='Take a five-second macOS CPU sample of the owned host during the capture')
 parser.add_argument('--persistent',action='store_true',help='Enable host saves in the isolated scratch directory')
 parser.add_argument('--gpu-timing',action='store_true',default=os.environ.get('VERSE_GPU_TIMING')=='1',help='Request optional native GPU timestamps and record the request in the workload')
