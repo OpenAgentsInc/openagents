@@ -330,26 +330,29 @@ async fn run_impl(
                         .map_err(|_| "Chamber update consumer closed")?;
                 }
                 let obsolete = replaced_context(&input, client.control());
+                let teleport = matches!(
+                    input,
+                    Input::Command(Intent::Cast {
+                        ability: Ability::MistyStep,
+                        ..
+                    }) | Input::TrackedCommand {
+                        intent: Intent::Cast {
+                            ability: Ability::MistyStep,
+                            ..
+                        },
+                        ..
+                    }
+                );
                 let lifecycle = !obsolete
                     && (!matches!(
                         input,
                         Input::Command(_)
                             | Input::TrackedCommand { .. }
                             | Input::MovementFrame { .. }
-                    ) || matches!(
-                        input,
-                        Input::Command(Intent::Cast {
-                            ability: Ability::MistyStep,
-                            ..
-                        }) | Input::TrackedCommand {
-                            intent: Intent::Cast {
-                                ability: Ability::MistyStep,
-                                ..
-                            },
-                            ..
-                        }
-                    ));
-                if lifecycle && client.pending() > 0 {
+                    ) || teleport);
+                // Sequenced teleports follow earlier inputs on the ordered connection.
+                // Keep the reply barrier, but do not wait for earlier replies to send.
+                if lifecycle && !teleport && client.pending() > 0 {
                     staged = Some(input);
                 } else if !refreshed
                     && !obsolete
@@ -936,6 +939,7 @@ mod tests {
                 .unwrap();
             tokio::pin!(peer_stopping);
             let mut teleported = false;
+            let mut withheld = Vec::new();
             loop {
                 let bytes = tokio::select! {
                     _ = &mut peer_stopping => break,
@@ -949,7 +953,21 @@ mod tests {
                     "Old-epoch command reached the authority"
                 );
                 let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
+                if matches!(request.body, Body::MovementFrame { .. }) {
+                    assert!(
+                        !teleported && withheld.is_empty(),
+                        "Unexpected movement reached authority"
+                    );
+                    let reply: Response = serde_json::from_slice(&response).unwrap();
+                    assert!(matches!(reply.body, Reply::Accepted));
+                    withheld.push(response);
+                    continue;
+                }
                 if teleport {
+                    assert!(
+                        !withheld.is_empty(),
+                        "Teleport must follow a pending movement reply"
+                    );
                     let reply: Response = serde_json::from_slice(&response).unwrap();
                     assert!(
                         matches!(reply.body, Reply::Accepted),
@@ -973,6 +991,15 @@ mod tests {
                 // Withhold all later reads: obsolete inputs must retire without a reply.
                 if teleported {
                     continue;
+                }
+                if !teleport && !withheld.is_empty() {
+                    withheld.push(response);
+                    continue;
+                }
+                for earlier in withheld.drain(..) {
+                    write_frame(&mut socket, &earlier, MAX_RESPONSE_BYTES)
+                        .await
+                        .unwrap();
                 }
                 write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
                     .await
@@ -998,8 +1025,29 @@ mod tests {
         let control = client.control().unwrap().clone();
         let (input, inputs, updates, mut output) = channels();
         input
-            .send(Input::TrackedCommand {
+            .send(Input::MovementFrame {
                 token: 1,
+                frame: crate::movement::frames::Frame {
+                    life: baseline.life,
+                    epoch: baseline.epoch,
+                    sequence: 0,
+                    tick: 0,
+                    start: baseline.physics_step,
+                    steps: 6,
+                    segments: vec![crate::movement::frames::Segment {
+                        offset: 0,
+                        axes: [0., 0.],
+                        yaw: 0.,
+                        until: baseline.physics_step + crate::movement::HELD_STEPS,
+                        jump: false,
+                    }],
+                },
+            })
+            .await
+            .unwrap();
+        input
+            .send(Input::TrackedCommand {
+                token: 2,
                 life: control.life.into(),
                 epoch: control.epoch,
                 intent: Intent::Cast {
@@ -1012,7 +1060,7 @@ mod tests {
             .unwrap();
         input
             .send(Input::MovementFrame {
-                token: 2,
+                token: 3,
                 frame: crate::movement::frames::Frame {
                     life: control.life.into(),
                     epoch: control.epoch,
@@ -1031,7 +1079,7 @@ mod tests {
             })
             .await
             .unwrap();
-        for (token, ability) in [(3, Ability::MistyStep), (4, Ability::Bow)] {
+        for (token, ability) in [(4, Ability::MistyStep), (5, Ability::Bow)] {
             input
                 .send(Input::TrackedCommand {
                     token,
@@ -1060,22 +1108,27 @@ mod tests {
             let mut retired = Vec::new();
             loop {
                 match output.recv().await.unwrap() {
-                    Update::CommandBound { token: 1, binding } => assert!(binding.is_ok()),
+                    Update::FrameBound { token: 1, binding } => assert!(binding.is_ok()),
+                    Update::CommandBound { token: 2, binding } => assert!(binding.is_ok()),
                     Update::Outcome(response) => {
                         assert!(matches!(response.body, Reply::Accepted));
-                        assert!(response.control.unwrap().epoch > control.epoch);
-                        accepted = true;
+                        let epoch = response.control.unwrap().epoch;
+                        if epoch > control.epoch {
+                            accepted = true;
+                        } else {
+                            assert_eq!(epoch, control.epoch);
+                        }
                     }
-                    Update::FrameBound { token: 2, binding } => {
+                    Update::FrameBound { token: 3, binding } => {
                         assert!(
                             accepted,
                             "Old movement bound before teleport acknowledgment"
                         );
                         assert!(binding.is_err());
-                        retired.push(2);
+                        retired.push(3);
                     }
                     Update::CommandBound {
-                        token: token @ (3 | 4),
+                        token: token @ (4 | 5),
                         binding,
                     } => {
                         assert!(accepted);
@@ -1085,7 +1138,7 @@ mod tests {
                     _ => {}
                 }
                 if retired.len() == 3 {
-                    assert_eq!(retired, vec![2, 3, 4]);
+                    assert_eq!(retired, vec![3, 4, 5]);
                     break;
                 }
             }
