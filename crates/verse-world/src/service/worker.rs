@@ -327,7 +327,13 @@ async fn run_impl(
                     Input::Command(Intent::Cast {
                         ability: Ability::MistyStep,
                         ..
-                    })
+                    }) | Input::TrackedCommand {
+                        intent: Intent::Cast {
+                            ability: Ability::MistyStep,
+                            ..
+                        },
+                        ..
+                    }
                 );
                 if lifecycle && client.pending() > 0 {
                     staged = Some(input);
@@ -879,6 +885,161 @@ mod tests {
         task.await.unwrap().unwrap();
         server_stop.send(()).unwrap();
         assert!(server.await.unwrap().failure.is_none());
+    }
+
+    #[tokio::test]
+    async fn tracked_teleport_waits_for_its_reply_before_binding_old_epoch_movement() {
+        use crate::service::net::{
+            read_frame,
+            tests::{gateway, tls},
+            write_frame,
+        };
+        use crate::service::wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request};
+        use tokio::net::TcpListener;
+        use tokio_rustls::TlsAcceptor;
+        let keys = [key(227), key(228), key(229)];
+        let mut gateway = gateway(&keys);
+        gateway.tick(0.05).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let (peer_stop, peer_stopping) = oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = TlsAcceptor::from(server_tls).accept(socket).await.unwrap();
+            let (id, hello) = gateway.open_json(0).unwrap();
+            write_frame(&mut socket, &hello, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let auth = read_frame(&mut socket, MAX_REQUEST_BYTES).await.unwrap();
+            let response = gateway.dispatch_json(id, 0, &auth).unwrap();
+            write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            tokio::pin!(peer_stopping);
+            loop {
+                let bytes = tokio::select! {
+                    _ = &mut peer_stopping => break,
+                    bytes = read_frame(&mut socket, MAX_REQUEST_BYTES) => { let Ok(bytes) = bytes else { break }; bytes }
+                };
+                let request = Request::decode(&bytes).unwrap();
+                let teleport = matches!(&request.body, Body::Command { command }
+                    if matches!(command.intent, super::super::wire::Action::Cast { ability: Ability::MistyStep, .. }));
+                let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
+                if teleport {
+                    let reply: Response = serde_json::from_slice(&response).unwrap();
+                    assert!(
+                        matches!(reply.body, Reply::Accepted),
+                        "Teleport refused: {:?}",
+                        reply.body
+                    );
+                    assert!(
+                        timeout(
+                            Duration::from_millis(100),
+                            read_frame(&mut socket, MAX_REQUEST_BYTES)
+                        )
+                        .await
+                        .is_err(),
+                        "Input crossed the pending teleport barrier"
+                    );
+                }
+                assert!(
+                    !matches!(request.body, Body::MovementFrame { .. }),
+                    "Old-epoch movement reached the authority"
+                );
+                write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                    .await
+                    .unwrap();
+            }
+        });
+        let mut client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let entry = client.begin_movement_frames().await.unwrap();
+        let Reply::Snapshot { state } = entry.body else {
+            panic!("Interval entry refused")
+        };
+        let baseline = state.movement.unwrap();
+        assert_eq!(baseline.profile, crate::movement::Profile::Frames);
+        let control = client.control().unwrap().clone();
+        let (input, inputs, updates, mut output) = channels();
+        input
+            .send(Input::TrackedCommand {
+                token: 1,
+                life: control.life.into(),
+                epoch: control.epoch,
+                intent: Intent::Cast {
+                    ability: Ability::MistyStep,
+                    target: None,
+                    aim: [0., 0., 1.],
+                },
+            })
+            .await
+            .unwrap();
+        input
+            .send(Input::MovementFrame {
+                token: 2,
+                frame: crate::movement::frames::Frame {
+                    life: control.life.into(),
+                    epoch: control.epoch,
+                    sequence: 0,
+                    tick: 0,
+                    start: baseline.physics_step,
+                    steps: 6,
+                    segments: vec![crate::movement::frames::Segment {
+                        offset: 0,
+                        axes: [0., 0.],
+                        yaw: 0.,
+                        until: baseline.physics_step + crate::movement::HELD_STEPS,
+                        jump: false,
+                    }],
+                },
+            })
+            .await
+            .unwrap();
+        let (stop, stopping) = oneshot::channel();
+        let task = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            NATIVE_CADENCE,
+            inputs,
+            updates,
+            stopping,
+        ));
+        timeout(Duration::from_secs(3), async {
+            let mut accepted = false;
+            loop {
+                match output.recv().await.unwrap() {
+                    Update::CommandBound { token: 1, binding } => assert!(binding.is_ok()),
+                    Update::Outcome(response) => {
+                        assert!(matches!(response.body, Reply::Accepted));
+                        assert!(response.control.unwrap().epoch > control.epoch);
+                        accepted = true;
+                    }
+                    Update::FrameBound { token: 2, binding } => {
+                        assert!(
+                            accepted,
+                            "Old movement bound before teleport acknowledgment"
+                        );
+                        assert!(binding.is_err());
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let _ = stop.send(());
+        task.await.unwrap().unwrap();
+        let _ = peer_stop.send(());
+        peer.await.unwrap();
     }
 
     #[tokio::test]
