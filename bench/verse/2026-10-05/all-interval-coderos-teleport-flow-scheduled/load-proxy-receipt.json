@@ -1,0 +1,36 @@
+{
+  "schema": "verse.delayed-route.v2",
+  "delay_ms": 40,
+  "jitter_ms": 20,
+  "delay_mode": "scheduled",
+  "delay_queue_capacity": 32,
+  "delay_queue_peak": 6,
+  "connections": 19,
+  "upstream_bytes": 10061157,
+  "downstream_bytes": 179858295,
+  "forwarded_chunks": 74927,
+  "errors": 2,
+  "refused_connections": 0,
+  "error_details": [
+    {
+      "elapsed_seconds": 82.98542300600093,
+      "direction": "downstream",
+      "type": "ConnectionResetError",
+      "errno": null
+    },
+    {
+      "elapsed_seconds": 82.99170500296168,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 104
+    }
+  ],
+  "omitted_error_details": 0,
+  "limits": [
+    "Delay applies to each TCP read chunk, not decrypted game messages.",
+    "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+    "Serial mode adds delay after each read and also limits chunk throughput.",
+    "TCP preserves byte order; this fixture does not simulate packet loss."
+  ],
+  "wall_seconds": 84.17647100496106
+}
