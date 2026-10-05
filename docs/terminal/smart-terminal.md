@@ -639,39 +639,49 @@ Boundaries:
 
 ## What exists and what is missing
 
-Estimates are focused engineering days for one agent, including tests.
+Estimates are agent-hours at this repository's measured pace, including
+tests and a capture or receipt: one coding agent working one area, with
+several areas running in parallel. The pace is from the commit history: 795
+commits from October 3 to 5, 2026, including the Verse engine work (279
+Verse commits on October 4), and the in-world terminal itself, which went
+from nothing to a multi-pane overlay in about an hour and to VT parity with
+a performance receipt in about another hour on October 5. The earlier
+Coder repository's multiplexer research and code also shorten the
+Superlogical half.
 
-| Area | Exists | Missing | Estimate |
+| Area | Exists | Missing | Agent-hours |
 | --- | --- | --- | --- |
-| Emulator | `coder-vt` with the Verse parity pass | OSC 133 and OSC 7 marks, hook OSC, per-row dirty marks | 2 to 3 |
-| Shell hook | Nothing | zsh, bash, and fish hooks with injection; the accept-line request and reply; the command table | 4 to 5 |
-| Blocks | Absolute-line selection in Verse | Block index, gutter, navigation, copy, collapse, rerun, attach | 4 to 5 |
-| Input line | The ask key does not exist | Chip, rules 1 to 3, the corrected-command offer | 3 |
-| Local line classifier | Lev, Laya, and Kev doors | The `line-kind` question set, baseline and threshold measurement | 4 to 6 |
-| Thread pane, first form | `openagents terminal --thread ID` in a pane | Open it from a request with the pane's context | 2 |
-| Proposals | `coder::shell` plan shape, `Permit`, the CLI route's gates | The `shell` route, effect-class question, proposal events, pending blocks | 6 to 8 |
-| Context strip | Nothing | Strip, scrubbing, attach rules | 3 |
-| Crate extraction | `crates/verse/src/terminal` | `terminal-core` and `terminal-gfx` split, Verse moved onto them | 5 to 7 |
-| Standalone window | Nothing | `terminal-app`: window, menus, fonts, settings, packaging | 7 to 10 |
-| Native thread view | `coder-terminal` components | Crossterm-free feature; `Buffer` to grid | 5 to 7 |
-| Host authority parse and effects | Client-side replies | Host `coder-vt`, effect ownership, clients stop answering | 4 to 5 |
-| Snapshot on join and history | Ring replay with gaps | `coder-vt` serialize and restore, snapshot and history frames, NIP-TERM text, conformance tests | 8 to 10 |
-| Sessions and saved layouts | Layout tree in Verse | Host session record, layouts on the host, restore | 4 to 5 |
-| Typist | Nothing | Host seat, take and release, pan rule, title badge | 4 |
-| Shares | Specified only | Share grant in NIP-TERM, `coder-access`, `coder-pty`, `coder-host`; pause; viewer list | 8 to 10 |
-| Block journal on host | Nothing | Journal, NIP-TERM reads | 3 |
-| Agents as typists | Verse control socket | Typist handoff to an agent, recording, badge | 3 |
-| Phone | Terminal screen and session | Blocks, proposals, thread link in the phone view | 5 |
-| Web | `everglade-web` | `wasm32` transport, browser keys and clipboard | 10 to 15 |
-| TTY degraded mode | `openagents terminal` | Hook-only requests and inline proposals in a plain terminal | 3 |
+| Emulator | `coder-vt` with the Verse parity pass | OSC 133 and OSC 7 marks, hook OSC, per-row dirty marks | 1 |
+| Shell hook | Nothing | zsh, bash, and fish hooks with injection; the accept-line request and reply; the command table | 1 to 2 |
+| Blocks | Absolute-line selection in Verse | Block index, gutter, navigation, copy, collapse, rerun, attach | 1 to 2 |
+| Input line | The ask key does not exist | Chip, rules 1 to 3, the corrected-command offer | 1 |
+| Local line classifier | Lev, Laya, and Kev doors | The `line-kind` question set, baseline and threshold measurement | 2 |
+| Thread pane, first form | `openagents terminal --thread ID` in a pane | Open it from a request with the pane's context | 0.5 |
+| Proposals | `coder::shell` plan shape, `Permit`, the CLI route's gates | The `shell` route, effect-class question, proposal events, pending blocks | 2 to 3 |
+| Context strip | Nothing | Strip, scrubbing, attach rules | 1 |
+| Crate extraction | `crates/verse/src/terminal` | `terminal-core` and `terminal-gfx` split, Verse moved onto them | 2 |
+| Standalone window | Nothing | `terminal-app`: window, menus, fonts, settings, packaging | 3 |
+| Native thread view | `coder-terminal` components | Crossterm-free feature; `Buffer` to grid | 2 |
+| Host authority parse and effects | Client-side replies | Host `coder-vt`, effect ownership, clients stop answering | 1 to 2 |
+| Snapshot on join and history | Ring replay with gaps | `coder-vt` serialize and restore, snapshot and history frames, NIP-TERM text, conformance tests | 3 to 4 |
+| Sessions and saved layouts | Layout tree in Verse | Host session record, layouts on the host, restore | 1 to 2 |
+| Typist | Nothing | Host seat, take and release, pan rule, title badge | 1 |
+| Shares | Specified only | Share grant in NIP-TERM, `coder-access`, `coder-pty`, `coder-host`; pause; viewer list | 3 to 4 |
+| Block journal on host | Nothing | Journal, NIP-TERM reads | 1 |
+| Agents as typists | Verse control socket | Typist handoff to an agent, recording, badge | 1 |
+| Phone | Terminal screen and session | Blocks, proposals, thread link in the phone view | 1 to 2 |
+| Web | `everglade-web` | `wasm32` transport, browser keys and clipboard | 4 to 6 |
+| TTY degraded mode | `openagents terminal` | Hook-only requests and inline proposals in a plain terminal | 1 |
 
 ## Roadmap
 
 Each phase ends with something the owner can run. Phases 4 and 5 are the
 Superlogical parallel and can start beside phase 2, since they touch the
-host and protocol, not the client.
+host and protocol, not the client. Durations are wall-clock time with two
+or three agents working a phase's areas in parallel; with phases 2 and 4
+overlapping, the whole roadmap is about three to four days.
 
-1. **Blocks and requests in the Verse overlay (about 3 weeks).** The
+1. **Blocks and requests in the Verse overlay (about half a day).** The
    smallest useful demo, in the terminal that already exists. OSC 133 and
    OSC 7 in `coder-vt`; the shell hook for zsh first, then bash and fish;
    blocks with the gutter, navigation, copy, collapse, rerun, and attach;
@@ -681,24 +691,24 @@ host and protocol, not the client.
    CLI route's proposals and then the new `shell` route. Demo: type `cargo
    test`, see a failed block, type `# why did that fail`, see the thread
    beside it propose a command, press Enter, and watch it continue.
-2. **The standalone window (about 3 weeks).** Extract `terminal-core` and
+2. **The standalone window (about half a day).** Extract `terminal-core` and
    `terminal-gfx`, move Verse onto them with no behavior change (the
    performance receipt's stress run is the check), and ship `terminal-app`
    with local PTYs. Add rule 4 with the local classifier once its question
    set has a measured baseline.
-3. **Threads beside panes, natively (about 2 weeks).** The native thread
+3. **Threads beside panes, natively (a few hours).** The native thread
    view in `terminal-gfx`; thread panes restored with the session; Coder
    runs as panes; agents as typists with the badge and handoff.
-4. **The terminal half on the host (about 3 weeks).** The Superlogical
+4. **The terminal half on the host (about a day).** The Superlogical
    core: the host's authoritative `coder-vt`, side-effect ownership (fixing
    the double reply), snapshot on join and history pages, the block journal,
    and NIP-TERM text and conformance tests for each. Then the window and
    Verse open every pane on the resident host instead of in process, so
    closing the window ends nothing.
-5. **Sessions, typists, and sharing (about 3 weeks).** Host sessions with
+5. **Sessions, typists, and sharing (about a day).** Host sessions with
    saved layouts, the one-typist rule, panes on several computers, and the
    share grant with watch and drive, pause, and the viewer list.
-6. **Phone, web, and TTY (about 4 weeks).** Blocks, proposals, and threads
+6. **Phone, web, and TTY (about a day).** Blocks, proposals, and threads
    in the phone's terminal view; the browser transport and `terminal-gfx`
    on the web; the TTY degraded mode.
 7. **In-world screens.** The [in-world terminal](../verse/in-world-terminal.md#phased-plan)
