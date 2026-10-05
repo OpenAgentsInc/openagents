@@ -1,4 +1,4 @@
-//! The textured zone pack format, `VTP2`.
+//! The textured zone pack format, `VTP3`.
 //!
 //! A pack holds base-color textures as PNG, materials with their alpha mode
 //! and face culling, static models whose primitives index one material each,
@@ -9,14 +9,22 @@
 //! Every count, name, coordinate, and decoded allocation is bounded before it
 //! is allocated.
 //!
+//! The textures come first, already compressed. Everything after them, the
+//! body, is one raw deflate stream, and its vertices are quantized: each
+//! primitive stores its positions and texture coordinates as 16-bit steps
+//! from an origin, in planes (every x, then every y, and so on), which
+//! deflate compresses far better than interleaved floats.
+//!
 //! All integers and floats are little-endian:
 //!
 //! ```text
-//! magic           8 bytes  "VTP2\r\n\x1a\n"
+//! magic           8 bytes  "VTP3\r\n\x1a\n"
 //! texture count   u32
 //!   name          u8 length, UTF-8 bytes
 //!   width, height u32, u32
-//!   png length    u32, then the PNG bytes (8-bit RGB or RGBA)
+//!   png length    u32, then the PNG bytes (8-bit gray, RGB, or RGBA)
+//! body length     u32, the inflated body's bytes
+//! stored length   u32, then that many bytes of raw deflate; the body:
 //! material count  u32
 //!   name          u8 length, UTF-8 bytes
 //!   texture       u16 index, or 0xFFFF for none
@@ -28,9 +36,13 @@
 //!   name          u8 length, UTF-8 bytes; names strictly increase
 //!   primitives    u8 count
 //!     material    u16 index
-//!     vertices    u32 count, then 28 bytes each:
-//!                 position 3 x f32, normal 3 x i8 and a zero byte,
-//!                 texture coordinate 2 x f32, color 4 x u8
+//!     colored     u8: 1 when the vertices carry colors, 0 when all are white
+//!     vertices    u32 count, then the vertex planes:
+//!                 position origin 3 x f32 and step 3 x f32,
+//!                 texture coordinate origin 2 x f32 and step 2 x f32,
+//!                 then count x u16 for each of x, y, z, u, and v (a value
+//!                 is origin + step x n), count x 3 i8 normals, and, when
+//!                 colored, count x 4 u8 colors
 //!     indices     u32 count, then u16 each
 //! character       u8: 0 for none, 1 for one
 //!   name          u8 length, UTF-8 bytes
@@ -40,9 +52,9 @@
 //!                 inverse bind 16 x f32 (column-major)
 //!   primitives    u8 count
 //!     material    u16 index
-//!     vertices    u32 count, then 32 bytes each: a static vertex
-//!                 without its color, which is white, then joint 4 x u8
-//!                 and weight 4 x u8 (255ths)
+//!     vertices    u32 count, then the vertex planes of an uncolored static
+//!                 primitive, then count x 4 u8 joints and count x 4 u8
+//!                 weights (255ths)
 //!     indices     u32 count, then u16 each
 //!   clips         u8 count
 //!     name        u8 length, UTF-8 bytes
@@ -52,14 +64,15 @@
 //!       joint     u16 index
 //!       keys      translation, rotation, then scale: u16 count, then each
 //!                 key's time f32 and 3, 4, or 3 x f32
-//! forms           optional; absent when the pack has none
+//! forms           optional; absent when the body ends after the character
 //!   count         u8, 1 to MAX_FORMS
 //!   form          each a character section as above, without the flag;
 //!                 names strictly increase
 //! ```
 //!
-//! A pack without forms ends after its character section, so adding the
-//! forms section left every earlier pack's bytes unchanged.
+//! Quantizing loses at most half a step: a fraction of a millimeter for a
+//! building 18 m tall, and well under a texel. Encoding a decoded pack again
+//! gives the same bytes.
 //!
 //! Character data is in its source's space, meters with Y up and the
 //! character facing +Z: a vertex is skinned by its joints' posed transforms
@@ -67,16 +80,18 @@
 
 use std::collections::BTreeSet;
 
-/// Identifies a `VTP1` pack.
-pub const MAGIC: &[u8; 8] = b"VTP2\r\n\x1a\n";
+/// Identifies a `VTP3` pack.
+pub const MAGIC: &[u8; 8] = b"VTP3\r\n\x1a\n";
 const NO_TEXTURE: u16 = u16::MAX;
-const VERTEX_BYTES: usize = 28;
+/// Bytes of one uncolored vertex in the planes: five u16 and three i8.
+const PLANE_VERTEX_BYTES: usize = 13;
+/// The largest quantized value; positions and coordinates span 0 to this.
+const STEPS: f32 = u16::MAX as f32;
 const MAX_NAME_BYTES: usize = 96;
 const MAX_TEXTURES: usize = 64;
 const MAX_MATERIALS: usize = 256;
 const MAX_MODELS: usize = 256;
 const MAX_PRIMITIVES: usize = 16;
-const SKINNED_VERTEX_BYTES: usize = 32;
 /// Most joints in a character; joint indices are bytes.
 pub const MAX_JOINTS: usize = 256;
 /// Most clips in a character.
@@ -109,18 +124,21 @@ pub struct Limits {
     pub committed_bytes: u64,
     /// The character's triangles; they also count toward `triangles`.
     pub character_triangles: u64,
+    /// The inflated body: materials, models, the character, and forms.
+    pub body_bytes: u64,
 }
 
 impl Limits {
     /// The Everglade budgets from `docs/verse/everglade.md`.
     pub const EVERGLADE: Self = Self {
-        pack_bytes: 28 * 1024 * 1024,
-        decoded_texture_bytes: 64 * 1024 * 1024,
+        pack_bytes: 12 * 1024 * 1024,
+        decoded_texture_bytes: 48 * 1024 * 1024,
         texture_edge: 1024,
         triangles: 420_000,
         model_triangles: 20_000,
-        committed_bytes: 56_000_000,
+        committed_bytes: 36_000_000,
         character_triangles: 40_000,
+        body_bytes: 48 * 1024 * 1024,
     };
 }
 
@@ -310,7 +328,7 @@ pub struct EncodedTexture {
     pub width: u32,
     /// Height in pixels.
     pub height: u32,
-    /// An 8-bit RGB or RGBA PNG.
+    /// An 8-bit gray, RGB, or RGBA PNG.
     pub png: Vec<u8>,
 }
 
@@ -640,6 +658,27 @@ pub fn encode(contents: &Contents, limits: &Limits) -> Result<Vec<u8>, String> {
         put_u32(&mut out, length);
         out.extend_from_slice(&texture.png);
     }
+    let body = encode_body(contents);
+    if body.len() as u64 > limits.body_bytes {
+        return Err("Zone pack exceeds the body budget".into());
+    }
+    let stored = miniz_oxide::deflate::compress_to_vec(&body, DEFLATE_LEVEL);
+    put_u32(&mut out, body.len() as u32);
+    let length = u32::try_from(stored.len()).map_err(|_| "Zone pack body too large")?;
+    put_u32(&mut out, length);
+    out.extend_from_slice(&stored);
+    if out.len() as u64 > limits.pack_bytes {
+        return Err("Zone pack exceeds the transfer budget".into());
+    }
+    Ok(out)
+}
+
+/// Deflate's strongest level; a pack is compiled once and inflated often.
+const DEFLATE_LEVEL: u8 = 10;
+
+/// The body: materials, models, the character, and forms, uncompressed.
+fn encode_body(contents: &Contents) -> Vec<u8> {
+    let mut out = Vec::new();
     put_u32(&mut out, contents.materials.len() as u32);
     for material in &contents.materials {
         put_name(&mut out, &material.name);
@@ -662,9 +701,14 @@ pub fn encode(contents: &Contents, limits: &Limits) -> Result<Vec<u8>, String> {
         out.push(model.primitives.len() as u8);
         for primitive in &model.primitives {
             out.extend_from_slice(&primitive.material.to_le_bytes());
+            let colored = primitive.vertices.iter().any(|v| v.color != [255; 4]);
+            out.push(u8::from(colored));
             put_u32(&mut out, primitive.vertices.len() as u32);
-            for vertex in &primitive.vertices {
-                put_vertex(&mut out, vertex);
+            put_planes(&mut out, &primitive.vertices);
+            if colored {
+                for vertex in &primitive.vertices {
+                    out.extend_from_slice(&vertex.color);
+                }
             }
             put_indices(&mut out, &primitive.indices);
         }
@@ -682,10 +726,7 @@ pub fn encode(contents: &Contents, limits: &Limits) -> Result<Vec<u8>, String> {
             put_character(&mut out, form);
         }
     }
-    if out.len() as u64 > limits.pack_bytes {
-        return Err("Zone pack exceeds the transfer budget".into());
-    }
-    Ok(out)
+    out
 }
 
 /// Quantizes a normal component to a signed byte.
@@ -693,18 +734,66 @@ pub fn snorm8(n: f32) -> i8 {
     (n.clamp(-1.0, 1.0) * 127.0).round() as i8
 }
 
-fn put_vertex(out: &mut Vec<u8>, vertex: &Vertex) {
-    for n in vertex.position {
-        put_f32(out, n);
+/// A vertex's value on one quantized plane: x, y, z, u, then v.
+fn plane_value(vertex: &Vertex, plane: usize) -> f32 {
+    if plane < 3 {
+        vertex.position[plane]
+    } else {
+        vertex.uv[plane - 3]
     }
-    for n in vertex.normal {
-        out.push(snorm8(n) as u8);
+}
+
+/// The origin and step that cover `values` in [`STEPS`] steps.
+fn plane_range(values: impl Iterator<Item = f32>) -> (f32, f32) {
+    let (min, max) = values.fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), n| {
+        (lo.min(n), hi.max(n))
+    });
+    if !(min.is_finite() && max.is_finite()) {
+        return (0.0, 0.0);
     }
-    out.push(0);
-    for n in vertex.uv {
-        put_f32(out, n);
+    (min, (max - min) / STEPS)
+}
+
+/// The step count nearest `value`.
+fn quantize(value: f32, origin: f32, step: f32) -> u16 {
+    if step > 0.0 {
+        ((value - origin) / step).round().clamp(0.0, STEPS) as u16
+    } else {
+        0
     }
-    out.extend_from_slice(&vertex.color);
+}
+
+/// The value `n` steps from `origin`.
+fn dequantize(n: u16, origin: f32, step: f32) -> f32 {
+    origin + f32::from(n) * step
+}
+
+/// Writes the position and coordinate ranges, then the x, y, z, u, v, and
+/// normal planes of `vertices`.
+fn put_planes(out: &mut Vec<u8>, vertices: &[Vertex]) {
+    let ranges: Vec<(f32, f32)> = (0..5)
+        .map(|plane| plane_range(vertices.iter().map(|v| plane_value(v, plane))))
+        .collect();
+    for range in [&ranges[..3], &ranges[3..]] {
+        for &(origin, _) in range {
+            put_f32(out, origin);
+        }
+        for &(_, step) in range {
+            put_f32(out, step);
+        }
+    }
+    for (plane, &(origin, step)) in ranges.iter().enumerate() {
+        for vertex in vertices {
+            out.extend_from_slice(
+                &quantize(plane_value(vertex, plane), origin, step).to_le_bytes(),
+            );
+        }
+    }
+    for vertex in vertices {
+        for n in vertex.normal {
+            out.push(snorm8(n) as u8);
+        }
+    }
 }
 
 fn put_indices(out: &mut Vec<u8>, indices: &[u32]) {
@@ -744,12 +833,13 @@ fn put_character(out: &mut Vec<u8>, character: &Character) {
     for primitive in &character.primitives {
         out.extend_from_slice(&primitive.material.to_le_bytes());
         put_u32(out, primitive.vertices.len() as u32);
+        // A skinned vertex's color is always white and is not stored.
+        let plain: Vec<Vertex> = primitive.vertices.iter().map(|v| v.vertex).collect();
+        put_planes(out, &plain);
         for vertex in &primitive.vertices {
-            let start = out.len();
-            put_vertex(out, &vertex.vertex);
-            // A skinned vertex's color is always white and is not stored.
-            out.truncate(start + VERTEX_BYTES - 4);
             out.extend_from_slice(&vertex.joints);
+        }
+        for vertex in &primitive.vertices {
             out.extend_from_slice(&vertex.weights);
         }
         put_indices(out, &primitive.indices);
@@ -818,6 +908,25 @@ pub fn decode_contents(bytes: &[u8], limits: &Limits) -> Result<Contents, String
             png,
         });
     }
+    let body_length = reader.u32()? as u64;
+    if body_length > limits.body_bytes {
+        return Err("Zone pack exceeds the body budget".into());
+    }
+    let length = reader.u32()? as usize;
+    let stored = reader.take(length)?;
+    if reader.offset != bytes.len() {
+        return Err("Zone pack has trailing data".into());
+    }
+    // The limit bounds the allocation by the declared, budgeted length.
+    let body = miniz_oxide::inflate::decompress_to_vec_with_limit(stored, body_length as usize)
+        .map_err(|_| "Zone pack body could not be inflated")?;
+    if body.len() as u64 != body_length {
+        return Err("Zone pack body has an unexpected length".into());
+    }
+    let mut reader = Reader {
+        bytes: &body,
+        offset: 0,
+    };
     let count = reader.count(MAX_MATERIALS)?;
     for _ in 0..count {
         let name = reader.name()?;
@@ -861,29 +970,26 @@ pub fn decode_contents(bytes: &[u8], limits: &Limits) -> Result<Contents, String
         let mut model_triangles = 0u64;
         for _ in 0..primitive_count {
             let material = reader.u16()?;
-            let vertex_count = reader.u32()? as usize;
-            if vertex_count == 0 || vertex_count > u16::MAX as usize + 1 {
-                return Err("Zone pack primitive has an invalid vertex count".into());
+            let colored = match reader.u8()? {
+                0 => false,
+                1 => true,
+                _ => return Err("Zone pack primitive has an invalid color flag".into()),
+            };
+            let vertex_count = reader.vertex_count()?;
+            let mut vertices = reader.planes(vertex_count)?;
+            if colored {
+                let colors = reader.take(vertex_count * 4)?;
+                for (vertex, color) in vertices.iter_mut().zip(colors.chunks_exact(4)) {
+                    vertex.color = [color[0], color[1], color[2], color[3]];
+                }
             }
-            // Bounds the allocation by bytes actually present in the pack.
-            let packed = reader.take(vertex_count * VERTEX_BYTES)?;
-            let vertices = packed
-                .chunks_exact(VERTEX_BYTES)
-                .map(vertex)
-                .collect::<Result<Vec<_>, _>>()?;
-            let index_count = reader.u32()? as usize;
-            if index_count == 0 || !index_count.is_multiple_of(3) {
-                return Err("Zone pack primitive has an invalid index count".into());
-            }
-            model_triangles += index_count as u64 / 3;
-            if model_triangles > limits.model_triangles {
-                return Err("Zone pack model exceeds the per-model triangle budget".into());
-            }
-            let packed = reader.take(index_count * 2)?;
-            let indices = packed
-                .chunks_exact(2)
-                .map(|b| u16::from_le_bytes([b[0], b[1]]) as u32)
-                .collect();
+            let indices = reader.indices(
+                "Zone pack model exceeds the per-model triangle budget",
+                |count| {
+                    model_triangles += count as u64 / 3;
+                    model_triangles <= limits.model_triangles
+                },
+            )?;
             primitives.push(Primitive {
                 material,
                 vertices,
@@ -901,7 +1007,7 @@ pub fn decode_contents(bytes: &[u8], limits: &Limits) -> Result<Contents, String
         1 => Some(reader.character(limits)?),
         _ => return Err("Zone pack has an invalid character flag".into()),
     };
-    if reader.offset < bytes.len() {
+    if reader.offset < body.len() {
         let count = reader.u8()? as usize;
         if count == 0 || count > MAX_FORMS {
             return Err("Zone pack has an invalid form count".into());
@@ -910,25 +1016,11 @@ pub fn decode_contents(bytes: &[u8], limits: &Limits) -> Result<Contents, String
             contents.forms.push(reader.character(limits)?);
         }
     }
-    if reader.offset != bytes.len() {
+    if reader.offset != body.len() {
         return Err("Zone pack has trailing data".into());
     }
     validate(&contents, limits)?;
     Ok(contents)
-}
-
-fn vertex(v: &[u8]) -> Result<Vertex, String> {
-    let float = |at: usize| f32::from_le_bytes([v[at], v[at + 1], v[at + 2], v[at + 3]]);
-    if v[15] != 0 {
-        return Err("Zone pack vertex has a nonzero padding byte".into());
-    }
-    let normal = |at: usize| (v[at] as i8) as f32 / 127.0;
-    Ok(Vertex {
-        position: [float(0), float(4), float(8)],
-        normal: [normal(12), normal(13), normal(14)],
-        uv: [float(16), float(20)],
-        color: [v[24], v[25], v[26], v[27]],
-    })
 }
 
 /// Decodes the pack structure, then every texture, within `limits`.
@@ -962,9 +1054,10 @@ pub fn decode_texture(texture: &EncodedTexture) -> Result<Texture, String> {
         .map_err(|_| "Zone pack texture is not a readable PNG")?;
     let info = reader.info();
     let channels = match info.color_type {
+        png::ColorType::Grayscale => 1,
         png::ColorType::Rgb => 3,
         png::ColorType::Rgba => 4,
-        _ => return Err("Zone pack texture must be RGB or RGBA".into()),
+        _ => return Err("Zone pack texture must be gray, RGB, or RGBA".into()),
     };
     if info.width != texture.width
         || info.height != texture.height
@@ -988,8 +1081,13 @@ pub fn decode_texture(texture: &EncodedTexture) -> Result<Texture, String> {
         pixels
     } else {
         let mut rgba = Vec::with_capacity(expected);
-        for p in pixels.chunks_exact(3) {
-            rgba.extend_from_slice(&[p[0], p[1], p[2], 255]);
+        for p in pixels.chunks_exact(channels) {
+            let [r, g, b] = if channels == 3 {
+                [p[0], p[1], p[2]]
+            } else {
+                [p[0]; 3]
+            };
+            rgba.extend_from_slice(&[r, g, b, 255]);
         }
         rgba
     };
@@ -1069,6 +1167,72 @@ impl<'a> Reader<'a> {
         Ok(keys)
     }
 
+    /// A primitive's vertex count, 1 to 65,536.
+    fn vertex_count(&mut self) -> Result<usize, String> {
+        let count = self.u32()? as usize;
+        if count == 0 || count > u16::MAX as usize + 1 {
+            return Err("Zone pack primitive has an invalid vertex count".into());
+        }
+        Ok(count)
+    }
+
+    /// Reads `count` vertices' ranges and planes, white and uncolored.
+    fn planes(&mut self, count: usize) -> Result<Vec<Vertex>, String> {
+        let ranges: [f32; 10] = self.floats()?;
+        if ranges.iter().any(|n| !n.is_finite()) || [3, 4, 5, 8, 9].iter().any(|&i| ranges[i] < 0.0)
+        {
+            return Err("Zone pack primitive has an invalid vertex range".into());
+        }
+        // Origins and steps: x, y, z, then u, v.
+        let origin = [ranges[0], ranges[1], ranges[2], ranges[6], ranges[7]];
+        let step = [ranges[3], ranges[4], ranges[5], ranges[8], ranges[9]];
+        // Bounds the allocation by bytes actually present in the pack.
+        let planes = self.take(count * PLANE_VERTEX_BYTES)?;
+        let value = |plane: usize, i: usize| {
+            let at = (plane * count + i) * 2;
+            dequantize(
+                u16::from_le_bytes([planes[at], planes[at + 1]]),
+                origin[plane],
+                step[plane],
+            )
+        };
+        let normals = &planes[count * 10..];
+        let normal = |n: u8| (n as i8) as f32 / 127.0;
+        Ok((0..count)
+            .map(|i| Vertex {
+                position: [value(0, i), value(1, i), value(2, i)],
+                normal: [
+                    normal(normals[i * 3]),
+                    normal(normals[i * 3 + 1]),
+                    normal(normals[i * 3 + 2]),
+                ],
+                uv: [value(3, i), value(4, i)],
+                color: [255; 4],
+            })
+            .collect())
+    }
+
+    /// Reads a primitive's indices after `admit` accepts their count, or
+    /// refuses them with `refusal`.
+    fn indices(
+        &mut self,
+        refusal: &str,
+        mut admit: impl FnMut(usize) -> bool,
+    ) -> Result<Vec<u32>, String> {
+        let count = self.u32()? as usize;
+        if count == 0 || !count.is_multiple_of(3) {
+            return Err("Zone pack primitive has an invalid index count".into());
+        }
+        if !admit(count) {
+            return Err(refusal.into());
+        }
+        let packed = self.take(count * 2)?;
+        Ok(packed
+            .chunks_exact(2)
+            .map(|b| u32::from(u16::from_le_bytes([b[0], b[1]])))
+            .collect())
+    }
+
     /// Reads the character section; `validate` checks it afterwards.
     fn character(&mut self, limits: &Limits) -> Result<Character, String> {
         let name = self.name()?;
@@ -1092,38 +1256,24 @@ impl<'a> Reader<'a> {
         let mut triangles = 0u64;
         for _ in 0..count {
             let material = self.u16()?;
-            let vertex_count = self.u32()? as usize;
-            if vertex_count == 0 || vertex_count > u16::MAX as usize + 1 {
-                return Err("Zone pack primitive has an invalid vertex count".into());
-            }
-            let packed = self.take(vertex_count * SKINNED_VERTEX_BYTES)?;
-            let vertices = packed
-                .chunks_exact(SKINNED_VERTEX_BYTES)
-                .map(|v| {
-                    Ok(SkinnedVertex {
-                        vertex: {
-                            let mut whole = [255u8; VERTEX_BYTES];
-                            whole[..VERTEX_BYTES - 4].copy_from_slice(&v[..VERTEX_BYTES - 4]);
-                            vertex(&whole)?
-                        },
-                        joints: [v[24], v[25], v[26], v[27]],
-                        weights: [v[28], v[29], v[30], v[31]],
-                    })
+            let vertex_count = self.vertex_count()?;
+            let planes = self.planes(vertex_count)?;
+            let joints = self.take(vertex_count * 4)?;
+            let weights = self.take(vertex_count * 4)?;
+            let vertices = planes
+                .into_iter()
+                .zip(joints.chunks_exact(4).zip(weights.chunks_exact(4)))
+                .map(|(vertex, (j, w))| SkinnedVertex {
+                    vertex,
+                    joints: [j[0], j[1], j[2], j[3]],
+                    weights: [w[0], w[1], w[2], w[3]],
                 })
-                .collect::<Result<Vec<_>, String>>()?;
-            let index_count = self.u32()? as usize;
-            if index_count == 0 || !index_count.is_multiple_of(3) {
-                return Err("Zone pack primitive has an invalid index count".into());
-            }
-            triangles += index_count as u64 / 3;
-            if triangles > limits.character_triangles {
-                return Err("Zone pack character exceeds its triangle budget".into());
-            }
-            let packed = self.take(index_count * 2)?;
-            let indices = packed
-                .chunks_exact(2)
-                .map(|b| u16::from_le_bytes([b[0], b[1]]) as u32)
                 .collect();
+            let indices =
+                self.indices("Zone pack character exceeds its triangle budget", |count| {
+                    triangles += count as u64 / 3;
+                    triangles <= limits.character_triangles
+                })?;
             primitives.push(SkinnedPrimitive {
                 material,
                 vertices,

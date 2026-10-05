@@ -137,7 +137,7 @@ plaster and timber, and the remesh would have to rebuild textured surfaces.
 | Placement | `Placement` | Model name, ground position, lift, yaw, scale, and a `Collision` kind (`None`, `Bounds`, `Core`, `Opening`). Roofs, corners, and gables have `Collision::None`. |
 | Solids | [`solids.rs`](../../crates/verse/src/zones/everglade/solids.rs), [`social/solids.rs`](../../crates/verse-world/src/social/solids.rs) | Each colliding placement becomes an axis-aligned `Footprint` with a top height; round-tile roofs become analytic gabled `Roof` surfaces. `Solids::set_spell_blocks` already replaces a set of spell-raised blocks at runtime. |
 | Controller | [`social/controller.rs`](../../crates/verse-world/src/social/controller.rs) | A 0.45 m circle pushed out of each footprint along the shallowest axis; `STEP` 0.35 m step-up. Everglade's Wall of Stone draws a turned panel as "a close row of small" posts because "the controller collides with axis-aligned boxes" ([`everglade/spells.rs`](../../crates/verse/src/zones/everglade/spells.rs)). |
-| Pack | [`everglade_pack/`](../../crates/verse/src/zones/everglade_pack/format.rs) | Custom `VTP2` binary: base-color PNGs, materials, static models with node transforms applied, one skinned character. 250,000-triangle and 16 MiB limits. Pinned by `PACK_SHA256`; `content_digest()` is a hosted instance's content identity. Compiled by `compile.rs` from glTF under `assets/verse/everglade/`. |
+| Pack | [`everglade_pack/`](../../crates/verse/src/zones/everglade_pack/format.rs) | Custom `VTP3` binary: base-color PNGs, then a deflated body of materials, static models with node transforms applied and quantized vertices, one skinned character, and its forms. 420,000-triangle and 12 MiB limits. Pinned by `PACK_SHA256`; `content_digest()` is a hosted instance's content identity. Compiled by `compile.rs` from glTF under `assets/verse/everglade/`. |
 | Render | [`pbr/textured.rs`](../../crates/verse-pbr/src/pbr/textured.rs) | `merge()` groups placements into `CELL` (8 m) cells per material: one indexed draw per cell, no instancing, uploaded once. |
 | Light | [`pbr/textured_bake.rs`](../../crates/verse-pbr/src/pbr/textured_bake.rs), `Everglade::bake_light` | At load, each static vertex stores sky visibility and one sun bounce; an L1 probe grid with 3 m cells shades characters. Keyed by pack digest; a browser bakes 192 items per frame. |
 | Shadows | `pbr/gpu.rs`, `Everglade` key | Two cascades on Low and Medium, three on High, 2048². With `cache_far_shadows: true`, cascades after the first redraw only when the static caster identity changes. |
@@ -490,7 +490,7 @@ for every model the manifest marks destructible:
    from volume and density.
 4. **Structure.** Material, density, and seam sockets come from the kit's
    2 m grid, so adjacency is derived from placements and not hand authored.
-5. **Format.** `VTP2` becomes `VTP3` with a fracture section per model:
+5. **Format.** `VTP3` becomes `VTP4` with a fracture section per model:
    chunk meshes, boxes, masses, pattern IDs, and material class. Limits rise
    to fit the chunk budget above. A rebuilt pack has a new `PACK_SHA256` and
    so a new `content_digest()`, which already admits hosted instances.
@@ -539,7 +539,7 @@ S is up to 2 days, M is 3 to 7 days, and L is 2 to 4 weeks.
 | Dust | CPU quad particles in the studio | Seeded emitters with budgets | S |
 | Audio | `audio::Mixer` spatial voices | Cues, priorities, impact limiting, sound content | M |
 | Navigation updates | Grid planner over footprints | Revision-driven replanning, rubble blockers | S |
-| Pack fracture | `VTP2` compiler from glTF | Slab fracture, patterns, boxes, `VTP3` | L |
+| Pack fracture | `VTP3` compiler from glTF | Slab fracture, patterns, boxes, `VTP4` | L |
 | Studio protection | — | Per-building flag, safe zone, feedback | S |
 | Hosted authority | Social profile without physics; chamber `SpellWorld` | Physics world in the social profile, shared-caster adapter, events, body replication, baseline | L |
 | Persistence and regrowth | Instance checkpoints | Building state in checkpoints, regrowth or repair | M |

@@ -82,6 +82,8 @@ knowledge = { path = "../knowledge", optional = true }
 xp-ledger = { path = "../xp-ledger", optional = true }
 nostr = { path = "../nostr" }
 png = "0.18.1"
+# Deflate for the zone pack's geometry; already in the tree through `png`.
+miniz_oxide = "0.8.9"
 pollster = "0.4"
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }

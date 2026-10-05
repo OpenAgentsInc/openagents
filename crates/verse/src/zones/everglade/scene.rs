@@ -61,7 +61,20 @@ const PAINTED: [(&str, &str); 2] = [
 pub(crate) struct Copied<'a> {
     images: BTreeMap<u16, usize>,
     materials: BTreeMap<(u16, [u32; 6]), usize>,
+    /// White materials that a placed model's colors fold into, by image,
+    /// alpha mode and cutoff, and face culling.
+    folded: BTreeMap<(Option<usize>, u8, u32, bool), usize>,
     meshes: BTreeMap<(&'a str, [u32; 6]), (usize, ([f32; 3], [f32; 3]))>,
+}
+
+/// A material's look once its paint is applied: the scene image, the
+/// linear base color, and the pack's alpha mode and face culling.
+#[derive(Clone, Copy)]
+struct Look {
+    image: Option<usize>,
+    base_color: [f32; 4],
+    alpha: everglade_pack::AlphaMode,
+    double_sided: bool,
 }
 
 /// The textured scene of `placements` and the blockers their collision
@@ -114,6 +127,11 @@ pub(crate) fn build_painted(
     Ok((scene, blockers))
 }
 
+/// Copies a placed model. Each primitive's base color, after its paint, is
+/// folded into its vertex colors, and its material is the white one for its
+/// image, alpha, and face culling, so models that differ only in color, such
+/// as the generated buildings' tinted plaster and tiles and the painted
+/// houses, share a material and merge into the same batch of each cell.
 fn copy_model(
     pack: &ZonePack,
     model: &everglade_pack::Model,
@@ -123,7 +141,28 @@ fn copy_model(
 ) -> Result<usize, String> {
     let mut primitives = Vec::with_capacity(model.primitives.len());
     for primitive in &model.primitives {
-        let material = copy_painted(pack, primitive.material, scene, copied, paint)?;
+        let look = look(pack, primitive.material, scene, copied, paint)?;
+        let key = match look.alpha {
+            everglade_pack::AlphaMode::Opaque => (0, 0),
+            everglade_pack::AlphaMode::Mask { cutoff } => (1, cutoff.to_bits()),
+            everglade_pack::AlphaMode::Blend => (2, 0),
+        };
+        let key = (look.image, key.0, key.1, look.double_sided);
+        let material = match copied.folded.get(&key) {
+            Some(&material) => material,
+            None => {
+                let material = add_material(
+                    scene,
+                    &Look {
+                        base_color: [1.0; 4],
+                        ..look
+                    },
+                );
+                copied.folded.insert(key, material);
+                material
+            }
+        };
+        let tint = look.base_color;
         primitives.push(Primitive {
             vertices: primitive
                 .vertices
@@ -132,7 +171,9 @@ fn copy_model(
                     pos: v.position,
                     normal: v.normal,
                     uv: v.uv,
-                    color: v.color,
+                    color: std::array::from_fn(|c| {
+                        (f32::from(v.color[c]) * tint[c]).round().clamp(0.0, 255.0) as u8
+                    }),
                     light: UNBAKED,
                 })
                 .collect(),
@@ -161,30 +202,64 @@ pub(crate) fn copy_painted(
     copied: &mut Copied<'_>,
     paint: Paint,
 ) -> Result<usize, String> {
+    let key = (index, paint_key(pack, index, paint)?);
+    if let Some(&material) = copied.materials.get(&key) {
+        return Ok(material);
+    }
+    let look = look(pack, index, scene, copied, paint)?;
+    let material = add_material(scene, &look);
+    copied.materials.insert(key, material);
+    Ok(material)
+}
+
+/// The paint color that applies to pack material `index`, if any, and the
+/// neutral image it samples.
+fn painted(
+    pack: &ZonePack,
+    index: u16,
+    paint: Paint,
+) -> Result<Option<([f32; 3], &'static str)>, String> {
     let source = pack
         .materials
         .get(usize::from(index))
         .ok_or("The Everglade pack names a missing material")?;
-    let color = match PAINTED
-        .iter()
-        .position(|(name, _)| source.name.ends_with(name))
-    {
-        Some(0) => paint.plaster.map(|c| (c, PAINTED[0].1)),
-        Some(_) => paint.roof.map(|c| (c, PAINTED[1].1)),
-        None => None,
-    };
-    let key = (
-        index,
-        color.map_or([u32::MAX; 6], |(c, _)| {
+    Ok(
+        match PAINTED
+            .iter()
+            .position(|(name, _)| source.name.ends_with(name))
+        {
+            Some(0) => paint.plaster.map(|c| (c, PAINTED[0].1)),
+            Some(_) => paint.roof.map(|c| (c, PAINTED[1].1)),
+            None => None,
+        },
+    )
+}
+
+/// The part of a paint that changes pack material `index`.
+fn paint_key(pack: &ZonePack, index: u16, paint: Paint) -> Result<[u32; 6], String> {
+    Ok(
+        painted(pack, index, paint)?.map_or([u32::MAX; 6], |(c, _)| {
             let mut key = [u32::MAX; 6];
             key[..3].copy_from_slice(&c.map(f32::to_bits));
             key
         }),
-    );
-    if let Some(&material) = copied.materials.get(&key) {
-        return Ok(material);
-    }
-    let (image, base_color) = match color {
+    )
+}
+
+/// Pack material `index` under `paint`, with its image copied into the
+/// scene.
+fn look(
+    pack: &ZonePack,
+    index: u16,
+    scene: &mut TexturedScene,
+    copied: &mut Copied<'_>,
+    paint: Paint,
+) -> Result<Look, String> {
+    let source = pack
+        .materials
+        .get(usize::from(index))
+        .ok_or("The Everglade pack names a missing material")?;
+    let (image, base_color) = match painted(pack, index, paint)? {
         Some((c, luma)) => {
             let texture = pack
                 .textures
@@ -205,21 +280,29 @@ pub(crate) fn copy_painted(
             source.base_color,
         ),
     };
-    let (alpha, roughness) = match source.alpha {
+    Ok(Look {
+        image,
+        base_color,
+        alpha: source.alpha,
+        double_sided: source.double_sided,
+    })
+}
+
+/// Adds the dielectric material `look` describes.
+fn add_material(scene: &mut TexturedScene, look: &Look) -> usize {
+    let (alpha, roughness) = match look.alpha {
         everglade_pack::AlphaMode::Opaque => (AlphaMode::Opaque, ROUGH),
         everglade_pack::AlphaMode::Mask { cutoff } => (AlphaMode::Mask { cutoff }, ROUGH),
         everglade_pack::AlphaMode::Blend => (AlphaMode::Blend, GLASS),
     };
-    let material = scene.add_material(TexturedMaterial {
-        image,
-        base_color,
+    scene.add_material(TexturedMaterial {
+        image: look.image,
+        base_color: look.base_color,
         metallic: 0.0,
         roughness,
         alpha,
-        double_sided: source.double_sided,
-    });
-    copied.materials.insert(key, material);
-    Ok(material)
+        double_sided: look.double_sided,
+    })
 }
 
 fn copy_image(

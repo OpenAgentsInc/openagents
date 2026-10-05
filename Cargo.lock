@@ -14940,6 +14940,7 @@ dependencies = [
  "gym-leaderboard",
  "knowledge",
  "libc",
+ "miniz_oxide 0.8.9",
  "naga",
  "nostr",
  "objc2 0.6.4",

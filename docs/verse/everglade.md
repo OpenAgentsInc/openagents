@@ -87,8 +87,11 @@ Measured facts that shape the design:
   colors, as the Ruins pack does, turns leaf cards into solid quads, so
   Everglade needs textured, alpha-tested drawing in the zone renderer.
 - The two named kits carry about 88 MB of PNG source at 2048². Admitted
-  textures are downscaled to at most 1024², and to 512² where a texture covers
-  small or distant geometry.
+  textures are downscaled to 512² (`compile::TEXTURE_EDGE`); the timber trim
+  and the broadleaf canopy keep 1024², and small pieces, such as mushrooms,
+  flowers, vines, and iron ornaments, get 256² (`compile::TEXTURE_EDGES`).
+  Each admitted image is stored as the compiler writes it, so the repository
+  holds one copy at the pack's size.
 - The current material path samples base color only. Normal, ORM, and
   roughness images are not admitted until a shader reads them.
 
@@ -101,23 +104,26 @@ Admission follows the Fantasy Props precedent:
   license, package, and SHA-256 of every admitted file. Only models that the
   layout places are admitted.
 - A Rust compiler reads the admitted sources, downscales textures, and writes
-  a pinned Everglade zone pack: models, base-color textures with alpha, and
-  material flags (alpha mask cutoff, double-sided, blend). The pack's digest
+  a pinned Everglade zone pack (`VTP3`): base-color textures as the narrowest
+  PNG that holds them exactly (gray, RGB, or RGBA), then one deflated body of
+  materials with their flags (alpha mask cutoff, double-sided, blend) and
+  models. Each primitive's positions and texture coordinates are 16-bit
+  steps across its own range, a fraction of a millimeter on the tallest
+  building, stored in planes so that deflate compresses them about threefold;
+  degenerate triangles and duplicate vertices are dropped. The pack's digest
   and length compile into `verse`, like `PACK_SHA256` and `PACK_BYTES` for
   Ruins.
 - The pack loads on entry through the Ruins loader's rules: HTTPS only, no
   redirects, exact length and digest, bounded decoding, and the
   content-addressed disk cache. Committed files are the pack and the curated
   sources, not the full kits.
-- Budgets: at most 56 MB committed for sources and pack together (30.5 MB
-  before the generated set, 46 MB before the second round of generated
-  buildings and the Grove's beasts), a pack of at most 28 MiB (24 MiB before
-  the second round, whose fifteen buildings and twenty-six small pieces add
-  about 5 MB to the download), at most 420,000 triangles in the pack's
-  models with at most
-  20,000 in any one, at most 1,850,000 triangles placed with the ground
-  (`everglade_pack::PLACED_TRIANGLE_BUDGET`), and at most 64 MB of decoded
-  textures.
+- Budgets: at most 36 MB committed for sources and pack together, a pack of
+  at most 12 MiB, and at most 48 MiB of decoded textures (56 MB, 28 MiB,
+  and 64 MiB before the third round shrank the pack from 28.0 MB to 8.5 MB
+  and the committed total from 53.3 MB to 28.1 MB), at most 420,000
+  triangles in the pack's models with at most 20,000 in any one, and at most
+  1,850,000 triangles placed with the ground
+  (`everglade_pack::PLACED_TRIANGLE_BUDGET`).
 
 ## Rendering
 
@@ -133,6 +139,10 @@ The zone renderer gains textured static meshes:
   short palettes (`layout::paint`), and its kit plaster and tiles then sample
   the neutral `T_Plaster_Luma` and `T_RoundTiles_Luma` images tinted by those
   colors (`scene::Paint`), so the streets vary without another model.
+- A placed model's material colors, after its paint, fold into its vertex
+  colors, so materials that differ only in color share one white material
+  and merge into one batch per cell: the city draws in 2,845 batches rather
+  than 5,040.
 - Everglade's atmosphere has its own colors: an afternoon daylight sky
   (`pbr::Daylight`) from warm horizon haze to a blue zenith, with a low,
   warm sun that draws long shadows across the streets, a Sun in the key

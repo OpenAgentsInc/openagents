@@ -144,12 +144,19 @@ fn synthetic_sources_compile_deterministically_and_round_trip() {
 
     let pack = format::decode(&first.bytes, &Limits::EVERGLADE).unwrap();
     // The normal map is ignored, so only the base-color texture is packed,
-    // and a texture within its edge keeps its admitted bytes.
+    // and a texture within its edge keeps its pixels exactly, in the
+    // smaller of its admitted bytes and the compiler's encoding.
     assert_eq!(pack.textures.len(), 1);
     assert_eq!(pack.textures[0].name, "glade/Leaf");
     assert_eq!((pack.textures[0].width, pack.textures[0].height), (8, 8));
     let contents = format::decode_contents(&first.bytes, &Limits::EVERGLADE).unwrap();
-    assert_eq!(contents.textures[0].png, leaf_png());
+    assert!(contents.textures[0].png.len() <= leaf_png().len());
+    let admitted = format::decode_texture(&EncodedTexture {
+        png: leaf_png(),
+        ..contents.textures[0].clone()
+    })
+    .unwrap();
+    assert_eq!(pack.textures[0].rgba, admitted.rgba);
 
     let material = &pack.materials[0];
     assert_eq!(material.name, "glade/Leaf");
@@ -159,9 +166,11 @@ fn synthetic_sources_compile_deterministically_and_round_trip() {
 
     let model = pack.model("glade/Card").expect("card model");
     assert_eq!(model.triangles(), 2);
-    // The node's translation is applied to every position.
+    // The node's translation is applied to every position, within the
+    // quantization's half step.
     let (min, max) = model.bounds();
-    assert_eq!((min[0], max[0]), (1.0, 2.0));
+    assert_eq!(min[0], 1.0);
+    assert!((max[0] - 2.0).abs() < 1e-5, "{}", max[0]);
     let vertex = model.primitives[0].vertices[0];
     assert_eq!(vertex.color, [255; 4]);
     assert!((vertex.normal[2] - 1.0).abs() < 1e-6);
@@ -540,25 +549,56 @@ fn malformed_packs_are_refused_before_allocation() {
 }
 
 #[test]
-fn vertex_padding_must_be_zero() {
-    let contents = tiny_contents();
-    let bytes = format::encode(&contents, &Limits::EVERGLADE).unwrap();
-    // The first vertex follows the model header: find the first vertex's
-    // position by encoding its x coordinate and locating it after the PNG.
-    let first = contents.models[0].primitives[0].vertices[0];
-    let mut pattern = Vec::new();
-    for n in first.position {
-        pattern.extend_from_slice(&n.to_le_bytes());
+fn quantized_vertices_stay_within_half_a_step_and_encode_again_identically() {
+    let mut contents = tiny_contents();
+    // An awkward spread: a building's height, a tiled coordinate, colors on
+    // some vertices only.
+    let primitive = &mut contents.models[0].primitives[0];
+    let wanted = [
+        ([-3.217f32, 0.0, 0.125], [-2.5f32, 0.3]),
+        ([4.9, 18.578, -7.31], [24.2, -1.0]),
+        ([0.333, 9.001, 2.0], [0.5, 7.77]),
+        ([1.0, 1.0, 1.0], [3.0, 3.0]),
+    ];
+    for (vertex, (position, uv)) in primitive.vertices.iter_mut().zip(wanted) {
+        vertex.position = position;
+        vertex.uv = uv;
     }
-    let png_end = 8 + 4 + 1 + "glade/Leaf".len() + 12 + contents.textures[0].png.len();
-    let at = png_end
-        + bytes[png_end..]
-            .windows(pattern.len())
-            .position(|w| w == pattern.as_slice())
-            .expect("first vertex");
-    let mut padded = bytes.clone();
-    padded[at + 15] = 1;
-    assert!(format::decode_contents(&padded, &Limits::EVERGLADE).is_err());
+    primitive.vertices[1].color = [200, 10, 30, 255];
+    let bytes = format::encode(&contents, &Limits::EVERGLADE).unwrap();
+    let decoded = format::decode_contents(&bytes, &Limits::EVERGLADE).unwrap();
+    let got = &decoded.models[0].primitives[0].vertices;
+    for (vertex, (position, uv)) in got.iter().zip(wanted) {
+        for axis in 0..3 {
+            let error = (vertex.position[axis] - position[axis]).abs();
+            assert!(error <= 30.0 / 65535.0 / 2.0 + 1e-6, "{error}");
+        }
+        for axis in 0..2 {
+            let error = (vertex.uv[axis] - uv[axis]).abs();
+            assert!(error <= 30.0 / 65535.0 / 2.0 + 1e-6, "{error}");
+        }
+    }
+    assert_eq!(got[1].color, [200, 10, 30, 255]);
+    assert_eq!(got[0].color, [255; 4]);
+    assert_eq!(format::encode(&decoded, &Limits::EVERGLADE).unwrap(), bytes);
+}
+
+#[test]
+fn a_body_longer_than_declared_or_its_budget_is_refused() {
+    let bytes = tiny_contents_bytes();
+    // The body length follows the one texture.
+    let contents = tiny_contents();
+    let at = 8 + 4 + 1 + "glade/Leaf".len() + 12 + contents.textures[0].png.len();
+    let declared = u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+    let mut short = bytes.clone();
+    short[at..at + 4].copy_from_slice(&(declared - 1).to_le_bytes());
+    assert!(format::decode_contents(&short, &Limits::EVERGLADE).is_err());
+    let tight = Limits {
+        body_bytes: u64::from(declared) - 1,
+        ..Limits::EVERGLADE
+    };
+    assert!(format::decode_contents(&bytes, &tight).is_err());
+    assert!(format::encode(&contents, &tight).is_err());
 }
 
 fn test_pinned(bytes: &[u8]) -> PinnedFile {
@@ -731,7 +771,23 @@ fn a_character_round_trips_and_is_bounded() {
     contents.character = Some(tiny_character());
     let bytes = format::encode(&contents, &Limits::EVERGLADE).unwrap();
     let decoded = format::decode_contents(&bytes, &Limits::EVERGLADE).unwrap();
-    assert_eq!(decoded, contents);
+    // Everything but the quantized vertices round-trips exactly, and they
+    // within half a step.
+    let (got, sent) = (
+        decoded.character.as_ref().unwrap(),
+        contents.character.as_ref().unwrap(),
+    );
+    assert_eq!((&got.joints, &got.clips), (&sent.joints, &sent.clips));
+    for (a, b) in got.primitives[0]
+        .vertices
+        .iter()
+        .zip(&sent.primitives[0].vertices)
+    {
+        assert_eq!((a.joints, a.weights), (b.joints, b.weights));
+        assert!((a.vertex.position[0] - b.vertex.position[0]).abs() < 1e-5);
+        assert!((a.vertex.uv[0] - b.vertex.uv[0]).abs() < 1e-5);
+    }
+    assert_eq!(format::encode(&decoded, &Limits::EVERGLADE).unwrap(), bytes);
     assert!(format::decode_contents(&bytes[..bytes.len() - 1], &Limits::EVERGLADE).is_err());
 
     // A character's triangles count against its own budget.

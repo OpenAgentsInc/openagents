@@ -1,5 +1,5 @@
 //! The Everglade pack compiler: admitted Quaternius sources in, one pinned
-//! `VTP2` pack out.
+//! `VTP3` pack out.
 //!
 //! The compiler reads each source set under `assets/verse/everglade/`, checks
 //! every file against the set's `openagents.verse.source-manifest.v1`
@@ -46,20 +46,23 @@ pub const SETS: [&str; 5] = ["nature", "village", "props", "generated", "beasts"
 /// Wild Shape beasts, split from their committed glb by
 /// `scripts/blender/beasts_admit.py`.
 pub const FORM_SETS: [&str; 1] = ["beasts"];
-/// The longest edge of a texture that covers small or distant geometry.
-pub const SMALL_TEXTURE_EDGE: u32 = 512;
-/// The longest edge of a texture that covers large or near surfaces.
-pub const LARGE_TEXTURE_EDGE: u32 = 1024;
-/// Textures that keep [`LARGE_TEXTURE_EDGE`]; every other texture gets
-/// [`SMALL_TEXTURE_EDGE`].
-pub const LARGE_TEXTURES: &[&str] = &[
-    "nature/Bark_NormalTree.png",
-    "nature/Leaves_NormalTree_C.png",
-    "village/T_Plaster_BaseColor.png",
-    "village/T_WoodTrim_BaseColor.png",
-    "village/T_RoundTiles_BaseColor.png",
-    "props/T_Trim_Furniture_BaseColor.png",
-    "props/T_Trim_Props_BaseColor.png",
+/// The longest edge of most textures. Bark, plaster, roof tiles, and the
+/// furniture and props trims cover large or near surfaces, but at 512 px a
+/// texel is still smaller than a pixel at a few meters' distance.
+pub const TEXTURE_EDGE: u32 = 512;
+/// Textures with another edge than [`TEXTURE_EDGE`]: the timber trim that
+/// frames every house and the broadleaf canopy keep 1,024 px; small pieces,
+/// such as mushrooms, flowers, vines, page edges, and iron ornaments, need
+/// no more than 256 px.
+pub const TEXTURE_EDGES: &[(&str, u32)] = &[
+    ("nature/Leaves_NormalTree_C.png", 1024),
+    ("village/T_WoodTrim_BaseColor.png", 1024),
+    ("nature/Flowers.png", 256),
+    ("nature/Mushrooms.png", 256),
+    ("props/T_Page_Noise.png", 256),
+    ("props/T_Trim_Cloth_BaseColor.png", 256),
+    ("village/T_MetalOrnaments_BaseColor.png", 256),
+    ("village/T_VineLeaf_png.png", 256),
 ];
 /// The retained Universal character sources, relative to the pack
 /// directory.
@@ -359,11 +362,10 @@ fn read_set(root: &Path, set: &str) -> Result<(SourceSet, u64), String> {
 /// The edge a texture is compiled to.
 pub fn texture_edge(set: &str, file: &str, limits: &Limits) -> u32 {
     let path = format!("{set}/{file}");
-    let wanted = if LARGE_TEXTURES.contains(&path.as_str()) {
-        LARGE_TEXTURE_EDGE
-    } else {
-        SMALL_TEXTURE_EDGE
-    };
+    let wanted = TEXTURE_EDGES
+        .iter()
+        .find(|(name, _)| *name == path)
+        .map_or(TEXTURE_EDGE, |&(_, edge)| edge);
     wanted.min(limits.texture_edge)
 }
 
@@ -414,27 +416,61 @@ pub fn downscale(rgba: &[u8], width: u32, height: u32, edge: u32) -> (u32, u32, 
     (out_width, out_height, out)
 }
 
-fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::new();
-    let mut encoder = png::Encoder::new(&mut bytes, width, height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    encoder.set_compression(png::Compression::High);
-    let mut writer = encoder
-        .write_header()
-        .map_err(|_| "Texture could not be encoded")?;
-    writer
-        .write_image_data(rgba)
-        .map_err(|_| "Texture could not be encoded")?;
-    writer
-        .finish()
-        .map_err(|_| "Texture could not be encoded")?;
-    Ok(bytes)
+/// Encodes straight-alpha RGBA as the narrowest 8-bit PNG that holds it
+/// exactly: gray when every pixel is an opaque gray, RGB when every pixel is
+/// opaque, and RGBA otherwise, with whichever row filter compresses best.
+pub fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
+    let opaque = rgba.chunks_exact(4).all(|p| p[3] == 255);
+    let gray = opaque && rgba.chunks_exact(4).all(|p| p[0] == p[1] && p[1] == p[2]);
+    let (color, pixels): (png::ColorType, Vec<u8>) = if gray {
+        (
+            png::ColorType::Grayscale,
+            rgba.chunks_exact(4).map(|p| p[0]).collect(),
+        )
+    } else if opaque {
+        (
+            png::ColorType::Rgb,
+            rgba.chunks_exact(4)
+                .flat_map(|p| [p[0], p[1], p[2]])
+                .collect(),
+        )
+    } else {
+        (png::ColorType::Rgba, rgba.to_vec())
+    };
+    let mut best: Option<Vec<u8>> = None;
+    for filter in [
+        png::Filter::Adaptive,
+        png::Filter::MinEntropy,
+        png::Filter::Paeth,
+        png::Filter::Up,
+        png::Filter::Sub,
+    ] {
+        let mut bytes = Vec::new();
+        let mut encoder = png::Encoder::new(&mut bytes, width, height);
+        encoder.set_color(color);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_compression(png::Compression::High);
+        encoder.set_filter(filter);
+        let mut writer = encoder
+            .write_header()
+            .map_err(|_| "Texture could not be encoded")?;
+        writer
+            .write_image_data(&pixels)
+            .map_err(|_| "Texture could not be encoded")?;
+        writer
+            .finish()
+            .map_err(|_| "Texture could not be encoded")?;
+        if best.as_ref().is_none_or(|b| bytes.len() < b.len()) {
+            best = Some(bytes);
+        }
+    }
+    best.ok_or_else(|| "Texture could not be encoded".into())
 }
 
-/// Bounds a source PNG to `edge`. A PNG that already fits and is 8-bit RGB or
-/// RGBA keeps its admitted bytes; any other is decoded, downscaled if needed,
-/// and stored as 8-bit RGBA.
+/// Bounds a source PNG to `edge`. The image is decoded, downscaled if it
+/// is larger, and stored as the smaller of its admitted bytes, when those
+/// are already a fitting 8-bit gray, RGB, or RGBA PNG, and
+/// [`encode_png`]'s.
 pub fn prepare_texture(name: String, bytes: &[u8], edge: u32) -> Result<EncodedTexture, String> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
@@ -447,7 +483,10 @@ pub fn prepare_texture(name: String, bytes: &[u8], edge: u32) -> Result<EncodedT
     let info = reader.info();
     let (width, height) = (info.width, info.height);
     let keeps_bytes = info.bit_depth == png::BitDepth::Eight
-        && matches!(info.color_type, png::ColorType::Rgb | png::ColorType::Rgba)
+        && matches!(
+            info.color_type,
+            png::ColorType::Grayscale | png::ColorType::Rgb | png::ColorType::Rgba
+        )
         && !info.interlaced;
     if info.animation_control.is_some()
         || width == 0
@@ -458,14 +497,6 @@ pub fn prepare_texture(name: String, bytes: &[u8], edge: u32) -> Result<EncodedT
         return Err(format!(
             "Source texture has an unsupported size or format: {name}"
         ));
-    }
-    if keeps_bytes && width <= edge && height <= edge {
-        return Ok(EncodedTexture {
-            name,
-            width,
-            height,
-            png: bytes.to_vec(),
-        });
     }
     let size = reader
         .output_buffer_size()
@@ -493,16 +524,23 @@ pub fn prepare_texture(name: String, bytes: &[u8], edge: u32) -> Result<EncodedT
     if rgba.len() != width as usize * height as usize * 4 {
         return Err(format!("Source texture is incomplete: {name}"));
     }
-    let (width, height, rgba) = if width > edge || height > edge {
-        downscale(&rgba, width, height, edge)
-    } else {
+    let fits = width <= edge && height <= edge;
+    let (width, height, rgba) = if fits {
         (width, height, rgba)
+    } else {
+        downscale(&rgba, width, height, edge)
+    };
+    let encoded = encode_png(width, height, &rgba)?;
+    let png = if fits && keeps_bytes && bytes.len() <= encoded.len() {
+        bytes.to_vec()
+    } else {
+        encoded
     };
     Ok(EncodedTexture {
         name,
         width,
         height,
-        png: encode_png(width, height, &rgba)?,
+        png,
     })
 }
 
@@ -899,6 +937,10 @@ impl Builder<'_> {
                 self.primitive(set, &label, &buffers, world, primitive, &mut primitives)?;
             }
         }
+        for primitive in &mut primitives {
+            tidy(primitive);
+        }
+        primitives.retain(|p| !p.indices.is_empty());
         if primitives.is_empty() {
             return Err(format!("{label}: model has no triangles"));
         }
@@ -1037,6 +1079,41 @@ fn reduce_keys<const N: usize>(keys: &[(f32, [f32; N])]) -> Vec<(f32, [f32; N])>
         }
     }
     kept
+}
+
+/// Drops a static primitive's degenerate triangles, those with two corners
+/// at one position, merges its identical vertices, drops vertices no
+/// triangle uses, and numbers the rest in the order triangles first use them.
+fn tidy(primitive: &mut Primitive) {
+    type Key = ([u32; 3], [u8; 3], [u32; 2], [u8; 4]);
+    let key = |v: &Vertex| -> Key {
+        (
+            v.position.map(f32::to_bits),
+            v.normal.map(|n| format::snorm8(n) as u8),
+            v.uv.map(f32::to_bits),
+            v.color,
+        )
+    };
+    let mut seen: BTreeMap<Key, u32> = BTreeMap::new();
+    let mut vertices = Vec::new();
+    let mut indices = Vec::with_capacity(primitive.indices.len());
+    for triangle in primitive.indices.chunks_exact(3) {
+        let corner = |i: usize| primitive.vertices[triangle[i] as usize].position;
+        let (a, b, c) = (corner(0), corner(1), corner(2));
+        if a == b || b == c || a == c {
+            continue;
+        }
+        for &i in triangle {
+            let vertex = primitive.vertices[i as usize];
+            let index = *seen.entry(key(&vertex)).or_insert_with(|| {
+                vertices.push(vertex);
+                vertices.len() as u32 - 1
+            });
+            indices.push(index);
+        }
+    }
+    primitive.vertices = vertices;
+    primitive.indices = indices;
 }
 
 /// Merges identical vertices of one primitive and renumbers its indices.
