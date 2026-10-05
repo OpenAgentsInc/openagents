@@ -41,6 +41,17 @@ of the resident host and NIP-TERM, which is the next phase. Hiding the
 overlay keeps the sessions; quitting Verse ends their process groups.
 `cargo run -p verse --example terminal_capture -- out.png` renders it.
 
+The overlay also listens on a control socket,
+`~/.openagents/verse/terminal.sock` (`VERSE_TERMINAL_SOCKET` overrides it;
+mode `0600` in a `0700` directory), one JSON request a line and one JSON
+reply a line (`crates/verse/src/terminal_control.rs`). Connections are read
+on their own threads and the requests cross to the frame thread, where
+`Overlay::tick` applies them, so a reply describes what the window now
+shows. `openagents verse terminal status|open|hide|split|focus|close|send|
+key|read|tab|zoom` is the client (`docs/cli/README.md`); `send` and `key`
+go through `coder_vt::Terminal::paste` and `key`, the same encoding as the
+keyboard, and nothing from the socket reaches NIP-MV, chat, or presence.
+
 Since the parity pass of October 5, 2026, the overlay behaves like a normal
 terminal:
 

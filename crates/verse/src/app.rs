@@ -743,6 +743,19 @@ fn block_by_name(session: &mut Session, name: &str, block: bool) -> String {
     }
 }
 
+/// The terminal overlay, listening on its control socket so
+/// `openagents verse terminal` can drive it. A socket that cannot be
+/// bound is reported once and the overlay works from the keyboard alone.
+fn terminal_overlay() -> crate::terminal::Overlay {
+    let mut overlay = crate::terminal::Overlay::new();
+    if let Some(path) = crate::terminal::control::default_path()
+        && let Err(error) = overlay.listen(&path)
+    {
+        eprintln!("verse: the terminal control socket is off: {error}");
+    }
+    overlay
+}
+
 impl App {
     fn new(options: &Options) -> Result<Self, String> {
         // Find OpenAgents Terminal for the terminal overlay ahead of time:
@@ -932,7 +945,7 @@ impl App {
             studio_panel: None,
             studio_target: None,
             panel_shift: false,
-            terminal: crate::terminal::Overlay::new(),
+            terminal: terminal_overlay(),
             terminal_press: false,
             stress: options
                 .terminal_stress
@@ -3600,6 +3613,11 @@ impl App {
                 }
             }
             None => self.terminal.tick(),
+        }
+        // A request over the control socket may have given the overlay
+        // focus (or taken it): the character stops, as it does for T.
+        if self.terminal.focus_changed() == Some(true) {
+            self.take_keys_for_terminal();
         }
         dynamic.extend(&entities);
         // A studio panel keeps the rows the studio filled it with.

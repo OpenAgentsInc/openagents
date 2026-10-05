@@ -14,6 +14,11 @@
 //!   text renditions, true color, and `top`.
 //! - `select`: a selection made by dragging, a copy-mode search match, and
 //!   the stats line.
+//! - `serve[:SECONDS]`: no panes; the overlay listens on the terminal
+//!   control socket (`VERSE_TERMINAL_SOCKET` or
+//!   `~/.openagents/verse/terminal.sock`) and draws frames for SECONDS
+//!   (default 60), so `openagents verse terminal` can drive it without a
+//!   window; the frame rendered at the end shows what the commands did.
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -128,7 +133,19 @@ fn main() -> Result<(), String> {
             .unwrap_or_else(|| sh("ls -la /usr/bin | head -40; exec cat", "ls")),
     };
     let mut overlay = Overlay::with(&root, "/bin/sh".into(), first);
-    overlay.toggle();
+    let serve = scene.strip_prefix("serve").map(|rest| {
+        rest.strip_prefix(':')
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(60_u64)
+    });
+    if let Some(seconds) = serve {
+        let socket =
+            verse::terminal::control::default_path().ok_or("No HOME: set VERSE_TERMINAL_SOCKET")?;
+        overlay.listen(&socket)?;
+        eprintln!("serving {} for {seconds}s", socket.display());
+    } else {
+        overlay.toggle();
+    }
     let mut atlas = verse::ui::Atlas::new((14.0 * scale).round());
     atlas.reserve_glyphs(verse::terminal::GLYPH_ROWS)?;
     let size = [width as f32, height as f32];
@@ -143,6 +160,7 @@ fn main() -> Result<(), String> {
                 "sh log",
             ),
         ),
+        _ if serve.is_some() => {}
         _ => {
             overlay.split(Axis::Columns, &sh(COLORS, "sh colors"));
             overlay.split(
@@ -171,7 +189,7 @@ fn main() -> Result<(), String> {
             std::thread::sleep(Duration::from_millis(16));
         }
     };
-    draw_for(&mut overlay, &mut atlas, 3.0);
+    draw_for(&mut overlay, &mut atlas, serve.map_or(3.0, |s| s as f32));
     if scene == "select" {
         // Search the log pane's scrollback for "line 42", then select the
         // build pane's test summary by dragging.

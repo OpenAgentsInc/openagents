@@ -17,6 +17,7 @@
 //! output within a time and byte budget, focused pane first, so a pane
 //! printing without pause cannot stall the world.
 
+pub use crate::terminal_control as control;
 mod copy;
 pub mod draw;
 pub mod glyphs;
@@ -133,6 +134,11 @@ pub struct Overlay {
     notice: Option<String>,
     /// What the first pane runs: OpenAgents Terminal when found.
     first: Option<Program>,
+    /// The control socket, when one listens.
+    control: Option<control::Listener>,
+    /// The focus the world last saw, so it can notice a change made over
+    /// the socket.
+    seen_focused: bool,
     /// Frame, parse, and latency instruments (the prefix, then `?`).
     pub stats: stats::Stats,
     /// Glyphs the atlas lacks, from fallback fonts.
@@ -185,6 +191,8 @@ impl Overlay {
             cell: [9.0, 18.0],
             notice: None,
             first: None,
+            control: None,
+            seen_focused: false,
             stats: stats::Stats::default(),
             fallback: None,
             turn: 0,
@@ -365,6 +373,316 @@ impl Overlay {
             });
             self.active = self.tabs.len() - 1;
         }
+    }
+
+    /// Listens for requests on the control socket at `path`, so
+    /// `openagents verse terminal` can drive this overlay.
+    ///
+    /// # Errors
+    /// When the socket cannot be bound.
+    pub fn listen(&mut self, path: &std::path::Path) -> Result<(), String> {
+        self.control = Some(control::Listener::bind(path)?);
+        Ok(())
+    }
+
+    /// Where the control socket listens, when it does.
+    #[must_use]
+    pub fn control_path(&self) -> Option<&std::path::Path> {
+        self.control.as_ref().map(control::Listener::path)
+    }
+
+    /// Whether focus changed since the last call: the world stops the
+    /// character when the socket gave the overlay focus.
+    pub fn focus_changed(&mut self) -> Option<bool> {
+        if self.seen_focused == self.focused {
+            return None;
+        }
+        self.seen_focused = self.focused;
+        Some(self.focused)
+    }
+
+    /// Answers the requests the control socket holds. Runs between frames.
+    fn serve(&mut self) {
+        let mut served = 0;
+        while served < 32 {
+            let Some((request, reply)) = self.control.as_ref().and_then(control::Listener::next)
+            else {
+                return;
+            };
+            let value = match self.apply(&request) {
+                Ok(mut value) => {
+                    if let Some(map) = value.as_object_mut() {
+                        map.insert("ok".into(), serde_json::Value::Bool(true));
+                    }
+                    value
+                }
+                Err(error) => serde_json::json!({ "ok": false, "error": error }),
+            };
+            let _ = reply.try_send(value);
+            served += 1;
+        }
+    }
+
+    /// Applies one control request and describes the result.
+    ///
+    /// # Errors
+    /// When the request names a pane, key, axis, or action that does not
+    /// exist, or a program that cannot be found.
+    pub fn apply(&mut self, request: &control::Request) -> Result<serde_json::Value, String> {
+        use control::Request;
+        match request {
+            Request::Status => Ok(self.status()),
+            Request::Open => {
+                self.open = true;
+                self.focused = true;
+                self.ensure_started();
+                if self.tabs.is_empty() {
+                    return Err(self
+                        .notice
+                        .clone()
+                        .unwrap_or_else(|| "the first pane did not start".into()));
+                }
+                Ok(self.status())
+            }
+            Request::Hide => {
+                self.open = false;
+                self.focused = false;
+                Ok(self.status())
+            }
+            Request::Split { axis, program } => {
+                let axis = match axis.as_str() {
+                    "cols" | "columns" | "vertical" | "v" => Axis::Columns,
+                    "rows" | "horizontal" | "h" => Axis::Rows,
+                    other => return Err(format!("axis is rows or cols, not `{other}`")),
+                };
+                let program = program_from(program)?;
+                let before = self.panes.len();
+                self.open = true;
+                self.focused = true;
+                self.ensure_started();
+                if self.panes.len() == before {
+                    self.split(axis, &program);
+                }
+                if self.panes.len() == before {
+                    return Err(self
+                        .notice
+                        .clone()
+                        .unwrap_or_else(|| "the pane did not start".into()));
+                }
+                Ok(self.status())
+            }
+            Request::Focus { direction, pane } => {
+                if let Some(id) = pane {
+                    let Some(index) = self.tabs.iter().position(|t| t.layout.panes().contains(id))
+                    else {
+                        return Err(format!("no pane {id}"));
+                    };
+                    self.active = index;
+                    self.tabs[index].layout.set_focus(*id);
+                } else if let Some(direction) = direction {
+                    let direction = match direction.as_str() {
+                        "left" => Direction::Left,
+                        "right" => Direction::Right,
+                        "up" => Direction::Up,
+                        "down" => Direction::Down,
+                        other => {
+                            return Err(format!(
+                                "direction is left, right, up, or down, not `{other}`"
+                            ));
+                        }
+                    };
+                    let area = self.area;
+                    let Some(tab) = self.tabs.get_mut(self.active) else {
+                        return Err("no pane is open".into());
+                    };
+                    if !tab.layout.move_focus(direction, area) {
+                        return Err(format!("no pane {direction:?} of the focused one"));
+                    }
+                } else {
+                    return Err("focus needs a direction or a pane".into());
+                }
+                self.open = true;
+                self.focused = true;
+                Ok(self.status())
+            }
+            Request::Close => {
+                if self.tabs.is_empty() {
+                    return Err("no pane is open".into());
+                }
+                self.close_focused();
+                Ok(self.status())
+            }
+            Request::Send { text } => {
+                if self.focused_pane().is_none() {
+                    return Err("no pane is open".into());
+                }
+                self.paste(text);
+                Ok(serde_json::json!({ "sent": text.len() }))
+            }
+            Request::Key { name } => {
+                let bytes = self.key_named(name)?;
+                self.send(&bytes);
+                Ok(serde_json::json!({ "key": name, "bytes": bytes.len() }))
+            }
+            Request::Read { pane } => {
+                let id = match pane {
+                    Some(id) => *id,
+                    None => self
+                        .tabs
+                        .get(self.active)
+                        .map(|t| t.layout.focus())
+                        .ok_or("no pane is open")?,
+                };
+                let pane = self.panes.get(&id).ok_or_else(|| format!("no pane {id}"))?;
+                let (row, col) = pane.session.vt.cursor();
+                Ok(serde_json::json!({
+                    "pane": id,
+                    "label": pane.label,
+                    "text": pane.session.vt.text(),
+                    "generation": pane.session.vt.generation(),
+                    "cursor": [row, col],
+                    "exited": pane.session.exited,
+                }))
+            }
+            Request::Tab { action } => {
+                match action.as_str() {
+                    "new" => {
+                        self.open = true;
+                        self.focused = true;
+                        let program = self.first_program();
+                        self.new_tab(&program);
+                    }
+                    "next" if !self.tabs.is_empty() => {
+                        self.active = (self.active + 1) % self.tabs.len();
+                    }
+                    "prev" if !self.tabs.is_empty() => {
+                        self.active = (self.active + self.tabs.len() - 1) % self.tabs.len();
+                    }
+                    "next" | "prev" => return Err("no tab is open".into()),
+                    other => {
+                        return Err(format!("tab action is new, next, or prev, not `{other}`"));
+                    }
+                }
+                Ok(self.status())
+            }
+            Request::Zoom => {
+                let Some(tab) = self.tabs.get_mut(self.active) else {
+                    return Err("no pane is open".into());
+                };
+                tab.zoomed = !tab.zoomed;
+                Ok(self.status())
+            }
+        }
+    }
+
+    /// The overlay, its tabs, and its panes, as JSON.
+    #[must_use]
+    pub fn status(&self) -> serde_json::Value {
+        let focus = self.tabs.get(self.active).map(|t| t.layout.focus());
+        let tabs: Vec<serde_json::Value> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(index, tab)| {
+                serde_json::json!({
+                    "index": index,
+                    "active": index == self.active,
+                    "zoomed": tab.zoomed,
+                    "focus": tab.layout.focus(),
+                    "panes": tab.layout.panes(),
+                })
+            })
+            .collect();
+        let panes: Vec<serde_json::Value> = self
+            .panes
+            .iter()
+            .map(|(id, pane)| {
+                let tab = self.tabs.iter().position(|t| t.layout.panes().contains(id));
+                let rect = tab
+                    .filter(|t| *t == self.active)
+                    .and_then(|_| self.rect_of(*id))
+                    .map(|r| [r.x, r.y, r.w, r.h]);
+                serde_json::json!({
+                    "id": id,
+                    "tab": tab,
+                    "label": pane.label,
+                    "cwd": pane.session.cwd,
+                    "rows": pane.session.vt.rows(),
+                    "cols": pane.session.vt.cols(),
+                    "focused": focus == Some(*id),
+                    "exited": pane.session.exited,
+                    "rect": rect,
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "open": self.open,
+            "focused": self.focused,
+            "active_tab": self.active,
+            "tabs": tabs,
+            "panes": panes,
+            "notice": self.notice,
+            "socket": self.control_path(),
+        })
+    }
+
+    /// The bytes a named key sends: `enter`, `tab`, `escape`, `up`,
+    /// `f5`, `space`, or a modifier chord such as `ctrl-c` or `alt-x`.
+    fn key_named(&mut self, name: &str) -> Result<Vec<u8>, String> {
+        use coder_vt::{Key, Modifiers};
+        let mut modifiers = Modifiers {
+            ctrl: false,
+            alt: false,
+            shift: false,
+        };
+        let lower = name.to_ascii_lowercase();
+        let mut parts: Vec<&str> = lower.split(['-', '+']).filter(|p| !p.is_empty()).collect();
+        if parts.is_empty() {
+            return Err("key needs a name".into());
+        }
+        let last = parts.pop().unwrap_or_default();
+        for part in parts {
+            match part {
+                "ctrl" | "control" | "c" => modifiers.ctrl = true,
+                "alt" | "meta" | "m" => modifiers.alt = true,
+                "shift" | "s" => modifiers.shift = true,
+                other => return Err(format!("unknown modifier `{other}`")),
+            }
+        }
+        let key = match last {
+            "enter" | "return" | "cr" => Key::Enter,
+            "tab" => Key::Tab,
+            "backtab" => Key::BackTab,
+            "backspace" | "bs" => Key::Backspace,
+            "escape" | "esc" => Key::Escape,
+            "up" => Key::Up,
+            "down" => Key::Down,
+            "left" => Key::Left,
+            "right" => Key::Right,
+            "home" => Key::Home,
+            "end" => Key::End,
+            "pageup" | "pgup" => Key::PageUp,
+            "pagedown" | "pgdn" => Key::PageDown,
+            "insert" => Key::Insert,
+            "delete" | "del" => Key::Delete,
+            "space" => Key::Char(' '),
+            f if f.len() >= 2
+                && f.starts_with('f')
+                && f[1..].chars().all(|c| c.is_ascii_digit()) =>
+            {
+                let n: u8 = f[1..]
+                    .parse()
+                    .map_err(|_| format!("unknown key `{name}`"))?;
+                if !(1..=12).contains(&n) {
+                    return Err(format!("function keys are f1 through f12, not `{name}`"));
+                }
+                Key::F(n)
+            }
+            c if c.chars().count() == 1 => Key::Char(c.chars().next().unwrap_or(' ')),
+            _ => return Err(format!("unknown key `{name}`")),
+        };
+        let pane = self.focused_pane().ok_or("no pane is open")?;
+        Ok(pane.session.vt.key(key, modifiers))
     }
 
     /// Starts the first tab when none runs.
@@ -688,6 +1006,7 @@ impl Overlay {
     /// panes whose program ended, honors clipboard writes, lights bells,
     /// reports focus changes, and fits each visible grid to its rectangle.
     pub fn tick(&mut self) {
+        self.serve();
         let Some(sessions) = &self.sessions else {
             return;
         };
@@ -1256,6 +1575,30 @@ impl Drop for Overlay {
     fn drop(&mut self) {
         self.shutdown();
     }
+}
+
+/// The program a command line names: nothing for the shell, else a
+/// program found as an absolute path or on `PATH`, with its arguments.
+fn program_from(words: &[String]) -> Result<Program, String> {
+    let Some((name, args)) = words.split_first() else {
+        return Ok(Program::Shell);
+    };
+    let path = std::path::Path::new(name);
+    let program = if path.is_absolute() {
+        path.is_file()
+            .then(|| path.to_path_buf())
+            .ok_or_else(|| format!("{name} is not a file"))?
+    } else {
+        pty::candidates(name)
+            .into_iter()
+            .next()
+            .ok_or_else(|| format!("{name} was not found on PATH"))?
+    };
+    Ok(Program::Command {
+        program,
+        args: args.to_vec(),
+        label: words.join(" "),
+    })
 }
 
 fn hash(value: &impl std::hash::Hash) -> u64 {
