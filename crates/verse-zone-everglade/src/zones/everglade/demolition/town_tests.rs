@@ -384,3 +384,88 @@ fn the_hotbar_ends_with_meteor_swarm_and_the_sledgehammer() {
     );
     assert!(SLOTS[COUNT - 2].2.text.contains("R restores the town"));
 }
+
+/// Breaks the cottage's south wall sections on the ground story within
+/// 2.5 m of its middle, and lets the town catch up. Returns the cottage.
+fn open_the_cottage(town: &mut Town, player: &PlayerController) -> usize {
+    use super::site::Side;
+    let cottage = building(town, COTTAGE);
+    let ([cx, cz], [_, hz]) = town.buildings()[cottage].rect;
+    // A blast of no damage raises it into the rules.
+    town.blast(
+        Vec3::new(cx, height(cx, cz) + 1.0, cz - hz),
+        2.0,
+        0,
+        Vec3::NEG_Z,
+    );
+    let doomed: Vec<usize> = pieces(town, cottage)
+        .into_iter()
+        .map(|(i, _)| i)
+        .filter(|&i| {
+            let spec = &town.site().specs()[i];
+            matches!(
+                spec.role,
+                Role::Wall {
+                    side: Side::South,
+                    story: 0,
+                    ..
+                }
+            ) && (spec.center.x as f32 - cx).abs() < 2.5
+        })
+        .collect();
+    assert!(!doomed.is_empty(), "the south wall has sections to break");
+    for i in doomed {
+        let at = town.site().specs()[i].center;
+        town.site_mut().damage(i, 100_000, at, glam::DVec3::Z);
+    }
+    run(town, player, 0.5);
+    cottage
+}
+
+#[test]
+fn through_a_blown_out_wall_the_aim_finds_the_far_walls_inner_face() {
+    let mut town = town();
+    let ([cx, cz], [_, hz]) = COTTAGE;
+    let player = caster(Vec3::new(cx, 0.0, cz - hz), 10.0);
+    let cottage = open_the_cottage(&mut town, &player);
+    let base = town.buildings()[cottage].base;
+    let eye = player.pos + Vec3::Y * 1.6;
+    town.meteor_swarm(&player).unwrap();
+    // Through the hole at the north wall, at chest height.
+    let inside = Vec3::new(cx + 0.3, base + 1.5, cz + hz);
+    assert!(town.aim(eye, (inside - eye).normalize(), &player));
+    let aimed = town.swarm().aimed().expect("the ring is down");
+    assert!(aimed.wall(), "{aimed:?}");
+    assert!(
+        aimed.at.z > cz + hz - 1.0 && aimed.at.z < cz + hz + 0.05,
+        "on the north wall's inner face: {aimed:?}"
+    );
+    assert!(aimed.normal.z < -0.9, "facing the caster: {aimed:?}");
+    // A section of the south wall still standing takes the ray on its outer
+    // face.
+    let side = Vec3::new(cx - 3.4, base + 1.5, cz - hz);
+    assert!(town.aim(eye, (side - eye).normalize(), &player));
+    let outer = town.swarm().aimed().unwrap();
+    assert!(outer.wall() && outer.normal.z < -0.9, "{outer:?}");
+    assert!((outer.at.z - (cz - hz)).abs() < 0.6, "{outer:?}");
+    // From above, the roof takes a flat ring.
+    let high = Vec3::new(cx + 2.5, base + 30.0, cz - 4.0);
+    let roof = Vec3::new(cx + 2.5, base + 4.0, cz + 1.0);
+    assert!(town.aim(high, (roof - high).normalize(), &player));
+    let flat = town.swarm().aimed().unwrap();
+    assert!(!flat.wall() && flat.at.y > base + 3.0, "{flat:?}");
+    // Back on the far wall, Meteor Swarm comes in through the hole and
+    // damages it.
+    assert!(town.aim(eye, (inside - eye).normalize(), &player));
+    assert!(town.confirm(&player));
+    run(&mut town, &player, super::meteor::CAST + 2.5);
+    let site = town.site();
+    let hurt = pieces(&town, cottage)
+        .into_iter()
+        .filter(|&(i, _)| {
+            let (spec, piece) = (&site.specs()[i], &site.pieces()[i]);
+            spec.center.z as f32 > cz + hz - 1.0 && piece.hit_points < spec.hit_points
+        })
+        .count();
+    assert!(hurt >= 2, "{hurt} far wall pieces took damage");
+}

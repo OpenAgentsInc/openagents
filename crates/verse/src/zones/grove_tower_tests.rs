@@ -147,30 +147,96 @@ fn aiming_at_the_towers_side_lays_the_ring_flat_against_it() {
     );
 }
 
+/// A cast over flat ground and the boxes `boxes`, each a min and a max
+/// corner, as [`meteor::surface_aim`] takes it.
+fn boxes_cast(boxes: Vec<(Vec3, Vec3)>) -> impl Fn(Vec3, Vec3) -> Option<f32> {
+    use verse_world::social::sight::{box_hit, plane_hit};
+    move |from, to| {
+        boxes
+            .iter()
+            .filter_map(|&(min, max)| box_hit(from, to, 0.0, min, max))
+            .chain(plane_hit(from, to, 0.0, 0.0, false))
+            .min_by(f32::total_cmp)
+    }
+}
+
 #[test]
 fn a_ray_into_a_tall_column_finds_its_side_and_its_normal() {
     // A 5.6 m column 30 m tall at the origin, and flat ground.
-    let surface = |x: f32, z: f32| {
-        if x.abs() < 2.8 && z.abs() < 2.8 {
-            30.0
-        } else {
-            0.0
-        }
-    };
-    let aim = meteor::surface_aim(Vec3::new(-20.0, 6.0, 0.5), Vec3::X, &surface).unwrap();
+    let cast = boxes_cast(vec![(
+        Vec3::new(-2.8, 0.0, -2.8),
+        Vec3::new(2.8, 30.0, 2.8),
+    )]);
+    let aim = meteor::surface_aim(Vec3::new(-20.0, 6.0, 0.5), Vec3::X, &cast).unwrap();
     assert!(aim.wall());
     assert!(aim.normal.dot(Vec3::NEG_X) > 0.95, "{aim:?}");
     assert!((aim.at.x + 2.8).abs() < 0.05 && (aim.at.y - 6.0).abs() < 1e-3);
     let down = meteor::surface_aim(
         Vec3::new(-20.0, 10.0, 0.0),
         Vec3::new(1.0, -1.0, 0.0),
-        &surface,
+        &cast,
     )
     .unwrap();
     assert!(!down.wall());
+    assert!(
+        (down.at.x + 10.0).abs() < 0.05 && down.at.y.abs() < 0.05,
+        "{down:?}"
+    );
     let (u, v) = aim.across();
     assert!(u.dot(aim.normal).abs() < 1e-4 && v.dot(aim.normal).abs() < 1e-4);
     assert!(v.y > 0.9, "up the wall");
+    // The column's top is a roof: the ring lies on it.
+    let roof = meteor::surface_aim(
+        Vec3::new(-10.0, 40.0, 0.0),
+        Vec3::new(1.0, -1.0, 0.0),
+        &cast,
+    )
+    .unwrap();
+    assert!(!roof.wall() && (roof.at.y - 30.0).abs() < 0.05, "{roof:?}");
+}
+
+#[test]
+fn a_ray_through_a_hole_finds_the_far_walls_inner_face() {
+    // A hollow room 6 m across with 0.3 m walls, its near (west) wall
+    // blown open from the ground to 3 m, and a roof.
+    let wall = 0.3;
+    let cast = boxes_cast(vec![
+        // The near wall over the hole, and beside it.
+        (Vec3::new(-3.0, 3.0, -3.0), Vec3::new(-3.0 + wall, 5.0, 3.0)),
+        (
+            Vec3::new(-3.0, 0.0, -3.0),
+            Vec3::new(-3.0 + wall, 3.0, -1.5),
+        ),
+        (Vec3::new(-3.0, 0.0, 1.5), Vec3::new(-3.0 + wall, 3.0, 3.0)),
+        // The far (east) wall, the side walls, and the roof.
+        (Vec3::new(3.0 - wall, 0.0, -3.0), Vec3::new(3.0, 5.0, 3.0)),
+        (Vec3::new(-3.0, 0.0, -3.0), Vec3::new(3.0, 5.0, -3.0 + wall)),
+        (Vec3::new(-3.0, 0.0, 3.0 - wall), Vec3::new(3.0, 5.0, 3.0)),
+        (Vec3::new(-3.0, 5.0, -3.0), Vec3::new(3.0, 5.3, 3.0)),
+    ]);
+    let eye = Vec3::new(-14.0, 1.6, 0.2);
+    let aim = meteor::surface_aim(eye, Vec3::X, &cast).unwrap();
+    assert!(aim.wall(), "{aim:?}");
+    assert!(
+        (aim.at.x - (3.0 - wall)).abs() < 0.05,
+        "the far wall's inner face: {aim:?}"
+    );
+    assert!(
+        aim.normal.dot(Vec3::NEG_X) > 0.95,
+        "facing the caster: {aim:?}"
+    );
+    // The intact wall above the hole still takes the ray on its outer face.
+    let up =
+        meteor::surface_aim(eye, (Vec3::new(-3.0, 4.0, 0.2) - eye).normalize(), &cast).unwrap();
+    assert!(up.wall() && (up.at.x + 3.0).abs() < 0.05, "{up:?}");
+    assert!(up.normal.dot(Vec3::NEG_X) > 0.95, "{up:?}");
+    // The floor inside, seen through the hole, faces up.
+    let floor =
+        meteor::surface_aim(eye, (Vec3::new(0.0, 0.0, 0.2) - eye).normalize(), &cast).unwrap();
+    assert!(
+        !floor.wall() && floor.at.x > -3.0 && floor.at.y.abs() < 0.05,
+        "{floor:?}"
+    );
 }
 
 #[test]
@@ -413,4 +479,67 @@ fn the_dragons_fire_breath_breaks_the_tower() {
         .filter(|(i, _)| site.pieces()[*i].status == Status::Broken)
         .count();
     assert!(broken > 0, "the breath broke the tower's blocks");
+}
+
+#[test]
+fn through_a_hole_in_the_tower_the_aim_finds_the_far_side_inside() {
+    let mut runtime = before_tower(30.0);
+    // Raise the tower with a blast of no damage, then break the middle
+    // column's south and center blocks out of one level.
+    town_mut(&mut runtime).blast(
+        Vec3::new(TOWER[0], 10.0, TOWER[1] - 2.9),
+        2.0,
+        0,
+        Vec3::NEG_Z,
+    );
+    let all = pieces(&runtime);
+    let level = all
+        .iter()
+        .map(|(_, c)| c.y)
+        .min_by(|a, b| (a - 10.5).abs().total_cmp(&(b - 10.5).abs()))
+        .unwrap();
+    let column = all
+        .iter()
+        .map(|(_, c)| c.x)
+        .min_by(|a, b| (a - TOWER[0]).abs().total_cmp(&(b - TOWER[0]).abs()))
+        .unwrap();
+    let cell: Vec<(usize, Vec3)> = all
+        .iter()
+        .copied()
+        .filter(|(_, c)| (c.y - level).abs() < 0.3 && (c.x - column).abs() < 0.3)
+        .collect();
+    let far_z = cell.iter().map(|(_, c)| c.z).fold(f32::MIN, f32::max);
+    let wreck = town_mut(&mut runtime);
+    for (i, c) in &cell {
+        if c.z < far_z - 0.3 {
+            wreck
+                .site_mut()
+                .damage(*i, 100_000, c.as_dvec3(), glam::DVec3::Z);
+        }
+    }
+    idle(&mut runtime, 0.5);
+    cast(&mut runtime, Spell::MeteorSwarm);
+    let target = Vec3::new(column, level + 0.5, far_z);
+    aim(&mut runtime, target);
+    let aimed = town(&runtime).swarm().aimed().expect("the ring is down");
+    assert!(aimed.wall(), "{aimed:?}");
+    // Past the tower's middle and short of its north face, 2.8 m out.
+    assert!(
+        aimed.at.z > TOWER[1] + 0.3 && aimed.at.z < TOWER[1] + 2.75,
+        "on the far blocks' inner face: {aimed:?}"
+    );
+    assert!(aimed.normal.z < -0.9, "facing the caster: {aimed:?}");
+    // The strike reaches it through the hole.
+    assert!(runtime.demolition_confirm());
+    idle(&mut runtime, meteor::CAST + 2.0);
+    let site = town(&runtime).site();
+    let hurt = pieces(&runtime)
+        .iter()
+        .filter(|(i, c)| {
+            c.z > TOWER[1] + 1.0
+                && c.distance(aimed.at) < 2.0
+                && site.pieces()[*i].hit_points < site.specs()[*i].hit_points
+        })
+        .count();
+    assert!(hurt >= 1, "the far side took the blast");
 }

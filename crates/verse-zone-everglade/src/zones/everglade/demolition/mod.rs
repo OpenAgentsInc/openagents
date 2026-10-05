@@ -207,16 +207,20 @@ impl Demolition {
         &self.swarm
     }
 
-    /// Puts Meteor Swarm's circle on the ground the ray from `origin`
-    /// along `direction` meets, within range of `player`. Returns whether
+    /// Puts Meteor Swarm's circle on the first surface the ray from
+    /// `origin` along `direction` meets, within range of `player`: the
+    /// ground, a roof, or a cottage's wall, inside or out. Returns whether
     /// the circle moved.
     pub fn aim(&mut self, origin: Vec3, direction: Vec3, player: &PlayerController) -> bool {
         if !self.swarm.targeting() {
             return false;
         }
-        match meteor::ground_hit(origin, direction) {
-            Some(ground) => {
-                self.swarm.aim_at(ground, player);
+        let site = &self.site;
+        match meteor::surface_aim(origin, direction, &|from, to| {
+            site::Target::ray(site, from, to)
+        }) {
+            Some(aim) => {
+                self.swarm.aim_on(aim, player);
                 true
             }
             None => false,

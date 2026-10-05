@@ -60,6 +60,7 @@ use glam::{DVec3, Mat4, Quat, Vec3};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use verse_world::social::columns::Columns;
+use verse_world::social::sight::Sight;
 
 /// Whether this build runs on a browser or a phone, whose budgets are
 /// smaller (`docs/verse/destructible-buildings.md`, Performance budgets).
@@ -268,6 +269,13 @@ struct Wreck {
     clock: f32,
     /// Bumped when a building is raised or let go.
     revision: u64,
+    /// What a targeting ray meets besides the raised pieces: the ground,
+    /// everything but the buildings, each static building's blocks and
+    /// roofs, and each carved building's standing blocks as columns. A
+    /// raised kit building's pieces are boxes in [`Site::ray`] instead,
+    /// because a blocker stands from the ground up and would fill a hole
+    /// under a wall that still stands.
+    sight: Solids,
 }
 
 impl Wreck {
@@ -481,6 +489,15 @@ impl Target for Wreck {
 
     fn roll(&mut self, sides: u32) -> i32 {
         self.site.roll(sides)
+    }
+
+    fn ray(&self, from: Vec3, to: Vec3) -> Option<f32> {
+        let solid = self.sight.sweep(from, to, 0.0);
+        let solid = (solid < 1.0).then_some(solid);
+        match (solid, self.site.ray(from, to)) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 }
 
@@ -920,6 +937,7 @@ impl Town {
                 placements: placements.to_vec(),
                 clock: 0.0,
                 revision: 0,
+                sight: base.clone(),
             },
             materials,
             looks: Vec::new(),
@@ -953,6 +971,12 @@ impl Town {
     #[must_use]
     pub fn site(&self) -> &Site {
         &self.wreck.site
+    }
+
+    /// The rules over the raised buildings, to break chosen pieces, as a
+    /// test does.
+    pub fn site_mut(&mut self) -> &mut Site {
+        &mut self.wreck.site
     }
 
     /// The raised buildings, in the order they were raised.
@@ -1029,15 +1053,16 @@ impl Town {
         &self.swarm
     }
 
-    /// Puts Meteor Swarm's circle on the ground the ray from `origin`
-    /// along `direction` meets, within range of `player`. Returns whether
-    /// the circle moved.
+    /// Puts the targeting ring on the first surface the ray from `origin`
+    /// along `direction` meets, within range of `player`: the ground, a
+    /// roof, or a wall, the inner face of a far wall seen through a hole
+    /// included. Returns whether the ring moved.
     pub fn aim(&mut self, origin: Vec3, direction: Vec3, player: &PlayerController) -> bool {
         if !self.swarm.targeting() {
             return false;
         }
-        let solids = &self.current;
-        match meteor::surface_aim(origin, direction, &|x, z| solids.top(x, z)) {
+        let wreck = &self.wreck;
+        match meteor::surface_aim(origin, direction, &|from, to| wreck.ray(from, to)) {
             Some(aim) => {
                 self.swarm.aim_on(aim, player);
                 true
@@ -1345,6 +1370,7 @@ impl Town {
                 solids.add_roof(roof);
             }
         }
+        self.wreck.sight = solids.clone();
         let site = &self.wreck.site;
         for (footprint, top) in site.blocks() {
             solids.add_block(footprint, top);

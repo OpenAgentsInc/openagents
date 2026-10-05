@@ -675,12 +675,17 @@ Everglade has one at the north-west edge of the clearing (`layout::TOWER`).
   door, and a parapet platform 28.5 m up, under a baked formwork texture.
   It is carved finer than other models (`carve::FINE`): three blocks
   across and a level every 2.5 m.
-- **Vertical targeting.** The ring follows whatever the cursor's ray meets
-  in the solids (`meteor::surface_aim`): on the ground or a roof it lies
-  flat, and on a wall it stands against the wall, 3 m in radius, while
-  the wall is within 36 m of the caster's eyes. The meteors then fly in on
-  a slant from the sky in front of the wall and burst on its face, and
-  what breaks spalls out of the face.
+- **Vertical targeting.** The ring follows the first surface the cursor's
+  ray meets in 3D (`meteor::surface_aim`): the ground, the standing pieces
+  of raised buildings as boxes, and the static buildings and carved
+  columns in the solids, so a ray through a blown-out hole reaches the
+  inner face of the far wall. On the ground or a roof it lies flat, and
+  on a wall it stands against the wall, facing the caster, 3 m in radius,
+  while the wall is within 36 m of the caster's eyes. The meteors then
+  fly in on a slant from the sky in front of the wall and burst on its
+  face, and what breaks spalls out of the face; when standing walls or a
+  roof block that slant, the meteors and the bolt come in along the
+  targeting ray instead.
 - **The Thunderbolt.** The Grove's `=` on row 4 (Meteor Swarm is on `-`)
   aims the same way and calls one thick, branching bolt down on the ring
   after a 1.2 s cast: 20d10 against the tower within 3.4 m, and 12d10

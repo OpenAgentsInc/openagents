@@ -26,11 +26,17 @@
 //! shockwave ring along the ground, throws sparks and dust, shakes the
 //! camera, and leaves a scorch mark that fades.
 //!
-//! The ring also lies flat against a wall the cursor finds
-//! ([`surface_aim`]), such as the side of the Grove's concrete tower, within
-//! [`RANGE`] of the caster's eyes. On a wall it is [`WALL_AREA`] wide, and
-//! the meteors fly in on a slant from the sky in front of the wall and
-//! burst on its face, spalling what breaks out of the wall.
+//! The cursor's ray finds the first surface that stands in 3D
+//! ([`surface_aim`]): the ground, a roof, or a wall, such as the side of the
+//! Grove's concrete tower or, through a hole already blown in a near wall,
+//! the inner face of the far one. On a wall within [`RANGE`] of the
+//! caster's eyes the ring lies flat against it, facing the caster, and is
+//! [`WALL_AREA`] wide; the meteors fly in on a slant from the sky in front
+//! of the wall and burst on its face, spalling what breaks out of the wall.
+//! When standing walls or a roof block that slant, as they do for a far
+//! wall seen through a hole or a floor under a roof, the meteors and the
+//! bolt come in along the targeting ray instead, through the opening the
+//! caster looked through.
 //!
 //! The same targeting calls down the Grove's Thunderbolt
 //! ([`Strike::Lightning`]): after a [`BOLT_CAST`] s cast, one thick jagged
@@ -143,11 +149,16 @@ impl Strike {
 }
 
 /// Where a strike is aimed: a point on a surface and the surface's
-/// outward normal there, straight up on the ground or a roof.
+/// normal there, straight up on the ground or a roof and toward the caster
+/// on a wall, whichever side of the wall that is.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Aim {
     pub at: Vec3,
     pub normal: Vec3,
+    /// The unit direction of the targeting ray that found it, or zero for
+    /// a point chosen without one: the way in a strike takes when the sky
+    /// above the point is blocked.
+    pub view: Vec3,
 }
 
 impl Aim {
@@ -157,6 +168,7 @@ impl Aim {
         Self {
             at,
             normal: Vec3::Y,
+            view: Vec3::ZERO,
         }
     }
 
@@ -229,27 +241,29 @@ struct Casting {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Bolt {
     aim: Aim,
+    /// Where it comes from: the clouds, or back along the targeting ray.
+    sky: Vec3,
     age: f32,
     seed: u32,
     struck: bool,
 }
 
 impl Bolt {
-    /// Where it leaves the clouds: high over the target, out in front of a
-    /// wall.
-    fn sky(&self) -> Vec3 {
-        let out = if self.aim.wall() {
-            self.aim.normal * 14.0
+    /// Where it leaves the clouds for `aim`: high over the target, out in
+    /// front of a wall.
+    fn clouds(aim: Aim) -> Vec3 {
+        let out = if aim.wall() {
+            aim.normal * 14.0
         } else {
             Vec3::ZERO
         };
-        self.aim.at + out + Vec3::Y * BOLT_HEIGHT
+        aim.at + out + Vec3::Y * BOLT_HEIGHT
     }
 
     /// The jagged path from the clouds to the target, and its branches,
     /// each a list of points.
     fn paths(&self) -> Vec<Vec<Vec3>> {
-        let (a, b) = (self.sky(), self.aim.at);
+        let (a, b) = (self.sky, self.aim.at);
         let along = (b - a).normalize_or(Vec3::NEG_Y);
         let side = along.cross(Vec3::X).normalize_or(Vec3::Z);
         let other = along.cross(side).normalize_or(Vec3::X);
@@ -483,15 +497,22 @@ impl Swarm {
     }
 
     /// Puts the circle on the surface `aim` found: flat against a wall
-    /// within [`RANGE`] of `player`'s eyes, or on the ground drawn in to
-    /// range as [`Self::aim_at`] does.
+    /// within [`RANGE`] of `player`'s eyes; on the ground, a roof, or a
+    /// floor within [`RANGE`] of `player` across the ground; or, past
+    /// range, on the ground drawn in to range as [`Self::aim_at`] does.
     pub fn aim_on(&mut self, aim: Aim, player: &PlayerController) {
         if !self.targeting || !aim.at.is_finite() || !aim.normal.is_finite() {
             return;
         }
         let eye = player.pos + Vec3::Y * EYE;
+        let across = Vec3::new(aim.at.x - player.pos.x, 0.0, aim.at.z - player.pos.z).length();
         if aim.wall() && aim.at.distance(eye) <= RANGE {
             self.aim = Some(aim);
+        } else if !aim.wall() && across <= RANGE {
+            self.aim = Some(Aim {
+                normal: Vec3::Y,
+                ..aim
+            });
         } else {
             self.aim_at(aim.at, player);
         }
@@ -673,7 +694,7 @@ impl Swarm {
 
     /// The cast completes: the mana and cooldown are spent, the damage is
     /// rolled, and the meteors set out for points through the circle at
-    /// `at`, from the side of `from`.
+    /// `aim`, from the side of `from`.
     fn release(&mut self, aim: Aim, from: Vec3, site: &mut dyn Target) {
         self.mana -= COST;
         self.cooldown = COOLDOWN;
@@ -700,9 +721,7 @@ impl Swarm {
                         AREA * (0.42 + 0.14 * self.unit()),
                     )
                 };
-                let x = at.x + angle.cos() * r;
-                let z = at.z + angle.sin() * r;
-                Vec3::new(x, height(x, z), z)
+                Vec3::new(at.x + angle.cos() * r, at.y, at.z + angle.sin() * r)
             })
             .collect();
         // A shuffled order, the center last.
@@ -711,23 +730,31 @@ impl Swarm {
             points.swap(i, j);
         }
         points.rotate_left(1);
-        self.meteors = points
-            .into_iter()
-            .enumerate()
-            .map(|(i, end)| Meteor {
-                start: end + Vec3::Y * HEIGHT - away * slant,
-                end,
-                t: -(i as f32) * STAGGER,
-                fire: None,
-                face: Vec3::ZERO,
-            })
-            .collect();
+        let sky = Vec3::Y * HEIGHT - away * slant;
+        let paths: Vec<(Vec3, Vec3)> = if blocked(&*site, aim, at + sky, at) {
+            // A floor under a roof: in along the targeting ray.
+            points
+                .iter()
+                .map(|&p| along_view(&*site, aim, p, aim.view * 0.3))
+                .collect()
+        } else {
+            // Each meteor falls on the ground under its point and bursts on
+            // the first roof or wall in its way.
+            points
+                .iter()
+                .map(|&p| {
+                    let end = Vec3::new(p.x, height(p.x, p.z), p.z);
+                    (end + sky, end)
+                })
+                .collect()
+        };
+        self.launch(&paths, Vec3::ZERO);
     }
 
     /// The meteors set out for points across a wall at `aim`, flying in
-    /// from the sky in front of it on a slant and bursting on its face.
+    /// from the sky in front of it on a slant and bursting on its face, or,
+    /// when that slant is blocked, along the targeting ray.
     fn release_on_wall(&mut self, aim: Aim, site: &mut dyn Target) {
-        let _ = site;
         let (u, v) = aim.across();
         let turn = self.unit() * TAU;
         let mut points: Vec<Vec3> = (0..METEORS)
@@ -748,20 +775,36 @@ impl Swarm {
             points.swap(i, j);
         }
         points.rotate_left(1);
-        self.meteors = points
-            .into_iter()
+        // Into the wall a little, so a meteor bursts on its face.
+        let into = -aim.normal * 0.6;
+        let front = aim.normal * 0.85 * HEIGHT + Vec3::Y * HEIGHT * 0.75;
+        let through = blocked(&*site, aim, aim.at + into + front, aim.at + into);
+        let mut paths = Vec::with_capacity(points.len());
+        for &p in &points {
+            let side = u * (0.25 * self.unit());
+            paths.push(if through {
+                along_view(&*site, aim, p, aim.view * 0.6)
+            } else {
+                let end = p + into;
+                (end + front + side * HEIGHT, end)
+            });
+        }
+        self.launch(&paths, aim.normal);
+    }
+
+    /// Sends a meteor down each of `paths`, a start and an end, one after
+    /// another; `face` is the outward normal of the wall they were sent at,
+    /// or zero.
+    fn launch(&mut self, paths: &[(Vec3, Vec3)], face: Vec3) {
+        self.meteors = paths
+            .iter()
             .enumerate()
-            .map(|(i, at)| {
-                // Into the wall a little, so a meteor bursts on its face.
-                let end = at - aim.normal * 0.6;
-                let side = u * (0.25 * self.unit());
-                Meteor {
-                    start: end + (aim.normal * 0.85 + side) * HEIGHT + Vec3::Y * HEIGHT * 0.75,
-                    end,
-                    t: -(i as f32) * STAGGER,
-                    fire: None,
-                    face: aim.normal,
-                }
+            .map(|(i, &(start, end))| Meteor {
+                start,
+                end,
+                t: -(i as f32) * STAGGER,
+                fire: None,
+                face,
             })
             .collect();
     }
@@ -780,8 +823,18 @@ impl Swarm {
         if self.bolts.len() >= 4 {
             self.bolts.remove(0);
         }
+        // Down from the clouds, or, when walls or a roof stand in that
+        // way, back along the targeting ray through the opening the caster
+        // looked through.
+        let clouds = Bolt::clouds(aim);
+        let sky = if aim.view != Vec3::ZERO && !reaches(&*site, clouds, aim.at) {
+            way_back(&*site, aim.at, aim.view, BOLT_HEIGHT)
+        } else {
+            clouds
+        };
         self.bolts.push(Bolt {
             aim,
+            sky,
             age: 0.0,
             seed,
             struck: false,
@@ -799,9 +852,10 @@ impl Swarm {
                 continue;
             }
             self.bolts[index].struck = true;
-            let Aim { at, normal } = bolt.aim;
+            let Aim { at, normal, .. } = bolt.aim;
             let face = if bolt.aim.wall() { normal } else { Vec3::ZERO };
-            let center = at + normal * 0.3;
+            // Its heart sits just off the face, as a meteor's does.
+            let center = at + normal * 0.5;
             blows.extend(site.explode_facing(
                 center,
                 BOLT_BLAST,
@@ -966,61 +1020,166 @@ impl Swarm {
     }
 }
 
-/// Where a ray from `origin` along `direction` first meets `surface`, the
-/// height of whatever is highest at a point: on the ground or a roof, the
-/// ground under the point, facing up, as [`surface_hit`] finds it; on the
-/// side of something taller than the ray there, such as a wall or a
-/// tower, the point on that side and the side's outward normal.
+/// How far a targeting ray looks for a surface, m.
+const LOOK: f32 = 90.0;
+/// How far short of its end a meteor's or a bolt's path may first meet
+/// something and still count as reaching it, m.
+const SLACK: f32 = 2.2;
+/// How far back along the targeting ray a strike that takes it starts, m,
+/// at most.
+const BACK: f32 = 40.0;
+
+/// Where a ray from `origin` along `direction` first meets a surface, as
+/// `cast` finds it: `cast(from, to)` is how far, from 0 to 1, the segment
+/// from `from` to `to` goes before it meets something standing or the
+/// ground, or `None` when it stays clear. On the ground, a roof, or a
+/// floor, the point facing up; on a wall, the point and the wall's normal
+/// turned toward the ray, so the inner face of a far wall seen through a
+/// hole in the near one faces the caster too. A ray that meets nothing
+/// lands on the ground under its heading, [`RANGE`] away.
 #[must_use]
 pub fn surface_aim(
     origin: Vec3,
     direction: Vec3,
-    surface: &dyn Fn(f32, f32) -> f32,
+    cast: &dyn Fn(Vec3, Vec3) -> Option<f32>,
 ) -> Option<Aim> {
     if !origin.is_finite() || !direction.is_finite() || direction.length_squared() < 1e-6 {
         return None;
     }
     let direction = direction.normalize();
-    let under = |p: Vec3| p.y <= surface(p.x, p.z);
-    let step = 0.25;
-    let mut t = 0.0;
-    while t < 400.0 {
-        let next = t + step;
-        if under(origin + direction * next) {
-            let (mut lo, mut hi) = (t, next);
-            for _ in 0..16 {
-                let mid = 0.5 * (lo + hi);
-                if under(origin + direction * mid) {
-                    hi = mid;
-                } else {
-                    lo = mid;
-                }
-            }
-            let p = origin + direction * hi;
-            let before = origin + direction * lo;
-            // Entered from the side when the surface where the ray was
-            // lies well under the crossing.
-            if surface(before.x, before.z) < p.y - 0.3 {
-                let mut normal = Vec3::ZERO;
-                for i in 0..16 {
-                    let angle = TAU * i as f32 / 16.0;
-                    let d = Vec3::new(angle.cos(), 0.0, angle.sin());
-                    let q = p + d * 0.4;
-                    if surface(q.x, q.z) < p.y - 0.3 {
-                        normal += d;
-                    }
-                }
-                let back = Vec3::new(-direction.x, 0.0, -direction.z).normalize_or(Vec3::X);
-                let normal = normal.try_normalize().unwrap_or(back);
-                return Some(Aim { at: p, normal });
-            }
-            return Some(Aim::ground(Vec3::new(p.x, height(p.x, p.z), p.z)));
-        }
-        t = next;
+    let Some(t) = cast(origin, origin + direction * LOOK).map(|f| f * LOOK) else {
+        let flat = Vec3::new(direction.x, 0.0, direction.z).try_normalize()?;
+        let p = origin + flat * RANGE;
+        return Some(Aim {
+            view: direction,
+            ..Aim::ground(Vec3::new(p.x, height(p.x, p.z), p.z))
+        });
+    };
+    let at = origin + direction * t;
+    let normal = face_normal(at, direction, t, cast);
+    // The town's roofs are pitched up to about 55 degrees: still roofs.
+    if normal.y >= 0.45 {
+        return Some(Aim {
+            view: direction,
+            ..Aim::ground(at)
+        });
     }
-    let flat = Vec3::new(direction.x, 0.0, direction.z).try_normalize()?;
-    let p = origin + flat * RANGE;
-    Some(Aim::ground(Vec3::new(p.x, height(p.x, p.z), p.z)))
+    // A wall's ring stands upright: its normal lies across the ground.
+    let back = Vec3::new(-direction.x, 0.0, -direction.z).normalize_or(Vec3::X);
+    let normal = Vec3::new(normal.x, 0.0, normal.z).normalize_or(back);
+    Some(Aim {
+        at,
+        normal,
+        view: direction,
+    })
+}
+
+/// The normal of the surface the ray along `direction` met at `at`, `t` m
+/// from its origin, turned toward the ray: the plane through the points
+/// that rays beside it meet, a little to either side and above and below.
+/// A ray beside it that misses the surface, through a hole's edge or past
+/// a corner, is left out, and narrower ones are tried when too many miss.
+fn face_normal(
+    at: Vec3,
+    direction: Vec3,
+    t: f32,
+    cast: &dyn Fn(Vec3, Vec3) -> Option<f32>,
+) -> Vec3 {
+    let (u, v) = beside(direction);
+    let depth = 1.5_f32;
+    let probe = |offset: Vec3| -> Option<Vec3> {
+        let from = at + offset - direction * depth.min(t * 0.9);
+        let to = at + offset + direction * depth;
+        cast(from, to).map(|f| from.lerp(to, f))
+    };
+    let edge = |a: Option<Vec3>, b: Option<Vec3>| match (a, b) {
+        (Some(a), Some(b)) => Some(a - b),
+        (Some(a), None) => Some(a - at),
+        (None, Some(b)) => Some(at - b),
+        (None, None) => None,
+    };
+    for spread in [0.5, 0.25, 0.1] {
+        let across = edge(probe(u * spread), probe(-u * spread));
+        let up = edge(probe(v * spread), probe(-v * spread));
+        if let (Some(across), Some(up)) = (across, up)
+            && let Some(normal) = across.cross(up).try_normalize()
+        {
+            return if normal.dot(direction) > 0.0 {
+                -normal
+            } else {
+                normal
+            };
+        }
+    }
+    -direction
+}
+
+/// Two unit directions at right angles to `direction` and each other.
+fn beside(direction: Vec3) -> (Vec3, Vec3) {
+    let u = direction.any_orthonormal_vector();
+    (u, direction.cross(u))
+}
+
+/// Whether a strike from `start` to `end` for `aim` must take the
+/// targeting ray instead: it has one, and something stands in the way.
+fn blocked(site: &dyn Target, aim: Aim, start: Vec3, end: Vec3) -> bool {
+    aim.view != Vec3::ZERO && !reaches(site, start, end)
+}
+
+/// Whether the path from `start` to `end` meets nothing until it is within
+/// [`SLACK`] of `end`.
+fn reaches(site: &dyn Target, start: Vec3, end: Vec3) -> bool {
+    let beyond = end + (end - start).normalize_or_zero();
+    site.ray(start, beyond)
+        .is_none_or(|f| start.lerp(beyond, f).distance(end) <= SLACK)
+}
+
+/// A meteor's path to `point` on `aim`'s surface along the targeting ray,
+/// ending `into` past the surface it meets there: the line through `point`
+/// along the ray when a meteor's width passes along all of it, and else the
+/// ray itself to `aim`'s point, which the caster saw, from short of
+/// whatever stands behind the caster.
+fn along_view(site: &dyn Target, aim: Aim, point: Vec3, into: Vec3) -> (Vec3, Vec3) {
+    let view = aim.view;
+    let land = |start: Vec3, p: Vec3| -> Option<(Vec3, Vec3)> {
+        let beyond = p + view * 3.0;
+        let hit = start.lerp(beyond, site.ray(start, beyond)?);
+        (hit.distance(p) <= SLACK).then_some((start, hit + into))
+    };
+    // A meteor's sides must pass too, or it bursts on a hole's edge.
+    let (u, v) = beside(view);
+    let start = point - view * BACK;
+    let clear = [u, -u, v, -v].iter().all(|&side| {
+        let offset = side * METEOR_RADIUS * 0.8;
+        reaches(site, start + offset, point + offset)
+    });
+    if clear && let Some(path) = land(start, point) {
+        return path;
+    }
+    let start = way_back(site, aim.at, view, BACK);
+    land(start, aim.at).unwrap_or((start, aim.at + into))
+}
+
+/// The point up to `back` m back from `point` against `view` that a strike
+/// coming along `view` starts from: short of the first thing behind the
+/// caster, so it never starts inside a building there, and high enough
+/// over the ground that a meteor doesn't burst where it starts.
+fn way_back(site: &dyn Target, point: Vec3, view: Vec3, back: f32) -> Vec3 {
+    // From a little before the point, so the surface it is on doesn't
+    // count.
+    let near = point - view;
+    let far = point - view * back;
+    let mut start = match site.ray(near, far) {
+        Some(f) => near.lerp(far, f) + view * 1.2,
+        None => far,
+    };
+    let clearance = 3.0 * METEOR_RADIUS;
+    let mut left = start.distance(near);
+    while left > 0.5 && start.y < height(start.x, start.z) + clearance {
+        start += view * 0.5;
+        left -= 0.5;
+    }
+    start
 }
 
 /// `ground` drawn in to [`RANGE`] of `player` across the ground, and set on
@@ -1094,7 +1253,15 @@ fn ring(
     if aim.wall() {
         wall_circle(out, aim, radius, level, clock);
     } else {
-        circle(out, aim.at, radius, level, clock, surface);
+        // A ring a ray put on a floor under a roof stays on the floor.
+        let under = (aim.view != Vec3::ZERO).then_some(aim.at.y);
+        circle(out, aim.at, radius, level, clock, &|x, z| {
+            let y = surface(x, z);
+            match under {
+                Some(floor) if y > floor + 2.5 => floor,
+                _ => y,
+            }
+        });
     }
     if strike == Strike::Lightning {
         // Blue-white instead of fire.
@@ -1207,7 +1374,7 @@ fn draw_bolt(out: &mut Vec<GlowVertex>, bolt: &Bolt, eye: Vec3) {
             tint(BOLT_CORE, BOLT_LUMINANCE * 1.5 * flash),
             eye,
         );
-        blob(out, bolt.sky(), 12.0, tint(BOLT_GLOW, 6.0 * light), eye);
+        blob(out, bolt.sky, 12.0, tint(BOLT_GLOW, 6.0 * light), eye);
     }
 }
 

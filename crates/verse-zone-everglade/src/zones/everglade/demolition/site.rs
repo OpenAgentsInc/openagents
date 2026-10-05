@@ -2124,6 +2124,50 @@ impl Site {
         blocks
     }
 
+    /// Where, from 0 to 1, the segment from `from` to `to` first enters a
+    /// standing piece's box, or `None` when it meets none. Loose pieces and
+    /// chunks don't count: a ray at a wall sees through the debris in front
+    /// of it. Each box is tested against its bounding sphere first.
+    #[must_use]
+    pub fn ray(&self, from: Vec3, to: Vec3) -> Option<f32> {
+        let along = to - from;
+        let length = along.length();
+        if !(length > 1e-6) {
+            return None;
+        }
+        let unit = along / length;
+        let mut best: Option<f32> = None;
+        for (index, (spec, piece)) in self.specs.iter().zip(&self.pieces).enumerate() {
+            if piece.status != Status::Standing {
+                continue;
+            }
+            let pose = self.piece_pose(index);
+            for collider in &spec.colliders {
+                let frame = pose * collider.frame();
+                let center = frame.w_axis.truncate();
+                let reach = collider.half.as_vec3().length();
+                // The closest the segment's line comes to the box's center.
+                let k = (center - from).dot(unit).clamp(0.0, length);
+                if (from + unit * k).distance_squared(center) > reach * reach {
+                    continue;
+                }
+                let inverse = frame.inverse();
+                let half = collider.half.as_vec3();
+                if let Some(t) = verse_world::social::sight::box_hit(
+                    inverse.transform_point3(from),
+                    inverse.transform_point3(to),
+                    0.0,
+                    -half,
+                    half,
+                ) && best.is_none_or(|b| t < b)
+                {
+                    best = Some(t);
+                }
+            }
+        }
+        best
+    }
+
     /// The world pose of a standing or loose piece's body.
     #[must_use]
     pub fn piece_pose(&self, piece: usize) -> Mat4 {
@@ -2221,6 +2265,10 @@ pub trait Target {
     fn strike(&mut self, path: &[Vec3], push: Vec3, reach: f32) -> Option<Blow>;
     /// A die roll from 1 to `sides`.
     fn roll(&mut self, sides: u32) -> i32;
+    /// Where, from 0 to 1, the segment from `from` to `to` first meets
+    /// something standing or the ground, or `None` when it stays clear:
+    /// what a targeting ray sees and what a meteor's path must miss.
+    fn ray(&self, from: Vec3, to: Vec3) -> Option<f32>;
 }
 
 impl Target for Site {
@@ -2249,5 +2297,14 @@ impl Target for Site {
 
     fn roll(&mut self, sides: u32) -> i32 {
         Site::roll(self, sides)
+    }
+
+    fn ray(&self, from: Vec3, to: Vec3) -> Option<f32> {
+        let ground =
+            verse_world::social::sight::ground_hit(from, to, 0.0, &crate::zones::everglade::height);
+        match (Site::ray(self, from, to), ground) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 }
