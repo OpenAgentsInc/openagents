@@ -1,0 +1,61 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 45,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "compiled_revisions": {
+      "host": "ca25eb0496",
+      "clients": "ca25eb0496"
+    },
+    "fixture_revision": "ca25eb0496ce58522e610a4cc257a3ea963533fb",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "checks": {
+    "worker_tests": 13,
+    "native_tests": 6,
+    "native_example_builds": "passed"
+  },
+  "observation": "Teleport barrier release restores replication past Misty Step; a later same-context ordered-budget refusal intentionally stops the interval worker.",
+  "native": {
+    "window_failure": "Chamber update stream stopped",
+    "world_start": 16.53693962097168,
+    "world_end": 55.06666564941406,
+    "accepted_cast_commands": {
+      "Fire Bolt": 1,
+      "Fireball": 2,
+      "Grease": 2,
+      "Light": 2,
+      "Magic Missile": 1,
+      "Shield": 2,
+      "Shoot Bow": 1,
+      "Thunderwave": 1,
+      "Web": 2
+    },
+    "correction": {
+      "samples": 101,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 1.4210854715202004e-14,
+      "max": 0.8693799376487732
+    }
+  },
+  "disposition": "Keep verified lifecycle-refusal recovery and teleport barrier release; revert automatic interval entry until continuity recovery is verified.",
+  "limits": [
+    "World time advances from 16.537 to 55.067; Bow, Fire Bolt, and Magic Missile execute after the prior teleport barrier point.",
+    "Correction maximum 0.869 m and native disconnect fail whole-run acceptance.",
+    "Same-context interval rejection remains fatal; uncertain or gapped intervals are never replayed.",
+    "Other builds share hardware during this run; it is not an isolated performance comparison.",
+    "Storage and GPU timestamps are disabled; headless movement remains legacy."
+  ]
+}
