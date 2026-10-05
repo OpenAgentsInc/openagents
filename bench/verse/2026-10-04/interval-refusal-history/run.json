@@ -1,0 +1,77 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 45,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "native_movement_frames_requested": true,
+    "compiled_revisions": {
+      "host": "f5cac837a6d79ef1761ef787cbc8b6f7572039cb",
+      "clients": "f5cac837a6d79ef1761ef787cbc8b6f7572039cb"
+    },
+    "fixture_revision": "f5cac837a6d79ef1761ef787cbc8b6f7572039cb",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "checks": {
+    "recorder_tests": 7,
+    "native_example_builds": "passed"
+  },
+  "observation": "All processes complete, but stale interval outcomes and binding failures follow control resets. An old queued binding failure clears newer prediction context.",
+  "native": {
+    "frame_interval_ms": {
+      "samples": 4598,
+      "omitted": 0,
+      "median": 8.7455,
+      "p95": 15.796958,
+      "max": 3541.543791
+    },
+    "prediction_correction_meters": {
+      "samples": 223,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.7546938061714172
+    },
+    "reset_reasons": {
+      "control_epoch": 10
+    },
+    "omitted_refusals": 0
+  },
+  "refusals": [
+    {
+      "stage": "authority_outcome",
+      "message": "Movement interval control is stale or unavailable",
+      "count": 15
+    },
+    {
+      "stage": "frame_binding",
+      "message": "Movement interval control changed before transmission",
+      "count": 31
+    },
+    {
+      "stage": "authority_outcome",
+      "message": "Command refused: StaleControl",
+      "count": 2
+    },
+    {
+      "stage": "authority_outcome",
+      "message": "Target is blocked by chamber geometry",
+      "count": 3
+    }
+  ],
+  "limits": [
+    "Initial server epoch reset cause remains unproven.",
+    "Persistence and GPU timestamps are disabled; headless clients still use legacy movement.",
+    "Shared hardware and startup stalls prevent isolated steady-state latency claims."
+  ]
+}

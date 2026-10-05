@@ -120,6 +120,7 @@ struct App {
     prediction: verse_world::prediction::Local,
     input_token: u64,
     frame_cursor: Option<(verse_engine::core::LifeId, u64, u64)>,
+    frame_bindings: std::collections::BTreeMap<u64, (verse_engine::core::LifeId, u64)>,
     frame_entry: Option<(verse_engine::core::LifeId, u64)>,
     frame_entry_pending: bool,
     profile: super::remote_record::Profile,
@@ -178,6 +179,7 @@ impl App {
             prediction: verse_world::prediction::Local::new(instance),
             input_token: 0,
             frame_cursor: None,
+            frame_bindings: Default::default(),
             frame_entry: None,
             frame_entry_pending: false,
             profile: Default::default(),
@@ -318,6 +320,7 @@ impl App {
             Ok(()) => {
                 self.input_token = token;
                 self.frame_cursor = Some((life, epoch, start + u64::from(steps)));
+                self.frame_bindings.insert(token, (life, epoch));
                 self.pending.push_back((None, Some(token)));
             }
             Err(mpsc::error::TrySendError::Full(_)) => self.status = "Input queue is busy".into(),
@@ -491,26 +494,33 @@ impl App {
                         }
                     }
                 }
-                Ok(Update::FrameBound { token, binding }) => match binding {
-                    Ok(frame) => {
-                        if self.prediction.context() == Some((frame.life, frame.epoch)) {
-                            self.prediction.bind_movement_frame(&frame)?;
+                Ok(Update::FrameBound { token, binding }) => {
+                    let submitted = self.frame_bindings.remove(&token);
+                    match binding {
+                        Ok(frame) => {
+                            if self.prediction.context() == Some((frame.life, frame.epoch)) {
+                                self.prediction.bind_movement_frame(&frame)?;
+                            }
+                            if self.record.is_some() && self.profile.bindings.len() < 64 {
+                                self.profile.bindings.insert(token, Instant::now());
+                            }
                         }
-                        if self.record.is_some() && self.profile.bindings.len() < 64 {
-                            self.profile.bindings.insert(token, Instant::now());
+                        Err(message) => {
+                            self.pending.retain(|(_, pending)| *pending != Some(token));
+                            if self.record.is_some() {
+                                self.profile
+                                    .refusal(serde_json::json!({"stage":"frame_binding",
+                                "token":token,"message":message,"submitted_context":submitted,
+                                "context":self.prediction.context()}));
+                            }
+                            if submitted.is_none() || submitted == self.prediction.context() {
+                                self.prediction.clear();
+                                self.frame_cursor = None;
+                            }
+                            self.status = message;
                         }
                     }
-                    Err(message) => {
-                        self.pending.retain(|(_, pending)| *pending != Some(token));
-                        if self.record.is_some() {
-                            self.profile.refusal(serde_json::json!({"stage":"frame_binding",
-                                "token":token,"message":message,"context":self.prediction.context()}));
-                        }
-                        self.prediction.clear();
-                        self.frame_cursor = None;
-                        self.status = message;
-                    }
-                },
+                }
                 Ok(Update::CommandBound { token, binding }) => match binding {
                     Ok(command) => {
                         if self.record.is_some() && self.profile.bindings.len() < 64 {
@@ -1740,6 +1750,36 @@ mod tests {
                 .distance(gateway.game().actor_position(life.actor).unwrap())
                 < 0.0001
         );
+        let context = app.prediction.context().unwrap();
+        let cursor = app.frame_cursor;
+        let token = app.input_token + 1;
+        app.frame_bindings.insert(token, (context.0, context.1 - 1));
+        app.pending.push_back((None, Some(token)));
+        updates
+            .try_send(Update::FrameBound {
+                token,
+                binding: Err("Movement interval control changed before transmission".into()),
+            })
+            .unwrap();
+        app.consume().unwrap();
+        assert_eq!(app.prediction.context(), Some(context));
+        assert_eq!(app.frame_cursor, cursor);
+        assert!(!app.frame_bindings.contains_key(&token));
+        assert!(
+            !app.pending
+                .iter()
+                .any(|(_, pending)| *pending == Some(token))
+        );
+        app.frame_bindings.insert(token + 1, context);
+        updates
+            .try_send(Update::FrameBound {
+                token: token + 1,
+                binding: Err("Current interval binding failed".into()),
+            })
+            .unwrap();
+        app.consume().unwrap();
+        assert!(app.prediction.context().is_none());
+        assert!(app.frame_cursor.is_none());
         drop(updates);
         assert!(app.consume().is_err());
         assert!(app.prediction.pose().is_none());

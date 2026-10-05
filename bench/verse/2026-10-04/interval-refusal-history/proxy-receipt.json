@@ -1,0 +1,67 @@
+{
+  "schema": "verse.delayed-route.v1",
+  "delay_ms": 40,
+  "jitter_ms": 20,
+  "connections": 20,
+  "upstream_bytes": 11835029,
+  "downstream_bytes": 263735420,
+  "forwarded_chunks": 55644,
+  "errors": 8,
+  "refused_connections": 0,
+  "error_details": [
+    {
+      "elapsed_seconds": 82.82575125,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 82.829097917,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 82.83980445799999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 82.86606225,
+      "direction": "downstream",
+      "type": "ConnectionResetError",
+      "errno": null
+    },
+    {
+      "elapsed_seconds": 82.868403667,
+      "direction": "downstream",
+      "type": "ConnectionResetError",
+      "errno": null
+    },
+    {
+      "elapsed_seconds": 82.872456417,
+      "direction": "downstream",
+      "type": "ConnectionResetError",
+      "errno": null
+    },
+    {
+      "elapsed_seconds": 82.87616316699999,
+      "direction": "downstream",
+      "type": "ConnectionResetError",
+      "errno": null
+    },
+    {
+      "elapsed_seconds": 82.876180667,
+      "direction": "downstream",
+      "type": "ConnectionResetError",
+      "errno": null
+    }
+  ],
+  "omitted_error_details": 0,
+  "limits": [
+    "Delay applies to each TCP read chunk, not decrypted game messages.",
+    "TCP preserves byte order; this fixture does not simulate packet loss."
+  ],
+  "wall_seconds": 82.878167792
+}
