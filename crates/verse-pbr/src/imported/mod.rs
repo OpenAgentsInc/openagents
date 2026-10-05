@@ -858,7 +858,11 @@ impl Renderer {
                 + 4 * 1024 * 1024
                 + 25 * std::mem::size_of::<lighting::Frame>() as u64,
             texture_bytes: mip_bytes + u64::from(atlas.width) * u64::from(atlas.height) * 4,
-            retained_source_bytes: pack_receipt.manifest_bytes + pack_receipt.rgba_bytes,
+            retained_source_bytes: pack_receipt.manifest_bytes
+                + pack_receipt.rgba_bytes
+                + retained_prepared.mips().map_or(0, |a| {
+                    a.payload().len() as u64 + a.encoded_manifest().map_or(0, |m| m.len() as u64)
+                }),
         };
         admission.quality.budget().admit(resources)?;
         let uniform = |binding| wgpu::BindGroupLayoutEntry {
@@ -1049,6 +1053,18 @@ impl Renderer {
             .iter()
             .map(|variant| {
                 let t = &pack.textures[variant.texture];
+                if let Some(archive) = retained_prepared.mips() {
+                    let levels =
+                        archive.levels(*variant, device.limits().max_texture_dimension_2d)?;
+                    return texture_gpu::upload_levels(
+                        &device,
+                        &queue,
+                        &t.file,
+                        &levels,
+                        variant.role,
+                    )
+                    .map(|image| (*variant, image));
+                }
                 texture_gpu::upload(
                     &device,
                     &queue,

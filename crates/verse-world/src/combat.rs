@@ -862,6 +862,7 @@ mod tests {
             boss_health: 1000,
             warmup: 5.,
             stagger: 0.2,
+            authored_timeline: false,
         };
         let mut game = Game::combat_configured_in(scene, false, 11, definition).unwrap();
         assert_eq!(game.scene.duration, 150.);

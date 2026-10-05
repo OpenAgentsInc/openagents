@@ -23,6 +23,7 @@ pub struct TimelineCue {
 #[serde(deny_unknown_fields)]
 pub struct ModelEdit {
     pub states: Option<BTreeMap<State, Binding>>,
+    #[serde(deserialize_with = "verse_world::content::read_numeric_map")]
     pub materials: BTreeMap<usize, Material>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -32,6 +33,7 @@ pub struct Document {
     pub zone: String,
     pub scene: Scene,
     pub timeline: Vec<TimelineCue>,
+    #[serde(deserialize_with = "verse_world::content::read_numeric_map")]
     pub placements: BTreeMap<u64, Placement>,
     pub models: BTreeMap<String, ModelEdit>,
     #[serde(default)]

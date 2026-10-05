@@ -351,6 +351,24 @@ pub fn admit(
             )?;
         }
     }
+    if let Some(character) = &doc.authored.character {
+        for (slot, tuning) in &character.catalog {
+            if !tuning.cooldown.is_finite() || !(0. ..=600.).contains(&tuning.cooldown) {
+                return Err(Diagnostic::at(
+                    "document.json",
+                    format!("authored.character.catalog.{slot}.cooldown"),
+                    "Use a finite cooldown from 0 to 600 seconds",
+                ));
+            }
+            if !(0..=20).contains(&tuning.cost) || tuning.cost > character.mana {
+                return Err(Diagnostic::at(
+                    "document.json",
+                    format!("authored.character.catalog.{slot}.cost"),
+                    "Use 0..20 mana within the character's available mana",
+                ));
+            }
+        }
+    }
     checked("authored", doc.authored.validate())?;
     checked("progression", doc.progression.validate())?;
     checked(

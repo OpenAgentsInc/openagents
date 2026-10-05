@@ -37,6 +37,17 @@ fn input(path: &Path) {
         height: 1.,
         attachments: vec![],
     };
+    let mut texture = vec![];
+    {
+        let mut encoder = png::Encoder::new(&mut texture, 1, 1);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&[255; 4])
+            .unwrap();
+    }
     let pack = Pack {
         inventory: None,
         version: 1,
@@ -47,7 +58,7 @@ fn input(path: &Path) {
             .collect(),
         textures: vec![Texture {
             file: "fixture.png".into(),
-            sha256: workspace::hash(b"fixture-texture"),
+            sha256: workspace::hash(&texture),
             width: 1,
             height: 1,
         }],
@@ -80,7 +91,7 @@ fn input(path: &Path) {
     };
     std::fs::write(path.join("pack.json"), serde_json::to_vec(&pack).unwrap()).unwrap();
     std::fs::write(path.join("scene.json"), serde_json::to_vec(&scene).unwrap()).unwrap();
-    std::fs::write(path.join("fixture.png"), b"fixture-texture").unwrap();
+    std::fs::write(path.join("fixture.png"), texture).unwrap();
 }
 fn tx(revision: u64, edits: Vec<Edit>) -> Transaction {
     Transaction {
@@ -542,4 +553,129 @@ fn authored_geometry_has_world_scale_outward_faces_and_stable_identity() {
             .source_sha256
     );
     assert!(geometry::compile("author/barricade", &shape, 0).is_err());
+}
+
+#[test]
+fn numeric_keys_survive_tagged_commands_and_noncanonical_keys_are_refused() {
+    let mut settings = verse_world::content::Authored::default();
+    settings.character = Some(verse_world::content::Character::default());
+    settings.blockers.insert(
+        1,
+        verse_world::content::Bounds {
+            min: [-1., 0., -1.],
+            max: [1., 1., 1.],
+        },
+    );
+    let command = cli::Command::Transaction {
+        transaction: tx(
+            1,
+            vec![
+                Edit::Authored { settings },
+                Edit::Model {
+                    key: "cultist".into(),
+                    edit: ModelEdit {
+                        states: None,
+                        materials: BTreeMap::from([(0, Default::default())]),
+                    },
+                },
+            ],
+        ),
+    };
+    let bytes = serde_json::to_vec(&command).unwrap();
+    let parsed: cli::Command = parse("command.json", &bytes, 2 * 1024 * 1024).unwrap();
+    assert_eq!(serde_json::to_vec(&parsed).unwrap(), bytes);
+    let invalid = String::from_utf8(bytes)
+        .unwrap()
+        .replace("\"1\":{\"min\"", "\"01\":{\"min\"");
+    assert!(parse::<cli::Command>("command.json", invalid.as_bytes(), 2 * 1024 * 1024).is_err());
+    let duplicate = br#"{"op":"authored","settings":{"character":null,"blockers":{"1":{"min":[0,0,0],"max":[1,1,1]},"1":{"min":[0,0,0],"max":[2,2,2]}}}}"#;
+    assert!(parse::<Edit>("duplicate.json", duplicate, 2 * 1024 * 1024).is_err());
+}
+
+#[test]
+fn authored_mips_survive_snapshot_and_new_material_variants_reuse_them() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    input(&source);
+    let pack = verse_engine::assets::Pack::read(&source.join("pack.json")).unwrap();
+    let prepared =
+        verse_engine::loading::Prepared::load(pack.clone(), &source, Default::default()).unwrap();
+    let original = verse_engine::mips::archive::Archive::cook(&prepared).unwrap();
+    let custom = [200, 50, 120, 255];
+    let mut manifest = serde_json::to_value(original.manifest()).unwrap();
+    manifest["rgba_sha256"] = serde_json::json!(workspace::hash(&custom));
+    let authored = verse_engine::mips::archive::Archive::from_bytes(
+        &pack,
+        &serde_json::to_vec(&manifest).unwrap(),
+        &custom,
+    )
+    .unwrap();
+    std::fs::write(
+        source.join(verse_engine::mips::archive::MANIFEST),
+        authored.encoded_manifest().unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        source.join(verse_engine::mips::archive::PAYLOAD),
+        authored.payload(),
+    )
+    .unwrap();
+    let mut work =
+        Workspace::init(&source, &root.path().join("work"), "authored-zone".into()).unwrap();
+    assert_eq!(work.preview().unwrap().mips.payload(), custom);
+    let edits = vec![
+        Edit::Primitive {
+            key: "author/box".into(),
+            shape: BoxGeometry {
+                min: [-1., 0., -1.],
+                max: [1., 1., 1.],
+                texture: 0,
+                tint: [1.; 3],
+            },
+        },
+        Edit::Model {
+            key: "author/box".into(),
+            edit: ModelEdit {
+                states: None,
+                materials: BTreeMap::from([(
+                    0,
+                    verse_engine::material::Material {
+                        normal_texture: Some(0),
+                        ..Default::default()
+                    },
+                )]),
+            },
+        },
+    ];
+    work.transact(&tx(1, edits)).unwrap();
+    drop(work);
+    let mut work = Workspace::open(&root.path().join("work")).unwrap();
+    let preview = work.preview().unwrap();
+    assert_eq!(
+        preview
+            .mips
+            .levels(
+                verse_engine::mips::Variant {
+                    texture: 0,
+                    role: verse_engine::mips::Role::Color
+                },
+                8192
+            )
+            .unwrap()[0]
+            .2,
+        custom
+    );
+    assert_eq!(preview.mips.manifest().entries.len(), 2);
+    let build = work.build().unwrap();
+    assert_eq!(build.content, preview.content());
+    let prepared = verse_engine::loading::Prepared::load(
+        verse_engine::assets::Pack::read(&build.path.join("pack.json")).unwrap(),
+        &build.path,
+        Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        prepared.mips().unwrap().identity().unwrap(),
+        preview.mips.identity().unwrap()
+    );
 }

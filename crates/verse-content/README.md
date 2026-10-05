@@ -52,7 +52,7 @@ Supported actions are `inspect`, `transaction`, `undo`, `redo`, `preview`, and
 Transactions can change scene properties, add or remove actors, placements, and
 stable-ID cues, create static box meshes, map existing animation clips, edit
 material channels, tune the
-existing ability catalog, add collision boxes, edit social profiles, and change
+primary character's existing ability catalog, add collision boxes, edit social profiles, and change
 quest, reward, item, outfit, and equipment catalogs. Use `inspect` to get the
 current document, model keys, surface indices, clip IDs, sockets, texture slots,
 retained asset identities, and undo counts. IDs stay stable when an author moves
@@ -85,19 +85,33 @@ The editor limits an input session to 4,096 commands. Inputs and destinations
 must be regular files and directories; symbolic links are refused.
 
 Builds reuse the snapshotted compiled meshes and images; they do not rerun the
-Rust asset recipes. The document and source pack digest select an immutable
+Rust asset recipes. The document, source bundle, and compiled content identity select an immutable
 `generations/DIGEST` directory. A repeated build verifies and reuses it. Files,
 including the document, pack, scene, preview, and host template, have sealed
 hashes. Changed model mappings and materials retain source declarations and
 asset IDs and receive new model fingerprints. Source snapshots are copied once;
-texture contents remain digest-checked. `current.json` changes atomically after
+texture contents remain digest-checked.
+
+Builds persist the runtime's color, masked-alpha, normal, and scalar mip recipes
+in `mips.json` and `mips.rgba`. Existing authored mip variants remain intact;
+changed materials reuse matching variants and cook the missing ones. Archives
+require every material variant, a contiguous full-resolution-to-one-texel chain,
+matching source image hashes, and a sealed payload. Metadata is limited to 8 MiB
+and RGBA data to 256 MiB. The loader counts retained pixels and archived levels
+against its texture memory budget. Content identity includes all mip bytes.
+The physical renderer uploads the verified levels directly and retains them
+for device recreation. Portable byte loading follows the same admission path.
+These archives use RGBA8; compressed GPU formats require a separate cook target.
+
+The `current.json` pointer changes atomically after
 all files and their parent directories are synced and admitted. An interrupted
 `generations/building` directory remains unadmitted; inspect and remove it
 before retrying. Generation cleanup is an explicit operator action.
 
 The build's `host-template.json` loads through the dedicated host's existing
-configuration path. Set its instance, TLS paths, enrollment or guest policy,
-and storage directory before launching it. Its `authored` settings select the
+configuration path. Copy it outside the immutable generation, then set the
+copy's instance, TLS paths, enrollment or guest policy, and storage directory
+before launching it. Its `authored` settings select the
 generic authored combat timeline, include collision and ability tuning, and
 bind gameplay catalogs into content identity. The default ritual profile keeps
 its scripted behavior when `authored` is absent. A changed durable generation

@@ -84,6 +84,20 @@ pub fn admit(
     outfits: &verse_world::service::outfits::Catalog,
     equipment: &verse_world::service::equipment::Catalog,
 ) -> Result<[u8; 32], String> {
+    let source = admit_source(pack, scene, dir, outfits, equipment)?;
+    match verse_engine::mips::archive::Archive::read(pack, dir)? {
+        Some(archive) => bind_mips(source, archive.identity()?),
+        None => Ok(source),
+    }
+}
+/// Admits verified source data while a content tool compiles material variants.
+pub fn admit_source(
+    pack: &Pack,
+    scene: &Scene,
+    dir: &Path,
+    outfits: &verse_world::service::outfits::Catalog,
+    equipment: &verse_world::service::equipment::Catalog,
+) -> Result<[u8; 32], String> {
     pack.validate()?;
     scene.validate()?;
     outfit_models(pack, outfits)?;
@@ -104,10 +118,17 @@ pub fn admit(
             catalog.check_animation(catalog.model(&actor.model)?, animation)?;
         }
     }
-    identity(pack, scene, dir)
+    identity_source(pack, scene, dir)
 }
 /// Computes once before login. The supplied asset directory is not part of the digest.
 pub fn identity(pack: &Pack, scene: &Scene, dir: &Path) -> Result<[u8; 32], String> {
+    let content = identity_source(pack, scene, dir)?;
+    match verse_engine::mips::archive::Archive::read(pack, dir)? {
+        Some(archive) => bind_mips(content, archive.identity()?),
+        None => Ok(content),
+    }
+}
+fn identity_source(pack: &Pack, scene: &Scene, dir: &Path) -> Result<[u8; 32], String> {
     pack.validate()?;
     scene.validate()?;
     let mut digest = Sha256::new();
@@ -161,5 +182,13 @@ pub fn identity(pack: &Pack, scene: &Scene, dir: &Path) -> Result<[u8; 32], Stri
         digest.update(texture.file.as_bytes());
         digest.update(content);
     }
+    Ok(digest.finalize().into())
+}
+/// Binds admitted authored mip bytes without depending on their file location.
+pub fn bind_mips(content: [u8; 32], mips: [u8; 32]) -> Result<[u8; 32], String> {
+    let mut digest = Sha256::new();
+    digest.update(b"verse.remote.content.mips.v1\0");
+    digest.update(content);
+    digest.update(mips);
     Ok(digest.finalize().into())
 }

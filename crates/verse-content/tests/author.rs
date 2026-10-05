@@ -71,7 +71,7 @@ fn author_a_second_playable_zone_without_renderer_changes() {
     );
     let current = std::fs::read(work.join("current.json")).unwrap();
     let invalid = root.path().join("invalid.json");
-    std::fs::write(&invalid,br#"{"expected_revision":2,"label":"Broken quest giver","edits":[{"op":"remove_actor","id":100}]}"#).unwrap();
+    std::fs::write(&invalid,br#"{"expected_revision":2,"label":"Broken quest giver","edits":[{"op":"quest","quest":{"id":1,"name":"Secure the outpost","giver":999,"objective":10,"goal":1,"experience":25,"items":[]}}]}"#).unwrap();
     let refused = Command::new(env!("CARGO_BIN_EXE_verse-content"))
         .args([
             "author".as_ref(),
@@ -117,7 +117,7 @@ fn author_a_second_playable_zone_without_renderer_changes() {
         .unwrap();
         std::fs::copy(work.join("preview.svg"), destination.join("outpost.svg")).unwrap();
         let generation = Path::new(after["path"].as_str().unwrap());
-        for name in ["document.json", "generation.json"] {
+        for name in ["document.json", "generation.json", "mips.json", "mips.rgba"] {
             std::fs::copy(generation.join(name), destination.join(name)).unwrap();
         }
     }

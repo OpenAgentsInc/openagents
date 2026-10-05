@@ -405,11 +405,20 @@ fn an_authored_generation_loads_and_recovers_through_the_dedicated_host() {
     }
     assert!(gateway.quest_log(14)[0].accepted);
     store.as_mut().unwrap().commit(&mut gateway).unwrap();
-    let expected = gateway.checkpoint().unwrap();
+    let mut expected: serde_json::Value =
+        serde_json::from_slice(&gateway.checkpoint().unwrap()).unwrap();
+    let mut world: serde_json::Value =
+        serde_json::from_str(expected["world"].as_str().unwrap()).unwrap();
+    world["world"]["admission"]["controller"] = serde_json::json!(0);
+    world["world"]["admission"]["epoch"] = serde_json::json!(admission.epoch() + 1);
+    expected["world"] = world;
     drop(store);
     let (recovered, store) = verse_host::prepare(&config).unwrap();
     assert_eq!(recovered.content(), Some(build.content));
-    assert_eq!(recovered.checkpoint().unwrap(), expected);
+    let mut actual: serde_json::Value =
+        serde_json::from_slice(&recovered.checkpoint().unwrap()).unwrap();
+    actual["world"] = serde_json::from_str(actual["world"].as_str().unwrap()).unwrap();
+    assert_eq!(actual, expected);
     drop(store);
     let mut changed = config.clone();
     changed.progression.quests[0].experience += 1;

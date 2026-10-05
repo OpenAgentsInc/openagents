@@ -22,6 +22,36 @@ pub(super) fn upload(
         role,
         device.limits().max_texture_dimension_2d,
     )?;
+    upload_levels(device, queue, label, &levels, role)
+}
+pub(super) fn upload_levels(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    levels: &[verse_engine::mips::Level],
+    role: Role,
+) -> Result<Image, String> {
+    if levels.is_empty()
+        || levels.iter().any(|(width, height, bytes)| {
+            *width == 0
+                || *height == 0
+                || *width > device.limits().max_texture_dimension_2d
+                || *height > device.limits().max_texture_dimension_2d
+                || bytes.len() as u64 != u64::from(*width) * u64::from(*height) * 4
+        })
+    {
+        return Err("Invalid prepared GPU mip levels".into());
+    }
+    if levels.len() > 14
+        || levels.windows(2).any(|pair| {
+            pair[1].0 != (pair[0].0 / 2).max(1)
+                || pair[1].1 != (pair[0].1 / 2).max(1)
+                || pair[0].0 == 1 && pair[0].1 == 1
+        })
+        || levels.last().is_none_or(|l| l.0 != 1 || l.1 != 1)
+    {
+        return Err("Prepared GPU mip chain has inconsistent levels".into());
+    }
     let format = if role.srgb() {
         wgpu::TextureFormat::Rgba8UnormSrgb
     } else {

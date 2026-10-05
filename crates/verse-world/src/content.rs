@@ -2,11 +2,51 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// Reads canonical numeric JSON keys even inside Serde's tagged enum reader.
+#[doc(hidden)]
+pub fn read_numeric_map<'de, D, K, V>(decoder: D) -> Result<BTreeMap<K, V>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    K: Ord + std::str::FromStr + std::fmt::Display,
+    V: Deserialize<'de>,
+{
+    struct Numeric<K, V>(std::marker::PhantomData<(K, V)>);
+    impl<'de, K, V> serde::de::Visitor<'de> for Numeric<K, V>
+    where
+        K: Ord + std::str::FromStr + std::fmt::Display,
+        V: Deserialize<'de>,
+    {
+        type Value = BTreeMap<K, V>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("unique canonical numeric JSON keys")
+        }
+        fn visit_map<M: serde::de::MapAccess<'de>>(
+            self,
+            mut source: M,
+        ) -> Result<Self::Value, M::Error> {
+            let mut values = BTreeMap::new();
+            while let Some((key, value)) = source.next_entry::<String, V>()? {
+                let id: K = key
+                    .parse()
+                    .map_err(|_| serde::de::Error::custom("Expected a numeric JSON map key"))?;
+                if id.to_string() != key || values.insert(id, value).is_some() {
+                    return Err(serde::de::Error::custom(
+                        "Numeric JSON map keys must be unique canonical decimals",
+                    ));
+                }
+            }
+            Ok(values)
+        }
+    }
+    decoder.deserialize_map(Numeric(std::marker::PhantomData))
+}
+
 /// Trusted, data-only collision and character settings for a hosted scene.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Authored {
     pub character: Option<Character>,
+    #[serde(deserialize_with = "read_numeric_map")]
     pub blockers: BTreeMap<u64, Bounds>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub navigation: Option<NavigationRegion>,
@@ -138,6 +178,7 @@ pub struct Character {
     pub health: i32,
     pub mana: i32,
     pub save_dc: i32,
+    #[serde(deserialize_with = "read_numeric_map")]
     pub catalog: BTreeMap<u8, AbilityTuning>,
 }
 impl Default for Character {

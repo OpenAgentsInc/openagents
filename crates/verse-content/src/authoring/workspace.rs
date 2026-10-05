@@ -11,6 +11,19 @@ use std::{
 const DOCUMENT_LIMIT: usize = 2 * 1024 * 1024;
 const JOURNAL_LIMIT: usize = 16 * 1024 * 1024;
 const HISTORY: usize = 32;
+fn source_digest(
+    pack: &[u8],
+    archive: Option<&verse_engine::mips::archive::Archive>,
+) -> Result<String> {
+    let mut bytes = pack.to_vec();
+    if let Some(archive) = archive {
+        bytes.extend(checked("assets.mips", archive.identity())?);
+    }
+    Ok(hash(&bytes))
+}
+fn generation_digest(asset: &str, document: &[u8], content: [u8; 32]) -> String {
+    hash(&[asset.as_bytes(), document, &content].concat())
+}
 pub(crate) fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -176,10 +189,24 @@ impl Workspace {
             }
             create(&base_dir.join(&texture.file), &source)?;
         }
+        let source_mips = checked(
+            "assets.mips",
+            verse_engine::mips::archive::Archive::read(&pack, input),
+        )?;
+        if let Some(archive) = &source_mips {
+            create(
+                &base_dir.join(verse_engine::mips::archive::MANIFEST),
+                &checked("assets.mips", archive.encoded_manifest())?,
+            )?;
+            create(
+                &base_dir.join(verse_engine::mips::archive::PAYLOAD),
+                archive.payload(),
+            )?;
+        }
         sync_dir(&base_dir)?;
         let journal = Journal {
             schema: "verse.author.journal.v1".into(),
-            asset_digest: hash(&pack_bytes),
+            asset_digest: source_digest(&pack_bytes, source_mips.as_ref())?,
             revision: 1,
             document: doc,
             undo: vec![],
@@ -231,13 +258,17 @@ impl Workspace {
         }
         ancestors(&root.join("assets"))?;
         let base_bytes = read(&root.join("assets/pack.json"), 128 * 1024 * 1024)?;
-        if hash(&base_bytes) != journal.asset_digest {
+        let base = parse("assets/pack.json", &base_bytes, 128 * 1024 * 1024)?;
+        let source_mips = checked(
+            "assets.mips",
+            verse_engine::mips::archive::Archive::read(&base, &root.join("assets")),
+        )?;
+        if source_digest(&base_bytes, source_mips.as_ref())? != journal.asset_digest {
             return Err(io(
-                &root.join("assets/pack.json"),
+                &root.join("assets"),
                 "Source asset snapshot changed; initialize a new workspace",
             ));
         }
-        let base = parse("assets/pack.json", &base_bytes, 128 * 1024 * 1024)?;
         let workspace = Self {
             root,
             _lock: lock,
@@ -261,7 +292,13 @@ impl Workspace {
         let (pack, scene, _) = admit(self.document(), &self.base)?;
         checked(
             "assets",
-            crate::remote_content::identity(&pack, &scene, &self.root.join("assets")),
+            crate::remote_content::admit_source(
+                &pack,
+                &scene,
+                &self.root.join("assets"),
+                &self.document().outfits,
+                &self.document().equipment,
+            ),
         )?;
         Ok(())
     }
@@ -375,7 +412,8 @@ impl Workspace {
         let mut preview = self.preview()?;
         let report = preview.step(1)?;
         let document = bytes(self.document(), DOCUMENT_LIMIT)?;
-        let generation = hash(&[self.journal.asset_digest.as_bytes(), &document].concat());
+        let generation =
+            generation_digest(&self.journal.asset_digest, &document, preview.content());
         let generations = self.root.join("generations");
         ancestors(&generations)?;
         std::fs::create_dir_all(&generations).map_err(|e| io(&generations, e))?;
@@ -402,6 +440,14 @@ impl Workspace {
             write("scene.json", bytes(&scene, 1024 * 1024)?)?;
             write("preview.json", bytes(&report, DOCUMENT_LIMIT)?)?;
             write("preview.svg", preview.svg(None)?.into_bytes())?;
+            write(
+                verse_engine::mips::archive::MANIFEST,
+                checked("assets.mips", preview.mips.encoded_manifest())?,
+            )?;
+            write(
+                verse_engine::mips::archive::PAYLOAD,
+                preview.mips.payload().to_vec(),
+            )?;
             for texture in &pack.textures {
                 write(
                     &texture.file,
@@ -472,6 +518,8 @@ impl Workspace {
             "preview.json",
             "preview.svg",
             "host-template.json",
+            verse_engine::mips::archive::MANIFEST,
+            verse_engine::mips::archive::PAYLOAD,
         ]
         .into_iter()
         .map(String::from)
@@ -499,7 +547,11 @@ impl Workspace {
             {
                 return Err(io(path, "Generation file path escapes its directory"));
             }
-            let limit = if name == "pack.json" {
+            let limit = if name == verse_engine::mips::archive::PAYLOAD {
+                verse_engine::mips::archive::MAX_BYTES
+            } else if name == verse_engine::mips::archive::MANIFEST {
+                8 * 1024 * 1024
+            } else if name == "pack.json" {
                 128 * 1024 * 1024
             } else if name.ends_with(".png") {
                 64 * 1024 * 1024
@@ -539,12 +591,10 @@ impl Workspace {
             &read(&path.join("document.json"), DOCUMENT_LIMIT)?,
             DOCUMENT_LIMIT,
         )?;
-        if hash(
-            &[
-                seal.asset_digest.as_bytes(),
-                &bytes(&document, DOCUMENT_LIMIT)?,
-            ]
-            .concat(),
+        if generation_digest(
+            &seal.asset_digest,
+            &bytes(&document, DOCUMENT_LIMIT)?,
+            seal.content,
         ) != generation
         {
             return Err(io(path, "Generation does not match its source document"));

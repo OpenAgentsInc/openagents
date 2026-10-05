@@ -27,13 +27,40 @@ pub struct Preview {
     gateway: Gateway,
     content: [u8; 32],
     tick: u64,
+    pub(crate) mips: verse_engine::mips::archive::Archive,
 }
 impl Preview {
     pub fn new(doc: &Document, base: &Pack, assets: &Path) -> Result<Self> {
         let (pack, scene, gateway) = admit(doc, base)?;
+        let prepared = checked(
+            "assets",
+            verse_engine::loading::Prepared::load_pixels(pack.clone(), assets, Default::default()),
+        )?;
+        let retained = match verse_engine::mips::archive::Archive::read(&pack, assets) {
+            Ok(archive) => archive,
+            Err(_) => checked(
+                "assets.mips",
+                verse_engine::mips::archive::Archive::read(base, assets),
+            )?,
+        };
+        let mips = checked(
+            "assets.mips",
+            verse_engine::mips::archive::Archive::cook_reusing(&prepared, retained.as_ref()),
+        )?;
+        checked("assets.mips", prepared.with_mips(mips.clone()))?;
         let mut content = checked(
             "assets",
-            crate::remote_content::admit(&pack, &scene, assets, &doc.outfits, &doc.equipment),
+            crate::remote_content::admit_source(
+                &pack,
+                &scene,
+                assets,
+                &doc.outfits,
+                &doc.equipment,
+            ),
+        )?;
+        content = checked(
+            "assets.mips",
+            crate::remote_content::bind_mips(content, checked("assets.mips", mips.identity())?),
         )?;
         content = checked("authored", doc.authored.bind_content(content))?;
         content = checked(
@@ -66,6 +93,7 @@ impl Preview {
             gateway,
             content,
             tick: 0,
+            mips,
         };
         preview.report(None)?;
         Ok(preview)

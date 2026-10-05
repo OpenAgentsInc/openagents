@@ -190,7 +190,22 @@ fn uploaded_roles_and_material_bindings_match_linear_light_and_mask_recipes() {
     let mask_key = material_gpu::Key::from_surface(&masked);
     model.surfaces.push(masked);
     let atlas = Atlas::new(1.);
+    let prepared =
+        verse_engine::loading::Prepared::load(pack.clone(), assets.path(), Default::default())
+            .unwrap();
+    let archive = verse_engine::mips::archive::Archive::cook(&prepared).unwrap();
+    std::fs::write(
+        assets.path().join(verse_engine::mips::archive::MANIFEST),
+        archive.encoded_manifest().unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        assets.path().join(verse_engine::mips::archive::PAYLOAD),
+        archive.payload(),
+    )
+    .unwrap();
     let mut renderer = Renderer::new(pack, assets.path(), 320, 64, &atlas, &[]).unwrap();
+    assert!(renderer.prepared.mips().is_some());
     let mut levels = Vec::new();
     for role in [
         Role::Color,

@@ -9,7 +9,7 @@ description = "Portable content admission and Rust asset compilation for Verse"
 [features]
 default = []
 compiler = ["authoring", "dep:gltf", "dep:libm", "dep:png", "dep:resvg"]
-authoring = ["dep:serde", "dep:serde_path_to_error", "verse-world/service-auth"]
+authoring = ["dep:png", "dep:serde", "dep:serde_path_to_error", "verse-world/service-auth"]
 
 [dependencies]
 verse-engine = { path = "../verse-engine", features = ["asset-io"] }

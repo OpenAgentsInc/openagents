@@ -94,6 +94,7 @@ pub struct Prepared {
     pack: std::sync::Arc<Pack>,
     textures: Vec<Texture>,
     receipt: Receipt,
+    mips: Option<crate::mips::archive::Archive>,
 }
 struct ManifestDigest {
     hash: Sha256,
@@ -292,11 +293,24 @@ impl Staged {
             pack: std::sync::Arc::new(self.pack),
             textures: self.textures,
             receipt: self.receipt,
+            mips: None,
         })
     }
 }
 impl Prepared {
     pub fn load(pack: Pack, root: &Path, budget: Budget) -> Result<Self, String> {
+        Self::load_inner(pack, root, budget, true)
+    }
+    /// Loads verified source pixels when a content tool changes material variants.
+    pub fn load_pixels(pack: Pack, root: &Path, budget: Budget) -> Result<Self, String> {
+        Self::load_inner(pack, root, budget, false)
+    }
+    fn load_inner(
+        pack: Pack,
+        root: &Path,
+        budget: Budget,
+        persisted: bool,
+    ) -> Result<Self, String> {
         let mut staged = Staged::begin(pack, budget)?;
         let root = root.canonicalize().map_err(|e| e.to_string())?;
         if !root.is_dir() {
@@ -340,7 +354,21 @@ impl Prepared {
                 .map_err(|e| e.to_string())?;
             staged.admit(slot, bytes)?;
         }
-        staged.finish()
+        let mut prepared = staged.finish()?;
+        if persisted {
+            let available = prepared
+                .receipt
+                .budget
+                .rgba_total_bytes
+                .saturating_sub(prepared.receipt.rgba_bytes);
+            prepared.mips = crate::mips::archive::Archive::read_budget(
+                prepared.pack(),
+                &root,
+                available as usize,
+            )?;
+        }
+        prepared.validate_retention()?;
+        Ok(prepared)
     }
     /// Admits a pack whose texture files are already in memory, named as the
     /// manifest names them: for a browser, which has no file system, or a
@@ -356,7 +384,49 @@ impl Prepared {
                 .ok_or_else(|| format!("Texture file {name} was not supplied"))?;
             staged.admit(slot, bytes.to_vec())?;
         }
-        staged.finish()
+        let mut prepared = staged.finish()?;
+        let manifest = files
+            .iter()
+            .find(|(name, _)| *name == crate::mips::archive::MANIFEST);
+        let payload = files
+            .iter()
+            .find(|(name, _)| *name == crate::mips::archive::PAYLOAD);
+        prepared.mips = match (manifest, payload) {
+            (None, None) => None,
+            (Some((_, manifest)), Some((_, payload))) => Some(
+                crate::mips::archive::Archive::from_bytes(prepared.pack(), manifest, payload)?,
+            ),
+            _ => return Err("Mip archive is incomplete".into()),
+        };
+        prepared.validate_retention()?;
+        Ok(prepared)
+    }
+    fn validate_retention(&self) -> Result<(), String> {
+        let retained = self.mips.as_ref().map_or(Ok(0u64), |m| {
+            m.encoded_manifest()
+                .map(|meta| meta.len() as u64 + m.payload().len() as u64)
+        })?;
+        if self
+            .receipt
+            .rgba_bytes
+            .checked_add(retained)
+            .is_none_or(|total| total > self.receipt.budget.rgba_total_bytes)
+        {
+            return Err(
+                "Source pixels and archived mips exceed the retained texture budget".into(),
+            );
+        }
+        Ok(())
+    }
+    /// Admits authored levels with the same source closure and retained-memory budget.
+    pub fn with_mips(mut self, archive: crate::mips::archive::Archive) -> Result<Self, String> {
+        archive.validate(self.pack())?;
+        self.mips = Some(archive);
+        self.validate_retention()?;
+        Ok(self)
+    }
+    pub fn mips(&self) -> Option<&crate::mips::archive::Archive> {
+        self.mips.as_ref()
     }
     pub fn pack(&self) -> &Pack {
         &self.pack
@@ -463,6 +533,57 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
         }
+    }
+    #[test]
+    fn persisted_mips_are_admitted_from_files_and_portable_bytes_with_retention_bounds() {
+        let fixture = Fixture::new();
+        let source = fixture.load(Default::default()).unwrap();
+        let archive = crate::mips::archive::Archive::cook(&source).unwrap();
+        let manifest = archive.encoded_manifest().unwrap();
+        std::fs::write(fixture.root.join(crate::mips::archive::MANIFEST), &manifest).unwrap();
+        std::fs::write(
+            fixture.root.join(crate::mips::archive::PAYLOAD),
+            archive.payload(),
+        )
+        .unwrap();
+        let loaded = fixture.load(Default::default()).unwrap();
+        assert_eq!(
+            loaded.mips().unwrap().identity().unwrap(),
+            archive.identity().unwrap()
+        );
+        let texture_files: Vec<_> = fixture
+            .pack
+            .textures
+            .iter()
+            .map(|t| {
+                (
+                    t.file.as_str(),
+                    std::fs::read(fixture.root.join(&t.file)).unwrap(),
+                )
+            })
+            .collect();
+        let mut files: Vec<_> = texture_files
+            .iter()
+            .map(|(name, bytes)| (*name, bytes.as_slice()))
+            .collect();
+        files.push((crate::mips::archive::MANIFEST, &manifest));
+        files.push((crate::mips::archive::PAYLOAD, archive.payload()));
+        let portable =
+            Prepared::from_bytes(fixture.pack.clone(), &files, Default::default()).unwrap();
+        assert_eq!(
+            portable.mips().unwrap().identity().unwrap(),
+            archive.identity().unwrap()
+        );
+        assert!(
+            fixture
+                .load(Budget {
+                    rgba_total_bytes: source.receipt().rgba_bytes,
+                    ..Default::default()
+                })
+                .is_err()
+        );
+        std::fs::write(fixture.root.join(crate::mips::archive::PAYLOAD), b"corrupt").unwrap();
+        assert!(fixture.load(Default::default()).is_err());
     }
     #[test]
     fn in_memory_files_prepare_as_the_directory_does_and_refuse_a_missing_or_changed_one() {

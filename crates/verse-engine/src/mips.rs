@@ -1,4 +1,5 @@
 //! Deterministic RGBA8 mip recipes, independent of GPU formats and source I/O.
+pub mod archive;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
