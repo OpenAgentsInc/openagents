@@ -1,0 +1,4819 @@
+{
+  "schema": "verse.multiplayer.load.v3",
+  "movement_frames_requested": true,
+  "status": "complete",
+  "seconds": 75,
+  "players": [
+    {
+      "player": 0,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 577,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 593,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 612,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 708,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 4
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 820,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 852,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 912,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1250,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 16
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1371,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 18
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1541,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 21
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1592,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 21
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1645,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 21
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1809,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 26
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1922,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 28
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 578,
+      "snapshot_bytes": 40895616,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 345,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 15,
+      "accepted_casts": {
+        "Fireball": 1,
+        "Grease": 2,
+        "Light": 2,
+        "Magic Missile": 1,
+        "Misty Step": 1,
+        "Shield": 1,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 2
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 30,
+        "p95": 494.452333,
+        "max": 867.278
+      }
+    },
+    {
+      "player": 1,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 593,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 1
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 612,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 1
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 745,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 779,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 820,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 852,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 912,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1082,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 13
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1253,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 17
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1371,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 18
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1592,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 22
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1866,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 27
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 561,
+      "snapshot_bytes": 39795859,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 352,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 13,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 2,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 1,
+        "Shield": 2,
+        "Shoot Bow": 1,
+        "Thunderwave": 2,
+        "Web": 2
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 30,
+        "p95": 337.2665,
+        "max": 899.2226250000001
+      }
+    },
+    {
+      "player": 2,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 577,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 593,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 612,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 631,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 779,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 820,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 852,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 912,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 968,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1812,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 27
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1866,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 27
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 538,
+      "snapshot_bytes": 38066742,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 326,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 12,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 1,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 1,
+        "Shield": 1,
+        "Shoot Bow": 1,
+        "Thunderwave": 3,
+        "Web": 2
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 29,
+        "p95": 337.10025,
+        "max": 867.3960830000001
+      }
+    },
+    {
+      "player": 3,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 577,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 593,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 701,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 3
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 795,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 812,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1006,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 11
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1063,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 11
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1409,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 18
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1575,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 21
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1679,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 23
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1791,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 25
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1849,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 27
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 576,
+      "snapshot_bytes": 40952819,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 373,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 12,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 1,
+        "Grease": 1,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 2,
+        "Shoot Bow": 2,
+        "Thunderwave": 2,
+        "Web": 2
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 29,
+        "p95": 311.57374999999996,
+        "max": 867.423583
+      }
+    },
+    {
+      "player": 4,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 593,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 1
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 663,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 701,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 812,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1063,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 12
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1293,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 17
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1409,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 18
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1575,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 21
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1679,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 23
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1791,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 25
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 553,
+      "snapshot_bytes": 39281637,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 354,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 11,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 2,
+        "Grease": 1,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 2,
+        "Web": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 29,
+        "p95": 272.112417,
+        "max": 867.462583
+      }
+    },
+    {
+      "player": 5,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 577,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 725,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 727,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 779,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 820,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 852,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 912,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1253,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 13
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1592,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 18
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1809,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 22
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1922,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 9,
+            "accepted_sequence": 24
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 538,
+      "snapshot_bytes": 38241866,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 349,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 4,
+      "movement_inputs": 4,
+      "input_pressure": 0,
+      "refusals": 16,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 2,
+        "Grease": 2,
+        "Light": 2,
+        "Magic Missile": 1,
+        "Shield": 1,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 34,
+        "p95": 1382.540084,
+        "max": 1733.9778749999998
+      }
+    },
+    {
+      "player": 6,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 577,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 630,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 638,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 640,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 642,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 646,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 646,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 708,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 745,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 779,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 822,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 852,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 912,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1023,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 10
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1253,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 15
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1371,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 16
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1592,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 20
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1809,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 24
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1922,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 26
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 532,
+      "snapshot_bytes": 37843831,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 348,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 3,
+      "movement_inputs": 6,
+      "input_pressure": 0,
+      "refusals": 21,
+      "accepted_casts": {
+        "Fireball": 2,
+        "Grease": 3,
+        "Light": 2,
+        "Magic Missile": 1,
+        "Shield": 1,
+        "Shoot Bow": 2,
+        "Thunderwave": 2
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 37,
+        "p95": 1049.856708,
+        "max": 1085.353417
+      }
+    },
+    {
+      "player": 7,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 577,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 616,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 631,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 708,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 745,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 779,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 822,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 852,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 912,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1023,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 10
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1371,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 16
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1592,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 20
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1809,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 24
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1922,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 26
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 506,
+      "snapshot_bytes": 36028135,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 335,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 1,
+      "movement_inputs": 1,
+      "input_pressure": 0,
+      "refusals": 16,
+      "accepted_casts": {
+        "Fireball": 2,
+        "Grease": 3,
+        "Light": 2,
+        "Magic Missile": 1,
+        "Misty Step": 1,
+        "Shield": 1,
+        "Shoot Bow": 2,
+        "Thunderwave": 2
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 31,
+        "p95": 571.7637920000001,
+        "max": 1041.368417
+      }
+    },
+    {
+      "player": 8,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 751,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 779,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 805,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 822,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1202,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 15
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1262,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 17
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1602,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 22
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1821,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 26
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 493,
+      "snapshot_bytes": 35138123,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 335,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 10,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 2,
+        "Shoot Bow": 2,
+        "Thunderwave": 1,
+        "Web": 2
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 29,
+        "p95": 302.738292,
+        "max": 318.379208
+      }
+    },
+    {
+      "player": 9,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 636,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 751,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 780,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 805,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 822,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 864,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 5
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Command control snapshot expired before admission",
+          "code": "stale_tick",
+          "tick": 1382,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 18
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1650,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 23
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1704,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 23
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 488,
+      "snapshot_bytes": 34826427,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 336,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 11,
+      "accepted_casts": {
+        "Fireball": 3,
+        "Grease": 2,
+        "Light": 2,
+        "Magic Missile": 1,
+        "Misty Step": 2,
+        "Shield": 2,
+        "Shoot Bow": 2,
+        "Thunderwave": 2,
+        "Web": 2
+      },
+      "minimum_hp": 118,
+      "binding_to_outcome_ms": {
+        "samples": 29,
+        "p95": 242.182833,
+        "max": 288.216209
+      }
+    },
+    {
+      "player": 10,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 639,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 718,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 4
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 751,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 4
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 780,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 4
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 805,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 4
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 830,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 4
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1663,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 23
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1830,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 26
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 501,
+      "snapshot_bytes": 35795527,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 350,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 10,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 3,
+        "Grease": 2,
+        "Light": 2,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 2,
+        "Shoot Bow": 2,
+        "Thunderwave": 2,
+        "Web": 2
+      },
+      "minimum_hp": 90,
+      "binding_to_outcome_ms": {
+        "samples": 29,
+        "p95": 244.661417,
+        "max": 292.84612500000003
+      }
+    },
+    {
+      "player": 11,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 663,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 701,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 795,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 812,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1006,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 11
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1063,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 11
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1293,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 17
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1575,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 21
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1627,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 21
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1679,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 21
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1791,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 25
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1848,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 25
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 487,
+      "snapshot_bytes": 34783947,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 342,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 14,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 1,
+        "Grease": 1,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 2,
+        "Shoot Bow": 2,
+        "Thunderwave": 2
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 29,
+        "p95": 292.851083,
+        "max": 371.913833
+      }
+    },
+    {
+      "player": 12,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 718,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 3
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 751,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 3
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 780,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 3
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 805,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 3
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 830,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 3
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1104,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 12
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1338,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 17
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1664,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 22
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1890,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 27
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 473,
+      "snapshot_bytes": 33737398,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 323,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 11,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 2,
+        "Light": 2,
+        "Magic Missile": 2,
+        "Shield": 2,
+        "Shoot Bow": 1,
+        "Thunderwave": 2,
+        "Web": 1
+      },
+      "minimum_hp": 182,
+      "binding_to_outcome_ms": {
+        "samples": 28,
+        "p95": 241.232792,
+        "max": 247.383459
+      }
+    },
+    {
+      "player": 13,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 572,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 665,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 703,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 736,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 816,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1014,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 11
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1127,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 13
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1302,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 17
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1636,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 22
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1744,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 24
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Command control snapshot expired before admission",
+          "code": "stale_tick",
+          "tick": 1863,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 26
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 511,
+      "snapshot_bytes": 36477058,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 355,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 13,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 2,
+        "Grease": 1,
+        "Light": 1,
+        "Magic Missile": 2,
+        "Shield": 2,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 29,
+        "p95": 244.653459,
+        "max": 292.858084
+      }
+    },
+    {
+      "player": 14,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 574,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 1
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 665,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 703,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 736,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 816,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1014,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 11
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1127,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 13
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1241,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 15
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1302,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 17
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1636,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 22
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1744,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 24
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Command control snapshot expired before admission",
+          "code": "stale_tick",
+          "tick": 1863,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 26
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 516,
+      "snapshot_bytes": 36812841,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 357,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 13,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 2,
+        "Grease": 1,
+        "Light": 1,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 2,
+        "Web": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 29,
+        "p95": 306.30325000000005,
+        "max": 381.58475
+      }
+    },
+    {
+      "player": 15,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 574,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 574,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 682,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 718,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 751,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 780,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 805,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 2
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1104,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 12
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1216,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 14
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1338,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 17
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1664,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 22
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1889,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 27
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 505,
+      "snapshot_bytes": 35985760,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 344,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 12,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 2,
+        "Light": 1,
+        "Magic Missile": 2,
+        "Shield": 2,
+        "Shoot Bow": 2,
+        "Thunderwave": 2
+      },
+      "minimum_hp": 8,
+      "binding_to_outcome_ms": {
+        "samples": 28,
+        "p95": 337.165083,
+        "max": 381.327834
+      }
+    },
+    {
+      "player": 16,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 577,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 1
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 610,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 1
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 663,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 3
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 703,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 3
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 736,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 3
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 773,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 816,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1014,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 12
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1127,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 1,
+            "accepted_sequence": 14
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1206,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 1
+            },
+            "epoch": 2,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1241,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 1
+            },
+            "epoch": 2,
+            "accepted_sequence": 1
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1636,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 1
+            },
+            "epoch": 2,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1689,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 1
+            },
+            "epoch": 2,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1744,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 1
+            },
+            "epoch": 2,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1805,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 1
+            },
+            "epoch": 2,
+            "accepted_sequence": 11
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 511,
+      "snapshot_bytes": 36448566,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 353,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 16,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 2,
+        "Grease": 1,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 1,
+        "Web": 2
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 31,
+        "p95": 514.259625,
+        "max": 621.194709
+      }
+    },
+    {
+      "player": 17,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 585,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 593,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 612,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 631,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 663,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 703,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 736,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 773,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 816,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1014,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 11
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1127,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 13
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1193,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 6,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1195,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 6,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1198,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 6,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1241,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 6,
+            "accepted_sequence": 1
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1636,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 6,
+            "accepted_sequence": 7
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1744,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 6,
+            "accepted_sequence": 9
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1805,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 1
+            },
+            "epoch": 6,
+            "accepted_sequence": 11
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 512,
+      "snapshot_bytes": 36518648,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 352,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 11,
+      "movement_inputs": 17,
+      "input_pressure": 0,
+      "refusals": 19,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 2,
+        "Grease": 1,
+        "Light": 1,
+        "Magic Missile": 2,
+        "Shield": 2,
+        "Shoot Bow": 2,
+        "Thunderwave": 1,
+        "Web": 1
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 50,
+        "p95": 305.216625,
+        "max": 620.7032919999999
+      }
+    },
+    {
+      "player": 18,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 585,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 588,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 590,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 610,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Command control snapshot expired before admission",
+          "code": "stale_tick",
+          "tick": 618,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 631,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 663,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 703,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 736,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 773,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 796,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 816,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 6
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1014,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 11
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1127,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 13
+          }
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval clock expired at world step 3076, confirmed step 3040",
+          "code": "command",
+          "tick": 1213,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 10,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1214,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 10,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1229,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 12,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1230,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 12,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1243,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 13,
+            "accepted_sequence": 4
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1290,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 14,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1291,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 14,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "command_binding",
+          "message": "Tracked input control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1401,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 16,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1404,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 16,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1429,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 18,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1433,
+          "control": {
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 1
+            },
+            "epoch": 18,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 483,
+      "snapshot_bytes": 34393438,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 325,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 74,
+      "movement_inputs": 110,
+      "input_pressure": 0,
+      "refusals": 52,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 2,
+        "Grease": 1,
+        "Magic Missile": 2,
+        "Shield": 3
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 145,
+        "p95": 406.620792,
+        "max": 1699.3129580000002
+      }
+    }
+  ],
+  "limits": [
+    "Headless authenticated clients measure transport and authority load, not rendering.",
+    "Headless intervals use confirmed server time plus the existing bounded authority lookahead, without native prediction or rendering; the receipt declares the requested movement mode.",
+    "Binding-to-outcome includes server processing and client delivery, not isolated RTT.",
+    "Timing retains at most 8192 samples per player."
+  ]
+}

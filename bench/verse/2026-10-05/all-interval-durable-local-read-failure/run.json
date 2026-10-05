@@ -1,0 +1,15 @@
+{
+  "acceptance": "failed",
+  "reason": "Native read backpressure exceeded ten seconds; most headless players observed no interval movement.",
+  "compiled_revisions": {
+    "host": "5a1f22c34a",
+    "native": "32323eeec7",
+    "load": "32323eeec7"
+  },
+  "delay_ms": 0,
+  "jitter_ms": 0,
+  "limits": [
+    "Shared hardware and CPU sampling overhead; not an isolated performance comparison.",
+    "Native process failed; successful headless exits do not prove movement continuity."
+  ]
+}
