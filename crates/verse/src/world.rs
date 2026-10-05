@@ -564,6 +564,22 @@ fn side_display(site: GymSite, label: &str, screen: Vec3, interaction: Option<bo
     mesh
 }
 
+/// The Grid's ground lattice alone, in the amber palette.
+#[must_use]
+pub(crate) fn ground_mesh() -> Mesh {
+    let mut mesh = Mesh::default();
+    ground(&mut mesh);
+    mesh
+}
+
+/// The Gym at `site` alone, in the amber palette, without its blockers.
+#[must_use]
+pub(crate) fn gym_mesh(site: GymSite, results: bool) -> Mesh {
+    let mut world = World::default();
+    gym(&mut world, site, results);
+    world.mesh
+}
+
 /// Builds the Gym in its own frame and stands it at `site`. With
 /// `results`, its plot panels are the EVALS and RESULTS boards instead.
 fn gym(world: &mut World, site: GymSite, results: bool) {
