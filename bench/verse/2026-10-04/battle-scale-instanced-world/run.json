@@ -1,0 +1,34 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": false,
+    "compiled_revisions": {
+      "host": "9c7cda4ca0",
+      "clients": "9c7cda4ca0"
+    },
+    "fixture_revision": "9c7cda4ca010571ec9580904470ce1f1bf53d6c9",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "stability": "All twenty connections and processes complete; all occupancy samples retain forty live hostile NPCs. Ten blocked motor advances are contained without stopping the host.",
+  "limits": [
+    "Native frame p95 is 45.774 ms; CPU command finalization p95 is 31.976 ms. The 60 FPS target remains unmet.",
+    "Simulation p99 histogram upper bound and maximum are 14.041 ms.",
+    "Prediction correction p95 is 0.213 m; maximum is 1.067 m.",
+    "Blocked actors retain their previous state; this does not establish that every crowded actor resumes motion promptly.",
+    "Persistent storage is disabled; the separate persistent admission workload remains failed.",
+    "A captured frame shows distinct actor placement and poses, but exact instanced-versus-fallback GPU equivalence has not been measured.",
+    "Runs share a contributor machine and have different trajectories; comparisons do not isolate causal effects.",
+    "GPU execution and input-to-display latency remain unmeasured."
+  ]
+}
