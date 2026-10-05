@@ -1,0 +1,176 @@
+{
+  "checks": [
+    "Canonical full/delta digest round trip and signed zero",
+    "Malformed paths, digests, schemas, identities, and missing baselines do not advance acknowledgement",
+    "Cache discard preserves the highest admitted revision",
+    "Unknown acknowledgement and explicit discard produce full resync",
+    "Control fence changes force a full baseline",
+    "Relevance entry, exit, and same-life reentry preserve generation and death fences",
+    "Elapsed-tick frequency updates survive sparse polling",
+    "Large rotated supports remain in scoped collision; distant small shapes leave",
+    "Valid geometry exceeding baseline bytes is refused before retention",
+    "Shared extraction keeps private resources and HUD owner-bound",
+    "Host mutations invalidate the shared cache",
+    "Revocation and disconnect free retained bytes while preserving aggregate counters",
+    "One replaceable pipeline request coexists with ordered event and inventory reads"
+  ],
+  "created_utc": "2026-10-05T00:59:26.379287+00:00",
+  "delayed_tls": {
+    "client_discard_resync": true,
+    "downstream_delay_ms": 100,
+    "proxy_capacity_chunks": 8,
+    "proxy_chunk_bytes": 4096,
+    "queued_chunks_downstream_peak": 6,
+    "queued_chunks_upstream_peak": 1,
+    "replaceable_requests_in_flight": 1,
+    "round_trip_median_ms": 171.97892000000002,
+    "round_trip_p95_ms": 172.808043,
+    "samples": 12,
+    "snapshot_age_at_receipt_lower_bound_ms": 100,
+    "stats": {
+      "deltas": 9,
+      "encode_micros": 12956,
+      "encode_peak_micros": 1618,
+      "encoded_bytes": 136823,
+      "full": 3,
+      "max_ack_age_ticks": 6,
+      "max_packet_bytes": 23104,
+      "resyncs": 1,
+      "retained_bytes": 0
+    },
+    "unknown_ack_resync": true,
+    "upstream_delay_ms": 67
+  },
+  "finding": "V05",
+  "issue": 10591,
+  "limitations": [
+    "Population fixtures append distant actors to admitted DTO source lists; they do not simulate 128 additional NPCs or certify crowded battle capacity.",
+    "Per-viewer filtering still clones/scans bounded source lists; shared extraction and cell lists are reused between mutations.",
+    "Full diagnostic snapshots and initial movement-mode entry remain available outside normal delta polling.",
+    "Encoded byte counters measure generated packet bodies, not TLS frames or confirmed delivery.",
+    "The delayed TLS run has 12 sequential observations. Its p95 is the maximum sample; snapshot age is a configured lower bound from the downstream delay, not a synchronized WAN clock measurement.",
+    "TCP loss/retransmission, real WAN routes, rendering, GPU, and input-to-display latency were not tested.",
+    "Current actor/instance admission and replica generation-history limits remain.",
+    "Large conservative collision meshes can remain relevant to many viewers."
+  ],
+  "limits": {
+    "baseline_bytes": 524288,
+    "baselines_per_connection": 2,
+    "cell_width_m": 32,
+    "collision_radius_m": 80,
+    "max_edits": 4096,
+    "max_path_components": 24,
+    "outer_transform_refresh_ticks": 6,
+    "presentation_radius_m": 64,
+    "replaceable_snapshot_requests_in_flight": 1,
+    "request_bytes": 16384,
+    "response_bytes": 2097152,
+    "source_tick_hz": 30
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "build": "cargo test; verse-world and physics opt-level=3, debug assertions and debug info enabled",
+    "cpu": "Intel Core i7-14700K",
+    "logical_cpus": 28
+  },
+  "measurement_source_parent": "61b282c2d90662e8350fbde631aab60b015ba9f2",
+  "population_runs": [
+    {
+      "deltas": 59,
+      "distant_actors": 0,
+      "elapsed_micros": 122591,
+      "encode_micros": 58567,
+      "full": 1,
+      "full_bytes": 22745,
+      "retained_bytes": 47284,
+      "scoped_actors": 15,
+      "steady_samples": 59,
+      "steady_total_bytes": 30286
+    },
+    {
+      "deltas": 59,
+      "distant_actors": 32,
+      "elapsed_micros": 124009,
+      "encode_micros": 59053,
+      "full": 1,
+      "full_bytes": 22745,
+      "retained_bytes": 47284,
+      "scoped_actors": 15,
+      "steady_samples": 59,
+      "steady_total_bytes": 30286
+    },
+    {
+      "deltas": 59,
+      "distant_actors": 128,
+      "elapsed_micros": 124208,
+      "encode_micros": 58736,
+      "full": 1,
+      "full_bytes": 22745,
+      "retained_bytes": 47284,
+      "scoped_actors": 15,
+      "steady_samples": 59,
+      "steady_total_bytes": 30286
+    }
+  ],
+  "schema": "verse.spatial-replication.fixture.v1",
+  "scope": "Deterministic DTO relevance/encoding and owned scratch TLS SDK fixtures; no GPU or external devices.",
+  "source_sha256": {
+    "assets/verse/original/ritual.json": "0e2c943e012ad5f491a2e40414c81a35876df07d183ce91c2c5c5194d0f7b4f1",
+    "crates/physics/src/queries/snapshot.rs": "696f90eba61b4e3fe63bb40a111982eb14cfc96b463daec02751221e23fed3de",
+    "crates/verse-world/src/play/multiplayer.rs": "3f0e464709fe02f8550dc0d3a4d4ad72cf1686cdf2a08d38c274a655a817ac80",
+    "crates/verse-world/src/rules.rs": "2430853ba2bd2c7c283ecab19efcd6ae7818dc428ab06d0731956b6cca8120fb",
+    "crates/verse-world/src/service.rs": "f7e91799465d5f672fd96abd2634b53525beb9a8b48da287cf65a579cd9a7e31",
+    "crates/verse-world/src/service/auth.rs": "97f8b06137df136663dcaafe0556ff016681209400896ad4d8ab3d346ab13264",
+    "crates/verse-world/src/service/client.rs": "f805a4753e70468ec3ff3b686847455797a40728f1f7282511b629167b8fe9ab",
+    "crates/verse-world/src/service/net.rs": "d540a2f95f456722098be6e10bd116de03bc17401addf1f0437ff7e1c72a543d",
+    "crates/verse-world/src/service/replica.rs": "12db2c919ee6d36e3a39e7407909f4adf1b6d9c2f943bc7b590b7ae04b60ce38",
+    "crates/verse-world/src/service/replication.rs": "2206c9b5cbc62265a8f92e9a7b8b60847d0034df55531dab89a95db13fabac94",
+    "crates/verse-world/src/service/replication/spatial.rs": "bebdbd67a60b18aea52a9f211eceb2b7be89a66958b44835911bb9f8b35a90db",
+    "crates/verse-world/src/service/replication/tests.rs": "64a9874c26d814e162bfa44c4c87b041d387089f003cd41dffae1a37d9407585",
+    "crates/verse-world/src/service/replication/transport.rs": "89227330ce9ab09d147b7c4283a5885673d5d17432570827090aa3686dd60bf1",
+    "crates/verse-world/src/service/wire.rs": "28bf69265798294454bfe84a4b2f084cbc0228f883d3a63bff297d85e78e1a82",
+    "crates/verse-world/src/service/worker.rs": "a118d4fdacc2896e0369abf9e7a688bd1ffa2912d25f92039cb88800a88d9de3"
+  },
+  "validation": [
+    {
+      "command": "cargo test -p verse-world --features service-net --lib -- --test-threads=4",
+      "failed": 0,
+      "ignored": 2,
+      "ignored_reason": "Process-crash child hooks are invoked by parent tests.",
+      "passed": 424,
+      "seconds": 84.94
+    },
+    {
+      "command": "cargo test -p verse-world --features service-net --lib service::replication -- --test-threads=1 --nocapture",
+      "failed": 0,
+      "passed": 12,
+      "seconds": 3.44
+    },
+    {
+      "command": "cargo test -p verse --no-default-features --features imported-desktop,remote-chamber --lib imported::remote",
+      "failed": 0,
+      "passed": 14,
+      "seconds": 0.68
+    },
+    {
+      "command": "cargo check -p verse-world --no-default-features --quiet",
+      "result": "passed"
+    },
+    {
+      "command": "cargo fmt -p verse-world --check",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test -p verse --no-default-features --features imported-desktop,remote-chamber --lib imported::remote",
+      "failed": 0,
+      "integration_parent": "7642e8ce45",
+      "passed": 14,
+      "seconds": 0.67
+    }
+  ],
+  "validation_history": [
+    "Initial delayed movement deltas exposed signed-zero digest mismatch; canonical zero normalization and a regression test fixed it.",
+    "A fixture that directly mutates private game state now clears the shared cache explicitly; public host mutations invalidate it automatically."
+  ],
+  "wire_version": 23
+}

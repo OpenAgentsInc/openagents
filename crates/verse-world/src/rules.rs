@@ -1107,6 +1107,13 @@ impl Simulation {
     }
     /// Projects one player's private resources and the shared public combat state.
     pub fn snapshot_for(&self, player: u32) -> Result<Snapshot, String> {
+        let mut snapshot = self.private_snapshot(player)?;
+        snapshot.actors = self.actors.values().cloned().collect();
+        snapshot.projectiles = self.flights.iter().map(|f| f.view.clone()).collect();
+        snapshot.effects = self.effects.clone();
+        Ok(snapshot)
+    }
+    pub(crate) fn private_snapshot(&self, player: u32) -> Result<Snapshot, String> {
         let state = self.players.get(&player).ok_or("Unknown player")?;
         let player = &state.resources;
         Ok(Snapshot {
@@ -1134,9 +1141,9 @@ impl Simulation {
                     }
                 })
                 .collect(),
-            actors: self.actors.values().cloned().collect(),
-            projectiles: self.flights.iter().map(|f| f.view.clone()).collect(),
-            effects: self.effects.clone(),
+            actors: vec![],
+            projectiles: vec![],
+            effects: vec![],
             counters: self.counters.clone(),
         })
     }

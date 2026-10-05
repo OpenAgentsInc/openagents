@@ -79,6 +79,10 @@ pub struct Gateway {
     last_now: u64,
     pending: BTreeMap<ConnectionId, Challenge>,
     bindings: BTreeMap<ConnectionId, Binding>,
+    pub(super) view_index: Option<super::replication::Index>,
+    pub(super) view_cache: Option<super::wire::State>,
+    pub(super) replication_totals: super::replication::Stats,
+    pub(super) replication: BTreeMap<ConnectionId, super::replication::Sender>,
 }
 impl Gateway {
     pub fn new(chamber: Chamber) -> Result<Self, String> {
@@ -93,6 +97,10 @@ impl Gateway {
             last_now: 0,
             pending: BTreeMap::new(),
             bindings: BTreeMap::new(),
+            replication: BTreeMap::new(),
+            replication_totals: Default::default(),
+            view_cache: None,
+            view_index: None,
         })
     }
     /// Fixes content identity before any opening challenge has been issued.
@@ -144,12 +152,15 @@ impl Gateway {
         super::save::decode(bytes, content, instance)
     }
     pub fn enroll_primary(&mut self, key: [u8; 32]) -> Result<(), String> {
+        self.view_cache = None;
         self.chamber.enroll_primary(valid_principal(key)?)
     }
     pub fn enroll_player(&mut self, key: [u8; 32], spawn: Vec3) -> Result<LifeId, String> {
+        self.view_cache = None;
         self.chamber.enroll_player(valid_principal(key)?, spawn)
     }
     pub fn enroll_spectator(&mut self, key: [u8; 32]) -> Result<(), String> {
+        self.view_cache = None;
         self.chamber.enroll_spectator(valid_principal(key)?)
     }
     /// Trusted host operation, excluded from client request payloads.
@@ -157,6 +168,7 @@ impl Gateway {
         &mut self,
         transaction: super::rewards::Transaction,
     ) -> Result<super::rewards::Receipt, String> {
+        self.view_cache = None;
         self.chamber.grant_reward(transaction)
     }
     pub fn character_rewards(&self, actor: u64) -> Option<&super::rewards::Character> {
@@ -204,6 +216,7 @@ impl Gateway {
         quest: u64,
         giver: LifeId,
     ) -> Result<super::rewards::Receipt, String> {
+        self.view_cache = None;
         let b = self.binding(id)?;
         self.chamber
             .accept_quest(b.principal, b.session, life, epoch, quest, giver)
@@ -215,6 +228,7 @@ impl Gateway {
         epoch: u64,
         quest: u64,
     ) -> Result<super::rewards::Receipt, String> {
+        self.view_cache = None;
         let b = self.binding(id)?;
         self.chamber
             .claim_quest(b.principal, b.session, life, epoch, quest)
@@ -240,6 +254,7 @@ impl Gateway {
         item: u64,
         operation: [u8; 16],
     ) -> Result<super::rewards::Receipt, String> {
+        self.view_cache = None;
         let b = self.binding(id)?;
         self.chamber
             .use_item(b.principal, b.session, life, epoch, item, operation)
@@ -276,6 +291,7 @@ impl Gateway {
         item: u64,
         operation: [u8; 16],
     ) -> Result<super::rewards::Receipt, String> {
+        self.view_cache = None;
         let b = self.binding(id)?;
         self.chamber
             .equip_gear(b.principal, b.session, life, epoch, slot, item, operation)
@@ -291,6 +307,7 @@ impl Gateway {
         outfit: u64,
         operation: [u8; 16],
     ) -> Result<super::rewards::Receipt, String> {
+        self.view_cache = None;
         let b = self.binding(id)?;
         self.chamber
             .equip_outfit(b.principal, b.session, life, epoch, outfit, operation)
@@ -304,6 +321,7 @@ impl Gateway {
     }
     /// Opens a connection using monotonic milliseconds supplied by the host.
     pub fn open(&mut self, now_ms: u64) -> Result<(ConnectionId, Challenge), String> {
+        self.view_cache = None;
         self.clock(now_ms)?;
         self.pending.retain(|_, c| now_ms < c.expires_ms);
         if self.pending.len() + self.bindings.len() >= CAPACITY {
@@ -343,6 +361,7 @@ impl Gateway {
         public_key: [u8; 32],
         signature: [u8; 64],
     ) -> Result<(), String> {
+        self.view_cache = None;
         self.clock(now_ms)?;
         let challenge = self
             .pending
@@ -363,6 +382,7 @@ impl Gateway {
             .map_err(|_| "Connection signature refused")?;
         let session = self.chamber.connect(principal)?;
         self.bindings.retain(|_, b| b.principal != principal);
+        self.purge_replication();
         self.bindings
             .insert(connection, Binding { principal, session });
         Ok(())
@@ -373,11 +393,17 @@ impl Gateway {
             .copied()
             .ok_or_else(|| "Connection is not authenticated".into())
     }
+    pub(super) fn check_view(&self, id: ConnectionId) -> Result<(), String> {
+        let b = self.binding(id)?;
+        self.chamber.connection(b.principal, b.session)?;
+        Ok(())
+    }
     pub fn admission(&self, id: ConnectionId) -> Result<Admission, String> {
         let b = self.binding(id)?;
         self.chamber.admission(b.principal, b.session)
     }
     pub fn submit(&mut self, id: ConnectionId, command: Command<Ability>) -> Result<(), String> {
+        self.view_cache = None;
         let b = self.binding(id)?;
         self.chamber.submit(b.principal, b.session, command)
     }
@@ -387,6 +413,7 @@ impl Gateway {
         life: LifeId,
         epoch: u64,
     ) -> Result<(), String> {
+        self.view_cache = None;
         let b = self.binding(id)?;
         self.chamber
             .begin_movement_frames(b.principal, b.session, life, epoch)
@@ -396,6 +423,7 @@ impl Gateway {
         id: ConnectionId,
         frame: crate::movement::frames::Frame,
     ) -> Result<(), String> {
+        self.view_cache = None;
         let b = self.binding(id)?;
         self.chamber
             .submit_movement_frame(b.principal, b.session, frame)
@@ -405,10 +433,13 @@ impl Gateway {
         self.chamber.snapshot(b.principal, b.session)
     }
     pub fn respawn(&mut self, id: ConnectionId, life: LifeId) -> Result<LifeId, String> {
+        self.view_cache = None;
         let b = self.binding(id)?;
         self.chamber.respawn(b.principal, b.session, life)
     }
     pub fn close(&mut self, id: ConnectionId) -> Result<(), String> {
+        self.view_cache = None;
+        self.retire_replication(id);
         if let Some(b) = self.bindings.get(&id).copied() {
             self.chamber.disconnect(b.principal, b.session)?;
             self.bindings.remove(&id);
@@ -420,13 +451,16 @@ impl Gateway {
         }
     }
     pub fn revoke(&mut self, key: [u8; 32]) -> Result<(), String> {
+        self.view_cache = None;
         let principal = valid_principal(key)?;
         self.chamber.revoke(principal)?;
         self.bindings.retain(|_, b| b.principal != principal);
+        self.purge_replication();
         Ok(())
     }
     /// Parks admitted controllers and clears challenges when the host stops.
     pub fn close_all(&mut self) -> Result<(), String> {
+        self.view_cache = None;
         let ids: Vec<_> = self.bindings.keys().copied().collect();
         for id in ids {
             self.close(id)?;
@@ -439,9 +473,11 @@ impl Gateway {
         self.bindings.contains_key(&id)
     }
     pub fn tick(&mut self, dt: f32) -> Result<(), String> {
+        self.view_cache = None;
         self.chamber.tick(dt)
     }
     pub fn reset(&mut self) -> Result<(), String> {
+        self.view_cache = None;
         self.chamber.reset()
     }
 }

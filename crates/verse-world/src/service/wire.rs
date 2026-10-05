@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 22;
+pub const VERSION: u16 = 23;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -131,6 +131,9 @@ pub enum Body {
         frame: crate::movement::frames::Frame,
     },
     Snapshot {},
+    Replicate {
+        ack: Option<super::replication::Baseline>,
+    },
     Inventory {},
     UseItem {
         life: Life,
@@ -204,7 +207,11 @@ impl State {
                 .iter()
                 .find(|a| a.life == control.life)
                 .ok_or("Movement baseline actor is missing")?;
-            if movement.life != control.life.into()
+            if self
+                .scope
+                .as_ref()
+                .is_some_and(|s| s.center != actor.actor.position.to_array())
+                || movement.life != control.life.into()
                 || movement.epoch != control.epoch
                 || movement.applied_sequence > control.accepted_sequence
                 || (movement.profile == crate::movement::Profile::Arrival
@@ -260,6 +267,9 @@ impl State {
     }
     /// Admits the shared snapshot and its complete presentation life bindings.
     pub fn validate(&self, instance: u64) -> Result<(), String> {
+        if let Some(scope) = &self.scope {
+            scope.validate()?;
+        }
         if let Some(collision) = &self.collision {
             collision.validate(instance)?;
         }
@@ -358,6 +368,8 @@ pub struct ActorBinding {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<super::replication::Scope>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collision: Option<physics::queries::SceneSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -458,6 +470,9 @@ pub enum Reply {
         operation: [u8; 16],
         revision: u64,
     },
+    Replicated {
+        packet: super::replication::Packet,
+    },
     Snapshot {
         state: State,
     },
@@ -534,6 +549,109 @@ impl Gateway {
             }),
         }
         .encode()
+    }
+    fn extract_shared(&self, id: ConnectionId) -> Result<State, (&'static str, String)> {
+        let snapshot = self.snapshot(id).map_err(|e| ("authentication", e))?;
+        let actors: Vec<_> = snapshot
+            .actors
+            .iter()
+            .filter_map(|actor| {
+                let life = self.game().projectile_caster_life(actor.id).or_else(|| {
+                    self.game()
+                        .ids
+                        .iter()
+                        .find(|(_, source)| **source == actor.id)
+                        .and_then(|(id, _)| self.game().actor_life(*id))
+                })?;
+                Some(ActorBinding {
+                    source: actor.id,
+                    life: life.into(),
+                })
+            })
+            .collect();
+        let mut presentation = super::presentation::Presentation::extract(self.game(), &actors);
+        for pose in &mut presentation.actors {
+            if let Some(character) = self.character_rewards(pose.life.actor) {
+                pose.equipment = character
+                    .equipment
+                    .values()
+                    .map(|id| self.equipment().item(*id).cloned())
+                    .collect::<Result<_, _>>()
+                    .map_err(|e| ("equipment", e))?;
+                if character.outfit != 0 {
+                    pose.outfit_model = Some(
+                        self.outfits()
+                            .outfit(character.outfit)
+                            .map_err(|e| ("outfit", e))?
+                            .model
+                            .clone(),
+                    );
+                }
+            }
+        }
+        Ok(State {
+            scope: None,
+            collision: Some(
+                self.game()
+                    .query_scene
+                    .snapshot(self.game().player_life().instance)
+                    .map_err(|e| ("collision", e))?,
+            ),
+            movement: self
+                .admission(id)
+                .ok()
+                .map(|a| self.game().movement_baseline(a.actor()))
+                .transpose()
+                .map_err(|e| ("movement", e))?
+                .flatten(),
+            presentation,
+            hud: self
+                .admission(id)
+                .ok()
+                .map(|a| self.game().player_hud(a.actor()))
+                .transpose()
+                .map_err(|e| ("presentation", e))?,
+            snapshot,
+            actors,
+        })
+    }
+    fn state_for(&mut self, id: ConnectionId) -> Result<State, (&'static str, String)> {
+        self.check_view(id).map_err(|e| ("authentication", e))?;
+        if self.view_cache.is_none() {
+            let mut shared = self.extract_shared(id)?;
+            shared.hud = None;
+            shared.movement = None;
+            shared.snapshot.player = crate::rules::Player {
+                hp: 0,
+                max_hp: 0,
+                mana: 0,
+                max_mana: 0,
+            };
+            shared.snapshot.abilities.clear();
+            self.view_index = Some(super::replication::Index::new(&shared));
+            self.view_cache = Some(shared);
+        }
+        let mut state = self.view_cache.as_ref().unwrap().clone();
+        if let Ok(admission) = self.admission(id) {
+            let private = self
+                .game()
+                .player_private_snapshot(admission.actor())
+                .map_err(|e| ("presentation", e))?;
+            state.snapshot.player = private.player;
+            state.snapshot.abilities = private.abilities;
+            state.hud = Some(
+                self.game()
+                    .player_hud(admission.actor())
+                    .map_err(|e| ("presentation", e))?,
+            );
+            state.movement = self
+                .game()
+                .movement_baseline(admission.actor())
+                .map_err(|e| ("movement", e))?;
+        } else {
+            state.collision = None;
+        }
+        Ok(state)
     }
     fn dispatch_body(
         &mut self,
@@ -655,76 +773,33 @@ impl Gateway {
                     revision: receipt.revision,
                 })
             }
-            Body::Snapshot {} => {
-                let snapshot = self.snapshot(id).map_err(|e| ("authentication", e))?;
-                let actors: Vec<_> = snapshot
-                    .actors
-                    .iter()
-                    .filter_map(|actor| {
-                        let life = self.game().projectile_caster_life(actor.id).or_else(|| {
-                            self.game()
-                                .ids
-                                .iter()
-                                .find(|(_, source)| **source == actor.id)
-                                .and_then(|(id, _)| self.game().actor_life(*id))
-                        })?;
-                        Some(ActorBinding {
-                            source: actor.id,
-                            life: life.into(),
-                        })
-                    })
-                    .collect();
-                let mut presentation =
-                    super::presentation::Presentation::extract(self.game(), &actors);
-                for pose in &mut presentation.actors {
-                    if let Some(character) = self.character_rewards(pose.life.actor) {
-                        pose.equipment = character
-                            .equipment
-                            .values()
-                            .map(|id| self.equipment().item(*id).cloned())
-                            .collect::<Result<_, _>>()
-                            .map_err(|e| ("equipment", e))?;
-                        if character.outfit != 0 {
-                            pose.outfit_model = Some(
-                                self.outfits()
-                                    .outfit(character.outfit)
-                                    .map_err(|e| ("outfit", e))?
-                                    .model
-                                    .clone(),
-                            );
-                        }
-                    }
-                }
-                Ok(Reply::Snapshot {
-                    state: State {
-                        collision: self
-                            .admission(id)
-                            .ok()
-                            .map(|_| {
-                                self.game()
-                                    .query_scene
-                                    .snapshot(self.game().player_life().instance)
-                            })
-                            .transpose()
-                            .map_err(|e| ("collision", e))?,
-                        movement: self
-                            .admission(id)
-                            .ok()
-                            .map(|a| self.game().movement_baseline(a.actor()))
-                            .transpose()
-                            .map_err(|e| ("movement", e))?
-                            .flatten(),
-                        presentation,
-                        hud: self
-                            .admission(id)
-                            .ok()
-                            .map(|a| self.game().player_hud(a.actor()))
-                            .transpose()
-                            .map_err(|e| ("presentation", e))?,
-                        snapshot,
-                        actors,
-                    },
-                })
+            Body::Snapshot {} => Ok(Reply::Snapshot {
+                state: self.state_for(id)?,
+            }),
+            Body::Replicate { ack } => {
+                let Reply::Snapshot { state } = self.dispatch_body(id, now, Body::Snapshot {})?
+                else {
+                    unreachable!()
+                };
+                let control = self.admission(id).ok().map(|a| Control {
+                    life: a.actor().into(),
+                    epoch: a.epoch(),
+                    accepted_sequence: a.accepted_sequence(),
+                });
+                let tick = self.game().authority_tick;
+                let instance = self.game().player_life().instance;
+                let sender = self.replication.entry(id).or_default();
+                let packet = sender
+                    .project(
+                        state,
+                        &control,
+                        instance,
+                        tick,
+                        ack,
+                        self.view_index.as_ref().unwrap(),
+                    )
+                    .map_err(|e| ("replication", e))?;
+                Ok(Reply::Replicated { packet })
             }
             Body::Inventory {} => {
                 let (life, revision, character) =
@@ -1250,6 +1325,7 @@ mod tests {
         assert!(invalid.validate(110, &state.actors).is_err());
         let primary = g.admission(a).unwrap().actor();
         g.chamber.game.hostile_hit_player(primary, 1000).unwrap();
+        g.view_cache = None; // This fixture bypasses the host mutation API.
         let Reply::Snapshot { state: dead } = send(&mut g, a, 6, Body::Snapshot {}).body else {
             panic!()
         };

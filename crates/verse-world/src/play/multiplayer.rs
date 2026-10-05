@@ -291,9 +291,19 @@ impl Game {
         self.simulation
             .snapshot_for(self.player_source(life.actor).unwrap())
     }
+    pub(crate) fn player_private_snapshot(&self, life: LifeId) -> Result<Snapshot, String> {
+        if self
+            .player_admission(life.actor)
+            .is_none_or(|a| a.actor() != life)
+        {
+            return Err("Player life is stale".into());
+        }
+        self.simulation
+            .private_snapshot(self.player_source(life.actor).unwrap())
+    }
     /// Extracts HUD values for this exact controlled life without exposing authority.
     pub fn player_hud(&self, life: LifeId) -> Result<crate::hud::Own, String> {
-        let snapshot = self.player_snapshot(life)?;
+        let snapshot = self.player_private_snapshot(life)?;
         let (controls, bow_ready, casting) = if life == self.player_life() {
             (&self.controls, self.bow_ready, self.casting.as_ref())
         } else {

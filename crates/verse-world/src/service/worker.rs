@@ -207,7 +207,7 @@ pub async fn run(
                     staged = Some(input);
                 } else if !refreshed && !fresh_control(&input, client.control(), last_response) {
                     if !snapshot_pending {
-                        client.send(Body::Snapshot {})?;
+                        client.send_snapshot()?;
                         snapshot_pending = true;
                     }
                     staged = Some(input);
@@ -335,7 +335,7 @@ pub async fn run(
                     last_response = Some(Instant::now());
                     let entry = matches!(&body,Body::BeginMovementFrames{..}).then(||response.clone());
                     let update = match body {
-                        Body::Snapshot {} => {
+                        Body::Snapshot {} | Body::Replicate {..} => {
                             snapshot_pending = false;
                             refreshed = staged.is_some();
                             if let Reply::Refused { message, .. } = &response.body { return Err(message.clone()); }
@@ -369,7 +369,7 @@ pub async fn run(
                     // A staged lifecycle action drains previous IO before changing its context.
                     if input_closed || barrier || staged.is_some() { continue; }
                     if client.available() && !snapshot_pending {
-                        client.send(Body::Snapshot {})?;
+                        client.send_snapshot()?;
                         snapshot_pending = true;
                     }
                     if client.available() && !events_pending {

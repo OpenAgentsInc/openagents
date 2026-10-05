@@ -138,7 +138,8 @@ impl Buffer {
             }
         }
         for corpse in &state.presentation.corpses {
-            if self.generations.get(&corpse.life.actor) == Some(&corpse.life.generation)
+            if state.scope.is_none()
+                && self.generations.get(&corpse.life.actor) == Some(&corpse.life.generation)
                 && self.current.as_ref().is_some_and(|c| {
                     !c.state
                         .presentation
@@ -163,6 +164,7 @@ impl Buffer {
             if prop_generations.get(&prop.life.entity).is_some_and(|g| {
                 prop.life.generation < *g
                     || (prop.life.generation == *g
+                        && state.scope.is_none()
                         && !reset
                         && self.current.as_ref().is_some_and(|current| {
                             !current
@@ -191,6 +193,7 @@ impl Buffer {
                 .is_some_and(|g| {
                     blocker.life.generation < *g
                         || (blocker.life.generation == *g
+                            && state.scope.is_none()
                             && !reset
                             && self.current.as_ref().is_some_and(|c| {
                                 !c.state
@@ -371,6 +374,7 @@ pub(super) mod tests {
             control: None,
             body: Reply::Snapshot {
                 state: State {
+                    scope: None,
                     collision: None,
                     movement: None,
                     hud: None,

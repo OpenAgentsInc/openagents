@@ -22,6 +22,8 @@ pub mod presentation;
 pub mod progression;
 #[cfg(feature = "service-auth")]
 pub mod replica;
+#[cfg(feature = "service-auth")]
+pub mod replication;
 pub mod rewards;
 #[cfg(feature = "service-auth")]
 pub mod save;

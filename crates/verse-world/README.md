@@ -276,7 +276,55 @@ Quest catalogs can include bounded authored offer, objective-reminder, and turn-
 dialogue. Owned quest progress carries that text; the native giver panel selects
 the offer, reminder, or turn-in text from enrollment and objective state.
 
-Wire version 22 retains an owned movement baseline with the exact capsule state,
+Wire version 23 adds acknowledged spatial replication. `Client::snapshot` and
+native worker reads send `replicate` with the last completely admitted baseline.
+`Client::resync` discards retained bytes and requests a full baseline. The SDK
+reconstructs packets into ordinary validated `Reply::Snapshot` values before
+presentation, HUD, and prediction consume them. Diagnostic `snapshot` reads and
+initial movement-mode entry still return complete snapshots.
+
+The host selects a controlled character's center, or the primary adventurer for
+an enrolled spectator. Clients cannot widen the 64-meter presentation radius.
+Reusable 32-meter cell lists select nearby actors; relevant projectiles and
+telegraphs retain their life-bound endpoints. Collision relevance uses an
+80-meter radius and conservative sphere bounds for rotated shapes and large
+supports. HUD, resources, and cooldowns belong to the admitted owner. Spectators
+receive no private resource or ability projection. Inventory remains a separate
+owner-only read.
+
+Near poses, owned movement, and relevant dynamic collision update at the requested
+cadence. Outer-band transforms refresh after six authority ticks (5 Hz), including
+when delayed polling skips exact tick boundaries. Health, life, equipment, and
+teleport changes bypass that hold. Unchanged object fields send no delta edits.
+Every delta names its acknowledged revision, tick, and SHA-256 digest. A missing,
+expired, or differently controlled baseline produces a full packet. The host and
+SDK each retain two baselines of at most 512 KiB; edits have 4,096-operation and
+24-component path limits. Full packets replace oversized deltas. Canonical JSON
+normalizes signed zero before hashing. Malformed patches, digests, and reconstructed
+state fail admission without acknowledging the candidate.
+
+The duplex SDK admits one outstanding replaceable snapshot request. The worker
+also bounds events and inventory independently and skips missed polling intervals;
+reliable commands and event cursors keep their existing ordered semantics. TCP
+still blocks later bytes behind earlier writes. This change bounds stale pose work
+and does not claim different transport delivery guarantees. Relevance exit does
+not retire a life; the replica retains generation and death fences across reentry.
+Existing 512-entry generation-history bounds remain.
+
+`Gateway::replication_stats` and `net::Exit::stats.replication` expose produced
+full/delta counts, resyncs, encoded packet bytes, aggregate and peak encoding time,
+maximum acknowledged-baseline age, and retained baseline bytes. Counts survive
+connection closure; retained bytes drop when a connection closes or loses its
+grant. These are packet-generation counters, not confirmed network delivery.
+
+Shared public extraction and cell lists are cached until a host mutation or tick.
+Per-viewer filtering still clones and scans bounded source lists. Large conservative
+meshes can remain relevant to many viewers. Current entity admission limits and
+real WAN loss, crowded battle budgets, and transport alternatives need separate
+measurement. The retained replication fixture is in
+`bench/verse/2026-10-04/spatial-replication/run.json`.
+
+Wire version 23 retains an owned movement baseline with the exact capsule state,
 yaw, life, control epoch, and applied sequence. Snapshots withhold it while
 movement or jump input is pending, during cinematic/controller control, and
 after death; spectators receive none. Client prediction and reconciliation use the shared capsule motor. The portable `prediction::History` bounds retained movement

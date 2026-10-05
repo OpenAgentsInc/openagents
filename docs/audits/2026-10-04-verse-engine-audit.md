@@ -30,7 +30,10 @@ background storage and bounded backpressure. V03 remediation in
 [#10575](https://github.com/OpenAgentsInc/openagents/issues/10575) adds reviewed
 offline migration, retained backups, and guarded rollback. V04 remediation in
 [#10580](https://github.com/OpenAgentsInc/openagents/issues/10580) establishes a
-bounded deterministic delayed-movement profile. Two findings still deserve
+bounded deterministic delayed-movement profile. V05 remediation in
+[#10591](https://github.com/OpenAgentsInc/openagents/issues/10591) adds conservative
+spatial relevance, acknowledged deltas, and bounded snapshot scheduling. Two
+findings still deserve
 immediate engineering attention:
 
 1. A sustained 20-player/40-NPC battle fails performance acceptance, and a
@@ -137,7 +140,7 @@ Evidence labels:
 | V02 | P0 | Full synchronous checkpoint commits occupy the tick loop. | Code, risk | World service persistence | Complete ([#10574](https://github.com/OpenAgentsInc/openagents/issues/10574)) |
 | V03 | P0 | Content/rules changes lack a general durable migration path. | Code, gap | Content and save versions | Complete ([#10575](https://github.com/OpenAgentsInc/openagents/issues/10575)) |
 | V04 | P1 | Confirmed movement intervals pass a bounded delayed profile. | Recorded, code | Movement and client replication | Complete ([#10580](https://github.com/OpenAgentsInc/openagents/issues/10580)) |
-| V05 | P1 | Replication polls full snapshots without spatial relevance. | Code, gap | World service replication | Open |
+| V05 | P1 | Spatial replication bounds steady traffic in retained fixtures. | Recorded, code | World service replication | Complete ([#10591](https://github.com/OpenAgentsInc/openagents/issues/10591)) |
 | V06 | P1 | One chamber process does not provide realm/instance management. | Code, gap | World hosting | Open |
 | V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters | Open |
 | V08 | P1 | Admission needs production enrollment and overload policy. | Code, gap | World access and transport | Open |
@@ -403,33 +406,71 @@ crowded acceptance, and V24 owns mobile/web multiplayer integration. The recent
 upstream containment changes are included in these checks; they do not turn a
 failed battle performance receipt into a pass.
 
-### V05: Replication broadcasts more state than a large world needs
+### V05: Spatial replication bounds steady traffic in retained fixtures
 
-[`wire::Body::Snapshot`](../../crates/verse-world/src/service/wire.rs) requests
-full state; native cadence is 50 ms. [`worker::run`](../../crates/verse-world/src/service/worker.rs)
-also requests events and inventory. There is no subscribed per-viewer delta
-baseline or spatial relevance contract in this path. The client cache reuses
-compiled collision geometry, but wire snapshots still carry complete collision
-descriptions. That reuse does not make replication incremental.
+**Status:** Complete in [#10591](https://github.com/OpenAgentsInc/openagents/issues/10591).
 
-As population and world state grow, repeated extraction, JSON encoding,
-validation, and full transfer grow with viewers and state. TLS over TCP also
-puts obsolete poses behind earlier bytes during loss or a slow connection.
-The current safety limits of 16 KiB per request and 2 MiB per response bound
-messages; they do not establish a bandwidth budget.
+**Original finding:** Native polling transferred complete snapshots every 50 ms,
+including full collision descriptions and distant presentation. Client-side
+collision compilation reuse reduced CPU work but did not reduce wire bytes.
+The 16 KiB request and 2 MiB response bounds did not establish a steady traffic
+budget. This was a code-level scaling gap.
 
-**Improve:** Add instance/cell relevance, owner-only state, dormant objects,
-frequency classes, acknowledged delta baselines, and a full resync path. Keep
-reliable ordered transactions/events separate from replaceable pose updates at
-the protocol scheduling layer. Measure before deciding whether the transport
-also needs different delivery semantics. Epic's public
-[replication graph documentation](https://dev.epicgames.com/documentation/en-us/unreal-engine/replication-graph-in-unreal-engine)
-supports reusable spatial relevance lists as a scaling technique; this audit
-recommends an independent Rust implementation, not adoption of Unreal code.
+**Remediation:** [#10591](https://github.com/OpenAgentsInc/openagents/issues/10591)
+adds independent Rust relevance and delta contracts in
+[`service::replication`](../../crates/verse-world/src/service/replication.rs).
+Wire 23, the SDK, and the native worker use acknowledged replication requests.
+The authority chooses a 64-meter presentation radius over reusable 32-meter cells;
+collision uses an 80-meter radius with conservative bounds for rotated and large
+geometry. Relevant projectile and telegraph endpoints remain life-bound. Owned
+HUD, resources, and cooldowns stay private; spectator snapshots carry an empty
+private projection. Near poses and owned collision follow the requested cadence.
+Outer-band transforms update after six authority ticks; lifecycle, health,
+equipment, and teleport changes bypass that hold. Unchanged fields are dormant
+in the delta stream.
 
-**Acceptance:** Increasing distant entities does not linearly increase each
-client's steady traffic. Record bytes per client, encoding cost, snapshot age,
-delta hit rate, backlog, and resync correctness under impaired connections.
+Two connection-scoped baselines, each bounded to 512 KiB, bind revision, authority
+tick, and SHA-256 digest. The receiver acknowledges a state only after bounded
+patch reconstruction, digest checking, and complete state admission. Unknown or
+expired acknowledgements, control changes, and explicit client cache discard
+produce a full baseline. Oversized deltas fall back to full packets; oversized
+baselines are refused. Diagnostic reads and movement-mode entry retain full
+snapshots. Signed zero has one canonical digest representation. Replica relevance
+exit preserves generation/death fences and allows the same life to reenter.
+
+The SDK bounds replaceable snapshots to one request in flight. The worker schedules
+events and inventory separately, retains reliable command and cursor ordering,
+and skips missed snapshot intervals. Shared public extraction and cell lists are
+cached until a mutation or tick; baseline memory is released on disconnect,
+supersession, and revocation. Host metrics retain packet counts, bytes, encoding
+cost, resyncs, and acknowledgement age after disconnect.
+
+**Acceptance evidence:** The retained
+[replication receipt](../../bench/verse/2026-10-04/spatial-replication/run.json)
+compares 0, 32, and 128 additional distant actors. Each fixture retains 15 relevant
+actors and transfers the same 30,286 bytes across 59 delta samples, following a
+22,745-byte full packet. A scratch
+TLS proxy adds 67 ms upstream and 100 ms downstream delay. It verifies normal
+deltas, unknown-ack full resync, application cache-discard resync, bounded proxy
+queues, owned state admission, and baseline cleanup. Focused tests also cover
+relevance entry/exit/reentry, skipped-tick frequency updates, conservative support
+bounds, oversized geometry, malformed deltas, owner privacy, cache invalidation,
+and independent reliable reads while a snapshot is pending. The final checks pass
+424 world tests (two crash child hooks are intentionally ignored), 12 replication
+tests, 14 native remote tests, portable compilation, and formatting. The TLS
+receipt records nine deltas, three full packets, a six-tick maximum acknowledgement
+age, one snapshot in flight, and zero retained baseline bytes after shutdown.
+
+**Limits:** These fixtures establish bounded per-viewer steady transfer for the
+declared populations. Per-viewer source cloning/filtering still scales with
+bounded source lists; conservative large meshes can remain relevant to many
+viewers. Existing instance/entity and 512-entry replica history bounds remain.
+This is acknowledged polling, and TCP head-of-line blocking remains. Encoding
+cost, real WAN loss, crowded movement, and hardware latency are not claims of
+accepted AAA MMORPG capacity; V06, V10, V12, and V18 retain that work. The original
+[replication graph reference](https://dev.epicgames.com/documentation/en-us/unreal-engine/replication-graph-in-unreal-engine)
+remains background for spatial list reuse; the implementation shares no Unreal
+code.
 
 ### V06: A chamber is not a realm service
 

@@ -42,6 +42,7 @@ pub struct Stats {
     pub capacity_refusals: u64,
     pub completed_connections: u64,
     pub requests: u64,
+    pub replication: super::replication::Stats,
     pub ticks: u64,
     pub dropped_seconds: f64,
     pub checkpoint_commits: u64,
@@ -521,6 +522,7 @@ async fn serve_with_store<F: Future<Output = ()>>(
         }
     }
     drop(writer);
+    stats.replication = gateway.replication_stats();
     Exit {
         gateway,
         stats,

@@ -32,6 +32,7 @@ pub struct Client {
     player: bool,
     inventory_revision: u64,
     verified_at: Option<std::time::Instant>,
+    replication: super::replication::Receiver,
 }
 impl Client {
     pub async fn connect(
@@ -93,6 +94,7 @@ impl Client {
             player: false,
             inventory_revision: 0,
             verified_at: None,
+            replication: Default::default(),
         };
         let response = client
             .request_ready(Body::Authenticate {
@@ -136,7 +138,7 @@ impl Client {
         Request::decode(&bytes)?;
         let mut stream = self.stream.take().ok_or("Chamber client is disconnected")?;
         self.next_request = next;
-        let response = timeout(DEADLINE, async {
+        let mut response = timeout(DEADLINE, async {
             write_frame(&mut stream, &bytes, MAX_REQUEST_BYTES).await?;
             let bytes = read_frame(&mut stream, MAX_RESPONSE_BYTES).await?;
             serde_json::from_slice::<Response>(&bytes)
@@ -144,6 +146,7 @@ impl Client {
         })
         .await
         .map_err(|_| "Chamber request timed out")??;
+        self.reconstruct(&body, &mut response)?;
         self.validate(request_id, &body, &response)?;
         self.tick = response.tick;
         self.verified_at = Some(std::time::Instant::now());
@@ -293,7 +296,10 @@ impl Client {
         }).await.map_err(|_|"Chamber command timed out".to_string())?
     }
     pub async fn snapshot(&mut self) -> Result<State, String> {
-        match self.request_ready(Body::Snapshot {}).await?.body {
+        let body = Body::Replicate {
+            ack: self.replication.ack(),
+        };
+        match self.request_ready(body).await?.body {
             Reply::Snapshot { state } => Ok(state),
             Reply::Refused { message, .. } => Err(message),
             _ => Err("Unexpected chamber snapshot outcome".into()),
@@ -340,6 +346,27 @@ impl Client {
             .await
             .map_err(|_| "Chamber close timed out")?
             .map_err(|_| "Cannot close chamber transport".into())
+    }
+    /// Requests a full bounded baseline after an application discards cached state.
+    pub async fn resync(&mut self) -> Result<State, String> {
+        self.replication.clear();
+        self.snapshot().await
+    }
+    fn reconstruct(&mut self, request: &Body, response: &mut Response) -> Result<(), String> {
+        if let Reply::Replicated { packet } = &response.body {
+            if !matches!(request, Body::Replicate { .. }) {
+                return Err("Unrequested replication packet".into());
+            }
+            let state =
+                self.replication
+                    .admit(packet, self.instance, response.tick, &response.control)?;
+            response.body = Reply::Snapshot { state };
+        } else if matches!(request, Body::Replicate { .. })
+            && !matches!(response.body, Reply::Refused { .. })
+        {
+            return Err("Replication request did not return a bounded packet".into());
+        }
+        Ok(())
     }
     fn validate(&self, request_id: u64, request: &Body, r: &Response) -> Result<(), String> {
         if r.version != VERSION
@@ -421,7 +448,7 @@ impl Client {
                 }
                 Ok(())
             }
-            (Reply::Snapshot { state }, Body::Snapshot {}) => {
+            (Reply::Snapshot { state }, Body::Snapshot {} | Body::Replicate { .. }) => {
                 state.validate_control(self.instance, &r.control)
             }
             (
@@ -637,6 +664,11 @@ impl Pipeline {
     pub fn available(&self) -> bool {
         !self.failed && self.pending.len() < PIPELINE_CAPACITY
     }
+    pub fn send_snapshot(&mut self) -> Result<u64, String> {
+        self.send(Body::Replicate {
+            ack: self.client.replication.ack(),
+        })
+    }
     pub fn pending(&self) -> usize {
         self.pending.len()
     }
@@ -701,6 +733,14 @@ impl Pipeline {
         if !self.available() {
             return Err("Chamber pipeline is unavailable or full".into());
         }
+        if matches!(body, Body::Snapshot {} | Body::Replicate { .. })
+            && self
+                .pending
+                .iter()
+                .any(|p| matches!(p.body, Body::Snapshot {} | Body::Replicate { .. }))
+        {
+            return Err("Replaceable snapshot request is already in flight".into());
+        }
         let id = self.client.next_request;
         let next = id
             .checked_add(1)
@@ -746,13 +786,19 @@ impl Pipeline {
             Ok(None) => Err("Chamber response reader closed".into()),
             Err(_) => Err("Chamber request timed out".into()),
         };
-        let response = match result {
+        let mut response = match result {
             Ok(response) => response,
             Err(error) => {
                 self.fail();
                 return Err(error);
             }
         };
+        let pending = self.pending.front().expect("Pending response context");
+        let body = pending.body.clone();
+        if let Err(error) = self.client.reconstruct(&body, &mut response) {
+            self.fail();
+            return Err(error);
+        }
         let pending = self.pending.front().expect("Pending response context");
         if let Err(error) = self.client.validate(pending.id, &pending.body, &response) {
             self.fail();
@@ -2432,6 +2478,7 @@ mod tests {
             player: true,
             inventory_revision: 0,
             verified_at: None,
+            replication: Default::default(),
         };
         let response = Response {
             version: VERSION,
