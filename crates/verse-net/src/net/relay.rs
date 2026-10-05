@@ -25,8 +25,9 @@ pub struct Link {
     pub url: String,
 }
 impl Link {
-    #[cfg(test)]
-    pub(crate) fn idle() -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn idle() -> Self {
         let (tx, _) = async_mpsc::channel(QUEUE);
         let (_, rx) = mpsc::sync_channel(INBOX);
         let (cancel, _) = watch::channel(false);

@@ -18,14 +18,14 @@ pub mod blocks;
 #[cfg(feature = "model-host")]
 pub mod brain;
 pub use verse_gfx::camera;
-pub mod chat;
+pub use verse_net::chat;
 pub mod controller;
 pub mod crowd;
 pub mod doors;
 #[cfg(all(target_os = "macos", feature = "desktop"))]
 pub mod edr;
-pub mod feed;
 pub use verse_gfx::gles;
+pub use verse_net::feed;
 #[cfg(test)]
 mod gles_tests;
 pub use verse_gfx::gpu_lifecycle;
@@ -44,17 +44,17 @@ pub mod gym_results;
 #[cfg(feature = "hosted-social")]
 pub mod hosted;
 pub mod hud;
-pub mod identity;
+pub use verse_net::identity;
 pub mod imported;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod loopback;
 pub mod mesh;
 pub mod minimap;
-pub mod mv;
+pub use verse_net::mv;
 pub mod nav;
-pub mod net;
 pub use verse_gfx::overlay;
 pub use verse_gfx::palette;
+pub use verse_net::net;
 #[cfg(feature = "panels")]
 pub mod panels;
 pub mod pbr;
@@ -73,5 +73,5 @@ pub mod tooltip;
 pub use verse_gfx::ui;
 pub mod world;
 #[cfg(feature = "xp-host")]
-pub mod xp;
+pub use verse_net::xp;
 pub mod zones;

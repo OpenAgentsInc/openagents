@@ -14964,6 +14964,7 @@ dependencies = [
  "verse-engine",
  "verse-gfx",
  "verse-lagrange",
+ "verse-net",
  "verse-ruins",
  "verse-world",
  "web-time",
@@ -15009,6 +15010,28 @@ dependencies = [
  "physics",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "verse-net"
+version = "0.1.0"
+dependencies = [
+ "coder-ui",
+ "futures-util",
+ "getrandom 0.3.4",
+ "glam",
+ "nostr",
+ "reqwest 0.12.28",
+ "rustls",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "verse-gfx",
+ "webpki-roots 1.0.9",
+ "xp-ledger",
 ]
 
 [[package]]

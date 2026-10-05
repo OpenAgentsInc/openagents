@@ -397,7 +397,7 @@ pub fn tidy(content: &str) -> Option<String> {
             return None;
         }
         total += w.chars().count();
-        let word: String = w.chars().filter(|c| crate::ui::drawable(*c)).collect();
+        let word: String = w.chars().filter(|c| verse_gfx::ui::drawable(*c)).collect();
         kept += word.chars().count();
         if !word.is_empty() {
             words.push(word);
@@ -436,7 +436,7 @@ fn profile_name(content: &str) -> Option<String> {
         .or_else(|| value.get("name").and_then(serde_json::Value::as_str))?;
     let name: String = name
         .chars()
-        .filter(|c| crate::ui::drawable(*c))
+        .filter(|c| verse_gfx::ui::drawable(*c))
         .take(24)
         .collect();
     let name = name.trim().to_owned();

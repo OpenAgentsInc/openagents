@@ -7,7 +7,7 @@
 > [tutorial quests](tutorial-quests.md), levels over heads in the Grid, and
 > the Account trainer card. It builds on
 > what exists: [NIP-XP](../../nips/openagents/NIP-XP.md), Verse's XP reader
-> (`crates/verse/src/xp.rs`), the Terminal-Bench 4 quest board, and the Gym.
+> (`crates/verse-net/src/xp.rs`), the Terminal-Bench 4 quest board, and the Gym.
 > Everything under [Design](#design) that is not listed as implemented in the
 > [inventory](#what-exists-today) is proposed. Nothing in this document pays
 > anyone, and no payout is promised. Proposed changes to NIP-XP are listed in
@@ -152,7 +152,7 @@ document or NIP defines it and no code does it yet.
 
 | Piece | Where | Status |
 | --- | --- | --- |
-| Level curve `trainer-curve-v1`: level 1 at 0 XP; level n + 1 at `ceil(100 · n^1.5)` cumulative XP | `crates/verse/src/xp.rs` (`CURVE`, `xp_to_reach`, `level_of`) | Implemented and named in desktop Verse, `openagents xp`, and the mobile card. |
+| Level curve `trainer-curve-v1`: level 1 at 0 XP; level n + 1 at `ceil(100 · n^1.5)` cumulative XP | `crates/verse-net/src/xp.rs` (`CURVE`, `xp_to_reach`, `level_of`) | Implemented and named in desktop Verse, `openagents xp`, and the mobile card. |
 | HUD strip: XP, level, XP to next level, titles, trusted referees | `xp::strip` | Implemented, desktop. |
 | Quest board on the plaza, 22 m west of center, `B` to open | `xp::board_lines`, [Verse README](README.md#quests-and-xp) | Implemented, desktop. Read-only; Verse never publishes XP events. |
 | Name tags with `lv n` for players whose Verse key has XP | `crates/verse/src/app.rs` (`xp::level_tag`) | Implemented, desktop. |

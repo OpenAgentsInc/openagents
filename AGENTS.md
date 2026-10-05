@@ -650,6 +650,10 @@ uses, and marks which are implemented and which are only specified.
   (#10631): the palette, the glyph atlas and UI batch, the overlay panel,
   GLES shader variants, frame profiling, and the follow camera. `verse`
   re-exports each module under its old path; no zone code belongs here.
+- `crates/verse-net` — Verse's Nostr session plumbing, split out of `verse`
+  (#10631): the relay link, identities, NIP-MV frames, chat, the chat feed,
+  and the XP client (`xp` feature, which `verse`'s `xp-host` enables).
+  `verse` re-exports each module under its old path.
 - `crates/xp-ledger` — the NIP-XP ledger a reader derives
   (`nips/openagents/NIP-XP.md`): trust lists, the per-award re-checks, and
   the knowledge-entry parser the `kb-transfer` rule needs. `knowledge`

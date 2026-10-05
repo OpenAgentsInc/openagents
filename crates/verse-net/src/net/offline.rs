@@ -10,8 +10,9 @@ pub struct Link {
     pub url: String,
 }
 impl Link {
-    #[cfg(test)]
-    pub(crate) fn idle() -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn idle() -> Self {
         Self::start("ws://127.0.0.1:1")
     }
     /// Returns an offline link; nothing is opened.

@@ -565,17 +565,17 @@ cargo test -p verse --lib gles
 | [`src/world.rs`](../../crates/verse/src/world.rs) | Seeded city, ground grid, pylon, quest board, replay landmarks, horizon. The same city every launch. |
 | [`src/avatar.rs`](../../crates/verse/src/avatar.rs) | The boxy line character and its distance-driven walk cycle. |
 | [`src/agent.rs`](../../crates/verse/src/agent.rs) | The floating spade agent: spring follow, bob, wobble, emotes, scan requests, and geometry. |
-| [`src/mv.rs`](../../crates/verse/src/mv.rs) | NIP-MV: kinds, frame, state, and gesture content, signing, cells, and validation. |
-| [`src/net.rs`](../../crates/verse/src/net.rs) | The relay link: one websocket thread, reconnects, and replayed subscriptions. |
+| [`verse-net/src/mv.rs`](../../crates/verse-net/src/mv.rs) | NIP-MV: kinds, frame, state, and gesture content, signing, cells, and validation. |
+| [`verse-net/src/net.rs`](../../crates/verse-net/src/net.rs) | The relay link: one websocket thread, reconnects, and replayed subscriptions. |
 | [`src/session.rs`](../../crates/verse/src/session.rs) | Sign-up, spawn or resume, publish cadence, scans, and leaving. |
 | [`src/crowd.rs`](../../crates/verse/src/crowd.rs) | Other players: buffered, interpolated poses, online and resting, and their meshes. |
-| [`src/identity.rs`](../../crates/verse/src/identity.rs) | Profile keys under `~/.openagents/verse/`. |
-| [`src/chat.rs`](../../crates/verse/src/chat.rs) | Channels, shortcut parsing, limits, zones, and the two chat windows' history. |
+| [`verse-net/src/identity.rs`](../../crates/verse-net/src/identity.rs) | Profile keys under `~/.openagents/verse/`. |
+| [`verse-net/src/chat.rs`](../../crates/verse-net/src/chat.rs) | Channels, shortcut parsing, limits, zones, and the two chat windows' history. |
 | [`src/hud.rs`](../../crates/verse/src/hud.rs) | Chat windows, input line, name tags, and speech bubbles. |
 | [`src/brain.rs`](../../crates/verse/src/brain.rs) | The agent's side of AGENT chat: door choice, instructions, streamed replies. |
-| [`src/xp.rs`](../../crates/verse/src/xp.rs) | NIP-XP reading: the reader thread, the snapshot of quests, XP, and titles, the level curve, and the board and HUD text. `src/xp/fixture.rs` holds throwaway signed fixtures. |
+| [`verse-net/src/xp.rs`](../../crates/verse-net/src/xp.rs) | NIP-XP reading: the reader thread, the snapshot of quests, XP, and titles, the level curve, and the board and HUD text. `verse-net/src/xp/fixture.rs` holds throwaway signed fixtures. |
 | [`src/replay.rs`](../../crates/verse/src/replay.rs) | Run replays: events to visits, the shared clock, the `beats-winner` list, the ghost, and the HUD lines. |
-| [`src/feed.rs`](../../crates/verse/src/feed.rs) | The NOSTR tab: public notes from damus and primal, filtering, pacing, and stand-ins. |
+| [`verse-net/src/feed.rs`](../../crates/verse-net/src/feed.rs) | The NOSTR tab: public notes from damus and primal, filtering, pacing, and stand-ins. |
 | [`verse-gfx/src/ui.rs`](../../crates/verse-gfx/src/ui.rs), [`verse-gfx/src/ui.wgsl`](../../crates/verse-gfx/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
 | [`src/mesh.rs`](../../crates/verse/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
 | [`verse-gfx/src/palette.rs`](../../crates/verse-gfx/src/palette.rs) | The amber ladder in linear light. |

@@ -10,7 +10,7 @@ publish.workspace = true
 default = ["desktop"]
 desktop = ["dep:winit", "dep:arboard", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host", "imported-desktop"]
 model-host = ["dep:coder", "dep:coder-delegate"]
-xp-host = ["dep:xp-ledger"]
+xp-host = ["dep:xp-ledger", "verse-net/xp"]
 replay-host = ["dep:gym", "dep:knowledge"]
 capture = []
 # Rust Native panels (the chat transcript and the diff pane) painted by
@@ -42,6 +42,9 @@ verse-world = { path = "../verse-world", features = ["studio"] }
 # The palette, UI batch, overlay, GLES variants, and camera; `verse`
 # re-exports each module under its old path.
 verse-gfx = { path = "../verse-gfx" }
+# The relay link, identities, NIP-MV frames, chat, the feed, and the XP
+# client; `verse` re-exports each module under its old path.
+verse-net = { path = "../verse-net" }
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
 coder-delegate = { path = "../coder-delegate", optional = true }
@@ -106,6 +109,7 @@ web-time = "1.1.0"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
+verse-net = { path = "../verse-net", features = ["test-support"] }
 tempfile = "3"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 # A scratch host the live studio source is tested against.
