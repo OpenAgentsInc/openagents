@@ -158,6 +158,16 @@ fn interval_control_changed(
     control.is_some_and(|c| c.life != frame.life.into() || c.epoch != frame.epoch)
 }
 
+// A verified replacement context makes queued owned input obsolete without another read.
+fn replaced_context(input: &Input, control: Option<&super::wire::Control>) -> bool {
+    let (life, epoch) = match input {
+        Input::TrackedCommand { life, epoch, .. } => (*life, *epoch),
+        Input::MovementFrame { frame, .. } => (frame.life, frame.epoch),
+        _ => return false,
+    };
+    control.is_some_and(|c| c.life != life.into() || c.epoch != epoch)
+}
+
 /// Reuses only recent verified response control; server admission still checks every command.
 fn fresh_control(
     input: &Input,
@@ -319,25 +329,32 @@ async fn run_impl(
                         .await
                         .map_err(|_| "Chamber update consumer closed")?;
                 }
-                let lifecycle = !matches!(
-                    input,
-                    Input::Command(_) | Input::TrackedCommand { .. } | Input::MovementFrame { .. }
-                ) || matches!(
-                    input,
-                    Input::Command(Intent::Cast {
-                        ability: Ability::MistyStep,
-                        ..
-                    }) | Input::TrackedCommand {
-                        intent: Intent::Cast {
+                let obsolete = replaced_context(&input, client.control());
+                let lifecycle = !obsolete
+                    && (!matches!(
+                        input,
+                        Input::Command(_)
+                            | Input::TrackedCommand { .. }
+                            | Input::MovementFrame { .. }
+                    ) || matches!(
+                        input,
+                        Input::Command(Intent::Cast {
                             ability: Ability::MistyStep,
                             ..
-                        },
-                        ..
-                    }
-                );
+                        }) | Input::TrackedCommand {
+                            intent: Intent::Cast {
+                                ability: Ability::MistyStep,
+                                ..
+                            },
+                            ..
+                        }
+                    ));
                 if lifecycle && client.pending() > 0 {
                     staged = Some(input);
-                } else if !refreshed && !fresh_control(&input, client.control(), last_response) {
+                } else if !refreshed
+                    && !obsolete
+                    && !fresh_control(&input, client.control(), last_response)
+                {
                     if !snapshot_pending && read_backoff.ready(0, tokio::time::Instant::now()) {
                         client.send_snapshot()?;
                         last_snapshot_sent = Some(tokio::time::Instant::now());
@@ -917,6 +934,7 @@ mod tests {
                 .await
                 .unwrap();
             tokio::pin!(peer_stopping);
+            let mut teleported = false;
             loop {
                 let bytes = tokio::select! {
                     _ = &mut peer_stopping => break,
@@ -925,6 +943,10 @@ mod tests {
                 let request = Request::decode(&bytes).unwrap();
                 let teleport = matches!(&request.body, Body::Command { command }
                     if matches!(command.intent, super::super::wire::Action::Cast { ability: Ability::MistyStep, .. }));
+                assert!(
+                    !teleported || !matches!(request.body, Body::Command { .. }),
+                    "Old-epoch command reached the authority"
+                );
                 let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
                 if teleport {
                     let reply: Response = serde_json::from_slice(&response).unwrap();
@@ -947,9 +969,14 @@ mod tests {
                     !matches!(request.body, Body::MovementFrame { .. }),
                     "Old-epoch movement reached the authority"
                 );
+                // Withhold all later reads: obsolete inputs must retire without a reply.
+                if teleported {
+                    continue;
+                }
                 write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
                     .await
                     .unwrap();
+                teleported = teleport;
             }
         });
         let mut client = Client::connect(
@@ -1003,6 +1030,21 @@ mod tests {
             })
             .await
             .unwrap();
+        for (token, ability) in [(3, Ability::MistyStep), (4, Ability::Bow)] {
+            input
+                .send(Input::TrackedCommand {
+                    token,
+                    life: control.life.into(),
+                    epoch: control.epoch,
+                    intent: Intent::Cast {
+                        ability,
+                        target: None,
+                        aim: [0., 0., 1.],
+                    },
+                })
+                .await
+                .unwrap();
+        }
         let (stop, stopping) = oneshot::channel();
         let task = tokio::spawn(run(
             client,
@@ -1014,6 +1056,7 @@ mod tests {
         ));
         timeout(Duration::from_secs(3), async {
             let mut accepted = false;
+            let mut retired = Vec::new();
             loop {
                 match output.recv().await.unwrap() {
                     Update::CommandBound { token: 1, binding } => assert!(binding.is_ok()),
@@ -1028,9 +1071,21 @@ mod tests {
                             "Old movement bound before teleport acknowledgment"
                         );
                         assert!(binding.is_err());
-                        break;
+                        retired.push(2);
+                    }
+                    Update::CommandBound {
+                        token: token @ (3 | 4),
+                        binding,
+                    } => {
+                        assert!(accepted);
+                        assert!(binding.is_err());
+                        retired.push(token);
                     }
                     _ => {}
+                }
+                if retired.len() == 3 {
+                    assert_eq!(retired, vec![2, 3, 4]);
+                    break;
                 }
             }
         })
