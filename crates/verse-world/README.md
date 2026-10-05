@@ -418,7 +418,8 @@ local prediction still updates each rendered frame. Transmission waits when a
 packet would exceed the last verified `world_step` plus the existing 12-substep
 authority credit; local elapsed time cannot grant credit during storage pauses.
 The worker binds packets to the shared command sequence before transmission. Legacy CLI and headless movement retains the
-arrival-time profile. Version-21 peers must upgrade both host and client.
+arrival-time profile. Version-26 peers must upgrade both host and client; the ability-event variant
+requires matching event decoders.
 
 The serial SDK retries an explicit `stale_tick` refusal only when its verified
 control confirms that admission consumed no sequence, with at most three

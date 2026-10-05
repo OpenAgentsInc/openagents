@@ -1,0 +1,14 @@
+{
+  "acceptance": "failed",
+  "reason": "Host emits the new Ability event variant, but older client decoders reject it as a malformed chamber response. The wire version was not advanced for this incompatible event change.",
+  "server_revision": "38a5230837",
+  "native_revision": "af7345d277",
+  "headless_revision": "c91a3c972d",
+  "remote_scratch_removed": true,
+  "limits": [
+    "Both client types fail before the declared full battle interval; host exits normally.",
+    "No steady 20/40 performance or capture attribution claim.",
+    "Shared Linux CPU includes several other compiler processes.",
+    "No private configuration, keys, or scratch state retained."
+  ]
+}

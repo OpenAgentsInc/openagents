@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 25;
+pub const VERSION: u16 = 26;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 

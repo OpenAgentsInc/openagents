@@ -1,0 +1,603 @@
+{
+  "schema": "verse.multiplayer.load.v3",
+  "movement_frames_requested": true,
+  "status": "failed",
+  "seconds": 75,
+  "players": [
+    {
+      "player": 0,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 213,
+      "snapshot_bytes": 14140834,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 1,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 191,
+      "snapshot_bytes": 12680512,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 2,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 178,
+      "snapshot_bytes": 11817300,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 3,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 166,
+      "snapshot_bytes": 11020787,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 4,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 159,
+      "snapshot_bytes": 10556184,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 5,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 153,
+      "snapshot_bytes": 10158252,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 6,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 151,
+      "snapshot_bytes": 10025308,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 7,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 152,
+      "snapshot_bytes": 10091563,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 8,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 153,
+      "snapshot_bytes": 10158070,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 9,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 153,
+      "snapshot_bytes": 10157833,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 10,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 152,
+      "snapshot_bytes": 10091776,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 11,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 153,
+      "snapshot_bytes": 10158115,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 12,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 156,
+      "snapshot_bytes": 10356922,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 13,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 152,
+      "snapshot_bytes": 10091480,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 14,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 150,
+      "snapshot_bytes": 9958826,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 15,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 150,
+      "snapshot_bytes": 9958852,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 16,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 149,
+      "snapshot_bytes": 9892812,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 17,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 174,
+      "snapshot_bytes": 11552070,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    },
+    {
+      "player": 18,
+      "status": "failed",
+      "failure_stage": "observation",
+      "observation_error": "Load worker output closed",
+      "worker_error": "Malformed chamber response",
+      "refusal_trace": [],
+      "omitted_latency_samples": 0,
+      "snapshots": 166,
+      "snapshot_bytes": 11021292,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 1,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 0,
+      "movement_inputs": 0,
+      "input_pressure": 0,
+      "refusals": 0,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 0,
+        "p95": null,
+        "max": null
+      }
+    }
+  ],
+  "limits": [
+    "Headless authenticated clients measure transport and authority load, not rendering.",
+    "Headless intervals use confirmed server time plus the existing bounded authority lookahead, without native prediction or rendering; the receipt declares the requested movement mode.",
+    "Binding-to-outcome includes server processing and client delivery, not isolated RTT.",
+    "Timing retains at most 8192 samples per player."
+  ]
+}
