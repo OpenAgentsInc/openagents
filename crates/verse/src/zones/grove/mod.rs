@@ -627,7 +627,10 @@ impl Grove {
             if attack.is_none() {
                 shape.attack = None;
             }
-            beast.advance(player, shape.form.scale(), attack, dt);
+            // A flying form beats its wings whenever it is off the ground,
+            // hovering at a held altitude included.
+            let aloft = shape.form.flies() && (glade.levitating || player.airborne());
+            beast.advance(player, shape.form.scale(), attack, aloft, dt);
         }
         self.land_bolts();
         let gravity = glade.spells().reverse_gravity().cloned();

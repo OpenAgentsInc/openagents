@@ -412,9 +412,13 @@ impl WorldRuntime {
             || input.jump;
         if moving {
             self.cancel_navigation();
-            // In first person the player walks where the eye looks: the
-            // body turns to the view rather than the view swinging back.
-            if self.first_person() {
+            // The player walks where the camera looks: after an orbit (a
+            // left drag), a key that moves the character turns the body to
+            // the view rather than walking the way it last faced. In first
+            // person any movement does; turning keys alone keep turning.
+            let travels =
+                input.forward || input.backward || input.strafe_left || input.strafe_right;
+            if self.first_person() || travels {
                 self.player.yaw = wrap(self.player.yaw + self.camera.take_offset());
             }
         }
@@ -1245,6 +1249,34 @@ pub(crate) fn mesh_hit(mesh: &Mesh, origin: Vec3, direction: Vec3) -> Option<f32
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn walking_after_an_orbit_heads_where_the_camera_looks() {
+        let mut runtime = WorldRuntime::new();
+        runtime.camera.yaw_offset = 1.2;
+        let view_yaw = wrap(runtime.player.yaw + runtime.camera.yaw_offset);
+        let start = runtime.player.pos;
+        let walk = InputState {
+            forward: true,
+            ..InputState::default()
+        };
+        for _ in 0..10 {
+            runtime.tick(&walk, 0.05);
+        }
+        assert!(wrap(runtime.player.yaw - view_yaw).abs() < 1e-4);
+        assert!(runtime.camera.yaw_offset.abs() < 1e-6);
+        let moved = runtime.player.pos - start;
+        let heading = crate::controller::forward(view_yaw);
+        assert!(moved.x * heading.x + moved.z * heading.z > 1.0, "{moved}");
+        // A turning key alone keeps the orbit.
+        runtime.camera.yaw_offset = 0.7;
+        let turn = InputState {
+            left: true,
+            ..InputState::default()
+        };
+        runtime.tick(&turn, 0.05);
+        assert!((runtime.camera.yaw_offset - 0.7).abs() < 1e-6);
+    }
 
     fn projected(runtime: &WorldRuntime, aspect: f32, at: Vec3) -> [f32; 2] {
         let clip = runtime.view(aspect).view_proj * at.extend(1.0);

@@ -965,6 +965,17 @@ impl WorldRuntime {
         Some(grove.bar(&self.player, glade))
     }
 
+    /// Whether the player is in the Grove as a form that flies, such as the
+    /// Giant Eagle, whose Space climbs while held.
+    #[must_use]
+    pub fn grove_form_flies(&self) -> bool {
+        self.zone_state
+            .grove
+            .as_ref()
+            .and_then(super::grove::Grove::form)
+            .is_some_and(super::grove::shape::Form::flies)
+    }
+
     /// While levitating in Everglade, climbs (`direction` 1) or descends
     /// (-1) for `dt` seconds of a held key, such as X to descend.
     pub fn everglade_climb(&mut self, direction: f32, dt: f32) {

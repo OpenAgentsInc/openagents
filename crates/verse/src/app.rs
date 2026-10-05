@@ -2341,8 +2341,10 @@ impl App {
         }
         // While levitating in Everglade, holding X descends until it is let
         // go.
+        // As a flying Wild Shape form, holding Space climbs the same way.
         let climb = match code {
             KeyCode::KeyX => -1.0,
+            KeyCode::Space if self.runtime.grove_form_flies() => 1.0,
             _ => 0.0,
         };
         if climb != 0.0 && (self.in_bare_everglade() || self.in_bare_grove()) && !self.chat.open {

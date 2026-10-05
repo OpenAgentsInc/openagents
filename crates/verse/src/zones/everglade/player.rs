@@ -434,7 +434,10 @@ fn posture_id(index: usize) -> u16 {
 fn form_clip(character: &Character, motion: Motion) -> Option<&PackClip> {
     character.clip(motion.clip()).or_else(|| match motion {
         Motion::Idle => character.clips.first(),
-        Motion::Jump => form_clip(character, Motion::Idle),
+        // A bird beats its wings in the air; anything else holds its idle.
+        Motion::Jump => character
+            .clip("flap")
+            .or_else(|| form_clip(character, Motion::Idle)),
         Motion::Walk => character
             .clip("flap")
             .or_else(|| form_clip(character, Motion::Idle)),
@@ -1059,8 +1062,15 @@ impl Beast {
 
     /// Poses the form for `at` after `dt` seconds: at its place and facing,
     /// `scale` times its modeled size, playing its attack `attack` seconds
-    /// in, or else the gait for its speed.
-    pub fn advance(&mut self, at: &PlayerController, scale: f32, attack: Option<f32>, dt: f32) {
+    /// in, or else its flight when `aloft`, or else the gait for its speed.
+    pub fn advance(
+        &mut self,
+        at: &PlayerController,
+        scale: f32,
+        attack: Option<f32>,
+        aloft: bool,
+        dt: f32,
+    ) {
         let rig = &self.rig;
         let scale = if scale.is_finite() && scale > 0.0 {
             scale
@@ -1072,7 +1082,12 @@ impl Beast {
             // A larger body covers more ground per stride.
             None => self.actor.advance(
                 rig,
-                Play::Motion(Motion::of_player(at)),
+                // In the air a bird's Jump motion is its wingbeat.
+                Play::Motion(if aloft {
+                    Motion::Jump
+                } else {
+                    Motion::of_player(at)
+                }),
                 at.speed / scale,
                 dt,
             ),
