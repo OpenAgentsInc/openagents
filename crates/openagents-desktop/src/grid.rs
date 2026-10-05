@@ -745,8 +745,11 @@ pub struct Layer {
     grid: Shared,
     watcher: Option<Watcher>,
     watch: Option<crate::backdrop::GridBackdrop>,
-    player: Option<verse::render::Layer>,
+    /// Play's engine renderer on the window's device (#10606).
+    player: Option<verse::grid_engine::GridEngine>,
     player_scale: f32,
+    /// The glyph atlas revision the engine last uploaded.
+    player_atlas: u64,
     started: Instant,
     last: Option<Instant>,
     playing: bool,
@@ -763,6 +766,7 @@ impl Layer {
             watch: None,
             player: None,
             player_scale: 0.0,
+            player_atlas: 0,
             started: Instant::now(),
             last: None,
             playing: false,
@@ -952,33 +956,50 @@ impl Backdrop for Layer {
                 self.player = None;
                 self.player_scale = surface.scale();
             }
-            let layer = match &mut self.player {
-                Some(layer) => {
-                    layer.resize(gpu.device, size.0, size.1)?;
-                    layer
+            let atlas = surface.atlas().revision();
+            if self.player_atlas != atlas
+                && let Some(engine) = &mut self.player
+                && !engine.update_atlas(surface.atlas())
+            {
+                // The atlas grew: only a new engine takes it.
+                self.player = None;
+            }
+            self.player_atlas = atlas;
+            let engine = match &mut self.player {
+                Some(engine) => {
+                    if engine.size() != [size.0 as f32, size.1 as f32] {
+                        engine.resize(size.0, size.1)?;
+                    }
+                    engine
                 }
-                None => self.player.insert(verse::render::Layer::new(
-                    gpu.adapter,
-                    gpu.device,
-                    gpu.queue,
-                    rust_native_desktop::backdrop::FORMAT,
-                    size,
-                    &surface.world().world.mesh,
-                    surface.atlas(),
-                    surface.world().atmosphere(),
-                    4,
-                )?),
+                None => self
+                    .player
+                    .insert(verse::grid_engine::GridEngine::on_device(
+                        gpu.adapter,
+                        gpu.device,
+                        gpu.queue,
+                        rust_native_desktop::backdrop::FORMAT,
+                        verse::grid_engine::Content::grid()?,
+                        surface.atlas(),
+                        size.0,
+                        size.1,
+                    )?),
             };
-            let frame = surface.frame(dt);
-            layer.encode(
-                gpu.device,
-                gpu.queue,
+            let frame = surface.engine_frame(dt);
+            let drawn = engine.encode(
                 encoder,
                 target,
                 frame.view,
-                &frame.mesh,
+                &frame.instances,
                 &frame.ui,
-            )?;
+                &frame.lighting,
+            );
+            if drawn.is_err() {
+                // A lost device: the window opens a new one, and the next
+                // frame a new engine on it.
+                self.player = None;
+            }
+            drawn?;
             self.last = Some(now);
             Ok(())
         } else if !playing && let Some(watch) = &mut self.watch {

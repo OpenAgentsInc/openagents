@@ -2999,6 +2999,25 @@ pub struct WindowPresenter {
     target_revision: u64,
 }
 #[cfg(feature = "imported-surface")]
+struct Blit {
+    layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    group: wgpu::BindGroup,
+    pipeline: wgpu::RenderPipeline,
+}
+/// Copies the renderer's frame into a texture the host owns
+/// ([`Renderer::attach_texture`]).
+#[cfg(feature = "imported-surface")]
+pub struct TexturePresenter {
+    pipeline: wgpu::RenderPipeline,
+    group: wgpu::BindGroup,
+    layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    gpu_id: verse_engine::residency::CatalogId,
+    catalog: verse_engine::residency::CatalogId,
+    target_revision: u64,
+}
+#[cfg(feature = "imported-surface")]
 impl WindowPresenter {
     pub fn current_frame_presented(&self, renderer: &Renderer) -> bool {
         self.gpu_id == renderer.gpu_id && self.presented_catalog == Some(renderer.catalog.id())
@@ -3035,6 +3054,30 @@ impl Renderer {
             .ok_or("Unsupported imported scene surface")?;
         config.present_mode = wgpu::PresentMode::Fifo;
         surface.configure(&self.device, &config);
+        let Blit {
+            layout,
+            sampler,
+            group,
+            pipeline,
+        } = self.blit(config.format);
+        Ok(WindowPresenter {
+            surface,
+            config,
+            pipeline,
+            group,
+            layout,
+            sampler,
+            gpu_id: self.gpu_id,
+            catalog: self.catalog.id(),
+            presented_catalog: None,
+            presented_frames: 0,
+            last_timings: PresentationTimings::default(),
+            target_revision: self.target_revision,
+        })
+    }
+    /// The pipeline that copies the display-referred frame onto a target
+    /// of `format`, and its binding to the current frame.
+    fn blit(&self, format: wgpu::TextureFormat) -> Blit {
         let layout = self
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -3101,7 +3144,7 @@ impl Renderer {
                     entry_point: Some("fs"),
                     compilation_options: Default::default(),
                     targets: &[Some(wgpu::ColorTargetState {
-                        format: config.format,
+                        format,
                         blend: None,
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
@@ -3112,20 +3155,94 @@ impl Renderer {
                 multiview_mask: None,
                 cache: None,
             });
-        Ok(WindowPresenter {
-            surface,
-            config,
+        Blit {
+            layout,
+            sampler,
+            group,
+            pipeline,
+        }
+    }
+    /// The binding of the current frame for `layout`.
+    fn blit_group(
+        &self,
+        layout: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+    ) -> wgpu::BindGroup {
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Reloaded scene presentation"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&self.target_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        })
+    }
+    /// Copies frames into textures the caller owns, on this renderer's
+    /// device, in `format`: a host that composites the world under its own
+    /// views, such as the desktop app's window layer.
+    pub fn attach_texture(&self, format: wgpu::TextureFormat) -> TexturePresenter {
+        let Blit {
+            layout,
+            sampler,
+            group,
+            pipeline,
+        } = self.blit(format);
+        TexturePresenter {
             pipeline,
             group,
             layout,
             sampler,
             gpu_id: self.gpu_id,
             catalog: self.catalog.id(),
-            presented_catalog: None,
-            presented_frames: 0,
-            last_timings: PresentationTimings::default(),
             target_revision: self.target_revision,
-        })
+        }
+    }
+    /// Records a copy of the last drawn frame into `target` on `encoder`,
+    /// filling it. The frame's own commands are already submitted, so the
+    /// caller submits `encoder` on this renderer's queue after them.
+    pub fn encode_into(
+        &self,
+        p: &mut TexturePresenter,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+    ) -> Result<(), String> {
+        if p.gpu_id != self.gpu_id {
+            return Err("Presenter belongs to another GPU device".into());
+        }
+        if p.catalog != self.catalog.id() || p.target_revision != self.target_revision {
+            p.group = self.blit_group(&p.layout, &p.sampler);
+            p.catalog = self.catalog.id();
+            p.target_revision = self.target_revision;
+        }
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Imported scene into host texture"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+        pass.set_pipeline(&p.pipeline);
+        pass.set_bind_group(0, &p.group, &[]);
+        pass.draw(0..3, 0..1);
+        Ok(())
+    }
+    /// Why the device was lost, if it was. A host that shares its device
+    /// with this renderer replaces both rather than letting
+    /// [`Self::recover_if_lost`] open a private one.
+    pub fn lost(&self) -> Option<String> {
+        self.health.reason(&self.device)
     }
     pub fn present_window(&self, p: &mut WindowPresenter, size: [u32; 2]) -> Result<(), String> {
         p.last_timings = PresentationTimings::default();
@@ -3133,20 +3250,7 @@ impl Renderer {
             return Err("Presenter belongs to another GPU device".into());
         }
         if p.catalog != self.catalog.id() || p.target_revision != self.target_revision {
-            p.group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Reloaded scene presentation"),
-                layout: &p.layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&self.target_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&p.sampler),
-                    },
-                ],
-            });
+            p.group = self.blit_group(&p.layout, &p.sampler);
             p.catalog = self.catalog.id();
             p.target_revision = self.target_revision;
             p.presented_catalog = None;

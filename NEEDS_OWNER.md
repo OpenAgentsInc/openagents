@@ -296,6 +296,17 @@ the iOS build and the Metal surface were not run. To finish checking:
 4. With `openagents verse walkers 10` running, confirm ten walkers with
    their names move smoothly on the phone's Grid.
 
+## The desktop app's Grid on the engine renderer (#10606)
+
+Play and the Watch backdrop in the OpenAgents desktop app now draw the Grid
+through the engine into the window's own texture. The offline GPU fixture
+(`grid_fixtures.rs`) passed on an Apple M5 Max; a live window was not
+opened. To finish checking, build the desktop app from `main`, open the
+Verse page, and confirm that Watch shows the plaza from above and that Play
+shows the line figure, the name tag, and the boards. Resize the window,
+enter and leave full screen, and switch between Watch and Play; the world
+must follow each change without a black frame that persists.
+
 ## The phone in the chamber (#10586)
 
 The phone joins the chamber through the RITUAL arch, and the session,

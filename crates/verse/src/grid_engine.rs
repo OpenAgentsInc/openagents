@@ -3,7 +3,9 @@
 //! the assembled [`crate::grid_frame`] to [`crate::imported::Renderer`].
 //! The desktop attaches a window; a phone passes its Metal layer or Android
 //! window; a browser passes a surface made from its canvas, on a GPU it
-//! awaited.
+//! awaited. A host that composites the world under its own views, as the
+//! OpenAgents desktop app does, shares its device and has each frame copied
+//! into a texture it owns ([`GridEngine::on_device`], [`GridEngine::encode`]).
 
 #[cfg(feature = "imported-desktop")]
 use std::sync::Arc;
@@ -15,13 +17,13 @@ use winit::window::Window;
 use crate::grid_frame;
 use crate::grid_pack;
 use crate::imported::lighting::Lighting;
-use crate::imported::{Gpu, Renderer, WindowPresenter};
+use crate::imported::{Gpu, Renderer, TexturePresenter, WindowPresenter};
 use crate::render::View;
 use crate::ui::{Atlas, UiBatch};
 
 pub struct GridEngine {
     renderer: Renderer,
-    presenter: WindowPresenter,
+    presenter: Presenter,
     size: [u32; 2],
     reattach: Reattach,
     atlas: Atlas,
@@ -80,12 +82,20 @@ impl Content {
     }
 }
 
+/// Where the engine's frames go: a surface it presents, or a texture the
+/// host owns.
+enum Presenter {
+    Surface(WindowPresenter),
+    Texture(TexturePresenter),
+}
+
 /// How the engine gets a presenter back after the GPU device is lost.
 enum Reattach {
     /// The desktop window can be attached again here.
     #[cfg(feature = "imported-desktop")]
     Window(Arc<Window>),
-    /// The host owns the surface; it detaches and attaches again.
+    /// The host owns the surface, or the device and the texture; it
+    /// detaches and attaches again.
     Host,
 }
 
@@ -113,7 +123,7 @@ impl GridEngine {
         let presenter = renderer.attach_window(window.clone())?;
         Ok(Self {
             renderer,
-            presenter,
+            presenter: Presenter::Surface(presenter),
             size,
             reattach: Reattach::Window(window),
             atlas: atlas.clone(),
@@ -156,7 +166,52 @@ impl GridEngine {
         let presenter = renderer.attach_surface(surface, size)?;
         Ok(Self {
             renderer,
-            presenter,
+            presenter: Presenter::Surface(presenter),
+            size,
+            reattach: Reattach::Host,
+            atlas: atlas.clone(),
+            content: content.kind,
+        })
+    }
+
+    /// Admits `content` onto the host's own device and copies each frame
+    /// into a texture of `format` the host owns ([`Self::encode`]). The
+    /// host keeps its device: when that device is lost, it drops this
+    /// engine and opens another on the new one.
+    #[allow(clippy::too_many_arguments)]
+    pub fn on_device(
+        adapter: &wgpu::Adapter,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        content: Content,
+        atlas: &Atlas,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, String> {
+        let size = [width.max(1), height.max(1)];
+        // The engine presents on no surface of its own, so the instance it
+        // keeps for one is never used to make one.
+        let gpu = Gpu {
+            instance: wgpu::Instance::new(
+                wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
+            ),
+            adapter: adapter.clone(),
+            device: device.clone(),
+            queue: queue.clone(),
+        };
+        let renderer = Renderer::from_prepared_on(
+            gpu,
+            content.prepared,
+            size[0],
+            size[1],
+            atlas,
+            &content.statics,
+        )?;
+        let presenter = renderer.attach_texture(format);
+        Ok(Self {
+            renderer,
+            presenter: Presenter::Texture(presenter),
             size,
             reattach: Reattach::Host,
             atlas: atlas.clone(),
@@ -333,25 +388,60 @@ impl GridEngine {
         lighting: &Lighting,
     ) -> Result<f64, String> {
         self.recover()?;
-        let [width, height] = self.size();
+        let Presenter::Surface(presenter) = &mut self.presenter else {
+            return Err("this engine draws into the host's texture; use encode".into());
+        };
+        let [width, height] = [self.size[0] as f32, self.size[1] as f32];
         self.renderer.set_overlay_size(width, height);
         self.renderer.draw_live(view, dynamic, ui, lighting)?;
-        self.renderer
-            .present_window(&mut self.presenter, self.size)?;
+        self.renderer.present_window(presenter, self.size)?;
         Ok(self.renderer.last_timings.total_ms)
     }
+
+    /// Draws one frame and records its copy into `target`, the host's
+    /// texture at this engine's size, on `encoder`. The frame's own work is
+    /// already submitted when this returns, so the host submits `encoder`
+    /// on the shared queue after it. Returns the renderer's own time for
+    /// the frame in milliseconds.
+    pub fn encode(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        view: View,
+        dynamic: &[Instance],
+        ui: &UiBatch,
+        lighting: &Lighting,
+    ) -> Result<f64, String> {
+        self.recover()?;
+        let Presenter::Texture(presenter) = &mut self.presenter else {
+            return Err("this engine presents on its own surface; use draw".into());
+        };
+        let [width, height] = [self.size[0] as f32, self.size[1] as f32];
+        self.renderer.set_overlay_size(width, height);
+        self.renderer.draw_live(view, dynamic, ui, lighting)?;
+        self.renderer.encode_into(presenter, encoder, target)?;
+        Ok(self.renderer.last_timings.total_ms)
+    }
+
     fn recover(&mut self) -> Result<(), String> {
+        if matches!(self.reattach, Reattach::Host) {
+            // The host's surface or texture belongs to the lost device:
+            // opening a private device here would only be dropped.
+            return match self.renderer.lost() {
+                Some(reason) => Err(format!(
+                    "the GPU device was lost ({reason}); detach and attach again"
+                )),
+                None => Ok(()),
+            };
+        }
         if self.renderer.recover_if_lost(&self.atlas)? {
             match &self.reattach {
                 #[cfg(feature = "imported-desktop")]
                 Reattach::Window(window) => {
-                    self.presenter = self.renderer.attach_window(window.clone())?;
+                    self.presenter =
+                        Presenter::Surface(self.renderer.attach_window(window.clone())?);
                 }
-                Reattach::Host => {
-                    return Err(
-                        "the GPU device was lost; detach and attach the surface again".into(),
-                    );
-                }
+                Reattach::Host => {}
             }
         }
         Ok(())

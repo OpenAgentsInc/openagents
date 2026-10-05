@@ -334,6 +334,15 @@ impl Overlook {
         mesh
     }
 
+    /// Other players' poses at `now`, for the engine renderer, which draws
+    /// each as a `grid/figure` ([`crate::grid_frame::dynamic`]). `dt`
+    /// advances their walk cycles.
+    pub fn figures(&mut self, now: Instant, dt: f32) -> Vec<crate::crowd::Figure> {
+        self.spectator
+            .as_mut()
+            .map_or_else(Vec::new, |spectator| spectator.crowd.figures(now, dt))
+    }
+
     /// The camera `seconds` into its slow sway, for a view `aspect` wide.
     #[must_use]
     pub fn view(aspect: f32, seconds: f32) -> View {

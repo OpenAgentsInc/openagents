@@ -37,6 +37,15 @@ pub struct Frame {
     pub ui: verse::ui::UiBatch,
 }
 
+/// One frame for the engine renderer ([`verse::grid_engine::GridEngine`]):
+/// the camera, the Grid's moving instances, the HUD, and the lighting.
+pub struct EngineFrame {
+    pub view: verse::render::View,
+    pub instances: Vec<verse::imported::Instance>,
+    pub ui: verse::ui::UiBatch,
+    pub lighting: verse::imported::lighting::Lighting,
+}
+
 /// The same scene the mobile C ABI mounts, exposed without platform pointers.
 pub struct GridSurface {
     scene: Scene,
@@ -256,6 +265,27 @@ impl GridSurface {
             mesh,
             // Desktop has native control help, never mobile sticks.
             ui: self.scene.player_tags(),
+        }
+    }
+
+    /// The frame as the engine draws it, as the phones assemble theirs:
+    /// every peer is a `grid/figure`, so no entity mesh is presented.
+    pub fn engine_frame(&mut self, dt: f32) -> EngineFrame {
+        let peers = self
+            .scene
+            .session
+            .as_mut()
+            .map_or_else(Vec::new, |session| {
+                session.crowd.figures(std::time::Instant::now(), dt)
+            });
+        let instances = verse::grid_frame::dynamic(&self.scene.world, &peers, &[]);
+        self.scene.presented_entities = verse::mesh::Mesh::default();
+        let size = self.scene.lifecycle.viewport().logical_size();
+        EngineFrame {
+            view: self.scene.world.view(size[0] / size[1].max(1.0)),
+            instances,
+            ui: self.scene.player_tags(),
+            lighting: verse::grid_frame::lighting(&self.scene.world.atmosphere()),
         }
     }
 }

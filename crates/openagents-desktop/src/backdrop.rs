@@ -11,9 +11,10 @@
 //! the phones draw them; the ball and the blocks rest or roll where their
 //! owners report them. With nobody online the Grid is empty.
 //!
-//! The world is drawn with the Verse renderer on the window's own device,
-//! half the window's size, then softened and dimmed under the page's views
-//! (`rust_native_desktop::backdrop`), so the QR code and every word keep
+//! The world is drawn with the Verse engine renderer on the window's own
+//! device (#10606), as the phones draw the Grid, then composited under the
+//! page's views (`rust_native_desktop::backdrop`), so the QR code and every
+//! word keep
 //! their full contrast. Cost: at most [`FPS`] frames a second while the
 //! window shows and someone is in the Grid, ten while it is empty; none
 //! while the window is hidden, and after [`HIDDEN_GRACE`] hidden the relay
@@ -25,7 +26,7 @@ use rust_native_desktop::wgpu;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use verse::render::Layer;
+use verse::grid_engine::{Content, GridEngine};
 use verse::spectator::Overlook;
 
 /// Frames a second while the window shows and something in the Grid
@@ -39,9 +40,6 @@ pub const FRAME: Duration = Duration::from_nanos(1_000_000_000 / FPS as u64);
 pub const QUIET_FRAME: Duration = Duration::from_millis(100);
 /// How long the window stays hidden before the relay connection closes.
 pub const HIDDEN_GRACE: Duration = Duration::from_secs(20);
-/// Multisampling for the world's lines.
-const SAMPLES: u32 = 4;
-
 /// When frames are due: at most [`FPS`] a second while visible, none while
 /// hidden, and one still frame per showing under "Reduce motion".
 #[derive(Clone, Debug, PartialEq)]
@@ -123,7 +121,7 @@ impl Pace {
 /// The Grid as Watch shows it on the Verse page.
 pub struct GridBackdrop {
     overlook: Overlook,
-    layer: Option<Layer>,
+    layer: Option<GridEngine>,
     atlas: verse::ui::Atlas,
     pace: Pace,
     started: Instant,
@@ -225,23 +223,26 @@ impl Backdrop for GridBackdrop {
     ) -> Result<(), String> {
         let layer = match &mut self.layer {
             Some(layer) => {
-                layer.resize(gpu.device, size.0, size.1)?;
+                if layer.size() != [size.0 as f32, size.1 as f32] {
+                    layer.resize(size.0, size.1)?;
+                }
                 layer
             }
-            None => self.layer.insert(Layer::new(
+            None => self.layer.insert(GridEngine::on_device(
                 gpu.adapter,
                 gpu.device,
                 gpu.queue,
                 FORMAT,
-                size,
-                &self.overlook.world.world.mesh,
+                Content::grid()?,
                 &self.atlas,
-                self.overlook.atmosphere(),
-                SAMPLES,
+                size.0,
+                size.1,
             )?),
         };
         let dt = self.overlook.tick(now);
-        let mesh = self.overlook.mesh(now, dt);
+        let figures = self.overlook.figures(now, dt);
+        let dynamic = verse::grid_frame::dynamic(&self.overlook.world, &figures, &[]);
+        let lighting = verse::grid_frame::lighting(&self.overlook.atmosphere());
         let seconds = if self.pace.still() {
             0.0
         } else {
@@ -253,15 +254,20 @@ impl Backdrop for GridBackdrop {
         } else {
             Overlook::view(aspect, seconds)
         };
-        layer.encode(
-            gpu.device,
-            gpu.queue,
+        let drawn = layer.encode(
             encoder,
             target,
             view,
-            &mesh,
+            &dynamic,
             &verse::ui::UiBatch::default(),
-        )?;
+            &lighting,
+        );
+        if drawn.is_err() {
+            // A lost device: the next frame opens a new engine on the
+            // window's new one.
+            self.layer = None;
+        }
+        drawn?;
         // The tour's camera moves fast enough to need every frame.
         self.pace.drawn(now, self.tour || self.overlook.lively(now));
         Ok(())
