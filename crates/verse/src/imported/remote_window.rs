@@ -335,7 +335,12 @@ impl App {
         let steps = end
             .saturating_sub(start)
             .min(u64::from(verse_world::movement::frames::MAX_STEPS)) as u32;
-        if steps < 4 || self.input.capacity() == 0 || self.pending.len() >= 64 {
+        // Keep local prediction immediate while amortizing durable ordered requests.
+        // The complete history retains direction changes, lease expiries, and jump edges.
+        if steps < verse_world::movement::frames::MAX_STEPS
+            || self.input.capacity() == 0
+            || self.pending.len() >= 64
+        {
             return Ok(());
         }
         let frame = self.prediction.movement_frame(start, steps)?;
@@ -1830,9 +1835,21 @@ mod tests {
         assert!(inputs.try_recv().is_err());
         app.prediction.advance(4. / 120.).unwrap();
         app.send_movement_interval().unwrap();
+        assert!(inputs.try_recv().is_err());
+        app.send(Input::Command(Intent::Move {
+            axes: [0., 1.],
+            yaw: 0.,
+        }));
+        app.prediction.advance(8. / 120.).unwrap();
+        app.send_movement_interval().unwrap();
         let Input::MovementFrame { token, mut frame } = inputs.try_recv().unwrap() else {
             panic!("Missing complete interval")
         };
+        assert_eq!(frame.steps, verse_world::movement::frames::MAX_STEPS);
+        assert_eq!(frame.segments.len(), 2);
+        assert_eq!(frame.segments[0].axes, [1., 0.]);
+        assert_eq!(frame.segments[1].offset, 4);
+        assert_eq!(frame.segments[1].axes, [0., 1.]);
         assert_eq!(frame.sequence, 0);
         frame.sequence = gateway.admission(connection).unwrap().accepted_sequence() + 1;
         frame.tick = gateway.game().authority_tick;
@@ -1850,7 +1867,7 @@ mod tests {
         ));
         updates.try_send(Update::Outcome(response)).unwrap();
         app.consume().unwrap();
-        gateway.tick(1. / 30.).unwrap();
+        gateway.tick(0.1).unwrap();
         updates
             .try_send(Update::Snapshot(request(
                 &mut gateway,

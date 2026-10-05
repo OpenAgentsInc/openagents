@@ -404,8 +404,9 @@ It does not confirm movement. The
 owned baseline identifies `profile`, confirmed character `physics_step`, applied
 frame sequence, and observed `world_step`. Prediction retires only the confirmed
 prefix and replays original event times. The native adapter groups completed
-steps without dropping intervals; the worker binds packets to the shared command
-sequence before transmission. Legacy CLI and headless movement retains the
+steps into 12-substep (100 ms) packets without dropping intervals or input changes;
+local prediction still updates each rendered frame, and the worker binds packets
+to the shared command sequence before transmission. Legacy CLI and headless movement retains the
 arrival-time profile. Version-21 peers must upgrade both host and client.
 
 The serial SDK retries an explicit `stale_tick` refusal only when its verified
