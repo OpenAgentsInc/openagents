@@ -1,0 +1,31 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 30,
+    "persistent_storage": false,
+    "compiled_revisions": {
+      "host": "f17bf2e1d8",
+      "clients": "f17bf2e1d8"
+    },
+    "fixture_revision": "f17bf2e1d8eeb28a1df554fe70a2e34219d65e2f",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "limits": [
+    "966 timestamp submissions yield 18 valid samples and 947 out-of-order completions; one submission remains pending at receipt capture.",
+    "No mapping errors, invalid periods, ring-busy frames, or coalesced samples occur.",
+    "Bounded raw timestamp examples show a stale or zero final pass-end counter. This does not establish the exact backend cause.",
+    "Sparse GPU coverage cannot represent the frame budget.",
+    "Frame p95 is 39.425 ms, correction p95 1.735 m, and simulation p99 histogram upper bound 66.667 ms.",
+    "Storage is disabled; thirty-second diagnostic is not full battle acceptance."
+  ]
+}

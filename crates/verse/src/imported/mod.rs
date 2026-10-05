@@ -2034,13 +2034,25 @@ impl Renderer {
                 }
             }
         }
-        if let Some(timer) = &self.gpu_timer {
-            timer.resolve(&mut encoder, gpu_slot);
-        }
         let finish_started = Instant::now();
         let commands = encoder.finish();
+        // Resolve in a subsequent command buffer so pass-end counters complete first.
+        let gpu_readback = self
+            .gpu_timer
+            .as_ref()
+            .filter(|_| gpu_slot.is_some())
+            .map(|timer| {
+                let mut encoder =
+                    self.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Verse delayed timestamp resolve"),
+                        });
+                timer.resolve(&mut encoder, gpu_slot);
+                encoder.finish()
+            });
         let encoded = Instant::now();
-        self.queue.submit([commands]);
+        self.queue
+            .submit(std::iter::once(commands).chain(gpu_readback));
         if let Some(timer) = &mut self.gpu_timer {
             timer.submitted(gpu_slot, gpu_shadow_started);
         }
