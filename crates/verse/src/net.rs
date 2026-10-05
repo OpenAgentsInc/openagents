@@ -23,6 +23,11 @@ use relay::*;
 
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 const QUEUE: usize = 64;
+/// Messages the relay may leave for the session between two frames. A world
+/// subscription's history (up to 500 state events) and the crowd's pose
+/// frames arrive in one burst; a smaller inbox dropped the connection.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+const INBOX: usize = 4096;
 const MAX_WIRE: usize = 64 * 1024;
 /// A command from the game to the relay.
 #[derive(Clone, Debug)]

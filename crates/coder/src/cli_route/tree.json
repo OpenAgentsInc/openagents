@@ -8387,6 +8387,93 @@
           }
         },
         {
+          "name": "load",
+          "leaf": {
+            "path": [
+              "verse",
+              "load"
+            ],
+            "usage": [
+              "load [--players N] [--wait SECONDS]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "load"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "players",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "wait",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Listen to every pose frame in the world (default 30 s) and report each publisher's rate, gaps, and frame age; exit 1 when fewer than N publishers sent a frame.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "walkers",
+          "leaf": {
+            "path": [
+              "verse",
+              "walkers"
+            ],
+            "usage": [
+              "walkers N [--hz RATE] [--loopback] [--wait SECONDS]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "walkers"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "hz",
+                    "value": "RATE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "loopback",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "wait",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Walk N simulated players with fresh keys in loops in front of the spawn (default world verse-bare) at the phone's cadence, or RATE frames a second, until stopped or for SECONDS; --loopback starts an in-process relay and prints its address. NDJSON progress.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "move",
           "leaf": {
             "path": [
@@ -8985,6 +9072,28 @@
           "name": "limit",
           "value": "N",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "players",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "hz",
+          "value": "RATE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "loopback",
           "optional": true,
           "repeated": true
         },
