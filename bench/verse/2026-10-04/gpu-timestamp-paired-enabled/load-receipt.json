@@ -1,0 +1,46 @@
+{
+  "schema": "verse.multiplayer.load.v2",
+  "status": "complete",
+  "seconds": 40,
+  "players": [
+    {
+      "player": 0,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 243,
+      "snapshot_bytes": 12816511,
+      "maximum_actors": 42,
+      "maximum_players": 2,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 113,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 659,
+      "input_pressure": 0,
+      "refusals": 116,
+      "accepted_casts": {
+        "Grease": 1,
+        "Light": 1,
+        "Magic Missile": 1,
+        "Shield": 1,
+        "Shoot Bow": 1,
+        "Thunderwave": 1,
+        "Web": 1
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 652,
+        "p95": 216.384416,
+        "max": 218.71237499999998
+      }
+    }
+  ],
+  "limits": [
+    "Headless authenticated clients measure transport and authority load, not rendering.",
+    "Binding-to-outcome includes server processing and client delivery, not isolated RTT.",
+    "Timing retains at most 8192 samples per player."
+  ]
+}

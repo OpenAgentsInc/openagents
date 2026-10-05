@@ -1,0 +1,15 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "diagnostic-only",
+  "compiled_revision": "7adb6f54bc",
+  "players": 2,
+  "seconds": 10,
+  "gpu_timestamps_requested": false,
+  "result": "Normal path completes with 300 video frames and no native failure; timestamp availability is zero.",
+  "limits": [
+    "Short two-player run does not establish 20-player battle acceptance.",
+    "Storage is disabled.",
+    "Different runs are not an isolated hardware experiment.",
+    "GPU instrumentation remains unvalidated."
+  ]
+}

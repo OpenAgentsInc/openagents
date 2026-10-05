@@ -1,0 +1,14 @@
+Process sampled for two seconds during the live stalled run. Selected frames; synthetic configuration and loaded-image paths omitted.
+    +                                                                                   1225 _RNvMs3_NtCs1Xggz9mHYcJ_5verse8importedNtB5_8Renderer10draw_frame  (in verse_remote) + 17456
+    +                                                                                     1225 _RINvMs2_NtNtCsaOUL3nbWUCQ_4wgpu3api5queueNtB6_5Queue6submitANtNtB8_14command_buffer13CommandBufferj1_ECs1Xggz9mHYcJ_5verse  (in verse_remote) + 108
+    +                                                                                       1225 _RNvXsc_NtNtCsaOUL3nbWUCQ_4wgpu7backend9wgpu_coreNtB5_9CoreQueueNtNtB9_8dispatch14QueueInterface6submit  (in verse_remote) + 188
+    +                                                                                           1225 _RNvMs5_NtNtCs4tGja8HPLGF_9wgpu_core6device5queueNtB5_5Queue6submit  (in verse_remote) + 8972
+    +                                                                                               1225 _RNvMs8_NtCsjVQ8WgSSPyJ_11parking_lot10raw_rwlockNtB5_9RawRwLock16wait_for_readersB7_  (in verse_remote) + 316
+    +                                                                                                 1225 _RINvNtCsgNZIwHjBmsO_16parking_lot_core11parking_lot4parkNCNvMs8_NtCsjVQ8WgSSPyJ_11parking_lot10raw_rwlockNtB10_9RawRwLock16wait_for_readers0NCBU_s_0NCBU_s0_0EB12_  (in verse_remote) + 272
+    +                                                                                                   1225 _RNCINvNtCsgNZIwHjBmsO_16parking_lot_core11parking_lot4parkNCNvMs8_NtCsjVQ8WgSSPyJ_11parking_lot10raw_rwlockNtB12_9RawRwLock16wait_for_readers0NCBW_s_0NCBW_s0_0E0B14_  (in verse_remote) + 644
+    +           1225 _RNvMs2_NtCs1Xggz9mHYcJ_5verse8importedNtB5_14PendingCapture6finish  (in verse_remote) + 244
+    +             1225 _RNvMNtNtCsaOUL3nbWUCQ_4wgpu3api6deviceNtB2_6Device4poll  (in verse_remote) + 76
+    +                   1225 _RNvMs2_NtNtCs4tGja8HPLGF_9wgpu_core6device8resourceNtB5_6Device8maintain  (in verse_remote) + 360
+    +                     1111 _RNvXs_NtNtCskykxz3ZGoQe_8wgpu_hal5metal6deviceNtB6_6DeviceNtB8_6Device4wait  (in verse_remote) + 512
+    +                     110 _RNvXs_NtNtCskykxz3ZGoQe_8wgpu_hal5metal6deviceNtB6_6DeviceNtB8_6Device4wait  (in verse_remote) + 568
+    +                     4 _RNvXs_NtNtCskykxz3ZGoQe_8wgpu_hal5metal6deviceNtB6_6DeviceNtB8_6Device4wait  (in verse_remote) + 496,512  [0x103171e74,0x103171e84]
