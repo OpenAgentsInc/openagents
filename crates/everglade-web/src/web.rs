@@ -694,9 +694,8 @@ impl Page {
             else {
                 return false;
             };
-            if down {
-                let _ = self.runtime.zone_intent(intent);
-            }
+            // Every press casts, and a held key recasts until it is let go.
+            let _ = self.runtime.grove_key(intent, down);
             return true;
         }
         let slots = &zones::everglade::hotbar::SLOTS;
@@ -809,7 +808,9 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
     {
         let page = page.clone();
         on(window, "blur", move |_: web_sys::Event| {
-            page.borrow_mut().input.release()
+            let mut page = page.borrow_mut();
+            page.input.release();
+            page.runtime.grove_release();
         })?;
     }
     {

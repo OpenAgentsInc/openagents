@@ -231,7 +231,7 @@ fn flat(v: Vec3) -> Vec3 {
 }
 
 /// A round glow of half size `half` at `at`, turned toward `eye`.
-fn blob(out: &mut Vec<GlowVertex>, at: Vec3, half: f32, radiance: [f32; 3], eye: Vec3) {
+pub(crate) fn blob(out: &mut Vec<GlowVertex>, at: Vec3, half: f32, radiance: [f32; 3], eye: Vec3) {
     // A glow brushing the camera would fill the view; it fades out instead.
     let near = ((eye.distance(at) - 1.0) / 3.0).clamp(0.0, 1.0);
     if near <= 0.0 {
@@ -245,7 +245,7 @@ fn blob(out: &mut Vec<GlowVertex>, at: Vec3, half: f32, radiance: [f32; 3], eye:
 }
 
 /// A glow quad centered at `at` spanning `right` and `up` each way.
-fn quad(out: &mut Vec<GlowVertex>, at: Vec3, right: Vec3, up: Vec3, radiance: [f32; 3]) {
+pub(crate) fn quad(out: &mut Vec<GlowVertex>, at: Vec3, right: Vec3, up: Vec3, radiance: [f32; 3]) {
     for (x, y) in [
         (-1.0, -1.0),
         (1.0, -1.0),
@@ -263,7 +263,14 @@ fn quad(out: &mut Vec<GlowVertex>, at: Vec3, right: Vec3, up: Vec3, radiance: [f
 }
 
 /// A rough stone: an octahedron with uneven points, turned by `turn`.
-fn pebble(mesh: &mut Mesh, at: Vec3, size: f32, turn: Quat, color: [f32; 3], h: [f32; 4]) {
+pub(crate) fn pebble(
+    mesh: &mut Mesh,
+    at: Vec3,
+    size: f32,
+    turn: Quat,
+    color: [f32; 3],
+    h: [f32; 4],
+) {
     let points = [
         Vec3::X * (0.8 + 0.4 * h[0]),
         -Vec3::X * (0.8 + 0.4 * h[1]),
@@ -296,7 +303,7 @@ fn leaf(mesh: &mut Mesh, at: Vec3, size: f32, turn: Quat, color: [f32; 3]) {
     face(mesh, [stem, tip, right], color);
 }
 
-fn face(mesh: &mut Mesh, [a, b, c]: [Vec3; 3], color: [f32; 3]) {
+pub(crate) fn face(mesh: &mut Mesh, [a, b, c]: [Vec3; 3], color: [f32; 3]) {
     let color = super::super::draw::shade(color, a, b, c);
     for p in [a, b, c] {
         mesh.faces.push(Vertex {
@@ -309,7 +316,7 @@ fn face(mesh: &mut Mesh, [a, b, c]: [Vec3; 3], color: [f32; 3]) {
 
 /// Four deterministic values in [0, 1) from a family seed and an index
 /// (`SplitMix64`).
-fn seeded(seed: u64, i: usize) -> [f32; 4] {
+pub(crate) fn seeded(seed: u64, i: usize) -> [f32; 4] {
     let mut x = seed ^ (i as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
     let mut out = [0.0; 4];
     for o in &mut out {

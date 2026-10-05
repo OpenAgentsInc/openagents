@@ -1,10 +1,11 @@
 //! The Grove's hotbar: Everglade's icon tray with the druid's spells on
-//! keys 1 to 9 and Long Rest on 0, and a mana bar above it. Resting the
+//! keys 1 to 9 and Long Rest on 0. The Grove has no mana and no cooldowns,
+//! so the bar has no mana bar and no slot ever dims for one. Resting the
 //! pointer on a slot shows its card ([`crate::tooltip`]) with the sentence
-//! kept in [`SLOTS`] and the name, mana, and cooldown from the kit.
+//! kept in [`SLOTS`] and the name and level from the kit.
 
 use super::super::Intent;
-use super::kit::{MAX_MANA, Spell};
+use super::kit::Spell;
 use crate::tooltip::{self, Card, Tip, palette};
 use crate::ui::{Atlas, UiBatch};
 use crate::zones::everglade::hotbar::{self as tray, Slot};
@@ -13,7 +14,7 @@ use crate::zones::everglade::hotbar::{self as tray, Slot};
 pub const COUNT: usize = Spell::ALL.len();
 
 /// Each slot's icon sprite and its card's sentence, in [`Spell::ALL`]
-/// order. The card's name, mana, and cooldown come from [`Spell::def`].
+/// order. The card's name and level come from [`Spell::def`].
 pub const SLOTS: [(&str, &str); COUNT] = [
     (
         "thunderwave-icon",
@@ -53,7 +54,7 @@ pub const SLOTS: [(&str, &str); COUNT] = [
     ),
     (
         "long-rest-icon",
-        "Refills your mana, clears every cooldown, ends your spells, and stands the dummies back up.",
+        "Ends your spells and stands the dummies back up, healed and home.",
     ),
 ];
 
@@ -71,11 +72,10 @@ pub const SPRITES: [&str; COUNT] = {
 /// Each slot's key label: 1 to 9, then 0.
 pub const KEYS: [&str; COUNT] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 
-/// What the bar shows: each slot, and the druid's mana.
+/// What the bar shows: each slot.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bar {
     pub slots: [Slot; COUNT],
-    pub mana: f32,
 }
 
 /// The intent slot `index` sends.
@@ -120,86 +120,42 @@ pub fn slot_under(point: [f32; 2], size: [f32; 2], bottom: f32) -> Option<usize>
     tray::hit_of(point, size, bottom, COUNT)
 }
 
-/// Slot `index`'s card: the spell's name and sentence, its key, its mana,
-/// and its cooldown.
+/// Slot `index`'s card: the spell's name and sentence, its key, and its
+/// level. The Grove has no mana and no cooldowns, so the card names none.
 #[must_use]
 pub fn card(index: usize) -> Option<Card> {
     let spell = *Spell::ALL.get(index)?;
     let def = spell.def();
-    let mut card = Card::of(Tip::new(def.label, SLOTS[index].1))
+    let card = Card::of(Tip::new(def.label, SLOTS[index].1))
         .detail(format!("Key {}", KEYS[index]), palette::KEY);
-    if def.mana > 0.0 {
-        card = card.detail(format!("{:.0} mana", def.mana), palette::MANA);
-    }
-    card = if def.cooldown > 0.0 {
-        card.detail(format!("{:.0} s cooldown", def.cooldown), palette::TIME)
-    } else if def.level == 0 && spell != Spell::LongRest {
-        card.detail("Cantrip", palette::TIME)
+    let card = if spell == Spell::LongRest {
+        card.detail("Demo control", palette::RULE)
+    } else if def.level == 0 {
+        card.detail("Cantrip", palette::RULE)
     } else {
-        card.detail("No cooldown", palette::TIME)
+        card.detail(format!("Level {}", def.level), palette::RULE)
     };
-    Some(card)
+    Some(if spell.glade().is_some() {
+        card.detail("Concentration", palette::RULE)
+    } else {
+        card
+    })
 }
 
-/// Draws slot `index`'s card above the tray and its mana bar into `ui`,
-/// kept on screen.
+/// Draws slot `index`'s card above the tray into `ui`, kept on screen.
 pub fn draw_tip(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, index: usize) {
     let Some(card) = card(index) else {
         return;
     };
     let [x, _, w, _] = tray::slot_rect_of(size, bottom, COUNT, index);
     let [_, top, _, height] = tray::frame_of(size, bottom, COUNT);
-    // Over the mana bar and its label.
-    let lifted = top - 14.0 * tray::unit(size) - atlas.line - 2.0;
-    tooltip::draw(
-        ui,
-        atlas,
-        &card,
-        [x, lifted, w, top + height - lifted],
-        size,
-    );
+    tooltip::draw(ui, atlas, &card, [x, top, w, height], size);
 }
 
-/// Draws the tray and the mana bar over it into `ui`.
+/// Draws the tray into `ui`.
 pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, bar: &Bar) {
     let sprites: Vec<(&str, &str)> = SPRITES.iter().copied().zip(KEYS).collect();
     tray::draw_of(ui, atlas, size, bottom, &sprites, &bar.slots);
-    let [left, top, width, _] = tray::frame_of(size, bottom, COUNT);
-    let u = tray::unit(size);
-    let height = 10.0 * u;
-    let y = top - height - 4.0 * u;
-    for (inset, color) in [
-        (0.0, [0.46, 0.39, 0.24, 1.0]),
-        (1.0, [0.05, 0.06, 0.16, 0.96]),
-    ] {
-        ui.rect(
-            atlas,
-            left + inset * u,
-            y + inset * u,
-            width - 2.0 * inset * u,
-            height - 2.0 * inset * u,
-            color,
-        );
-    }
-    let k = (bar.mana / MAX_MANA).clamp(0.0, 1.0);
-    if k > 0.0 {
-        ui.rect(
-            atlas,
-            left + u,
-            y + u,
-            (width - 2.0 * u) * k,
-            height - 2.0 * u,
-            [0.22, 0.48, 1.0, 1.0],
-        );
-    }
-    let label = format!("Mana {} / {}", bar.mana.floor() as i32, MAX_MANA as i32);
-    ui.text(
-        atlas,
-        left + 4.0 * u,
-        y - atlas.line - 2.0,
-        &label,
-        [0.62, 0.78, 1.0, 1.0],
-    );
 }
 
 #[cfg(test)]
@@ -223,22 +179,43 @@ mod tests {
             assert_eq!(card.details[0].0, format!("Key {}", KEYS[index]));
         }
         let thunderwave = card(0).unwrap();
-        assert!(thunderwave.details.iter().any(|(t, _)| t == "10 mana"));
-        assert!(thunderwave.details.iter().any(|(t, _)| t == "8 s cooldown"));
+        assert!(thunderwave.details.iter().any(|(t, _)| t == "Level 1"));
         assert!(card(5).unwrap().details.iter().any(|(t, _)| t == "Cantrip"));
+        assert!(
+            card(2)
+                .unwrap()
+                .details
+                .iter()
+                .any(|(t, _)| t == "Concentration")
+        );
+        // The Grove has no mana and no cooldowns, and no card claims any.
+        for index in 0..COUNT {
+            let card = card(index).unwrap();
+            let words: Vec<String> = card
+                .details
+                .iter()
+                .map(|(t, _)| t.to_lowercase())
+                .chain([card.title.to_lowercase(), SLOTS[index].1.to_lowercase()])
+                .collect();
+            assert!(
+                words
+                    .iter()
+                    .all(|w| !w.contains("mana") && !w.contains("cooldown")),
+                "{words:?}"
+            );
+        }
     }
 
     #[test]
-    fn a_card_clears_the_mana_bar_and_the_screen_edge() {
+    fn a_card_clears_the_tray_and_the_screen_edge() {
         let atlas = Atlas::new(14.0);
-        let [_, top, ..] = tray::frame_of(SIZE, 14.0, COUNT);
-        let mana_label = top - 14.0 * tray::unit(SIZE) - atlas.line - 2.0;
+        let [_, top, _, height] = tray::frame_of(SIZE, 14.0, COUNT);
         for index in 0..COUNT {
             let mut ui = UiBatch::default();
-            let [x, y, w, h] = tray::slot_rect_of(SIZE, 14.0, COUNT, index);
-            let anchor = [x, mana_label, w, y + h - mana_label];
+            let [x, _, w, _] = tray::slot_rect_of(SIZE, 14.0, COUNT, index);
+            let anchor = [x, top, w, height];
             let rect = tooltip::draw(&mut ui, &atlas, &card(index).unwrap(), anchor, SIZE);
-            assert!(rect[1] + rect[3] <= mana_label, "slot {index}");
+            assert!(rect[1] + rect[3] <= top, "slot {index}");
             assert!(rect[0] >= tooltip::MARGIN);
             assert!(rect[0] + rect[2] <= SIZE[0] - tooltip::MARGIN);
         }

@@ -181,7 +181,8 @@ pub enum Effect {
     },
     /// An expanding sphere of fire.
     Burst { at: Vec3, radius: f32, start: f32 },
-    /// Thunderwave's cube rolling out from the caster.
+    /// Thunderwave's blast erupting from the caster through its cube
+    /// ([`super::thunder`]); `origin` is the cube's origin.
     Wave {
         origin: Vec3,
         forward: Vec3,
@@ -208,7 +209,7 @@ impl Effect {
         let (start, length) = match self {
             Self::Bolt { start, flight, .. } => (*start, *flight),
             Self::Burst { start, .. } => (*start, 0.7),
-            Self::Wave { start, .. } => (*start, 0.45),
+            Self::Wave { start, .. } => (*start, super::thunder::LENGTH),
             Self::Gust { start, .. } => (*start, 1.4),
             Self::Mist { start, .. } => (*start, 0.8),
             Self::Web { until, .. } => return now >= *until,
@@ -216,6 +217,24 @@ impl Effect {
         };
         now - start >= length
     }
+
+    /// How many of its kind may be live at once; past it the oldest goes.
+    #[must_use]
+    pub const fn cap(&self) -> usize {
+        match self {
+            Self::Bolt { .. } => 24,
+            Self::Burst { .. } | Self::Mist { .. } => 8,
+            Self::Wave { .. } => 6,
+            Self::Gust { .. } | Self::Web { .. } => 6,
+            Self::Rest { .. } => 1,
+        }
+    }
+}
+
+/// The camera's jolt `age` seconds after a Thunderwave, m.
+#[must_use]
+pub fn shake(age: f32) -> Vec3 {
+    super::thunder::shake(age)
 }
 
 /// Builds the Grove's lines and faces: the post, the bars, the numbers,
@@ -426,23 +445,10 @@ impl Painter {
                 forward,
                 start,
             } => {
-                let k = ((now - start) / 0.45).clamp(0.0, 1.0);
-                let edge = verse_world::spells::thunderwave::CUBE as f32;
-                let side = Vec3::new(-forward.z, 0.0, forward.x);
-                let along = edge * k;
-                let half = edge * 0.5;
-                let c = origin + forward * along;
-                let color = [0.45, 0.7, 1.0].map(|v| v * (1.0 - 0.6 * k));
-                let corners = [
-                    c + side * half - Vec3::Y * half,
-                    c - side * half - Vec3::Y * half,
-                    c - side * half + Vec3::Y * half,
-                    c + side * half + Vec3::Y * half,
-                ];
-                for i in 0..4 {
-                    self.line(corners[i], corners[(i + 1) % 4], color);
-                    self.line(corners[i], corners[i] - forward * along.min(1.5), color);
-                }
+                // Each blast its own scatter, the same on every frame.
+                let seed = u64::from(start.to_bits()) << 32
+                    | u64::from((origin.x + origin.z * 7.0).to_bits());
+                super::thunder::draw(&mut self.mesh, origin, forward, now - start, self.eye, seed);
             }
             Effect::Gust {
                 origin,

@@ -2203,6 +2203,27 @@ impl App {
                 return;
             }
         }
+        // The Grove's hotbar: 1 to 9 cast its spells, and 0 rests. Every
+        // press casts, and a held key recasts until it is let go.
+        if self.in_bare_grove() && (!pressed || (!self.chat.open && !self.map.expanded)) {
+            let digit = match code {
+                KeyCode::Digit0 => Some(0),
+                KeyCode::Digit1 => Some(1),
+                KeyCode::Digit2 => Some(2),
+                KeyCode::Digit3 => Some(3),
+                KeyCode::Digit4 => Some(4),
+                KeyCode::Digit5 => Some(5),
+                KeyCode::Digit6 => Some(6),
+                KeyCode::Digit7 => Some(7),
+                KeyCode::Digit8 => Some(8),
+                KeyCode::Digit9 => Some(9),
+                _ => None,
+            };
+            if let Some(intent) = digit.and_then(zones::grove::hotbar::key) {
+                let _ = self.runtime.grove_key(intent, pressed);
+                return;
+            }
+        }
         if pressed && !self.chat.open && !self.map.expanded {
             let snapshot = self
                 .runtime
@@ -2230,26 +2251,6 @@ impl App {
                 };
                 if let Some(intent) = zones::everglade::demolition::hotbar::key(name) {
                     return self.zone_action(intent);
-                }
-            }
-            // The Grove's hotbar: 1 to 9 cast its spells, and 0 rests.
-            if self.in_bare_grove() {
-                let digit = match code {
-                    KeyCode::Digit0 => Some(0),
-                    KeyCode::Digit1 => Some(1),
-                    KeyCode::Digit2 => Some(2),
-                    KeyCode::Digit3 => Some(3),
-                    KeyCode::Digit4 => Some(4),
-                    KeyCode::Digit5 => Some(5),
-                    KeyCode::Digit6 => Some(6),
-                    KeyCode::Digit7 => Some(7),
-                    KeyCode::Digit8 => Some(8),
-                    KeyCode::Digit9 => Some(9),
-                    _ => None,
-                };
-                if let Some(intent) = digit.and_then(zones::grove::hotbar::key) {
-                    self.zone_action(intent);
-                    return;
                 }
             }
             // Everglade's hotbar: 1 or L levitates or lands.
@@ -3761,6 +3762,7 @@ impl ApplicationHandler for App {
                 self.window_focused = focused;
                 if !focused {
                     self.suspend_world();
+                    self.runtime.grove_release();
                 }
                 self.open_pending_everglade();
                 if let Some(mount) = &mut self.mount {

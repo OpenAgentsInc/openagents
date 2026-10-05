@@ -7,7 +7,10 @@
 //! Everglade's character with Everglade's controls, and casts the druid's
 //! spells from an icon hotbar ([`hotbar`]): Thunderwave, Gust of Wind,
 //! Wind Wall, Wall of Stone, Reverse Gravity, Fire Bolt, Fireball, Misty
-//! Step, and Web, with Long Rest to refill everything ([`kit`]).
+//! Step, and Web, with Long Rest to stand the field back up ([`kit`]).
+//! Nothing gates a cast, so the player can spam: every press casts, and a
+//! held key recasts six times a second. The live effects are capped, oldest
+//! first, so spam stays bounded in memory and frame time.
 //!
 //! The runtime keeps an [`Everglade`] for the Grove too, built from these
 //! placements: it moves the player over the heightfield and owns Wind
@@ -25,6 +28,7 @@ pub mod kit;
 pub mod layout;
 #[cfg(test)]
 mod tests;
+pub(crate) mod thunder;
 
 use super::everglade::{self, Everglade, layout::Placement};
 use super::everglade_pack::ZonePack;
@@ -34,7 +38,7 @@ use crate::pbr::textured::Figure;
 use crate::world::World;
 use dummies::Dummy;
 use glam::{DVec3, Vec3};
-use kit::{Delivery, Kit, Spell};
+use kit::{Delivery, Spell};
 use std::sync::Arc;
 use verse_world::spells::Dice;
 
@@ -60,6 +64,11 @@ const WIND_LIFT: f32 = 8.0;
 const SHOVE_CLEARANCE: f64 = 0.5;
 /// Lines the combat log keeps.
 const LOG: usize = 4;
+/// Live effects of every kind together, oldest dropped first; each kind
+/// also has its own cap ([`draw::Effect::cap`]).
+pub const MAX_EFFECTS: usize = 64;
+/// Floating numbers at once, oldest dropped first.
+pub const MAX_FLOATERS: usize = 48;
 
 /// The Grove's placements as one list, for the static scene and the solids.
 #[must_use]
@@ -92,15 +101,18 @@ pub(crate) fn world(pack: &ZonePack) -> Result<World, String> {
 /// play.
 pub(crate) fn glade(pack: &ZonePack, at: &PlayerController) -> Result<Everglade, String> {
     let solids = everglade::solids::build_with(pack, &placements(), &[])?;
-    Everglade::with_solids(pack, at, solids)
+    let mut glade = Everglade::with_solids(pack, at, solids)?;
+    glade.set_free_casting();
+    Ok(glade)
 }
 
 /// The training field's live state.
 pub(crate) struct Grove {
     pub dummies: Vec<Dummy>,
-    pub kit: Kit,
     dice: Dice,
     time: f32,
+    /// When each held hotbar key next recasts, in [`Spell::ALL`] order.
+    held: [Option<f32>; Spell::ALL.len()],
     effects: Vec<draw::Effect>,
     floaters: Vec<draw::Floater>,
     /// The newest combat lines, oldest first.
@@ -140,9 +152,9 @@ impl Grove {
         let model = draw::Model::new(pack, glade.cast_figure().as_ref(), dummies.len())?;
         Ok(Self {
             dummies,
-            kit: Kit::default(),
             dice: Dice::new(kit::DICE_SEED),
             time: 0.0,
+            held: [None; Spell::ALL.len()],
             effects: Vec::new(),
             floaters: Vec::new(),
             log: Vec::new(),
@@ -178,8 +190,8 @@ impl Grove {
     ///
     /// # Errors
     ///
-    /// Returns why the cast was refused: a cooldown, mana, no target, or a
-    /// glade spell's own rule. A refused cast spends nothing.
+    /// Returns why the cast was refused: no target, or a glade spell's own
+    /// rule. No mana or cooldown ever refuses one.
     pub fn cast(
         &mut self,
         spell: Spell,
@@ -191,13 +203,13 @@ impl Grove {
             self.long_rest(player, glade);
             return Ok(());
         }
-        // Pressing a live concentration spell's slot ends it, freely.
+        // Pressing a live concentration spell's slot casts it again: the
+        // old one ends and the new one rises where the druid faces now.
         if let Some(glade_spell) = spell.glade()
             && glade.spell_active(glade_spell)
         {
-            return glade.cast_spell(glade_spell, player);
+            glade.cast_spell(glade_spell, player)?;
         }
-        self.kit.admit(spell)?;
         let def = spell.def();
         let target = self.target(player, def.range.max(6.0));
         if spell.needs_target() && target.is_none() {
@@ -219,7 +231,7 @@ impl Grove {
                 let fireball = spell == Spell::Fireball;
                 let distance = hand.distance(self.dummies[i].center());
                 let speed = if fireball { FIREBALL_SPEED } else { BOLT_SPEED };
-                self.effects.push(draw::Effect::Bolt {
+                self.add(draw::Effect::Bolt {
                     from: hand,
                     target: i,
                     start: now,
@@ -244,7 +256,7 @@ impl Grove {
                         self.dummies[i].push(away, push, now);
                     }
                 }
-                self.effects.push(draw::Effect::Wave {
+                self.add(draw::Effect::Wave {
                     origin: cube.origin.as_vec3(),
                     forward: cube.forward.as_vec3(),
                     start: now,
@@ -263,7 +275,7 @@ impl Grove {
                         self.dummies[i].push(forward, GUST_PUSH, now);
                     }
                 }
-                self.effects.push(draw::Effect::Gust {
+                self.add(draw::Effect::Gust {
                     origin: feet,
                     forward,
                     start: now,
@@ -299,11 +311,11 @@ impl Grove {
                     to.z *= MEADOW_RADIUS / r;
                 }
                 to.y = everglade::height(to.x, to.z);
-                self.effects.push(draw::Effect::Mist {
+                self.add(draw::Effect::Mist {
                     at: feet,
                     start: now,
                 });
-                self.effects.push(draw::Effect::Mist { at: to, start: now });
+                self.add(draw::Effect::Mist { at: to, start: now });
                 player.pos = to;
                 player.set_surface_height(to.y);
                 player.set_vertical_speed(0.0);
@@ -330,7 +342,7 @@ impl Grove {
                         }
                     }
                 }
-                self.effects.push(draw::Effect::Web {
+                self.add(draw::Effect::Web {
                     at,
                     start: now,
                     until: now + WEB_ROOT,
@@ -338,7 +350,6 @@ impl Grove {
             }
             Spell::LongRest => {}
         }
-        self.kit.spend(spell);
         Ok(())
     }
 
@@ -482,24 +493,99 @@ impl Grove {
         }
     }
 
-    /// Refills the druid and the field, and ends the glade's spells.
+    /// Stands the field back up and ends the glade's spells.
     fn long_rest(&mut self, player: &PlayerController, glade: &mut Everglade) {
-        self.kit.rest();
         glade.long_rest();
         for dummy in &mut self.dummies {
             dummy.reset();
         }
         self.effects.clear();
         self.floaters.clear();
-        self.effects.push(draw::Effect::Rest {
+        self.add(draw::Effect::Rest {
             at: player.pos,
             start: self.time,
         });
-        self.say("Long Rest: mana, cooldowns, and dummies refilled".into());
+        self.say("Long Rest: spells ended and dummies refilled".into());
+    }
+
+    /// Adds `effect`, first dropping the oldest of its kind past the kind's
+    /// cap and the oldest of all past [`MAX_EFFECTS`].
+    fn add(&mut self, effect: draw::Effect) {
+        let kind = std::mem::discriminant(&effect);
+        let same = self
+            .effects
+            .iter()
+            .filter(|e| std::mem::discriminant(*e) == kind)
+            .count();
+        if same >= effect.cap()
+            && let Some(oldest) = self
+                .effects
+                .iter()
+                .position(|e| std::mem::discriminant(e) == kind)
+        {
+            self.effects.remove(oldest);
+        }
+        if self.effects.len() >= MAX_EFFECTS {
+            self.effects.remove(0);
+        }
+        self.effects.push(effect);
+    }
+
+    /// The live effects, oldest first.
+    #[cfg(test)]
+    #[must_use]
+    pub fn effects(&self) -> &[draw::Effect] {
+        &self.effects
+    }
+
+    /// Holds or lets go of `spell`'s hotbar key. While held, the key
+    /// recasts every [`kit::REPEAT`] seconds after the press's own cast;
+    /// Long Rest never repeats.
+    pub fn hold(&mut self, spell: Spell, down: bool) {
+        self.held[spell.index()] =
+            (down && spell != Spell::LongRest).then_some(self.time + kit::REPEAT);
+    }
+
+    /// Lets go of every held key, as when the window loses focus.
+    pub fn release(&mut self) {
+        self.held = [None; Spell::ALL.len()];
+    }
+
+    /// The held spells due to recast now, each at most once a frame; a
+    /// long frame skips the missed repeats rather than bursting them.
+    pub fn due(&mut self) -> Vec<Spell> {
+        let now = self.time;
+        let mut due = Vec::new();
+        for (spell, next) in Spell::ALL.into_iter().zip(&mut self.held) {
+            if let Some(at) = next
+                && *at <= now
+            {
+                due.push(spell);
+                *at = (*at + kit::REPEAT).max(now + kit::REPEAT * 0.5);
+            }
+        }
+        due
+    }
+
+    /// The camera's shake from the newest Thunderwave, m.
+    #[must_use]
+    pub fn shake(&self) -> Vec3 {
+        let now = self.time;
+        self.effects
+            .iter()
+            .rev()
+            .find_map(|effect| match *effect {
+                draw::Effect::Wave { start, .. } => Some(draw::shake(now - start)),
+                _ => None,
+            })
+            .unwrap_or(Vec3::ZERO)
     }
 
     fn float(&mut self, i: usize, text: String, color: [f32; 3]) {
         let d = &self.dummies[i];
+        if self.floaters.len() >= MAX_FLOATERS {
+            self.floaters.remove(0);
+        }
         self.floaters.push(draw::Floater {
             at: d.pos + Vec3::Y * (d.top() - d.pos.y + 0.75),
             text,
@@ -516,11 +602,10 @@ impl Grove {
     }
 
     /// Advances the field `dt` seconds: bolts land, dummies move and reset,
-    /// mana regenerates, and the dummies block walking where they stand.
+    /// and the dummies block walking where they stand.
     pub fn tick(&mut self, dt: f32, glade: &mut Everglade) {
         self.time += dt.max(0.0);
         let now = self.time;
-        self.kit.tick(dt);
         let landed: Vec<(usize, bool)> = self
             .effects
             .iter()
@@ -548,7 +633,7 @@ impl Grove {
                         self.strike(Spell::Fireball, i);
                     }
                 }
-                self.effects.push(draw::Effect::Burst {
+                self.add(draw::Effect::Burst {
                     at,
                     radius,
                     start: now,
@@ -598,7 +683,9 @@ impl Grove {
         if let Some(i) = target {
             painter.target(&self.dummies[i], now);
         }
-        for effect in &self.effects {
+        // Newest first, so a renderer that runs out of glow quads under spam
+        // drops the oldest blasts.
+        for effect in self.effects.iter().rev() {
             let at = match effect {
                 draw::Effect::Bolt { target, .. } => self.dummies.get(*target).map(Dummy::center),
                 _ => None,
@@ -611,7 +698,8 @@ impl Grove {
         painter.mesh
     }
 
-    /// The hotbar: each slot's readiness and cooldown, and the mana.
+    /// The hotbar: each slot, lit when it has what it needs to cast. No
+    /// slot ever cools down.
     #[must_use]
     pub fn bar(&self, player: &PlayerController, glade: &Everglade) -> hotbar::Bar {
         let slots = Spell::ALL.map(|spell| {
@@ -619,15 +707,12 @@ impl Grove {
             let targeted =
                 !spell.needs_target() || self.target(player, spell.def().range).is_some();
             everglade::hotbar::Slot {
-                enabled: active || (self.kit.admit(spell).is_ok() && targeted),
+                enabled: active || targeted,
                 active,
-                cooldown: self.kit.cooldown_fraction(spell),
+                cooldown: 0.0,
             }
         });
-        hotbar::Bar {
-            slots,
-            mana: self.kit.mana,
-        }
+        hotbar::Bar { slots }
     }
 
     /// The zone caption: the soft target and the newest combat lines.

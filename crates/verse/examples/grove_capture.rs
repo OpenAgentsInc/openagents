@@ -1,5 +1,5 @@
 //! Offline visual acceptance of the Grove with the shared renderer.
-//! Usage: grove_capture OUTPUT.png [field|action|tooltip]
+//! Usage: grove_capture OUTPUT.png [field|action|tooltip|thunder [AGE]]
 //!
 //! Installs the Grove from the committed, pinned Everglade pack, as
 //! `verse --grove` does after the download, and renders one view with its
@@ -10,7 +10,9 @@
 //! - `action`: the same view a moment after Web and Fire Bolt, with a
 //!   bolt in flight, a rooted dummy, and a floating result.
 //! - `tooltip`: the field with the pointer resting on the hotbar's
-//!   Fireball slot, so its card shows over the mana bar.
+//!   Fireball slot, so its card shows above the tray.
+//! - `thunder`: Thunderwave mid-blast beside a straw dummy, `AGE` seconds
+//!   (0.12 by default) after the cast.
 use std::path::{Path, PathBuf};
 use verse::{
     controller::InputState,
@@ -44,6 +46,21 @@ fn main() -> Result<(), String> {
     }
     match view.as_str() {
         "field" | "tooltip" => {}
+        "thunder" => {
+            let age: f32 = args
+                .next()
+                .map_or(Ok(0.12), |a| a.parse())
+                .map_err(|e| format!("bad age: {e}"))?;
+            runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -7.5), 0.0)?;
+            for _ in 0..4 {
+                runtime.tick(&idle, 0.05);
+            }
+            runtime.zone_intent(Intent::Thunderwave)?;
+            let steps = (age / 0.01).round() as usize;
+            for _ in 0..steps {
+                runtime.tick(&idle, 0.01);
+            }
+        }
         "action" => {
             runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -11.0), 0.0)?;
             runtime.zone_intent(Intent::Web)?;
@@ -57,7 +74,7 @@ fn main() -> Result<(), String> {
         }
         other => {
             return Err(format!(
-                "unknown view `{other}`; use field, action, or tooltip"
+                "unknown view `{other}`; use field, action, tooltip, or thunder"
             ));
         }
     }

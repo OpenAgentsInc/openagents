@@ -59,7 +59,7 @@ pub mod palette {
     pub const BODY: [f32; 4] = [0.88, 0.82, 0.68, 1.0];
     /// A key or control.
     pub const KEY: [f32; 4] = [0.78, 0.68, 0.48, 1.0];
-    /// Mana, the Grove's mana bar's blue.
+    /// Mana, a pale blue.
     pub const MANA: [f32; 4] = [0.62, 0.78, 1.0, 1.0];
     /// A cooldown or duration, a leaf green.
     pub const TIME: [f32; 4] = [0.64, 0.8, 0.5, 1.0];

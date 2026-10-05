@@ -831,7 +831,49 @@ impl WorldRuntime {
         Some(glade.demolition()?.bar())
     }
 
-    /// The Grove's hotbar and mana, or `None` outside the Grove.
+    /// Presses (`down`) or lets go of the Grove hotbar key that sends
+    /// `intent`. A press casts at once, every time, and a held key recasts
+    /// six times a second until it is let go. Returns whether the Grove took
+    /// the key, with a refused cast's reason.
+    ///
+    /// # Errors
+    ///
+    /// Returns why a press's cast was refused, such as no dummy ahead.
+    pub fn grove_key(&mut self, intent: Intent, down: bool) -> Result<bool, String> {
+        let Some(spell) = super::grove::kit::Spell::of(intent) else {
+            return Ok(false);
+        };
+        if self.zone != ZoneId::Grove || self.zone_state.grove.is_none() {
+            return Ok(false);
+        }
+        let result = if down {
+            self.zone_intent(intent)
+        } else {
+            Ok(())
+        };
+        if let Some(grove) = self.zone_state.grove.as_mut() {
+            grove.hold(spell, down);
+        }
+        result.map(|()| true)
+    }
+
+    /// The camera's jolt from the Grove's newest Thunderwave, m.
+    pub(crate) fn grove_shake(&self) -> Vec3 {
+        self.zone_state
+            .grove
+            .as_ref()
+            .map_or(Vec3::ZERO, super::grove::Grove::shake)
+    }
+
+    /// Lets go of every held Grove hotbar key, as when the window loses
+    /// focus.
+    pub fn grove_release(&mut self) {
+        if let Some(grove) = self.zone_state.grove.as_mut() {
+            grove.release();
+        }
+    }
+
+    /// The Grove's hotbar, or `None` outside the Grove.
     #[must_use]
     pub fn grove_bar(&self) -> Option<super::grove::hotbar::Bar> {
         let grove = self.zone_state.grove.as_ref()?;
@@ -1661,6 +1703,12 @@ impl WorldRuntime {
         if let (Some(glade), Some(grove)) = (&mut state.everglade, &mut state.grove) {
             glade.tick(dt, &self.player, &[]);
             grove.tick(dt, glade);
+            // Held hotbar keys recast at their fixed rate.
+            for spell in grove.due() {
+                if let Err(error) = grove.cast(spell, &mut self.player, glade) {
+                    state.error = Some(error.chars().take(180).collect());
+                }
+            }
         } else if let Some(everglade) = &mut state.everglade {
             // The seats move first, so the characters pose where they stand.
             state.studio.set_player(Some(self.player.pos));

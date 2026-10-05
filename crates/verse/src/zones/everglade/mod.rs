@@ -426,6 +426,11 @@ impl Everglade {
         self.spells.active(spell)
     }
 
+    /// Lets the glade's spells cast without cooldowns, as the Grove does.
+    pub fn set_free_casting(&mut self) {
+        self.spells.set_free(true);
+    }
+
     /// The live spells, for rules that act on more than the player.
     #[must_use]
     pub fn spells(&self) -> &spells::Spells {
@@ -434,7 +439,9 @@ impl Everglade {
 
     /// Ends every spell and clears every cooldown, as a long rest does.
     pub fn long_rest(&mut self) {
+        let free = self.spells.free();
         self.spells = spells::Spells::default();
+        self.spells.set_free(free);
         self.refresh_blocks();
     }
 

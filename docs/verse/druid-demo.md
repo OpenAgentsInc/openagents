@@ -264,7 +264,9 @@ procedure. Repeated hard control on one dummy also gets diminishing returns.
 
 **Timing:** mana and cooldowns from the tier table, a 1-second global
 cooldown, and a separate 1-second lane for off-GCD abilities (Wild Shape,
-Healing Word). A new maintained effect replaces the old one.
+Healing Word). A new maintained effect replaces the old one. The playable
+Grove drops mana and every cooldown so the owner can spam spells: each press
+casts, and a held key recasts six times a second.
 
 **Physics:** spells marked **Done** call their existing `verse-world`
 solvers, as Everglade's four spells do. Their dummies are physics bodies, so

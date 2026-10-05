@@ -21,7 +21,7 @@ use crate::controller::{AVATAR_HEIGHT, Footprint, PlayerController, RADIUS};
 use crate::mesh::{Mesh, Vertex};
 use crate::zones::Intent;
 use glam::{DVec2, DVec3, Vec3};
-mod motes;
+pub(crate) mod motes;
 
 use verse_world::{
     feather_fall as feather, reverse_gravity as reverse, wall_of_stone as stone, wind_wall as wind,
@@ -156,11 +156,25 @@ impl Concentration {
 pub(crate) struct Spells {
     time: f64,
     ready: [f64; 4],
+    /// Whether casts skip their cooldowns, as in the Grove.
+    free: bool,
     feather: Option<feather::FeatherFall>,
     concentration: Option<Concentration>,
 }
 
 impl Spells {
+    /// Lets every cast skip its cooldown, for a demo field such as the
+    /// Grove.
+    pub fn set_free(&mut self, free: bool) {
+        self.free = free;
+    }
+
+    /// Whether casts skip their cooldowns.
+    #[must_use]
+    pub fn free(&self) -> bool {
+        self.free
+    }
+
     /// Advances the clock `dt` seconds and ends what has run out. Returns
     /// whether the solids the spells raise changed.
     pub fn tick(&mut self, dt: f32) -> bool {
@@ -247,14 +261,16 @@ impl Spells {
             self.concentration = None;
             return Ok(());
         }
-        if self.cooling(spell) > 0.0 {
+        if !self.free && self.cooling(spell) > 0.0 {
             return Err(format!("{} is not ready", label(spell)));
         }
         match self.admit_ahead(spell, player, solids, ahead)? {
             Admitted::Feather(effect) => self.feather = Some(effect),
             Admitted::Concentration(c) => self.concentration = Some(c),
         }
-        self.ready[spell.index()] = self.time + f64::from(spell.cooldown());
+        if !self.free {
+            self.ready[spell.index()] = self.time + f64::from(spell.cooldown());
+        }
         Ok(())
     }
 

@@ -1,10 +1,11 @@
 //! The Grove's rules against the pinned pack: the field, the hotbar, and
 //! each spell's effect on a dummy.
 
+use super::draw::Effect;
 use super::dummies::{Dummy, FIELD, Kind, POST, RESET_AFTER};
 use super::hotbar;
-use super::kit::{MAX_MANA, Spell};
-use super::{Grove, SPAWN};
+use super::kit::{REPEAT, Spell};
+use super::{Grove, MAX_EFFECTS, MAX_FLOATERS, SPAWN};
 use crate::controller::InputState;
 use crate::runtime::WorldRuntime;
 use crate::zones::everglade_pack::{self, ZonePack};
@@ -84,11 +85,11 @@ fn the_field_stands_at_the_demo_distances() {
 }
 
 #[test]
-fn the_grove_opens_with_its_hotbar_and_full_mana() {
+fn the_grove_opens_with_its_hotbar_and_no_cooldowns() {
     let runtime = entered();
     assert!(runtime.everglade_hotbar().is_none());
     let bar = runtime.grove_bar().expect("the Grove's bar");
-    assert_eq!(bar.mana, MAX_MANA);
+    assert!(bar.slots.iter().all(|s| s.cooldown == 0.0));
     assert_eq!(hotbar::key(1), Some(Intent::Thunderwave));
     assert_eq!(hotbar::key(0), Some(Intent::LongRest));
     assert_eq!(hotbar::SPRITES.len(), Spell::ALL.len());
@@ -117,7 +118,6 @@ fn thunderwave_damages_and_pushes_a_dummy_that_fails_its_save() {
     let dummy = &grove(&runtime).dummies[STRAW];
     assert!(dummy.hp < dummy.kind.max_hp());
     assert!(dummy.pos.distance(before) > 2.5, "{}", dummy.pos);
-    assert!(grove(&runtime).kit.mana < MAX_MANA);
 }
 
 #[test]
@@ -187,8 +187,6 @@ fn fire_bolt_rolls_attacks_that_land_damage() {
     }
     let dummy = &grove(&runtime).dummies[STRAW];
     assert!(dummy.hp < dummy.kind.max_hp(), "six bolts all missed");
-    // Fire Bolt costs no mana.
-    assert!(grove(&runtime).kit.mana >= MAX_MANA - 1e-3);
     assert!(
         grove(&runtime)
             .log
@@ -276,21 +274,15 @@ fn a_dummy_resets_after_ten_seconds_untouched() {
 }
 
 #[test]
-fn long_rest_refills_mana_cooldowns_and_the_dummies() {
+fn long_rest_ends_the_spells_and_stands_the_dummies_back_up() {
     let mut runtime = entered();
     face(&mut runtime, STRAW, 2.5);
     runtime.zone_intent(Intent::Thunderwave).unwrap();
-    idle(&mut runtime, 1.1);
-    runtime.zone_intent(Intent::Fireball).unwrap_or_default();
+    runtime.zone_intent(Intent::ReverseGravity).unwrap();
     idle(&mut runtime, 0.5);
-    assert!(grove(&runtime).kit.mana < MAX_MANA);
-    assert!(
-        runtime.zone_intent(Intent::Thunderwave).is_err(),
-        "on cooldown"
-    );
     runtime.zone_intent(Intent::LongRest).unwrap();
+    assert!(!runtime.grove_bar().unwrap().slots[4].active);
     let grove = grove(&runtime);
-    assert_eq!(grove.kit.mana, MAX_MANA);
     assert!(
         grove
             .dummies
@@ -298,6 +290,140 @@ fn long_rest_refills_mana_cooldowns_and_the_dummies() {
             .all(|d| d.pos == d.home && d.hp == d.kind.max_hp())
     );
     runtime.zone_intent(Intent::Thunderwave).unwrap();
+}
+
+#[test]
+fn every_press_casts_at_once_with_no_cooldown_or_mana_in_the_way() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 8.0);
+    // Mashed within one frame: every press of every spell casts.
+    for _ in 0..12 {
+        for spell in Spell::ALL {
+            if spell == Spell::LongRest {
+                continue;
+            }
+            runtime
+                .zone_intent(spell.intent())
+                .unwrap_or_else(|e| panic!("{spell:?}: {e}"));
+            // Misty Step moved the druid; stand back for the next round.
+            if spell == Spell::MistyStep {
+                face(&mut runtime, STRAW, 8.0);
+            }
+        }
+        // A few milliseconds apart, with the dummies stood back up so
+        // each round has its target.
+        runtime.tick(&InputState::default(), 0.003);
+        grove_mut(&mut runtime)
+            .dummies
+            .iter_mut()
+            .for_each(Dummy::reset);
+    }
+    let waves = |runtime: &WorldRuntime| {
+        grove(runtime)
+            .effects()
+            .iter()
+            .filter(|e| matches!(e, Effect::Wave { .. }))
+            .count()
+    };
+    assert!(waves(&runtime) >= 6);
+    // Twenty Thunderwaves in a row, each pressed the same instant.
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 2.5);
+    for _ in 0..20 {
+        runtime.zone_intent(Intent::Thunderwave).unwrap();
+    }
+    assert_eq!(
+        waves(&runtime),
+        Effect::Wave {
+            origin: Vec3::ZERO,
+            forward: Vec3::Z,
+            start: 0.0
+        }
+        .cap()
+    );
+    // A concentration spell recasts at once, replacing the live one.
+    for _ in 0..5 {
+        runtime.zone_intent(Intent::WallOfStone).unwrap();
+        assert!(runtime.grove_bar().unwrap().slots[3].active);
+        runtime.zone_intent(Intent::ReverseGravity).unwrap();
+        assert!(runtime.grove_bar().unwrap().slots[4].active);
+        assert!(!runtime.grove_bar().unwrap().slots[3].active);
+    }
+}
+
+#[test]
+fn a_held_key_recasts_six_times_a_second_until_let_go() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 8.0);
+    let bolts = |runtime: &WorldRuntime| {
+        grove(runtime)
+            .effects()
+            .iter()
+            .filter(|e| matches!(e, Effect::Bolt { .. }))
+            .count()
+    };
+    assert!(runtime.grove_key(Intent::Firebolt, true).unwrap());
+    assert_eq!(bolts(&runtime), 1, "the press casts at once");
+    // Held for one second: the press and six repeats.
+    let mut casts = 1;
+    let mut before = bolts(&runtime);
+    for _ in 0..60 {
+        runtime.tick(&InputState::default(), 1.0 / 60.0);
+        let now = bolts(&runtime);
+        // A bolt lands in about a quarter second, so count only new ones.
+        if now > before {
+            casts += now - before;
+        }
+        before = now;
+    }
+    let expected = (1.0 / REPEAT).round() as usize + 1;
+    assert!((casts as i32 - expected as i32).abs() <= 1, "{casts}");
+    runtime.grove_key(Intent::Firebolt, false).unwrap();
+    idle(&mut runtime, 1.0);
+    assert_eq!(bolts(&runtime), 0, "let go, it stops");
+    // Mashing: each press casts, however fast.
+    for _ in 0..10 {
+        runtime.grove_key(Intent::Thunderwave, true).unwrap();
+        runtime.grove_key(Intent::Thunderwave, false).unwrap();
+    }
+    let waves = grove(&runtime)
+        .effects()
+        .iter()
+        .filter(|e| matches!(e, Effect::Wave { .. }))
+        .count();
+    assert_eq!(waves, 6, "ten presses, capped at the newest six");
+    // Long Rest never repeats, and losing focus lets go.
+    runtime.grove_key(Intent::Thunderwave, true).unwrap();
+    runtime.grove_release();
+    let start = grove(&runtime).effects().len();
+    runtime.tick(&InputState::default(), 0.5);
+    assert!(grove(&runtime).effects().len() <= start);
+}
+
+#[test]
+fn spam_keeps_the_effects_and_numbers_bounded() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 8.0);
+    for _ in 0..400 {
+        for intent in [
+            Intent::Thunderwave,
+            Intent::Fireball,
+            Intent::Firebolt,
+            Intent::Web,
+            Intent::GustOfWind,
+        ] {
+            let _ = runtime.zone_intent(intent);
+        }
+        runtime.tick(&InputState::default(), 0.004);
+        let grove = grove(&runtime);
+        assert!(grove.effects().len() <= MAX_EFFECTS);
+        assert!(grove.floaters.len() <= MAX_FLOATERS);
+    }
+    // The frame's geometry stays bounded too.
+    let mesh = runtime.dynamic_mesh();
+    let blasts = super::thunder::GLOW_QUADS * 6 * 6;
+    assert!(mesh.glow.len() <= blasts, "{}", mesh.glow.len());
+    assert!(mesh.lines.len() < 60_000, "{}", mesh.lines.len());
 }
 
 #[test]
