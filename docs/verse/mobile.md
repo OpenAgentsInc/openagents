@@ -210,11 +210,12 @@ pack first.
   Everglade replaces the Grid.
 - **In Everglade.** The player arrives on the approach path facing the
   workshop and walks the glade with the Grid's sticks: move, look, and jump.
-  A compact hotbar above the sticks offers **Jump**, **Sprint** (switches to
-  **Run**), **Levitate** (switches to **Land**), **Up**, and **Down**.
-  Levitation holds altitude while you move; Up and Down adjust it by 1.5 m,
-  up to 18 m above the ground. Land descends gently at 2 m/s. The bar works
-  while you hold a stick and disappears on returning to the Grid.
+  A hotbar above the sticks offers **Levitate**, **Feather Fall**, **Wind
+  Wall**, **Reverse Gravity**, and **Wall of Stone**, with no cooldowns.
+  Holding Levitate rises up to 18 m above the ground and letting go holds
+  that altitude while you move; a tap while levitating ends it, and the
+  player falls. The bar works while you hold a stick and disappears on
+  returning to the Grid.
 - **The studio.** In Everglade, the app connects the Agent Studio to the
   first computer that **Account > Computers** shows online, under the grant
   the phone holds for it (`openagents_verse_studio_connect` on iOS; on

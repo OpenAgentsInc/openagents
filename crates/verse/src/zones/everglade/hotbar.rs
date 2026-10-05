@@ -1,56 +1,35 @@
 //! Everglade's hotbar, drawn as the chamber's action bar is: a beveled tray
-//! of game-icons.net art with a number key on each slot and a cooldown
-//! sector over a spell that is not ready. Levitate, Up, and Down come first,
-//! then the spells that need no enemy ([`super::spells`]). The icons are
-//! sprites in the HUD's atlas, added by [`add_sprites`]. Resting the
-//! pointer on a slot, or holding a touch on it, shows its card
-//! ([`crate::tooltip`]) with the name and sentence kept in [`SLOTS`].
+//! of game-icons.net art with a number key on each slot. Levitate comes
+//! first, held to rise, then the spells that need no enemy
+//! ([`super::spells`]), none with a cooldown. The icons are sprites in the
+//! HUD's atlas, added by [`add_sprites`]. Resting the pointer on a slot, or
+//! holding a touch on it, shows its card ([`crate::tooltip`]) with the
+//! name and sentence kept in [`SLOTS`].
 
 use super::super::Intent;
 use crate::tooltip::{self, Card, Tip, palette};
 use crate::ui::{Atlas, UiBatch};
 
 /// How many slots the bar has.
-pub const COUNT: usize = 7;
+pub const COUNT: usize = 5;
 
 /// One slot: the intent it sends, its icon sprite, and its card's name and
-/// sentence. Number keys 1 to 7 press them in order.
+/// sentence. Number keys 1 to 5 press them in order.
 pub const SLOTS: [(Intent, &str, Tip); COUNT] = [
     (
         Intent::Levitate,
         "levitate-icon",
         Tip::new(
             "Levitate",
-            "Rise 1.5 m off the ground and hold that height as you move; press again to fall.",
+            "Hold to rise up to 18 m over the ground and let go to hover there; tap while hovering to fall, or hold X to sink.",
         ),
-    ),
-    (
-        Intent::Rise,
-        "rise-icon",
-        Tip::new(
-            "Up",
-            "While levitating, climb higher, up to 18 m over the ground.",
-        ),
-    ),
-    (
-        Intent::Lower,
-        "descend-icon",
-        Tip::new("Down", "While levitating, sink back toward the ground."),
     ),
     (
         Intent::FeatherFall,
         "feather-fall-icon",
         Tip::new(
             "Feather Fall",
-            "Cast while falling to slow your descent to a gentle drift until you land.",
-        ),
-    ),
-    (
-        Intent::WallOfStone,
-        "wall-of-stone-icon",
-        Tip::new(
-            "Wall of Stone",
-            "Raises two granite panels 4 m ahead that block your way until you end the spell.",
+            "Cast while falling to slow your descent to a gentle drift until you land; press again to end it.",
         ),
     ),
     (
@@ -58,7 +37,7 @@ pub const SLOTS: [(Intent, &str, Tip); COUNT] = [
         "wind-wall-icon",
         Tip::new(
             "Wind Wall",
-            "Raises a 30-foot wall of wind 4 m ahead whose updraft throws you upward when you walk into it.",
+            "Raises another 30-foot wall of wind 4 m ahead whose updraft throws you upward when you walk into it.",
         ),
     ),
     (
@@ -66,24 +45,25 @@ pub const SLOTS: [(Intent, &str, Tip); COUNT] = [
         "reverse-gravity-icon",
         Tip::new(
             "Reverse Gravity",
-            "Gravity flips in a 50-foot cylinder around you: you fall upward and hover near its top.",
+            "Gravity flips in a 50-foot cylinder around you: you fall upward and hover near its top until you press again.",
+        ),
+    ),
+    (
+        Intent::WallOfStone,
+        "wall-of-stone-icon",
+        Tip::new(
+            "Wall of Stone",
+            "Raises another pair of granite panels 4 m ahead that block your way for ten minutes.",
         ),
     ),
 ];
 
 /// Each slot's keys, for its card.
-const KEYS: [&str; COUNT] = [
-    "Key 1 or L",
-    "Hold 2 or Space",
-    "Hold 3 or X",
-    "Key 4",
-    "Key 5",
-    "Key 6",
-    "Key 7",
-];
+const KEYS: [&str; COUNT] = ["Hold 1 or L", "Key 2", "Key 3", "Key 4", "Key 5"];
 
 /// Whether a slot can be used now, whether its toggle or spell is on, and
-/// the fraction of its cooldown left.
+/// the fraction of its cooldown left (always 0 in Everglade; the Grove's
+/// bar shares this type).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Slot {
     pub enabled: bool,
@@ -152,16 +132,13 @@ pub fn slot_under(point: [f32; 2], size: [f32; 2], bottom: f32) -> Option<usize>
 }
 
 /// Slot `index`'s card: its name and sentence, its keys, and for a spell
-/// its cooldown and whether it needs concentration.
+/// that it has no cooldown.
 #[must_use]
 pub fn card(index: usize) -> Option<Card> {
     let (intent, _, tip) = SLOTS.get(index)?;
     let mut card = Card::of(*tip).detail(KEYS[index], palette::KEY);
-    if let Some(spell) = super::spells::Spell::of(*intent) {
-        card = card.detail(format!("{:.0} s cooldown", spell.cooldown()), palette::TIME);
-        if spell != super::spells::Spell::FeatherFall {
-            card = card.detail("Concentration", palette::RULE);
-        }
+    if super::spells::Spell::of(*intent).is_some() {
+        card = card.detail("No cooldown", palette::TIME);
     }
     Some(card)
 }

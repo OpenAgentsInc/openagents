@@ -19,7 +19,6 @@ use verse_lagrange::{Input, PartState};
 pub const GRID_LABEL: &str = "The Grid";
 
 /// How fast a held Up or Down changes a levitating player's altitude, m/s.
-const CLIMB_RATE: f32 = 3.0;
 
 impl WorldRuntime {
     pub(crate) fn update_player(&mut self, input: &InputState, dt: f32) {
@@ -572,7 +571,7 @@ impl WorldRuntime {
                     .everglade
                     .as_mut()
                     .ok_or("Enter Everglade first")?
-                    .cast_spell(spell, &self.player)?;
+                    .cast_hotbar_spell(spell, &self.player)?;
                 self.zone_state.error = None;
             }
             Intent::Swing | Intent::Rebuild => {
@@ -734,22 +733,14 @@ impl WorldRuntime {
         if glade.demolition().is_some() {
             return None;
         }
-        let on = |enabled, active| Slot {
-            enabled,
-            active,
+        let [feather, wind, reverse, stone] =
+            Spell::ALL.map(|spell| glade.spell_slot(spell, &self.player));
+        let levitate = Slot {
+            enabled: true,
+            active: glade.levitating,
             cooldown: 0.0,
         };
-        let [feather, stone, wind, reverse] =
-            Spell::ALL.map(|spell| glade.spell_slot(spell, &self.player));
-        Some([
-            on(true, glade.levitating),
-            on(glade.levitating, false),
-            on(glade.levitating, false),
-            feather,
-            stone,
-            wind,
-            reverse,
-        ])
+        Some([levitate, feather, wind, reverse, stone])
     }
 
     /// How far the demolition yard's meteors shake the camera this frame.
@@ -882,17 +873,43 @@ impl WorldRuntime {
     }
 
     /// While levitating in Everglade, climbs (`direction` 1) or descends
-    /// (-1) for `dt` seconds of a held Up or Down.
+    /// (-1) for `dt` seconds of a held key, such as X to descend.
     pub fn everglade_climb(&mut self, direction: f32, dt: f32) {
+        use super::everglade::{CLIMB_RATE, LEVITATE_CEILING};
         let (x, z) = (self.player.pos.x, self.player.pos.z);
         if let Some(glade) = self.zone_state.everglade.as_mut()
             && glade.levitating
         {
             let ground = super::everglade::height(x, z);
             glade.altitude = (glade.altitude + direction.clamp(-1.0, 1.0) * CLIMB_RATE * dt)
-                .clamp(ground, ground + 18.0);
+                .clamp(ground, ground + LEVITATE_CEILING);
             self.cancel_navigation();
         }
+    }
+
+    /// Presses (`pressed`) or lets go of Everglade's Levitate slot or key.
+    /// Holding it starts levitating if needed and rises while held;
+    /// letting go holds the altitude; a quick tap while levitating ends
+    /// the levitation, so the player falls.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message outside Everglade's open glade.
+    pub fn everglade_levitate(&mut self, pressed: bool) -> Result<(), String> {
+        let glade = self
+            .zone_state
+            .everglade
+            .as_mut()
+            .filter(|glade| glade.demolition().is_none())
+            .ok_or("Enter Everglade first")?;
+        if pressed {
+            glade.press_levitate(&self.player);
+            self.cancel_navigation();
+        } else {
+            glade.release_levitate(&self.player);
+        }
+        self.zone_state.error = None;
+        Ok(())
     }
 
     /// Whether the player is levitating in Everglade.
@@ -1087,8 +1104,6 @@ impl WorldRuntime {
                 Intent::Levitate,
                 true,
             );
-            add("rise", "Up", Intent::Rise, glade.levitating);
-            add("lower", "Down", Intent::Lower, glade.levitating);
             add("return", self.return_label(), Intent::Return, true);
             if self.interact_hint != crate::runtime::InteractHint::None
                 && let Some(panel) = self.studio_panel_here()

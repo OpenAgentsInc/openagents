@@ -947,7 +947,7 @@ impl Renderer {
             .glow
             .len()
             .div_ceil(3)
-            .saturating_sub(self.scene.capability.quality.budget().optional_effects);
+            .saturating_sub(glow_triangles(self.scene.capability.quality));
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame)
             | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
@@ -1313,6 +1313,21 @@ fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resources, Strin
     result.retained_source_bytes = result.geometry_bytes + result.texture_bytes;
     Ok(result)
 }
+/// The additive glow triangles a frame draws at `quality`; the rest of
+/// `Mesh::glow` is dropped, in order. Spell particles spend most of it, so
+/// it is larger than the instance effect budget (`optional_effects`): 64
+/// quads on the low tier, 512 on medium, and 1024 on high. A glow vertex is
+/// 32 bytes, so even the high tier's 6144 vertices are under 200 KB, and
+/// each quad is a small blended sprite.
+#[must_use]
+pub fn glow_triangles(quality: verse_engine::quality::Quality) -> usize {
+    match quality.tier {
+        verse_engine::quality::Tier::Low => quality.budget().optional_effects,
+        verse_engine::quality::Tier::Medium => 1024,
+        verse_engine::quality::Tier::High => 2048,
+    }
+}
+
 fn admit_dynamic(
     base: verse_engine::quality::Resources,
     capability: Capability,
@@ -1322,7 +1337,7 @@ fn admit_dynamic(
     let omitted = mesh
         .glow
         .len()
-        .saturating_sub(capability.quality.budget().optional_effects * 3);
+        .saturating_sub(glow_triangles(capability.quality) * 3);
     dynamic.geometry_bytes -= (omitted * std::mem::size_of::<crate::pbr::GlowVertex>()) as u64;
     capability
         .quality
@@ -2256,7 +2271,7 @@ impl Scene {
         write(device, queue, &mut self.dynamic_faces, &dynamic.faces);
         write(device, queue, &mut self.dynamic_lines, &dynamic.lines);
         photo.dynamic_lit.write(device, queue, &dynamic.lit);
-        let glow_limit = self.capability.quality.budget().optional_effects * 3;
+        let glow_limit = glow_triangles(self.capability.quality) * 3;
         photo.glow.write(
             device,
             queue,
@@ -2682,6 +2697,21 @@ mod tests {
     }
 
     #[test]
+    fn the_glow_budget_grows_by_tier_and_holds_spell_particles() {
+        use verse_engine::quality::Tier;
+        let quads = |tier: Tier| glow_triangles(tier.quality()) / 2;
+        assert_eq!(quads(Tier::Low), 64);
+        assert_eq!(quads(Tier::Medium), 512);
+        assert_eq!(quads(Tier::High), 1024);
+        // The glow buffer is admitted as geometry; the high tier's fits in
+        // the low tier's geometry budget many times over.
+        let bytes = glow_triangles(Tier::High.quality())
+            * 3
+            * std::mem::size_of::<crate::pbr::GlowVertex>();
+        assert!((bytes as u64) * 100 < Tier::Low.quality().budget().geometry_bytes);
+    }
+
+    #[test]
     fn excess_glow_does_not_consume_required_geometry_admission() {
         let quality = verse_engine::quality::Tier::Low.quality();
         let capability = Capability {
@@ -2690,7 +2720,7 @@ mod tests {
             samples: 1,
             gles: false,
         };
-        let count = quality.budget().optional_effects * 3;
+        let count = glow_triangles(quality) * 3;
         let mesh = Mesh {
             glow: vec![
                 crate::pbr::GlowVertex {

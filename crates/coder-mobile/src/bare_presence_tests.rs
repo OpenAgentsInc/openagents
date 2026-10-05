@@ -486,8 +486,8 @@ fn the_everglade_arch_loads_its_pack_moves_presence_and_the_return_rejoins() {
     assert!(scene.touches.contains_key(&8));
     assert!(scene.world.everglade_levitating());
     scene.pointer(8, PointerPhase::Up, sx, sy).unwrap();
-    // The spells after the movement slots cast from a tap too: Wall of
-    // Stone rises and its slot lights and starts its cooldown.
+    // The spells after Levitate cast from a tap too, with no cooldown:
+    // Wall of Stone rises and its slot lights.
     let stone = verse::zones::everglade::hotbar::SLOTS
         .iter()
         .position(|(intent, ..)| *intent == Intent::WallOfStone)
@@ -496,7 +496,7 @@ fn the_everglade_arch_loads_its_pack_moves_presence_and_the_return_rejoins() {
     scene.pointer(10, PointerPhase::Down, x, y).unwrap();
     scene.pointer(10, PointerPhase::Up, x, y).unwrap();
     let slot = scene.world.everglade_hotbar().unwrap()[stone];
-    assert!(slot.active && slot.cooldown > 0.0);
+    assert!(slot.active && slot.enabled && slot.cooldown == 0.0);
     // A long press shows a slot's card and lifts without casting.
     let wind = verse::zones::everglade::hotbar::SLOTS
         .iter()

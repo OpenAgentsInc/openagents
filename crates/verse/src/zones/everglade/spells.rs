@@ -1,19 +1,20 @@
-//! The spells on Everglade's hotbar that need no enemy: Feather Fall, Wall
-//! of Stone, Wind Wall, and Reverse Gravity.
+//! The spells on Everglade's hotbar that need no enemy: Feather Fall, Wind
+//! Wall, Reverse Gravity, and Wall of Stone.
 //!
 //! Each cast is admitted, and moves the player, through the chamber's
 //! native rules in `verse_world`: Feather Fall's drag and landing, Wall of
 //! Stone's panel layout and support check, Wind Wall's grounded path and
 //! updraft, and Reverse Gravity's cylinder and hover spring. The player is
 //! the only creature they act on. They draw as the chamber draws them: Wind
-//! Wall's updraft streaks and Reverse Gravity's cylinder are the chamber's
-//! guide lines, and the panels are granite slabs in the chamber's stone
-//! color. Reverse Gravity also fills its cylinder with particles that fall
-//! upward ([`motes`]).
+//! Wall's updraft streaks are the chamber's guide lines, and the panels are
+//! granite slabs in the chamber's stone color. Reverse Gravity draws only
+//! its particles, which fall upward and crowd its edge ([`motes`]).
 //!
-//! Wall of Stone, Wind Wall, and Reverse Gravity need concentration, so
-//! casting one ends the one before it, and pressing a live one's slot ends
-//! it. Everglade's Levitate stays a movement toggle outside that rule.
+//! Everglade's hotbar has no cooldowns and no concentration: every press
+//! casts ([`Spells::cast_ahead`]). Each Wind Wall and Wall of Stone stands
+//! beside the ones before it, up to [`MAX_WALLS`] of each. Pressing Feather
+//! Fall or Reverse Gravity while it holds ends it. The Grove keeps the
+//! chamber's concentration rule through [`Spells::concentrate_ahead`].
 
 use super::hotbar::Slot;
 use super::solids::Solids;
@@ -21,6 +22,7 @@ use crate::controller::{AVATAR_HEIGHT, Footprint, PlayerController, RADIUS};
 use crate::mesh::{Mesh, Vertex};
 use crate::zones::Intent;
 use glam::{DVec2, DVec3, Vec3};
+use std::collections::VecDeque;
 pub(crate) mod motes;
 
 use verse_world::{
@@ -54,8 +56,11 @@ const WIND_LIFT: f32 = 11.0;
 /// Feather Fall's drifting feathers.
 const FEATHERS: usize = 8;
 const FEATHER: [f32; 3] = [0.95, 0.93, 0.86];
+/// The most Wind Walls, and the most Walls of Stone, that stand at once;
+/// another cast takes down the oldest.
+pub(crate) const MAX_WALLS: usize = 12;
 
-/// A spell on the hotbar, after Levitate, Up, and Down.
+/// A spell on the hotbar, after Levitate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Spell {
     FeatherFall,
@@ -68,9 +73,9 @@ impl Spell {
     /// Every spell, in hotbar order.
     pub const ALL: [Self; 4] = [
         Self::FeatherFall,
-        Self::WallOfStone,
         Self::WindWall,
         Self::ReverseGravity,
+        Self::WallOfStone,
     ];
 
     /// The chamber catalog's key.
@@ -100,66 +105,27 @@ impl Spell {
     pub fn of(intent: Intent) -> Option<Self> {
         Self::ALL.into_iter().find(|s| s.intent() == intent)
     }
-
-    /// The chamber's cooldown, s.
-    #[must_use]
-    pub fn cooldown(self) -> f32 {
-        verse_world::spells::CATALOG
-            .iter()
-            .find(|s| s.key == self.key())
-            .map_or(verse_world::spells::ROUND, |s| s.cooldown)
-    }
-
-    const fn index(self) -> usize {
-        self as usize
-    }
 }
 
-/// The live concentration spell.
+/// One standing wall or field and when it was cast, s.
 #[derive(Clone, Debug)]
-enum Concentration {
-    Stone {
-        panels: Vec<stone::Placement>,
-        at: f64,
-    },
-    Wind {
-        wall: wind::Wall,
-        at: f64,
-    },
-    Reverse {
-        gravity: reverse::Gravity,
-        at: f64,
-    },
+struct Cast<T> {
+    spell: T,
+    at: f64,
 }
 
-impl Concentration {
-    fn spell(&self) -> Spell {
-        match self {
-            Self::Stone { .. } => Spell::WallOfStone,
-            Self::Wind { .. } => Spell::WindWall,
-            Self::Reverse { .. } => Spell::ReverseGravity,
-        }
-    }
-
-    fn ends_at(&self) -> f64 {
-        match self {
-            Self::Stone { at, .. } => at + stone::DURATION,
-            Self::Wind { at, .. } => at + wind::DURATION,
-            Self::Reverse { at, .. } => at + reverse::DURATION,
-        }
-    }
-}
-
-/// The player's spells: the clock, each spell's cooldown, the Feather Fall
-/// ward, and the concentration spell.
+/// The player's spells: the clock, the Feather Fall ward, the standing
+/// Wind Walls and Walls of Stone, oldest first, and Reverse Gravity.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Spells {
     time: f64,
-    ready: [f64; 4],
-    /// Whether casts skip their cooldowns, as in the Grove.
+    /// Whether the Grove asked for free casting; every cast is free now,
+    /// so this only round-trips through a long rest.
     free: bool,
     feather: Option<feather::FeatherFall>,
-    concentration: Option<Concentration>,
+    winds: VecDeque<Cast<wind::Wall>>,
+    stones: VecDeque<Cast<Vec<stone::Placement>>>,
+    reverse: Option<Cast<reverse::Gravity>>,
 }
 
 impl Spells {
@@ -179,61 +145,63 @@ impl Spells {
     /// whether the solids the spells raise changed.
     pub fn tick(&mut self, dt: f32) -> bool {
         self.time += f64::from(dt.max(0.0));
-        if self.feather.as_ref().is_some_and(|f| f.ended(self.time)) {
+        let now = self.time;
+        if self.feather.as_ref().is_some_and(|f| f.ended(now)) {
             self.feather = None;
         }
+        self.winds.retain(|c| now < c.at + wind::DURATION);
         if self
-            .concentration
+            .reverse
             .as_ref()
-            .is_some_and(|c| self.time >= c.ends_at())
+            .is_some_and(|c| now >= c.at + reverse::DURATION)
         {
-            let stone = matches!(self.concentration, Some(Concentration::Stone { .. }));
-            self.concentration = None;
-            return stone;
+            self.reverse = None;
         }
-        false
+        let stones = self.stones.len();
+        self.stones.retain(|c| now < c.at + stone::DURATION);
+        self.stones.len() != stones
     }
 
     /// Whether `spell` is live on the player.
     #[must_use]
     pub fn active(&self, spell: Spell) -> bool {
+        self.count(spell) > 0
+    }
+
+    /// How many of `spell` stand now.
+    #[must_use]
+    pub fn count(&self, spell: Spell) -> usize {
         match spell {
-            Spell::FeatherFall => self
-                .feather
-                .as_ref()
-                .is_some_and(|f| f.holds(PLAYER, self.time)),
-            _ => self
-                .concentration
-                .as_ref()
-                .is_some_and(|c| c.spell() == spell),
+            Spell::FeatherFall => usize::from(
+                self.feather
+                    .as_ref()
+                    .is_some_and(|f| f.holds(PLAYER, self.time)),
+            ),
+            Spell::WallOfStone => self.stones.len(),
+            Spell::WindWall => self.winds.len(),
+            Spell::ReverseGravity => usize::from(self.reverse.is_some()),
         }
     }
 
-    /// Seconds until `spell` can be cast again.
-    fn cooling(&self, spell: Spell) -> f64 {
-        (self.ready[spell.index()] - self.time).max(0.0)
-    }
-
-    /// `spell`'s hotbar slot for `player` standing on `solids`.
+    /// `spell`'s hotbar slot for `player` standing on `solids`: enabled
+    /// when a press would do something, which ending a live Feather Fall
+    /// or Reverse Gravity is.
     #[must_use]
     pub fn slot(&self, spell: Spell, player: &PlayerController, solids: &Solids) -> Slot {
         let active = self.active(spell);
-        let ready = self.cooling(spell) <= 0.0;
-        let enabled = (active && spell != Spell::FeatherFall)
-            || (ready && !active && self.admit(spell, player, solids).is_ok());
+        let ends = active && matches!(spell, Spell::FeatherFall | Spell::ReverseGravity);
         Slot {
-            enabled,
+            enabled: ends || self.admit(spell, player, solids).is_ok(),
             active,
-            cooldown: (self.cooling(spell) / f64::from(spell.cooldown()).max(1e-3)) as f32,
+            cooldown: 0.0,
         }
     }
 
-    /// Casts `spell` for `player`, or ends it when it is a live
-    /// concentration spell.
+    /// Casts `spell` for `player` as Everglade's hotbar does.
     ///
     /// # Errors
     ///
-    /// Returns why the cast was refused: a cooldown, or the rule it breaks.
+    /// Returns the rule the cast breaks.
     #[cfg(test)]
     pub fn cast(
         &mut self,
@@ -244,12 +212,15 @@ impl Spells {
         self.cast_ahead(spell, player, solids, AHEAD)
     }
 
-    /// Casts `spell` as [`Self::cast`] does, with Wall of Stone and Wind
-    /// Wall standing `ahead` meters in front of `player`.
+    /// Casts `spell` for `player` as Everglade's hotbar does, with Wall of
+    /// Stone and Wind Wall standing `ahead` meters in front: with no
+    /// cooldown, each wall beside the ones standing (the oldest past
+    /// [`MAX_WALLS`] goes), and a press on a live Feather Fall or Reverse
+    /// Gravity ending it.
     ///
     /// # Errors
     ///
-    /// Returns why the cast was refused: a cooldown, or the rule it breaks.
+    /// Returns the rule the cast breaks.
     pub fn cast_ahead(
         &mut self,
         spell: Spell,
@@ -257,21 +228,73 @@ impl Spells {
         solids: &Solids,
         ahead: f64,
     ) -> Result<(), String> {
-        if spell != Spell::FeatherFall && self.active(spell) {
-            self.concentration = None;
-            return Ok(());
-        }
-        if !self.free && self.cooling(spell) > 0.0 {
-            return Err(format!("{} is not ready", label(spell)));
-        }
-        match self.admit_ahead(spell, player, solids, ahead)? {
-            Admitted::Feather(effect) => self.feather = Some(effect),
-            Admitted::Concentration(c) => self.concentration = Some(c),
-        }
-        if !self.free {
-            self.ready[spell.index()] = self.time + f64::from(spell.cooldown());
+        match spell {
+            Spell::FeatherFall if self.active(spell) => self.feather = None,
+            Spell::ReverseGravity if self.active(spell) => self.reverse = None,
+            _ => {
+                let admitted = self.admit_ahead(spell, player, solids, ahead)?;
+                self.add(admitted);
+            }
         }
         Ok(())
+    }
+
+    /// Casts `spell` under the chamber's concentration rule, as the Grove
+    /// does: a press on a live Wall of Stone, Wind Wall, or Reverse Gravity
+    /// ends it, and casting one ends the others.
+    ///
+    /// # Errors
+    ///
+    /// Returns the rule the cast breaks.
+    pub fn concentrate_ahead(
+        &mut self,
+        spell: Spell,
+        player: &PlayerController,
+        solids: &Solids,
+        ahead: f64,
+    ) -> Result<(), String> {
+        if spell == Spell::FeatherFall {
+            if self.active(spell) {
+                return Err("Feather Fall already holds you".into());
+            }
+            let admitted = self.admit_ahead(spell, player, solids, ahead)?;
+            self.add(admitted);
+            return Ok(());
+        }
+        if self.active(spell) {
+            self.end_concentration();
+            return Ok(());
+        }
+        let admitted = self.admit_ahead(spell, player, solids, ahead)?;
+        self.end_concentration();
+        self.add(admitted);
+        Ok(())
+    }
+
+    fn end_concentration(&mut self) {
+        self.winds.clear();
+        self.stones.clear();
+        self.reverse = None;
+    }
+
+    fn add(&mut self, admitted: Admitted) {
+        let at = self.time;
+        match admitted {
+            Admitted::Feather(effect) => self.feather = Some(effect),
+            Admitted::Wind(spell) => {
+                self.winds.push_back(Cast { spell, at });
+                while self.winds.len() > MAX_WALLS {
+                    self.winds.pop_front();
+                }
+            }
+            Admitted::Stone(spell) => {
+                self.stones.push_back(Cast { spell, at });
+                while self.stones.len() > MAX_WALLS {
+                    self.stones.pop_front();
+                }
+            }
+            Admitted::Reverse(spell) => self.reverse = Some(Cast { spell, at }),
+        }
     }
 
     /// The rules' admission of `spell` cast now by `player`.
@@ -296,9 +319,6 @@ impl Spells {
         let at = self.time;
         match spell {
             Spell::FeatherFall => {
-                if self.active(spell) {
-                    return Err("Feather Fall already holds you".into());
-                }
                 let center = feet + DVec3::Y * (f64::from(AVATAR_HEIGHT) * 0.5);
                 let candidate = feather::Candidate {
                     id: PLAYER,
@@ -338,10 +358,7 @@ impl Spells {
                 );
                 let plan = stone::validate::validate(&panels, &[ground], feet)
                     .map_err(|e| format!("Wall of Stone placement refused: {e:?}"))?;
-                Ok(Admitted::Concentration(Concentration::Stone {
-                    panels: plan.panels,
-                    at,
-                }))
+                Ok(Admitted::Stone(plan.panels))
             }
             Spell::WindWall => {
                 let facing = DVec2::new(forward.x, forward.z);
@@ -355,17 +372,14 @@ impl Spells {
                     wind::Refusal::NotGrounded => "Wind Wall needs level ground ahead".to_string(),
                     refusal => format!("Wind Wall placement refused: {refusal:?}"),
                 })?;
-                Ok(Admitted::Concentration(Concentration::Wind { wall, at }))
+                Ok(Admitted::Wind(wall))
             }
             Spell::ReverseGravity => {
                 let floor = solids.floor(player.pos.x, player.pos.z, player.pos.y);
                 let point = DVec3::new(feet.x, f64::from(floor), feet.z);
-                Ok(Admitted::Concentration(Concentration::Reverse {
-                    gravity: reverse::Gravity {
-                        cylinder: reverse::Cylinder::at(point),
-                        active: true,
-                    },
-                    at,
+                Ok(Admitted::Reverse(reverse::Gravity {
+                    cylinder: reverse::Cylinder::at(point),
+                    active: true,
                 }))
             }
         }
@@ -374,38 +388,32 @@ impl Spells {
     /// The live Reverse Gravity, if any.
     #[must_use]
     pub fn reverse_gravity(&self) -> Option<&reverse::Gravity> {
-        match &self.concentration {
-            Some(Concentration::Reverse { gravity, .. }) => Some(gravity),
-            _ => None,
-        }
+        self.reverse.as_ref().map(|c| &c.spell)
     }
 
-    /// The live Wind Wall, if any.
+    /// The newest Wind Wall, if any.
     #[must_use]
     pub fn wind_wall(&self) -> Option<&wind::Wall> {
-        match &self.concentration {
-            Some(Concentration::Wind { wall, .. }) => Some(wall),
-            _ => None,
-        }
+        self.winds.back().map(|c| &c.spell)
     }
 
-    /// The live Wall of Stone's panels, if any.
+    /// Every standing Wind Wall, oldest first.
+    pub fn wind_walls(&self) -> impl Iterator<Item = &wind::Wall> {
+        self.winds.iter().map(|c| &c.spell)
+    }
+
+    /// The newest Wall of Stone's panels, if any.
     #[must_use]
     pub fn stone_panels(&self) -> Option<&[stone::Placement]> {
-        match &self.concentration {
-            Some(Concentration::Stone { panels, .. }) => Some(panels),
-            _ => None,
-        }
+        self.stones.back().map(|c| c.spell.as_slice())
     }
 
-    /// Wall of Stone's panels as footprints with their tops, m.
+    /// Every standing Wall of Stone's panels as footprints with their
+    /// tops, m.
     #[must_use]
     pub fn blocks(&self) -> Vec<(Footprint, f32)> {
-        let Some(Concentration::Stone { panels, .. }) = &self.concentration else {
-            return Vec::new();
-        };
         let mut blocks = Vec::new();
-        for panel in panels {
+        for panel in self.stones.iter().flat_map(|c| &c.spell) {
             let half = panel.half();
             let along = panel.orientation * DVec3::X;
             let top = (panel.center.y + half.y) as f32;
@@ -447,7 +455,7 @@ impl Spells {
             cylinder.axis_distance(at) <= cylinder.radius
                 && (cylinder.base.y..=cylinder.top() + reverse::HOVER_BAND).contains(&at.y)
         };
-        if let Some(Concentration::Reverse { gravity, .. }) = &self.concentration
+        if let Some(Cast { spell: gravity, .. }) = &self.reverse
             && governed(&gravity.cylinder)
         {
             let steps = (f64::from(dt) / SUBSTEP).ceil().max(1.0);
@@ -475,12 +483,13 @@ impl Spells {
             player.set_surface_height(floor);
             return;
         }
-        let in_wind = matches!(&self.concentration, Some(Concentration::Wind { wall, .. })
-        if wall.in_area(
-            player.pos.as_dvec3(),
-            f64::from(RADIUS),
-            f64::from(AVATAR_HEIGHT),
-        ));
+        let in_wind = self.wind_walls().any(|wall| {
+            wall.in_area(
+                player.pos.as_dvec3(),
+                f64::from(RADIUS),
+                f64::from(AVATAR_HEIGHT),
+            )
+        });
         if !player.airborne() && !in_wind {
             // A warded landing ends the spell on the player.
             if let Some(effect) = &mut self.feather {
@@ -527,28 +536,21 @@ impl Spells {
                 });
             }
         };
-        match &self.concentration {
-            Some(Concentration::Wind { wall, .. }) => {
-                for (a, b, color) in verse_world::spells::wind_wall::wall_lines(wall, time) {
-                    line(a, b, color);
-                }
+        for wall in self.wind_walls() {
+            for (a, b, color) in verse_world::spells::wind_wall::wall_lines(wall, time) {
+                line(a, b, color);
             }
-            Some(Concentration::Reverse { gravity, at }) => {
-                for (a, b, color) in
-                    verse_world::spells::reverse_gravity::cylinder_lines(&gravity.cylinder)
-                {
-                    line(a, b, color);
-                }
-                let age = (self.time - at) as f32;
-                motes::draw(&mut mesh, &gravity.cylinder, age, eye);
+        }
+        // Reverse Gravity draws no guide lines, only its particles.
+        if let Some(Cast { spell: gravity, at }) = &self.reverse {
+            let age = (self.time - at) as f32;
+            motes::draw(&mut mesh, &gravity.cylinder, age, eye);
+        }
+        for Cast { spell: panels, at } in &self.stones {
+            let rise = ((self.time - at) / RAISE).clamp(0.0, 1.0);
+            for panel in panels {
+                slab(&mut mesh, panel, rise);
             }
-            Some(Concentration::Stone { panels, at }) => {
-                let rise = ((self.time - at) / RAISE).clamp(0.0, 1.0);
-                for panel in panels {
-                    slab(&mut mesh, panel, rise);
-                }
-            }
-            None => {}
         }
         if self.active(Spell::FeatherFall) {
             feathers(&mut mesh, player.pos, time);
@@ -560,14 +562,9 @@ impl Spells {
 /// What a cast's rules admitted.
 enum Admitted {
     Feather(feather::FeatherFall),
-    Concentration(Concentration),
-}
-
-fn label(spell: Spell) -> &'static str {
-    verse_world::spells::CATALOG
-        .iter()
-        .find(|s| s.key == spell.key())
-        .map_or("The spell", |s| s.label)
+    Stone(Vec<stone::Placement>),
+    Wind(wind::Wall),
+    Reverse(reverse::Gravity),
 }
 
 /// One granite panel risen `rise` of its height, as shaded faces.

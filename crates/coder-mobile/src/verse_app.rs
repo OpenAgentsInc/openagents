@@ -806,8 +806,8 @@ pub(crate) struct Scene {
     touches: BTreeMap<u64, Touch>,
     /// Safe-area insets in logical points: top, right, bottom, left.
     insets: [f32; 4],
-    /// The touch holding Everglade's Up (1) or Down (-1), while it is down.
-    climb: Option<(u64, f32)>,
+    /// The touch holding Everglade's Levitate, while it is down.
+    levitate: Option<u64>,
     /// A touch holding an Everglade hotbar slot: the touch, the slot, its
     /// intent, and when it went down on `pointer_clock`, s. A long press
     /// shows the slot's card instead of using it.
@@ -1015,7 +1015,7 @@ impl Scene {
             frame_timestamp: None,
             touches: BTreeMap::new(),
             insets: [0.0; 4],
-            climb: None,
+            levitate: None,
             slot_touch: None,
             pointer_clock: Instant::now(),
             last_world_tap: None,
@@ -1250,34 +1250,24 @@ impl Scene {
             }
             return Ok(());
         }
-        // A touch on a hotbar slot other than Up or Down acts when it lifts
-        // after a tap; a long press shows the slot's card instead.
+        // A touch on a hotbar slot other than Levitate acts when it lifts
+        // after a tap; a long press shows the slot's card instead. Levitate
+        // rises while held and is let go when the touch lifts.
         if let Some((held, _, intent, at)) = self.slot_touch
             && held == id
         {
             if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) {
                 self.slot_touch = None;
-                if self.climb.is_some_and(|(climbing, _)| climbing == id) {
-                    self.climb = None;
+                if self.levitate == Some(id) {
+                    self.levitate = None;
+                    let _ = self.world.everglade_levitate(false);
                 }
                 let long = verse::tooltip::long_press(
                     (self.pointer_clock.elapsed().as_secs_f64() - at) as f32,
                 );
-                if matches!(phase, PointerPhase::Up)
-                    && !long
-                    && !matches!(intent, ZoneIntent::Rise | ZoneIntent::Lower)
-                {
+                if matches!(phase, PointerPhase::Up) && !long && intent != ZoneIntent::Levitate {
                     self.zone_intent(intent)?;
                 }
-            }
-            return Ok(());
-        }
-        // A held Up or Down climbs until that touch lifts.
-        if let Some((held, _)) = self.climb
-            && held == id
-        {
-            if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) {
-                self.climb = None;
             }
             return Ok(());
         }
@@ -1345,14 +1335,11 @@ impl Scene {
                 intent,
                 self.pointer_clock.elapsed().as_secs_f64(),
             ));
-            match intent {
-                ZoneIntent::Rise if self.world.everglade_levitating() => {
-                    self.climb = Some((id, 1.0))
-                }
-                ZoneIntent::Lower if self.world.everglade_levitating() => {
-                    self.climb = Some((id, -1.0));
-                }
-                _ => {}
+            if intent == ZoneIntent::Levitate
+                && self.levitate.is_none()
+                && self.world.everglade_levitate(true).is_ok()
+            {
+                self.levitate = Some(id);
             }
             return Ok(());
         }
@@ -2020,13 +2007,6 @@ impl Scene {
         let revision = self.world.zone_revision;
         let loading = self.world.zone_loading();
         self.world.tick(&input, dt);
-        if let Some((_, direction)) = self.climb {
-            if self.everglade_hotbar_shown() && self.world.everglade_levitating() {
-                self.world.everglade_climb(direction, dt);
-            } else {
-                self.climb = None;
-            }
-        }
         if self.world.zone_revision != revision || self.world.zone_loading() != loading {
             // The player walked through a portal, or into one whose zone
             // now loads: drop held input, and pause or resume the world's

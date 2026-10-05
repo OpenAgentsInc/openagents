@@ -53,21 +53,38 @@ fn fall_time(runtime: &mut WorldRuntime, at: Vec3) -> f32 {
 }
 
 #[test]
-fn the_hotbar_holds_four_spells_after_movement_with_keys_four_to_seven() {
-    let spells: Vec<_> = SLOTS[3..].iter().map(|(intent, ..)| *intent).collect();
+fn the_hotbar_holds_levitate_then_four_spells_with_keys_one_to_five() {
+    let intents: Vec<_> = SLOTS.iter().map(|(intent, ..)| *intent).collect();
     assert_eq!(
-        spells,
+        intents,
         [
+            Intent::Levitate,
             Intent::FeatherFall,
-            Intent::WallOfStone,
             Intent::WindWall,
-            Intent::ReverseGravity
+            Intent::ReverseGravity,
+            Intent::WallOfStone,
         ]
     );
-    for spell in Spell::ALL {
+    assert_eq!(COUNT, 5);
+    for (index, spell) in Spell::ALL.into_iter().enumerate() {
         assert_eq!(Spell::of(spell.intent()), Some(spell));
-        assert!((spell.cooldown() - verse_world::spells::ROUND).abs() < 1e-6);
+        assert_eq!(SLOTS[index + 1].0, spell.intent());
     }
+    for index in 0..COUNT {
+        let card = super::hotbar::card(index).expect("a card");
+        assert!(card.details[0].0.contains(&(index + 1).to_string()));
+        assert!(
+            !card
+                .details
+                .iter()
+                .any(|(text, _)| text.contains("s cooldown") || text == "Concentration"),
+            "{}",
+            card.title
+        );
+    }
+    // Levitate's card says how to rise, fall, and sink.
+    let levitate = SLOTS[0].2.text;
+    assert!(levitate.starts_with("Hold to rise") && levitate.contains("X"));
     let size = [800.0, 600.0];
     let [left, top, _, height] = super::hotbar::frame(size, 0.0);
     // The fifth slot, under key 5, is Wall of Stone.
@@ -80,8 +97,8 @@ fn the_hotbar_holds_four_spells_after_movement_with_keys_four_to_seven() {
     let bar = slots(&runtime);
     // Standing on the clearing, Feather Fall waits for a fall; the walls
     // and Reverse Gravity can be cast.
-    assert!(!bar[3].enabled);
-    assert!(bar[4].enabled && bar[5].enabled && bar[6].enabled);
+    assert!(!bar[1].enabled);
+    assert!(bar[2].enabled && bar[3].enabled && bar[4].enabled);
     assert!(bar.iter().all(|s| s.cooldown == 0.0 && !s.active));
 }
 
@@ -99,7 +116,7 @@ fn feather_fall_caps_a_fall_and_ends_on_landing() {
     assert!(slot(&runtime, Spell::FeatherFall).enabled);
     runtime.zone_intent(Intent::FeatherFall).unwrap();
     let warded = slot(&runtime, Spell::FeatherFall);
-    assert!(warded.active && !warded.enabled && warded.cooldown > 0.9);
+    assert!(warded.active && warded.enabled && warded.cooldown == 0.0);
     // Within a fifth of a second the descent is 60 feet per round.
     idle(&mut runtime, 0.3);
     let cap = verse_world::feather_fall::DESCENT_CAP as f32;
@@ -136,7 +153,7 @@ fn wall_of_stone_blocks_walking_until_it_ends() {
     let forward = runtime.player.forward();
     runtime.zone_intent(Intent::WallOfStone).unwrap();
     let bar = slot(&runtime, Spell::WallOfStone);
-    assert!(bar.active && bar.enabled && bar.cooldown > 0.9);
+    assert!(bar.active && bar.enabled && bar.cooldown == 0.0);
     let glade = runtime.zone_state.everglade.as_ref().unwrap();
     assert!(!glade.spell_mesh(&runtime.player).faces.is_empty());
     // Head-on and at a slant, the panels four meters ahead stop the walk.
@@ -159,8 +176,14 @@ fn wall_of_stone_blocks_walking_until_it_ends() {
     assert!(!runtime.player.airborne());
     let top = verse_world::wall_of_stone::Form::Thick.size().y as f32;
     assert!((runtime.player.pos.y - top).abs() < 0.05);
-    // Pressing the slot again ends the concentration; the way is open.
+    // Pressing the slot again raises another wall beside it.
+    runtime.player.pos = start + forward * -6.0;
+    idle(&mut runtime, 0.5);
     runtime.zone_intent(Intent::WallOfStone).unwrap();
+    let glade = runtime.zone_state.everglade.as_mut().unwrap();
+    assert_eq!(glade.spells().count(Spell::WallOfStone), 2);
+    // Once they end, the way is open.
+    glade.long_rest();
     assert!(!slot(&runtime, Spell::WallOfStone).active);
     idle(&mut runtime, 1.0);
     runtime.player.pos = start;
@@ -169,20 +192,109 @@ fn wall_of_stone_blocks_walking_until_it_ends() {
 }
 
 #[test]
-fn a_new_concentration_spell_ends_the_last_and_cooldowns_hold() {
+fn feather_fall_toggles_off_and_the_player_falls_at_full_speed() {
     let mut runtime = entered();
+    let start = runtime.player.pos;
+    runtime.player.pos = start + Vec3::Y * 15.0;
+    runtime.player.set_vertical_speed(0.0);
+    idle(&mut runtime, 0.2);
+    runtime.zone_intent(Intent::FeatherFall).unwrap();
+    idle(&mut runtime, 0.5);
+    let cap = verse_world::feather_fall::DESCENT_CAP as f32;
+    assert!((runtime.player.vertical_speed() + cap).abs() < 0.01);
+    assert!(slot(&runtime, Spell::FeatherFall).active);
+    // A second press ends the ward, and the fall speeds up past the cap.
+    runtime.zone_intent(Intent::FeatherFall).unwrap();
+    let off = slot(&runtime, Spell::FeatherFall);
+    assert!(!off.active && off.enabled);
+    idle(&mut runtime, 0.3);
+    assert!(runtime.player.vertical_speed() < -cap - 1.0);
+    // A third press catches the fall again.
+    runtime.zone_intent(Intent::FeatherFall).unwrap();
+    assert!(slot(&runtime, Spell::FeatherFall).active);
+}
+
+#[test]
+fn rapid_casts_all_fire_and_spells_stand_together() {
+    let mut runtime = entered();
+    // Five Wind Walls on five consecutive frames, with no cooldown.
+    for n in 1..=5 {
+        runtime.zone_intent(Intent::WindWall).unwrap();
+        runtime.tick(&InputState::default(), DT);
+        let glade = runtime.zone_state.everglade.as_ref().unwrap();
+        assert_eq!(glade.spells().count(Spell::WindWall), n);
+    }
+    // No concentration: a Wall of Stone and Reverse Gravity join them.
+    runtime.player.yaw += std::f32::consts::PI;
     runtime.zone_intent(Intent::WallOfStone).unwrap();
-    runtime.zone_intent(Intent::WindWall).unwrap();
-    assert!(!slot(&runtime, Spell::WallOfStone).active);
+    runtime.zone_intent(Intent::WallOfStone).unwrap();
+    runtime.zone_intent(Intent::ReverseGravity).unwrap();
+    let bar = slots(&runtime);
+    assert!(bar[1..].iter().all(|s| s.cooldown == 0.0));
+    for spell in [Spell::WindWall, Spell::WallOfStone, Spell::ReverseGravity] {
+        assert!(slot(&runtime, spell).active, "{spell:?}");
+    }
+    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    assert_eq!(glade.spells().count(Spell::WallOfStone), 2);
+    // Reverse Gravity stays single: a second press ends it.
+    runtime.zone_intent(Intent::ReverseGravity).unwrap();
+    assert!(!slot(&runtime, Spell::ReverseGravity).active);
     assert!(slot(&runtime, Spell::WindWall).active);
-    // Wall of Stone is still cooling down.
-    let stone = slot(&runtime, Spell::WallOfStone);
-    assert!(!stone.enabled && stone.cooldown > 0.9);
-    assert!(runtime.zone_intent(Intent::WallOfStone).is_err());
-    idle(&mut runtime, verse_world::spells::ROUND + 0.1);
-    assert_eq!(slot(&runtime, Spell::WallOfStone).cooldown, 0.0);
-    runtime.zone_intent(Intent::WallOfStone).unwrap();
-    assert!(!slot(&runtime, Spell::WindWall).active);
+}
+
+#[test]
+fn the_oldest_wind_wall_drops_past_the_cap() {
+    let mut runtime = entered();
+    let start = runtime.player.pos;
+    let cap = super::spells::MAX_WALLS;
+    let mut firsts = Vec::new();
+    for n in 0..cap + 2 {
+        // Each cast a quarter meter further along, so the walls differ.
+        runtime.player.pos = start + Vec3::X * (n as f32 * 0.25);
+        runtime.zone_intent(Intent::WindWall).unwrap();
+        let glade = runtime.zone_state.everglade.as_ref().unwrap();
+        firsts.push(glade.spells().wind_wall().unwrap().clone());
+    }
+    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let walls: Vec<_> = glade.spells().wind_walls().collect();
+    assert_eq!(walls.len(), cap);
+    // The two oldest are gone; the third cast is now the oldest standing.
+    assert_eq!(format!("{:?}", walls[0]), format!("{:?}", firsts[2]));
+    assert_eq!(
+        format!("{:?}", walls[cap - 1]),
+        format!("{:?}", firsts[cap + 1])
+    );
+}
+
+#[test]
+fn every_one_of_several_wind_walls_lifts_the_player() {
+    let mut runtime = entered();
+    let start = runtime.player.pos;
+    let yaw = runtime.player.yaw;
+    let turns = [0.0, 0.6, -0.6];
+    let mut spots = Vec::new();
+    for turn in turns {
+        runtime.player.pos = start;
+        runtime.player.yaw = yaw + turn;
+        spots.push(start + runtime.player.forward() * 4.0);
+        runtime.zone_intent(Intent::WindWall).unwrap();
+    }
+    runtime.player.yaw = yaw;
+    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    assert_eq!(glade.spells().count(Spell::WindWall), 3);
+    // Three walls draw three times the streaks of one.
+    let lines = glade.spell_mesh(&runtime.player).lines.len();
+    assert!(lines > 3 * 40, "{lines}");
+    for spot in spots {
+        runtime.player.pos = spot;
+        runtime.player.set_vertical_speed(0.0);
+        idle(&mut runtime, 0.5);
+        assert!(
+            runtime.player.pos.y > spot.y + 1.0,
+            "not lifted at {spot}: {}",
+            runtime.player.pos.y
+        );
+    }
 }
 
 #[test]
@@ -233,8 +345,11 @@ fn reverse_gravity_lifts_to_the_top_hovers_and_drops_when_ended() {
         runtime.player.pos.y
     );
     assert!(runtime.player.vertical_speed().abs() < 0.2);
+    // Only particles draw it: no guide lines, and a crowd of glows.
     let glade = runtime.zone_state.everglade.as_ref().unwrap();
-    assert!(glade.spell_mesh(&runtime.player).lines.len() >= 2 * 48 * 3);
+    let mesh = glade.spell_mesh(&runtime.player);
+    assert!(mesh.lines.is_empty(), "{}", mesh.lines.len());
+    assert!(mesh.glow.len() > 6 * 300, "{}", mesh.glow.len());
     // Ending it drops the player; Feather Fall then catches the fall.
     runtime.zone_intent(Intent::ReverseGravity).unwrap();
     idle(&mut runtime, 0.3);

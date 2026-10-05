@@ -1046,24 +1046,46 @@ fn movement_hotbar_levitates_changes_altitude_and_lands() {
     use crate::controller::InputState;
     let mut runtime = entered();
     runtime.zone_intent(Intent::Lower).unwrap_err();
-    runtime.zone_intent(Intent::Levitate).unwrap();
+    // A tap starts levitating 1.5 m up.
+    runtime.everglade_levitate(true).unwrap();
+    runtime.tick(&InputState::default(), 0.05);
+    runtime.everglade_levitate(false).unwrap();
     for _ in 0..30 {
         runtime.tick(&InputState::default(), 0.05);
     }
+    assert!(runtime.everglade_levitating());
     let hovering = runtime.player.pos.y;
     assert!((hovering - 1.5).abs() < 0.01);
-    runtime.zone_intent(Intent::Rise).unwrap();
+    // Holding Levitate rises at 3 m/s after the first quarter second, and
+    // letting go holds the altitude.
+    runtime.everglade_levitate(true).unwrap();
+    for _ in 0..25 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    runtime.everglade_levitate(false).unwrap();
+    let held = runtime.player.pos.y;
+    assert!(held - hovering > 2.5, "{held}");
     for _ in 0..30 {
         runtime.tick(&InputState::default(), 0.05);
     }
-    assert!((runtime.player.pos.y - hovering - 1.5).abs() < 0.01);
-    runtime.zone_intent(Intent::Lower).unwrap();
-    for _ in 0..30 {
+    assert!(runtime.everglade_levitating());
+    assert!(
+        (runtime.player.pos.y - held).abs() < 0.05,
+        "{}",
+        runtime.player.pos.y
+    );
+    // A held X descends.
+    for _ in 0..20 {
+        runtime.everglade_climb(-1.0, 0.05);
         runtime.tick(&InputState::default(), 0.05);
     }
-    assert!((runtime.player.pos.y - hovering).abs() < 0.01);
-    // Stopping drops the character under gravity, faster and faster.
-    runtime.zone_intent(Intent::Levitate).unwrap();
+    assert!(runtime.player.pos.y < held - 1.0);
+    // A tap while levitating stops: the character drops under gravity,
+    // faster and faster.
+    runtime.everglade_levitate(true).unwrap();
+    runtime.tick(&InputState::default(), 0.05);
+    runtime.everglade_levitate(false).unwrap();
+    assert!(!runtime.everglade_levitating());
     let before = runtime.player.pos.y;
     runtime.tick(&InputState::default(), 0.05);
     let first = before - runtime.player.pos.y;
@@ -1099,13 +1121,11 @@ fn movement_hotbar_levitates_changes_altitude_and_lands() {
 fn landing_over_the_hall_comes_down_on_its_roof() {
     use crate::controller::InputState;
     let mut runtime = entered();
-    runtime.zone_intent(Intent::Levitate).unwrap();
-    for _ in 0..5 {
-        runtime.zone_intent(Intent::Rise).unwrap();
-    }
+    runtime.everglade_levitate(true).unwrap();
     for _ in 0..80 {
         runtime.tick(&InputState::default(), 0.05);
     }
+    runtime.everglade_levitate(false).unwrap();
     assert!(runtime.player.pos.y > 8.0, "{}", runtime.player.pos.y);
     // Drift over the middle of the hall's west roof, then land.
     let ([cx, cz], [hx, _]) = super::HALL;

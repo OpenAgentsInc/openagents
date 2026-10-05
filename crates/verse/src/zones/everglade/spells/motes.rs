@@ -3,14 +3,22 @@
 //! Inside the cylinder, dust, pebbles, leaves, and faint sparks lift off
 //! the ground and fall upward, faster as they climb, then gather and hover
 //! just under the top plane before they fade and lift again from the
-//! ground. A soft glow swirls up the cylinder's wall, and a shimmering ring
-//! marks its base and its top.
+//! ground. A dense band of bright motes climbs the cylinder's edge from
+//! base to top, a soft glow swirls up the wall, and a shimmering ring marks
+//! its base and its top, so the circle reads from beside it and from above
+//! without any line geometry.
 //!
 //! Every position is a closed-form function of the spell's age and a
 //! particle's seed, so the effect never depends on the frame rate and a
 //! replay draws the same frame. Dust, sparks, the wall glow, and the rings
 //! are additive glow quads turned toward the eye; pebbles and leaves are a
-//! few shaded faces each. The counts are fixed: 320 particles in all.
+//! few shaded faces each. The counts are fixed: 448 particles in all.
+//!
+//! The renderer keeps only the first glows up to the quality tier's glow
+//! budget ([`crate::render::glow_triangles`]: 64 quads on the low tier,
+//! 512 on medium, and 1024 on high), so the edge band draws first and
+//! survives even the low tier, and the whole effect spends at most
+//! 512 glow quads, the medium tier's budget.
 
 use crate::mesh::{Mesh, Vertex};
 use crate::pbr::GlowVertex;
@@ -26,13 +34,18 @@ const SPARKS: usize = 60;
 const PEBBLES: usize = 50;
 /// Fluttering leaves.
 const LEAVES: usize = 60;
+/// Bright motes climbing the cylinder's edge.
+const EDGE: usize = 128;
 /// Every particle the effect draws, not counting the wall glow and rings.
 #[cfg(test)]
-const PARTICLES: usize = DUST + SPARKS + PEBBLES + LEAVES;
+const PARTICLES: usize = DUST + SPARKS + PEBBLES + LEAVES + EDGE;
 /// Soft glow streaks rising around the cylinder's wall.
-const STREAKS: usize = 48;
+const STREAKS: usize = 46;
 /// Shimmering blobs on each of the base and top rings.
-const RING: usize = 192;
+const RING: usize = 64;
+/// Every glow quad the effect can draw: the medium tier's whole budget.
+#[cfg(test)]
+const GLOW_QUADS: usize = EDGE + DUST + SPARKS + STREAKS + 2 * RING;
 
 /// How long a particle takes to fade in at the ground and out at the top, s.
 const FADE: f32 = 0.6;
@@ -45,7 +58,8 @@ const DUST_TINT: [f32; 3] = [1.0, 0.9, 0.72];
 const DUST_LUMINANCE: f32 = 1.6;
 const SPARK_LUMINANCE: f32 = 4.0;
 const STREAK_LUMINANCE: f32 = 0.8;
-const RING_LUMINANCE: f32 = 1.2;
+const RING_LUMINANCE: f32 = 1.6;
+const EDGE_LUMINANCE: f32 = 4.0;
 /// Pebble and leaf colors, shaded like the zone's other spell faces.
 const STONES: [[f32; 3]; 3] = [[0.42, 0.4, 0.37], [0.52, 0.47, 0.4], [0.33, 0.31, 0.3]];
 const FOLIAGE: [[f32; 3]; 4] = [
@@ -59,6 +73,7 @@ const FOLIAGE: [[f32; 3]; 4] = [
 /// cast, seen from `eye`.
 pub(super) fn draw(mesh: &mut Mesh, cylinder: &Cylinder, age: f32, eye: Vec3) {
     let field = Field::of(cylinder);
+    field.edge(&mut mesh.glow, age, eye);
     for i in 0..DUST {
         if let Some(m) = field.mote(0x0d05, i, age, 2.0) {
             let h = seeded(0x0d06, i);
@@ -177,6 +192,40 @@ impl Field {
             fade: fade.clamp(0.0, 1.0),
             age: t,
         })
+    }
+
+    /// Edge mote `k`, `age` seconds into the spell: evenly spread round
+    /// the circumference with a little jitter, on the edge or just inside
+    /// it, climbing steadily from the base to the top, where it fades and
+    /// starts again. Returns its place and how whole it is.
+    fn edge_mote(&self, k: usize, age: f32) -> (Vec3, f32) {
+        let h = seeded(0xed6e, k);
+        // Each mote climbs the full height on its own cycle, slowly near
+        // the ground and faster higher up, so the band is densest at the
+        // base, where it draws the circle on the ground.
+        let period = 8.0 + 6.0 * h[0];
+        let u = (age / period + h[1]).rem_euclid(1.0);
+        let s = self.height * u * u;
+        let angle = TAU * (k as f32 + 0.6 * (h[2] - 0.5)) / EDGE as f32 + 0.05 * age;
+        let r = self.radius * (0.97 + 0.03 * h[3]);
+        let at = Vec3::new(
+            self.center.x + r * angle.cos(),
+            self.center.y + 0.1 + s,
+            self.center.z + r * angle.sin(),
+        );
+        let ends = (s / FADE).min(1.0) * ((self.height - s) / (2.0 * FADE)).min(1.0);
+        (at, ends.clamp(0.0, 1.0))
+    }
+
+    /// The dense band of bright motes on the cylinder's edge.
+    fn edge(&self, out: &mut Vec<GlowVertex>, age: f32, eye: Vec3) {
+        for k in 0..EDGE {
+            let (at, whole) = self.edge_mote(k, age);
+            let h = seeded(0xed6f, k);
+            let twinkle = 0.7 + 0.3 * (age * (2.0 + 3.0 * h[0]) + TAU * h[1]).sin();
+            let radiance = VIOLET.map(|c| c * EDGE_LUMINANCE * twinkle * whole);
+            blob(out, at, 0.35 + 0.25 * h[2], radiance, eye);
+        }
     }
 
     /// Tall soft streaks rising up the wall on a slow helix.
@@ -373,10 +422,74 @@ mod tests {
         draw(&mut b, &cylinder(), 17.25, eye);
         assert_eq!(a.glow, b.glow);
         assert_eq!(a.faces, b.faces);
-        let glows = (DUST + SPARKS + STREAKS + 2 * RING) * 6;
+        let glows = (DUST + SPARKS + EDGE + STREAKS + 2 * RING) * 6;
         assert!(a.glow.len() <= glows);
         assert!(a.faces.len() <= PEBBLES * 24 + LEAVES * 6);
-        assert_eq!(PARTICLES, 320);
+        assert_eq!(PARTICLES, 448);
         assert!(a.glow.iter().all(|g| g.pos.iter().all(|x| x.is_finite())));
+    }
+
+    #[test]
+    fn the_edge_band_hugs_the_circle_all_the_way_round_and_up() {
+        let field = Field::of(&cylinder());
+        let mut sectors = [0_usize; 16];
+        let mut heights = [0_usize; 4];
+        for age in [0.0_f32, 3.5, 21.0] {
+            for k in 0..EDGE {
+                let (at, whole) = field.edge_mote(k, age);
+                let off = Vec3::new(at.x - field.center.x, 0.0, at.z - field.center.z);
+                // On the edge, never more than 3% inside it.
+                assert!(off.length() <= field.radius + 1e-3, "{off}");
+                assert!(off.length() >= field.radius * 0.969, "{off}");
+                let y = at.y - field.center.y;
+                assert!((0.0..=field.height + 0.2).contains(&y), "{y}");
+                assert!((0.0..=1.0).contains(&whole));
+                let angle = off.z.atan2(off.x).rem_euclid(TAU);
+                sectors[((angle / TAU) * 16.0) as usize % 16] += 1;
+                heights[((y / field.height) * 4.0).min(3.0) as usize] += 1;
+            }
+        }
+        // Dense all the way round the circle, densest at the base, and
+        // reaching the top.
+        assert!(
+            sectors.iter().all(|&n| n >= 3 * EDGE / 16 / 2),
+            "{sectors:?}"
+        );
+        assert!(heights[0] > heights[3] && heights[3] > 0, "{heights:?}");
+    }
+
+    #[test]
+    fn the_edge_band_draws_first_within_the_medium_budget() {
+        let mut mesh = Mesh::default();
+        draw(&mut mesh, &cylinder(), 12.0, Vec3::new(2.0, 60.0, -3.0));
+        let field = Field::of(&cylinder());
+        // The edge band comes first, so the low tier's 64 quads are all on
+        // it; the whole effect fits the medium tier's 512.
+        assert_eq!(GLOW_QUADS, 512);
+        assert!(mesh.glow.len() <= GLOW_QUADS * 6);
+        for quad in mesh.glow.chunks(6).take(EDGE) {
+            let mid = quad.iter().fold(Vec3::ZERO, |m, v| m + Vec3::from(v.pos)) / 6.0;
+            let r = Vec3::new(mid.x - field.center.x, 0.0, mid.z - field.center.z).length();
+            assert!(r >= field.radius * 0.95, "{r}");
+        }
+    }
+
+    #[test]
+    fn more_of_the_glow_sits_on_the_edge_than_inside() {
+        let mut mesh = Mesh::default();
+        let c = cylinder();
+        draw(&mut mesh, &c, 12.0, Vec3::new(2.0, 60.0, -3.0));
+        let field = Field::of(&c);
+        let quads = mesh.glow.chunks(6).map(|q| {
+            let mid = q.iter().fold(Vec3::ZERO, |m, v| m + Vec3::from(v.pos)) / 6.0;
+            Vec3::new(mid.x - field.center.x, 0.0, mid.z - field.center.z).length()
+        });
+        let (edge, inside): (Vec<f32>, Vec<f32>) = quads.partition(|r| *r >= field.radius * 0.9);
+        assert!(
+            edge.len() > inside.len(),
+            "{} on the edge, {} inside",
+            edge.len(),
+            inside.len()
+        );
     }
 }

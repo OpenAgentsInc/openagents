@@ -65,6 +65,22 @@ const PROBE_CELL: f32 = 8.1;
 /// character's head on the ring.
 const PROBE_HEADROOM: f32 = 3.0;
 
+/// How fast a held Levitate, or a held descent, changes the altitude, m/s.
+pub(crate) const CLIMB_RATE: f32 = 3.0;
+/// How high levitation reaches over the ground, m.
+pub(crate) const LEVITATE_CEILING: f32 = 18.0;
+/// A Levitate press shorter than this is a tap, s: it rises nothing, and
+/// on a player already levitating it ends the levitation.
+pub(crate) const TAP: f32 = 0.25;
+
+/// A held Levitate press: how long it has been held, s, and whether the
+/// press started the levitation.
+#[derive(Clone, Copy, Debug)]
+struct Hold {
+    held: f32,
+    began: bool,
+}
+
 /// The zone's live state: its clock, the lit stage its frames draw on, and
 /// the characters: the player's and the studio's seats.
 pub(crate) struct Everglade {
@@ -74,6 +90,8 @@ pub(crate) struct Everglade {
     pub altitude: f32,
     pub jump: bool,
     landing: bool,
+    /// The held Levitate press, if any.
+    hold: Option<Hold>,
     solids: solids::Solids,
     spells: spells::Spells,
     rendered: Mesh,
@@ -118,6 +136,7 @@ impl Everglade {
             altitude: 0.0,
             jump: false,
             landing: false,
+            hold: None,
             solids,
             spells: spells::Spells::default(),
             rendered: Self::stage(0.0),
@@ -359,6 +378,14 @@ impl Everglade {
         let mut input = *input;
         input.sprint |= self.sprinting;
         input.jump |= std::mem::take(&mut self.jump);
+        if let Some(hold) = &mut self.hold {
+            hold.held += dt;
+            if hold.held >= TAP && self.levitating {
+                let ground = height(player.pos.x, player.pos.z);
+                self.altitude =
+                    (self.altitude + CLIMB_RATE * dt).clamp(ground, ground + LEVITATE_CEILING);
+            }
+        }
         if self.levitating || self.landing {
             input.jump = false;
             let before = player.pos.y;
@@ -378,9 +405,32 @@ impl Everglade {
         }
     }
 
-    /// Casts `spell` for `player`, or ends it when it is the live
-    /// concentration spell. Reverse Gravity ends levitation: the player
-    /// falls upward instead.
+    /// Casts `spell` for `player` from Everglade's hotbar: no cooldown,
+    /// walls beside the ones standing, and a press on a live Feather Fall
+    /// or Reverse Gravity ending it ([`spells::Spells::cast_ahead`]).
+    /// Reverse Gravity ends levitation: the player falls upward instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the spell's rules refused the cast.
+    pub fn cast_hotbar_spell(
+        &mut self,
+        spell: spells::Spell,
+        player: &PlayerController,
+    ) -> Result<(), String> {
+        if self.demolition.is_some() {
+            return Err("The demolition yard has only the sledgehammer".into());
+        }
+        self.spells
+            .cast_ahead(spell, player, &self.solids, spells::AHEAD)?;
+        self.after_cast(spell);
+        Ok(())
+    }
+
+    /// Casts `spell` for `player` under the chamber's concentration rule,
+    /// as the Grove does, or ends it when it is the live concentration
+    /// spell. Reverse Gravity ends levitation: the player falls upward
+    /// instead.
     ///
     /// # Errors
     ///
@@ -411,13 +461,18 @@ impl Everglade {
         if self.demolition.is_some() {
             return Err("The demolition yard has only the sledgehammer".into());
         }
-        self.spells.cast_ahead(spell, player, &self.solids, ahead)?;
+        self.spells
+            .concentrate_ahead(spell, player, &self.solids, ahead)?;
+        self.after_cast(spell);
+        Ok(())
+    }
+
+    fn after_cast(&mut self, spell: spells::Spell) {
         if spell == spells::Spell::ReverseGravity && self.spells.active(spell) {
             self.levitating = false;
             self.landing = false;
         }
         self.refresh_blocks();
-        Ok(())
     }
 
     /// Whether `spell` is live on the player.
@@ -437,7 +492,7 @@ impl Everglade {
         &self.spells
     }
 
-    /// Ends every spell and clears every cooldown, as a long rest does.
+    /// Ends every spell, as a long rest does.
     pub fn long_rest(&mut self) {
         let free = self.spells.free();
         self.spells = spells::Spells::default();
@@ -490,13 +545,39 @@ impl Everglade {
             .step(player, input, dt, HALF_EXTENT, !self.levitating);
     }
 
+    /// Presses Levitate and keeps it held: the player starts levitating if
+    /// not already, and rises while it stays held past a tap. A repeated
+    /// press while held is ignored.
+    pub fn press_levitate(&mut self, player: &PlayerController) {
+        if self.hold.is_some() {
+            return;
+        }
+        let began = !self.levitating;
+        if began {
+            self.toggle_levitate(player);
+        }
+        self.hold = Some(Hold { held: 0.0, began });
+    }
+
+    /// Lets go of Levitate: the player holds the altitude reached, or, after
+    /// a tap that did not start the levitation, stops levitating and falls.
+    pub fn release_levitate(&mut self, player: &PlayerController) {
+        if let Some(hold) = self.hold.take()
+            && !hold.began
+            && hold.held < TAP
+            && self.levitating
+        {
+            self.toggle_levitate(player);
+        }
+    }
+
     /// Levitate, or stop: the character then falls under gravity, as from
     /// a jump.
     pub fn toggle_levitate(&mut self, player: &PlayerController) {
         self.levitating = !self.levitating;
         self.landing = false;
         self.altitude = if self.levitating {
-            (player.pos.y + 1.5).min(height(player.pos.x, player.pos.z) + 18.0)
+            (player.pos.y + 1.5).min(height(player.pos.x, player.pos.z) + LEVITATE_CEILING)
         } else {
             player.pos.y
         };

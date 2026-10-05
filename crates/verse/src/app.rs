@@ -586,8 +586,10 @@ struct App {
     /// request survives a load that losing focus cancels, so a window that
     /// starts behind another still enters once it comes to the front.
     everglade_pending: Option<zones::ZoneId>,
-    /// A held Up (1) or Down (-1) while levitating in Everglade, or 0.
+    /// A held descent (-1, the X key) while levitating in Everglade, or 0.
     climb: f32,
+    /// Whether the mouse holds Everglade's Levitate slot down.
+    levitate_held: bool,
     /// The hotbar slot the pointer rests on, for its card's hover delay.
     slot_tip: crate::tooltip::Dwell,
     /// The hosted instance this window walks in, and the heading its
@@ -860,6 +862,7 @@ impl App {
             everglade_pending: None,
             swing_press: None,
             climb: 0.0,
+            levitate_held: false,
             slot_tip: crate::tooltip::Dwell::default(),
             #[cfg(feature = "remote-chamber")]
             hosted,
@@ -2186,11 +2189,20 @@ impl App {
             }
             return;
         }
-        // While levitating in Everglade, holding 2 or Space climbs and
-        // holding 3 or X descends, until the key is let go.
+        // Everglade's Levitate, 1 or L: holding it rises, letting go hovers,
+        // and a tap while hovering falls.
+        if matches!(code, KeyCode::Digit1 | KeyCode::KeyL)
+            && self.in_bare_everglade()
+            && !self.runtime.in_demolition()
+            && (!pressed || (!self.chat.open && !self.map.expanded))
+        {
+            let _ = self.runtime.everglade_levitate(pressed);
+            return;
+        }
+        // While levitating in Everglade, holding X descends until it is let
+        // go.
         let climb = match code {
-            KeyCode::Digit2 | KeyCode::Space => 1.0,
-            KeyCode::Digit3 | KeyCode::KeyX => -1.0,
+            KeyCode::KeyX => -1.0,
             _ => 0.0,
         };
         if climb != 0.0 && self.in_bare_everglade() && !self.chat.open {
@@ -2253,18 +2265,13 @@ impl App {
                     return self.zone_action(intent);
                 }
             }
-            // Everglade's hotbar: 1 or L levitates or lands.
-            if self.in_bare_everglade() && matches!(code, KeyCode::Digit1 | KeyCode::KeyL) {
-                self.zone_action(ZoneIntent::Levitate);
-                return;
-            }
-            // 4 to 7 cast the hotbar's spells.
+            // 2 to 5 cast the hotbar's spells.
             if self.in_bare_everglade() {
                 let slot = match code {
+                    KeyCode::Digit2 => Some(1),
+                    KeyCode::Digit3 => Some(2),
                     KeyCode::Digit4 => Some(3),
                     KeyCode::Digit5 => Some(4),
-                    KeyCode::Digit6 => Some(5),
-                    KeyCode::Digit7 => Some(6),
                     _ => None,
                 };
                 if let Some((intent, ..)) =
@@ -2606,11 +2613,11 @@ impl App {
             && self.in_bare_everglade()
             && let Some(intent) = self.hotbar_at(self.cursor.map(|v| v / self.scale))
         {
-            // Up and Down climb while held; Levitate toggles.
-            match intent {
-                ZoneIntent::Rise if self.runtime.everglade_levitating() => self.climb = 1.0,
-                ZoneIntent::Lower if self.runtime.everglade_levitating() => self.climb = -1.0,
-                intent => self.zone_action(intent),
+            // Levitate rises while held; the spells cast once.
+            if intent == ZoneIntent::Levitate {
+                self.levitate_held = self.runtime.everglade_levitate(true).is_ok();
+            } else {
+                self.zone_action(intent);
             }
             return;
         }
@@ -2640,8 +2647,9 @@ impl App {
                 _ => {}
             }
         }
-        if button == MouseButton::Left && !pressed && self.climb != 0.0 {
-            self.climb = 0.0;
+        if button == MouseButton::Left && !pressed && self.levitate_held {
+            self.levitate_held = false;
+            let _ = self.runtime.everglade_levitate(false);
         }
         if button == MouseButton::Left {
             let at = self.cursor.map(|v| v / self.scale);

@@ -186,8 +186,10 @@ struct Page {
     stopped: bool,
     /// The HUD atlas at CSS-pixel metrics, for the hotbar.
     layout: Option<Atlas>,
-    /// A held Up (1) or Down (-1) and the pointer holding it, if any.
+    /// A held descent (-1, the X key) and the pointer holding it, if any.
     climb: Option<(Option<i32>, f32)>,
+    /// The pointer holding Levitate down (`None` inside for a key), if any.
+    levitate: Option<Option<i32>>,
     /// When the primary button or a touch went down, in milliseconds: in
     /// the demolition yard a quick tap swings the hammer.
     pressed_at: Option<f64>,
@@ -329,6 +331,7 @@ async fn run() -> Result<(), String> {
         stopped: false,
         layout: atlas.layout_at_scale(scale),
         climb: None,
+        levitate: None,
         pressed_at: None,
         hover: None,
         slot_tip: verse::tooltip::Dwell::default(),
@@ -380,6 +383,7 @@ async fn run_grid(
         stopped: false,
         layout: atlas.layout_at_scale(scale),
         climb: None,
+        levitate: None,
         pressed_at: None,
         hover: None,
         slot_tip: verse::tooltip::Dwell::default(),
@@ -619,15 +623,16 @@ impl Page {
     }
 
     /// Presses the hotbar slot under `at` (CSS pixels) for `pointer`;
-    /// returns whether one was there. A touch on a slot other than Up or
-    /// Down acts when it lifts, so a long press can show the card instead.
+    /// returns whether one was there. A touch on a slot other than
+    /// Levitate acts when it lifts, so a long press can show the card
+    /// instead; Levitate rises while held.
     fn press_hotbar(&mut self, at: [f32; 2], pointer: Option<i32>, touch: bool, now: f64) -> bool {
         let Some((index, intent)) = self.slot_at(at) else {
             return false;
         };
         if let (true, Some(id)) = (touch, pointer) {
             self.slot_touch = Some((id, index, intent, now));
-            if matches!(intent, zones::Intent::Rise | zones::Intent::Lower) {
+            if intent == zones::Intent::Levitate {
                 self.press(intent, pointer);
             }
             return true;
@@ -636,8 +641,8 @@ impl Page {
         true
     }
 
-    /// Lifts a touch from the hotbar: a short tap on a slot other than Up
-    /// or Down uses it; a long press or a cancel only hides the card.
+    /// Lifts a touch from the hotbar: a short tap on a slot other than
+    /// Levitate uses it; a long press or a cancel only hides the card.
     fn lift_hotbar(&mut self, pointer: i32, cancelled: bool, now: f64) {
         let Some((id, _, intent, at)) = self.slot_touch else {
             return;
@@ -647,31 +652,24 @@ impl Page {
         }
         self.slot_touch = None;
         let long = verse::tooltip::long_press(((now - at) / 1000.0) as f32);
-        if !cancelled && !long && !matches!(intent, zones::Intent::Rise | zones::Intent::Lower) {
+        if !cancelled && !long && intent != zones::Intent::Levitate {
             self.press(intent, None);
         }
     }
 
-    /// Up and Down climb while held; any other slot acts once.
+    /// Levitate rises while held; any other slot acts once.
     fn press(&mut self, intent: zones::Intent, pointer: Option<i32>) {
-        match intent {
-            zones::Intent::Rise | zones::Intent::Lower => {
-                if self.runtime.everglade_levitating() {
-                    let direction = if intent == zones::Intent::Rise {
-                        1.0
-                    } else {
-                        -1.0
-                    };
-                    self.climb = Some((pointer, direction));
-                }
+        if intent == zones::Intent::Levitate {
+            if self.levitate.is_none() && self.runtime.everglade_levitate(true).is_ok() {
+                self.levitate = Some(pointer);
             }
-            intent => {
-                let _ = self.runtime.zone_intent(intent);
-            }
+        } else {
+            let _ = self.runtime.zone_intent(intent);
         }
     }
 
-    /// Lets go of a held Up or Down by `pointer` (`None` for keys).
+    /// Lets go of a held descent or Levitate by `pointer` (`None` for
+    /// keys).
     fn release_climb(&mut self, pointer: Option<i32>, direction: Option<f32>) {
         if let Some((held, held_direction)) = self.climb
             && held == pointer
@@ -679,11 +677,14 @@ impl Page {
         {
             self.climb = None;
         }
+        if direction.is_none() && self.levitate == Some(pointer) {
+            self.levitate = None;
+            let _ = self.runtime.everglade_levitate(false);
+        }
     }
 
-    /// The hotbar's keys: 1 to 9 are its slots, L levitates, and while
-    /// levitating Space and X hold Up and Down. Returns whether it used the
-    /// key.
+    /// The hotbar's keys: 1 to 5 are its slots, 1 and L hold Levitate, and
+    /// while levitating X holds a descent. Returns whether it used the key.
     fn hotbar_key(&mut self, code: &str, down: bool) -> bool {
         // The Grove's bar: 1 to 9 cast, and 0 is Long Rest.
         if self.runtime.grove_bar().is_some() {
@@ -698,35 +699,41 @@ impl Page {
             let _ = self.runtime.grove_key(intent, down);
             return true;
         }
+        if self.runtime.everglade_hotbar().is_none() {
+            return false;
+        }
         let slots = &zones::everglade::hotbar::SLOTS;
         let slot = code
             .strip_prefix("Digit")
             .and_then(|d| d.parse::<usize>().ok())
             .filter(|&n| (1..=slots.len()).contains(&n))
             .map(|n| slots[n - 1].0);
-        let levitating = self.runtime.everglade_levitating();
         let intent = match (code, slot) {
             (_, Some(intent)) => intent,
             ("KeyL", _) => zones::Intent::Levitate,
-            ("Space", _) if levitating || !down => zones::Intent::Rise,
-            ("KeyX", _) if levitating || !down => zones::Intent::Lower,
+            ("KeyX", _) => {
+                if down && self.runtime.everglade_levitating() {
+                    self.climb = Some((None, -1.0));
+                    return true;
+                }
+                if !down && self.climb.is_some() {
+                    self.release_climb(None, Some(-1.0));
+                    return true;
+                }
+                return false;
+            }
             _ => return false,
         };
-        if self.runtime.everglade_hotbar().is_none() {
-            return false;
-        }
-        if down {
+        if intent == zones::Intent::Levitate {
+            if down {
+                self.press(intent, None);
+            } else {
+                self.release_climb(None, None);
+            }
+        } else if down {
             self.press(intent, None);
-            // Space rises instead of jumping while levitating.
-            return code != "Space" || levitating;
         }
-        let direction = match intent {
-            zones::Intent::Rise => Some(1.0),
-            zones::Intent::Lower => Some(-1.0),
-            _ => return slot.is_some() || code == "KeyL",
-        };
-        self.release_climb(None, direction);
-        false
+        true
     }
 
     fn apply(&mut self, action: Option<Action>) {

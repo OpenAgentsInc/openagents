@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|winds|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -9,6 +9,8 @@
 //!   portal, up the path through the gate toward the workshop.
 //! - `tooltip`: the approach with the pointer resting on the hotbar's Wind
 //!   Wall slot, so its card shows over the bar.
+//! - `winds`: four Wind Walls cast on the approach, fanned left to right,
+//!   seen from behind the caster.
 //! - `sky`: from the approach, turned toward the Sun and looking up, for
 //!   the daylight sky and its clouds.
 //! - `yard`: from above the yard's south edge, over the Task Wall, the
@@ -83,7 +85,7 @@ fn main() -> Result<(), String> {
     let (at, yaw, tilt) = match view.as_str() {
         "eyes" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, -60.0),
         "hall-eyes" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, -40.0),
-        "approach" | "tooltip" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
+        "approach" | "tooltip" | "winds" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
         // From the approach, turned toward the Sun and tilted up at the sky.
         "sky" => (glam::Vec3::new(0.0, 0.0, -29.0), SKY_YAW, SKY_TILT),
         "yard" | "studio-yard" => (glam::Vec3::new(-3.0, 0.0, -15.0), 0.25, 80.0),
@@ -113,7 +115,7 @@ fn main() -> Result<(), String> {
         "studio-atrium" => (glam::Vec3::new(2.8, 0.0, -13.3), 0.5, 10.0),
         other => {
             return Err(format!(
-                "unknown view `{other}`; use approach, sky, yard, hall, lane-east, lane-west, reverse, reverse-top, \
+                "unknown view `{other}`; use approach, winds, sky, yard, hall, lane-east, lane-west, reverse, reverse-top, \
                  overhead, town-north, town-west, tooltip, city-market, city-stoop, city-lantern, \
                  city-brownstone, city-observatory, city-foundry, studio-yard, studio-hall, studio-atrium, eyes, \
                  or hall-eyes"
@@ -131,6 +133,16 @@ fn main() -> Result<(), String> {
     let idle = InputState::default();
     if view.starts_with("reverse") {
         reverse(&mut runtime, &view, &idle)?;
+    }
+    if view == "winds" {
+        // Four walls, each from its own spot and heading, all standing.
+        for (dx, turn) in [(-6.0, -0.5), (-2.0, -0.15), (2.0, 0.15), (6.0, 0.5)] {
+            runtime.set_spawn(glam::Vec3::new(dx, 0.0, -29.0), turn)?;
+            runtime.zone_intent(zones::Intent::WindWall)?;
+            runtime.tick(&idle, 0.05);
+        }
+        runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -36.0), 0.0)?;
+        runtime.apply(Action::Orbit { dx: 0.0, dy: 60.0 })?;
     }
     runtime.apply(Action::Orbit { dx: 0.0, dy: tilt })?;
     if first_person {
