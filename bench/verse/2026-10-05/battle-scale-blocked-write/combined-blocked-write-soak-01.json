@@ -1,0 +1,3295 @@
+{
+  "schema": "verse.battle.capacity.v1",
+  "mode": "combined",
+  "seconds": 600,
+  "players": [
+    {
+      "player": 0,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 1,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 2,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 3,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 4,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 5,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 6,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 7,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 8,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 9,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 10,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 11,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 12,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 13,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 14,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 15,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 16,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 17,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 18,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    },
+    {
+      "player": 19,
+      "status": "failed",
+      "error": "No space left on device (os error 28)",
+      "connections": 0,
+      "segments": []
+    }
+  ],
+  "native_sessions": 1,
+  "headless_workers": 19,
+  "hostile_npcs": 40,
+  "cultist_health": 20000,
+  "frontline_player": 19,
+  "frontline_initial_position": [
+    -6.0,
+    0.0,
+    -8.0
+  ],
+  "frontline_initial_life_recipe": "approach the nearest hostile and cast only Fire Bolt; defer inventory, healing, crowd control, Shield, and Misty Step until the first actual respawn",
+  "delay_profile": "pipeline",
+  "delay_ms_per_chunk": 40,
+  "jitter_ms_per_chunk": 20,
+  "wire_version": 29,
+  "debug_assertions": true,
+  "status": "failed",
+  "budgets": {
+    "simulation_p99_upper_bound_ms": 33.333333333333336,
+    "render_cpu_p95_ms": 16.666666666666668,
+    "render_gpu_p95_ms": 16.666666666666668,
+    "snapshot_age_p95_ms": 400.0,
+    "minimum_live_hostiles": 40,
+    "minimum_authority_tick_fraction": 0.98,
+    "battle_framed_snapshot_fraction": 0.8,
+    "prediction_correction_p95_meters": 0.25,
+    "prediction_correction_maximum_meters": 1.0,
+    "checkpoint_bytes": 1048576,
+    "request_queue_peak": 128,
+    "writer_queue_peak": 2,
+    "held_reply_bytes_peak": 33554432,
+    "steady_rss_growth_bytes": 67108864
+  },
+  "limits": [
+    "Scratch authority and clients share this process and machine.",
+    "Offscreen rendering has no display surface, capture, or physical input-to-display measurement.",
+    "Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.",
+    "GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."
+  ],
+  "render_resolution": {
+    "width": 2560,
+    "height": 1440
+  },
+  "implementation": {
+    "base_revision": "43f12d6e0b-blocked-write",
+    "executable_sha256": "f31eba513bbac7cf7bb5714ea3268310ef7d4f741c6e30313d772357b64f2161",
+    "harness_sha256": "6ac2bf42f159ff1e181a0a35eccf11b1cedcf317a587b834bb8bc9527f4ad35d",
+    "native_driver_sha256": "f8d7ab5278278aa5c38f76a7b0a33cf5f9348a27a7714dc8574b0e6c738be338",
+    "headless_driver_sha256": "f84babeb856a3351fea66b3d8d4b50b03788d3e0e8c893b7983106e5fb64c859",
+    "acceptance_sha256": "daa1ec916cf222f1d7dcb8d845fe93f761693be215570b1e4abdac92e41c3632",
+    "world_net_sha256": "84705ce951e9883d4f90878d73b50be8a0b48ef9ba22f13868955bc54fbe30dd",
+    "worker_sha256": "8edaa6f4feb72320fe35d0c37da3e43f0602856e1ebc6fcda9ccfc4f4e110f7c",
+    "wire_sha256": "e915ac3c6a19fc6c8099cd33dc39bce3358f9e7cd39bf8a2e4e27b74c6b786de",
+    "prediction_local_sha256": "518ed1ea4547a7e51409ac9c5adf82e074bce5638cb2aeb77f951ea066703f47",
+    "prediction_frames_sha256": "73624e65b6c03cd1f7c228233e50499f990b7bd7b35b45ccf09029a99157ebfd",
+    "authority_movement_sha256": "d4e2f79cbd0ac071c11772d6ba3c63fd83349c27d29e210b4ac2fe085d766367",
+    "authority_clock_sha256": "e4fc68a8752000342f2ce67cd2a694a82a92a1f7beb9ab3642af44c79680dd49",
+    "authority_game_sha256": "ece92f6ed30288522f1b56f883bbb351a7395fa21e98ee18dec019b798b0eaef",
+    "hostile_combat_sha256": "b698aead71c3ae15bd7e83409faf5cb882fdbab538a60ca4e29c5b5c91d93ef4",
+    "persistence_sha256": "2f33bd6523cd2db5375f92109a1ea9857352112175a4a0a13b8d490fdcf731fb",
+    "native_session_sha256": "bc8e283b2f94fbca47e915a313912f29866f2c0b774ec2be0f18fe594b6a1457",
+    "cargo_lock_sha256": "9fc949fdda396fb32feafb6c7c25f825b164350c1c917845f1f0594483ef55ca",
+    "delayed_route_sha256": "201d952eb408e7913af1ab44902d49823d9cb5ac3e717b0b17e27b47eeceb633"
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "os": "linux",
+    "cpu": "Intel(R) Core(TM) i7-14700K",
+    "load_average_at_start": "3.60 3.15 2.87"
+  },
+  "asset_profile": {
+    "kind": "licensed_with_procedural_battle_equipment",
+    "source_revision": "verse-bestiary-ritual-v1",
+    "manifest_sha256": "7423d61f9c862d58ecb3923e68bee2fff55429f7f31baf9eda27decfe77f9f6c",
+    "loaded_models": 55,
+    "loaded_textures": 51,
+    "loaded_placements": 57,
+    "copied_texture_bytes": 34477502,
+    "derived_head_sockets": 13
+  },
+  "content": [
+    104,
+    104,
+    166,
+    187,
+    10,
+    171,
+    7,
+    183,
+    66,
+    217,
+    184,
+    70,
+    83,
+    74,
+    42,
+    63,
+    124,
+    173,
+    109,
+    50,
+    248,
+    234,
+    96,
+    32,
+    177,
+    105,
+    234,
+    28,
+    127,
+    177,
+    24,
+    29
+  ],
+  "phase": "durable_recovery",
+  "diagnostic_retention": {
+    "completed_segments": "scratch files collected after workload memory sampling",
+    "segment_record_bytes": 16777216,
+    "maximum_segment_records": 40,
+    "integrity": "SHA-256 and exact byte length"
+  },
+  "render": {
+    "frames": 35988,
+    "rss": [
+      {
+        "seconds": 5.185040633,
+        "bytes": 1296252928
+      },
+      {
+        "seconds": 10.184355465,
+        "bytes": 1303273472
+      },
+      {
+        "seconds": 15.185089944,
+        "bytes": 1326862336
+      },
+      {
+        "seconds": 20.184443404,
+        "bytes": 1330720768
+      },
+      {
+        "seconds": 25.18433787,
+        "bytes": 1333792768
+      },
+      {
+        "seconds": 30.18471264,
+        "bytes": 1344258048
+      },
+      {
+        "seconds": 35.184918241,
+        "bytes": 1344532480
+      },
+      {
+        "seconds": 40.184717831,
+        "bytes": 1344819200
+      },
+      {
+        "seconds": 45.184482258,
+        "bytes": 1345785856
+      },
+      {
+        "seconds": 50.184988281,
+        "bytes": 1346113536
+      },
+      {
+        "seconds": 55.184444583,
+        "bytes": 1347321856
+      },
+      {
+        "seconds": 60.184427813,
+        "bytes": 1348136960
+      },
+      {
+        "seconds": 65.184649378,
+        "bytes": 1348620288
+      },
+      {
+        "seconds": 70.184675447,
+        "bytes": 1349701632
+      },
+      {
+        "seconds": 75.186302094,
+        "bytes": 1349849088
+      },
+      {
+        "seconds": 80.184664028,
+        "bytes": 1350197248
+      },
+      {
+        "seconds": 85.184397137,
+        "bytes": 1352192000
+      },
+      {
+        "seconds": 90.184826449,
+        "bytes": 1352863744
+      },
+      {
+        "seconds": 95.185045639,
+        "bytes": 1354047488
+      },
+      {
+        "seconds": 100.18476402,
+        "bytes": 1354211328
+      },
+      {
+        "seconds": 105.184853036,
+        "bytes": 1354735616
+      },
+      {
+        "seconds": 110.185244125,
+        "bytes": 1354743808
+      },
+      {
+        "seconds": 115.185105048,
+        "bytes": 1354747904
+      },
+      {
+        "seconds": 120.184430972,
+        "bytes": 1355014144
+      },
+      {
+        "seconds": 125.184824564,
+        "bytes": 1355046912
+      },
+      {
+        "seconds": 130.200816528,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 135.20035079,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 140.200431247,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 145.200684443,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 150.201305589,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 155.200974107,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 160.200907631,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 165.200335049,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 170.200624553,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 175.200923549,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 180.200412669,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 185.201237482,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 190.201221014,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 195.201129462,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 200.200633561,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 205.20063713,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 210.200732817,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 215.201217764,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 220.200964987,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 225.200473583,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 230.200436558,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 235.200462973,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 240.20083114,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 245.200781581,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 250.200442596,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 255.200944205,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 260.200762221,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 265.201152751,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 270.201115983,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 275.201306038,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 280.200757381,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 285.201238032,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 290.200737687,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 295.20083494,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 300.201048882,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 305.200337855,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 310.201167471,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 315.200724929,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 320.201201426,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 325.200896714,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 330.200581834,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 335.200889196,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 340.201154098,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 345.200500623,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 350.201197673,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 355.200540461,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 360.200682279,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 365.201310424,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 370.200671909,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 375.20066319,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 380.20043291,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 385.200950553,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 390.200820546,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 395.201056834,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 400.201297211,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 405.200730434,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 410.200900211,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 415.200692586,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 420.201013865,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 425.200374672,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 430.200520622,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 435.201165529,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 440.201253855,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 445.20059075,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 450.20105581,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 455.201323057,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 460.200548744,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 465.201211321,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 470.200742011,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 475.201344195,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 480.200944931,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 485.200482585,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 490.201023644,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 495.200460431,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 500.200516826,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 505.201035592,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 510.200390234,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 515.200436251,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 520.200805198,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 525.201184453,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 530.200960626,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 535.200372093,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 540.201269844,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 545.201289565,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 550.200559976,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 555.200928151,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 560.200326239,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 565.200930185,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 570.200409646,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 575.200774496,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 580.200475881,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 585.200652469,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 590.200527238,
+        "bytes": 1355001856
+      },
+      {
+        "seconds": 595.201262981,
+        "bytes": 1355001856
+      }
+    ],
+    "windows": [
+      {
+        "end_seconds": 30.20059549,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1784,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1784,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 85.26974399999999,
+              "p95": 185.05381200000002,
+              "p99": 234.02283500000001,
+              "maximum": 318.659313
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1784,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.5730829999999999,
+              "p95": 1.09956,
+              "p99": 1.5074450000000001,
+              "maximum": 2.9777750000000003
+            },
+            "draw_cpu_ms": {
+              "samples": 1784,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.16169,
+              "p95": 5.874298,
+              "p99": 7.779584,
+              "maximum": 11.60779
+            },
+            "frame_cpu_ms": {
+              "samples": 1784,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.4036429999999998,
+              "p95": 6.224432,
+              "p99": 8.267825,
+              "maximum": 12.052082
+            },
+            "gpu_scene_ms": {
+              "samples": 1783,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.002688,
+              "p95": 6.692864,
+              "p99": 8.631296,
+              "maximum": 9.228288
+            },
+            "managed_geometry_bytes": {
+              "samples": 1784,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1784,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 38.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 60.200679443,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 101.413784,
+              "p95": 234.45153,
+              "p99": 535.553858,
+              "maximum": 737.128314
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.574785,
+              "p95": 1.0619500000000002,
+              "p99": 1.402939,
+              "maximum": 3.3225070000000003
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.199019,
+              "p95": 5.446209,
+              "p99": 7.157169,
+              "maximum": 9.562767
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.4396419999999996,
+              "p95": 5.787536,
+              "p99": 7.570481,
+              "maximum": 10.166739999999999
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 5.827584,
+              "p95": 6.873088,
+              "p99": 7.921664,
+              "maximum": 9.030656
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 90.200556093,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 100.63638,
+              "p95": 185.597333,
+              "p99": 235.570178,
+              "maximum": 334.014349
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.569472,
+              "p95": 0.9757159999999999,
+              "p99": 1.189187,
+              "maximum": 1.491034
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.165153,
+              "p95": 5.950426,
+              "p99": 7.434894,
+              "maximum": 10.353804
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.4192190000000005,
+              "p95": 6.175097999999999,
+              "p99": 7.699408,
+              "maximum": 10.603327
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 5.486592,
+              "p95": 7.251968,
+              "p99": 8.84224,
+              "maximum": 9.276416
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 120.201013431,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 100.624111,
+              "p95": 199.256968,
+              "p99": 434.564632,
+              "maximum": 718.9218979999999
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.565765,
+              "p95": 0.9775280000000001,
+              "p99": 1.201629,
+              "maximum": 3.102134
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.2394979999999998,
+              "p95": 4.986517999999999,
+              "p99": 6.601032,
+              "maximum": 12.860185999999999
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.4980369999999996,
+              "p95": 5.250702,
+              "p99": 6.895329,
+              "maximum": 13.665045999999998
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 5.371904,
+              "p95": 7.247872,
+              "p99": 8.00768,
+              "maximum": 8.27392
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 150.218312453,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 9568.038489999999,
+              "p95": 23068.693452000003,
+              "p99": 24268.369144,
+              "maximum": 24551.804417
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 1.041552,
+              "p95": 1.862646,
+              "p99": 2.496611,
+              "maximum": 3.6529570000000002
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.6649769999999995,
+              "p95": 9.519013999999999,
+              "p99": 11.328161,
+              "maximum": 13.369183
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.9545889999999995,
+              "p95": 9.808625999999999,
+              "p99": 11.617773,
+              "maximum": 13.658795
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 5.955584,
+              "p95": 6.448128,
+              "p99": 6.843392,
+              "maximum": 8.055808
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 180.217672376,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 39567.922662,
+              "p95": 53068.354066,
+              "p99": 54268.044783,
+              "maximum": 54550.90446
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.56695,
+              "p95": 1.656542,
+              "p99": 2.2960749999999996,
+              "maximum": 3.218046
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.1041179999999997,
+              "p95": 8.843182,
+              "p99": 10.400036,
+              "maximum": 12.720524000000001
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.3937299999999997,
+              "p95": 9.132794,
+              "p99": 10.689648,
+              "maximum": 13.010136000000001
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.119424,
+              "p95": 6.565888,
+              "p99": 6.651904,
+              "maximum": 6.823936
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 210.21801946,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 69567.84141200001,
+              "p95": 83067.750984,
+              "p99": 84268.63541599999,
+              "maximum": 84551.230563
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.551566,
+              "p95": 0.730472,
+              "p99": 0.984897,
+              "maximum": 1.212554
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.020276,
+              "p95": 3.527386,
+              "p99": 4.449644,
+              "maximum": 5.437044
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.309888,
+              "p95": 3.816998,
+              "p99": 4.739256,
+              "maximum": 5.726656
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.105088,
+              "p95": 6.510592,
+              "p99": 6.596608,
+              "maximum": 8.070144
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 240.218024809,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 99568.363093,
+              "p95": 113068.292793,
+              "p99": 114268.407543,
+              "maximum": 114551.399259
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 1.0342820000000001,
+              "p95": 1.873096,
+              "p99": 2.498803,
+              "maximum": 3.291319
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.636343,
+              "p95": 9.546033000000001,
+              "p99": 11.246855,
+              "maximum": 13.410819
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.925955,
+              "p95": 9.835645000000001,
+              "p99": 11.536467,
+              "maximum": 13.700431
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.142976,
+              "p95": 6.541312,
+              "p99": 6.646784,
+              "maximum": 7.852032
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 270.218285877,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 129567.85040299999,
+              "p95": 143068.035578,
+              "p99": 144268.706183,
+              "maximum": 144551.68473699997
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.55999,
+              "p95": 1.365518,
+              "p99": 1.849563,
+              "maximum": 3.344505
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.061538,
+              "p95": 8.056773999999999,
+              "p99": 9.313155,
+              "maximum": 13.047266
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.35115,
+              "p95": 8.346385999999999,
+              "p99": 9.602767,
+              "maximum": 13.336878
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.030336,
+              "p95": 6.49728,
+              "p99": 6.559744,
+              "maximum": 6.709248
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 300.217597258,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 159568.322576,
+              "p95": 173067.87434200002,
+              "p99": 174268.355558,
+              "maximum": 174551.59795599998
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 1.082464,
+              "p95": 1.936537,
+              "p99": 2.8232,
+              "maximum": 3.999664
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.937933,
+              "p95": 9.784038,
+              "p99": 11.70206,
+              "maximum": 13.629838999999999
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 7.227545,
+              "p95": 10.07365,
+              "p99": 11.991672,
+              "maximum": 13.919450999999999
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.003712,
+              "p95": 6.652928,
+              "p99": 6.858752,
+              "maximum": 7.851008
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 330.217737812,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 189568.663574,
+              "p95": 203068.488564,
+              "p99": 204267.950666,
+              "maximum": 204551.064274
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.559685,
+              "p95": 1.333745,
+              "p99": 2.027615,
+              "maximum": 3.689517
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.054247,
+              "p95": 8.229047,
+              "p99": 9.829593,
+              "maximum": 13.760652
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.343859,
+              "p95": 8.518659,
+              "p99": 10.119205,
+              "maximum": 14.050264
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.080512,
+              "p95": 6.506496,
+              "p99": 6.578176,
+              "maximum": 6.692864
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 360.217811265,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 219568.18056500002,
+              "p95": 233068.615324,
+              "p99": 234268.259128,
+              "maximum": 234551.165605
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.552414,
+              "p95": 0.8229310000000001,
+              "p99": 1.020934,
+              "maximum": 1.2564099999999998
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.0258920000000002,
+              "p95": 3.9295349999999996,
+              "p99": 4.631805,
+              "maximum": 5.039444
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.3155040000000002,
+              "p95": 4.2191469999999995,
+              "p99": 4.921417,
+              "maximum": 5.329056
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.10816,
+              "p95": 6.559744,
+              "p99": 6.644736,
+              "maximum": 6.7328
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 390.218002873,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 249568.202794,
+              "p95": 263067.816155,
+              "p99": 264268.233834,
+              "maximum": 264551.30540300003
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.5505380000000001,
+              "p95": 0.851125,
+              "p99": 1.024,
+              "maximum": 1.1697330000000001
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.024533,
+              "p95": 4.060491,
+              "p99": 4.705501,
+              "maximum": 5.032085
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.314145,
+              "p95": 4.350103,
+              "p99": 4.995113,
+              "maximum": 5.321697
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.088704,
+              "p95": 6.509568,
+              "p99": 6.602752,
+              "maximum": 6.670336
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 420.218239182,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 279568.60194900003,
+              "p95": 293068.17789399996,
+              "p99": 294268.199265,
+              "maximum": 294551.500896
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 1.056837,
+              "p95": 1.913505,
+              "p99": 2.574779,
+              "maximum": 3.799185
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.78302,
+              "p95": 9.746372999999998,
+              "p99": 11.008192999999999,
+              "maximum": 13.230288
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 7.072632,
+              "p95": 10.035984999999998,
+              "p99": 11.297804999999999,
+              "maximum": 13.5199
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.114304,
+              "p95": 6.56896,
+              "p99": 6.652928,
+              "maximum": 6.801408
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 450.218021608,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 309568.070986,
+              "p95": 323068.507743,
+              "p99": 324268.687415,
+              "maximum": 324551.57780100004
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 1.128088,
+              "p95": 1.9264620000000001,
+              "p99": 2.8149870000000004,
+              "maximum": 3.4406440000000003
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 7.204023,
+              "p95": 9.6521,
+              "p99": 11.656265000000001,
+              "maximum": 13.936707
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 7.493635,
+              "p95": 9.941712,
+              "p99": 11.945877000000001,
+              "maximum": 14.226319
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.045696,
+              "p95": 6.601728,
+              "p99": 6.742016,
+              "maximum": 6.857728
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 480.217774406,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 339567.84148600005,
+              "p95": 353067.825224,
+              "p99": 354268.476821,
+              "maximum": 354551.519643
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 1.1104159999999998,
+              "p95": 1.88044,
+              "p99": 2.526843,
+              "maximum": 3.500907
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 7.111608,
+              "p95": 9.561678,
+              "p99": 11.381178,
+              "maximum": 12.746791
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 7.40122,
+              "p95": 9.85129,
+              "p99": 11.67079,
+              "maximum": 13.036403
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.063104,
+              "p95": 6.569984,
+              "p99": 6.779904,
+              "maximum": 8.431616
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 510.217463904,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 369568.14611,
+              "p95": 383068.19951400004,
+              "p99": 384268.31898299995,
+              "maximum": 384550.8813
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 1.07989,
+              "p95": 1.884508,
+              "p99": 2.411898,
+              "maximum": 3.55463
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.905092,
+              "p95": 9.765309,
+              "p99": 11.418163,
+              "maximum": 12.908325999999999
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 7.194704,
+              "p95": 10.054921,
+              "p99": 11.707775,
+              "maximum": 13.197937999999999
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.102016,
+              "p95": 6.549504,
+              "p99": 6.67136,
+              "maximum": 7.4496
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 540.21754097,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 399567.843368,
+              "p95": 413068.474571,
+              "p99": 414268.66090099997,
+              "maximum": 414551.763662
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.54862,
+              "p95": 0.849251,
+              "p99": 1.0365579999999999,
+              "maximum": 1.243369
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.000844,
+              "p95": 3.9719559999999996,
+              "p99": 4.654909,
+              "maximum": 4.913329999999999
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.290456,
+              "p95": 4.261568,
+              "p99": 4.944521,
+              "maximum": 5.202941999999999
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.081536,
+              "p95": 6.530048,
+              "p99": 6.59968,
+              "maximum": 7.517184
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 570.217742613,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 429568.776371,
+              "p95": 443067.92626100004,
+              "p99": 444268.000786,
+              "maximum": 444550.914345
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.551507,
+              "p95": 0.854348,
+              "p99": 1.030103,
+              "maximum": 1.276616
+            },
+            "draw_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.004387,
+              "p95": 3.989438,
+              "p99": 4.6610439999999995,
+              "maximum": 4.9676089999999995
+            },
+            "frame_cpu_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.293999,
+              "p95": 4.27905,
+              "p99": 4.9506559999999995,
+              "maximum": 5.2572209999999995
+            },
+            "gpu_scene_ms": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.105088,
+              "p95": 6.513664,
+              "p99": 6.577152,
+              "maximum": 6.622208
+            },
+            "managed_geometry_bytes": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1800,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      },
+      {
+        "end_seconds": 600.003410809,
+        "measurements": {
+          "schema": "verse.frame.measurements.v1",
+          "warmup_frames": 0,
+          "startup": {},
+          "steady": {
+            "actor_roots": {
+              "samples": 1788,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 60.0,
+              "p95": 60.0,
+              "p99": 60.0,
+              "maximum": 60.0
+            },
+            "applied_snapshot_age_ms": {
+              "samples": 1788,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 459467.817305,
+              "p95": 472868.47365400003,
+              "p99": 474068.496997,
+              "maximum": 474350.76544
+            },
+            "command_finish_cpu_ms": {
+              "samples": 1788,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 0.5491779999999999,
+              "p95": 0.77898,
+              "p99": 1.0156,
+              "maximum": 1.183417
+            },
+            "draw_cpu_ms": {
+              "samples": 1788,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 2.9976909999999997,
+              "p95": 3.7467479999999997,
+              "p99": 4.511645,
+              "maximum": 4.912443
+            },
+            "frame_cpu_ms": {
+              "samples": 1788,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 3.2873029999999996,
+              "p95": 4.03636,
+              "p99": 4.801257,
+              "maximum": 5.202055
+            },
+            "gpu_scene_ms": {
+              "samples": 1788,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 6.10816,
+              "p95": 6.51776,
+              "p99": 6.573056,
+              "maximum": 6.711296
+            },
+            "managed_geometry_bytes": {
+              "samples": 1788,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 30198764.0,
+              "p95": 30198764.0,
+              "p99": 30198764.0,
+              "maximum": 30198764.0
+            },
+            "mounts": {
+              "samples": 1788,
+              "omitted": 0,
+              "invalid": 0,
+              "p50": 40.0,
+              "p95": 40.0,
+              "p99": 40.0,
+              "maximum": 40.0
+            }
+          },
+          "omitted_series": 0,
+          "limits": {
+            "series_per_phase": 48,
+            "samples_per_series": 8192
+          },
+          "sampling": "First bounded observations in each phase; omissions are counted."
+        }
+      }
+    ],
+    "measurements": {
+      "schema": "verse.frame.measurements.v1",
+      "warmup_frames": 120,
+      "startup": {
+        "actor_roots": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 40.0,
+          "p95": 40.0,
+          "p99": 40.0,
+          "maximum": 40.0
+        },
+        "applied_snapshot_age_ms": {
+          "samples": 104,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 68.90699000000001,
+          "p95": 151.91062499999998,
+          "p99": 167.656581,
+          "maximum": 168.74042
+        },
+        "command_finish_cpu_ms": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 0.49299299999999996,
+          "p95": 0.903922,
+          "p99": 1.013617,
+          "maximum": 1.8941940000000002
+        },
+        "draw_cpu_ms": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 1.5660699999999999,
+          "p95": 2.470482,
+          "p99": 4.573548000000001,
+          "maximum": 5.071286000000001
+        },
+        "frame_cpu_ms": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 1.705528,
+          "p95": 2.6585620000000003,
+          "p99": 4.660463000000001,
+          "maximum": 5.241918000000001
+        },
+        "gpu_scene_ms": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 1.362944,
+          "p95": 3.319808,
+          "p99": 4.575232,
+          "maximum": 4.579328
+        },
+        "managed_geometry_bytes": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 30198764.0,
+          "p95": 30198764.0,
+          "p99": 30198764.0,
+          "maximum": 30198764.0
+        },
+        "mounts": {
+          "samples": 120,
+          "omitted": 0,
+          "invalid": 0,
+          "p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "maximum": 0.0
+        }
+      },
+      "steady": {
+        "actor_roots": {
+          "samples": 8192,
+          "omitted": 27660,
+          "invalid": 0,
+          "p50": 60.0,
+          "p95": 60.0,
+          "p99": 60.0,
+          "maximum": 60.0
+        },
+        "applied_snapshot_age_ms": {
+          "samples": 8192,
+          "omitted": 27676,
+          "invalid": 0,
+          "p50": 102.09913599999999,
+          "p95": 6268.260035,
+          "p99": 11734.947655,
+          "maximum": 13085.645964
+        },
+        "command_finish_cpu_ms": {
+          "samples": 8192,
+          "omitted": 27660,
+          "invalid": 0,
+          "p50": 0.580797,
+          "p95": 1.244019,
+          "p99": 1.829804,
+          "maximum": 3.6529570000000002
+        },
+        "draw_cpu_ms": {
+          "samples": 8192,
+          "omitted": 27660,
+          "invalid": 0,
+          "p50": 3.3103439999999997,
+          "p95": 7.505399000000001,
+          "p99": 9.460771999999999,
+          "maximum": 13.369183
+        },
+        "frame_cpu_ms": {
+          "samples": 8192,
+          "omitted": 27660,
+          "invalid": 0,
+          "p50": 3.563641,
+          "p95": 7.854767000000001,
+          "p99": 9.752707,
+          "maximum": 13.665045999999998
+        },
+        "gpu_scene_ms": {
+          "samples": 8192,
+          "omitted": 27659,
+          "invalid": 0,
+          "p50": 5.835776,
+          "p95": 6.966272,
+          "p99": 7.996416,
+          "maximum": 9.276416
+        },
+        "managed_geometry_bytes": {
+          "samples": 8192,
+          "omitted": 27660,
+          "invalid": 0,
+          "p50": 30198764.0,
+          "p95": 30198764.0,
+          "p99": 30198764.0,
+          "maximum": 30198764.0
+        },
+        "mounts": {
+          "samples": 8192,
+          "omitted": 27660,
+          "invalid": 0,
+          "p50": 40.0,
+          "p95": 40.0,
+          "p99": 40.0,
+          "maximum": 40.0
+        }
+      },
+      "omitted_series": 0,
+      "limits": {
+        "series_per_phase": 48,
+        "samples_per_series": 8192
+      },
+      "sampling": "First bounded observations in each phase; omissions are counted."
+    },
+    "failure": null
+  },
+  "device": {
+    "name": "NVIDIA GeForce RTX 4080",
+    "vendor": 4318,
+    "device": 9988,
+    "backend": "Vulkan",
+    "device_type": "DiscreteGpu",
+    "driver": "NVIDIA",
+    "driver_info": "595.71.05",
+    "timestamp_feature_supported": true,
+    "timestamp_query_enabled": true,
+    "timestamp_period_ns": 1.0,
+    "multisample_count": 4,
+    "quality": "high",
+    "scene_format": "Rgba16Float",
+    "shadow_views": 24,
+    "shadow_view_dimension": "D2Array",
+    "shadow_texture_layers": 24,
+    "local_shadows": true,
+    "pose_bones": 256,
+    "pose_block_bytes": 16464,
+    "instanced_poses": true,
+    "mip_recipe_version": 1,
+    "mip_variants": 61,
+    "shadow_size": 512,
+    "budget": {
+      "instances": 1024,
+      "optional_effects": 768,
+      "surfaces": 16384,
+      "target_bytes": 1073741824,
+      "geometry_bytes": 1073741824,
+      "texture_bytes": 1073741824,
+      "buffer_bytes": 1073741824,
+      "cpu_frame_ms": 16.666666666666668,
+      "gpu_frame_ms": 16.666666666666668
+    }
+  },
+  "resources": {
+    "target_bytes": 296351248,
+    "geometry_bytes": 30198764,
+    "texture_bytes": 235929540,
+    "buffer_bytes": 38107232,
+    "retained_source_bytes": 247404713
+  },
+  "gpu_health": {
+    "issued": 35972,
+    "valid": 35971,
+    "zero_duration": 0,
+    "out_of_order": 0,
+    "invalid_period": 0,
+    "map_errors": 0,
+    "busy_frames": 0,
+    "batched_completions": 2,
+    "invalid_examples": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "server": {
+    "failure": "Cannot append and sync chamber journal record",
+    "ticks": 4008,
+    "workload_ticks": 3700,
+    "dropped_seconds": 0.0,
+    "simulation": {
+      "startup": {
+        "count": 120,
+        "maximum_ms": 0.042494,
+        "p95_upper_bound_ms": 0.042494,
+        "p99_upper_bound_ms": 0.042494
+      },
+      "steady": {
+        "count": 3888,
+        "maximum_ms": 14.197692,
+        "p95_upper_bound_ms": 8.0,
+        "p99_upper_bound_ms": 14.197692
+      }
+    },
+    "admission": {
+      "capacity_refusals": 0,
+      "pre_auth_refusals": 0,
+      "ip_refusals": 0,
+      "handshake_rate_refusals": 0,
+      "principal_capacity_refusals": 0,
+      "principal_work_refusals": 0,
+      "aggregate_work_refusals": 0,
+      "projections": 25217,
+      "commands": 38971,
+      "pending_peak": 3,
+      "active_peak": 20,
+      "pending": 0,
+      "active": 0,
+      "principal_records": 20,
+      "completed": 0,
+      "handshake_timeouts": 0,
+      "handshake_refusals": 0,
+      "authentication_timeouts": 0,
+      "authentication_refusals": 0,
+      "grant_refusals": 0,
+      "retired_connections": 0,
+      "frame_failures": 0,
+      "read_timeouts": 0,
+      "write_failures": 0,
+      "request_rate_failures": 0,
+      "host_failures": 0,
+      "transport_closures": 0,
+      "cancelled_workers": 20
+    },
+    "movement_expiry": {
+      "total": 18,
+      "admission": 0,
+      "primary_tick": 0,
+      "additional_tick": 18,
+      "bootstrap": 0,
+      "samples": [
+        {
+          "actor": 232,
+          "epoch": 4,
+          "authority_tick": 1032,
+          "origin": "additional_tick",
+          "world_step": 1728,
+          "confirmed_step": 1692,
+          "projected_step": 1692,
+          "received_at": 1712,
+          "applied_sequence": 26,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 229,
+          "epoch": 4,
+          "authority_tick": 1042,
+          "origin": "additional_tick",
+          "world_step": 1768,
+          "confirmed_step": 1732,
+          "projected_step": 1732,
+          "received_at": 1732,
+          "applied_sequence": 32,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 229,
+          "epoch": 6,
+          "authority_tick": 1500,
+          "origin": "additional_tick",
+          "world_step": 3600,
+          "confirmed_step": 3564,
+          "projected_step": 3564,
+          "received_at": 3576,
+          "applied_sequence": 242,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 237,
+          "epoch": 2,
+          "authority_tick": 1504,
+          "origin": "additional_tick",
+          "world_step": 3616,
+          "confirmed_step": 3580,
+          "projected_step": 3580,
+          "received_at": 3604,
+          "applied_sequence": 505,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 243,
+          "epoch": 2,
+          "authority_tick": 1504,
+          "origin": "additional_tick",
+          "world_step": 3616,
+          "confirmed_step": 3580,
+          "projected_step": 3580,
+          "received_at": 3600,
+          "applied_sequence": 488,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 227,
+          "epoch": 4,
+          "authority_tick": 1506,
+          "origin": "additional_tick",
+          "world_step": 3624,
+          "confirmed_step": 3588,
+          "projected_step": 3588,
+          "received_at": 3604,
+          "applied_sequence": 297,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 227,
+          "epoch": 6,
+          "authority_tick": 1532,
+          "origin": "additional_tick",
+          "world_step": 3728,
+          "confirmed_step": 3692,
+          "projected_step": 3692,
+          "received_at": 3700,
+          "applied_sequence": 5,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 231,
+          "epoch": 4,
+          "authority_tick": 1532,
+          "origin": "additional_tick",
+          "world_step": 3728,
+          "confirmed_step": 3692,
+          "projected_step": 3692,
+          "received_at": 3700,
+          "applied_sequence": 309,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 243,
+          "epoch": 4,
+          "authority_tick": 1537,
+          "origin": "additional_tick",
+          "world_step": 3748,
+          "confirmed_step": 3712,
+          "projected_step": 3712,
+          "received_at": 3728,
+          "applied_sequence": 2,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 228,
+          "epoch": 4,
+          "authority_tick": 1574,
+          "origin": "additional_tick",
+          "world_step": 3896,
+          "confirmed_step": 3860,
+          "projected_step": 3860,
+          "received_at": 3864,
+          "applied_sequence": 337,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 230,
+          "epoch": 2,
+          "authority_tick": 1574,
+          "origin": "additional_tick",
+          "world_step": 3896,
+          "confirmed_step": 3860,
+          "projected_step": 3860,
+          "received_at": 3864,
+          "applied_sequence": 521,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 237,
+          "epoch": 4,
+          "authority_tick": 1574,
+          "origin": "additional_tick",
+          "world_step": 3896,
+          "confirmed_step": 3860,
+          "projected_step": 3860,
+          "received_at": 3872,
+          "applied_sequence": 16,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 241,
+          "epoch": 4,
+          "authority_tick": 1574,
+          "origin": "additional_tick",
+          "world_step": 3896,
+          "confirmed_step": 3860,
+          "projected_step": 3860,
+          "received_at": 3872,
+          "applied_sequence": 324,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 227,
+          "epoch": 8,
+          "authority_tick": 1575,
+          "origin": "additional_tick",
+          "world_step": 3900,
+          "confirmed_step": 3864,
+          "projected_step": 3864,
+          "received_at": 3872,
+          "applied_sequence": 8,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 228,
+          "epoch": 6,
+          "authority_tick": 1595,
+          "origin": "additional_tick",
+          "world_step": 3980,
+          "confirmed_step": 3944,
+          "projected_step": 3944,
+          "received_at": 3956,
+          "applied_sequence": 2,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 233,
+          "epoch": 6,
+          "authority_tick": 1597,
+          "origin": "additional_tick",
+          "world_step": 3988,
+          "confirmed_step": 3952,
+          "projected_step": 3952,
+          "received_at": 3964,
+          "applied_sequence": 2,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 234,
+          "epoch": 4,
+          "authority_tick": 1597,
+          "origin": "additional_tick",
+          "world_step": 3988,
+          "confirmed_step": 3952,
+          "projected_step": 3952,
+          "received_at": 3968,
+          "applied_sequence": 345,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        },
+        {
+          "actor": 227,
+          "epoch": 12,
+          "authority_tick": 2867,
+          "origin": "additional_tick",
+          "world_step": 9068,
+          "confirmed_step": 9032,
+          "projected_step": 9032,
+          "received_at": 9044,
+          "applied_sequence": 401,
+          "queued_frames": 0,
+          "queued_steps": 0,
+          "first_start": null,
+          "last_end": null
+        }
+      ],
+      "omitted": 0
+    },
+    "capture": {
+      "startup": {
+        "count": 120,
+        "maximum_ms": 0.185479,
+        "p95_upper_bound_ms": 0.185479,
+        "p99_upper_bound_ms": 0.185479
+      },
+      "steady": {
+        "count": 3889,
+        "maximum_ms": 0.42095,
+        "p95_upper_bound_ms": 0.25,
+        "p99_upper_bound_ms": 0.42095
+      }
+    },
+    "commits": {
+      "startup": {
+        "count": 120,
+        "maximum_ms": 30.745682,
+        "p95_upper_bound_ms": 16.0,
+        "p99_upper_bound_ms": 30.745682
+      },
+      "steady": {
+        "count": 3889,
+        "maximum_ms": 607.822107,
+        "p95_upper_bound_ms": 33.333333333333336,
+        "p99_upper_bound_ms": 66.66666666666667
+      }
+    },
+    "commit_preparation": {
+      "count": 4008,
+      "maximum_ms": 14.748504,
+      "p95_upper_bound_ms": 8.0,
+      "p99_upper_bound_ms": 14.748504
+    },
+    "history_sync": {
+      "count": 4008,
+      "maximum_ms": 85.873219,
+      "p95_upper_bound_ms": 0.1,
+      "p99_upper_bound_ms": 0.1
+    },
+    "journal_encoding": {
+      "count": 4008,
+      "maximum_ms": 5.637252,
+      "p95_upper_bound_ms": 4.0,
+      "p99_upper_bound_ms": 4.0
+    },
+    "journal_write": {
+      "count": 4008,
+      "maximum_ms": 362.012785,
+      "p95_upper_bound_ms": 0.1,
+      "p99_upper_bound_ms": 0.1
+    },
+    "journal_sync": {
+      "count": 4007,
+      "maximum_ms": 531.876656,
+      "p95_upper_bound_ms": 33.333333333333336,
+      "p99_upper_bound_ms": 33.333333333333336
+    },
+    "snapshot_compaction": {
+      "count": 15,
+      "maximum_ms": 82.095571,
+      "p95_upper_bound_ms": 82.095571,
+      "p99_upper_bound_ms": 82.095571
+    },
+    "checkpoint_copy": {
+      "count": 4008,
+      "maximum_ms": 0.32937500000000003,
+      "p95_upper_bound_ms": 0.25,
+      "p99_upper_bound_ms": 0.25
+    },
+    "read_projection": {
+      "count": 21575,
+      "maximum_ms": 9.076195,
+      "p95_upper_bound_ms": 4.0,
+      "p99_upper_bound_ms": 4.0
+    },
+    "checkpoint_bytes": 183521142,
+    "checkpoint_commits": 4007,
+    "writer_queue_peak": 2,
+    "request_queue_peak": 20,
+    "held_reply_bytes_peak": 943562,
+    "storage_refusals": 0,
+    "storage_paused_seconds": 2.4933670460000004,
+    "requests": 64198,
+    "replication": {
+      "full": 198,
+      "deltas": 12231,
+      "resyncs": 158,
+      "encoded_bytes": 213673328,
+      "encode_micros": 22149334,
+      "encode_peak_micros": 7934,
+      "max_packet_bytes": 86027,
+      "max_ack_age_ticks": 12,
+      "retained_bytes": 0
+    },
+    "motor_recovery_blocks": 0,
+    "motor_recovery_diagnostic": null,
+    "minimum_final_live_hostiles": 40,
+    "navigation_plans": 651,
+    "navigation_budget_refusals": 0,
+    "navigation_work": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "query_profile": {
+      "ray": {
+        "calls": 23557,
+        "errors": 0,
+        "truncated": 2,
+        "nodes": 70671,
+        "triangles": 282684,
+        "capsule_tests": 0,
+        "scene_nodes": 1626117,
+        "scene_candidates": 30803,
+        "wall_seconds": 0.024121708999999922,
+        "maximum_wall_seconds": 0.00001983
+      },
+      "overlap": {
+        "calls": 834032,
+        "errors": 0,
+        "truncated": 0,
+        "nodes": 3045176,
+        "triangles": 9574800,
+        "capsule_tests": 379870,
+        "scene_nodes": 63449168,
+        "scene_candidates": 2277776,
+        "wall_seconds": 5.421695418999982,
+        "maximum_wall_seconds": 0.000663813
+      },
+      "sweep": {
+        "calls": 2347270,
+        "errors": 0,
+        "truncated": 94989,
+        "nodes": 8877418,
+        "triangles": 26438472,
+        "capsule_tests": 1634514,
+        "scene_nodes": 180575398,
+        "scene_candidates": 6803231,
+        "wall_seconds": 7.126074338999558,
+        "maximum_wall_seconds": 0.001016326
+      }
+    }
+  },
+  "route": {
+    "schema": "verse.delayed-route.v2",
+    "delay_ms": 40,
+    "jitter_ms": 20,
+    "delay_mode": "pipeline",
+    "delay_profile": "pipeline",
+    "queued_chunks_per_direction": 8,
+    "queued_chunk_peak": 5,
+    "delay_queue_capacity": 8,
+    "delay_queue_peak": 5,
+    "connections": 20,
+    "upstream_bytes": 16154323,
+    "downstream_bytes": 284806818,
+    "forwarded_chunks": 114817,
+    "errors": 0,
+    "refused_connections": 0,
+    "error_details": [],
+    "omitted_error_details": 0,
+    "limits": [
+      "Delay applies to each TCP read chunk, not decrypted game messages.",
+      "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+      "Serial mode adds delay after each read and also limits chunk throughput.",
+      "TCP preserves byte order; this fixture does not simulate packet loss."
+    ],
+    "wall_seconds": 610.491473046015
+  },
+  "disconnect_windows_seconds": [
+    310.460718735,
+    610.460718735
+  ],
+  "recovery": {
+    "characters_checked": 20,
+    "active_receipts": 88,
+    "ledger_revision": 236,
+    "retained_events": 512,
+    "checkpoint_bytes": 391095,
+    "restored_checkpoint_bytes": 391092,
+    "live_hostiles": 40,
+    "actor_count": 60
+  },
+  "error": "Cannot append and sync chamber journal record",
+  "acceptance": "failed",
+  "acceptance_failures": [
+    "Workload process did not complete",
+    "Authority throughput fell below ninety-eight percent of 30 Hz",
+    "/render/measurements/steady/applied_snapshot_age_ms/p95: Some(6268.260035) exceeds 400, or is unavailable",
+    "The authority failed",
+    "Player 0 did not finish its reconnect",
+    "Player 1 did not finish its reconnect",
+    "Player 2 did not finish its reconnect",
+    "Player 3 did not finish its reconnect",
+    "Player 4 did not finish its reconnect",
+    "Player 5 did not finish its reconnect",
+    "Player 6 did not finish its reconnect",
+    "Player 7 did not finish its reconnect",
+    "Player 8 did not finish its reconnect",
+    "Player 9 did not finish its reconnect",
+    "Player 10 did not finish its reconnect",
+    "Player 11 did not finish its reconnect",
+    "Player 12 did not finish its reconnect",
+    "Player 13 did not finish its reconnect",
+    "Player 14 did not finish its reconnect",
+    "Player 15 did not finish its reconnect",
+    "Player 16 did not finish its reconnect",
+    "Player 17 did not finish its reconnect",
+    "Player 18 did not finish its reconnect",
+    "Player 19 did not finish its reconnect",
+    "No accepted equipment operation",
+    "No accepted quest_claim operation",
+    "No accepted item_use operation",
+    "No accepted respawn operation",
+    "The workload has no accepted Fireball casts",
+    "The workload has no accepted Web casts",
+    "The workload has no accepted Thunderwave casts",
+    "The delayed route did not admit forty sessions and twenty concurrent players",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget"
+  ]
+}

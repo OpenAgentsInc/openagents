@@ -1,0 +1,18 @@
+{
+  "schema": "verse.battle.blocked.write.soak.v1",
+  "executable_sha256": "f31eba513bbac7cf7bb5714ea3268310ef7d4f741c6e30313d772357b64f2161",
+  "result": "failed",
+  "error": "Cannot append and sync chamber journal record",
+  "movement_expiries": 18,
+  "workload_ticks": 3700,
+  "limits": [
+    "The shared root filesystem was observed at 1.7 MiB free during this run. Journal append/sync failed; the receipt does not expose the underlying OS errno, so disk exhaustion is a likely cause rather than a proven errno attribution.",
+    "Authority stopped early while the renderer continued; late flat memory samples do not establish a healthy sustained battle.",
+    "Eighteen movement expiries occurred before terminal failure; the short pilot does not establish uninterrupted movement.",
+    "Other compilers ran on the shared machine."
+  ],
+  "sha256": {
+    "combined-blocked-write-soak-01.json": "9d52c3e46bbe86374537f734725385d3564cef473a66fe9c28180feb085ca4be",
+    "combined-blocked-write-soak-01.log": "c33f3661c4f403caf875f133e996d8df24761c63da94d7567e2ea7d87823bf2c"
+  }
+}
