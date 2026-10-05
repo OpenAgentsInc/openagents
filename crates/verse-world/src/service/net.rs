@@ -87,6 +87,7 @@ pub struct Exit {
 type OpenReply = Result<(ConnectionId, Vec<u8>), String>;
 type DispatchReply = Result<(Vec<u8>, bool), String>;
 struct PendingReply {
+    id: ConnectionId,
     reply: oneshot::Sender<DispatchReply>,
     response: PendingResponse,
 }
@@ -97,6 +98,50 @@ enum PendingResponse {
         bytes: Vec<u8>,
         progress: Option<oneshot::Sender<RequestProgress>>,
     },
+}
+// Outcome snapshots retain their admitted body time. Earlier acknowledgments on that
+// connection cannot advertise credit beyond that body before it is delivered.
+fn cap_outcome_snapshot_credit(
+    controls: &mut BTreeMap<ConnectionId, Control>,
+    pending: &[PendingReply],
+) -> Result<(), String> {
+    for pending in pending {
+        if let PendingResponse::Outcome(Ok((bytes, _))) = &pending.response {
+            let response: ResponseHeader =
+                serde_json::from_slice(bytes).map_err(|_| "Invalid deferred chamber outcome")?;
+            if response.body.kind == "snapshot" {
+                if let (Some(snapshot), Some(credit)) =
+                    (response.control, controls.get_mut(&pending.id))
+                {
+                    credit.world_step = credit.world_step.min(snapshot.world_step);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+fn promote_outcome_credit(result: DispatchReply, credit: Option<&Control>) -> DispatchReply {
+    let (bytes, authenticated) = result?;
+    let Some(credit) = credit else {
+        return Ok((bytes, authenticated));
+    };
+    let mut response: Response =
+        serde_json::from_slice(&bytes).map_err(|_| "Invalid deferred chamber outcome")?;
+    if !matches!(
+        response.body,
+        Reply::Snapshot { .. } | Reply::Replicated { .. }
+    ) {
+        if let Some(control) = &mut response.control {
+            if control.life == credit.life
+                && control.epoch == credit.epoch
+                && control.world_step < credit.world_step
+            {
+                control.world_step = credit.world_step;
+                return response.encode().map(|bytes| (bytes, authenticated));
+            }
+        }
+    }
+    Ok((bytes, authenticated))
 }
 struct CommitView {
     tick: u64,
@@ -504,9 +549,14 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                     };
                     let capture = Instant::now();
                     let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+                    let mut credits = gateway.committed_controls();
+                    if let Err(error) = cap_outcome_snapshot_credit(&mut credits, &pending) {
+                        failure = Some(error);
+                        break;
+                    }
                     let replies = pending.drain(..).map(|pending| {
                         let result = match pending.response {
-                            PendingResponse::Outcome(result) => result,
+                            PendingResponse::Outcome(result) => promote_outcome_credit(result, credits.get(&pending.id)),
                             PendingResponse::Read {id, bytes, progress} => {
                                 let projection = Instant::now();
                                 let result = gateway.dispatch_json(id, now, &bytes)
@@ -594,7 +644,7 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                             } else {
                                 PendingResponse::Read {id, bytes, progress}
                             };
-                            pending.push(PendingReply {reply, response});
+                            pending.push(PendingReply {id, reply, response});
                         } else {
                             let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
                             dispatch_progress(progress, &result);
@@ -1340,6 +1390,82 @@ pub(super) mod tests {
             "{}",
             serde_json::json!({"schema":"verse.admission.fixture.v1", "admitted_commands":admitted, "snapshot_refusals":refused, "stats":exit.stats.admission})
         );
+    }
+
+    #[tokio::test]
+    async fn checkpoint_credit_preserves_sequence_snapshots_and_other_connections() {
+        use crate::service::client::Client;
+        let keys = [key(221), key(222), key(223)];
+        let (address, tls, stop, host) = start(&keys).await;
+        let mut client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            tls.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let snapshot = client.request(Body::Snapshot {}).await.unwrap();
+        let old = snapshot.control.clone().unwrap();
+        let mut current = old.clone();
+        current.world_step += 4;
+        current.accepted_sequence += 10;
+        let mut acknowledgment = snapshot.clone();
+        acknowledgment.body = Reply::Accepted;
+        let (bytes, _) =
+            promote_outcome_credit(Ok((acknowledgment.encode().unwrap(), true)), Some(&current))
+                .unwrap();
+        let promoted: Response = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            promoted.control.as_ref().unwrap().world_step,
+            current.world_step
+        );
+        assert_eq!(
+            promoted.control.as_ref().unwrap().accepted_sequence,
+            old.accepted_sequence
+        );
+        assert_eq!(promoted.tick, acknowledgment.tick);
+        current.epoch += 1;
+        let original = acknowledgment.encode().unwrap();
+        assert_eq!(
+            promote_outcome_credit(Ok((original.clone(), true)), Some(&current))
+                .unwrap()
+                .0,
+            original
+        );
+        current.epoch = old.epoch;
+        let mut identities = gateway(&keys);
+        let (first, _) = identities.open(0).unwrap();
+        let (second, _) = identities.open(1).unwrap();
+        let mut controls = BTreeMap::from([(first, current.clone()), (second, current.clone())]);
+        let (reply, _receive) = oneshot::channel();
+        let pending = [PendingReply {
+            id: first,
+            reply,
+            response: PendingResponse::Outcome(Ok((snapshot.encode().unwrap(), true))),
+        }];
+        cap_outcome_snapshot_credit(&mut controls, &pending).unwrap();
+        assert_eq!(controls[&first].world_step, old.world_step);
+        assert_eq!(controls[&second].world_step, current.world_step);
+        let capped = promote_outcome_credit(
+            Ok((acknowledgment.encode().unwrap(), true)),
+            controls.get(&first),
+        )
+        .unwrap()
+        .0;
+        assert_eq!(capped, acknowledgment.encode().unwrap());
+        let unchanged =
+            promote_outcome_credit(Ok((snapshot.encode().unwrap(), true)), Some(&current))
+                .unwrap()
+                .0;
+        assert_eq!(unchanged, snapshot.encode().unwrap());
+        let Reply::Snapshot { state } = snapshot.body else {
+            panic!("Expected owned snapshot");
+        };
+        state.validate_control(120, &Some(old)).unwrap();
+        let _ = stop.send(());
+        assert!(host.await.unwrap().failure.is_none());
     }
 
     #[tokio::test]
