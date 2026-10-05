@@ -1,0 +1,105 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 45,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "compiled_revisions": {
+      "host": "f885012310",
+      "clients": "f885012310"
+    },
+    "fixture_revision": "f885012310c9ea4318cc1a08b14ec107a223aa05",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "observation": "Connections complete and native interval movement confirms 325 sequences, but replication stops after the Misty Step lifecycle barrier remains set.",
+  "native": {
+    "window_failure": null,
+    "final_status": "Local prediction exceeded its correction horizon",
+    "world_start": 16.33415985107422,
+    "world_end": 32.400001525878906,
+    "movement": {
+      "profile": "frames",
+      "world_step": 1488,
+      "life": {
+        "instance": 220,
+        "actor": 14,
+        "generation": 0
+      },
+      "epoch": 4,
+      "applied_sequence": 325,
+      "physics_step": 1462,
+      "held": {
+        "axes": [
+          0.0,
+          0.0
+        ],
+        "until": 1520
+      },
+      "policy": {
+        "walking_scale": 1.0,
+        "jump_allowed": true
+      },
+      "character": {
+        "feet": [
+          3.165754372902942,
+          0.0,
+          -23.16453033070985
+        ],
+        "vertical_speed": 0.0,
+        "support": {
+          "life": {
+            "instance": 220,
+            "entity": 0,
+            "generation": 0
+          },
+          "shape": 0
+        },
+        "support_pose": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "external": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "gravity": null,
+        "peak": null,
+        "landed": null
+      },
+      "yaw": 3.1415927410125732
+    },
+    "correction": {
+      "samples": 72,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.012667142786085606
+    }
+  },
+  "limits": [
+    "Native maximum correction 0.0127 m does not prove whole-run movement quality because replication stops at world time 32.4.",
+    "Native frame p95 15.996 ms; server simulation maximum 47.595 ms exceeds its tick interval.",
+    "Storage and GPU timestamps are disabled; headless movement remains legacy.",
+    "Next change clears the teleport barrier after its command outcome and tests following TLS input and replication."
+  ]
+}

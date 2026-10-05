@@ -372,7 +372,12 @@ pub async fn run(
                             }
                             Update::Outcome(response)
                         },
-                        Body::Command { .. } => Update::Outcome(response),
+                        Body::Command { command } => {
+                            if matches!(command.intent, super::wire::Action::Cast { ability: Ability::MistyStep, .. }) {
+                                barrier = false;
+                            }
+                            Update::Outcome(response)
+                        },
                         _ => { barrier = false; Update::Outcome(response) }
                     };
                     updates.send(update).await.map_err(|_| "Chamber update consumer closed")?;
@@ -473,6 +478,62 @@ mod tests {
         control.epoch = frame.epoch;
         control.life.generation += 1;
         assert!(interval_control_changed(&frame, Some(&control)));
+    }
+
+    #[tokio::test]
+    async fn teleport_outcome_releases_barrier_for_following_input_and_replication() {
+        let keys = [key(217), key(218), key(219)];
+        let (address, tls, server_stop, server) = start(&keys).await;
+        let client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            tls.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let (input, inputs, updates, mut output) = channels();
+        let (stop, stopped) = oneshot::channel();
+        let task = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            NATIVE_CADENCE,
+            inputs,
+            updates,
+            stopped,
+        ));
+        input
+            .send(Input::Command(Intent::Cast {
+                ability: Ability::MistyStep,
+                target: None,
+                aim: [1., 0., 0.],
+            }))
+            .await
+            .unwrap();
+        input
+            .send(Input::Command(Intent::Move {
+                axes: [0., 0.],
+                yaw: 0.,
+            }))
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(3), async {
+            let mut outcomes = 0;
+            loop {
+                match output.recv().await.unwrap() {
+                    Update::Outcome(_) => outcomes += 1,
+                    Update::Snapshot(_) if outcomes == 2 => break,
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        stop.send(()).unwrap();
+        task.await.unwrap().unwrap();
+        server_stop.send(()).unwrap();
+        assert!(server.await.unwrap().failure.is_none());
     }
 
     #[tokio::test]
