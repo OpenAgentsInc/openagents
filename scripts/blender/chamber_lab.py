@@ -860,12 +860,16 @@ def build_crypt_hall():
         )
         uv_box(shell, 2.0)
         for c in NICHES:
-            sill = kit.box("niche_sill_%s_%s" % (side, c), (PANEL, NICHE_W, 0.06), (x + sx * PANEL / 2, c, -0.02), trim)
+            # A hair narrower than the opening, so its ends don't share the
+            # jambs' planes.
+            sill = kit.box("niche_sill_%s_%s" % (side, c), (PANEL, NICHE_W - 0.02, 0.06), (x + sx * PANEL / 2, c, -0.02), trim)
             uv_box(sill, 1.0)
             for blk in voussoirs("arch_%s_%s" % (side, c), c, niche_spring, NICHE_W / 2, frame, trim):
                 uv_box(blk, 1.0)
-        # The string course where the vault springs.
-        course = kit.box("course_%s" % side, (0.22, HALF_Y * 2, 0.24), (x - sx * 0.1, 0, SPRING - 0.12), trim)
+        # The string course where the vault springs. It stops where the end
+        # walls' courses begin, so the corners don't hold two coplanar
+        # undersides.
+        course = kit.box("course_%s" % side, (0.22, HALF_Y * 2 - 0.42, 0.24), (x - sx * 0.1, 0, SPRING - 0.12), trim)
         uv_box(course, 1.0)
         # A low plinth on each pier between the alcoves.
         edges = [-HALF_Y] + [e for c in NICHES for e in (c - NICHE_W / 2, c + NICHE_W / 2)] + [HALF_Y]
@@ -895,7 +899,8 @@ def build_crypt_hall():
             stone,
         )
         uv_box(back, 2.0)
-        # The gable above the springing line, in strips under the vault. The
+        # The gable above the springing line, in strips under the vault that
+        # meet edge to edge: an overlap would put two faces in one plane. The
         # far gable leaves a lancet window open at its center.
         window = end == "far"
         breaks = [-HALF_X + (HALF_X - 0.45) * k / 12 for k in range(13)]
@@ -905,7 +910,7 @@ def build_crypt_hall():
             if window and a >= -0.46 and b <= 0.46:
                 sill = kit.box(
                     "wall_gable_%s_sill" % end,
-                    (b - a + 0.01, PANEL + SHELL, 5.2 - SPRING),
+                    (b - a, PANEL + SHELL, 5.2 - SPRING),
                     ((a + b) / 2, y + sy * (PANEL + SHELL) / 2, (SPRING + 5.2) / 2),
                     stone,
                 )
@@ -921,7 +926,7 @@ def build_crypt_hall():
                 continue
             strip = kit.box(
                 "wall_gable_%s_%.2f" % (end, a),
-                (b - a + 0.01, PANEL + SHELL, top - SPRING),
+                (b - a, PANEL + SHELL, top - SPRING),
                 ((a + b) / 2, y + sy * (PANEL + SHELL) / 2, (SPRING + top) / 2),
                 stone,
             )
@@ -933,14 +938,8 @@ def build_crypt_hall():
                 rod("window_bar_%s" % bx, (bx, y + sy * 0.3, 5.2), (bx, y + sy * 0.3, 6.75), 0.025, m.iron, verts=6)
             rod("window_rail", (-0.45, y + sy * 0.3, 5.8), (0.45, y + sy * 0.3, 5.8), 0.022, m.iron, verts=6)
 
-    # The far recess's back.
-    recess_back = kit.box(
-        "wall_recess_back",
-        (recess_half * 2 + 0.2, 0.2, recess_spring + recess_half + 0.2),
-        (0, HALF_Y + PANEL + 0.1, (recess_spring + recess_half) / 2),
-        stone,
-    )
-    uv_box(recess_back, 2.0)
+    # The far recess's back is the end wall's shell. A separate back panel
+    # here would lie in the shell's face and flicker against it.
 
     # Pillars between the alcoves: a plinth, a torus base, a shaft, a
     # flared capital, and an abacus the ribs spring from.
@@ -1014,7 +1013,10 @@ def build_crypt_hall():
     wood = m.wood
     iron = m.iron
     y = -HALF_Y - PANEL * 0.55
-    door_outline = [(door_half, 0.0)] + arch_points(0.0, door_spring, door_half, door_half, 12) + [(-door_half, 0.0)]
+    # The leaves stand a centimeter inside the doorway, so their edges don't
+    # share the jambs' planes.
+    leaf = door_half - 0.01
+    door_outline = [(leaf, 0.0)] + arch_points(0.0, door_spring, leaf, leaf, 12) + [(-leaf, 0.0)]
     door = prism("door_leaves", door_outline, 0.14, wood, ((0, y, 0), (1, 0, 0), (0, 0, 1), (0, 1, 0)))
     uv_box(door, 1.6, swap=True)
     kit.box("door_seam", (0.03, 0.02, door_spring + door_half - 0.05), (0, y - 0.01, (door_spring + door_half) / 2), kit.mat("Door_Seam", (0.02, 0.015, 0.01), 0.9))

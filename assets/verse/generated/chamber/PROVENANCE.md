@@ -46,7 +46,7 @@ window in the far gable lets in a shaft of moonlight.
 
 | Model | Triangles |
 | --- | --- |
-| `crypt_hall.glb` | 10708 |
+| `crypt_hall.glb` | 10696 |
 | `slab_table.glb` | 2242 |
 | `cauldron_green.glb` | 3210 |
 | `cauldron_red.glb` | 3210 |
