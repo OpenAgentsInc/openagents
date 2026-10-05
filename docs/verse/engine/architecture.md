@@ -13,8 +13,8 @@ or the world service milestones described below.
 
 The first playable milestone is an original dark chamber with an adventurer,
 a large monster, robed enemies, cinematic dialogue, and combat. Its distributed
-build must require no WoW install, assets, fonts, UI textures, DBC tables,
-vmangos SQL, or server. Original content begins alongside the engine foundation;
+build must require no third-party game install, assets, fonts, UI textures,
+data tables, or game server. Original content begins alongside the engine foundation;
 it does not wait for the entire MMORPG service to be complete.
 
 [#10432](https://github.com/OpenAgentsInc/openagents/issues/10432) replaces the
@@ -43,10 +43,9 @@ does not rename the Verse app, metaverse, world IDs, or network identities.
 
 The project owns the runtime schedule, entity and scene contracts, renderer,
 shaders, animation system, character movement, collision queries, navigation,
-content compiler, tools, game rules, and world authority. Aeon and WoW are
-references for design and behavior. Neither becomes the engine dependency or
-an engine fork. The current private WoW chamber remains a separate research
-fixture while the original chamber becomes the active product path.
+content compiler, tools, game rules, and world authority. Aeon is a reference
+for design and behavior. It does not become the engine dependency or an engine
+fork. The original chamber is the active product path.
 
 Platform and general-purpose libraries remain explicit dependencies: Rust's
 standard library, `wgpu` for portable GPU access, `winit` for desktop surfaces,
@@ -99,8 +98,7 @@ still live together in a broad crate. [`imported`](../../../crates/verse/src/imp
 owns the chamber's geometry submission, materials, shadows, lighting, and UI.
 [`verse-engine`](../../../crates/verse-engine/README.md) now owns generic pack,
 skeletal animation, and cinematic contracts.
-[`verse-wow`](../../../crates/verse-wow/src/lib.rs) owns compatibility snapshots
-and re-exports the engine modules for existing adapters. [`verse-ruins`](../../../crates/verse-ruins/README.md)
+[`verse-ruins`](../../../crates/verse-ruins/README.md)
 wraps retained source combat. These are useful evidence and transition paths;
 they are not the final engine boundary.
 
@@ -283,7 +281,7 @@ GPU output without granting editors arbitrary gameplay authority.
 | 1. Core and original greybox | Owned IDs, schedule, scene/pack schema, local command adapter, original room/actors/UI placeholders. | Builds and runs on a machine with no WoW data; stale handles and malformed packs are refused; first original source assets have provenance. |
 | 2. Owned rendering and animation | Extracted GPU pipeline, original skinned rigs, named clips, original materials and source lights. | Actual engine captures demonstrate dark-room illumination, blending, grounded deaths, and zero imported textures/fonts/models. |
 | 3. Original playable encounter | Owned movement/collision, bow and ten abilities, NPC combat, 300,000-HP boss, per-cultist 60-second respawn, programmatic ritual and camera cut. | Player and controller use the same admitted actions; collisions and effects work; each respawn has a new life generation; native video uses only the original pack. |
-| 4. Service and durable gameplay | #10406 authority, multiplayer admission/replication, inventory/quest/progression, persistence. | Two players plus a spectator agree on outcomes; crash/retry/reconnect do not duplicate rewards; no vmangos process or protocol dependency. |
+| 4. Service and durable gameplay | #10406 authority, multiplayer admission/replication, inventory/quest/progression, persistence. | Two players plus a spectator agree on outcomes; crash/retry/reconnect do not duplicate rewards; no third-party game server process or protocol dependency. |
 | 5. Authoring workflow | Scene/timeline editing, undo/redo, content compiler, inspection and reload. | Change a room, enemy, ability effect, and cue, rebuild the pack, and play through the same runtime without product code changes. |
 | 6. Scale and platform coverage | Streaming zones, profiling, quality tiers, desktop/mobile surface integration. | Measured frame/tick/memory/network budgets on the target machines; platform lifecycle and device-loss checks; larger worlds without special-case chamber logic. |
 
@@ -295,7 +293,7 @@ This specification's documentation issue is #10423.
 
 A new distribution/capture gate must inspect the resolved asset dependency graph,
 not just filenames. Reject private WoW hashes/source provenance, MPQ/M2/WMO/BLP/
-DBC inputs, Classic font/UI references, vmangos data, and importer-required paths.
+DBC inputs, Classic font/UI references, game-server data, and importer-required paths.
 Include a clean-room run with the private installation and research pack absent.
 Renaming an asset cannot make it original. Existing historic research videos and
 private compatibility tools remain retained and explicitly separate from the

@@ -689,7 +689,7 @@ impl App {
             return Ok(());
         }
         let width = 720. * size.width as f32 / size.height as f32;
-        let origin = verse_engine::source_position(self.scene.origin_wow);
+        let origin = verse_engine::source_position(self.scene.origin);
         let time = self
             .view
             .replica()
@@ -1003,7 +1003,7 @@ impl ApplicationHandler for App {
                 &self.atlas,
                 &chamber::static_instances(
                     &self.pack,
-                    verse_engine::source_position(self.scene.origin_wow),
+                    verse_engine::source_position(self.scene.origin),
                 ),
             )?;
             let presenter = renderer.attach_window(window.clone())?;

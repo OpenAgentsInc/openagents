@@ -6,12 +6,10 @@ crossfades, named animation states and compiled playback bindings, and a determi
 and renderer use these contracts directly. It has no GPU, platform, game rules,
 transport, or credential dependency.
 
-The modules move existing project-owned Rust code out of `verse-wow`, which
-re-exports them to preserve adapter compatibility. This is engine extraction,
+The modules hold project-owned Rust code extracted from earlier Verse adapters,
 not a copy from a reference engine. Pack coordinates retain the version-one
-Z-up convention and explicit conversion to Y-up meters. The scene's legacy
-`origin_wow` serialization field remains a compatibility detail until the next
-schema revision.
+Z-up convention, and `source_position` converts them to Y-up meters. A scene's
+`origin` field is in the same pack coordinates.
 
 Game authority, physics integration, persistence, and multiplayer are separate
 boundaries on the [roadmap](../../docs/verse/engine/roadmap.md).

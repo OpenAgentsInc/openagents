@@ -14,7 +14,7 @@ use verse::{
     render::View,
     ui::Atlas,
 };
-use verse_engine::{assets::Pack, director::Scene, source_position as position_from_wow};
+use verse_engine::{assets::Pack, director::Scene, source_position};
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent},
@@ -84,7 +84,7 @@ impl App {
             source,
             self.atlas.clone(),
             self.reload_contract.clone(),
-            chamber::static_instances(&self.pack, position_from_wow(self.game.scene.origin_wow)),
+            chamber::static_instances(&self.pack, source_position(self.game.scene.origin)),
         )?);
         self.reload_status = "Preparing renderer assets".into();
         Ok(())
@@ -376,7 +376,7 @@ impl App {
         ));
         let lighting = chamber::lighting_from_visuals(
             &combat_visuals,
-            position_from_wow(self.game.scene.origin_wow),
+            source_position(self.game.scene.origin),
             self.game.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE),
             self.game.player,
         );
@@ -517,10 +517,7 @@ impl ApplicationHandler for App {
                 window.inner_size().width.max(1),
                 window.inner_size().height.max(1),
                 &self.atlas,
-                &chamber::static_instances(
-                    &self.pack,
-                    position_from_wow(self.game.scene.origin_wow),
-                ),
+                &chamber::static_instances(&self.pack, source_position(self.game.scene.origin)),
             )?;
             let presenter = renderer.attach_window(window.clone())?;
             self.window = Some(window);
@@ -912,7 +909,7 @@ fn save_png_size(
         .write_image_data(pixels)
         .map_err(|e| e.to_string())
 }
-pub fn run(original_default: bool) -> Result<(), String> {
+pub fn run() -> Result<(), String> {
     let mut inputs: Vec<String> = std::env::args().skip(1).collect();
     if inputs.first().is_some_and(|a| a == "--check-profile") {
         return profile::check(std::path::Path::new(
@@ -928,9 +925,10 @@ pub fn run(original_default: bool) -> Result<(), String> {
         reload::write_manifest(&path, &pack)?;
         return Ok(());
     }
-    // `verse_play` implies `--original`; accept it when also given.
-    if original_default && inputs.first().is_none_or(|a| a != "--original") {
-        inputs.insert(0, "--original".into());
+    // `verse_play` always generates the original pack; accept the retired
+    // `--original` flag when it is still given.
+    if inputs.first().is_some_and(|a| a == "--original") {
+        inputs.remove(0);
     }
     let quest_giver = inputs
         .iter()
@@ -961,29 +959,12 @@ pub fn run(original_default: bool) -> Result<(), String> {
         std::env::var_os("HOME").map(PathBuf::from).map(|home| home.join("Downloads/Bestiary - Dungeon Monsters Kit[Standard]/Bestiary - Dungeon Monsters Kit[Standard]/Exports/GLB (Godot-Unreal)/Puglin.glb")).filter(|p| p.exists())
     };
     let mut args = inputs.into_iter();
-    let input = args.next().ok_or("Expected pack.json or --original")?;
-    let original = input == "--original";
-    let path = if original {
-        std::env::temp_dir().join(format!(
-            "verse-original-ritual-{}/pack.json",
-            std::process::id()
-        ))
-    } else {
-        PathBuf::from(input)
-    };
-    let dir = path
-        .parent()
-        .ok_or("Expected pack directory")?
-        .to_path_buf();
-    let mut pack = if original {
-        verse::imported::original::generate(&dir)?
-    } else {
-        Pack::read(&path)?
-    };
+    let dir = std::env::temp_dir().join(format!("verse-original-ritual-{}", std::process::id()));
+    let mut pack = verse::imported::original::generate(&dir)?;
     let character_root =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/characters/quaternius");
     let mut admitted_bestiary = None;
-    if original && !greybox {
+    if !greybox {
         let snapshot = dir.join("source-quaternius");
         verse::imported::inventory::snapshot_characters(&character_root, &snapshot)?;
         verse::imported::characters::install(&mut pack, &dir, &snapshot, &appearance)?;
@@ -1000,25 +981,19 @@ pub fn run(original_default: bool) -> Result<(), String> {
             admitted_bestiary = Some(frozen);
         }
     }
-    if original && !greybox {
+    if !greybox {
         let root =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/props/quaternius");
         let snapshot = dir.join("source-fantasy-props");
         verse::imported::inventory::snapshot_props(&root, &snapshot)?;
         verse::imported::props::install(&mut pack, &dir, &snapshot)?;
     }
-    if !original {
-        verse_wow::motion::bind(&mut pack)?;
-        chamber::add_effect_models(&mut pack, &dir)?;
-    }
-    let mut scene = Scene::from_json(if original && quest_giver {
+    let mut scene = Scene::from_json(if quest_giver {
         include_bytes!("../../../../assets/verse/original/ritual-quests.json").as_slice()
-    } else if original {
-        include_bytes!("../../../../assets/verse/original/ritual.json").as_slice()
     } else {
-        include_bytes!("../../../../assets/verse/wow/anthropic.json").as_slice()
+        include_bytes!("../../../../assets/verse/original/ritual.json").as_slice()
     })?;
-    if original && !greybox {
+    if !greybox {
         let mut index = 0;
         for actor in &mut scene.actors {
             if actor.model == "cultist" {
@@ -1045,22 +1020,16 @@ pub fn run(original_default: bool) -> Result<(), String> {
         .iter()
         .map(|(id, m)| (id.clone(), m.height))
         .collect();
-    if original {
-        verse::imported::inventory::compile(&mut pack, &dir, admitted_bestiary.as_deref())?;
-    }
-    let atlas = if original {
-        chamber::original_portrait_atlas(&dir, &pack)?
-    } else {
-        chamber::portrait_atlas(&dir, &pack)?
-    };
-    let reload_path = original.then(|| dir.join("runtime-pack.json"));
+    verse::imported::inventory::compile(&mut pack, &dir, admitted_bestiary.as_deref())?;
+    let atlas = chamber::original_portrait_atlas(&dir, &pack)?;
+    let reload_path = Some(dir.join("runtime-pack.json"));
     if let Some(path) = &reload_path {
         reload::write_manifest(path, &pack)?;
         eprintln!("F5 reloads renderer assets from {}", path.display());
     }
     let reload_contract = Arc::new(reload::Contract::new(
         &pack,
-        &chamber::static_instances(&pack, position_from_wow(game.scene.origin_wow)),
+        &chamber::static_instances(&pack, source_position(game.scene.origin)),
     )?);
     let mut app = App {
         audio: None,
@@ -1192,7 +1161,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
             move_forward: true,
         });
     }
-    if original && mode.is_none() {
+    if mode.is_none() {
         app.game = combat_game(&app.pack, app.game.scene.clone(), false)?;
     }
     if matches!(
@@ -1214,7 +1183,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
             1280,
             720,
             &app.atlas,
-            &chamber::static_instances(&app.pack, position_from_wow(app.game.scene.origin_wow)),
+            &chamber::static_instances(&app.pack, source_position(app.game.scene.origin)),
         )?);
         app.interpolation = 1.;
         save_png(&output.join("player-dead.png"), &app.draw_frame()?)?;
@@ -1247,7 +1216,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
                 1280,
                 720,
                 &app.atlas,
-                &chamber::static_instances(&app.pack, position_from_wow(app.game.scene.origin_wow)),
+                &chamber::static_instances(&app.pack, source_position(app.game.scene.origin)),
             )?);
             let view = View {
                 view_proj: frame.view_projection(1280. / 720.),
@@ -1323,7 +1292,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
             1920,
             1080,
             &app.atlas,
-            &chamber::static_instances(&app.pack, position_from_wow(app.game.scene.origin_wow)),
+            &chamber::static_instances(&app.pack, source_position(app.game.scene.origin)),
         )?);
         for (name, time) in [
             ("ritual-wide", 4.),
@@ -1551,7 +1520,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
         1280,
         720,
         &app.atlas,
-        &chamber::static_instances(&app.pack, position_from_wow(app.game.scene.origin_wow)),
+        &chamber::static_instances(&app.pack, source_position(app.game.scene.origin)),
     )?);
     let mut encoder = encoder(&output)?;
     let mut pipe = encoder.stdin.take().ok_or("Missing encoder input")?;

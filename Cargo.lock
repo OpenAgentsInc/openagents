@@ -14962,7 +14962,6 @@ dependencies = [
  "verse-lagrange",
  "verse-ruins",
  "verse-world",
- "verse-wow",
  "webpki-roots 1.0.9",
  "wgpu",
  "winit",
@@ -15021,16 +15020,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-rustls",
- "verse-engine",
-]
-
-[[package]]
-name = "verse-wow"
-version = "0.1.0"
-dependencies = [
- "glam",
- "serde",
- "serde_json",
  "verse-engine",
 ]
 

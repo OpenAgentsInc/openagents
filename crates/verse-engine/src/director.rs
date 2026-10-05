@@ -2,7 +2,7 @@
 //!
 //! The director has no keyboard or chat-input path. It emits typed scene events
 //! and presentation state from simulation time. Directed impacts do not claim
-//! multiplayer authority or implement the complete WoW combat rules.
+//! multiplayer authority or implement complete combat rules.
 use crate::motion::{Selection, State};
 use glam::{Mat4, Vec3};
 use serde::{Deserialize, Serialize};
@@ -44,7 +44,8 @@ pub struct Scene {
     pub collision_profile: Option<String>,
     pub version: u32,
     pub duration: f32,
-    pub origin_wow: [f32; 3],
+    /// The scene origin in pack source coordinates; see [`crate::source_position`].
+    pub origin: [f32; 3],
     pub cut_at: f32,
     pub actors: Vec<Actor>,
     pub cues: Vec<Cue>,
@@ -105,7 +106,7 @@ impl Scene {
             || self.cut_at < 0.0
             || self.cut_at > self.duration
             || self.actors.is_empty()
-            || self.origin_wow.iter().any(|v| !v.is_finite())
+            || self.origin.iter().any(|v| !v.is_finite())
             || self.actors.len() > 256
             || self.cues.len() > 1024
         {
@@ -320,7 +321,10 @@ impl Frame {
 mod tests {
     use super::*;
     fn scene() -> Scene {
-        Scene::from_json(include_bytes!("../../../assets/verse/wow/anthropic.json")).unwrap()
+        Scene::from_json(include_bytes!(
+            "../../../assets/verse/original/anthropic.json"
+        ))
+        .unwrap()
     }
     #[test]
     fn scene_cues_drive_dialogue_camera_projectiles_and_health() {

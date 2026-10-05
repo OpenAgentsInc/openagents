@@ -799,7 +799,7 @@ mod tests {
             "../../../../assets/verse/original/ritual.json"
         ))
         .unwrap();
-        assert_eq!(scene.origin_wow, [0.; 3]);
+        assert_eq!(scene.origin, [0.; 3]);
         let mut game = super::super::play::Game::combat(scene, true).unwrap();
         for _ in 0..4500 {
             game.tick(1. / 30., [0.; 2]).unwrap();

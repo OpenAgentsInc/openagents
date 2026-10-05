@@ -713,7 +713,7 @@ mod tests {
     #[test]
     fn ritual_limits_hostile_bars_without_overlap_in_both_camera_shots() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
-            "../../../../assets/verse/wow/anthropic.json"
+            "../../../../assets/verse/original/anthropic.json"
         ))
         .unwrap();
         let atlas = Atlas::new(16.0);

@@ -4,8 +4,8 @@ The `verse_play` example generates the chamber, weapons, effects, and UI from
 `crates/verse/src/imported/original.rs`. Its default actors now use the retained
 [CC0 Universal characters and fantasy outfits](../characters/quaternius/README.md).
 Use `--greybox` to generate the complete procedural character fixture. Neither
-mode reads a WoW installation, MPQ archive, Classic texture, or Classic font. The JSON timeline
-is authored scene data; its `origin_wow` compatibility field is zero.
+mode reads a third-party game installation or its assets. The JSON timeline
+is authored scene data; its `origin` field is zero.
 
 Run the native scene:
 
@@ -46,7 +46,7 @@ by this entry point.
 
 The shared renderer, controls, and local combat adapter remain in their current
 modules. Generic packs, animation, and cinematic contracts now live in
-`verse-engine`; `verse-wow` re-exports them for compatibility. Gameplay still
+`verse-engine`. Gameplay still
 uses the retained `verse-ruins` adapter; this milestone does not replace it with
 a new portable authority service.
 
@@ -69,7 +69,7 @@ toward a clear firing position.
 Capsules, stairs, slopes, gravity, full projectile continuous collision, and
 explosion-radius occlusion remain
 future work. Further engine extraction, durable saves, and multiplayer remain on
-the engine roadmap and #10406/#10407.
+the engine roadmap.
 
 Press F5 to reload renderer assets from the `runtime-pack.json` path printed at startup. The manifest includes the installed character variants and Bestiary model. Edit that generated manifest or its referenced textures, update texture SHA-256 declarations, run `verse_play --refresh-inventory PATH_TO_RUNTIME_PACK`, then reload. Parsing, verification, and GPU upload run on a worker; failed replacements leave the active scene usable. Reload preserves combat state and rejects changes to static collision geometry, required animation states, or attachment IDs. It does not reload game rules, colliders, dialogue, or the HUD atlas.
 

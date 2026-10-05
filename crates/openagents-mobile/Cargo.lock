@@ -9141,7 +9141,6 @@ dependencies = [
  "verse-lagrange",
  "verse-ruins",
  "verse-world",
- "verse-wow",
  "webpki-roots 1.0.9",
  "wgpu",
  "xp-ledger",
@@ -9184,20 +9183,12 @@ dependencies = [
 name = "verse-world"
 version = "0.1.0"
 dependencies = [
+ "coder-access",
  "glam",
  "physics",
  "serde",
  "serde_json",
- "verse-engine",
-]
-
-[[package]]
-name = "verse-wow"
-version = "0.1.0"
-dependencies = [
- "glam",
- "serde",
- "serde_json",
+ "sha2 0.10.9",
  "verse-engine",
 ]
 

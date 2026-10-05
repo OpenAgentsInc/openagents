@@ -4,7 +4,7 @@
   "collision_profile": "spell-playground-v1",
   "version": 1,
   "duration": 120,
-  "origin_wow": [
+  "origin": [
    0,
    0,
    0

@@ -2,7 +2,7 @@
 use super::Instance;
 use crate::ui::Atlas;
 use glam::{Mat4, Quat, Vec3};
-use verse_engine::{assets::Pack, source_position as position_from_wow};
+use verse_engine::{assets::Pack, source_position};
 /// Assembles admitted remote actors and effects without a local simulation.
 #[cfg(feature = "remote-chamber")]
 pub struct RemoteScene {
@@ -273,62 +273,6 @@ pub fn blocker_instances_from_bounds(
         })
         .collect()
 }
-pub fn classic_atlas(dir: &std::path::Path) -> Result<Atlas, String> {
-    let font = std::fs::read(dir.join("FRIZQT__.TTF"))
-        .map_err(|e| format!("Import Classic UI assets with wow-import --ui-only: {e}"))?;
-    let mut atlas = Atlas::from_font(&font, 18.0)?;
-    for name in [
-        "main-bar",
-        "end-cap",
-        "empty-slot",
-        "unit-frame",
-        "elite-frame",
-        "unit-name",
-        "unit-skull",
-        "page-up",
-        "page-down",
-        "backpack",
-        "bag-empty",
-        "micro-character",
-        "micro-spellbook",
-        "micro-talents",
-        "micro-quest",
-        "micro-socials",
-        "micro-world",
-        "micro-mainmenu",
-        "micro-help",
-        "status-bar",
-        "nameplate-border",
-        "action-frame",
-        "bow-icon",
-        "fire-bolt-icon",
-        "magic-missile-icon",
-        "fireball-icon",
-        "misty-step-icon",
-        "thunderwave-icon",
-        "web-icon",
-        "grease-icon",
-        "light-icon",
-        "shield-icon",
-    ] {
-        let decoder = png::Decoder::new(std::io::BufReader::new(
-            std::fs::File::open(dir.join(format!("{name}.png"))).map_err(|e| e.to_string())?,
-        ));
-        let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
-        let mut rgba = vec![0; reader.output_buffer_size().ok_or("Invalid UI image")?];
-        let info = reader.next_frame(&mut rgba).map_err(|e| e.to_string())?;
-        if info.color_type != png::ColorType::Rgba {
-            return Err("Expected RGBA UI sprite".into());
-        }
-        atlas.add_sprite(name, info.width, info.height, &rgba[..info.buffer_size()])?;
-    }
-    atlas.add_font("small", &font, 10.0)?;
-    atlas.add_font("combat", &font, 28.0)?;
-    let numbers = std::fs::read(dir.join("ARIALN.TTF")).map_err(|e| e.to_string())?;
-    atlas.add_font("hotkey", &numbers, 12.0)?;
-    atlas.add_font("numbers", &numbers, 14.0)?;
-    Ok(atlas)
-}
 
 pub fn static_instances(pack: &Pack, origin: Vec3) -> Vec<Instance> {
     let conversion = Mat4::from_translation(-origin) * basis();
@@ -379,7 +323,7 @@ pub fn lighting(origin: Vec3) -> super::lighting::Lighting {
         ([18.752, 151.100, 86.4], [1.0, 0.3, 0.04], 75.0, 10.0),
     ] {
         lights.lights.push(super::lighting::Light {
-            position: position_from_wow(p) - origin,
+            position: source_position(p) - origin,
             color: c.into(),
             intensity,
             range,
@@ -505,7 +449,7 @@ pub fn prop_instances_from_poses(
 pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
     let mut lighting = lighting_from_visuals(
         &verse_world::visuals::Combat::extract(game),
-        position_from_wow(game.scene.origin_wow),
+        source_position(game.scene.origin),
         game.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE),
         game.player,
     );
@@ -1229,11 +1173,6 @@ fn particle(model: &str, position: Vec3, radius: f32, opacity: f32, time: f32) -
     }
 }
 
-/// Renders model headshots through the owned GPU pipeline for unit-frame portraits.
-pub fn portrait_atlas(dir: &std::path::Path, pack: &Pack) -> Result<Atlas, String> {
-    let atlas = classic_atlas(dir)?;
-    portraits(dir, pack, atlas)
-}
 /// Renders portraits from original geometry and UI graphics.
 pub fn original_portrait_atlas(dir: &std::path::Path, pack: &Pack) -> Result<Atlas, String> {
     portraits(dir, pack, super::original::atlas()?)
@@ -1323,7 +1262,7 @@ mod tests {
         expected.extend(prop_instances(&pack, &game, 1.));
         expected.extend(blocker_instances(&pack, &game));
         expected.extend(spell_instances(&game));
-        let origin = position_from_wow(game.scene.origin_wow);
+        let origin = source_position(game.scene.origin);
         let drawn = render_remote_sample(
             &pack,
             verse_world::service::view::SceneSample {
@@ -1835,7 +1774,7 @@ mod tests {
                 "{:?}",
                 lighting_from_visuals(
                     &visuals,
-                    position_from_wow(game.scene.origin_wow),
+                    source_position(game.scene.origin),
                     false,
                     game.player
                 )
@@ -1875,7 +1814,7 @@ mod tests {
     #[test]
     fn explosions_light_the_room_then_fade_with_the_effect() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
-            "../../../../assets/verse/wow/anthropic.json"
+            "../../../../assets/verse/original/anthropic.json"
         ))
         .unwrap();
         let mut game = super::super::play::Game::new(scene).unwrap();
@@ -1894,7 +1833,7 @@ mod tests {
     #[test]
     fn many_effects_keep_the_brightest_local_lights_and_respect_the_gpu_bound() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
-            "../../../../assets/verse/wow/anthropic.json"
+            "../../../../assets/verse/original/anthropic.json"
         ))
         .unwrap();
         let mut game = super::super::play::Game::new(scene).unwrap();
@@ -1915,7 +1854,7 @@ mod tests {
     #[test]
     fn simultaneous_impacts_keep_a_finite_deterministic_particle_budget() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
-            "../../../../assets/verse/wow/anthropic.json"
+            "../../../../assets/verse/original/anthropic.json"
         ))
         .unwrap();
         let mut game = super::super::play::Game::new(scene).unwrap();

@@ -52,7 +52,6 @@ openagents-chat-app = { path = "../openagents-chat-app", optional = true }
 openagents-connect = { path = "../openagents-connect", optional = true }
 physics = { path = "../physics" }
 verse-lagrange = { path = "../verse-lagrange" }
-verse-wow = { path = "../verse-wow" }
 verse-ruins = { path = "../verse-ruins" }
 glam = "0.30.10"
 resvg = { version = "0.48.1", default-features = false }
@@ -167,10 +166,6 @@ required-features = ["capture"]
 [[example]]
 name = "panel_capture"
 required-features = ["capture", "panels"]
-
-[[example]]
-name = "wow_play"
-required-features = ["imported-desktop"]
 
 [[example]]
 name = "verse_play"

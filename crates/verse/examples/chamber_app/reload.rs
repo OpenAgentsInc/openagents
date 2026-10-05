@@ -232,7 +232,7 @@ pub fn prove(app: &mut super::App, output: &Path) -> Result<(), String> {
         .ok_or("Reload proof requires an original scene")?;
     let instances = verse::imported::chamber::static_instances(
         &app.pack,
-        verse_engine::source_position(app.game.scene.origin_wow),
+        verse_engine::source_position(app.game.scene.origin),
     );
     let checkpoint = app.game.checkpoint()?;
     let frame = app.game.frame();
