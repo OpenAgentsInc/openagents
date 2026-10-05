@@ -728,11 +728,13 @@ checkpoints, the character placement, and the immutable transfer retry index.
 Retain the nonzero 16-byte operation ID across uncertain results. Exact retries
 return the original transfer; changed arguments are refused. Health, mana,
 equipment, progression, inventory, and remaining cooldowns survive. Temporary
-world effects and input stop. Both affected instances park their old connections
-and require fresh authentication. Character receipt books preserve original
+world effects and input stop. The transferred character loses its old connection;
+unrelated players and spectators retain their sessions. Their replication
+baselines resynchronize with increasing revision counters. Character receipt books preserve original
 mutation outcomes across local actor changes and repeated transfers; an old item
-use cannot debit or heal again. Save version 10, character schema 3, retains these
-books; versions 1–9 remain readable under their original schema rules.
+use cannot debit or heal again. Save version 11, character schema 3, retains these
+books and the public guest policy; versions 1–10 remain readable under their
+original schema rules.
 
 `service::realm::net::serve` hosts prebound TLS listeners with the existing wire
 protocol and SDK. A separate coordinator thread owns storage and all games; TLS
@@ -742,15 +744,82 @@ admits, drains, and transfers characters; client bodies cannot invoke those
 operator actions. Run creation and lifecycle APIs before serving. This initial
 adapter serializes durability work and is not accepted for a crowded 30 Hz battle.
 
-The realm has 32 instance slots and 2,048 registered characters, with the existing
-64-player game limit. Primary avatars remain scene anchors and cannot transfer;
-character decoupling and capacity growth are separate work. Existing foreign
+The realm has 32 instance slots and 2,048 resident placements, with a 64-player
+resident limit per game. Dormant characters and accounts use an immutable registry
+outside the resident table. Primary characters can transfer; their authored
+scene templates remain available for later character entry. Existing foreign
 reward-history directories require an explicit import workflow. Distributed
 failover, seamless world simulation, history garbage collection, and storage
 throughput acceptance remain. The [realm transfer receipt](../../bench/verse/2026-10-04/realm-transfer/run.json)
 records two actual TLS instances, five process-death boundaries, and the tested
 limits.
 
+
+## Persistent accounts and character lifecycle
+
+Realm manifest version 2 selects a SHA-addressed registry of accounts,
+credentials, and characters. Account and character IDs are independent of keys,
+instance actor IDs, life generations, connection controllers, and render actors.
+An account owns up to eight characters and has at most one resident character.
+`Realm::admit` creates an initial account and character. After logout,
+`create_character` creates another owned character; `resume` selects an existing
+one. IDs do not change when a transient actor slot is reused. Retired slots retain
+fresh generation fences without accumulating a body record per past character.
+Public guest admission creates an account and character only after signature
+verification. Guest caps count resident guests; logout releases that capacity.
+Known dormant accounts select their existing characters, and retired credentials
+cannot reenter through public admission. The guest policy survives realm restart.
+Version-one realm heads upgrade without changing their character or receipt IDs.
+Legacy scene origins remain readable in older checkpoints; serialization writes
+`origin` in the current format.
+
+`Realm::logout` saves the character in an immutable checkpoint, retires its
+resident actor and authority, and frees placement capacity in one sealed head.
+Inventory, progression, equipment, appearance, resources, and remaining cooldowns
+remain owned by its character receipt book. A dormant character receives no NPC
+rewards, mana regeneration, or cooldown progress. Logout ends temporary effects
+and casts aimed at the retired life. A defeated character can log out and resume
+with zero health; the existing controlled respawn contract then applies. Abrupt
+transport closure parks a resident rather than implicitly logging it out. The
+operator must apply its chosen disconnect retirement policy through `logout`.
+
+Wire version 25 adds authenticated account metadata, character selection, and
+explicit logout. `Client::account` returns only the authenticated account's owned
+character IDs and epoch.
+Known accounts without a resident in the destination authenticate as spectators.
+`Client::select_character` admits only an owned dormant character, at one of 32
+bounded entry points around the authored spawn; clients do not choose coordinates.
+`Client::logout` requires its current life and control epoch, commits retirement,
+and ends the session after a `LoggedOut` acknowledgment. Selection cannot replace
+an active character implicitly. Refused selection retains spectator observation.
+A retry after an uncertain resume authenticates against the selected resident;
+transport failures never trigger automatic economic replay.
+
+`recover_account` is a trusted operator operation with an expected account epoch,
+a fresh credential, and current realm leases. The local realm control channel
+exposes it; no client body can recover an account. Recovery preserves all character
+IDs and books, fences the old sessions, increments the account epoch, and retires
+the old credential permanently. Dormant characters remain selectable by the new
+key. A stale recovery epoch is refused; read back the account after an uncertain
+acknowledgment through the local control channel's `account` read. An uncertain
+storage failure poisons the coordinator; reopen it before trusting readback.
+This API does not decide who qualifies for human account recovery.
+
+Authored combat reward policies select `enrolled_residents` (the retained legacy
+cooperative default), `connected`, or `connected_within` with a 1–256-meter radius.
+Connected modes exclude disconnected residents; the radius also excludes distant
+participants. Rewards are private per-character copies with retained retry
+receipts. This policy supplies no scarce shared drop, contribution ranking,
+auction, or player-to-player trade. See the
+[V09 audit](../../docs/audits/2026-10-04-verse-engine-audit.md#v09-persistent-accounts-and-characters-have-a-recovery-contract).
+
+Registry nodes hold at most eight records and 128 KiB; lookup follows at most 64
+hexadecimal key digits. Startup validates current resident bindings; dormant
+snapshots validate on resume. Each dormant record pins an original content-bound
+checkpoint, limited to 8 MiB, and shared reward history. Changed character
+catalogs require migration. Whole-world archival checkpoints, growing immutable
+storage, and serialized commit cost still need operating budgets and retention
+work. These limits do not establish AAA population or throughput acceptance.
 
 ## Hosted social profiles
 
@@ -761,8 +830,8 @@ Movement, social interactions, and replication use the same authenticated game
 and control fences. `host::Config::social_profile` selects this profile;
 `bind_content` includes its digest in the scene/asset identity. Startup recovery
 refuses changed profiles. Host, CLI, and offline migration preparation use this
-binding. Supported older combat checkpoints remain readable under rules v21;
-wire clients use version 24.
+binding. Supported older combat checkpoints remain readable under rules v22;
+wire clients use version 25.
 
 Seats are exclusive and tied to a character life. Accepted interactions stop
 queued movement and advance its control epoch. Movement and control retirement
@@ -779,6 +848,5 @@ relay discovery while suppressing publisher poses during hosted play.
 
 These are opt-in hosted variants with neutral shared geometry and generic figures.
 Local asset packs keep their existing rules; Ruins, Lagrange, and Lab are refused
-as hosted profiles. Existing realm capacity and primary-character transfer
-limits remain. The [social authority receipt](../../bench/verse/2026-10-04/social-authority/run.json)
+as hosted profiles. Existing realm instance and concurrent resident limits remain. The [social authority receipt](../../bench/verse/2026-10-04/social-authority/run.json)
 records two-viewer convergence, transfer, recovery, and native projection checks.

@@ -175,6 +175,8 @@ impl Default for PlayerState {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Simulation {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    primary_absent: bool,
     elapsed: f32,
     players: BTreeMap<u32, PlayerState>,
     actors: BTreeMap<u32, Actor>,
@@ -225,7 +227,8 @@ impl Simulation {
         if !self.elapsed.is_finite()
             || self.elapsed < 0.
             || self.players.is_empty()
-            || self.players.len() > 64
+            || self.players.len() > 64 + usize::from(self.primary_absent)
+            || self.primary_absent && self.players.get(&0).is_none_or(|p| p.resources.hp != 0)
             || !self.players.contains_key(&0)
             || self.actors.len() > 1024
             || self.flights.len() > 128
@@ -342,6 +345,7 @@ impl Simulation {
             return Err("Chamber actor budget exceeded".into());
         }
         let mut s = Self {
+            primary_absent: false,
             elapsed: 0.,
             players: BTreeMap::from([(0, PlayerState::default())]),
             actors: BTreeMap::new(),
@@ -439,7 +443,8 @@ impl Simulation {
     /// The host must bind the returned actor ID to its authenticated controller.
     pub fn spawn_player(&mut self, pos: [f32; 3]) -> Result<u32, String> {
         valid_position(pos)?;
-        if self.players.len() >= 64 || self.actors.len() >= 1024 {
+        if self.players.len() >= 64 + usize::from(self.primary_absent) || self.actors.len() >= 1024
+        {
             return Err("Player capacity exceeded".into());
         }
         let id = self.allocate()?;
@@ -580,6 +585,9 @@ impl Simulation {
     /// Revives one player after the owning adapter admits a new life and spawn.
     /// Other players' resources, flights, and burns remain intact.
     pub fn revive_player(&mut self, id: u32, position: [f32; 3], yaw: f32) -> Result<(), String> {
+        if id == 0 && self.primary_absent {
+            return Err("Primary simulation anchor has no character".into());
+        }
         if self.players.get(&id).ok_or("Unknown player")?.resources.hp != 0 {
             return Err("The adventurer is still alive".into());
         }

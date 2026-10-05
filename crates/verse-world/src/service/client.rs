@@ -23,6 +23,7 @@ const DEADLINE: Duration = Duration::from_secs(10);
 /// Convenience methods retry explicit storage refusals for up to ten seconds;
 /// `request` exposes each refusal directly.
 pub struct Client {
+    public_key: [u8; 32],
     stream: Option<Box<dyn Transport>>,
     instance: u64,
     tick: u64,
@@ -98,6 +99,7 @@ impl Client {
             .to_byte_array()
             .to_vec();
         let mut client = Self {
+            public_key,
             stream: Some(stream),
             instance,
             tick: 0,
@@ -165,6 +167,10 @@ impl Client {
         self.verified_at = Some(std::time::Instant::now());
         if let Reply::Inventory { inventory } = &response.body {
             self.inventory_revision = inventory.revision;
+        }
+        if matches!(response.body, Reply::CharacterSelected { .. }) {
+            self.player = true;
+            self.replication.clear();
         }
         let lost_control = self.player && response.control.is_none();
         self.control = response.control.clone();
@@ -370,6 +376,30 @@ impl Client {
             .life;
         self.request_ready(Body::Respawn { life }).await
     }
+    pub async fn account(&mut self) -> Result<super::accounts::Account, String> {
+        match self.request_ready(Body::Account {}).await?.body {
+            Reply::Account { account } => Ok(account),
+            Reply::Refused { message, .. } => Err(message),
+            _ => Err("Unexpected realm account outcome".into()),
+        }
+    }
+    /// Selects an owned dormant character after account authentication.
+    pub async fn select_character(&mut self, character: u64) -> Result<Response, String> {
+        self.request_ready(Body::SelectCharacter { character })
+            .await
+    }
+    /// Saves the controlled character, frees its resident slot, and ends this session.
+    pub async fn logout(&mut self) -> Result<Response, String> {
+        let control = self
+            .control()
+            .ok_or("Client has no admitted adventurer")?
+            .clone();
+        self.request_ready(Body::Logout {
+            life: control.life,
+            epoch: control.epoch,
+        })
+        .await
+    }
     pub async fn close(&mut self) -> Result<(), String> {
         let mut stream = self.stream.take().ok_or("Chamber client is disconnected")?;
         self.control = None;
@@ -408,7 +438,17 @@ impl Client {
             return Err("Chamber response context mismatch".into());
         }
         if let Some(control) = &r.control {
-            if control.life.instance != self.instance || (self.logged_in && !self.player) {
+            if control.life.instance != self.instance
+                || (self.logged_in
+                    && !self.player
+                    && !matches!(
+                        (request, &r.body),
+                        (
+                            Body::SelectCharacter { .. },
+                            Reply::CharacterSelected { .. }
+                        )
+                    ))
+            {
                 return Err("Chamber response control identity mismatch".into());
             }
             if let Some(previous) = &self.control {
@@ -422,10 +462,35 @@ impl Client {
                     return Err("Chamber response control fence regressed".into());
                 }
             }
-        } else if self.player && !matches!(r.body, Reply::Refused { .. }) {
+        } else if self.player && !matches!(r.body, Reply::Refused { .. } | Reply::LoggedOut { .. })
+        {
             return Err("Chamber response lost player control".into());
         }
         match (&r.body, request) {
+            (Reply::Account { account }, Body::Account {}) => {
+                if account.id == 0
+                    || account.epoch == 0
+                    || account.key != self.public_key
+                    || account.characters.is_empty()
+                    || account.characters.len() > 8
+                    || account.characters.iter().any(|id| *id == 0)
+                    || account.characters.windows(2).any(|w| w[0] >= w[1])
+                {
+                    return Err("Realm account metadata is incompatible".into());
+                }
+                Ok(())
+            }
+            (
+                Reply::CharacterSelected { character },
+                Body::SelectCharacter {
+                    character: requested,
+                },
+            ) if character == requested && *character > 0 && r.control.is_some() => Ok(()),
+            (Reply::LoggedOut { character }, Body::Logout { .. })
+                if *character > 0 && r.control.is_none() =>
+            {
+                Ok(())
+            }
             (Reply::Refused { .. }, _) => Ok(()),
             (Reply::Accepted, Body::Authenticate { .. }) => Ok(()),
             (Reply::Accepted, Body::Command { command }) => {
@@ -850,6 +915,10 @@ impl Pipeline {
         self.client.verified_at = Some(std::time::Instant::now());
         if let Reply::Inventory { inventory } = &response.body {
             self.client.inventory_revision = inventory.revision;
+        }
+        if matches!(response.body, Reply::CharacterSelected { .. }) {
+            self.client.player = true;
+            self.client.replication.clear();
         }
         let lost_control = self.client.player && response.control.is_none();
         self.client.control = response.control.clone();
@@ -1302,6 +1371,7 @@ mod tests {
             .with_content([7; 32])
             .unwrap()
             .with_rewards(vec![Policy {
+                participation: Default::default(),
                 target: 2,
                 experience: 45,
                 items: vec![Entry { id: 1, count: 1 }],
@@ -2126,6 +2196,7 @@ mod tests {
             .with_content([7; 32])
             .unwrap()
             .with_rewards(vec![Policy {
+                participation: Default::default(),
                 target: 2,
                 experience: 45,
                 items: vec![],
@@ -2510,6 +2581,7 @@ mod tests {
             accepted_sequence: 3,
         };
         let client = Client {
+            public_key: [1; 32],
             stream: None,
             instance: 120,
             tick: 10,

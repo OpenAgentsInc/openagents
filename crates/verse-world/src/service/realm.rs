@@ -13,8 +13,11 @@ use std::{
 };
 use verse_engine::core::LifeId;
 mod disk;
+mod lifecycle;
 pub mod net;
+mod registry;
 mod transfer;
+pub use registry::{Account, Character, Residence};
 pub use transfer::Transfer;
 const INSTANCES: usize = 32;
 const CHARACTERS: usize = 2048;
@@ -72,10 +75,17 @@ struct Manifest {
     revision: u64,
     last_now_ms: u64,
     next_character: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    registry_root: registry::Root,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    next_account: u64,
     transfer_root: Option<[u8; 32]>,
     transfers: u64,
     instances: BTreeMap<u64, Slot>,
     characters: BTreeMap<u64, Placement>,
+}
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 /// One coordinator holds the durable writer lock and all mutable game authorities.
 pub struct Realm {
@@ -88,6 +98,7 @@ pub struct Realm {
     poisoned: bool,
     dirty: BTreeSet<u64>,
     transfer_commit: bool,
+    lifecycle_commit: bool,
 }
 impl Realm {
     pub fn open(root: &Path) -> Result<Self, String> {
@@ -173,6 +184,31 @@ impl Realm {
             .chamber
             .rewards
             .activate_books(&assignments, instance)?;
+        let mut root = self.manifest.registry_root;
+        let mut next_account = self.manifest.next_account;
+        for (index, (principal, actor)) in gateway.chamber.owners.iter().enumerate() {
+            if self.account_for_key(principal.0)?.is_some() {
+                return Err("Realm account already exists".into());
+            }
+            root = registry::put(
+                self,
+                root,
+                registry::initial(
+                    next_account,
+                    self.manifest.next_character + index as u64,
+                    &Placement {
+                        principal: principal.0,
+                        instance,
+                        actor: *actor,
+                    },
+                ),
+            )?;
+            next_account = next_account
+                .checked_add(1)
+                .ok_or("Realm account identities exhausted")?;
+        }
+        self.manifest.registry_root = root;
+        self.manifest.next_account = next_account;
         for (principal, actor) in &gateway.chamber.owners {
             let id = self.manifest.next_character;
             self.manifest.next_character = id
@@ -211,6 +247,26 @@ impl Realm {
         spawn: [f32; 3],
         now: u64,
     ) -> Result<(u64, LifeId), String> {
+        self.admit_character(lease, principal, spawn, now, false)
+    }
+    /// Creates another owned character after the account logs out its resident.
+    pub fn create_character(
+        &mut self,
+        lease: &Lease,
+        principal: [u8; 32],
+        spawn: [f32; 3],
+        now: u64,
+    ) -> Result<(u64, LifeId), String> {
+        self.admit_character(lease, principal, spawn, now, true)
+    }
+    fn admit_character(
+        &mut self,
+        lease: &Lease,
+        principal: [u8; 32],
+        spawn: [f32; 3],
+        now: u64,
+        additional: bool,
+    ) -> Result<(u64, LifeId), String> {
         self.check(lease, now)?;
         if self.manifest.instances[&lease.instance].phase != Phase::Open {
             return Err("Realm instance is draining".into());
@@ -221,7 +277,8 @@ impl Realm {
             .iter()
             .find(|(_, c)| c.principal == principal)
         {
-            if c.instance != lease.instance
+            if additional
+                || c.instance != lease.instance
                 || self.games[&c.instance].game().player_spawn(c.actor)
                     != Some(glam::Vec3::from(spawn))
             {
@@ -242,17 +299,42 @@ impl Realm {
         {
             return Err("Realm character admission capacity exceeded".into());
         }
+        let existing = self.account_for_key(principal)?;
+        if existing
+            .as_ref()
+            .is_some_and(|a| !additional || a.characters.len() >= 8)
+        {
+            return Err("Realm account requires selection or exceeds its character budget".into());
+        }
+        if additional && existing.is_none() {
+            return Err("Additional character requires an existing account".into());
+        }
         let id = self.manifest.next_character;
+        let account = existing
+            .as_ref()
+            .map_or(self.manifest.next_account, |a| a.id);
+        let next_account = if existing.is_some() {
+            self.manifest.next_account
+        } else {
+            account
+                .checked_add(1)
+                .ok_or("Realm account identities exhausted")?
+        };
         let next = id
             .checked_add(1)
             .ok_or("Realm character identities exhausted")?;
         let original = &self.games[&lease.instance];
-        let mut candidate = super::save::decode_with_history(
-            &original.checkpoint()?,
-            slot.content,
-            lease.instance,
-            Some(self.history.clone()),
-        )?;
+        let mut candidate = original.fork();
+        let identity = super::Principal(principal);
+        if existing.is_some()
+            && matches!(
+                candidate.chamber.grants.get(&identity),
+                Some(super::Rights::Spectator)
+            )
+        {
+            candidate.chamber.grants.remove(&identity);
+            candidate.account_observers.remove(&identity);
+        }
         let life = candidate.enroll_player(principal, glam::Vec3::from(spawn))?;
         candidate
             .chamber
@@ -264,7 +346,31 @@ impl Realm {
             lease.instance,
             Some(self.history.clone()),
         )?;
+        let placement = Placement {
+            principal,
+            instance: lease.instance,
+            actor: life.actor,
+        };
+        let records = if let Some(mut owner) = existing {
+            owner.characters.push(id);
+            vec![
+                registry::Record::Account(owner),
+                registry::Record::Character(Character {
+                    id,
+                    account,
+                    residence: Residence::Resident {
+                        instance: lease.instance,
+                        actor: life.actor,
+                    },
+                }),
+            ]
+        } else {
+            registry::initial(account, id, &placement)
+        };
+        let root = registry::put(self, self.manifest.registry_root, records)?;
         self.games.insert(lease.instance, candidate);
+        self.manifest.registry_root = root;
+        self.manifest.next_account = next_account;
         self.manifest.characters.insert(
             id,
             Placement {
@@ -457,13 +563,39 @@ impl Realm {
         }
         let mutating = !matches!(
             request.body,
-            Body::Snapshot {} | Body::Replicate { .. } | Body::Inventory {} | Body::Events { .. }
+            Body::Snapshot {}
+                | Body::Replicate { .. }
+                | Body::Inventory {}
+                | Body::Account {}
+                | Body::Events { .. }
         );
-        let response = self
-            .games
-            .get_mut(&lease.instance)
-            .unwrap()
-            .dispatch_json(id, now, bytes)?;
+        let response = if let Some(result) = self.lifecycle_request(lease, id, now, &request.body) {
+            if self.poisoned {
+                return Err("Realm requires recovery after an uncertain commit".into());
+            }
+            let gateway = &self.games[&lease.instance];
+            super::wire::Response {
+                version: super::wire::VERSION,
+                request_id: request.request_id,
+                instance: lease.instance,
+                tick: gateway.game().authority_tick,
+                control: gateway.admission(id).ok().map(|a| super::wire::Control {
+                    life: a.actor().into(),
+                    epoch: a.epoch(),
+                    accepted_sequence: a.accepted_sequence(),
+                }),
+                body: result.unwrap_or_else(|message| super::wire::Reply::Refused {
+                    code: "character_lifecycle".into(),
+                    message,
+                }),
+            }
+            .encode()?
+        } else {
+            self.games
+                .get_mut(&lease.instance)
+                .unwrap()
+                .dispatch_json(id, now, bytes)?
+        };
         if mutating || self.dirty.contains(&lease.instance) {
             self.publish(&[lease.instance])?;
         }

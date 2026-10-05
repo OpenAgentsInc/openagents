@@ -223,6 +223,8 @@ fn populate(root: &Path, legacy: bool) -> Fixture {
             read(&root.join("chamber.json"), super::super::FILE_BYTES).unwrap();
         let mut state = journal::expand(committed.checkpoint.as_bytes()).unwrap();
         state["version"] = 8.into();
+        state.as_object_mut().unwrap().remove("guests");
+        state.as_object_mut().unwrap().remove("configured_players");
         state.as_object_mut().unwrap().remove("owners");
         state.as_object_mut().unwrap().remove("character_schema");
         state["world"]["rules_revision"] = "verse-chamber-owned-v18".into();
@@ -287,7 +289,7 @@ fn populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_qu
     assert_eq!(reviewed.source.character_schema, 1);
     assert_eq!(reviewed.source.save_version, 8);
     assert_eq!(reviewed.target.character_schema, 3);
-    assert_eq!(reviewed.target.save_version, 10);
+    assert_eq!(reviewed.target.save_version, 11);
     assert_eq!(reviewed.source.rules, "verse-chamber-owned-v18");
     assert_eq!(reviewed.target.rules, crate::play::RULES_REVISION);
     assert_eq!(std::fs::read(root.join("chamber.json")).unwrap(), original);

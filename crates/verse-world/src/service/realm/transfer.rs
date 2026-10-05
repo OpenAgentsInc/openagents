@@ -137,7 +137,7 @@ pub(super) fn validate(realm: &Realm) -> Result<(), String> {
                             .iter()
                             .enumerate()
                             .any(|(depth, n)| nibble(record.operation, depth) != *n)
-                        || !realm.manifest.characters.contains_key(&record.character)
+                        || realm.character(record.character).is_err()
                         || record.source.instance == record.destination.instance
                         || record.source.actor == 0
                         || record.destination.actor == 0
@@ -232,23 +232,14 @@ impl Realm {
         if catalogs(original)? != catalogs(target)? {
             return Err("Realm transfer character catalogs are incompatible".into());
         }
-        // Recovery copies park every connection; no live gateway mutates before validation.
-        let copy = |id| {
-            let g = &self.games[&id];
-            super::super::save::decode_with_history(
-                &g.checkpoint()?,
-                g.content().unwrap(),
-                id,
-                Some(self.history.clone()),
-            )
-        };
-        let mut from = copy(source.instance)?;
-        let mut to = copy(destination.instance)?;
+        let mut from = self.games[&source.instance].fork();
+        let mut to = self.games[&destination.instance].fork();
         let old_life = from
             .game()
             .player_admission(placement.actor)
             .ok_or("Source character life is missing")?
             .actor();
+        from.revoke(placement.principal)?;
         let portable = from.chamber.game.take_transfer_player(placement.actor)?;
         let (book, state) = from.chamber.rewards.take_book(placement.actor)?;
         if book.character != character {
@@ -285,6 +276,17 @@ impl Realm {
             .transfers
             .checked_add(1)
             .ok_or("Realm transfer count exhausted")?;
+        let mut registered = self.character(character)?;
+        registered.residence = Residence::Resident {
+            instance: destination.instance,
+            actor: new_life.actor,
+        };
+        let registry_root = registry::put(
+            self,
+            self.manifest.registry_root,
+            vec![registry::Record::Character(registered)],
+        )?;
+        self.manifest.registry_root = registry_root;
         self.games.insert(source.instance, from);
         self.games.insert(destination.instance, to);
         self.manifest.characters.insert(

@@ -105,12 +105,23 @@ impl Guests {
     }
 }
 
+pub(super) struct Proof {
+    connection: ConnectionId,
+    principal: Principal,
+}
+impl Proof {
+    pub(super) fn principal(&self) -> Principal {
+        self.principal
+    }
+}
+
 /// Authenticates enrolled keys and derives dispatch authority from the transport.
 pub struct Gateway {
     pub(super) chamber: Chamber,
     guests: Option<Guests>,
     /// Player enrollments the configuration placed; guests count above them.
-    configured_players: usize,
+    pub(super) configured_players: usize,
+    pub(super) account_observers: std::collections::BTreeSet<Principal>,
     content: Option<[u8; 32]>,
     server: [u8; 32],
     next_connection: u64,
@@ -123,6 +134,31 @@ pub struct Gateway {
     pub(super) replication: BTreeMap<ConnectionId, super::replication::Sender>,
 }
 impl Gateway {
+    /// Isolates a host transaction while retaining unrelated transport authority.
+    /// Baselines resynchronize without restarting their revision sequence.
+    pub(super) fn fork(&self) -> Self {
+        Self {
+            chamber: self.chamber.clone(),
+            guests: self.guests.clone(),
+            configured_players: self.configured_players,
+            account_observers: self.account_observers.clone(),
+            content: self.content,
+            server: self.server,
+            next_connection: self.next_connection,
+            last_now: self.last_now,
+            pending: self.pending.clone(),
+            bindings: self.bindings.clone(),
+            view_index: None,
+            view_cache: None,
+            replication_totals: self.replication_totals.clone(),
+            replication: self
+                .replication
+                .iter()
+                .map(|(id, sender)| (*id, sender.fork()))
+                .collect(),
+        }
+    }
+
     pub fn new(chamber: Chamber) -> Result<Self, String> {
         let mut server = [0; 32];
         getrandom::fill(&mut server)
@@ -131,6 +167,7 @@ impl Gateway {
             chamber,
             guests: None,
             configured_players: 0,
+            account_observers: Default::default(),
             content: None,
             server,
             next_connection: 1,
@@ -468,6 +505,19 @@ impl Gateway {
         public_key: [u8; 32],
         signature: [u8; 64],
     ) -> Result<(), String> {
+        let proof = self.verify(connection, now_ms, public_key, signature)?;
+        if !self.chamber.grants.contains_key(&proof.principal()) {
+            self.admit_guest(proof.principal())?;
+        }
+        self.bind_verified(proof)
+    }
+    pub(super) fn verify(
+        &mut self,
+        connection: ConnectionId,
+        now_ms: u64,
+        public_key: [u8; 32],
+        signature: [u8; 64],
+    ) -> Result<Proof, String> {
         self.view_cache = None;
         self.clock(now_ms)?;
         let challenge = self
@@ -487,9 +537,27 @@ impl Gateway {
                 &key,
             )
             .map_err(|_| "Connection signature refused")?;
-        if !self.chamber.grants.contains_key(&principal) {
-            self.admit_guest(principal)?;
-        }
+        Ok(Proof {
+            connection,
+            principal,
+        })
+    }
+    pub(super) fn bind_verified(&mut self, proof: Proof) -> Result<(), String> {
+        self.bind_principal(proof.connection, proof.principal)
+    }
+    pub(super) fn principal(&self, connection: ConnectionId) -> Result<Principal, String> {
+        self.check_view(connection)?;
+        Ok(self.binding(connection)?.principal)
+    }
+    pub(super) fn refresh_binding(&mut self, connection: ConnectionId) -> Result<(), String> {
+        let principal = self.principal(connection)?;
+        self.bind_principal(connection, principal)
+    }
+    fn bind_principal(
+        &mut self,
+        connection: ConnectionId,
+        principal: Principal,
+    ) -> Result<(), String> {
         let session = self.chamber.connect(principal)?;
         self.bindings.retain(|_, b| b.principal != principal);
         self.purge_replication();
@@ -562,6 +630,9 @@ impl Gateway {
         if let Some(b) = self.bindings.get(&id).copied() {
             self.chamber.disconnect(b.principal, b.session)?;
             self.bindings.remove(&id);
+            if self.account_observers.remove(&b.principal) {
+                self.chamber.grants.remove(&b.principal);
+            }
             Ok(())
         } else if self.pending.remove(&id).is_some() {
             Ok(())
@@ -573,6 +644,7 @@ impl Gateway {
         self.view_cache = None;
         let principal = valid_principal(key)?;
         self.chamber.revoke(principal)?;
+        self.account_observers.remove(&principal);
         self.bindings.retain(|_, b| b.principal != principal);
         self.purge_replication();
         Ok(())
@@ -600,7 +672,7 @@ impl Gateway {
         self.chamber.reset()
     }
 }
-fn valid_principal(key: [u8; 32]) -> Result<Principal, String> {
+pub(super) fn valid_principal(key: [u8; 32]) -> Result<Principal, String> {
     XOnlyPublicKey::from_byte_array(key).map_err(|_| "Invalid identity public key")?;
     Ok(Principal(key))
 }
