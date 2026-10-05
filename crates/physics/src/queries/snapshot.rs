@@ -239,6 +239,58 @@ mod tests {
         scene
     }
     #[test]
+    fn cached_capsule_pose_updates_and_shape_replacement_keep_queries_current() {
+        let mut source = scene().snapshot(7).unwrap();
+        let mut cache = SceneCache::new(7);
+        cache.update(&source).unwrap();
+        let key = source
+            .colliders
+            .iter()
+            .find(|s| matches!(s.geometry, GeometrySnapshot::Capsule { .. }))
+            .unwrap()
+            .key;
+        source
+            .colliders
+            .iter_mut()
+            .find(|s| s.key == key)
+            .unwrap()
+            .pose
+            .position = DVec3::X * 10.;
+        cache.update(&source).unwrap();
+        let query = Capsule {
+            a: DVec3::new(10., 0.3, 0.),
+            b: DVec3::new(10., 1.5, 0.),
+            radius: 0.3,
+        };
+        assert!(
+            cache
+                .scene()
+                .overlap(query, Filter::blocking(7))
+                .unwrap()
+                .hits
+                .iter()
+                .any(|h| h.collider == key)
+        );
+        let shape = source.colliders.iter_mut().find(|s| s.key == key).unwrap();
+        shape.geometry = GeometrySnapshot::Box {
+            min: DVec3::ZERO,
+            max: DVec3::ONE,
+        };
+        shape.pose.position = DVec3::X * 30.;
+        cache.update(&source).unwrap();
+        assert!(
+            !cache
+                .scene()
+                .overlap(query, Filter::blocking(7))
+                .unwrap()
+                .hits
+                .iter()
+                .any(|h| h.collider == key)
+        );
+        assert!(!cache.scene().world_capsules.contains_key(&key));
+    }
+
+    #[test]
     fn snapshot_round_trip_preserves_solid_boxes_meshes_capsules_and_poses() {
         let original = scene();
         let snapshot = original.snapshot(7).unwrap();
@@ -430,10 +482,14 @@ impl SceneCache {
             .retain(|key, _| keys.contains(key) && !changed.contains_key(key));
         self.scene.colliders.extend(meshes);
         self.scene.capsules.extend(capsules);
+        let capsules = &self.scene.capsules;
+        self.scene
+            .world_capsules
+            .retain(|key, _| capsules.contains_key(key));
         self.source.extend(changed);
         self.scene.poses.retain(|key, _| keys.contains(key));
         for shape in &snapshot.colliders {
-            self.scene.poses.insert(shape.key, shape.pose);
+            self.scene.set_pose(shape.key, shape.pose)?;
             self.source.get_mut(&shape.key).unwrap().pose = shape.pose;
         }
         Ok(count)

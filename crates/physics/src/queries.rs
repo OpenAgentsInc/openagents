@@ -298,6 +298,7 @@ pub struct Hit {
 pub struct Stats {
     pub nodes: usize,
     pub triangles: usize,
+    pub capsule_tests: usize,
 }
 #[derive(Clone, Debug)]
 pub struct Results {
@@ -350,6 +351,7 @@ pub struct Scene {
     poses: BTreeMap<ColliderKey, Pose>,
     colliders: BTreeMap<ColliderKey, MeshCollider>,
     capsules: BTreeMap<ColliderKey, CapsuleCollider>,
+    world_capsules: BTreeMap<ColliderKey, CapsuleCollider>,
 }
 /// A local-space capsule retains its exact life and query usage.
 #[derive(Clone, Copy, Debug)]
@@ -412,6 +414,7 @@ impl Scene {
         if self.colliders.len() + self.capsules.len() >= 4096 {
             return Err("Collision scene budget exceeded".into());
         }
+        self.world_capsules.insert(collider.key, collider);
         self.capsules.insert(collider.key, collider);
         Ok(())
     }
@@ -420,23 +423,14 @@ impl Scene {
             return None;
         }
         self.poses.remove(&key);
+        self.world_capsules.remove(&key);
         self.capsules.remove(&key)
     }
     fn capsule_shapes(&self, filter: Filter) -> impl Iterator<Item = (ColliderKey, Capsule)> + '_ {
-        self.capsules
+        self.world_capsules
             .values()
             .filter(move |c| filter.admits_shape(c.key, c.layers, c.usage))
-            .map(|c| {
-                let pose = self.pose(c.key).unwrap();
-                (
-                    c.key,
-                    Capsule {
-                        a: pose.point(c.capsule.a),
-                        b: pose.point(c.capsule.b),
-                        radius: c.capsule.radius,
-                    },
-                )
-            })
+            .map(|c| (c.key, c.capsule))
     }
     pub fn pose(&self, key: ColliderKey) -> Option<Pose> {
         (self.colliders.contains_key(&key) || self.capsules.contains_key(&key))
@@ -449,6 +443,12 @@ impl Scene {
         }
         if !self.colliders.contains_key(&key) && !self.capsules.contains_key(&key) {
             return Err("Collision identity does not exist".into());
+        }
+        if let Some(local) = self.capsules.get(&key) {
+            let mut world = *local;
+            world.capsule.a = pose.point(local.capsule.a);
+            world.capsule.b = pose.point(local.capsule.b);
+            self.world_capsules.insert(key, world);
         }
         self.poses.insert(key, pose);
         Ok(())
@@ -506,6 +506,7 @@ impl Scene {
                 b: origin,
                 radius: 0.,
             };
+            stats.capsule_tests += 1;
             if let Some(hit) = sweep_capsule(point, direction * distance, target, key)? {
                 out.push(hit);
             }
@@ -548,8 +549,15 @@ impl Scene {
         filter.validate()?;
         let mut out = Collector::new(filter.limit);
         let mut stats = Stats::default();
+        let mut bounds = capsule.bounds();
+        bounds.min -= DVec3::splat(EPS);
+        bounds.max += DVec3::splat(EPS);
         for (key, target) in self.capsule_shapes(filter) {
             stats.nodes += 1;
+            if !bounds.intersects(target.bounds()) {
+                continue;
+            }
+            stats.capsule_tests += 1;
             let (axis, point) = segment_pair(capsule.a, capsule.b, target.a, target.b);
             let separation = axis.distance(point) - capsule.radius - target.radius;
             if separation <= EPS {
@@ -620,15 +628,13 @@ impl Scene {
         }
         let mut out = Collector::new(filter.limit);
         let mut stats = Stats::default();
+        let swept_bounds = capsule.bounds().union(capsule.translated(delta).bounds());
         for (key, target) in self.capsule_shapes(filter) {
             stats.nodes += 1;
-            if !capsule
-                .bounds()
-                .union(capsule.translated(delta).bounds())
-                .intersects(target.bounds())
-            {
+            if !swept_bounds.intersects(target.bounds()) {
                 continue;
             }
+            stats.capsule_tests += 1;
             if let Some(hit) = sweep_capsule(capsule, delta, target, key)? {
                 out.push(hit);
             }
@@ -1166,6 +1172,122 @@ fn oriented_normal(triangle: Triangle, contact: DVec3) -> DVec3 {
 #[cfg(test)]
 mod capsule_contact_tests {
     use super::*;
+    #[test]
+    fn world_capsule_cache_tracks_pose_removal_and_reinsertion_and_prunes_distant_tests() {
+        let mut scene = Scene::default();
+        let capsule = Capsule {
+            a: DVec3::ZERO,
+            b: DVec3::Y,
+            radius: 0.35,
+        };
+        let key = |entity| ColliderKey {
+            life: Life {
+                instance: 1,
+                entity,
+                generation: 0,
+            },
+            shape: 0,
+        };
+        for entity in 1..=64 {
+            scene
+                .insert_capsule(CapsuleCollider {
+                    key: key(entity),
+                    capsule,
+                    layers: 1,
+                    usage: Usage::Blocking,
+                })
+                .unwrap();
+            scene
+                .set_pose(
+                    key(entity),
+                    Pose {
+                        position: DVec3::X * ((entity - 1) as f64 * 4.),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+        }
+        let filter = Filter::blocking(1);
+        let result = scene.overlap(capsule, filter).unwrap();
+        assert_eq!(result.hits.len(), 1);
+        assert_eq!(result.hits[0].collider, key(1));
+        assert_eq!(result.stats.nodes, 64);
+        assert_eq!(result.stats.capsule_tests, 1);
+        let pose = Pose {
+            position: DVec3::new(1., 1., 0.),
+            rotation: DQuat::from_rotation_z(1.57),
+        };
+        scene.set_pose(key(1), pose).unwrap();
+        let transformed = Capsule {
+            a: pose.point(capsule.a),
+            b: pose.point(capsule.b),
+            ..capsule
+        };
+        let result = scene.overlap(transformed, filter).unwrap();
+        assert_eq!(result.hits[0].collider, key(1));
+        assert!((result.hits[0].penetration - 0.7).abs() < EPS);
+        scene.remove_capsule(key(1)).unwrap();
+        assert!(scene.overlap(transformed, filter).unwrap().hits.is_empty());
+        scene
+            .insert_capsule(CapsuleCollider {
+                key: key(1),
+                capsule,
+                layers: 1,
+                usage: Usage::Blocking,
+            })
+            .unwrap();
+        assert!(
+            scene
+                .set_pose(
+                    key(1),
+                    Pose {
+                        rotation: DQuat::from_array([0.; 4]),
+                        ..pose
+                    }
+                )
+                .is_err()
+        );
+        let result = scene.overlap(capsule, filter).unwrap();
+        assert_eq!(result.hits.len(), 1);
+        assert_eq!(result.hits[0].collider, key(1));
+    }
+    #[test]
+    fn overlap_bounds_keep_contacts_within_narrow_phase_tolerance() {
+        let mut scene = Scene::default();
+        let capsule = Capsule {
+            a: DVec3::ZERO,
+            b: DVec3::ZERO,
+            radius: 0.35,
+        };
+        scene
+            .insert_capsule(CapsuleCollider {
+                key: ColliderKey {
+                    life: Life {
+                        instance: 1,
+                        entity: 1,
+                        generation: 0,
+                    },
+                    shape: 0,
+                },
+                capsule,
+                layers: 1,
+                usage: Usage::Blocking,
+            })
+            .unwrap();
+        let near = capsule.translated(DVec3::X * (0.7 + EPS * 0.5));
+        assert_eq!(
+            scene.overlap(near, Filter::blocking(1)).unwrap().hits.len(),
+            1
+        );
+        let far = capsule.translated(DVec3::X * (0.7 + EPS * 2.));
+        assert!(
+            scene
+                .overlap(far, Filter::blocking(1))
+                .unwrap()
+                .hits
+                .is_empty()
+        );
+    }
     fn fixture() -> (Scene, ColliderKey, Capsule) {
         let key = ColliderKey {
             life: Life {

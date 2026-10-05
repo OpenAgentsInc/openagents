@@ -13,6 +13,7 @@ pub struct QueryMetrics {
     pub truncated: u64,
     pub nodes: u64,
     pub triangles: u64,
+    pub capsule_tests: u64,
     pub wall_seconds: f64,
     pub maximum_wall_seconds: f64,
 }
@@ -85,6 +86,9 @@ impl Drop for Observation {
         if let Some((stats, truncated)) = self.result {
             metric.nodes = metric.nodes.saturating_add(stats.nodes as u64);
             metric.triangles = metric.triangles.saturating_add(stats.triangles as u64);
+            metric.capsule_tests = metric
+                .capsule_tests
+                .saturating_add(stats.capsule_tests as u64);
             metric.truncated = metric.truncated.saturating_add(u64::from(truncated));
         } else {
             metric.errors = metric.errors.saturating_add(1);
@@ -155,6 +159,7 @@ mod tests {
             Stats {
                 nodes: 2,
                 triangles: 3,
+                ..Default::default()
             },
             false,
         );
@@ -164,6 +169,7 @@ mod tests {
             Stats {
                 nodes: 2,
                 triangles: 3,
+                ..Default::default()
             },
             true,
         );

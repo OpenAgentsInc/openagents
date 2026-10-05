@@ -1,0 +1,29 @@
+{
+  "ray": {
+    "calls": 24843,
+    "errors": 0,
+    "truncated": 3,
+    "nodes": 1072186,
+    "triangles": 298116,
+    "wall_seconds": 0.14043688000000093,
+    "maximum_wall_seconds": 0.009010958
+  },
+  "overlap": {
+    "calls": 535838,
+    "errors": 0,
+    "truncated": 0,
+    "nodes": 54537076,
+    "triangles": 6075840,
+    "wall_seconds": 22.03270459201021,
+    "maximum_wall_seconds": 0.065757917
+  },
+  "sweep": {
+    "calls": 1392560,
+    "errors": 0,
+    "truncated": 15723,
+    "nodes": 141762494,
+    "triangles": 15620412,
+    "wall_seconds": 28.19454198117115,
+    "maximum_wall_seconds": 0.09205075
+  }
+}

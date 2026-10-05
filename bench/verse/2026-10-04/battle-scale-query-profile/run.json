@@ -1,0 +1,35 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": false,
+    "compiled_revisions": {
+      "host": "2bb61d2468",
+      "clients": "2bb61d2468"
+    },
+    "fixture_revision": "2bb61d2468c754a3a39b7e98b3ccdd3e6cc61075",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "stability": "All twenty connections and all processes complete; all recorded occupancy samples retain forty live hostile NPCs.",
+  "limits": [
+    "The host records zero contained blocks; this run does not independently exercise the recovery failure path.",
+    "Collision profiling survives dynamic blocker replacement and reports 535838 overlap calls taking 22.033 cumulative wall seconds and 1392560 sweeps taking 28.195 seconds.",
+    "Simulation p99 histogram upper bound is 250 ms, maximum 280.579 ms, and 9.520 elapsed seconds are dropped.",
+    "Native frame p95 is 62.463 ms; CPU command finalization p95 is 39.166 ms.",
+    "Prediction correction p95 is 3.856 m, maximum 5.134 m.",
+    "Native controller accepts eight ability kinds; Shoot Bow and Misty Step are not accepted in this run.",
+    "Persistent storage is disabled; admission backpressure remains failed in the paired persistent workload.",
+    "Query timings are wall time, not isolated CPU cost. Host and client share a non-isolated contributor machine; trajectories differ across runs.",
+    "GPU execution and input-to-display latency remain unmeasured."
+  ]
+}
