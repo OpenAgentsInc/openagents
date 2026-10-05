@@ -32,6 +32,7 @@ if [ "${GALLERY_ONLY:-0}" != 1 ]; then
   for script in sledgehammer fountain observatory bandshell market_stall training_dummy animals; do
     run "$script" "$out"
   done
+  "$blender" -b --factory-startup --python "$here/buildings.py" -- "$out/buildings" 2>&1 | grep -E '^BUILT|Error|Traceback' || true
 fi
 run gallery "$out" "$gallery"
 echo "gallery: $gallery/gallery.png, $gallery/contact_sheet.png, $gallery/previews/"

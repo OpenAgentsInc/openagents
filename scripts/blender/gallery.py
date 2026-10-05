@@ -4,9 +4,9 @@ Run headless:
     Blender -b --factory-startup --python scripts/blender/gallery.py -- [MODELS_DIR] [OUT_DIR] [NAME ...]
 
 MODELS_DIR defaults to assets/verse/generated and OUT_DIR to
-$TMPDIR/verse-models-gallery. Every `.glb` in MODELS_DIR (or only the named
-ones) is imported, posed on its `idle` clip when it has one, scaled so it
-reads in a grid cell, and labeled with a Blender text object naming it, its
+$TMPDIR/verse-models-gallery. Every `.glb` in MODELS_DIR and its subfolders,
+such as `buildings/` (or only the named ones), is imported, posed on its
+`idle` clip when it has one, scaled so it reads in a grid cell, and labeled with a Blender text object naming it, its
 real size, and the gallery scale. Writes `gallery.png` (the overview),
 `previews/<name>.png` (each model alone at its real proportions), and
 `contact_sheet.png` (the previews in a grid).
@@ -120,7 +120,7 @@ def main():
     out_dir = a[1] if len(a) > 1 else os.path.join(tempfile.gettempdir(), "verse-models-gallery")
     only = set(a[2:])
     os.makedirs(os.path.join(out_dir, "previews"), exist_ok=True)
-    files = sorted(glob.glob(os.path.join(models_dir, "*.glb")))
+    files = sorted(glob.glob(os.path.join(models_dir, "**", "*.glb"), recursive=True))
     names = [os.path.splitext(os.path.basename(f))[0] for f in files]
     if only:
         files = [f for f, n in zip(files, names) if n in only]
