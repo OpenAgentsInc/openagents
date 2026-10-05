@@ -6,8 +6,10 @@ an **agent collective**.
 - **Coder** is our first agent. It writes and runs code on your computers and
   in our cloud.
 - **Verse** is the metaverse where people and agents connect, communicate, and
-  transact. It makes
-  it easier for people to stay in the loop while agents are built.
+  transact. You walk a world instead of reading a dashboard: your coding
+  agents work in a workshop you can visit, and where an agent stands tells
+  you what it's doing. It runs on desktop, iOS, Android, and the web, on
+  our own Rust engine.
 - **The Gym** is where people go to help agents get better, by adding
   plugins and running the tests that measure them.
 
@@ -20,11 +22,12 @@ agents with plugins and the tests that prove it. Everything here is open source 
 - [The loop](#the-loop)
 - [Try it](#try-it)
 - [The phone app](#the-phone-app)
+- [Verse](#verse)
 - [Coder](#coder)
 - [The chat router and Jev](#the-chat-router-and-jev)
 - [Protocol: Nostr and our NIPs](#protocol-nostr-and-our-nips)
 - [Gym, plugins, evals, and benchmarks](#gym-plugins-evals-and-benchmarks)
-- [Trainers, XP, and Verse](#trainers-xp-and-verse)
+- [Trainers and XP](#trainers-and-xp)
 - [Repository map](#repository-map)
 - [Build and test](#build-and-test)
 - [Contributing](#contributing)
@@ -100,6 +103,7 @@ A phone ran one of these tests end to end, from chat to +25 XP
 | --- | --- |
 | iOS | OpenAgents (`com.openagents.app`) 1.0.0 on TestFlight. Builds 1 to 36 are uploaded: build 19 sends every new chat to OpenAgents, build 20 brings the chat router's prepared answers and offers, and build 21 puts the Gym in chat (test a tool, make your own by chatting, Add to the Gym, check others' results for XP, Gym news, and the Gym board in the Verse). See [OpenAgents for iOS](bins/openagents-ios/README.md). |
 | Android | The same app and Rust library. Partial: verified on the emulator, distributed as a signed APK that testers install by hand. See [OpenAgents for Android](bins/openagents-android/README.md). |
+| Web | Everglade in the browser at [openagents.com/everglade](https://openagents.com/everglade), full screen, on WebGPU or WebGL2. See [Everglade on the web](crates/everglade-web/README.md). |
 | Computer | OpenAgents for desktop 1.0.0: chat, Coder on this computer, and phone pairing. A signed `.dmg` for macOS is on the [download page](https://openagents.com/download); Linux and Windows are built from source for now. See [OpenAgents desktop](crates/openagents-desktop/README.md). Or install Coder alone and link the computer so the phone can dispatch work to it; see [Coder](#coder). |
 
 To join the playtest, read the [playtesting program](docs/game/playtesting.md)
@@ -131,6 +135,65 @@ Further reading:
   chats open and answer, phase by phase.
 - [Playtest triage](docs/game/playtest-triage.md): how a report becomes the
   next build.
+
+## Verse
+
+Verse is a shared 3D world for people and their agents. It's one Rust program
+([`crates/verse`](crates/verse/)) on our own engine (`wgpu`, `winit`, and a
+custom renderer), and the same world runtime runs on desktop, in the iOS and
+Android apps, and in the browser through WebAssembly. Players see each other
+over Nostr ([NIP-MV](nips/openagents/NIP-MV.md)), and a zone can be hosted
+with shared authority over an encrypted direct channel.
+
+### Places
+
+| Place | What you do there | Open it |
+| --- | --- | --- |
+| **The Grid** | The shared plaza: other players, chat, portals to every zone, and the Gym with its RESULTS and EVALS boards. | `verse` |
+| **Everglade** | A small town in a forest glade, grown toward [its city map](docs/verse/everglade-map.png): the workshop where your [Agent Studio](docs/verse/agent-studio.md) team works, plus a commons, Main Street, Makers' Hall, a library, homes, and woods. Levitate, Wind Wall, Wall of Stone, Feather Fall, and Reverse Gravity are on the hotbar. | `verse --everglade`, or [openagents.com/everglade](https://openagents.com/everglade) |
+| **The Grove** | A druid's training field with dummies to test spells on. | `verse --grove`, or `?zone=grove` on the web |
+| **The demolition yard** | Knock down cottages with a sledgehammer; walls crack, break into chunks, and roofs collapse. | `verse --demolition` |
+| **Ruins, Lagrange 1, Physics Lab** | Real-time combat in the Wizard Woods, an EVA construction station at the Sun–Earth L1 point, and live physics mechanisms. | Portals on the Grid |
+
+### The workshop
+
+Everglade is where day-to-day coding work happens. `openagents studio up`
+starts a team of coding agents (Codex, Claude Code, or the Claude Agent SDK,
+mixed per seat) on a repository. In the workshop each agent is a person at a
+station: at a desk while it writes, at the workbench while it runs commands,
+at the podium when it needs your answer, and at the strongroom when its work
+is ready for review. Walk up and press interact to open the task wall, a
+seat's transcript, a decision, or the diff review. See
+[Agent Studio](docs/verse/agent-studio.md) and
+[Everglade](docs/verse/everglade.md).
+
+### How the game plays
+
+Combat is real time in the MMO style, with mana, cooldowns, an icon hotbar,
+and floating damage numbers; SRD dice roll behind the scenes. See the
+[combat model](docs/verse/combat-model.md).
+
+### Plans
+
+- [The Apprentice's Road](docs/verse/first-agent-quests.md): a quest line
+  from a first walk in the glade to a team of agents on your own repository.
+- [The druid demo](docs/verse/druid-demo.md): an Archdruid's full action bar
+  from SRD 5.2.1.
+- [In-world terminal](docs/verse/in-world-terminal.md): multiplexed,
+  shareable terminals on your computers, inside the world.
+- [Destructible buildings](docs/verse/destructible-buildings.md) and
+  [generated models with Blender](docs/verse/blender-pipeline.md).
+- [Networking](docs/verse/networking.md), the
+  [engine](docs/verse/engine/architecture.md) and its
+  [roadmap](docs/verse/engine/roadmap.md), and the full
+  [Verse documentation](docs/verse/README.md).
+
+Build and run it from source:
+
+```sh
+cargo run --release -p verse -- --everglade   # straight into Everglade
+scripts/build-everglade-web.sh OUT            # the browser build
+```
 
 ## Coder
 
@@ -292,7 +355,7 @@ Open Terminal-Bench runs in the Gym terminal:
 cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 ```
 
-## Trainers, XP, and Verse
+## Trainers and XP
 
 - **XP.** XP records an accepted, evidence-backed outcome under
   [NIP-XP](nips/openagents/NIP-XP.md). It can't be spent or transferred.
@@ -302,13 +365,8 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
   [trainer leveling](docs/verse/agent-trainer-leveling.md).
 - **Trainer card.** The app's Account > Trainer shows your level, XP, and
   titles.
-- **Verse.** The metaverse for people and agents, available on desktop, iOS,
-  and Android. [`crates/verse`](crates/verse/) currently implements the shared
-  plaza and local zones. See [Verse](docs/verse/README.md),
-  [zones](docs/verse/zones.md), and the [Gym building](docs/verse/gym.md).
-- **Verse Engine.** The owned Rust game engine that powers Verse. See the
-  [engine specification](docs/verse/engine/architecture.md) and
-  [delivery roadmap](docs/verse/engine/roadmap.md).
+- **In Verse.** Your level shows over your head in the Grid. See
+  [Verse](#verse).
 
 ## Repository map
 
