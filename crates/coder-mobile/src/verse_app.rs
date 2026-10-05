@@ -3954,7 +3954,11 @@ mod tests {
             "{:?}",
             scene.world.zone_snapshot(scene.aspect()).error
         );
-        assert!(scene.session.is_none());
+        // Ruins has its own shared presence world; the plaza's world stays
+        // behind the arch.
+        let session = scene.session.as_ref().expect("a Ruins presence session");
+        assert_eq!(session.world(), verse::zones::ZoneId::Ruins.world_id());
+        assert_ne!(session.world(), verse::session::WORLD);
         assert!(!scene.packet().gym_active);
         assert!(!scene.packet().computer.near);
         assert!(!scene.packet().doors.hud.visible);
