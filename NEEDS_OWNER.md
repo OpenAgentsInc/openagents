@@ -214,3 +214,18 @@ that no computer is online for the studio. To finish checking:
 2. On a phone paired with a computer that runs the studio, walk into
    Everglade, stand at the podium, tap Interact, and answer a decision;
    then merge a finished task at the merge station.
+
+## Display names over heads on real devices (#10583)
+
+#10598 adds a **Display name** field to Account on iOS and Android and
+sends the name in NIP-MV states. This box has no Xcode and no Gradle
+run of the Kotlin host, so the Swift and Kotlin glue was not compiled.
+To finish checking:
+
+1. Build both hosts (`scripts/release/testflight.sh start --validate-only`,
+   `bins/openagents-android/build.sh`).
+2. Set a name under **Account > Display name** on one phone, open the
+   Grid on a second device or run `openagents --json verse who`, and read
+   the name over the first phone's avatar.
+3. Run `openagents verse walkers 20` and check that `walker-0` to
+   `walker-19` are readable over heads at a steady frame rate.
