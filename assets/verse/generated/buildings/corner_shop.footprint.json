@@ -1,0 +1,33 @@
+{
+  "model": "corner_shop.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 11112,
+  "boxes": [
+    {
+      "name": "shop",
+      "center": [
+        0.0,
+        3.06,
+        -4.0
+      ],
+      "half_extents": [
+        3.1,
+        3.06,
+        4.1
+      ]
+    },
+    {
+      "name": "roof",
+      "center": [
+        0.0,
+        8.57,
+        -4.0
+      ],
+      "half_extents": [
+        4.1,
+        2.45,
+        4.9
+      ]
+    }
+  ]
+}

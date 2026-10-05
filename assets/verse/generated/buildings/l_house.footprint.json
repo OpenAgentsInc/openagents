@@ -1,0 +1,46 @@
+{
+  "model": "l_house.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 13660,
+  "boxes": [
+    {
+      "name": "wing",
+      "center": [
+        -2.0,
+        3.06,
+        -1.95
+      ],
+      "half_extents": [
+        2.1,
+        3.06,
+        2.05
+      ]
+    },
+    {
+      "name": "main",
+      "center": [
+        0.0,
+        3.06,
+        -7.05
+      ],
+      "half_extents": [
+        4.1,
+        3.06,
+        3.05
+      ]
+    },
+    {
+      "name": "roof",
+      "center": [
+        0.0,
+        8.57,
+        -5.2
+      ],
+      "half_extents": [
+        4.9,
+        2.45,
+        6.0
+      ]
+    }
+  ]
+}

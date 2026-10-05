@@ -1,0 +1,59 @@
+{
+  "model": "townhouse_balcony.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 12893,
+  "boxes": [
+    {
+      "name": "ground",
+      "center": [
+        0.0,
+        1.5,
+        -4.0
+      ],
+      "half_extents": [
+        4.1,
+        1.5,
+        4.1
+      ]
+    },
+    {
+      "name": "balcony",
+      "center": [
+        0.0,
+        3.55,
+        1.05
+      ],
+      "half_extents": [
+        2.1,
+        0.55,
+        0.55
+      ]
+    },
+    {
+      "name": "upper",
+      "center": [
+        0.0,
+        4.56,
+        -3.75
+      ],
+      "half_extents": [
+        4.1,
+        1.56,
+        4.35
+      ]
+    },
+    {
+      "name": "roof",
+      "center": [
+        0.0,
+        8.87,
+        -3.75
+      ],
+      "half_extents": [
+        4.2,
+        2.75,
+        5.15
+      ]
+    }
+  ]
+}

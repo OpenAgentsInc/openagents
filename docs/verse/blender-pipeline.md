@@ -118,6 +118,30 @@ pack's path (default: `~/Downloads`). The gallery (`gallery.py`) writes
 `previews/<name>.png`, one model each; and `contact_sheet.png`, the previews
 in one image.
 
+## Village buildings
+
+`scripts/blender/buildings.py` assembles whole buildings from the Medieval
+Village MegaKit's own pieces, with one function per building, and writes each
+to `assets/verse/generated/buildings/` as a glb with a
+`<name>.footprint.json` of collision boxes. `scripts/blender/building_views.py`
+renders review sheets (`views`), footprint overlays (`boxes`), close-ups
+(`look`), and an overview of a folder (`gallery`).
+`assets/verse/generated/buildings/PROVENANCE.md` lists the pieces and textures.
+None is admitted yet. `build-models.sh` rebuilds them with the other models,
+and `gallery.py` includes them, scaled to fit its grid.
+
+| Model | Triangles | What it is |
+| --- | ---: | --- |
+| `townhouse_jettied` | 13,266 | Three storeys, each jettied further over the street, front gable |
+| `townhouse_balcony` | 12,893 | Two storeys and an attic, ridge along the street, balcony, two dormers |
+| `row_townhouse` | 10,447 | Narrow three-storey row house for Brownstone Row, stone ground floor, blind party walls |
+| `library` | 17,826 | Stone hall on a plinth, tall arched windows, gabled entrance bay up steps, clock turret, reading-room bay |
+| `tavern` | 16,074 | Lantern Quarter tavern and music hall: wide jettied front, double doors, lanterns, hanging sign, dormers |
+| `market_hall` | 15,264 | Open timber arcade on stone footings under a jettied hall with twin gables |
+| `corner_shop` | 11,112 | Shop windows on two faces under striped awnings, hanging sign |
+| `l_house` | 13,660 | L-shaped house: side-gabled block with a gabled wing to the street |
+| `cottage_tower` | 7,805 | One-storey cottage with a round stone tower and cone roof |
+
 ## How an agent makes a model
 
 1. Write `scripts/blender/<name>.py` that builds the model from primitives,

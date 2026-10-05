@@ -1,0 +1,59 @@
+{
+  "model": "row_townhouse.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 10447,
+  "boxes": [
+    {
+      "name": "ground",
+      "center": [
+        0.0,
+        1.5,
+        -4.0
+      ],
+      "half_extents": [
+        2.1,
+        1.5,
+        4.1
+      ]
+    },
+    {
+      "name": "step",
+      "center": [
+        1.0,
+        0.09,
+        0.425
+      ],
+      "half_extents": [
+        0.8,
+        0.09,
+        0.325
+      ]
+    },
+    {
+      "name": "upper",
+      "center": [
+        0.0,
+        6.06,
+        -3.8
+      ],
+      "half_extents": [
+        2.1,
+        3.06,
+        4.3
+      ]
+    },
+    {
+      "name": "roof",
+      "center": [
+        0.0,
+        10.97,
+        -3.8
+      ],
+      "half_extents": [
+        2.8,
+        1.85,
+        4.3
+      ]
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "model": "library.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 17826,
+  "boxes": [
+    {
+      "name": "turret",
+      "center": [
+        0.0,
+        14.57,
+        -5.0
+      ],
+      "half_extents": [
+        1.2,
+        0.85,
+        1.2
+      ]
+    },
+    {
+      "name": "plinth",
+      "center": [
+        0.0,
+        0.3,
+        -4.0
+      ],
+      "half_extents": [
+        6.25,
+        0.3,
+        6.25
+      ]
+    },
+    {
+      "name": "steps",
+      "center": [
+        0.0,
+        0.3,
+        3.0
+      ],
+      "half_extents": [
+        1.6,
+        0.3,
+        1.0
+      ]
+    },
+    {
+      "name": "entrance",
+      "center": [
+        0.0,
+        4.16,
+        1.05
+      ],
+      "half_extents": [
+        2.1,
+        3.56,
+        1.05
+      ]
+    },
+    {
+      "name": "hall",
+      "center": [
+        0.0,
+        4.16,
+        -5.0
+      ],
+      "half_extents": [
+        6.1,
+        3.56,
+        5.1
+      ]
+    },
+    {
+      "name": "reading_bay",
+      "center": [
+        6.65,
+        2.4,
+        -4.0
+      ],
+      "half_extents": [
+        0.65,
+        1.8,
+        2.0
+      ]
+    },
+    {
+      "name": "roof",
+      "center": [
+        0.0,
+        10.72,
+        -5.0
+      ],
+      "half_extents": [
+        6.8,
+        3.0,
+        6.2
+      ]
+    }
+  ]
+}

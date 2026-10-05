@@ -1,0 +1,241 @@
+{
+  "model": "market_hall.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 15264,
+  "boxes": [
+    {
+      "name": "post",
+      "center": [
+        -6.0,
+        1.5,
+        -0.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        -4.0,
+        1.5,
+        -0.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        -2.0,
+        1.5,
+        -0.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        0.0,
+        1.5,
+        -0.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        2.0,
+        1.5,
+        -0.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        4.0,
+        1.5,
+        -0.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        6.0,
+        1.5,
+        -0.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        -6.0,
+        1.5,
+        -2.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        6.0,
+        1.5,
+        -2.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        -6.0,
+        1.5,
+        -4.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        6.0,
+        1.5,
+        -4.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        -6.0,
+        1.5,
+        -6.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        6.0,
+        1.5,
+        -6.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        -6.0,
+        1.5,
+        -8.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        6.0,
+        1.5,
+        -8.0
+      ],
+      "half_extents": [
+        0.26,
+        1.5,
+        0.26
+      ]
+    },
+    {
+      "name": "back_wall",
+      "center": [
+        0.0,
+        1.5,
+        -8.105
+      ],
+      "half_extents": [
+        6.0,
+        1.5,
+        0.205
+      ]
+    },
+    {
+      "name": "upper",
+      "center": [
+        0.0,
+        4.56,
+        -3.7
+      ],
+      "half_extents": [
+        6.1,
+        1.56,
+        4.4
+      ]
+    },
+    {
+      "name": "roof",
+      "center": [
+        0.0,
+        8.57,
+        -3.65
+      ],
+      "half_extents": [
+        7.1,
+        2.45,
+        5.25
+      ]
+    }
+  ]
+}
