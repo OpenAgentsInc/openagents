@@ -12,8 +12,12 @@ writes a lighter copy to `assets/verse/everglade/lod/<set>.<name>.gltf` and
 
 - `building` and `piece`: welds the model's parts, drops loose parts too small
   to see from the switch distance (nails, hinges, latches, and thin trim),
-  dissolves nearly flat faces within each texture island, collapses the
-  rest to the recipe's share of the source triangles, and shades by angle.
+  rebuilds each slope of bumpy round tiles as one closed slab with the
+  tiles' material and image coordinates, dissolves nearly flat faces within
+  each texture island, and shades by angle. A `building` then collapses
+  toward the recipe's share of the source triangles while every vertex on
+  an open edge stays put, so no wall or roof tears open; a `piece` keeps
+  its shape.
 - `tree`: collapses the bark, and thins the leaf cards: it keeps the
   recipe's share of the cards, chosen by a fixed seed, and grows each one
   about its center so the canopy keeps its cover.
@@ -46,10 +50,11 @@ OUT = os.path.join(EVERGLADE, "lod")
 
 # Model: (kind, share of the source's triangles, smallest part kept in m).
 BUILDING = 0.15
+PIECE = 0.5
 RECIPES = {
     # Generated buildings and landmarks.
     **{
-        f"generated/{name}": ("building", BUILDING, 0.35)
+        f"generated/{name}": ("building", BUILDING, 0.2)
         for name in [
             "townhouse_jettied",
             "townhouse_balcony",
@@ -81,27 +86,25 @@ RECIPES = {
             "market_stall_gold",
         ]
     },
-    "generated/roof_round_tiles_8x10": ("piece", 0.12, 0.2),
-    # The village kit's pieces that kit-built houses repeat.
+    "generated/roof_round_tiles_8x10": ("piece", PIECE, 0.6),
+    # The village kit's pieces that kit-built houses repeat: tiles as
+    # slabs, the rest collapsed toward half, holding every open edge. The
+    # plain plaster walls have none: at under 140 triangles, a far level
+    # would save a frame little and cost the merged geometry as much.
     **{
-        f"village/{name}": ("piece", share, 0.2)
-        for name, share in [
-            ("Wall_Plaster_WoodGrid", 0.3),
-            ("Window_Wide_Flat1", 0.25),
-            ("Window_Wide_Round1", 0.2),
-            ("Roof_Front_Brick8", 0.25),
-            ("Roof_RoundTiles_8x10", 0.08),
-            ("Wall_Plaster_Straight", 0.35),
-            ("Wall_Plaster_Window_Wide_Flat", 0.4),
-            ("Wall_Plaster_Window_Wide_Round", 0.35),
-            ("Wall_Plaster_Door_Round", 0.35),
-            ("Wall_Plaster_Straight_Base", 0.4),
-            ("DoorFrame_Round_WoodDark", 0.2),
-            ("Door_4_Round", 0.15),
-            ("Prop_Chimney", 0.2),
-            ("Prop_Wagon", 0.2),
-            ("Prop_MetalFence_Simple", 0.15),
-            ("Prop_MetalFence_Ornament", 0.15),
+        f"village/{name}": ("piece", PIECE, 0.2)
+        for name in [
+            "Wall_Plaster_WoodGrid",
+            "Window_Wide_Flat1",
+            "Window_Wide_Round1",
+            "Roof_Front_Brick8",
+            "Roof_RoundTiles_8x10",
+            "DoorFrame_Round_WoodDark",
+            "Door_4_Round",
+            "Prop_Chimney",
+            "Prop_Wagon",
+            "Prop_MetalFence_Simple",
+            "Prop_MetalFence_Ornament",
         ]
     },
     # The nature kit's trees and bushes: bark share, leaf cards kept.
@@ -116,6 +119,18 @@ RECIPES = {
             "CommonTree_5",
             "Bush_Common",
             "Bush_Common_Flowers",
+        ]
+    },
+    # The foliage set's trees (`foliage.py`), whose dark crown cores count
+    # as bark: collapsed rather than thinned.
+    **{
+        f"foliage/{name}": ("tree", 0.45, 0.4)
+        for name in [
+            "oak_forked",
+            "beech_tall",
+            "linden_broad",
+            "willow_weeping",
+            "oak_old",
         ]
     },
 }
@@ -224,16 +239,209 @@ def collapse(o, target):
     kit.apply_modifiers(o)
 
 
+def is_tiles(name):
+    """Whether a material is a roof's round tiles."""
+    return "Tiles" in name
+
+
+def smoothed_normals(faces, reach=1.4):
+    """Each face's area-weighted normal over the faces within `reach` m of
+    it, so a slope of bumpy round tiles reads as one plane."""
+    grid = {}
+    for f in faces:
+        c = f.calc_center_median()
+        grid.setdefault(tuple(int(math.floor(x / reach)) for x in c), []).append(f)
+    out = {}
+    for f in faces:
+        c = f.calc_center_median()
+        k = tuple(int(math.floor(x / reach)) for x in c)
+        n = Vector()
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for g in grid.get((k[0] + dx, k[1] + dy, k[2] + dz), ()):
+                        if (g.calc_center_median() - c).length <= reach:
+                            n += g.normal * g.calc_area()
+        out[f] = n.normalized() if n.length > 1e-9 else f.normal.copy()
+    return out
+
+
+def slopes(faces, normals, reach=0.8, angle=30.0):
+    """Regions of tile faces whose centers lie within `reach` m of each
+    other and whose smoothed normals agree within `angle` degrees."""
+    grid = {}
+    centers = {f: f.calc_center_median() for f in faces}
+    for f in faces:
+        grid.setdefault(tuple(int(math.floor(x / reach)) for x in centers[f]), []).append(f)
+    limit = math.cos(math.radians(angle))
+    left, regions = set(faces), []
+    while left:
+        seed = left.pop()
+        region, stack = [seed], [seed]
+        while stack:
+            f = stack.pop()
+            c = centers[f]
+            k = tuple(int(math.floor(x / reach)) for x in c)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for dz in (-1, 0, 1):
+                        for g in grid.get((k[0] + dx, k[1] + dy, k[2] + dz), ()):
+                            if (
+                                g in left
+                                and (centers[g] - c).length <= reach
+                                and normals[g].dot(normals[seed]) >= limit
+                            ):
+                                left.remove(g)
+                                region.append(g)
+                                stack.append(g)
+        regions.append(region)
+    return regions
+
+
+def uv_fit(bm, faces, uv_layer, basis, origin):
+    """The affine map from a slope's plane coordinates to its tiles' UVs,
+    fitted over every corner, or None when the tiles don't share one map."""
+    import numpy as np
+
+    rows, us, vs = [], [], []
+    u_axis, v_axis = basis
+    for f in faces:
+        for loop in f.loops:
+            d = loop.vert.co - origin
+            rows.append((d.dot(u_axis), d.dot(v_axis), 1.0))
+            uv = loop[uv_layer].uv
+            us.append(uv.x)
+            vs.append(uv.y)
+    if len(rows) < 6:
+        return None
+    a = np.array(rows)
+    cu, ru, *_ = np.linalg.lstsq(a, np.array(us), rcond=None)
+    cv, rv, *_ = np.linalg.lstsq(a, np.array(vs), rcond=None)
+    err = math.sqrt(((a @ cu - us) ** 2).mean() + ((a @ cv - vs) ** 2).mean())
+    # A fit that misses by more than a tile's width means each tile has
+    # its own copy of the image.
+    return (cu, cv) if err < 0.08 else None
+
+
+def slabs(bm, uv_layer, materials):
+    """Replaces every roof's round tiles with closed slabs: one convex hull
+    per slope of tiles, its facets merged into planes, with the tiles'
+    material and their UV map, so a far roof has no holes and keeps its
+    color and pattern."""
+    faces = [f for f in bm.faces if is_tiles(materials[f.material_index])]
+    if not faces:
+        return 0
+    normals = smoothed_normals(faces)
+    made, replaced = 0, []
+    for region in slopes(faces, normals):
+        verts = {v for f in region for v in f.verts}
+        # A slope of a few large faces, such as a generated cone roof, is
+        # already simple; only the kit's bumpy tile rows become slabs.
+        if len(region) < 12:
+            continue
+        n = Vector()
+        for f in region:
+            n += normals[f] * f.calc_area()
+        n = n.normalized() if n.length > 1e-9 else Vector((0, 0, 1))
+        u_axis = n.cross(Vector((0, 0, 1)))
+        if u_axis.length < 1e-3:
+            u_axis = Vector((1, 0, 0))
+        u_axis.normalize()
+        v_axis = n.cross(u_axis).normalized()
+        origin = sum((v.co for v in verts), Vector()) / len(verts)
+        fit = uv_fit(bm, region, uv_layer, (u_axis, v_axis), origin)
+        if fit is None:
+            # Each tile carries its own copy: keep the image's scale, about
+            # one repeat per 2 m.
+            fit = ((1 / 2.0, 0.0, 0.5), (0.0, 1 / 2.0, 0.5))
+        material = region[0].material_index
+        temp = bmesh.new()
+        for v in verts:
+            temp.verts.new(v.co)
+        bmesh.ops.convex_hull(temp, input=temp.verts)
+        # The hull's many facets over the tiles' bumps merge into a few
+        # planes.
+        bmesh.ops.dissolve_limit(
+            temp, angle_limit=math.radians(10.0), verts=temp.verts, edges=temp.edges
+        )
+        new_faces = []
+        for f in temp.faces:
+            corners = [bm.verts.new(v.co) for v in f.verts]
+            try:
+                nf = bm.faces.new(corners)
+            except ValueError:
+                continue
+            nf.material_index = material
+            nf.smooth = False
+            for loop in nf.loops:
+                d = loop.vert.co - origin
+                pu, pv = d.dot(u_axis), d.dot(v_axis)
+                cu, cv = fit
+                loop[uv_layer].uv = (cu[0] * pu + cu[1] * pv + cu[2], cv[0] * pu + cv[1] * pv + cv[2])
+            new_faces.append(nf)
+        temp.free()
+        if new_faces:
+            made += len(new_faces)
+            replaced.extend(region)
+    bmesh.ops.delete(bm, geom=replaced, context="FACES")
+    return made
+
+
+def seams(bm, uv_layer):
+    """The vertices on an open edge or where the material or the image
+    coordinates change: the ones a collapse would pull apart."""
+    keep = set()
+    for e in bm.edges:
+        faces = e.link_faces
+        if len(faces) != 2:
+            keep.update(e.verts)
+    return keep
+
+
+def collapse_inside(o, target, keep):
+    """Collapses `o` toward `target` triangles, holding the vertices in
+    `keep` (by index) so pieces don't part at their seams."""
+    now = triangles([o])
+    if now <= target or now == 0:
+        return
+    group = o.vertex_groups.new(name="keep")
+    group.add(sorted(keep), 1.0, "REPLACE")
+    mod = o.modifiers.new("Decimate", "DECIMATE")
+    mod.decimate_type = "COLLAPSE"
+    mod.ratio = max(0.01, target / now)
+    mod.use_collapse_triangulate = True
+    mod.vertex_group = "keep"
+    mod.invert_vertex_group = True
+    mod.vertex_group_factor = 1000.0
+    kit.apply_modifiers(o)
+    if o.vertex_groups.get("keep"):
+        o.vertex_groups.remove(o.vertex_groups["keep"])
+
+
 def simplify(objs, share, smallest):
-    """The `building` and `piece` recipe."""
+    """The `building` and `piece` recipe: faithful and watertight. Round
+    tiles become closed slabs; small loose parts go; nearly flat faces
+    dissolve within each texture island; the rest collapses toward `share`
+    of the source's triangles, holding every seam, so no wall or roof
+    tears open."""
     source = triangles(objs)
     o = kit.join("lod", objs) if len(objs) > 1 else objs[0]
     clear_normals(o)
+    materials = [m.name if m else "" for m in o.data.materials]
     bm = bmesh.new()
     bm.from_mesh(o.data)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
-    small = [f for group in islands(bm, list(bm.faces)) if extent(group)[0] < smallest for f in group]
+    uv_layer = bm.loops.layers.uv.active
+    tiles = {f for f in bm.faces if is_tiles(materials[f.material_index])}
+    small = [
+        f
+        for group in islands(bm, [f for f in bm.faces if f not in tiles])
+        if extent(group)[0] < smallest
+        for f in group
+    ]
     bmesh.ops.delete(bm, geom=small, context="FACES")
+    if uv_layer is not None:
+        slabs(bm, uv_layer, materials)
     bmesh.ops.dissolve_limit(
         bm,
         angle_limit=math.radians(4.0),
@@ -243,9 +451,16 @@ def simplify(objs, share, smallest):
         delimit={"UV", "MATERIAL"},
     )
     bmesh.ops.triangulate(bm, faces=bm.faces)
+    bm.verts.index_update()
+    keep = {v.index for v in seams(bm, bm.loops.layers.uv.active)}
+    # Thatch is a few stacked slabs: collapsing them folds the roof.
+    keep |= {
+        v.index for f in bm.faces if "Thatch" in materials[f.material_index] for v in f.verts
+    }
     bm.to_mesh(o.data)
     bm.free()
-    collapse(o, int(source * share))
+    if share < 1.0:
+        collapse_inside(o, int(source * share), keep)
     shade(o, 40.0)
     return source
 
@@ -261,6 +476,9 @@ def thin(objs, share, keep):
     rng = random.Random(SEED)
     for part in kit.meshes():
         names = [m.name for m in part.data.materials if m]
+        if any(n.startswith("Core") for n in names):
+            # A crown's dark cores are already a few faces each.
+            continue
         if any(n.startswith("Bark") for n in names):
             clear_normals(part)
             bm = bmesh.new()
@@ -390,7 +608,8 @@ def write_manifest():
                 + (
                     f"bark collapsed to {share:.0%}, {extra:.0%} of the leaf cards kept and grown"
                     if kind == "tree"
-                    else f"parts under {extra} m dropped, flat faces dissolved, collapsed to {share:.0%}"
+                    else f"parts under {extra} m dropped, round tiles rebuilt as closed slabs, flat faces dissolved"
+                    + (f", collapsed toward {share:.0%} holding open edges" if share < 1.0 else "")
                 )
             )
             transforms[name + ext] = how

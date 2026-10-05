@@ -90,7 +90,7 @@ const STEPS: f32 = u16::MAX as f32;
 const MAX_NAME_BYTES: usize = 96;
 const MAX_TEXTURES: usize = 64;
 const MAX_MATERIALS: usize = 512;
-const MAX_MODELS: usize = 256;
+const MAX_MODELS: usize = 384;
 const MAX_PRIMITIVES: usize = 16;
 /// Most joints in a character; joint indices are bytes.
 pub const MAX_JOINTS: usize = 256;
@@ -134,9 +134,13 @@ impl Limits {
         pack_bytes: 12 * 1024 * 1024,
         decoded_texture_bytes: 48 * 1024 * 1024,
         texture_edge: 1024,
-        triangles: 480_000,
+        // 480,000 before the foliage set and the faithful far levels.
+        triangles: 540_000,
         model_triangles: 20_000,
-        committed_bytes: 36_000_000,
+        // 36 MB before the foliage set's 1 MB of sources and the
+        // watertight far levels, which keep 40 percent of a building's
+        // triangles rather than 15.
+        committed_bytes: 42_000_000,
         character_triangles: 40_000,
         body_bytes: 48 * 1024 * 1024,
     };

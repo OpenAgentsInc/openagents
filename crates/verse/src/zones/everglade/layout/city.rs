@@ -819,7 +819,7 @@ fn market(out: &mut Vec<Placement>) {
     for (i, x) in [-80.0_f32, -48.0, 48.0, 80.0].into_iter().enumerate() {
         tree(
             out,
-            "nature/CommonTree_5",
+            super::foliage::PARK_TREES[i % 2],
             [x, 42.0],
             noise(i as u32, 92) * TAU,
             0.7,
@@ -991,8 +991,14 @@ fn fernhollow(out: &mut Vec<Placement>) {
         .into_iter()
         .enumerate()
     {
-        let model = ["nature/Pine_1", "nature/Pine_2"][i % 2];
-        tree(out, model, at, noise(i as u32, 95) * TAU, 1.0);
+        let scale = [1.0, 1.15][i % 2];
+        tree(
+            out,
+            super::foliage::FIR.0,
+            at,
+            noise(i as u32, 95) * TAU,
+            scale,
+        );
     }
     for (i, at) in [[86.0, 72.0], [94.0, 81.0], [96.0, 71.0], [82.0, 80.0]]
         .into_iter()
@@ -1042,13 +1048,13 @@ fn woods(out: &mut Vec<Placement>) {
     // Dark spruces and pale birches among the kit's pines: Walden's own
     // trees, cheaper than the kit's, so the woods stand thicker.
     let models = [
-        "nature/Pine_1",
+        super::foliage::FIR.0,
         "generated/spruce_low",
         "generated/birch_low",
-        "nature/CommonTree_4",
+        super::foliage::PARK_TREES[0],
         "generated/spruce_low",
         "generated/birch_low",
-        "nature/Pine_2",
+        super::foliage::FIR.0,
         "generated/spruce_low",
     ];
     let mut placed = 0;

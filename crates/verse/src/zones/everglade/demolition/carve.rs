@@ -42,8 +42,9 @@ pub const COLUMN: f32 = 0.25;
 pub const FINE: [(&str, f32, f32); 1] = [("generated/concrete_tower", 2.1, 2.5)];
 
 /// Models that stay as placed: the ground and its paving, plants, rocks,
-/// water, and the walkways over the water.
-const KEEP: [&str; 21] = [
+/// and water. The footbridge, the jetties, and the rowboats break like the
+/// other props.
+const KEEP: [&str; 19] = [
     "nature/",
     "village/Floor_",
     "village/Prop_ExteriorBorder",
@@ -63,8 +64,6 @@ const KEEP: [&str; 21] = [
     "generated/mossy_rock",
     "generated/stump",
     "generated/fallen_log",
-    "generated/footbridge",
-    "generated/dock",
 ];
 
 /// Whether a placement of `model` outside a kit building is carved.
@@ -74,7 +73,6 @@ pub fn carvable(model: &str) -> bool {
         || model.starts_with("props/")
         || model.starts_with("village/"))
         && !KEEP.iter().any(|prefix| model.starts_with(prefix))
-        && model != "generated/rowboat"
 }
 
 /// Which of `placements` are carved: every carvable model that is not a
@@ -456,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn the_ground_plants_and_walkways_are_never_carved() {
+    fn the_ground_and_plants_are_never_carved_but_walkways_are() {
         assert!(carvable("generated/library"));
         assert!(carvable("generated/bandshell"));
         assert!(carvable("props/Workbench"));
@@ -464,6 +462,9 @@ mod tests {
         assert!(!carvable("nature/CommonTree_1"));
         assert!(!carvable("village/Floor_Brick"));
         assert!(!carvable("generated/oak_low"));
-        assert!(!carvable("generated/footbridge"));
+        assert!(carvable("generated/footbridge"));
+        assert!(carvable("generated/dock"));
+        assert!(carvable("generated/rowboat"));
+        assert!(!carvable("foliage/oak_forked"));
     }
 }

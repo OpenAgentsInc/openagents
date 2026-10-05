@@ -23,6 +23,7 @@ use verse_world::social::everglade::DESK_SEATS;
 
 pub mod city;
 pub mod details;
+pub mod foliage;
 pub mod generated;
 pub mod greens;
 pub mod parks;
@@ -302,25 +303,10 @@ pub fn bridge_steps() -> Vec<(Footprint, f32)> {
 }
 
 /// Each pond's blockers: a cross of two boxes inside its water, so the
-/// player stops at the bank; and the stream's, a box every meter or two of
-/// its course, but for under the footbridge.
+/// player stops at the bank. Glade Run is shallow: a walker wades across it
+/// anywhere, or crosses on the footbridge.
 #[must_use]
 pub fn pond_blockers() -> Vec<Footprint> {
-    let ([bx, bz], _) = BRIDGE;
-    let stream = STREAM.windows(2).flat_map(move |w| {
-        let (a, b) = (w[0], w[1]);
-        let length = (b[0] - a[0]).hypot(b[1] - a[1]);
-        let pieces = (length / 1.5).ceil() as usize;
-        (0..pieces).filter_map(move |k| {
-            let t = (k as f32 + 0.5) / pieces as f32;
-            let (x, z) = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
-            let r = 0.75 * STREAM_HALF;
-            ((x - bx).hypot(z - bz) > 3.0).then_some(Footprint {
-                min: [x - r, z - r],
-                max: [x + r, z + r],
-            })
-        })
-    });
     PONDS
         .iter()
         .flat_map(|&([x, z], r)| {
@@ -336,7 +322,6 @@ pub fn pond_blockers() -> Vec<Footprint> {
                 },
             ]
         })
-        .chain(stream)
         .collect()
 }
 
@@ -1247,8 +1232,8 @@ fn commons(out: &mut Vec<Placement>) {
         };
         dress(out, model, at, noise(i as u32, 43) * TAU, 1.0);
     }
-    tree(out, "nature/CommonTree_4", [-6.0, 41.0], 0.4, 1.0);
-    tree(out, "nature/CommonTree_3", [22.0, 38.0], 2.2, 0.9);
+    tree(out, foliage::PARK_TREES[1], [-6.0, 41.0], 0.4, 1.0);
+    tree(out, foliage::PARK_TREES[0], [22.0, 38.0], 2.2, 0.9);
 }
 
 /// Main Street: four shops on its north side (a bakery, a café, a bookshop,
@@ -1517,14 +1502,14 @@ fn woods(out: &mut Vec<Placement>) {
         Some([CABINS[1].0[0] + 2.0, CABINS[1].0[1] - 2.5]),
     );
     for (i, (model, at, scale)) in [
-        ("nature/Pine_1", [-31.0, -48.0], 1.1),
-        ("nature/Pine_2", [-38.0, -51.0], 1.0),
-        ("nature/CommonTree_4", [-53.0, -33.0], 1.1),
-        ("nature/Pine_1", [-14.0, -53.0], 1.0),
-        ("nature/CommonTree_1", [-31.0, -58.0], 1.0),
-        ("nature/Pine_2", [-50.0, -48.0], 1.2),
-        ("nature/CommonTree_5", [-12.0, -61.0], 1.1),
-        ("nature/Pine_1", [-29.0, -29.0], 0.9),
+        (foliage::FIR.0, [-31.0, -48.0], 1.1),
+        (foliage::FIR.0, [-38.0, -51.0], 1.2),
+        (foliage::PARK_TREES[1], [-53.0, -33.0], 1.1),
+        (foliage::FIR.0, [-14.0, -53.0], 1.0),
+        (foliage::PARK_TREES[0], [-31.0, -58.0], 1.0),
+        (foliage::FIR.0, [-50.0, -48.0], 1.3),
+        (foliage::PARK_TREES[2], [-12.0, -61.0], 1.1),
+        (foliage::FIR.0, [-29.0, -29.0], 0.9),
     ]
     .into_iter()
     .enumerate()

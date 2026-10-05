@@ -28,10 +28,8 @@ pub fn build(pack: &ZonePack, placements: &[Placement]) -> Result<Solids, String
     for (footprint, top) in layout::city::kit_blocks() {
         solids.add_block(footprint, top);
     }
-    // The footbridge's deck, plank by plank, low enough to step onto.
-    for (footprint, top) in layout::bridge_steps() {
-        solids.add_block(footprint, top);
-    }
+    // The footbridge is carved: its deck's own columns carry a walker over
+    // Glade Run, and they go when it breaks.
     Ok(solids)
 }
 

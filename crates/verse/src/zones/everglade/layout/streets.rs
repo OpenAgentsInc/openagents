@@ -85,6 +85,8 @@ pub fn build(out: &mut Vec<Placement>) {
     super::details::build(out, &mut placed);
     super::greens::build(out, &mut placed);
     woods(out);
+    // The fifth round's foliage, round everything else.
+    super::foliage::build(out, &placed);
 }
 
 /// Places `model` at `at` when the ground is clear for `r` meters and no
@@ -408,7 +410,7 @@ fn woods(out: &mut Vec<Placement>) {
         };
         out.push(
             Placement::new(model, [x, z], noise(n, 143) * TAU, Collision::Core(0.35))
-                .scale(0.9 + 0.6 * noise(n, 144))
+                .scale(1.1 + 0.7 * noise(n, 144))
                 .lift(-0.1),
         );
     }

@@ -148,6 +148,14 @@ impl Everglade {
         for [x, y, z] in layout::details::chimneys() {
             smoke.start("chimney_smoke", crate::fx::Spawn::at(Vec3::new(x, y, z)));
         }
+        // And over each campfire in the woods.
+        for p in placements.iter().filter(|p| p.model == "foliage/campfire") {
+            let [x, z] = p.at;
+            smoke.start(
+                "chimney_smoke",
+                crate::fx::Spawn::at(Vec3::new(x, height(x, z) + 0.5, z)),
+            );
+        }
         let drifts = placements.iter().filter(|p| {
             matches!(
                 p.model,

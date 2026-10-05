@@ -128,19 +128,20 @@ Admission follows the Fantasy Props precedent:
   redirects, exact length and digest, bounded decoding, and the
   content-addressed disk cache. Committed files are the pack and the curated
   sources, not the full kits.
-- Budgets: at most 36 MB committed for sources and pack together, a pack of
+- Budgets: at most 42 MB committed for sources and pack together, a pack of
   at most 12 MiB, and at most 48 MiB of decoded textures (56 MB, 28 MiB,
   and 64 MiB before the third round shrank the pack from 28.0 MB to 8.5 MB
-  and the committed total from 53.3 MB to 28.1 MB), and at most 480,000
-  triangles in the pack's models with at most 20,000 in any one (420,000
-  before the far levels of detail). The city may place at most 1,250,000
-  triangles where they draw, each cell at its level of detail from
-  anywhere in the clearing (`everglade_pack::PLACED_TRIANGLE_BUDGET`), and a
-  street-level frame may draw at most 600,000
-  (`everglade_pack::DRAWN_TRIANGLE_BUDGET`); every level together, which
-  the renderer merges and uploads, stays under 2,350,000
-  (`everglade_pack::MERGED_TRIANGLE_BUDGET`) and its 160 MiB geometry
-  bound.
+  and the committed total from 53.3 MB to 28.1 MB; 36 MB before the
+  foliage round), and at most 540,000 triangles in the pack's models with
+  at most 20,000 in any one (480,000 before the foliage round). The city
+  may place at most 1,650,000 triangles where they draw, each cell at its
+  level of detail from anywhere in the clearing
+  (`everglade_pack::PLACED_TRIANGLE_BUDGET`; 1,250,000 before the far
+  levels' switch moved from 60 m to 80 m), and a street-level frame may
+  draw at most 600,000 (`everglade_pack::DRAWN_TRIANGLE_BUDGET`); every
+  level together, which the renderer merges and uploads, stays under
+  2,900,000 (`everglade_pack::MERGED_TRIANGLE_BUDGET`, 2,600,000 before the
+  foliage round), about 209 MiB of the renderer's 224 MiB geometry bound.
 
 ## Rendering
 
@@ -163,13 +164,16 @@ The zone renderer gains textured static meshes:
 - The heaviest models have a far level of detail
   ([`detail`](../../crates/verse/src/zones/everglade/detail.rs)): the
   generated buildings and landmarks, the kit pieces that kit-built houses
-  repeat, and the nature kit's trees and bushes. `scripts/blender/everglade_lod.py`
-  makes each from the admitted model, at 8 to 45 percent of its triangles
+  repeat, and the nature kit's and the foliage set's trees and bushes.
+  `scripts/blender/everglade_lod.py` makes each from the admitted model
   ([Generated models with Blender](blender-pipeline.md#levels-of-detail)),
-  and the pack carries it as `lod/<set>.<name>`. A cell draws a model while
-  it is nearer than 60 m across the ground and its far level beyond, and
-  grass, flowers, mushrooms, stepping stones, and the station furniture
-  only nearer than 52 m. Each level merges into cells of its own, and the
+  watertight since the foliage round: a roof's round tiles become closed
+  slabs in their own texture, and nothing tears open; the pack carries it as
+  `lod/<set>.<name>`. A cell draws a model while it is nearer than 80 m
+  across the ground and its far level beyond (60 m before the foliage
+  round), grass, flowers, mushrooms, stepping stones, and the station
+  furniture only nearer than 52 m, and shrubs, deadwood, hedges, and ivy
+  only nearer than 72 m. Each level merges into cells of its own, and the
   renderer keeps a cell at its level until the eye moves 2.5 m past the
   switch, so a cell at the switch doesn't flicker; shadows and the depth
   prepass draw the same levels. The light bake skips the far levels as
@@ -247,7 +251,9 @@ and a forest belt of low-poly stands beyond it. Main Street, Market Way,
 Library Way, Hearth Road, Brownstone Row, the commons walk, and the
 Fountain Plaza are cobbled (`layout::PAVED`); the lanes are dirt. Glade Run
 leaves Reed Pond and runs south through the long meadow, under Brownstone
-Row's footbridge, into Walden Woods.
+Row's footbridge, into Walden Woods. The run is shallow: a walker wades
+across it anywhere or crosses the footbridge's deck, which, with the
+jetties and the rowboats, breaks like the other props.
 
 The city's buildings are a table in `layout::city`. Most are the workshop's
 own kit pieces, one to three stories under round-tile roofs, painted in
@@ -311,6 +317,29 @@ thickened Fernhollow's glen round the Fern Pond with ferns, broad-leaved
 plants, mossy rocks, and toadstools. Each piece stands only on open
 ground: off every road, walk, building, pond, and station.
 
+The fifth round (`layout::foliage`) fills the town with foliage from the
+`foliage` set (`scripts/blender/foliage.py`,
+[Generated models with Blender](blender-pipeline.md#foliage)). Wild woods
+ring the town, thickest in Walden Woods and Fernhollow: stands of forked,
+tall, and broad broadleaf trees, gnarled oaks, firs, and snags, some with
+roots spread at their feet, over shrubs and brambles, ferns, tall grass,
+and wildflowers, with hollow and broken logs, stumps, root arches, boulders,
+and, past the tree ring, cliff rocks; some stands are glades with a fairy
+ring, and the forest belt's cheap trees fill in round them. A campfire
+with log seats burns in a Walden clearing, with smoke; a circle of standing
+stones stands in the north woods; Glade Run spills over a weir of stones
+in a low cascade; and willows lean over the ponds. In the town, the
+commons' and the streets' trees are the new broadleafs, at a fifth of the
+kit trees' triangles; trees, shrubs, and flowers grow in the yards,
+alleys, and courtyards between the buildings; tall grass, wildflowers, and
+ferns overgrow the roads' verges; ivy climbs about one ground-floor wall in
+six, roses climb a few trellises, and window boxes hang under a third of
+the windows, each where its wall piece stands, so they break with it; ivy
+covers the dry-stone walls and picket fences; hedges with gaps and arched
+gateways line some lanes; and planters line the paved streets. Trunks,
+rocks, logs, stumps, hedges, and planters block walking; shrubs, ferns,
+grass, roots, and ivy don't. None of it breaks but the wall dressing.
+
 The town has ambient wildlife
 ([`wildlife`](../../crates/verse/src/zones/everglade/wildlife.rs)): pairs of
 songbirds circling over the commons, Main Street, Walden Woods, and
@@ -335,8 +364,8 @@ farther than 60 m from the player is neither posed nor drawn.
 | Stoop Lane | Ten homes and townhouses, four of them generated, with lanterns, flower boxes, and little gardens, the cottage, a well | Stoop Lane, Hearth Road |
 | Lantern Quarter | The generated Music Hall, meeting hall, tavern, and guild hall, the choir house, the pubs, an L-shaped house, bunting, paper lanterns across Lantern Road, two-armed lamps, a well; Well Square with its two hipped houses, well, and benches | Hearth Road, Lantern Road |
 | Brownstone Row | Four two-story brownstones with stoops, two terraces of generated row houses, six row houses, the community garden behind its picket fence with the glasshouse, the footbridge over Glade Run | Brownstone Row |
-| Walden Woods | The writing and code cabins, the generated cottage with its tower, the woodcutter's thatched cottage, the prototype shed, the Thinking Pond and its jetty, stands of pines, spruces, and birches over ferns, mossy rocks, fallen logs, stumps, and toadstools | The woods paths, Lantern Road |
-| Fernhollow | The lookout tower and the log cabin by the Fern Pond, spruces, birches, and pines over ferns, mossy rocks, and toadstools | The Fernhollow path |
+| Walden Woods | The writing and code cabins, the generated cottage with its tower, the woodcutter's thatched cottage, the prototype shed, the Thinking Pond and its jetty, stands of firs, broadleafs, spruces, and birches over ferns, shrubs, brambles, mossy rocks, fallen logs, stumps, and toadstools | The woods paths, Lantern Road |
+| Fernhollow | The lookout tower and the log cabin by the Fern Pond, firs, broadleafs, spruces, and birches over ferns, shrubs, mossy rocks, and toadstools | The Fernhollow path |
 | Gardens and orchards | Fenced beds, an orchard of fruit trees behind a dry-stone wall with a gate, the beekeeper's hut and hives | The orchard lane |
 | The farm | The generated windmill, thatched farmhouse, and gambrel barn with bales and a cart in its yard, a rail-fenced paddock with a haystack and bales, vegetable beds | The farm lane, south from Brownstone Row |
 

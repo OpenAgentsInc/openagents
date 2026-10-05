@@ -1,0 +1,10 @@
+Everglade foliage
+
+Models OpenAgents built from primitives with scripts/blender/foliage.py, in
+the style of the Stylized Nature MegaKit by Quaternius
+(https://quaternius.com), sampling only that kit's admitted images.
+
+License:
+CC0 1.0 Universal (CC0 1.0)
+Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/

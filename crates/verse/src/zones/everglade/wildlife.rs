@@ -238,7 +238,12 @@ pub fn creatures(pack: &ZonePack, placements: &[Placement]) -> Vec<Creature> {
     // each crown in turn.
     let crowns: Vec<Vec3> = placements
         .iter()
-        .filter(|p| p.model.starts_with("nature/CommonTree") && p.at[1] > 0.0 && p.at[1] < 44.0)
+        .filter(|p| {
+            (p.model.starts_with("nature/CommonTree")
+                || super::layout::foliage::PARK_TREES.contains(&p.model))
+                && p.at[1] > 0.0
+                && p.at[1] < 44.0
+        })
         .filter(|p| p.at[0].abs() < 34.0)
         .take(5)
         .map(|p| top(p) - Vec3::Y * 0.6)

@@ -234,23 +234,56 @@ concern.
 ### Levels of detail
 
 `everglade_lod.py` makes the far levels of detail Everglade draws beyond
-60 m ([Everglade](everglade.md#rendering)). It reads each model in its
+80 m ([Everglade](everglade.md#rendering)). It reads each model in its
 `RECIPES` from the admitted glTF and writes a lighter copy to
 `assets/verse/everglade/lod/<set>.<name>.gltf`, with the source's own
 materials and images:
 
 - Buildings, landmarks, and kit pieces: welds the parts, drops loose parts
-  too small to see at 60 m, dissolves nearly flat faces within each texture
-  island, collapses the rest to 15 percent of the triangles for a generated
-  building and 8 to 40 percent for a kit piece, and shades by angle.
+  under 0.2 m, rebuilds each slope of round tiles as one closed slab (the
+  convex hull of the slope's tiles, its facets merged into planes, mapped
+  with the tiles' own image coordinates), and dissolves nearly flat faces
+  within each texture island. A generated building then collapses toward
+  15 percent of its triangles and a kit piece toward half, while every
+  vertex on an open edge stays put; thatch stays whole. The far levels keep
+  about 40 percent of a building, with whole roofs and walls, chimneys, and
+  gables. The first far levels collapsed freely to 8 to 40 percent and
+  dropped parts under 0.35 m, roof tiles among them, which tore holes in
+  roofs and walls.
 - Trees and bushes: drops twigs, collapses the bark to 45 percent, and
-  keeps half of the leaf cards, each grown about its center so the canopy
-  keeps its cover.
+  keeps half of the leaf cards (two fifths of the foliage set's), each
+  grown about its center so the canopy keeps its cover; a crown's dark
+  cores stay as they are.
 
-The 53 far levels hold 45,981 triangles. To rebuild them, run:
+The plain plaster wall pieces have no far level: at under 140 triangles,
+one would save a frame little and cost the merged geometry as much. To
+rebuild them, run:
 
 ```sh
 $B -b --factory-startup --python scripts/blender/everglade_lod.py [-- MODEL...]
+```
+
+## Foliage
+
+`foliage.py` builds Everglade's foliage set in Reference mode: 34 models
+from primitives in the Stylized Nature MegaKit's look, sampling only that
+kit's admitted images (bark, the broadleaf cluster, the leaf atlas, the fir
+branch, flowers, grass, and rocks). Canopies are clumps of alpha-masked leaf
+cards whose normals point out of the whole crown, over a dark core; trunks
+are tapered, smooth-shaded tubes with root flares. The set holds five
+broadleaf trees (forked, tall, broad, weeping, and gnarled), a fir, a
+snag, roots, stumps, logs, shrubs, a bramble, ferns, tall grass,
+wildflowers, a mushroom ring, ivy, climbing roses, hedges with a gateway,
+planters, window boxes, standing stones, cliff rocks, boulders, a campfire,
+and a cascade, 56 to 1,006 triangles each
+(`assets/verse/generated/foliage/PROVENANCE.md`).
+`foliage_admit.py` writes them into the pack's `foliage` set, pointing each
+image at the nature set's file, and `foliage_views.py` renders any admitted
+model beside a 1.8 m figure. To rebuild them, run:
+
+```sh
+$B -b --factory-startup --python scripts/blender/foliage.py
+python3 scripts/blender/foliage_admit.py
 ```
 
 ## How an agent makes a model

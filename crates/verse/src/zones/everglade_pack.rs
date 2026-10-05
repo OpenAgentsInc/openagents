@@ -33,20 +33,24 @@ pub use format::{
 use pinned::PinnedFile;
 
 /// Exact content identity of the reviewed Everglade pack.
-pub const PACK_SHA256: &str = "848d9685395916b2d400222820d3cca85de6d4aa3d3a759c148abe3e2ec5f1cb";
+pub const PACK_SHA256: &str = "13812d5c3853d43560f4dd427971d717183f90420c3c993228129e0f9e9827af";
 /// Transfer size of the reviewed Everglade pack.
-pub const PACK_BYTES: u64 = 9974203;
+pub const PACK_BYTES: u64 = 11208266;
 /// The most triangles the Everglade city may place where they draw: from
 /// any point in the clearing, every merged 8 m cell at the level of detail
 /// it draws at from there, in every direction and at every distance
 /// (`zones::everglade::detail`). A building, kit piece, or tree draws its own
-/// model within 60 m and a far level of 8 to 45 percent of its triangles
-/// beyond, and grass, flowers, and furniture draw only within 52 m. A frame
-/// draws less again: only the cells in view, nearer than the fog's close at
-/// 180 m, and large enough to see at their distance
-/// ([`DRAWN_TRIANGLE_BUDGET`]); a shadow cascade draws only the cells within
-/// its sides, at the same levels.
-pub const PLACED_TRIANGLE_BUDGET: u64 = 1_250_000;
+/// model within 80 m and a far level of 20 to 60 percent of its triangles
+/// beyond, grass, flowers, and furniture draw only within 52 m, and shrubs,
+/// deadwood, and ivy within 72 m. A frame draws less again: only the cells
+/// in view, nearer than the fog's close at 180 m, and large enough to see at
+/// their distance ([`DRAWN_TRIANGLE_BUDGET`]); a shadow cascade draws only
+/// the cells within its sides, at the same levels. It was 1,250,000 before
+/// the foliage round, which also moved the far levels' switch from 60 m to
+/// 80 m and made them watertight, so houses at middle distances keep their
+/// whole roofs and walls; a frame still draws within
+/// [`DRAWN_TRIANGLE_BUDGET`].
+pub const PLACED_TRIANGLE_BUDGET: u64 = 1_650_000;
 /// The most triangles a street-level frame of the city may draw, from the
 /// views `tests::a_frame_draws_a_fraction_of_the_city` measures: the frame
 /// cost the levels of detail bound.
@@ -57,8 +61,11 @@ pub const DRAWN_TRIANGLE_BUDGET: u64 = 600_000;
 /// are the largest shares: a kit tree is 3,000 to 6,000 triangles, a house
 /// roof 2,464 (the kit's thinned by `scripts/blender/kit_lod.py`), and a
 /// generated building 7,800 to 19,200, about a tenth more once split on
-/// its block lattice (`demolition::carve`).
-pub const MERGED_TRIANGLE_BUDGET: u64 = 2_600_000;
+/// its block lattice (`demolition::carve`). It was 2,600,000 (about 175
+/// MiB) before the foliage round, whose woods, yards, and verges merge to
+/// about 205 MiB, still under the renderer's bound and the low tier's
+/// 256 MB admission.
+pub const MERGED_TRIANGLE_BUDGET: u64 = 2_900_000;
 /// Where packs are committed, relative to the repository root.
 pub const PACK_DIRECTORY: &str = "assets/verse/everglade";
 /// The pack file extension.
@@ -67,6 +74,7 @@ pub const PACK_EXTENSION: &str = "vtp";
 // zones share the cache directory; arbitrary digest names are not ours.
 const EVERGLADE_PACK_HISTORY: &[&str] = &[
     PACK_SHA256,
+    "848d9685395916b2d400222820d3cca85de6d4aa3d3a759c148abe3e2ec5f1cb",
     "89203bcad2a6673b50754b0be679100ce19e461b1af01f52f3b109d2655fdb45",
     "06cc9dfc6474d060a990ae1e48cf8b955641c8892111085608dc9d5e687e7d61",
     "4dc0ae16b0367af352875a607fcb9aeaa9512be332c334eafa72772d3566cba0",

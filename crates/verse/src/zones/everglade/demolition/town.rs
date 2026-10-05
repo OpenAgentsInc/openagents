@@ -1534,8 +1534,9 @@ fn within(rect: ([f32; 2], [f32; 2]), point: [f32; 2], margin: f32) -> bool {
     (point[0] - cx).abs() <= hx + margin && (point[1] - cz).abs() <= hz + margin
 }
 
-/// The kit models that are part of a building besides its walls.
-const PARTS: [&str; 9] = [
+/// The kit models that are part of a building besides its walls, with the
+/// foliage that hangs on its walls ([`WALL_DRESSING`]).
+const PARTS: [&str; 12] = [
     "village/Corner_Exterior_Wood",
     "village/Roof_RoundTiles_8x10",
     layout::HOUSE_ROOF,
@@ -1545,6 +1546,21 @@ const PARTS: [&str; 9] = [
     "village/WindowShutters_",
     "village/DoorFrame_",
     "village/Door_",
+    WALL_DRESSING[3],
+    WALL_DRESSING[4],
+    WALL_DRESSING[5],
+];
+
+/// Models placed where a wall piece stands, which break with it: windows,
+/// shutters, and door frames, and the ivy, climbing roses, and window
+/// boxes `layout::foliage` hangs on the walls.
+const WALL_DRESSING: [&str; 6] = [
+    "village/Window_",
+    "village/WindowShutters_",
+    "village/DoorFrame_",
+    "foliage/ivy_wall",
+    "foliage/rose_trellis",
+    "foliage/window_box",
 ];
 
 /// The buildings among `placements`: kit wall sections within a section's
@@ -1729,13 +1745,7 @@ impl Surveyed {
             let mut drawn = vec![w];
             for &m in &self.members {
                 let d = &placements[m];
-                let dressing_model = [
-                    "village/Window_",
-                    "village/WindowShutters_",
-                    "village/DoorFrame_",
-                ]
-                .iter()
-                .any(|part| d.model.starts_with(part));
+                let dressing_model = WALL_DRESSING.iter().any(|part| d.model.starts_with(part));
                 if dressing_model
                     && (d.at[0] - p.at[0]).abs() < 0.05
                     && (d.at[1] - p.at[1]).abs() < 0.05

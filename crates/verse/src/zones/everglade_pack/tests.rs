@@ -382,6 +382,8 @@ fn committed_manifests_admit_only_base_color_sources_with_licenses() {
         for (name, transform) in &manifest.transforms {
             if set == "generated" {
                 assert!(transform.contains("everglade_admit.py"), "{set}/{name}");
+            } else if set == "foliage" {
+                assert!(transform.contains("foliage_admit.py"), "{set}/{name}");
             } else if set == "lod" {
                 assert!(transform.contains("everglade_lod.py"), "{set}/{name}");
             } else if compile::FORM_SETS.contains(&set) {

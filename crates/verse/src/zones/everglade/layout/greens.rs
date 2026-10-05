@@ -9,6 +9,7 @@
 //! Loose pieces go through `streets::try_put`, so none stands on a road, a
 //! walk, a building, a pond, or a station.
 
+use super::foliage::PARK_TREES;
 use super::streets::{clear, try_put};
 use super::{Collision, PONDS, Placement, city, noise, tree};
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
@@ -53,12 +54,7 @@ fn crowned(
 /// More park trees on the commons, in clumps, as the map's great lawn
 /// draws them, leaving the lawn round the bandshell open.
 fn commons_grove(out: &mut Vec<Placement>, placed: &mut Placed) {
-    const MODELS: [&str; 4] = [
-        "nature/CommonTree_1",
-        "nature/CommonTree_3",
-        "nature/CommonTree_4",
-        "nature/CommonTree_5",
-    ];
+    const MODELS: [&str; 4] = [PARK_TREES[0], PARK_TREES[1], PARK_TREES[2], PARK_TREES[0]];
     let mut planted = 0;
     for n in 0..600_u32 {
         if planted == 16 {
@@ -96,9 +92,9 @@ fn street_trees(out: &mut Vec<Placement>, placed: &mut Placed) {
         let mut n = 0_u32;
         while x <= to {
             let model = if (n + k as u32) % 2 == 0 {
-                "nature/CommonTree_4"
+                PARK_TREES[1]
             } else {
-                "nature/CommonTree_3"
+                PARK_TREES[0]
             };
             let salt = 510 + 4 * k as u32;
             let scale = 0.55 + 0.15 * noise(n, salt);

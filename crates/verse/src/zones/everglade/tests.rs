@@ -308,7 +308,7 @@ fn every_placement_names_an_admitted_model_and_stays_in_the_glade() {
             .unwrap_or_else(|| panic!("{} is not in the pack", placement.model));
         let set = placement.model.split('/').next().unwrap();
         assert!(
-            ["nature", "village", "props", "generated"].contains(&set),
+            ["nature", "village", "props", "generated", "foliage"].contains(&set),
             "{}",
             placement.model
         );
@@ -1411,8 +1411,8 @@ fn a_frame_draws_a_fraction_of_the_city() {
 #[test]
 fn brownstone_row_crosses_glade_run_on_its_footbridge() {
     let blockers = &world().blockers;
-    // The stream stops walking along its course, but Brownstone Row passes
-    // over it on the footbridge.
+    // Brownstone Row passes over the stream on the footbridge, and nothing
+    // stops a walker wading across it anywhere else.
     let ([bx, bz], _) = layout::BRIDGE;
     assert!(crate::nav::segment_clear(
         [bx - 6.0, bz],
@@ -1420,7 +1420,7 @@ fn brownstone_row_crosses_glade_run_on_its_footbridge() {
         blockers,
         HALF_EXTENT
     ));
-    assert!(!crate::nav::segment_clear(
+    assert!(crate::nav::segment_clear(
         [-4.0, -102.0],
         [4.0, -102.0],
         blockers,
@@ -1540,4 +1540,55 @@ fn the_towns_creatures_live_by_the_water_the_trees_and_the_hives() {
     let figure = wildlife.figure(cast.clone(), None);
     figure.validate().unwrap();
     assert!(figure.vertices.len() > cast.vertices.len());
+}
+
+/// A walker at `from` facing `to` on the zone's solids, walking forward for
+/// `seconds`; returns where it stops and the most it rose above the ground
+/// on the way, m.
+fn walk_across(from: [f32; 2], to: [f32; 2], seconds: f32) -> (Vec3, f32) {
+    use crate::controller::{InputState, PlayerController};
+    static SOLIDS: OnceLock<solids::Solids> = OnceLock::new();
+    let solids = SOLIDS
+        .get_or_init(|| solids::build(pack(), &layout::placements()).expect("the solids build"));
+    let yaw = (to[0] - from[0]).atan2(to[1] - from[1]);
+    let mut player = PlayerController::new(Vec3::new(from[0], 0.0, from[1]), yaw);
+    player.pos.y = solids.floor(from[0], from[1], height(from[0], from[1]));
+    player.set_surface_height(player.pos.y);
+    let input = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    let mut rose = 0.0_f32;
+    for _ in 0..(seconds * 60.0) as usize {
+        solids.step(&mut player, &input, 1.0 / 60.0, HALF_EXTENT, true);
+        rose = rose.max(player.pos.y - height(player.pos.x, player.pos.z));
+    }
+    (player.pos, rose)
+}
+
+#[test]
+fn a_walker_crosses_glade_run_on_the_footbridge_from_either_bank() {
+    let ([bx, bz], _) = layout::BRIDGE;
+    for (from, to) in [
+        ([bx - 7.0, bz], [bx + 7.0, bz]),
+        ([bx + 7.0, bz], [bx - 7.0, bz]),
+    ] {
+        let (end, rose) = walk_across(from, to, 4.0);
+        let crossed = (end.x - bx) * (to[0] - bx).signum();
+        assert!(crossed > 5.0, "from {from:?}, stopped at {end}");
+        assert!((end.z - bz).abs() < 1.5, "kept to the deck: {end}");
+        assert!(rose > 0.4, "over the deck, not under it: {rose} m up");
+    }
+}
+
+#[test]
+fn a_walker_wades_across_glade_run_away_from_the_bridge() {
+    for (from, to) in [
+        ([-5.0, -102.0], [5.0, -102.0]),
+        ([3.0, -56.0], [-5.0, -56.0]),
+    ] {
+        let (end, _) = walk_across(from, to, 4.0);
+        let gone = (end.x - from[0]).abs();
+        assert!(gone > 8.0, "from {from:?}, stopped at {end}");
+    }
 }
