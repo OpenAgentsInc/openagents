@@ -206,6 +206,11 @@ impl Local {
                     config.shell_args = args;
                     config.base_env.extend(env);
                 }),
+            Some("fish") => super::integration::Integration::fish()
+                .ok()
+                .inspect(|hooks| {
+                    config.shell_args = hooks.fish_start();
+                }),
             _ => None,
         };
         config.wrap = Some(Arc::new(Plain {

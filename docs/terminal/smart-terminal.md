@@ -357,7 +357,10 @@ own files first; for bash, an `--rcfile` that sources your login profile or
 `~/.bashrc` first, in `crates/terminal-core/src/bash.rs`). bash hooks need
 bash 4.4 or later; an older bash, such as the 3.2 in macOS, starts without
 them. bash reports no line as you type, so Enter always reaches it and a
-line starting with `# ` is the explicit request. The host injects it for
+line starting with `# ` is the explicit request. fish sources its hooks
+through `--init-command` after your configuration
+(`crates/terminal-core/src/fish.rs`, fish 3.3 or later); they bind only
+Enter, and only when you have not bound it yourself. The host injects it for
 NIP-TERM shells too, since
 `coder-pty` starts them. The hook emits:
 

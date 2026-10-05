@@ -25,6 +25,8 @@ fn directory(shell: &str) -> Result<PathBuf, String> {
 
 /// The bash startup file, read through `--rcfile` (`terminal_core::bash`).
 pub const BASH_RC: &str = "bashrc";
+/// The fish hooks, sourced through `--init-command` (`terminal_core::fish`).
+pub const FISH_HOOK: &str = "hook.fish";
 
 impl Integration {
     /// Startup files for bash: one `--rcfile` that sources the user's files
@@ -54,6 +56,29 @@ impl Integration {
             Vec::new()
         };
         (args, env)
+    }
+
+    /// The fish hooks, sourced after the user's configuration.
+    pub fn fish() -> Result<Self, String> {
+        let integration = Self {
+            root: directory("fish")?,
+        };
+        std::fs::write(integration.root.join(FISH_HOOK), terminal_core::fish::HOOK)
+            .map_err(|error| error.to_string())?;
+        Ok(integration)
+    }
+
+    /// The arguments that start fish, as a login shell, with these hooks.
+    pub fn fish_start(&self) -> Vec<String> {
+        let hook = self.root.join(FISH_HOOK).display().to_string();
+        vec![
+            "-l".into(),
+            "--init-command".into(),
+            format!(
+                "source '{}'",
+                hook.replace('\\', "\\\\").replace('\'', "\\'")
+            ),
+        ]
     }
 
     /// Startup files for zsh, through `ZDOTDIR`.
