@@ -1799,6 +1799,7 @@ mod tests {
                     received_events = true;
                 }
                 Update::MovementSuperseded { .. }
+                | Update::FrameBound { .. }
                 | Update::CommandBound { .. }
                 | Update::Outcome(_)
                 | Update::Inventory(_) => {

@@ -31,6 +31,7 @@ pub struct Client {
     logged_in: bool,
     player: bool,
     inventory_revision: u64,
+    verified_at: Option<std::time::Instant>,
 }
 impl Client {
     pub async fn connect(
@@ -91,6 +92,7 @@ impl Client {
             logged_in: false,
             player: false,
             inventory_revision: 0,
+            verified_at: None,
         };
         let response = client
             .request_ready(Body::Authenticate {
@@ -144,6 +146,7 @@ impl Client {
         .map_err(|_| "Chamber request timed out")??;
         self.validate(request_id, &body, &response)?;
         self.tick = response.tick;
+        self.verified_at = Some(std::time::Instant::now());
         if let Reply::Inventory { inventory } = &response.body {
             self.inventory_revision = inventory.revision;
         }
@@ -253,12 +256,41 @@ impl Client {
             intent,
         })
     }
-    pub async fn command(&mut self, intent: Intent<Ability>) -> Result<Response, String> {
-        let command = self.prepare_command(intent)?;
-        self.request_ready(Body::Command {
-            command: command.into(),
+    pub async fn begin_movement_frames(&mut self) -> Result<Response, String> {
+        let control = self
+            .control()
+            .ok_or("Client has no admitted adventurer")?
+            .clone();
+        self.request_ready(Body::BeginMovementFrames {
+            life: control.life,
+            epoch: control.epoch,
         })
         .await
+    }
+    pub async fn movement_frame(
+        &mut self,
+        mut frame: crate::movement::frames::Frame,
+    ) -> Result<Response, String> {
+        frame.validate_payload()?;
+        let command = self.prepare_command(Intent::Jump)?;
+        if frame.life != command.actor || frame.epoch != command.epoch {
+            return Err("Movement interval control changed".into());
+        }
+        frame.sequence = command.sequence;
+        frame.tick = command.tick;
+        self.request_ready(Body::MovementFrame { frame }).await
+    }
+    pub async fn command(&mut self, intent: Intent<Ability>) -> Result<Response, String> {
+        timeout(DEADLINE,async {
+            for attempt in 0..3 {
+                let command=self.prepare_command(intent.clone())?;
+                let response=self.request_ready(Body::Command{command:command.clone().into()}).await?;
+                let unadmitted=matches!(&response.body,Reply::Refused{code,..} if code=="stale_tick")
+                    && response.control.as_ref().is_some_and(|c|c.life==command.actor.into() && c.epoch==command.epoch && c.accepted_sequence<command.sequence);
+                if !unadmitted || attempt==2 {return Ok(response);}
+            }
+            unreachable!("Command attempts are bounded")
+        }).await.map_err(|_|"Chamber command timed out".to_string())?
     }
     pub async fn snapshot(&mut self) -> Result<State, String> {
         match self.request_ready(Body::Snapshot {}).await?.body {
@@ -340,11 +372,44 @@ impl Client {
             (Reply::Accepted, Body::Authenticate { .. }) => Ok(()),
             (Reply::Accepted, Body::Command { command }) => {
                 if r.control.as_ref().is_none_or(|c| {
-                    c.life != command.actor
-                        || c.epoch != command.epoch
-                        || c.accepted_sequence < command.sequence
+                    let normal =
+                        c.epoch == command.epoch && c.accepted_sequence >= command.sequence;
+                    let teleport = matches!(
+                        command.intent,
+                        super::wire::Action::Cast {
+                            ability: Ability::MistyStep,
+                            ..
+                        }
+                    ) && command.epoch.checked_add(1) == Some(c.epoch)
+                        && c.accepted_sequence == 0;
+                    c.life != command.actor || !(normal || teleport)
                 }) {
                     return Err("Accepted chamber command has no matching acknowledgment".into());
+                }
+                Ok(())
+            }
+            (Reply::Accepted, Body::MovementFrame { frame }) => {
+                if r.control.as_ref().is_none_or(|c| {
+                    c.life != frame.life.into()
+                        || c.epoch != frame.epoch
+                        || c.accepted_sequence < frame.sequence
+                }) {
+                    return Err("Accepted movement interval has no matching acknowledgment".into());
+                }
+                Ok(())
+            }
+            (Reply::Snapshot { state }, Body::BeginMovementFrames { life, epoch }) => {
+                if r.control.as_ref().is_none_or(|c| {
+                    c.life != *life || c.epoch < *epoch || c.epoch > epoch.saturating_add(1)
+                }) {
+                    return Err("Interval entry has a foreign life".into());
+                }
+                state.validate_control(self.instance, &r.control)?;
+                if state
+                    .movement
+                    .is_none_or(|b| b.profile != crate::movement::Profile::Frames)
+                {
+                    return Err("Interval entry has no initial movement baseline".into());
                 }
                 Ok(())
             }
@@ -589,6 +654,10 @@ impl Pipeline {
         self.client.instance
     }
 
+    pub(crate) fn verified_at(&self) -> Option<std::time::Instant> {
+        self.client.verified_at
+    }
+
     /// Allocates commands monotonically within the currently verified life and epoch.
     pub fn prepare_command(&mut self, intent: Intent<Ability>) -> Result<Command<Ability>, String> {
         let control = self
@@ -612,6 +681,20 @@ impl Pipeline {
             tick: self.client.tick,
             intent,
         })
+    }
+    pub fn prepare_movement_frame(
+        &mut self,
+        mut frame: crate::movement::frames::Frame,
+    ) -> Result<crate::movement::frames::Frame, String> {
+        frame.validate_payload()?;
+        let control = self.control().ok_or("Client has no admitted adventurer")?;
+        if frame.life != control.life.into() || frame.epoch != control.epoch {
+            return Err("Movement interval control changed before transmission".into());
+        }
+        let command = self.prepare_command(Intent::Jump)?;
+        frame.sequence = command.sequence;
+        frame.tick = command.tick;
+        Ok(frame)
     }
     /// Enqueues once. A successful enqueue never implies authoritative acceptance.
     pub fn send(&mut self, body: Body) -> Result<u64, String> {
@@ -677,6 +760,7 @@ impl Pipeline {
         }
         let pending = self.pending.pop_front().expect("Verified response context");
         self.client.tick = response.tick;
+        self.client.verified_at = Some(std::time::Instant::now());
         if let Reply::Inventory { inventory } = &response.body {
             self.client.inventory_revision = inventory.revision;
         }
@@ -702,6 +786,103 @@ mod tests {
         ServerName::try_from("localhost").unwrap()
     }
 
+    #[tokio::test]
+    async fn serial_commands_refresh_only_explicit_unconsumed_stale_ticks() {
+        use crate::service::net::{read_frame, write_frame};
+        let keys = [key(227), key(228), key(229)];
+        let mut g = gateway(&keys);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server, connector) = tls();
+        let peer = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = TlsAcceptor::from(server).accept(socket).await.unwrap();
+            let (id, hello) = g.open_json(0).unwrap();
+            write_frame(&mut socket, &hello, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let auth = read_frame(&mut socket, MAX_REQUEST_BYTES).await.unwrap();
+            let response = g.dispatch_json(id, 0, &auth).unwrap();
+            write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            for _ in 0..7 {
+                g.tick(1. / 30.).unwrap();
+            }
+            let mut commands = Vec::new();
+            for index in 0..4 {
+                let bytes = read_frame(&mut socket, MAX_REQUEST_BYTES).await.unwrap();
+                let Body::Command { command } = Request::decode(&bytes).unwrap().body else {
+                    panic!()
+                };
+                commands.push(command);
+                let response = g.dispatch_json(id, 0, &bytes).unwrap();
+                let reply: Response = serde_json::from_slice(&response).unwrap();
+                if index == 0 {
+                    assert!(matches!(&reply.body,Reply::Refused{code,..} if code=="stale_tick"));
+                    assert_eq!(g.admission(id).unwrap().accepted_sequence(), 0);
+                }
+                if index == 1 {
+                    assert!(matches!(reply.body, Reply::Accepted));
+                    g.tick(1. / 30.).unwrap();
+                    assert!(
+                        g.game()
+                            .actor_position(g.game().player_life().actor)
+                            .unwrap()
+                            .x
+                            > 0.
+                    );
+                }
+                write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                    .await
+                    .unwrap();
+            }
+            assert_eq!(
+                commands.iter().map(|c| c.sequence).collect::<Vec<_>>(),
+                vec![1, 1, 2, 3]
+            );
+            assert!(commands[1].tick > commands[0].tick);
+            assert_eq!(g.admission(id).unwrap().accepted_sequence(), 3);
+            assert!(
+                timeout(
+                    Duration::from_millis(50),
+                    read_frame(&mut socket, MAX_REQUEST_BYTES)
+                )
+                .await
+                .is_err(),
+                "Gameplay refusal must not replay"
+            );
+        });
+        let mut client =
+            Client::connect(address, name(), connector.config().clone(), 120, &keys[0])
+                .await
+                .unwrap();
+        assert!(matches!(
+            client
+                .command(Intent::Move {
+                    axes: [1., 0.],
+                    yaw: 0.
+                })
+                .await
+                .unwrap()
+                .body,
+            Reply::Accepted
+        ));
+        let shield = Intent::Cast {
+            ability: Ability::Shield,
+            target: None,
+            aim: [0., 0., 1.],
+        };
+        assert!(matches!(
+            client.command(shield.clone()).await.unwrap().body,
+            Reply::Accepted
+        ));
+        assert!(
+            matches!(client.command(shield).await.unwrap().body,Reply::Refused{code,..} if code=="command")
+        );
+        assert_eq!(client.control().unwrap().accepted_sequence, 3);
+        peer.await.unwrap();
+    }
     #[tokio::test]
     async fn pipeline_sends_bounded_inputs_before_any_reply_and_preserves_partial_reads() {
         let keys = [key(201), key(202), key(203)];
@@ -2250,6 +2431,7 @@ mod tests {
             logged_in: true,
             player: true,
             inventory_revision: 0,
+            verified_at: None,
         };
         let response = Response {
             version: VERSION,

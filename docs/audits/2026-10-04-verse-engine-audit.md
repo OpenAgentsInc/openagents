@@ -28,15 +28,18 @@ The reward-history lifetime blocker (V01) is resolved in
 in [#10574](https://github.com/OpenAgentsInc/openagents/issues/10574) adds ordered
 background storage and bounded backpressure. V03 remediation in
 [#10575](https://github.com/OpenAgentsInc/openagents/issues/10575) adds reviewed
-offline migration, retained backups, and guarded rollback. Two findings still
-deserve immediate engineering attention:
+offline migration, retained backups, and guarded rollback. V04 remediation in
+[#10580](https://github.com/OpenAgentsInc/openagents/issues/10580) establishes a
+bounded deterministic delayed-movement profile. Two findings still deserve
+immediate engineering attention:
 
 1. A sustained 20-player/40-NPC battle fails performance acceptance, and a
-   newer three-contact recovery failure again stops the whole host. Recoverable
-   per-character failure lacks containment.
-2. The retained delayed-network measurement improves ordinary movement
-   correction p95 to 0.43 and 0.30 meters, but still reports failed acceptance,
-   a 6.5-meter outlier, and missed frame budgets.
+   newer three-contact recovery failure stopped the whole host. Current code
+   contains recoverable character/NPC movement failures; accepted crowded
+   performance remains unproven.
+2. Historical delayed battles retain failed correction and frame budgets,
+   including a 6.5-meter outlier. V04 now passes a bounded deterministic profile;
+   accepted crowded movement and hardware latency still require evidence.
 
 The [engine roadmap](../verse/engine/roadmap.md) already names a battle with
 about 20 authenticated players and 40 active NPCs. Treat that as the next
@@ -133,7 +136,7 @@ Evidence labels:
 | V01 | P0 | Reward history is archived without a transaction lifetime cap. | Code | Character storage and world service | Complete ([#10573](https://github.com/OpenAgentsInc/openagents/issues/10573)) |
 | V02 | P0 | Full synchronous checkpoint commits occupy the tick loop. | Code, risk | World service persistence | Complete ([#10574](https://github.com/OpenAgentsInc/openagents/issues/10574)) |
 | V03 | P0 | Content/rules changes lack a general durable migration path. | Code, gap | Content and save versions | Complete ([#10575](https://github.com/OpenAgentsInc/openagents/issues/10575)) |
-| V04 | P1 | Prediction exists, but acceptable delayed movement is unproven. | Recorded, code | Movement and client replication | Open |
+| V04 | P1 | Confirmed movement intervals pass a bounded delayed profile. | Recorded, code | Movement and client replication | Complete ([#10580](https://github.com/OpenAgentsInc/openagents/issues/10580)) |
 | V05 | P1 | Replication polls full snapshots without spatial relevance. | Code, gap | World service replication | Open |
 | V06 | P1 | One chamber process does not provide realm/instance management. | Code, gap | World hosting | Open |
 | V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters | Open |
@@ -316,7 +319,7 @@ character capacity and global identity remain V09; verified operational backups
 and retention remain V19. The asset-loading command still depends on the
 renderer crate until V17 separates that boundary.
 
-### V04: Delayed movement acceptance remains open
+### V04: Confirmed intervals establish bounded delayed movement acceptance
 
 Prediction is implemented in [`prediction`](../../crates/verse-world/src/prediction.rs)
 and [`prediction::Local`](../../crates/verse-world/src/prediction/local.rs), with
@@ -352,6 +355,53 @@ diagonals, jumps, stairs, moving supports, collisions, cast interruptions,
 death/respawn, reconnect, and teleports. Publish ordinary correction distributions
 and input-to-display latency separately; intentional discontinuities never
 count as prediction failures or hide them.
+
+**Remediation:** [#10580](https://github.com/OpenAgentsInc/openagents/issues/10580)
+adds [complete movement intervals](../../crates/verse-world/src/movement/frames.rs),
+[authority admission](../../crates/verse-world/src/play/framed_movement.rs), and
+[prediction binding](../../crates/verse-world/src/prediction/local_frames.rs).
+Wire version 22 separates admitted command sequence from confirmed character
+physics time and the world clock. Native clients send all elapsed intervals,
+including held-input expiry and jump edges. The authority bounds packet size,
+queued work, catch-up work, and time credit; it never rewinds combat or receipts.
+Entry returns an initial snapshot without another network round trip; a
+48-step startup allowance and a 32-step active lag bound cover that delivery.
+The worker preserves the verified receipt age through pipeline handoff. The
+serial SDK refreshes an explicitly stale command only when the returned control
+proves no sequence was consumed, under a three-envelope/ten-second bound;
+future ticks, gameplay refusals, changed controls, and uncertain IO are excluded.
+Idle expiry, reconnect, handoff, respawn, and teleport clear the context. Current
+collision and spell modifiers remain authoritative. Updated CLI/headless
+clients keep their arrival-time profile; version-21 peers must upgrade.
+
+The [deterministic receipt](../../bench/verse/2026-10-04/movement-intervals/run.json)
+compares the actual authority and local motor under ordered input/acknowledgment
+and snapshot delays. Arrival-time movement reproduces 0.213–0.427 m correction
+p95 at 67–167 ms nominal RTT. Confirmed intervals produce 0 m p95 in the static
+profiles, including delayed initial entry, bounded jitter, combined input,
+diagonals/jumps, wall contact, and authored stairs. Each framed run contains 121 correction observations and
+no command refusals. A separately measured translating support gives 0.026 m
+p95 and 0.027 m maximum. Both are below the declared 0.10 m deterministic-profile
+budget. Snapshot omissions are counted; unsupported cases are not discarded
+into a passing percentile.
+
+Primary/secondary lifecycle tests cover stale input, reconnect, death/respawn,
+teleport, cast interruption, queued save restoration, invalid admission without
+sequence consumption, and idle gravity recovery. TLS worker and native adapter
+checks cover ordered binding, admission versus completed physics, and actual
+native interval production. A local TCP proxy adds real 67 ms uplink and 100 ms
+downlink delay to the TLS worker; its sustained interval stream starts without
+a mode reset and records a separate correction distribution. Native recording retains reset reason counts and
+separate discontinuity distances, including changes of life or epoch.
+
+This completes the bounded movement-timing remediation, not MMORPG performance
+acceptance. The retained historical failures remain failures. Network
+loss/retransmission behavior, complex moving geometry and spell transitions,
+crowded movement, isolated rendering, and input-to-display latency need their
+own evidence. V10 owns hardware latency evidence, V14/V18 own collision cost and
+crowded acceptance, and V24 owns mobile/web multiplayer integration. The recent
+upstream containment changes are included in these checks; they do not turn a
+failed battle performance receipt into a pass.
 
 ### V05: Replication broadcasts more state than a large world needs
 

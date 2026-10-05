@@ -1,4 +1,6 @@
 //! Bounded capsule replay over authoritative applied movement baselines.
+#[cfg(test)]
+mod latency;
 mod local;
 pub use local::{Local, Pose};
 
@@ -215,6 +217,8 @@ mod tests {
     }
     fn baseline() -> Baseline {
         Baseline {
+            profile: Default::default(),
+            world_step: 0,
             life: LifeId {
                 instance: 1,
                 actor: 14,

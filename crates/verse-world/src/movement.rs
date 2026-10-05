@@ -1,4 +1,5 @@
 //! Shared walking and capsule substeps for authority and movement replay.
+pub mod frames;
 use glam::{DVec3, Vec3};
 use physics::{
     character::{Character, Settings},
@@ -91,10 +92,21 @@ impl Policy {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Profile {
+    #[default]
+    Arrival,
+    Frames,
+}
 /// Authoritative movement state after all admitted movement and jump input is consumed.
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Baseline {
+    #[serde(default)]
+    pub profile: Profile,
+    #[serde(default)]
+    pub world_step: u64,
     pub life: verse_engine::core::LifeId,
     pub epoch: u64,
     pub applied_sequence: u64,
@@ -109,7 +121,10 @@ impl Baseline {
         self.character.validate()?;
         self.held.validate(self.physics_step)?;
         self.policy.validate()?;
-        if self.life.actor == 0 || !self.yaw.is_finite() {
+        if self.life.actor == 0
+            || !self.yaw.is_finite()
+            || (self.profile == Profile::Frames && self.physics_step > self.world_step)
+        {
             return Err("Invalid authoritative movement baseline".into());
         }
         Ok(())

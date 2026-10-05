@@ -87,6 +87,7 @@ pub(crate) struct Profile {
     pub correction_trace: Vec<serde_json::Value>,
     pub omitted_corrections: u64,
     pub reset_observations: u64,
+    pub reset_reasons: std::collections::BTreeMap<&'static str, u64>,
     pub bound_to_outcome_ms: Samples,
     pub bindings: std::collections::BTreeMap<u64, std::time::Instant>,
 }
@@ -150,7 +151,7 @@ impl Profile {
         }
     }
     pub fn summary(&self) -> serde_json::Value {
-        serde_json::json!({"schema":"verse.remote.profile.v5",
+        serde_json::json!({"schema":"verse.remote.profile.v6",
             "client_preparation_ms":self.preparation_ms.summary(),
             "render_submission_cpu_ms":self.render_submission_ms.summary(),
             "frame_interval_ms":self.frame_interval_ms.summary(),
@@ -159,6 +160,7 @@ impl Profile {
             "prediction_correction_meters":self.correction_meters.summary(),
             "intentional_discontinuity_meters":self.discontinuity_meters.summary(),
             "reset_observations":self.reset_observations,
+            "reset_reasons":self.reset_reasons,
             "input_retirement_correction_meters":self.retirement_correction_meters.summary(),
             "retirement_trace":self.retirement_trace,
             "omitted_retirements":self.omitted_retirements,

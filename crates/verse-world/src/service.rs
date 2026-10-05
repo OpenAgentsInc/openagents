@@ -616,6 +616,32 @@ impl Chamber {
         self.game.submit(controller, command)
     }
 
+    pub fn begin_movement_frames(
+        &mut self,
+        principal: Principal,
+        session: Session,
+        life: LifeId,
+        epoch: u64,
+    ) -> Result<(), String> {
+        let (controller, current) = self.player(principal, session)?;
+        if life != current || self.game.player_admission(life.actor).unwrap().epoch() != epoch {
+            return Err("Movement interval control is stale or foreign".into());
+        }
+        self.game.begin_movement_frames(controller, life)
+    }
+    pub fn submit_movement_frame(
+        &mut self,
+        principal: Principal,
+        session: Session,
+        frame: crate::movement::frames::Frame,
+    ) -> Result<(), String> {
+        let (controller, life) = self.player(principal, session)?;
+        if frame.life != life {
+            return Err("Movement interval does not name the session's character".into());
+        }
+        self.game.submit_movement_frame(controller, frame)
+    }
+
     pub fn snapshot(&self, principal: Principal, session: Session) -> Result<Snapshot, String> {
         match self.connection(principal, session)?.rights {
             Rights::Spectator => Ok(self.game.snapshot()),

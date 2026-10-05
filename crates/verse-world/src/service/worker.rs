@@ -1,4 +1,7 @@
 //! Bounded duplex network worker for remote presentation adapters.
+#[cfg(test)]
+#[path = "worker_delayed.rs"]
+mod delayed;
 use super::{
     client::Client,
     event_cursor::{Cursor, Delivery},
@@ -22,6 +25,14 @@ pub enum Input {
         life: verse_engine::core::LifeId,
         epoch: u64,
         intent: Intent<Ability>,
+    },
+    MovementFrame {
+        token: u64,
+        frame: crate::movement::frames::Frame,
+    },
+    BeginMovementFrames {
+        life: verse_engine::core::LifeId,
+        epoch: u64,
     },
     Respawn,
     ClaimQuest(u64),
@@ -48,6 +59,10 @@ pub enum Update {
         token: u64,
         replacement: u64,
     },
+    FrameBound {
+        token: u64,
+        binding: Result<crate::movement::frames::Frame, String>,
+    },
     Outcome(Response),
 }
 
@@ -57,14 +72,26 @@ fn fresh_control(
     control: Option<&super::wire::Control>,
     observed: Option<Instant>,
 ) -> bool {
-    let (Input::TrackedCommand { life, epoch, .. }, Some(control), Some(observed)) =
-        (input, control, observed)
-    else {
+    let (life, epoch) = match input {
+        Input::TrackedCommand { life, epoch, .. } => (*life, *epoch),
+        Input::MovementFrame { frame, .. } => (frame.life, frame.epoch),
+        Input::Command(Intent::Cast { .. }) => match control {
+            Some(c) => (c.life.into(), c.epoch),
+            None => return false,
+        },
+        _ => return false,
+    };
+    let (Some(control), Some(observed)) = (control, observed) else {
         return false;
     };
-    control.life == (*life).into()
-        && control.epoch == *epoch
-        && observed.elapsed() <= Duration::from_millis(50)
+    control.life == life.into()
+        && control.epoch == epoch
+        && observed.elapsed()
+            <= if matches!(input, Input::MovementFrame { .. }) {
+                Duration::from_millis(400)
+            } else {
+                Duration::from_millis(50)
+            }
 }
 
 /// Coalesces only consecutive, increasing movement tokens in the same control context.
@@ -134,7 +161,7 @@ pub async fn run(
         let mut last_token = 0;
         let mut deferred = None;
         let mut staged = None;
-        let mut last_response = None;
+        let mut last_response = client.verified_at();
         let mut snapshot_pending = false;
         let mut events_pending = false;
         let mut inventory_pending = false;
@@ -166,7 +193,16 @@ pub async fn run(
                         .await
                         .map_err(|_| "Chamber update consumer closed")?;
                 }
-                let lifecycle = !matches!(input, Input::Command(_) | Input::TrackedCommand { .. });
+                let lifecycle = !matches!(
+                    input,
+                    Input::Command(_) | Input::TrackedCommand { .. } | Input::MovementFrame { .. }
+                ) || matches!(
+                    input,
+                    Input::Command(Intent::Cast {
+                        ability: Ability::MistyStep,
+                        ..
+                    })
+                );
                 if lifecycle && client.pending() > 0 {
                     staged = Some(input);
                 } else if !refreshed && !fresh_control(&input, client.control(), last_response) {
@@ -213,6 +249,23 @@ pub async fn run(
                                 command: command.into(),
                             }
                         }
+                        Input::MovementFrame { token, frame } => {
+                            let binding = if token == 0 || token <= last_token {
+                                Err("Movement interval token must increase".into())
+                            } else {
+                                last_token = token;
+                                client.prepare_movement_frame(frame)
+                            };
+                            let frame = binding.as_ref().ok().cloned();
+                            updates
+                                .send(Update::FrameBound { token, binding })
+                                .await
+                                .map_err(|_| "Chamber update consumer closed")?;
+                            let Some(frame) = frame else {
+                                continue;
+                            };
+                            Body::MovementFrame { frame }
+                        }
                         Input::Command(intent) => Body::Command {
                             command: client.prepare_command(intent)?.into(),
                         },
@@ -224,6 +277,12 @@ pub async fn run(
                             next_inventory = tokio::time::Instant::now();
                             match action {
                                 Input::Respawn => Body::Respawn { life: control.life },
+                                Input::BeginMovementFrames { life, epoch } => {
+                                    Body::BeginMovementFrames {
+                                        life: life.into(),
+                                        epoch,
+                                    }
+                                }
                                 Input::AcceptQuest(quest, giver) => Body::AcceptQuest {
                                     life: control.life,
                                     epoch: control.epoch,
@@ -274,6 +333,7 @@ pub async fn run(
                 response = client.receive(), if client.pending() > 0 => {
                     let (body,response) = response?;
                     last_response = Some(Instant::now());
+                    let entry = matches!(&body,Body::BeginMovementFrames{..}).then(||response.clone());
                     let update = match body {
                         Body::Snapshot {} => {
                             snapshot_pending = false;
@@ -294,10 +354,15 @@ pub async fn run(
                             next_inventory = tokio::time::Instant::now() + Duration::from_secs(1);
                             Update::Inventory(response)
                         }
+                        Body::MovementFrame { .. } => {
+                            if let Reply::Refused { message, .. } = &response.body { return Err(format!("Movement interval refused; reconnect before sending another interval: {message}")); }
+                            Update::Outcome(response)
+                        },
                         Body::Command { .. } => Update::Outcome(response),
                         _ => { barrier = false; Update::Outcome(response) }
                     };
                     updates.send(update).await.map_err(|_| "Chamber update consumer closed")?;
+                    if let Some(entry)=entry { if matches!(entry.body,Reply::Snapshot {..}) { updates.send(Update::Snapshot(entry)).await.map_err(|_| "Chamber update consumer closed")?; } }
                 }
                 _ = interval.tick() => {
                     // One outstanding request per read class bounds stale work and event cursors.
@@ -357,6 +422,115 @@ mod tests {
     use rustls::pki_types::ServerName;
     use tokio::time::timeout;
 
+    #[tokio::test]
+    async fn worker_binds_complete_intervals_and_snapshots_confirm_only_completed_time() {
+        use crate::movement::Profile;
+        use crate::movement::frames::{Frame, Segment};
+        let keys = [key(214), key(215), key(216)];
+        let (address, tls, host_stop, host) = start(&keys).await;
+        let mut client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            tls.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        loop {
+            let state = client.snapshot().await.unwrap();
+            if state
+                .movement
+                .is_some_and(|b| b.character.support.is_some())
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(matches!(
+            client.begin_movement_frames().await.unwrap().body,
+            Reply::Snapshot { .. }
+        ));
+        let state = client.snapshot().await.unwrap();
+        let b = state.movement.unwrap();
+        assert_eq!(b.profile, Profile::Frames);
+        let (input, inputs, updates, mut output) = channels();
+        let (stop, stopping) = oneshot::channel();
+        let task = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            NATIVE_CADENCE,
+            inputs,
+            updates,
+            stopping,
+        ));
+        for index in 0..3u64 {
+            input
+                .send(Input::MovementFrame {
+                    token: index + 1,
+                    frame: Frame {
+                        life: b.life,
+                        epoch: b.epoch,
+                        sequence: 0,
+                        tick: 0,
+                        start: b.physics_step + index * 4,
+                        steps: 4,
+                        segments: vec![Segment {
+                            offset: 0,
+                            axes: [1., 0.],
+                            yaw: 0.,
+                            until: b.physics_step + 60,
+                            jump: false,
+                        }],
+                    },
+                })
+                .await
+                .unwrap();
+        }
+        let mut bound = 0;
+        let mut accepted = 0;
+        let mut confirmed = false;
+        for _ in 0..30 {
+            match timeout(Duration::from_secs(3), output.recv())
+                .await
+                .unwrap()
+                .unwrap()
+            {
+                Update::FrameBound { token, binding } => {
+                    let f = binding.unwrap();
+                    bound += 1;
+                    assert_eq!(token, bound);
+                    assert_eq!(f.sequence, bound);
+                    assert_eq!(f.start, b.physics_step + (bound - 1) * 4);
+                }
+                Update::Outcome(r) => {
+                    assert!(matches!(r.body, Reply::Accepted));
+                    accepted += 1;
+                }
+                Update::Snapshot(r) => {
+                    if let Reply::Snapshot { state } = r.body {
+                        if state.movement.is_some_and(|next| {
+                            next.epoch == b.epoch
+                                && next.applied_sequence == 3
+                                && next.physics_step == b.physics_step + 12
+                        }) {
+                            confirmed = true;
+                        }
+                    }
+                }
+                Update::Events { .. } | Update::Inventory(_) => {}
+                _ => panic!("Intervals cannot supersede movement history"),
+            }
+            if bound == 3 && accepted == 3 && confirmed {
+                break;
+            }
+        }
+        assert_eq!((bound, accepted, confirmed), (3, 3, true));
+        let _ = stop.send(());
+        task.await.unwrap().unwrap();
+        let _ = host_stop.send(());
+        host.await.unwrap();
+    }
     #[tokio::test]
     async fn worker_pipelines_ordered_actions_before_command_acknowledgments() {
         use crate::service::net::{
@@ -682,7 +856,9 @@ mod tests {
                         assert!(matches!(response.body, Reply::Accepted));
                         break;
                     }
-                    Update::CommandBound { .. } => panic!("Unexpected binding"),
+                    Update::FrameBound { .. } | Update::CommandBound { .. } => {
+                        panic!("Unexpected binding")
+                    }
                     _ => {}
                 }
             }
@@ -892,7 +1068,8 @@ mod tests {
                         Update::Snapshot(_)=>snapshots+=1,
                         Update::Inventory(response)=> {assert!(player);let Reply::Inventory{inventory}=response.body else {panic!("Missing inventory");};assert_eq!(inventory.experience,0);inventories+=1;},
                         Update::Events{..}=>{},
-                        Update::MovementSuperseded { .. } | Update::CommandBound { .. } | Update::Outcome(_)=>panic!("No player commands submitted"),
+                        Update::FrameBound { .. } | Update::MovementSuperseded { .. }
+                    | Update::CommandBound { .. } | Update::Outcome(_)=>panic!("No player commands submitted"),
                     }
                 }
             }
@@ -974,6 +1151,7 @@ mod tests {
                         }
                     }
                     Update::MovementSuperseded { .. }
+                    | Update::FrameBound { .. }
                     | Update::CommandBound { .. }
                     | Update::Events { .. }
                     | Update::Inventory(_) => {}
@@ -983,7 +1161,8 @@ mod tests {
         .await
         .unwrap();
         let input = feeder.await.unwrap();
-        assert!(snapshots >= 93);
+        // Raw moves refresh control; casts can reuse a recent verified acknowledgment.
+        assert!(snapshots >= 90);
         assert!(accepted >= 90);
         stop.send(()).unwrap();
         assert!(worker.await.unwrap().is_ok());
@@ -1046,7 +1225,9 @@ mod tests {
                 Update::Inventory(r) => {
                     assert!(matches!(r.body, Reply::Inventory { .. }));
                 }
-                Update::MovementSuperseded { .. } | Update::CommandBound { .. } => {
+                Update::FrameBound { .. }
+                | Update::MovementSuperseded { .. }
+                | Update::CommandBound { .. } => {
                     panic!("No tracked commands submitted")
                 }
                 Update::Outcome(r) => {

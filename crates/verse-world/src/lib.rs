@@ -27,6 +27,9 @@ pub struct Command<A> {
     pub tick: u64,
     pub intent: Intent<A>,
 }
+/// Maximum age of an ordinary command in authoritative world ticks.
+pub const COMMAND_AGE: u64 = 6;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Refusal {
     NotController,
@@ -114,7 +117,7 @@ impl Admission {
         if command.sequence <= self.last_sequence {
             return Err(Refusal::DuplicateSequence);
         }
-        if command.tick > tick || tick - command.tick > 6 {
+        if command.tick > tick || tick - command.tick > COMMAND_AGE {
             return Err(Refusal::WrongTick);
         }
         match &command.intent {

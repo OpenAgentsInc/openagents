@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 21;
+pub const VERSION: u16 = 22;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -123,6 +123,13 @@ pub enum Body {
     Command {
         command: Input,
     },
+    BeginMovementFrames {
+        life: Life,
+        epoch: u64,
+    },
+    MovementFrame {
+        frame: crate::movement::frames::Frame,
+    },
     Snapshot {},
     Inventory {},
     UseItem {
@@ -199,7 +206,9 @@ impl State {
                 .ok_or("Movement baseline actor is missing")?;
             if movement.life != control.life.into()
                 || movement.epoch != control.epoch
-                || movement.applied_sequence != control.accepted_sequence
+                || movement.applied_sequence > control.accepted_sequence
+                || (movement.profile == crate::movement::Profile::Arrival
+                    && movement.applied_sequence != control.accepted_sequence)
                 || movement.character.feet.as_vec3() != actor.actor.position
                 || self.hud.as_ref().is_none_or(|h| h.resources.hp <= 0)
             {
@@ -547,7 +556,28 @@ impl Gateway {
                 Ok(Reply::Accepted)
             }
             Body::Command { command } => {
+                let admission = self.admission(id).map_err(|e| ("command", e))?;
+                if admission.actor() == command.actor.into()
+                    && admission.epoch() == command.epoch
+                    && command.sequence > admission.accepted_sequence()
+                    && self.game().authority_tick.saturating_sub(command.tick) > crate::COMMAND_AGE
+                {
+                    return Err((
+                        "stale_tick",
+                        "Command control snapshot expired before admission".into(),
+                    ));
+                }
                 self.submit(id, command.into())
+                    .map_err(|e| ("command", e))?;
+                Ok(Reply::Accepted)
+            }
+            Body::BeginMovementFrames { life, epoch } => {
+                self.begin_movement_frames(id, life.into(), epoch)
+                    .map_err(|e| ("command", e))?;
+                self.dispatch_body(id, now, Body::Snapshot {})
+            }
+            Body::MovementFrame { frame } => {
+                self.submit_movement_frame(id, frame)
                     .map_err(|e| ("command", e))?;
                 Ok(Reply::Accepted)
             }
@@ -1586,6 +1616,145 @@ mod tests {
             send(&mut g, id, 5, Body::Events { after: 0, limit: 0 }).body,
             Reply::Refused { .. }
         ));
+    }
+    #[test]
+    fn owned_intervals_acknowledge_admission_before_body_time_and_refuse_foreign_controls() {
+        use crate::movement::{
+            Profile,
+            frames::{Frame, Segment},
+        };
+        let mut g = gateway();
+        let owner = key(211);
+        let observer = key(212);
+        g.enroll_primary(public(&owner)).unwrap();
+        g.enroll_spectator(public(&observer)).unwrap();
+        let id = join(&mut g, &owner);
+        let spectator = join(&mut g, &observer);
+        g.tick(1. / 30.).unwrap();
+        let life = g.admission(id).unwrap().actor();
+        let entry_epoch = g.admission(id).unwrap().epoch();
+        assert!(matches!(
+            send(
+                &mut g,
+                spectator,
+                2,
+                Body::BeginMovementFrames {
+                    life: life.into(),
+                    epoch: entry_epoch
+                }
+            )
+            .body,
+            Reply::Refused { .. }
+        ));
+        assert!(matches!(
+            send(
+                &mut g,
+                id,
+                2,
+                Body::BeginMovementFrames {
+                    life: life.into(),
+                    epoch: entry_epoch
+                }
+            )
+            .body,
+            Reply::Snapshot { .. }
+        ));
+        let a = g.admission(id).unwrap();
+        let b = g.game().movement_baseline(life).unwrap().unwrap();
+        let frame = Frame {
+            life,
+            epoch: a.epoch(),
+            sequence: 1,
+            tick: g.game().authority_tick,
+            start: b.physics_step,
+            steps: 4,
+            segments: vec![Segment {
+                offset: 0,
+                axes: [1., 0.],
+                yaw: 0.,
+                until: b.physics_step + 60,
+                jump: false,
+            }],
+        };
+        assert!(matches!(
+            send(
+                &mut g,
+                spectator,
+                3,
+                Body::MovementFrame {
+                    frame: frame.clone()
+                }
+            )
+            .body,
+            Reply::Refused { .. }
+        ));
+        assert!(matches!(
+            send(
+                &mut g,
+                id,
+                3,
+                Body::MovementFrame {
+                    frame: frame.clone()
+                }
+            )
+            .body,
+            Reply::Accepted
+        ));
+        let response = send(&mut g, id, 4, Body::Snapshot {});
+        let Reply::Snapshot { state } = response.body else {
+            panic!()
+        };
+        state.validate_control(110, &response.control).unwrap();
+        assert_eq!(state.movement.unwrap().profile, Profile::Frames);
+        assert_eq!(state.movement.unwrap().applied_sequence, 0);
+        assert_eq!(response.control.unwrap().accepted_sequence, 1);
+        g.tick(1. / 30.).unwrap();
+        let response = send(&mut g, id, 5, Body::Snapshot {});
+        let Reply::Snapshot { state } = response.body else {
+            panic!()
+        };
+        state.validate_control(110, &response.control).unwrap();
+        assert_eq!(state.movement.unwrap().physics_step, frame.end().unwrap());
+        assert_eq!(state.movement.unwrap().applied_sequence, 1);
+    }
+    #[test]
+    fn stale_tick_refusal_is_explicit_and_does_not_consume_or_apply_the_command() {
+        let mut g = gateway();
+        let k = key(224);
+        g.enroll_primary(public(&k)).unwrap();
+        let id = join(&mut g, &k);
+        let command = g
+            .admission(id)
+            .unwrap()
+            .command(
+                g.game().authority_tick,
+                Intent::Move {
+                    axes: [1., 0.],
+                    yaw: 0.,
+                },
+            )
+            .unwrap();
+        for _ in 0..7 {
+            g.tick(1. / 30.).unwrap();
+        }
+        let before = g.game().checkpoint().unwrap();
+        let reply = send(
+            &mut g,
+            id,
+            2,
+            Body::Command {
+                command: command.clone().into(),
+            },
+        );
+        assert!(matches!(reply.body,Reply::Refused{code,..} if code=="stale_tick"));
+        assert_eq!(reply.control.unwrap().accepted_sequence, 0);
+        assert_eq!(g.game().checkpoint().unwrap(), before);
+        let mut future = command;
+        future.tick = g.game().authority_tick + 1;
+        assert!(
+            matches!(send(&mut g,id,3,Body::Command{command:future.into()}).body,Reply::Refused{code,..} if code=="command")
+        );
+        assert_eq!(g.game().checkpoint().unwrap(), before);
     }
     #[test]
     fn gameplay_refusal_reports_consumed_sequence_for_client_reconciliation() {

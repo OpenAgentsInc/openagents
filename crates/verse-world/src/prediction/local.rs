@@ -1,4 +1,6 @@
 //! Local input timing and presentation estimates for one authenticated connection.
+#[path = "local_frames.rs"]
+mod frames;
 use crate::{
     Command, Intent,
     movement::{self, Baseline},
@@ -137,7 +139,12 @@ impl Local {
                 || (baseline.epoch == old.epoch
                     && (baseline.physics_step < old.physics_step
                         || baseline.applied_sequence < old.applied_sequence
-                        || baseline.life != old.life))
+                        || baseline.life != old.life
+                        || baseline.profile != old.profile
+                        || (baseline.profile == movement::Profile::Frames
+                            && baseline.physics_step > self.step)
+                        || (baseline.profile == movement::Profile::Frames
+                            && baseline.world_step < old.world_step)))
             {
                 return Err("Local prediction observation regressed".into());
             }
@@ -478,6 +485,8 @@ mod tests {
             })
             .unwrap();
         let baseline = Baseline {
+            profile: Default::default(),
+            world_step: 0,
             life: LifeId {
                 instance: 7,
                 actor: 14,

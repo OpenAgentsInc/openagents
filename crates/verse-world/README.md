@@ -276,11 +276,10 @@ Quest catalogs can include bounded authored offer, objective-reminder, and turn-
 dialogue. Owned quest progress carries that text; the native giver panel selects
 the offer, reminder, or turn-in text from enrollment and objective state.
 
-Wire version 21 retains an owned movement baseline with the exact capsule state,
+Wire version 22 retains an owned movement baseline with the exact capsule state,
 yaw, life, control epoch, and applied sequence. Snapshots withhold it while
 movement or jump input is pending, during cinematic/controller control, and
-after death; spectators receive none. Client prediction and reconciliation
-remain in progress. The portable `prediction::History` bounds retained movement
+after death; spectators receive none. Client prediction and reconciliation use the shared capsule motor. The portable `prediction::History` bounds retained movement
 to 64 intervals and 256 substeps, replays only unapplied input, and retires
 history on a newer life or control epoch. Its snapshot observation ordering
 allows multiple corrections within one server tick. Tracked worker inputs bind
@@ -294,12 +293,65 @@ camera and locomotion. Accepted snapshots retire acknowledged inputs and replay
 outstanding input; rejection and lifecycle changes retire estimates. Compiled
 collision meshes survive pose-only updates. Current walking scale and jump
 routing include primary difficult terrain, Telekinesis steering, and Levitate.
-Delayed-network visual, correction, and performance acceptance remains required.
+The deterministic delayed profile below covers movement corrections; hardware
+latency and crowded-battle acceptance remain separate.
 Movement inputs remain held for up to
 60 physics substeps without refresh, rounded to an authority interval. Zero
 input, control handoff, death, and respawn stop held movement. Baselines include
 the physics-step watermark and held-input expiry. Version 17 checkpoints migrate
 with no held input; version 18 retains leases for exact replay.
+
+Native clients request `BeginMovementFrames` with the current life and epoch from
+an unmodified, stationary grounded pose. Entry advances the epoch and anchors a
+character clock to simulated world time. `MovementFrame` carries a complete
+contiguous interval, with original movement-lease expiries, yaw changes, and
+one-step jump edges. Each packet contains at most 12 substeps and 12 segments;
+the authority queues at most 16 packets and processes at most 12 substeps per
+world tick. It executes only intervals ending at or before simulated world time.
+Time credit cannot create future travel. Casting, world timers, combat, and
+receipts continue on the world clock; collision and spell modifiers use current
+authoritative state rather than rewinding the world.
+
+Movement envelopes allow an acknowledgment clock up to 12 world ticks old;
+the character clock and life/epoch still bound effective movement time. The
+worker reuses verified frame control for at most 400 ms instead of inserting
+a snapshot round trip into the movement stream. Casts keep their existing
+tick admission and use fresh control. A frame acknowledgment admits its envelope.
+It does not confirm movement. The
+owned baseline identifies `profile`, confirmed character `physics_step`, applied
+frame sequence, and observed `world_step`. Prediction retires only the confirmed
+prefix and replays original event times. The native adapter groups completed
+steps without dropping intervals; the worker binds packets to the shared command
+sequence before transmission. Legacy CLI and headless movement retains the
+arrival-time profile. Version-21 peers must upgrade both host and client.
+
+The serial SDK retries an explicit `stale_tick` refusal only when its verified
+control confirms that admission consumed no sequence, with at most three
+envelopes inside the ten-second command deadline. It does not retry gameplay
+refusals, future ticks, changed controls, or uncertain transport.
+
+A character falling more than 32 substeps behind after ready work is considered
+stale. The first interval has a separate 48-substep startup allowance, and
+entry returns its initial snapshot directly. On expiry, its epoch advances,
+queued frames and holds clear, and ordinary gravity resumes. Repeated entry
+cannot renew this budget. Handoff, disconnect, restart,
+respawn, and teleport fence the interval context. Teleport commands drain earlier
+pipeline work. A refused interval stops the worker and requires reconnection;
+uncertain transmission is never replayed. An explicit storage refusal consumes
+no frame, and the serial SDK can retry that exact envelope through its bounded
+storage-backpressure path. Snapshot recording counts reset reasons separately
+from ordinary corrections and retains bounded discontinuity traces.
+
+[`prediction::latency`](src/prediction/latency.rs) uses the actual authority and
+local motor with 30 Hz world ticks, 120 Hz local steps, ordered delayed input and
+acknowledgments, and 50 ms snapshot sampling. The
+[retained deterministic receipt](../../bench/verse/2026-10-04/movement-intervals/run.json)
+covers 0–167 ms nominal RTT, bounded jitter, combined intervals, starts/stops,
+diagonals, jumps, walls, stairs, and a separate translating-support profile.
+Static-profile correction p95 is below 0.10 m. Lifecycle regressions cover both
+primary and secondary players, cast interruption, death/respawn, reconnect,
+teleport, queued restore, and idle expiry. These checks do not establish real
+network, crowd, GPU, input-to-display, or arbitrary moving-geometry acceptance.
 
 ## Spell physics and the spell playground
 

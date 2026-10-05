@@ -1,4 +1,5 @@
 //! Owned chamber authority and read-only cinematic presentation.
+mod framed_movement;
 mod multiplayer;
 use crate::rules::{Simulation, Snapshot, Spell};
 use crate::utilities::{Controls, Utility};
@@ -7,8 +8,8 @@ use std::collections::BTreeMap;
 use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
-/// Checkpoint revision. v19 fences world and prop identities across content migrations.
-pub const RULES_REVISION: &str = "verse-chamber-owned-v19";
+/// Checkpoint revision. v20 retains bounded movement interval clocks.
+pub const RULES_REVISION: &str = "verse-chamber-owned-v20";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
@@ -182,6 +183,8 @@ pub struct Game {
     next_player_actor: u64,
     #[serde(default)]
     migration_generation: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frame_clock: Option<crate::movement::frames::Clock>,
     pub(crate) admission: crate::Admission,
     pending_movement: Option<[f32; 2]>,
     #[serde(default)]
@@ -420,6 +423,7 @@ impl Game {
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         if saved.version != 1
             || (saved.rules_revision != RULES_REVISION
+                && saved.rules_revision != "verse-chamber-owned-v19"
                 && saved.rules_revision != "verse-chamber-owned-v18"
                 && !(saved.rules_revision == "verse-chamber-owned-v16"
                     && saved.world.scene.actors.iter().all(|a| !a.friendly)))
@@ -586,6 +590,14 @@ impl Game {
         Ok(world)
     }
     fn validate_clock(&self) -> Result<(), String> {
+        if let Some(clock) = &self.frame_clock {
+            clock.validate(
+                self.physics_steps,
+                self.admission.actor(),
+                self.admission.epoch(),
+                self.admission.accepted_sequence(),
+            )?;
+        }
         if self.spells.generation != self.migration_generation {
             return Err("World and prop generation namespace disagree".into());
         }
@@ -1287,6 +1299,7 @@ impl Game {
             additional_players: BTreeMap::new(),
             next_player_actor,
             migration_generation: 0,
+            frame_clock: None,
             pending_movement: None,
             held_movement: Default::default(),
             pending_jump: false,
@@ -1781,6 +1794,7 @@ impl Game {
                 .map_err(|e| format!("Movement refused: {e:?}"))?;
             self.submit(self.admission.controller(), command)?;
         }
+        self.expire_primary_frames()?;
         let movement = if dead {
             self.pending_movement = None;
             self.held_movement = Default::default();
@@ -1818,7 +1832,27 @@ impl Game {
             if self.character.feet.as_vec3() != self.player {
                 self.character = physics::character::Character::new(self.player.as_dvec3());
             }
-            let steps = if dead { 0 } else { physics_steps };
+            let framed = self.frame_clock.is_some();
+            let frame_work = if dead {
+                Vec::new()
+            } else if let Some(clock) = &mut self.frame_clock {
+                crate::movement::frames::expand(&clock.take(self.physics_steps)?)
+            } else {
+                Vec::new()
+            };
+            let steps = if dead {
+                0
+            } else if framed {
+                frame_work.len() as u32
+            } else {
+                physics_steps
+            };
+            if frame_work
+                .iter()
+                .any(|step| step.held.axes(step.at).iter().any(|v| *v != 0.))
+            {
+                self.casting = None;
+            }
             let velocity = if dt > 0. {
                 (delta / dt).as_dvec3()
             } else {
@@ -1828,7 +1862,28 @@ impl Game {
             let filter = self.actor_filter(self.admission.actor());
             let mut fell = 0.;
             for step in 0..steps {
-                let spell_time = self.time as f64 - (steps - step) as f64 * self.physics_clock.dt;
+                let (velocity, jump_step) = if framed {
+                    let input = frame_work[step as usize];
+                    self.held_movement = input.held;
+                    self.yaw = input.yaw;
+                    self.locomotion = input.held.axes(input.at);
+                    (
+                        crate::movement::walk(self.locomotion, self.yaw)?
+                            .direction
+                            .as_dvec3()
+                            * f64::from(
+                                crate::movement::walk(self.locomotion, self.yaw)?.speed * terrain,
+                            ),
+                        input.jump,
+                    )
+                } else {
+                    (velocity, jump && step == 0)
+                };
+                let spell_time = if framed {
+                    self.time as f64 - f64::from(dt) * f64::from(steps - step) / f64::from(steps)
+                } else {
+                    self.time as f64 - (steps - step) as f64 * self.physics_clock.dt
+                };
                 crate::spells::feather_fall::prepare(
                     &mut self.spells,
                     self.admission.actor().actor,
@@ -1864,7 +1919,7 @@ impl Game {
                     filter,
                     physics::character::Settings::default(),
                     velocity,
-                    jump && step == 0,
+                    jump_step,
                     self.physics_clock.dt,
                 )?) {
                     break;
@@ -2915,6 +2970,7 @@ impl Game {
         self.simulation.respawn_player(spawn.to_array(), yaw)?;
         self.bodies.remove(physical);
         self.admission = admission;
+        self.frame_clock = None;
         self.agent_controlled = false;
         self.player = spawn;
         self.previous_player = spawn;
@@ -2951,6 +3007,7 @@ impl Game {
             .handoff(crate::Controller(if agent { 2 } else { 1 }))
             .map_err(|e| format!("Control handoff refused: {e:?}"))?;
         self.agent_controlled = agent;
+        self.frame_clock = None;
         self.pending_movement = None;
         self.held_movement = Default::default();
         self.pending_jump = false;
@@ -2967,6 +3024,14 @@ impl Game {
         }
         if !self.unlocked() || self.snapshot().player.hp == 0 {
             return Err("The adventurer cannot act in the current state".into());
+        }
+        if self.frame_clock.is_some()
+            && matches!(
+                command.intent,
+                crate::Intent::Move { .. } | crate::Intent::Jump
+            )
+        {
+            return Err("This controller requires movement intervals".into());
         }
         if matches!(command.intent, crate::Intent::Jump) {
             self.admission
@@ -3265,6 +3330,9 @@ impl Game {
                     .teleport_chamber_actor(0, destination.to_array(), self.yaw)?;
                 self.character = physics::character::Character::new(destination.as_dvec3());
                 self.previous_player = destination;
+                if self.frame_clock.is_some() {
+                    self.handoff_player(self.player_life(), self.admission.controller())?;
+                }
             }
             self.record_ability(ability);
             self.last_cast = Some((ability, self.time));

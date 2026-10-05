@@ -409,7 +409,7 @@ async fn serve_with_store<F: Future<Output = ()>>(
                                 continue;
                             }
                             let mutating = Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
-                                Body::Authenticate {..} | Body::Command {..} | Body::Respawn {..} | Body::ClaimQuest {..}
+                                Body::Authenticate {..} | Body::BeginMovementFrames {..} | Body::MovementFrame {..} | Body::Command {..} | Body::Respawn {..} | Body::ClaimQuest {..}
                                 | Body::AcceptQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..} | Body::EquipGear {..}));
                             if !mutating && !dirty {
                                 if let Some(mut entry) = fences.last_entry() {
@@ -956,8 +956,18 @@ pub(super) mod tests {
                 };
                 let (reply_a, reply_b) =
                     tokio::join!(a.command(movement.clone()), b.command(movement));
-                assert!(matches!(reply_a.unwrap().body, Reply::Accepted));
-                assert!(matches!(reply_b.unwrap().body, Reply::Accepted));
+                let reply_a = reply_a.unwrap();
+                let reply_b = reply_b.unwrap();
+                assert!(
+                    matches!(reply_a.body, Reply::Accepted),
+                    "Primary input: {:?}",
+                    reply_a.body
+                );
+                assert!(
+                    matches!(reply_b.body, Reply::Accepted),
+                    "Secondary input: {:?}",
+                    reply_b.body
+                );
             }
         })
         .await

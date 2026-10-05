@@ -381,6 +381,25 @@ impl Gateway {
         let b = self.binding(id)?;
         self.chamber.submit(b.principal, b.session, command)
     }
+    pub fn begin_movement_frames(
+        &mut self,
+        id: ConnectionId,
+        life: LifeId,
+        epoch: u64,
+    ) -> Result<(), String> {
+        let b = self.binding(id)?;
+        self.chamber
+            .begin_movement_frames(b.principal, b.session, life, epoch)
+    }
+    pub fn submit_movement_frame(
+        &mut self,
+        id: ConnectionId,
+        frame: crate::movement::frames::Frame,
+    ) -> Result<(), String> {
+        let b = self.binding(id)?;
+        self.chamber
+            .submit_movement_frame(b.principal, b.session, frame)
+    }
     pub fn snapshot(&self, id: ConnectionId) -> Result<Snapshot, String> {
         let b = self.binding(id)?;
         self.chamber.snapshot(b.principal, b.session)

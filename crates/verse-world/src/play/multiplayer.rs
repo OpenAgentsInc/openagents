@@ -17,6 +17,8 @@ pub(super) struct Player {
     #[serde(default)]
     held_move: crate::movement::Held,
     pending_jump: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) frame_clock: Option<crate::movement::frames::Clock>,
     pub(super) controls: Controls,
     pub(super) casting: Option<Casting>,
     bow_ready: f32,
@@ -41,6 +43,7 @@ impl Player {
             pending_move: None,
             held_move: Default::default(),
             pending_jump: false,
+            frame_clock: None,
             controls: Controls::default(),
             casting: None,
             bow_ready: 0.,
@@ -177,11 +180,24 @@ impl Game {
             },
             jump_allowed: !(held_by_spell || levitated),
         };
+        let clock = if life.actor == self.player_actor() {
+            self.frame_clock.as_ref()
+        } else {
+            self.additional_players[&life.actor].frame_clock.as_ref()
+        };
         let baseline = crate::movement::Baseline {
+            profile: if clock.is_some() {
+                crate::movement::Profile::Frames
+            } else {
+                crate::movement::Profile::Arrival
+            },
+            world_step: self.physics_steps,
             life,
             epoch: admission.epoch(),
-            applied_sequence: admission.accepted_sequence(),
-            physics_step: self.physics_steps,
+            applied_sequence: clock.map_or(admission.accepted_sequence(), |clock| {
+                clock.applied_sequence
+            }),
+            physics_step: clock.map_or(self.physics_steps, |clock| clock.step),
             held,
             policy,
             character,
@@ -335,6 +351,7 @@ impl Game {
             self.pending_movement = None;
             self.held_movement = Default::default();
             self.pending_jump = false;
+            self.frame_clock = None;
         } else {
             let p = self.additional_players.get_mut(&life.actor).unwrap();
             p.admission
@@ -343,6 +360,7 @@ impl Game {
             p.pending_move = None;
             p.held_move = Default::default();
             p.pending_jump = false;
+            p.frame_clock = None;
         }
         Ok(())
     }
@@ -358,6 +376,9 @@ impl Game {
             .ok_or("Unknown controlled player")?;
         if !self.unlocked() || self.simulation.snapshot_for(p.source)?.player.hp == 0 {
             return Err("The adventurer cannot act in the current state".into());
+        }
+        if p.frame_clock.is_some() && matches!(command.intent, Intent::Move { .. } | Intent::Jump) {
+            return Err("This controller requires movement intervals".into());
         }
         if let Intent::Cast {
             aim,
@@ -482,6 +503,14 @@ impl Game {
                 p.previous = destination;
                 p.character = physics::character::Character::new(destination.as_dvec3());
                 p.trajectory.clear();
+                if p.frame_clock.take().is_some() {
+                    p.admission
+                        .handoff(p.admission.controller())
+                        .map_err(|e| format!("Teleport control fence refused: {e:?}"))?;
+                    p.held_move = Default::default();
+                    p.pending_move = None;
+                    p.pending_jump = false;
+                }
                 self.simulation
                     .teleport_chamber_actor(p.source, destination.to_array(), p.yaw)?;
                 self.place_actor_body(p.admission.actor(), destination, 0.)?;
@@ -552,6 +581,18 @@ impl Game {
             let mut p = self.additional_players.remove(&actor).unwrap();
             let result: Result<(), String> = (|| {
                 let dead = self.simulation.snapshot_for(p.source)?.player.hp == 0;
+                if p.frame_clock
+                    .as_ref()
+                    .is_some_and(|clock| clock.expired(self.physics_steps))
+                {
+                    p.admission
+                        .handoff(p.admission.controller())
+                        .map_err(|e| format!("Expired interval handoff refused: {e:?}"))?;
+                    p.frame_clock = None;
+                    p.pending_move = None;
+                    p.pending_jump = false;
+                    p.held_move = Default::default();
+                }
                 let axes = if dead {
                     p.pending_move = None;
                     p.held_move = Default::default();
@@ -588,9 +629,40 @@ impl Game {
                     p.character = physics::character::Character::new(p.position.as_dvec3());
                     p.trajectory.push(p.position.to_array());
                 } else {
-                    for step in 0..steps {
-                        let spell_time =
-                            self.time as f64 - (steps - step) as f64 * self.physics_clock.dt;
+                    let framed = p.frame_clock.is_some();
+                    let frame_work = if let Some(clock) = &mut p.frame_clock {
+                        crate::movement::frames::expand(&clock.take(self.physics_steps)?)
+                    } else {
+                        Vec::new()
+                    };
+                    let count = if framed {
+                        frame_work.len() as u32
+                    } else {
+                        steps
+                    };
+                    if frame_work
+                        .iter()
+                        .any(|step| step.held.axes(step.at).iter().any(|v| *v != 0.))
+                    {
+                        p.casting = None;
+                    }
+                    for step in 0..count {
+                        let (velocity, jump_step) = if framed {
+                            let input = frame_work[step as usize];
+                            p.held_move = input.held;
+                            p.yaw = input.yaw;
+                            p.locomotion = input.held.axes(input.at);
+                            let walk = crate::movement::walk(p.locomotion, p.yaw)?;
+                            (walk.direction * walk.speed * terrain, input.jump)
+                        } else {
+                            (velocity, jump && step == 0)
+                        };
+                        let spell_time = if framed {
+                            self.time as f64
+                                - f64::from(dt) * f64::from(count - step) / f64::from(count)
+                        } else {
+                            self.time as f64 - (steps - step) as f64 * self.physics_clock.dt
+                        };
                         crate::spells::feather_fall::prepare(
                             &mut self.spells,
                             actor,
@@ -629,7 +701,7 @@ impl Game {
                             self.actor_filter(p.admission.actor()),
                             physics::character::Settings::default(),
                             spell_velocity,
-                            jump && step == 0,
+                            jump_step,
                             self.physics_clock.dt,
                         )?;
                         if !self.motor_recovery.observe(outcome) {
@@ -1014,6 +1086,14 @@ impl Game {
         }
         let mut sources = std::collections::BTreeSet::from([0]);
         for (actor, p) in &self.additional_players {
+            if let Some(clock) = &p.frame_clock {
+                clock.validate(
+                    self.physics_steps,
+                    p.admission.actor(),
+                    p.admission.epoch(),
+                    p.admission.accepted_sequence(),
+                )?;
+            }
             p.character.validate()?;
             p.controls.validate()?;
             if *actor >= self.next_player_actor

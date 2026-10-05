@@ -119,6 +119,9 @@ struct App {
     pending: std::collections::VecDeque<(Option<Ability>, Option<u64>)>,
     prediction: verse_world::prediction::Local,
     input_token: u64,
+    frame_cursor: Option<(verse_engine::core::LifeId, u64, u64)>,
+    frame_entry: Option<(verse_engine::core::LifeId, u64)>,
+    frame_entry_pending: bool,
     profile: super::remote_record::Profile,
     accepted_casts: std::collections::BTreeMap<String, u64>,
     respawn_attempts: Vec<verse_engine::core::LifeId>,
@@ -174,6 +177,9 @@ impl App {
             pending: std::collections::VecDeque::new(),
             prediction: verse_world::prediction::Local::new(instance),
             input_token: 0,
+            frame_cursor: None,
+            frame_entry: None,
+            frame_entry_pending: false,
             profile: Default::default(),
             accepted_casts: Default::default(),
             respawn_attempts: vec![],
@@ -211,6 +217,23 @@ impl App {
         if self.pending.len() >= 64 {
             self.status = "Input queue is busy".into();
             return;
+        }
+        if let Input::Command(intent @ (Intent::Move { .. } | Intent::Jump)) = &input {
+            if self.prediction.movement_profile() == Some(verse_world::movement::Profile::Frames) {
+                let Some(token) = self.input_token.checked_add(1) else {
+                    self.status = "Input token exhausted".into();
+                    return;
+                };
+                self.input_token = token;
+                if let Err(message) = self.prediction.queue(token, intent.clone()) {
+                    self.prediction.clear();
+                    self.status = message;
+                }
+                return;
+            }
+            if self.frame_entry.is_some() && self.frame_entry == self.prediction.context() {
+                return;
+            }
         }
         let (input, predicted) = match input {
             Input::Command(intent @ (Intent::Move { .. } | Intent::Jump))
@@ -258,6 +281,51 @@ impl App {
                 self.status = "Chamber connection stopped".into()
             }
         }
+    }
+    fn send_movement_interval(&mut self) -> Result<(), String> {
+        let Some((life, epoch)) = self.prediction.context() else {
+            self.frame_cursor = None;
+            return Ok(());
+        };
+        if self.prediction.movement_profile() != Some(verse_world::movement::Profile::Frames) {
+            self.frame_cursor = None;
+            return Ok(());
+        }
+        let start = match self.frame_cursor {
+            Some((old_life, old_epoch, start)) if life == old_life && epoch == old_epoch => start,
+            _ => {
+                let start = self.prediction.physics_step();
+                self.frame_cursor = Some((life, epoch, start));
+                start
+            }
+        };
+        let end = self
+            .prediction
+            .movement_frame_limit()
+            .ok_or("Movement interval time credit is unavailable")?;
+        let steps = end
+            .saturating_sub(start)
+            .min(u64::from(verse_world::movement::frames::MAX_STEPS)) as u32;
+        if steps < 4 || self.input.capacity() == 0 || self.pending.len() >= 64 {
+            return Ok(());
+        }
+        let frame = self.prediction.movement_frame(start, steps)?;
+        let token = self
+            .input_token
+            .checked_add(1)
+            .ok_or("Input token exhausted")?;
+        match self.input.try_send(Input::MovementFrame { token, frame }) {
+            Ok(()) => {
+                self.input_token = token;
+                self.frame_cursor = Some((life, epoch, start + u64::from(steps)));
+                self.pending.push_back((None, Some(token)));
+            }
+            Err(mpsc::error::TrySendError::Full(_)) => self.status = "Input queue is busy".into(),
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                return Err("Chamber connection stopped".into());
+            }
+        }
+        Ok(())
     }
     fn cast(&mut self, ability: Ability) {
         if !self.controlled() {
@@ -309,11 +377,21 @@ impl App {
                             .find(|p| verse_engine::core::LifeId::from(p.life) == life)
                             .and_then(|p| p.teleport_stamp)
                     });
+                    let reset_reason = if !self.controlled() {
+                        "unavailable_or_dead"
+                    } else if context.map(|c| c.0) != self.prediction.context().map(|c| c.0) {
+                        "life_or_reconnect"
+                    } else if teleport != self.owned_teleport {
+                        "teleport"
+                    } else {
+                        "control_epoch"
+                    };
                     let discontinuity = teleport != self.owned_teleport
                         || context != self.prediction.context()
                         || !self.controlled();
                     if discontinuity && previous_pose.is_some() && self.record.is_some() {
                         self.profile.reset_observations += 1;
+                        *self.profile.reset_reasons.entry(reset_reason).or_default() += 1;
                     }
                     if teleport != self.owned_teleport {
                         self.prediction.clear();
@@ -328,6 +406,14 @@ impl App {
                         {
                             self.prediction
                                 .observe(baseline, geometry, r.tick, r.request_id)?;
+                            if baseline.profile == verse_world::movement::Profile::Frames
+                                && self.frame_cursor.is_none_or(|(life, epoch, _)| {
+                                    life != baseline.life || epoch != baseline.epoch
+                                })
+                            {
+                                self.frame_cursor =
+                                    Some((baseline.life, baseline.epoch, baseline.physics_step));
+                            }
                         } else if self.prediction.context().is_some() {
                             if let Some(geometry) = state.collision.as_ref() {
                                 self.prediction
@@ -339,12 +425,12 @@ impl App {
                         self.prediction.advance(0.)?;
                         if let (Some(before), Some(after)) = (previous_pose, self.prediction.pose())
                         {
-                            if before.life == after.life && before.epoch == after.epoch {
+                            {
                                 self.profile.correction(
                                     f64::from(before.position.distance(after.position)),
                                     discontinuity,
                                     serde_json::json!({"tick":r.tick,"request_id":r.request_id,
-                                        "life":after.life,"epoch":after.epoch,
+                                        "life":after.life,"epoch":after.epoch,"previous_life":before.life,"previous_epoch":before.epoch,"reset_reason":if discontinuity {Some(reset_reason)} else {None},
                                         "before":before.position,"after":after.position,
                                         "pending":self.prediction.pending(),"baseline":state.movement,
                                         "timing_before":previous_timing,"timing_after":self.prediction.timing()}),
@@ -405,6 +491,22 @@ impl App {
                         }
                     }
                 }
+                Ok(Update::FrameBound { token, binding }) => match binding {
+                    Ok(frame) => {
+                        if self.prediction.context() == Some((frame.life, frame.epoch)) {
+                            self.prediction.bind_movement_frame(&frame)?;
+                        }
+                        if self.record.is_some() && self.profile.bindings.len() < 64 {
+                            self.profile.bindings.insert(token, Instant::now());
+                        }
+                    }
+                    Err(message) => {
+                        self.pending.retain(|(_, pending)| *pending != Some(token));
+                        self.prediction.clear();
+                        self.frame_cursor = None;
+                        self.status = message;
+                    }
+                },
                 Ok(Update::CommandBound { token, binding }) => match binding {
                     Ok(command) => {
                         if self.record.is_some() && self.profile.bindings.len() < 64 {
@@ -442,6 +544,12 @@ impl App {
                     }
                 },
                 Ok(Update::Outcome(r)) => {
+                    if self.frame_entry_pending {
+                        self.frame_entry_pending = false;
+                        if matches!(r.body, verse_world::service::wire::Reply::Refused { .. }) {
+                            self.frame_entry = None;
+                        }
+                    }
                     let (ability, token) = self.pending.pop_front().unwrap_or_default();
                     if let Some(started) = token.and_then(|t| self.profile.bindings.remove(&t)) {
                         self.profile
@@ -534,6 +642,29 @@ impl App {
         } else {
             axes
         };
+        if self.controlled() && self.pending.is_empty() {
+            if let Some(baseline) = self.view.replica().latest().and_then(|s| s.movement) {
+                let context = (baseline.life, baseline.epoch);
+                if baseline.profile == verse_world::movement::Profile::Arrival
+                    && baseline.character.support.is_some()
+                    && baseline.held.axes(baseline.physics_step) == [0.; 2]
+                    && self.frame_entry != Some(context)
+                {
+                    if self
+                        .input
+                        .try_send(Input::BeginMovementFrames {
+                            life: baseline.life,
+                            epoch: baseline.epoch,
+                        })
+                        .is_ok()
+                    {
+                        self.frame_entry = Some(context);
+                        self.frame_entry_pending = true;
+                        self.pending.push_back((None, None));
+                    }
+                }
+            }
+        }
         if self.controlled() && now >= self.next_move && self.input.capacity() > 0 {
             self.send(Input::Command(Intent::Move {
                 axes,
@@ -545,6 +676,7 @@ impl App {
             self.prediction.clear();
             self.status = message;
         }
+        self.send_movement_interval()?;
         let mut predicted = self.prediction.pose();
         if let Some(pose) = &mut predicted {
             pose.yaw = self.yaw;
@@ -1491,6 +1623,95 @@ mod tests {
                 &mut gateway,
                 connection,
                 10,
+                Body::Snapshot {},
+            )))
+            .unwrap();
+        app.consume().unwrap();
+        app.prediction.advance(0.).unwrap();
+        assert!(
+            app.prediction
+                .pose()
+                .unwrap()
+                .position
+                .distance(gateway.game().actor_position(life.actor).unwrap())
+                < 0.0001
+        );
+        // The native interval path preserves local event times until transport binding.
+        while inputs.try_recv().is_ok() {}
+        let life = gateway.admission(connection).unwrap().actor();
+        let stop_command = gateway
+            .admission(connection)
+            .unwrap()
+            .command(
+                gateway.game().authority_tick,
+                Intent::Move {
+                    axes: [0.; 2],
+                    yaw: 0.,
+                },
+            )
+            .unwrap();
+        gateway.submit(connection, stop_command).unwrap();
+        gateway.tick(1. / 30.).unwrap();
+        let entry_epoch = gateway.admission(connection).unwrap().epoch();
+        let begin = request(
+            &mut gateway,
+            connection,
+            300,
+            Body::BeginMovementFrames {
+                life: life.into(),
+                epoch: entry_epoch,
+            },
+        );
+        assert!(matches!(
+            begin.body,
+            verse_world::service::wire::Reply::Snapshot { .. }
+        ));
+        updates
+            .try_send(Update::Snapshot(request(
+                &mut gateway,
+                connection,
+                301,
+                Body::Snapshot {},
+            )))
+            .unwrap();
+        app.consume().unwrap();
+        assert_eq!(
+            app.prediction.movement_profile(),
+            Some(verse_world::movement::Profile::Frames)
+        );
+        app.send(Input::Command(Intent::Move {
+            axes: [1., 0.],
+            yaw: 0.,
+        }));
+        assert!(inputs.try_recv().is_err());
+        app.prediction.advance(4. / 120.).unwrap();
+        app.send_movement_interval().unwrap();
+        let Input::MovementFrame { token, mut frame } = inputs.try_recv().unwrap() else {
+            panic!("Missing complete interval")
+        };
+        assert_eq!(frame.sequence, 0);
+        frame.sequence = gateway.admission(connection).unwrap().accepted_sequence() + 1;
+        frame.tick = gateway.game().authority_tick;
+        updates
+            .try_send(Update::FrameBound {
+                token,
+                binding: Ok(frame.clone()),
+            })
+            .unwrap();
+        app.consume().unwrap();
+        let response = request(&mut gateway, connection, 302, Body::MovementFrame { frame });
+        assert!(matches!(
+            response.body,
+            verse_world::service::wire::Reply::Accepted
+        ));
+        updates.try_send(Update::Outcome(response)).unwrap();
+        app.consume().unwrap();
+        gateway.tick(1. / 30.).unwrap();
+        updates
+            .try_send(Update::Snapshot(request(
+                &mut gateway,
+                connection,
+                303,
                 Body::Snapshot {},
             )))
             .unwrap();
