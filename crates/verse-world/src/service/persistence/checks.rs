@@ -300,17 +300,20 @@ fn commit_timings_distinguish_snapshot_journal_and_unchanged_state() {
     assert!(snapshot.preparation.is_some() && snapshot.history_sync.is_some());
     assert!(snapshot.snapshot_compaction.is_some());
     assert!(snapshot.journal_encoding.is_none() && snapshot.journal_sync.is_none());
+    assert!(snapshot.journal_write.is_none());
     gateway.tick(0.05).unwrap();
     let copy = store.prepare(&mut gateway).unwrap();
     let (result, journal) = store.commit_measured(copy);
     assert!(result.unwrap().written);
     assert!(journal.preparation.is_some() && journal.history_sync.is_some());
     assert!(journal.journal_encoding.is_some() && journal.journal_sync.is_some());
+    assert!(journal.journal_write.is_some());
     assert!(journal.snapshot_compaction.is_none());
     let copy = store.prepare(&mut gateway).unwrap();
     let (result, unchanged) = store.commit_measured(copy);
     assert!(!result.unwrap().written);
     assert!(unchanged.preparation.is_some() && unchanged.history_sync.is_some());
     assert!(unchanged.journal_encoding.is_none() && unchanged.journal_sync.is_none());
+    assert!(unchanged.journal_write.is_none());
     assert!(unchanged.snapshot_compaction.is_none());
 }

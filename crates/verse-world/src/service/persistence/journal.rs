@@ -217,10 +217,17 @@ pub(super) fn append(
         }
         Ok(bytes)
     })?;
-    super::observed(&mut timings.journal_sync, || {
+    super::observed(&mut timings.journal_write, || {
         file.write_all(&bytes)
-            .and_then(|_| file.sync_all())
             .map_err(|_| "Cannot append and sync chamber journal record".into())
+    })?;
+    super::observed(&mut timings.journal_sync, || {
+        // Linux fdatasync persists appended data and the file length needed for recovery.
+        #[cfg(target_os = "linux")]
+        let result = file.sync_data();
+        #[cfg(not(target_os = "linux"))]
+        let result = file.sync_all();
+        result.map_err(|_| "Cannot append and sync chamber journal record".into())
     })?;
     Ok(bytes.len())
 }

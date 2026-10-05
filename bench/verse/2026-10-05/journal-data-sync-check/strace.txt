@@ -1,0 +1,14 @@
+
+running 1 test
+test service::persistence::checks::commit_timings_distinguish_snapshot_journal_and_unchanged_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 0.23s
+
+
+strace: Process 3597930 attached
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.000043           4         9           fsync
+  0.00    0.000000           0         1           fdatasync
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.000043           4        10           total

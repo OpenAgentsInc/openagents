@@ -66,6 +66,7 @@ pub struct Stats {
     pub commit_preparation: Timing,
     pub history_sync: Timing,
     pub journal_encoding: Timing,
+    pub journal_write: Timing,
     pub journal_sync: Timing,
     pub snapshot_compaction: Timing,
     pub simulation_phases: Phases,
@@ -148,6 +149,7 @@ fn finish(
         (&mut stats.commit_preparation, done.timings.preparation),
         (&mut stats.history_sync, done.timings.history_sync),
         (&mut stats.journal_encoding, done.timings.journal_encoding),
+        (&mut stats.journal_write, done.timings.journal_write),
         (&mut stats.journal_sync, done.timings.journal_sync),
         (
             &mut stats.snapshot_compaction,

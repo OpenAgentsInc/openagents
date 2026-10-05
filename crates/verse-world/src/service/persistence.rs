@@ -35,6 +35,7 @@ pub(in crate::service) struct CommitTimings {
     pub preparation: Option<f64>,
     pub history_sync: Option<f64>,
     pub journal_encoding: Option<f64>,
+    pub journal_write: Option<f64>,
     pub journal_sync: Option<f64>,
     pub snapshot_compaction: Option<f64>,
 }

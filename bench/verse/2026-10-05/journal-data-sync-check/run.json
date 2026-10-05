@@ -1,0 +1,26 @@
+{
+  "schema": "verse.journal.sync-check.v1",
+  "checked_base_revision": "269dcf74f5",
+  "source_patch_sha256": "79450fbad1131814d04b9e35d123cc6b6a184806a96b49b94c8671a2edcfef9c",
+  "platform": "Linux x86_64",
+  "cargo_profile_dev_debug": 0,
+  "tests": {
+    "world_passed": 42,
+    "host_passed": 2,
+    "ignored_crash_child_helpers": 2
+  },
+  "syscall_identity": {
+    "fdatasync": 1,
+    "fsync": 9,
+    "case": "service::persistence::checks::commit_timings_distinguish_snapshot_journal_and_unchanged_state"
+  },
+  "sources": [
+    "https://man7.org/linux/man-pages/man2/fsync.2.html",
+    "https://doc.rust-lang.org/std/fs/struct.File.html#method.sync_data"
+  ],
+  "limits": [
+    "Syscall trace establishes the operation selected by the tested Linux binary; its CPU-time columns are not a file-sync latency benchmark.",
+    "Process-exit recovery tests do not simulate hardware power loss.",
+    "Performance benefit remains unmeasured until the next battle capture."
+  ]
+}

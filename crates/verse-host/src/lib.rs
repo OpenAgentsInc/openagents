@@ -171,7 +171,8 @@ pub async fn serve(
         ("Commit preparation", &exit.stats.commit_preparation),
         ("Reward history sync", &exit.stats.history_sync),
         ("Journal encoding", &exit.stats.journal_encoding),
-        ("Journal write and sync", &exit.stats.journal_sync),
+        ("Journal write", &exit.stats.journal_write),
+        ("Journal sync", &exit.stats.journal_sync),
         ("Snapshot compaction", &exit.stats.snapshot_compaction),
     ] {
         println!(
