@@ -98,16 +98,35 @@ impl Clock {
             .queue
             .back()
             .map_or(self.applied_sequence, |last| last.sequence);
-        if self.queue.len() >= MAX_QUEUED
-            || frame.start != start
-            || frame.sequence <= sequence
-            || frame.end()?
-                > world_step
-                    .checked_add(u64::from(MAX_STEPS))
-                    .ok_or("World movement budget exhausted")?
-            || self.expired(world_step)
-        {
-            return Err("Movement interval exceeds its ordered authority budget".into());
+        if self.queue.len() >= MAX_QUEUED {
+            return Err("Movement interval queue is full".into());
+        }
+        if frame.start != start {
+            return Err(format!(
+                "Movement interval start {} is not contiguous with {start}",
+                frame.start
+            ));
+        }
+        if frame.sequence <= sequence {
+            return Err(format!(
+                "Movement interval sequence {} does not follow {sequence}",
+                frame.sequence
+            ));
+        }
+        let limit = world_step
+            .checked_add(u64::from(MAX_STEPS))
+            .ok_or("World movement budget exhausted")?;
+        let end = frame.end()?;
+        if end > limit {
+            return Err(format!(
+                "Movement interval end {end} exceeds authority credit {limit}"
+            ));
+        }
+        if self.expired(world_step) {
+            return Err(format!(
+                "Movement interval clock expired at world step {world_step}, confirmed step {}",
+                self.step
+            ));
         }
         self.received_at = world_step;
         self.queue.push_back(frame);
@@ -213,8 +232,18 @@ mod tests {
         let mut clock = Clock::new(4, 0);
         clock.admit(frame(4, 4, 1), 4).unwrap();
         assert!(clock.take(4).unwrap().is_empty());
-        assert!(clock.admit(frame(4, 4, 2), 4).is_err());
-        assert!(clock.admit(frame(8, 12, 2), 4).is_err());
+        assert!(
+            clock
+                .admit(frame(4, 4, 2), 4)
+                .unwrap_err()
+                .contains("not contiguous")
+        );
+        assert!(
+            clock
+                .admit(frame(8, 12, 2), 4)
+                .unwrap_err()
+                .contains("exceeds authority credit")
+        );
         let work = clock.take(8).unwrap();
         assert_eq!(work.len(), 1);
         assert_eq!(clock.step, 8);
@@ -226,6 +255,49 @@ mod tests {
         assert_eq!(clock.take(24).unwrap().len(), 1);
         assert_eq!(clock.step, 24);
     }
+    #[test]
+    fn refusal_diagnostics_preserve_the_confirmed_clock_and_queue() {
+        let mut clock = Clock::new(4, 0);
+        let original = serde_json::to_vec(&clock).unwrap();
+        for (input, world, reason) in [
+            (frame(8, 4, 1), 4, "not contiguous"),
+            (frame(4, 4, 0), 4, "bound sequence"),
+            (frame(4, 12, 1), 0, "exceeds authority credit"),
+            (frame(4, 4, 1), 4 + BOOTSTRAP_LAG + 1, "clock expired"),
+        ] {
+            assert!(clock.admit(input, world).unwrap_err().contains(reason));
+            assert_eq!(serde_json::to_vec(&clock).unwrap(), original);
+        }
+        clock.admit(frame(4, 4, 1), 4).unwrap();
+        let queued = serde_json::to_vec(&clock).unwrap();
+        assert!(
+            clock
+                .admit(frame(8, 4, 1), 4)
+                .unwrap_err()
+                .contains("does not follow")
+        );
+        assert_eq!(serde_json::to_vec(&clock).unwrap(), queued);
+    }
+
+    #[test]
+    fn full_interval_queue_refuses_without_renewing_lag_credit() {
+        let mut clock = Clock::new(4, 0);
+        for index in 0..MAX_QUEUED as u64 {
+            clock
+                .admit(frame(4 + index, 1, index + 1), 4 + index)
+                .unwrap();
+        }
+        let before = serde_json::to_vec(&clock).unwrap();
+        let start = 4 + MAX_QUEUED as u64;
+        assert!(
+            clock
+                .admit(frame(start, 1, MAX_QUEUED as u64 + 1), start)
+                .unwrap_err()
+                .contains("queue is full")
+        );
+        assert_eq!(serde_json::to_vec(&clock).unwrap(), before);
+    }
+
     #[test]
     fn saved_intervals_refuse_foreign_controls_and_invalid_boundaries() {
         let mut clock = Clock::new(4, 0);
