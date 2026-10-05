@@ -114,6 +114,9 @@ async fn player(
     let mut battle_live_total = 0u64;
     let mut battle_live_min = usize::MAX;
     let mut world_credit = None;
+    let mut producer_first = Vec::new();
+    let mut producer_recent = VecDeque::new();
+    let mut producer_observations = 0u64;
     let began = tokio::time::Instant::now();
     let result=async {
   loop {
@@ -140,6 +143,16 @@ async fn player(
        let target=state.presentation.actors.iter().filter(|p|p.health>0 && p.visible && !p.actor.friendly && p.actor.nameplate && p.actor.model!="adventurer").min_by(|a,b|a.actor.position.distance_squared(owned).total_cmp(&b.actor.position.distance_squared(owned)));
        let aim=target.map(|p|{let mut direction=p.actor.position-owned;direction.y=0.;direction.normalize_or_zero().to_array()}).unwrap_or([0.,0.,1.]);
        intent=Intent::Cast {ability,target:target.map(|p|p.life.into()),aim};
+      }
+     }
+     if movement_frames {
+      if let Some(baseline)=state.movement {
+       // Retain both startup and recent timing without recording input or identity keys.
+       let observation=serde_json::json!({"elapsed_ms":began.elapsed().as_millis(),"actor":baseline.life.actor,"epoch":baseline.epoch,"profile":baseline.profile,"confirmed_step":baseline.physics_step,"snapshot_world_step":baseline.world_step,"verified_credit":world_credit.filter(|(life,e,_)|(*life,*e)==(baseline.life,baseline.epoch)).map(|(_,_,step)|step),"cursor":frame_cursor.filter(|(life,e,_)|(*life,*e)==(baseline.life,baseline.epoch)).map(|(_,_,step)|step),"outstanding":outstanding.len(),"pending":pending.len(),"input_depth":send.max_capacity()-send.capacity()});
+       producer_observations=producer_observations.saturating_add(1);
+       if producer_first.len()<128 {producer_first.push(observation.clone());}
+       if producer_recent.len()==128 {producer_recent.pop_front();}
+       producer_recent.push_back(observation);
       }
      }
      let mut interval_work=0;
@@ -242,7 +255,7 @@ async fn player(
         }
     };
     Ok(
-        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
+        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"producer_timing":{"observations":producer_observations,"first":producer_first,"recent":producer_recent,"window_capacity":128},"input_pressure":pressure,"refusals":refused,"accepted_casts":casts,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
     )
 }
 async fn run(config: Config) -> Result<(), String> {
@@ -324,7 +337,7 @@ async fn run(config: Config) -> Result<(), String> {
     }
     rows.sort_by_key(|r| r["player"].as_u64());
     let failed = rows.iter().any(|row| row["status"] != "complete");
-    let receipt = serde_json::json!({"schema":"verse.multiplayer.load.v3","movement_frames_requested":config.movement_frames,"status":if failed {"failed"} else {"complete"},"seconds":config.seconds,"players":rows,"limits":["Headless authenticated clients measure transport and authority load, not rendering.","Headless intervals use confirmed server time plus the existing bounded authority lookahead, without native prediction or rendering; the receipt declares the requested movement mode.","Binding-to-outcome includes server processing and client delivery, not isolated RTT.","Timing retains at most 8192 samples per player."]});
+    let receipt = serde_json::json!({"schema":"verse.multiplayer.load.v3","movement_frames_requested":config.movement_frames,"status":if failed {"failed"} else {"complete"},"seconds":config.seconds,"players":rows,"limits":["Headless authenticated clients measure transport and authority load, not rendering.","Headless intervals use confirmed server time plus the existing bounded authority lookahead, without native prediction or rendering; the receipt declares the requested movement mode.","Binding-to-outcome includes server processing and client delivery, not isolated RTT.","Timing retains at most 8192 latency samples and two 128-observation producer windows per player. The producer windows can overlap."]});
     std::fs::write(
         config.output,
         serde_json::to_vec_pretty(&receipt).map_err(|_| "Cannot encode load receipt")?,
