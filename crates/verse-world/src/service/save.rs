@@ -46,6 +46,13 @@ struct Saved {
     outfits: Option<super::outfits::Catalog>,
     #[serde(default)]
     equipment: Option<super::equipment::Catalog>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    guests: Option<super::auth::Guests>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    configured_players: usize,
+}
+fn is_zero(value: &usize) -> bool {
+    *value == 0
 }
 fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, String> {
     if saved.len() > 128 {
@@ -112,6 +119,8 @@ pub(super) struct Prepared {
     items: super::items::Catalog,
     outfits: super::outfits::Catalog,
     equipment: super::equipment::Catalog,
+    guests: Option<super::auth::Guests>,
+    configured_players: usize,
 }
 impl Prepared {
     pub(super) fn capture(gateway: &Gateway) -> Result<Self, String> {
@@ -125,6 +134,10 @@ impl Prepared {
             grants: chamber
                 .grants
                 .iter()
+                .filter(|(principal, rights)| {
+                    !matches!(rights, Rights::Spectator)
+                        || !gateway.account_observers.contains(principal)
+                })
                 .map(|(principal, rights)| Grant {
                     key: principal.0,
                     actor: match rights {
@@ -148,6 +161,8 @@ impl Prepared {
             items: chamber.items.clone(),
             outfits: chamber.outfits.clone(),
             equipment: chamber.equipment.clone(),
+            guests: gateway.guests().cloned(),
+            configured_players: gateway.configured_players,
         })
     }
     pub(super) fn instance(&self) -> u64 {
@@ -156,7 +171,7 @@ impl Prepared {
     pub(super) fn encode(&self) -> Result<Vec<u8>, String> {
         let ledger = self.rewards.checkpoint();
         let saved = Saved {
-            version: 10,
+            version: 11,
             content: self.content,
             world: String::from_utf8(self.game.checkpoint()?)
                 .map_err(|_| "Cannot encode saved world")?,
@@ -168,6 +183,8 @@ impl Prepared {
             items: Some(self.items.clone()),
             outfits: Some(self.outfits.clone()),
             equipment: Some(self.equipment.clone()),
+            guests: self.guests.clone(),
+            configured_players: self.configured_players,
             grants: self
                 .grants
                 .iter()
@@ -213,7 +230,9 @@ pub(super) fn decode_with_history(
         return Err("Saved chamber byte budget exceeded".into());
     }
     let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
-    if !matches!(saved.version, 1..=10)
+    if !matches!(saved.version, 1..=11)
+        || (saved.version < 11 && (saved.guests.is_some() || saved.configured_players != 0))
+        || saved.configured_players > 63
         || (saved.version == 1 && saved.rewards.is_some())
         || ((2..=7).contains(&saved.version) && saved.rewards.is_none())
         || (saved.version < 8 && saved.ledger.is_some())
@@ -336,7 +355,9 @@ pub(super) fn decode_with_history(
         return Err("Saved combat reward cursor is incompatible".into());
     }
     chamber.reward_cursor = saved.reward_cursor;
-    Gateway::new(chamber)?.with_content(content)
+    Gateway::new(chamber)?
+        .with_guests(saved.guests, saved.configured_players)?
+        .with_content(content)
 }
 
 #[cfg(test)]
@@ -986,7 +1007,7 @@ mod tests {
         assert_eq!(upgraded.game().player_life(), g.game().player_life());
         let saved: serde_json::Value =
             serde_json::from_slice(&upgraded.checkpoint().unwrap()).unwrap();
-        assert_eq!(saved["version"], 10);
+        assert_eq!(saved["version"], 11);
     }
     #[test]
     fn recovery_items_spend_once_restore_only_owned_resources_and_validate_saved_debits() {

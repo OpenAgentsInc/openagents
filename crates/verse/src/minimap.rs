@@ -274,6 +274,15 @@ impl MapHud {
                 )
                 .collect()
             }
+            crate::zones::ZoneId::Grove => {
+                let portal = crate::zones::ZoneId::Grove.portal();
+                vec![Landmark {
+                    id: "return",
+                    label: "Plaza portal",
+                    x: portal.x,
+                    z: portal.z - 3.0,
+                }]
+            }
             crate::zones::ZoneId::Ruins => vec![
                 Landmark {
                     id: "return",

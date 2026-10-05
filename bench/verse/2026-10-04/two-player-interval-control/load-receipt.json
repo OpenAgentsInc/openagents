@@ -1,0 +1,49 @@
+{
+  "schema": "verse.multiplayer.load.v2",
+  "status": "complete",
+  "seconds": 60,
+  "players": [
+    {
+      "player": 0,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 366,
+      "snapshot_bytes": 19725755,
+      "maximum_actors": 42,
+      "maximum_players": 2,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 233,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "legacy_commands",
+      "movement_inputs": 1236,
+      "input_pressure": 0,
+      "refusals": 137,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Fireball": 1,
+        "Grease": 2,
+        "Light": 2,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 2
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 1239,
+        "p95": 205.92458299999998,
+        "max": 256.62924999999996
+      }
+    }
+  ],
+  "limits": [
+    "Headless authenticated clients measure transport and authority load, not rendering.",
+    "Headless movement uses legacy commands; these results do not establish interval-based movement acceptance.",
+    "Binding-to-outcome includes server processing and client delivery, not isolated RTT.",
+    "Timing retains at most 8192 samples per player."
+  ]
+}

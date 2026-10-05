@@ -54,7 +54,12 @@ pub struct Placement {
 }
 
 impl Placement {
-    const fn new(model: &'static str, at: [f32; 2], yaw: f32, collision: Collision) -> Self {
+    pub(crate) const fn new(
+        model: &'static str,
+        at: [f32; 2],
+        yaw: f32,
+        collision: Collision,
+    ) -> Self {
         Self {
             model,
             at,
@@ -65,12 +70,12 @@ impl Placement {
         }
     }
 
-    const fn lift(mut self, lift: f32) -> Self {
+    pub(crate) const fn lift(mut self, lift: f32) -> Self {
         self.lift = lift;
         self
     }
 
-    const fn scale(mut self, scale: f32) -> Self {
+    pub(crate) const fn scale(mut self, scale: f32) -> Self {
         self.scale = scale;
         self
     }
@@ -252,7 +257,7 @@ enum Piece {
 }
 
 /// The tree ring's models, cheapest first; each tree takes the next.
-const TREES: [&str; 5] = [
+pub(crate) const TREES: [&str; 5] = [
     "nature/CommonTree_5",
     "nature/Pine_2",
     "nature/CommonTree_3",
@@ -260,9 +265,9 @@ const TREES: [&str; 5] = [
     "nature/CommonTree_4",
 ];
 /// Trees in the ring.
-const RING_TREES: u32 = 22;
+pub(crate) const RING_TREES: u32 = 22;
 /// Grass and clover clumps scattered in the clearing.
-const GRASS: [&str; 4] = [
+pub(crate) const GRASS: [&str; 4] = [
     "nature/Grass_Common_Short",
     "nature/Grass_Wispy_Short",
     "nature/Clover_1",
@@ -270,7 +275,7 @@ const GRASS: [&str; 4] = [
 ];
 const GRASS_CLUMPS: usize = 32;
 /// Small plants at the clearing's edge.
-const PLANTS: [(&str, f32); 4] = [
+pub(crate) const PLANTS: [(&str, f32); 4] = [
     ("nature/Plant_1", 1.0),
     ("nature/Plant_7", 1.2),
     ("nature/Plant_7_Big", 1.0),
@@ -279,7 +284,7 @@ const PLANTS: [(&str, f32); 4] = [
 const EDGE_PLANTS: usize = 12;
 
 /// A deterministic value in `0..1` for `n` in stream `salt`.
-fn noise(n: u32, salt: u32) -> f32 {
+pub(crate) fn noise(n: u32, salt: u32) -> f32 {
     let mut x = n.wrapping_mul(0x9E37_79B9) ^ salt.wrapping_mul(0x85EB_CA6B);
     x ^= x >> 16;
     x = x.wrapping_mul(0x7FEB_352D);

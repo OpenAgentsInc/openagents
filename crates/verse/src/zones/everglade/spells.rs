@@ -29,7 +29,7 @@ const PLAYER: u32 = 1;
 /// The player's mass for Feather Fall's energy accounting, kg.
 const MASS: f64 = 75.0;
 /// How far ahead of the caster the walls stand, m, as in the chamber.
-const AHEAD: f64 = 4.0;
+pub(crate) const AHEAD: f64 = 4.0;
 /// Half the stone slab the glade's ground is to Wall of Stone's support
 /// check, m.
 const SLAB: f64 = 20.0;
@@ -45,6 +45,9 @@ const RAISE: f64 = 0.35;
 const SUBSTEP: f64 = 1.0 / 120.0;
 /// The chamber's granite color (`prop-stone`).
 const GRANITE: [f32; 3] = [0.5, 0.49, 0.46];
+/// The upward speed Wind Wall gives a player inside it, m/s: enough to
+/// clear the wall's top and rise a few meters over it before falling.
+const WIND_LIFT: f32 = 11.0;
 /// Feather Fall's drifting feathers.
 const FEATHERS: usize = 8;
 const FEATHER: [f32; 3] = [0.95, 0.93, 0.86];
@@ -214,11 +217,28 @@ impl Spells {
     /// # Errors
     ///
     /// Returns why the cast was refused: a cooldown, or the rule it breaks.
+    #[cfg(test)]
     pub fn cast(
         &mut self,
         spell: Spell,
         player: &PlayerController,
         solids: &Solids,
+    ) -> Result<(), String> {
+        self.cast_ahead(spell, player, solids, AHEAD)
+    }
+
+    /// Casts `spell` as [`Self::cast`] does, with Wall of Stone and Wind
+    /// Wall standing `ahead` meters in front of `player`.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the cast was refused: a cooldown, or the rule it breaks.
+    pub fn cast_ahead(
+        &mut self,
+        spell: Spell,
+        player: &PlayerController,
+        solids: &Solids,
+        ahead: f64,
     ) -> Result<(), String> {
         if spell != Spell::FeatherFall && self.active(spell) {
             self.concentration = None;
@@ -227,7 +247,7 @@ impl Spells {
         if self.cooling(spell) > 0.0 {
             return Err(format!("{} is not ready", label(spell)));
         }
-        match self.admit(spell, player, solids)? {
+        match self.admit_ahead(spell, player, solids, ahead)? {
             Admitted::Feather(effect) => self.feather = Some(effect),
             Admitted::Concentration(c) => self.concentration = Some(c),
         }
@@ -241,6 +261,16 @@ impl Spells {
         spell: Spell,
         player: &PlayerController,
         solids: &Solids,
+    ) -> Result<Admitted, String> {
+        self.admit_ahead(spell, player, solids, AHEAD)
+    }
+
+    fn admit_ahead(
+        &self,
+        spell: Spell,
+        player: &PlayerController,
+        solids: &Solids,
+        ahead: f64,
     ) -> Result<Admitted, String> {
         let feet = player.pos.as_dvec3();
         let forward = player.forward().as_dvec3();
@@ -270,7 +300,7 @@ impl Spells {
             Spell::WallOfStone => {
                 let side = DVec3::new(forward.z, 0.0, -forward.x);
                 let size = stone::Form::Thick.size();
-                let center = feet + forward * AHEAD;
+                let center = feet + forward * ahead;
                 // The panels stand on the lowest ground under them, so no
                 // gap opens beneath the wall on a slope.
                 let samples = (2.0 * size.x / 0.5).ceil() as usize;
@@ -296,7 +326,7 @@ impl Spells {
             }
             Spell::WindWall => {
                 let facing = DVec2::new(forward.x, forward.z);
-                let center = DVec2::new(feet.x, feet.z) + facing * AHEAD;
+                let center = DVec2::new(feet.x, feet.z) + facing * ahead;
                 let side = DVec2::new(-facing.y, facing.x);
                 let path = wind::Wall::straight(center, side, 30.0 * wind::FOOT);
                 let wall = wind::Wall::new(path, feet, |p| {
@@ -319,6 +349,33 @@ impl Spells {
                     at,
                 }))
             }
+        }
+    }
+
+    /// The live Reverse Gravity, if any.
+    #[must_use]
+    pub fn reverse_gravity(&self) -> Option<&reverse::Gravity> {
+        match &self.concentration {
+            Some(Concentration::Reverse { gravity, .. }) => Some(gravity),
+            _ => None,
+        }
+    }
+
+    /// The live Wind Wall, if any.
+    #[must_use]
+    pub fn wind_wall(&self) -> Option<&wind::Wall> {
+        match &self.concentration {
+            Some(Concentration::Wind { wall, .. }) => Some(wall),
+            _ => None,
+        }
+    }
+
+    /// The live Wall of Stone's panels, if any.
+    #[must_use]
+    pub fn stone_panels(&self) -> Option<&[stone::Placement]> {
+        match &self.concentration {
+            Some(Concentration::Stone { panels, .. }) => Some(panels),
+            _ => None,
         }
     }
 
@@ -351,8 +408,9 @@ impl Spells {
     /// `dt` seconds that started with the feet at `feet` moving at `speed`,
     /// m/s. Inside Reverse Gravity's cylinder its field replaces the
     /// controller's gravity and a roof overhead stops the rise; elsewhere
-    /// Wind Wall's updraft lifts the airborne player inside it, and Feather
-    /// Fall's drag caps the descent until the player lands.
+    /// Wind Wall's updraft throws the player who walks into it upward, on
+    /// the ground or in the air, and Feather Fall's drag caps the descent
+    /// until the player lands.
     pub fn after_step(
         &mut self,
         player: &mut PlayerController,
@@ -398,7 +456,13 @@ impl Spells {
             player.set_surface_height(floor);
             return;
         }
-        if !player.airborne() {
+        let in_wind = matches!(&self.concentration, Some(Concentration::Wind { wall, .. })
+        if wall.in_area(
+            player.pos.as_dvec3(),
+            f64::from(RADIUS),
+            f64::from(AVATAR_HEIGHT),
+        ));
+        if !player.airborne() && !in_wind {
             // A warded landing ends the spell on the player.
             if let Some(effect) = &mut self.feather {
                 effect.land(PLAYER, self.time);
@@ -407,14 +471,11 @@ impl Spells {
         }
         let after = player.vertical_speed();
         let mut v = after;
-        if let Some(Concentration::Wind { wall, .. }) = &self.concentration
-            && wall.in_area(
-                player.pos.as_dvec3(),
-                f64::from(RADIUS),
-                f64::from(AVATAR_HEIGHT),
-            )
-        {
-            v += wind::HEAVY_UPDRAFT as f32 * dt;
+        if in_wind {
+            // The chamber's heavy-creature updraft is gentler than this
+            // controller's gravity; in the glade the wall throws the player
+            // up and keeps lifting while they stay in it.
+            v = v.max(WIND_LIFT);
         }
         if let Some(effect) = &mut self.feather
             && let Some(drag) = effect.drag(

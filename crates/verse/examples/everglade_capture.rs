@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|sky|yard|hall|lane-east|lane-west|studio-yard|studio-hall|studio-atrium] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|sky|yard|hall|lane-east|lane-west|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -13,6 +13,8 @@
 //!   proving ring, and the podium to the hall's facade.
 //! - `hall`: inside the hall, over the desks and their monitors toward the
 //!   gallery and the hearth.
+//! - `eyes` and `hall-eyes`: the approach and the hall in first person,
+//!   zoomed all the way in, with the player's character hidden.
 //! - `studio-atrium`: inside the gate, at the goal board, with the goal
 //!   bar and its waiting badge over the view.
 //! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
@@ -58,7 +60,10 @@ fn main() -> Result<(), String> {
     if runtime.zone != zones::ZoneId::Everglade {
         return Err("Everglade did not install from the pinned pack".into());
     }
+    let first_person = view.ends_with("eyes");
     let (at, yaw, tilt) = match view.as_str() {
+        "eyes" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, -60.0),
+        "hall-eyes" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, -40.0),
         "approach" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
         // From the approach, turned toward the Sun and tilted up at the sky.
         "sky" => (glam::Vec3::new(0.0, 0.0, -29.0), SKY_YAW, SKY_TILT),
@@ -74,7 +79,7 @@ fn main() -> Result<(), String> {
         other => {
             return Err(format!(
                 "unknown view `{other}`; use approach, sky, yard, hall, lane-east, lane-west, studio-yard, studio-hall, \
-                 or studio-atrium"
+                 studio-atrium, eyes, or hall-eyes"
             ));
         }
     };
@@ -87,6 +92,9 @@ fn main() -> Result<(), String> {
         None
     };
     runtime.apply(Action::Orbit { dx: 0.0, dy: tilt })?;
+    if first_person {
+        runtime.apply(Action::Zoom { lines: 100.0 })?;
+    }
     let idle = InputState::default();
     for _ in 0..10 {
         runtime.tick(&idle, 0.05);

@@ -21,6 +21,7 @@ where that studio lives, built from CC0 Quaternius kits. [The Apprentice's Road]
 proposed quest line that eases new players from a first walk in the glade to
 a team of agents on their own repository.
 [Destructible buildings](destructible-buildings.md) specifies what the engine needs for a player to smash Everglade's buildings with a sledgehammer, and orders the work.
+[In-world terminal](in-world-terminal.md) specifies a multiplexed, shareable terminal overlay and in-world screens over NIP-TERM and `coder-vt`, and plans a first demo in Everglade.
 
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 

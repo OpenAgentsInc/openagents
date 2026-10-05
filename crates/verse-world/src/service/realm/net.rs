@@ -19,6 +19,22 @@ use tokio_rustls::TlsAcceptor;
 const QUEUE: usize = 128;
 
 enum Operation {
+    Account {
+        id: u64,
+        reply: oneshot::Sender<Result<Account, String>>,
+    },
+    Recover {
+        account: u64,
+        epoch: u64,
+        key: [u8; 32],
+        reply: oneshot::Sender<Result<Account, String>>,
+    },
+    CreateCharacter {
+        instance: u64,
+        principal: [u8; 32],
+        spawn: [f32; 3],
+        reply: oneshot::Sender<Result<(u64, LifeId), String>>,
+    },
     Studio {
         instance: u64,
         actors: Vec<crate::play::social::SeatActor>,
@@ -56,6 +72,44 @@ pub fn channel() -> (Control, Commands) {
     (Control(send), Commands(receive))
 }
 impl Control {
+    pub async fn account(&self, id: u64) -> Result<Account, String> {
+        let (reply, receive) = oneshot::channel();
+        self.send(Operation::Account { id, reply }).await?;
+        receive.await.map_err(|_| "Realm operator stopped")?
+    }
+
+    pub async fn recover_account(
+        &self,
+        account: u64,
+        expected_epoch: u64,
+        new_key: [u8; 32],
+    ) -> Result<Account, String> {
+        let (reply, receive) = oneshot::channel();
+        self.send(Operation::Recover {
+            account,
+            epoch: expected_epoch,
+            key: new_key,
+            reply,
+        })
+        .await?;
+        receive.await.map_err(|_| "Realm operator stopped")?
+    }
+    pub async fn create_character(
+        &self,
+        instance: u64,
+        principal: [u8; 32],
+        spawn: [f32; 3],
+    ) -> Result<(u64, LifeId), String> {
+        let (reply, receive) = oneshot::channel();
+        self.send(Operation::CreateCharacter {
+            instance,
+            principal,
+            spawn,
+            reply,
+        })
+        .await?;
+        receive.await.map_err(|_| "Realm operator stopped")?
+    }
     async fn send(&self, operation: Operation) -> Result<(), String> {
         self.0
             .send(operation)
@@ -226,6 +280,36 @@ fn coordinator(
                 }
             }
             Work::Operator(operation) => match operation {
+                Operation::Account { id, reply } => {
+                    let _ = reply.send(realm.account(id));
+                }
+                Operation::Recover {
+                    account,
+                    epoch,
+                    key,
+                    reply,
+                } => {
+                    let result = realm.recover_account(
+                        &leases.values().cloned().collect::<Vec<_>>(),
+                        account,
+                        epoch,
+                        key,
+                        clock,
+                    );
+                    let _ = reply.send(result);
+                }
+                Operation::CreateCharacter {
+                    instance,
+                    principal,
+                    spawn,
+                    reply,
+                } => {
+                    let result = leases
+                        .get(&instance)
+                        .ok_or_else(|| "Realm listener has no lease".to_string())
+                        .and_then(|lease| realm.create_character(lease, principal, spawn, clock));
+                    let _ = reply.send(result);
+                }
                 Operation::Studio {
                     instance,
                     actors,

@@ -50,6 +50,16 @@ The page that serves them must:
   `PACK_BYTES`, and refuses bytes whose length or SHA-256 differ. A new pack
   digest is a new URL, so the file can be cached as immutable.
 
+### Grove mode
+
+The same module starts in the Grove, the druid training field
+(`docs/verse/druid-demo.md`), when the page's URL has the query parameter
+`zone=grove`, for example `/druid?zone=grove` or `/?gl&zone=grove`. The
+Grove is built on the same pinned pack, so the page serves the same files
+and nothing else changes. A page that always starts in the Grove, such as
+`/druid`, can redirect to its own URL with `?zone=grove`, or load the module
+from a page whose URL carries it.
+
 Download progress and errors appear in an element with the ID
 `everglade-status`. The module creates one at the bottom left when the page
 has none, and hides it when the glade appears.
@@ -75,3 +85,8 @@ The shared controller, mapped as on desktop:
   buttons walk forward, and the wheel zooms.
 - On a touch screen, one finger turns the character and tilts the camera,
   and two fingers walk forward; pinching them zooms.
+
+In the Grove, keys `1` to `9` cast the druid's spells on the hotbar
+(Thunderwave, Gust of Wind, Wind Wall, Wall of Stone, Reverse Gravity, Fire
+Bolt, Fireball, Misty Step, and Web), `0` is Long Rest, and a click or tap
+on a slot casts it. Spells aim at the dummy nearest the character's facing.

@@ -7,6 +7,7 @@ pub mod assets;
 pub mod everglade;
 pub mod everglade_pack;
 pub mod gate;
+pub mod grove;
 pub mod hud;
 mod lab;
 mod lagrange;
@@ -48,14 +49,18 @@ pub enum ZoneId {
     Lagrange1,
     PhysicsLab,
     Everglade,
+    /// The druid training field on Everglade's pack
+    /// ([`grove`], `docs/verse/druid-demo.md`).
+    Grove,
 }
 impl ZoneId {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Plaza,
         Self::Ruins,
         Self::Lagrange1,
         Self::PhysicsLab,
         Self::Everglade,
+        Self::Grove,
     ];
 
     /// The zone a command line names, by world identifier or label
@@ -78,6 +83,7 @@ impl ZoneId {
             Self::Lagrange1 => "verse-lagrange-1",
             Self::PhysicsLab => "physics-lab-v1",
             Self::Everglade => "verse-everglade",
+            Self::Grove => "verse-grove",
         }
     }
     pub const fn label(self) -> &'static str {
@@ -87,6 +93,7 @@ impl ZoneId {
             Self::Lagrange1 => "Lagrange 1",
             Self::PhysicsLab => "Physics Lab",
             Self::Everglade => "Everglade",
+            Self::Grove => "Grove",
         }
     }
     pub const fn half_extent(self) -> f32 {
@@ -94,7 +101,7 @@ impl ZoneId {
             Self::Plaza => crate::world::HALF,
             Self::Ruins | Self::Lagrange1 => 150.0,
             Self::PhysicsLab => lab::HALF_EXTENT,
-            Self::Everglade => everglade::HALF_EXTENT,
+            Self::Everglade | Self::Grove => everglade::HALF_EXTENT,
         }
     }
     /// The zone's primary portal: the plaza's Ruins arch, or a zone's return.
@@ -121,6 +128,7 @@ impl ZoneId {
             Self::Lagrange1 => vec![(Self::Plaza, lagrange::RETURN_PORTAL)],
             Self::PhysicsLab => vec![(Self::Plaza, lab::RETURN_PORTAL)],
             Self::Everglade => vec![(Self::Plaza, everglade::RETURN_PORTAL)],
+            Self::Grove => vec![(Self::Plaza, grove::RETURN_PORTAL)],
         }
     }
     /// Short arch lettering for a destination.
@@ -131,6 +139,7 @@ impl ZoneId {
             Self::Lagrange1 => "LAGRANGE 1",
             Self::PhysicsLab => "PHYSICS LAB",
             Self::Everglade => "EVERGLADE",
+            Self::Grove => "GROVE",
         }
     }
 }
@@ -198,7 +207,8 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
         // which fades the tree ring into it. The haze lies low: its density
         // halves about every 6 m of height, so the hollows fog over before
         // the ring's high ground, and it brightens toward the Sun.
-        ZoneId::Everglade => Atmosphere {
+        // The Grove stands under Everglade's sky, haze, and light.
+        ZoneId::Everglade | ZoneId::Grove => Atmosphere {
             color: [0.72, 0.66, 0.50],
             fog_start: 40.0,
             fog_end: 170.0,
@@ -262,6 +272,15 @@ pub enum Intent {
     WallOfStone,
     WindWall,
     ReverseGravity,
+    /// The Grove's druid spells beside Everglade's
+    /// ([`grove::kit`](crate::zones::grove::kit)); Fire Bolt and Fireball
+    /// are [`Self::Firebolt`] and [`Self::Fireball`] there.
+    Thunderwave,
+    GustOfWind,
+    MistyStep,
+    Web,
+    /// The Grove's demo control: refills mana, cooldowns, and the dummies.
+    LongRest,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -337,6 +356,9 @@ pub(crate) struct State {
     lagrange: Option<Lagrange>,
     lab: Option<Lab>,
     everglade: Option<Everglade>,
+    /// The Grove's training field. The Grove also fills `everglade`, whose
+    /// movement, spells, and character it walks with.
+    grove: Option<grove::Grove>,
     /// The Agent Studio Everglade draws. It keeps its source across visits
     /// and observes only while the player is in Everglade.
     studio: everglade::studio::Studio,
@@ -367,6 +389,7 @@ impl Default for State {
             lagrange: None,
             lab: None,
             everglade: None,
+            grove: None,
             studio: everglade::studio::Studio::default(),
             studio_notice: None,
             destination: ZoneId::Ruins,
@@ -456,7 +479,7 @@ pub(crate) fn arch(
         ZoneId::Ruins => [0.13, 0.55, 0.34],
         ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
         ZoneId::PhysicsLab => [0.3, 0.85, 1.0],
-        ZoneId::Everglade => [0.95, 0.85, 0.4],
+        ZoneId::Everglade | ZoneId::Grove => [0.95, 0.85, 0.4],
     };
     // Broken concentric arcs leave the destination visible through the opening.
     for ring in 0..3 {

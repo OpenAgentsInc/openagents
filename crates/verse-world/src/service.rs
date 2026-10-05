@@ -3,6 +3,8 @@
 //! Principals and session handles are adapter values, not bearer credentials.
 //! Never deserialize a principal from an untrusted command and call it verified.
 #[cfg(feature = "service-auth")]
+pub mod accounts;
+#[cfg(feature = "service-auth")]
 pub mod auth;
 #[cfg(feature = "service-net")]
 pub mod client;
@@ -77,6 +79,7 @@ struct Connection {
 ///
 /// Enrollment, ticking, reset, and revocation are host operations. Network
 /// dispatch uses only the principal verified for that connection and its handle.
+#[derive(Clone)]
 pub struct Chamber {
     game: Game,
     grants: BTreeMap<Principal, Rights>,
@@ -445,9 +448,29 @@ impl Chamber {
                 continue;
             };
             if let Some(policy) = self.reward_policy.iter().find(|p| p.target == life.actor) {
-                for rights in self.grants.values() {
+                for (principal, rights) in &self.grants {
                     if let Rights::Player(actor) = rights {
-                        transactions.push(policy.transaction(*actor, life));
+                        let connected = self.connections.values().any(|c| {
+                            c.principal == *principal
+                                && matches!(c.rights, Rights::Player(a) if a == *actor)
+                        });
+                        let eligible = match policy.participation {
+                            rewards::Participation::EnrolledResidents => true,
+                            rewards::Participation::Connected => connected,
+                            rewards::Participation::ConnectedWithin { radius } => {
+                                connected
+                                    && self
+                                        .game
+                                        .actor_position(*actor)
+                                        .zip(self.game.actor_position(life.actor))
+                                        .is_some_and(|(a, b)| {
+                                            a.distance_squared(b) <= f32::from(radius).powi(2)
+                                        })
+                            }
+                        };
+                        if eligible {
+                            transactions.push(policy.transaction(*actor, life));
+                        }
                     }
                 }
             }
@@ -484,6 +507,13 @@ impl Chamber {
 
     /// Gives an enrolled principal the existing primary adventurer.
     pub fn enroll_primary(&mut self, principal: Principal) -> Result<(), String> {
+        if self
+            .game
+            .player_admission(self.game.player_actor())
+            .is_none()
+        {
+            return Err("Primary scene character is absent".into());
+        }
         self.room_for_grant(principal)?;
         let actor = self.game.player_life().actor;
         if self
@@ -731,7 +761,9 @@ impl Chamber {
                 _ => None,
             })
             .unwrap_or(Controller(0));
-        self.game.handoff_player(primary, controller)?;
+        if self.game.player_admission(primary.actor).is_some() {
+            self.game.handoff_player(primary, controller)?;
+        }
         for actor in self
             .game
             .controlled_effects()
@@ -789,6 +821,7 @@ mod tests {
     fn cooperative_rewards_follow_npc_lives_without_connection_duplicates() {
         let mut c = chamber(99);
         c.configure_rewards(vec![rewards::Policy {
+            participation: Default::default(),
             target: 2,
             experience: 45,
             items: vec![rewards::Entry { id: 1, count: 1 }],
@@ -974,5 +1007,88 @@ mod tests {
             c.connect(A).unwrap();
         }
         assert_eq!(c.connections.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod participation_tests {
+    use super::*;
+    #[test]
+    fn authored_participation_excludes_disconnected_and_distant_recipients() {
+        use rewards::{Participation, Policy};
+        for (participation, expected) in [
+            (Participation::EnrolledResidents, [true, true, true]),
+            (Participation::Connected, [true, true, false]),
+            (
+                Participation::ConnectedWithin { radius: 5 },
+                [false, true, false],
+            ),
+        ] {
+            let scene = verse_engine::director::Scene::from_json(include_bytes!(
+                "../../../assets/verse/original/ritual.json"
+            ))
+            .unwrap();
+            let mut game = Game::combat_in(scene, false, 1901).unwrap();
+            game.time = game.scene.cut_at;
+            game.tick(0., [0.; 2]).unwrap();
+            let target = game.actor_position(2).unwrap();
+            let mut chamber = Chamber::new(game).unwrap();
+            let principals = [Principal([1; 32]), Principal([2; 32]), Principal([3; 32])];
+            chamber.enroll_primary(principals[0]).unwrap();
+            let near = chamber
+                .enroll_player(principals[1], target + Vec3::X * 3.)
+                .unwrap();
+            let offline = chamber
+                .enroll_player(principals[2], target - Vec3::X * 3.)
+                .unwrap();
+            for p in principals {
+                chamber.connect(p).unwrap();
+            }
+            let connection = *chamber
+                .connections
+                .values()
+                .find(|c| c.principal == principals[2])
+                .unwrap();
+            let session = Session {
+                instance: 1901,
+                serial: *chamber
+                    .connections
+                    .iter()
+                    .find(|(_, c)| c.principal == principals[2])
+                    .unwrap()
+                    .0,
+            };
+            chamber.disconnect(connection.principal, session).unwrap();
+            chamber
+                .configure_rewards(vec![Policy {
+                    participation,
+                    target: 2,
+                    experience: 7,
+                    items: vec![],
+                    quests: vec![],
+                }])
+                .unwrap();
+            chamber
+                .game
+                .simulation
+                .bow_impact(chamber.game.ids[&2], 1000)
+                .unwrap();
+            chamber.tick(1. / 30.).unwrap();
+            let actors = [chamber.game.player_actor(), near.actor, offline.actor];
+            for (actor, expected) in actors.into_iter().zip(expected) {
+                assert_eq!(
+                    chamber.character_rewards(actor).map_or(0, |c| c.experience),
+                    if expected { 7 } else { 0 }
+                );
+            }
+            chamber.reward_cursor = 0;
+            chamber.process_rewards().unwrap();
+            for (actor, expected) in actors.into_iter().zip(expected) {
+                assert_eq!(
+                    chamber.character_rewards(actor).map_or(0, |c| c.experience),
+                    if expected { 7 } else { 0 }
+                );
+            }
+        }
     }
 }

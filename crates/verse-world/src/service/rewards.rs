@@ -50,10 +50,28 @@ pub struct Character {
     pub equipment: BTreeMap<super::equipment::Slot, u64>,
 }
 
+/// Selects eligible resident recipients for an authored defeat reward.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Participation {
+    #[default]
+    EnrolledResidents,
+    Connected,
+    ConnectedWithin {
+        radius: u16,
+    },
+}
+impl Participation {
+    fn legacy(&self) -> bool {
+        matches!(self, Self::EnrolledResidents)
+    }
+}
 /// Version-one cooperative reward for each defeated life of an authored NPC.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {
+    #[serde(default, skip_serializing_if = "Participation::legacy")]
+    pub participation: Participation,
     pub target: u64,
     pub experience: u64,
     pub items: Vec<Entry>,
@@ -72,6 +90,10 @@ impl Policy {
                 return Err(
                     "Combat rewards require sorted unique targets and nonempty grants".into(),
                 );
+            }
+            if matches!(policy.participation, Participation::ConnectedWithin { radius } if !(1..=256).contains(&radius))
+            {
+                return Err("Reward participation radius exceeds budget".into());
             }
             entries(&policy.items)?;
             entries(&policy.quests)?;

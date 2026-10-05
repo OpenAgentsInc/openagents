@@ -870,6 +870,84 @@ fn the_player_is_the_outfitted_character_and_no_companion_follows() {
 }
 
 #[test]
+fn zooming_all_the_way_in_looks_through_the_players_eyes_and_hides_the_character() {
+    use crate::camera::{TRANSITION_SECONDS, head};
+    use crate::controller::InputState;
+    use crate::runtime::Action;
+    let mut runtime = entered();
+    runtime.set_spawn(Vec3::new(0.0, 0.0, -29.0), 0.0).unwrap();
+    let idle = InputState::default();
+    let settle = |runtime: &mut WorldRuntime| {
+        for _ in 0..10 {
+            runtime.tick(&idle, TRANSITION_SECONDS / 4.0);
+        }
+    };
+    settle(&mut runtime);
+    // The player's own posed character: every vertex near the feet, with a
+    // body's height between the lowest and the highest.
+    let near_feet = |runtime: &WorldRuntime| {
+        let feet = runtime.player.pos;
+        let figure = runtime.dynamic_mesh().figure.expect("the posed character");
+        figure.validate().unwrap();
+        figure
+            .vertices
+            .iter()
+            .map(|v| Vec3::from(v.pos))
+            .filter(|p| (p.x - feet.x).hypot(p.z - feet.z) < 1.2)
+            .fold((f32::MAX, f32::MIN), |(lo, hi), p| {
+                (lo.min(p.y), hi.max(p.y))
+            })
+    };
+    let (low, high) = near_feet(&runtime);
+    assert!(high - low > 1.5, "the character stands in third person");
+    // The nearest orbit alone stays third person; zooming on enters first.
+    for _ in 0..3 {
+        runtime.apply(Action::Zoom { lines: 5.0 }).unwrap();
+    }
+    assert!(runtime.first_person());
+    settle(&mut runtime);
+    assert!(runtime.hides_avatar());
+    let eye = runtime.view(1.6).eye;
+    assert!(eye.distance(head(runtime.player.pos)) < 1e-4, "{eye}");
+    let (low, high) = near_feet(&runtime);
+    assert!(
+        high - low < 1e-6,
+        "the player's character is hidden, spanning {low}..{high}"
+    );
+    // Looking aside and walking turns the body to the view, so the player
+    // walks where it looks; the eye stays at the head.
+    runtime
+        .apply(Action::Orbit {
+            dx: -200.0,
+            dy: 0.0,
+        })
+        .unwrap();
+    let view_yaw = runtime.player.yaw + runtime.camera.yaw_offset;
+    let start = runtime.player.pos;
+    let walk = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    for _ in 0..20 {
+        runtime.tick(&walk, 0.05);
+    }
+    assert!((runtime.player.yaw - view_yaw).abs() < 1e-4);
+    let moved = runtime.player.pos - start;
+    let heading = crate::controller::forward(view_yaw);
+    assert!(moved.x * heading.x + moved.z * heading.z > 1.0, "{moved}");
+    assert!(runtime.view(1.6).eye.distance(head(runtime.player.pos)) < 1e-4);
+    // Zooming out glides back to the nearest orbit with the character.
+    runtime.apply(Action::Zoom { lines: -2.0 }).unwrap();
+    assert!(!runtime.first_person());
+    settle(&mut runtime);
+    assert!(!runtime.hides_avatar());
+    let (low, high) = near_feet(&runtime);
+    assert!(high - low > 1.5);
+    let eye = runtime.view(1.6).eye;
+    assert!(eye.distance(head(runtime.player.pos)) > 1.5, "{eye}");
+}
+
+#[test]
 fn movement_drives_the_characters_clips() {
     use super::player::Motion;
     use crate::controller::InputState;

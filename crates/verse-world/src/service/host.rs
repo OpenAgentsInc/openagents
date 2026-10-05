@@ -500,6 +500,7 @@ mod tests {
         use super::super::rewards::Policy;
         let mut config = config();
         config.rewards = vec![Policy {
+            participation: Default::default(),
             target: 2,
             experience: 45,
             items: vec![],

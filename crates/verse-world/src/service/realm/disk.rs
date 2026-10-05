@@ -91,6 +91,7 @@ pub(super) fn open(root: &Path) -> Result<Realm, String> {
     secure_dir(root)?;
     secure_dir(&root.join("snapshots"))?;
     secure_dir(&root.join("transfers"))?;
+    secure_dir(&root.join("registry"))?;
     regular(&root.join("writer.lock"))?;
     let lock = options()
         .create(true)
@@ -114,18 +115,21 @@ pub(super) fn open(root: &Path) -> Result<Realm, String> {
         sealed.manifest
     } else {
         Manifest {
-            version: 1,
+            version: 2,
             id: random()?,
             revision: 0,
             last_now_ms: 0,
             next_character: 1,
+            next_account: 1,
+            registry_root: None,
             transfer_root: None,
             transfers: 0,
             instances: BTreeMap::new(),
             characters: BTreeMap::new(),
         }
     };
-    if manifest.version != 1
+    if !matches!(manifest.version, 1 | 2)
+        || manifest.version == 2 && manifest.next_account == 0
         || manifest.id == [0; 32]
         || manifest.instances.len() > INSTANCES
         || manifest.characters.len() > CHARACTERS
@@ -143,6 +147,7 @@ pub(super) fn open(root: &Path) -> Result<Realm, String> {
         poisoned: false,
         dirty: std::collections::BTreeSet::new(),
         transfer_commit: false,
+        lifecycle_commit: false,
     };
     let instances: Vec<_> = realm.manifest.instances.keys().copied().collect();
     for id in &instances {
@@ -178,6 +183,7 @@ pub(super) fn open(root: &Path) -> Result<Realm, String> {
             return Err("Realm character placement is missing or duplicated".into());
         }
     }
+    super::registry::upgrade(&mut realm)?;
     super::transfer::validate(&realm)?;
     let actual: usize = realm.games.values().map(|g| g.chamber.owners.len()).sum();
     if actual != bindings.len() {
@@ -207,12 +213,46 @@ pub(super) fn recover_game(realm: &Realm, id: u64) -> Result<Gateway, String> {
 fn boundary(realm: &Realm, name: &str) {
     #[cfg(test)]
     if std::env::var("VERSE_REALM_CRASH_AT").is_ok_and(|stage| {
-        stage == name || realm.transfer_commit && stage == format!("transfer_{name}")
+        stage == name
+            || realm.transfer_commit && stage == format!("transfer_{name}")
+            || realm.lifecycle_commit && stage == format!("lifecycle_{name}")
     }) {
         std::process::exit(86);
     }
     #[cfg(not(test))]
     let _ = (realm, name);
+}
+pub(super) fn store_snapshot(realm: &Realm, bytes: &[u8]) -> Result<[u8; 32], String> {
+    if bytes.is_empty() || bytes.len() > super::super::save::MAX_BYTES {
+        return Err("Realm snapshot exceeds byte budget".into());
+    }
+    let hash = digest(bytes);
+    let path = realm
+        .root
+        .join("snapshots")
+        .join(format!("{}.json", hex(&hash)));
+    regular(&path)?;
+    if path.exists() {
+        if read(&path, super::super::save::MAX_BYTES)? != bytes {
+            return Err("Realm immutable checkpoint collision".into());
+        }
+    } else {
+        let pending = realm.root.join("snapshots").join("snapshot.next");
+        regular(&pending)?;
+        let mut file = options()
+            .create(true)
+            .truncate(true)
+            .open(&pending)
+            .map_err(|_| "Cannot create realm instance checkpoint")?;
+        file.write_all(bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|_| "Cannot sync realm instance checkpoint")?;
+        fs::rename(&pending, &path).map_err(|_| "Cannot publish immutable realm checkpoint")?;
+    }
+    File::open(realm.root.join("snapshots"))
+        .and_then(|f| f.sync_all())
+        .map_err(|_| "Cannot sync realm snapshot directory")?;
+    Ok(hash)
 }
 pub(super) fn publish(realm: &mut Realm, instances: &[u64]) -> Result<(), String> {
     boundary(realm, "before_snapshots");
@@ -222,29 +262,7 @@ pub(super) fn publish(realm: &mut Realm, instances: &[u64]) -> Result<(), String
             .get(id)
             .ok_or("Realm instance is missing")?
             .checkpoint()?;
-        let hash = digest(&bytes);
-        let path = realm
-            .root
-            .join("snapshots")
-            .join(format!("{}.json", hex(&hash)));
-        regular(&path)?;
-        if path.exists() {
-            if read(&path, super::super::save::MAX_BYTES)? != bytes {
-                return Err("Realm immutable checkpoint collision".into());
-            }
-        } else {
-            let pending = realm.root.join("snapshots").join("snapshot.next");
-            regular(&pending)?;
-            let mut file = options()
-                .create(true)
-                .truncate(true)
-                .open(&pending)
-                .map_err(|_| "Cannot create realm instance checkpoint")?;
-            file.write_all(&bytes)
-                .and_then(|_| file.sync_all())
-                .map_err(|_| "Cannot sync realm instance checkpoint")?;
-            fs::rename(&pending, &path).map_err(|_| "Cannot publish immutable realm checkpoint")?;
-        }
+        let hash = store_snapshot(realm, &bytes)?;
         realm.manifest.instances.get_mut(id).unwrap().snapshot = hash;
     }
     realm.history.synchronize()?;

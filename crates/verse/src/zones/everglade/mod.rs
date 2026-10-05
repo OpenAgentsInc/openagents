@@ -15,12 +15,12 @@
 //! ([`player`], [`pose`]); no companion follows.
 
 mod boards;
-mod draw;
+pub(crate) mod draw;
 pub mod hotbar;
 pub mod layout;
 pub mod player;
 pub mod pose;
-mod scene;
+pub(crate) mod scene;
 pub mod signals;
 pub mod solids;
 #[cfg(test)]
@@ -78,6 +78,9 @@ pub(crate) struct Everglade {
     bake: Option<BakeJob>,
     /// The bake's probes, which light the characters once it finishes.
     probes: Option<Arc<AmbientProbes>>,
+    /// Blocks another zone's rules add to the spells' own, such as the
+    /// Grove's training dummies, each a footprint and its top, m.
+    extra_blocks: Vec<(crate::controller::Footprint, f32)>,
 }
 
 impl Everglade {
@@ -88,6 +91,20 @@ impl Everglade {
     ///
     /// Returns a message when the pack's character cannot play.
     pub fn new(pack: &ZonePack, at: &PlayerController) -> Result<Self, String> {
+        Self::with_solids(pack, at, solids::build(pack, &layout::placements())?)
+    }
+
+    /// The zone's movement, spells, and characters over `solids`, for a
+    /// zone built from other placements of the same pack (the Grove).
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack's character cannot play.
+    pub fn with_solids(
+        pack: &ZonePack,
+        at: &PlayerController,
+        solids: solids::Solids,
+    ) -> Result<Self, String> {
         Ok(Self {
             elapsed: 0.0,
             levitating: false,
@@ -95,12 +112,13 @@ impl Everglade {
             altitude: 0.0,
             jump: false,
             landing: false,
-            solids: solids::build(pack, &layout::placements())?,
+            solids,
             spells: spells::Spells::default(),
             rendered: Self::stage(0.0),
             cast: player::Cast::new(pack, at)?,
             bake: None,
             probes: None,
+            extra_blocks: Vec::new(),
         })
     }
 
@@ -292,13 +310,59 @@ impl Everglade {
         spell: spells::Spell,
         player: &PlayerController,
     ) -> Result<(), String> {
-        self.spells.cast(spell, player, &self.solids)?;
+        self.cast_spell_ahead(spell, player, spells::AHEAD)
+    }
+
+    /// Casts `spell` as [`Self::cast_spell`] does, with Wall of Stone and
+    /// Wind Wall standing `ahead` meters in front of the player.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the spell's rules refused the cast.
+    pub fn cast_spell_ahead(
+        &mut self,
+        spell: spells::Spell,
+        player: &PlayerController,
+        ahead: f64,
+    ) -> Result<(), String> {
+        self.spells.cast_ahead(spell, player, &self.solids, ahead)?;
         if spell == spells::Spell::ReverseGravity && self.spells.active(spell) {
             self.levitating = false;
             self.landing = false;
         }
-        self.solids.set_spell_blocks(self.spells.blocks());
+        self.refresh_blocks();
         Ok(())
+    }
+
+    /// Whether `spell` is live on the player.
+    #[must_use]
+    pub fn spell_active(&self, spell: spells::Spell) -> bool {
+        self.spells.active(spell)
+    }
+
+    /// The live spells, for rules that act on more than the player.
+    #[must_use]
+    pub fn spells(&self) -> &spells::Spells {
+        &self.spells
+    }
+
+    /// Ends every spell and clears every cooldown, as a long rest does.
+    pub fn long_rest(&mut self) {
+        self.spells = spells::Spells::default();
+        self.refresh_blocks();
+    }
+
+    /// Replaces the blocks another zone's rules add, each a footprint and
+    /// its top, m.
+    pub fn set_extra_blocks(&mut self, blocks: Vec<(crate::controller::Footprint, f32)>) {
+        self.extra_blocks = blocks;
+        self.refresh_blocks();
+    }
+
+    fn refresh_blocks(&mut self) {
+        let mut blocks = self.spells.blocks();
+        blocks.extend(self.extra_blocks.iter().copied());
+        self.solids.set_spell_blocks(blocks);
     }
 
     /// `spell`'s hotbar slot for `player`.
@@ -338,7 +402,7 @@ impl Everglade {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.rendered = Self::stage(self.elapsed);
         if self.spells.tick(dt) {
-            self.solids.set_spell_blocks(self.spells.blocks());
+            self.refresh_blocks();
         }
         if let Some(cast) = &mut self.cast {
             cast.advance(at, seats, dt);
@@ -380,11 +444,21 @@ impl Everglade {
     }
 
     /// The player and the seats as drawn: the posed characters, or the
-    /// plaza's avatar when the pack has no character.
-    pub fn player_mesh(&self, at: &PlayerController, gait: &crate::avatar::Gait) -> Mesh {
+    /// plaza's avatar when the pack has no character. With `hide_player`,
+    /// the player's own character is left out, as first person needs.
+    pub fn player_mesh(
+        &self,
+        at: &PlayerController,
+        gait: &crate::avatar::Gait,
+        hide_player: bool,
+    ) -> Mesh {
         match &self.cast {
             Some(cast) => {
-                let mut figure = cast.figure();
+                let mut figure = if hide_player {
+                    cast.figure_without_player()
+                } else {
+                    cast.figure()
+                };
                 // Characters take the baked probes' light, so they darken
                 // under the roof and the canopy as the ground does.
                 if let Some(probes) = &self.probes {
@@ -397,7 +471,22 @@ impl Everglade {
                     ..Mesh::default()
                 }
             }
+            None if hide_player => Mesh::default(),
             None => crate::avatar::mesh(at, gait),
+        }
+    }
+
+    /// The pack's characters posed for this frame, without the probes'
+    /// light, or `None` when the pack has no character.
+    #[must_use]
+    pub fn cast_figure(&self) -> Option<crate::pbr::textured::Figure> {
+        self.cast.as_ref().map(player::Cast::figure)
+    }
+
+    /// Lights `vertices` with the baked probes, once the bake has them.
+    pub fn shade(&self, vertices: &mut [crate::pbr::textured::TexturedVertex]) {
+        if let Some(probes) = &self.probes {
+            probes.shade(vertices);
         }
     }
 

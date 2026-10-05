@@ -45,6 +45,7 @@ pub struct Scene {
     pub version: u32,
     pub duration: f32,
     /// The scene origin in pack source coordinates; see [`crate::source_position`].
+    #[serde(alias = "origin_wow")]
     pub origin: [f32; 3],
     pub cut_at: f32,
     pub actors: Vec<Actor>,
@@ -448,5 +449,30 @@ impl Scene {
             self.collision_profile.as_deref(),
             Some("original-chamber-v1" | "spell-playground-v1")
         )
+    }
+}
+
+#[cfg(test)]
+mod legacy_origin_tests {
+    use super::*;
+    #[test]
+    fn legacy_scene_origin_reads_and_serializes_with_the_current_name() {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(include_bytes!("../../../assets/verse/original/ritual.json"))
+                .unwrap();
+        let object = value.as_object_mut().unwrap();
+        let origin = object.remove("origin").unwrap();
+        object.insert("origin_wow".into(), origin.clone());
+        let scene = Scene::from_json(&serde_json::to_vec(&value).unwrap()).unwrap();
+        let expected: [f32; 3] = serde_json::from_value(origin.clone()).unwrap();
+        assert_eq!(scene.origin, expected);
+        let current = serde_json::to_value(scene).unwrap();
+        assert_eq!(current["origin"], serde_json::to_value(expected).unwrap());
+        assert!(current.get("origin_wow").is_none());
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("origin".into(), origin);
+        assert!(Scene::from_json(&serde_json::to_vec(&value).unwrap()).is_err());
     }
 }

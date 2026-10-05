@@ -38,8 +38,10 @@ adds independent instances, exclusive leases, and atomic character transfer. V07
 remediation in [#10596](https://github.com/OpenAgentsInc/openagents/issues/10596)
 adds explicit hosted social profiles and a shared native projection. V08
 remediation in [#10602](https://github.com/OpenAgentsInc/openagents/issues/10602)
-adds transport admission partitions and shared request budgets. Two
-findings still deserve
+adds transport admission partitions and shared request budgets. V09 remediation
+in [#10603](https://github.com/OpenAgentsInc/openagents/issues/10603) adds stable
+accounts, durable logout and selection, key replacement, and reward participation.
+Two findings still deserve
 immediate engineering attention:
 
 1. A sustained 20-player/40-NPC battle fails performance acceptance, and a
@@ -85,7 +87,7 @@ code. Counts describe scope, not coverage or quality.
 | [`physics`](../../crates/physics/src/lib.rs) | 25 / 11,509 | Rigid bodies, contacts, warm starting, joints, CCD primitives, mesh queries, character movement, walkable navigation, lifetimes, and traces. |
 | [`verse-lagrange`](../../crates/verse-lagrange/README.md) | 5 / 4,504 | Orbital mechanics, construction, fixed stepping, restorable zone state, and conservation fixtures. |
 | [`verse-ruins`](../../crates/verse-ruins/README.md) | 3 / 1,354 | Adapter boundary and retained source/provenance; selected vendored collision, replication, and server schedule interfaces. |
-| [`verse-wow`](../../crates/verse-wow/src/lib.rs) | Compatibility adapter | Imported snapshots, numeric motion bindings, and separation from original content. |
+| [`verse-wow` at the original baseline](https://github.com/OpenAgentsInc/openagents/blob/e3d774841b39bca2a7a916ebe115e442bc7dffe2/crates/verse-wow/src/lib.rs) | Compatibility adapter | Imported snapshots, numeric motion bindings, and separation from original content. |
 | [`everglade-web`](../../crates/everglade-web/README.md) | 3 / 809 | Pinned pack fetching, local world mounting, input, and WebGPU/WebGL2 rendering. |
 | [Mobile surface](../../crates/coder-mobile/src/verse_app.rs) and [OpenAgents wrapper](../../crates/openagents-mobile/src/verse.rs) | Integration review | Rust-owned state, injected identity, native surface lifecycle, and feature boundaries. |
 | [Host example](../../crates/verse/examples/verse_host.rs), [remote client](../../crates/verse/src/imported/remote_window.rs), and [battle harness](../../scripts/bench/verse-battle-capture.py) | Execution-path review | Startup, content identity, configured rights, persistence selection, network workers, authenticated load, capture, and profiling. |
@@ -150,7 +152,7 @@ Evidence labels:
 | V06 | P1 | Independent realm instances have durable placement, leases, lifecycle, and transfer. | Code | World hosting | Complete ([#10593](https://github.com/OpenAgentsInc/openagents/issues/10593)) |
 | V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters | Complete: [#10596](https://github.com/OpenAgentsInc/openagents/issues/10596), bounded hosted profiles |
 | V08 | P1 | Grant-based admission and transport work have bounded policies. | Code | World access and transport | Complete ([#10602](https://github.com/OpenAgentsInc/openagents/issues/10602)) |
-| V09 | P1 | Character identity and rewards remain chamber-scoped. | Code, gap | Persistent character domain | Open |
+| V09 | P1 | Persistent accounts own recoverable resident and dormant characters. | Code | Persistent character domain | Complete ([#10603](https://github.com/OpenAgentsInc/openagents/issues/10603)) |
 | V10 | P1 | CPU submission measurements do not isolate GPU or input latency. | Code, recorded | Profiling and acceptance | Open |
 | V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities | Open |
 | V12 | P1 | Whole-pack preparation is not large-world asset streaming. | Code, gap | Content loading and residency | Open |
@@ -489,8 +491,8 @@ placement, capacity, phase, endpoint, and authority epochs. Host APIs create,
 admit, drain, stop, restart, and lease instances. Every tick, connection, and
 dispatch checks the explicit 30-second lease; acquisition and recovery park old
 sessions. Recovery advances epochs and requires fresh acquisition. Host time
-cannot regress. Admission caps remain explicit: 32 instances, 2,048 registered
-characters, and the existing 64-player simulation limit.
+cannot regress. V06 initially capped 32 instances and 2,048 registered characters,
+with a 64-player simulation limit; V09 moves dormant characters out of that table.
 
 [`Transfer`](../../crates/verse-world/src/service/realm/transfer.rs) prepares and
 validates both game copies before publishing. One atomic manifest rename selects
@@ -500,10 +502,11 @@ the destination. Uncertain durability poisons the coordinator and withholds the
 result until recovery. A bounded radix index retains original transfer outcomes
 without a fixed operation lifetime cap. Changed retry arguments are refused.
 
-A living additional adventurer retains health, mana, inventory, equipment,
-progression, and remaining cooldowns across different world clocks. Temporary
-world effects and input stop; both affected instances require fresh connection
-authentication. Compatible item, outfit, equipment, and progression catalogs are
+V06 transfers retained health, mana, inventory, equipment, progression, and
+remaining cooldowns across different world clocks for living additional
+adventurers. Temporary world effects and input stopped, and both affected
+instances required fresh authentication. V09 also supports primary characters
+and preserves unrelated sessions. Compatible item, outfit, equipment, and progression catalogs are
 required, and destination capacity and collision admission run before publication.
 [`Receipt books`](../../crates/verse-world/src/service/rewards/books.rs) bind
 history to the realm character rather than its local actor. Original item,
@@ -533,8 +536,8 @@ return transfer, and restart. Twenty transfers exercise branching history nodes.
 distributed consensus, seamless cross-instance simulation, or accepted population
 scale. The TLS adapter serializes checkpoint work and has not established the proposed
 crowded 30 Hz throughput target; V08, V10, and V18 retain load and containment
-acceptance. Primary avatars remain scene anchors and refuse transfer until V09
-removes that coupling. Both worlds reconnect on transfer or admission. Foreign
+acceptance. V06 initially refused primary-avatar transfer and reconnected both
+worlds on transfer or admission. V09 removes those restrictions. Foreign
 reward-history imports, online content migration for realm manifests, archive
 garbage collection, and retention policy remain operator work under V19. The
 receipt covers scratch loopback and process death; it does not test disk power
@@ -628,8 +631,8 @@ convert those local asset packs or provide a desktop/mobile join screen. Ruins,
 Lagrange, and Lab remain local-only and are refused as hosted social profiles.
 Profiles permit at most 64 static shapes, 512 terrain triangles, 64 interaction
 objects, and 64 public Studio poses; host JSON is also bounded to 64 KiB.
-The existing 64-player/primary-anchor limits and realm reconnect-on-transfer
-behavior remain for V09. Hosts must already own or separately obtain observation
+The V07 receipt predates V09's primary-character decoupling and preservation of
+unrelated sessions; the concurrent resident limit remains 64. Hosts must already own or separately obtain observation
 authority before producing public Studio poses; this change grants none.
 The fixtures establish functional agreement, not crowded throughput, WAN latency,
 GPU quality, or a browser/phone multiplayer acceptance result.
@@ -710,25 +713,89 @@ channel closure contributes to transport closure counters when the bridge does
 not expose a more specific reason. Reliable operations require explicit caller
 backoff after `rate_limited`; the SDK does not replay uncertain effects.
 
-### V09: Persistent characters need identity outside an instance
+### V09: Persistent accounts and characters have a recovery contract
 
-[`rewards::Character`](../../crates/verse-world/src/service/rewards.rs) is keyed
-by actor, and transactions include instance and actor. Enrollment binds a key
-to an adventurer in that chamber. There is no independent account/character
-identity with a transfer or recovery contract in the inspected world path.
+**Status:** Complete in [#10603](https://github.com/OpenAgentsInc/openagents/issues/10603).
 
-`process_rewards` awards every enrolled player, including disconnected players,
-for a configured NPC death. That can be intentional cooperative fixture behavior;
-it is not a defined MMORPG participation, loot, or contribution policy.
+The original finding identified chamber-scoped ownership and undefined MMORPG
+participation. V06 supplied stable character receipt books and atomic placement
+transfer. V09 adds independent accounts, explicit resident retirement, dormant
+storage, key recovery, and authored reward participation.
 
-**Improve:** Separate account, character, instance actor, life, controller, and
-render identities. Specify participation and loot ownership, logout behavior,
-offline rewards, and persistent inventory ownership. Retain generation fencing
-for transient actors rather than using it as the permanent character ID.
+[`realm::registry`](../../crates/verse-world/src/service/realm/registry.rs) stores
+accounts, credential bindings, and character residence in immutable SHA-addressed
+nodes selected by manifest version 2. It separates account and character IDs from
+credential keys, instance actor slots, life generations, controllers, and render
+actors. Accounts own at most eight characters and one resident at a time. Dormant
+characters do not consume the 2,048-entry resident table. Nodes retain at most
+eight records and 128 KiB; lookup has a 64-digit depth bound. Version-one heads
+upgrade without relabeling their character IDs or reward receipts. Legacy v21
+scene origins remain readable after the upstream field rename; serialization
+writes the current field name.
 
-**Acceptance:** A character retains inventory, progression, and ownership across
-instances, reconnects, and supported key recovery. Disconnected and nonparticipating
-players receive exactly the rewards the authored policy allows.
+[`realm::lifecycle`](../../crates/verse-world/src/service/realm/lifecycle.rs) saves
+logout state before retiring its actor, grant, connection, book, and resident
+placement under one sealed head. Inventory, progression, equipment, appearance,
+resources, and remaining cooldowns stay with the permanent character ID.
+Dormant characters receive no combat rewards, regeneration, or cooldown progress.
+Defeated characters resume defeated and use the existing respawn contract.
+Abrupt disconnection retains a parked resident; explicit host retirement chooses
+when it becomes dormant. Logout stops temporary effects and casts at the retired
+life. These are defined slice rules; they do not establish a broader MMORPG
+combat-logout penalty or recovery entitlement policy.
+
+Primary characters can transfer or log out. Their authored scene templates remain
+available for later entry, while the vacant anchor has no replicated pose,
+collision body, damage target, player admission, or reward ownership. Retired secondary
+actor slots recycle with increasing generations and bounded body records. Host
+transactions clone live authority rather than restoring an entire instance:
+unrelated player and spectator sessions remain live, and replication revisions
+increase through a full baseline resynchronization.
+
+Wire version 25 adds authenticated owned-account metadata, character selection,
+and life/epoch-fenced logout. A dormant account first authenticates as an observer; selection uses a
+bounded collision-checked authored entry region rather than client coordinates.
+The SDK validates those outcomes. Operator recovery requires current realm leases,
+a fresh key, and the expected account epoch; it retains all character IDs and
+books, retires the old credential, and fences its sessions. No wire body grants
+recovery authority. Stale recovery requests fail; account readback resolves an
+uncertain acknowledgment after recovery of a poisoned coordinator. Retired keys cannot create another account implicitly. Public guest admission
+registers verified accounts under the same sealed registry; logout releases guest
+capacity, and saved version 11 retains the guest policy across restart.
+
+Authored reward policies select enrolled residents (the retained cooperative
+default), connected players, or connected players within a bounded radius. The
+latter modes exclude disconnected and distant characters as declared. Loot is a
+private per-character grant with exact retry receipts. Shared scarce drops,
+contribution ranking, trading, and auctions remain V25.
+
+**Acceptance evidence:** The [lifecycle receipt](../../bench/verse/2026-10-04/character-lifecycle/run.json)
+retains source identities, scratch TLS outcomes, and check logs. The final broad
+world run passes 485 checks and exposes one legacy-fixture conversion failure;
+after removing fields that did not exist in v8, all nine migration checks pass.
+Earlier broad stages and both initial failure logs remain retained. Tests cover
+1,100 transient slot turnovers, 80 distinct retired accounts, 4,096 synthetic
+account-index records, the 64-resident and eight-character bounds, version-one
+head upgrade, unrelated live sessions, authored participation, defeated resume,
+and 15 forced-termination boundaries across logout, resume, and recovery. Exact
+item receipts, equipment, progression, resources, and remaining inventory survive
+lifecycle boundaries. Public guests receive registered ownership only after
+verification; logout frees guest capacity, restart preserves policy, and retired
+keys remain refused. On the final main integration, 110 engine tests, four native
+hosted tests, three CLI chamber tests, and the real CLI REACH grant test pass.
+Host/migration examples compile, targeted formatting passes, and local document
+links resolve. These functional timings do not establish hardware performance.
+
+**Limits:** Instances still cap concurrent residents at 64 and realm instance
+slots at 32. Archive checkpoints retain their original content and catalog
+identities; incompatible catalogs require migration. Each dormant record pins a
+bounded whole-world checkpoint rather than a compact character-only blob, and
+immutable storage grows with history. Serialized copies, validation, storage,
+retention, and backup operating budgets remain V18/V19. The operator API supplies
+key replacement, not proof of human recovery entitlement. Account recovery does
+not grant Studio, host execution, or other NIP-HOST rights. Mobile/browser
+selection screens remain V24. No hardware or production population acceptance is
+claimed by these functional contracts.
 
 ## Rendering, assets, and simulation scale
 

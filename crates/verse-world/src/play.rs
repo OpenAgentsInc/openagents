@@ -10,7 +10,7 @@ use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
 /// Checkpoint revision. v21 adds closed hosted social profiles.
-pub const RULES_REVISION: &str = "verse-chamber-owned-v21";
+pub const RULES_REVISION: &str = "verse-chamber-owned-v22";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
@@ -178,8 +178,19 @@ struct Route {
     stuck_steps: u32,
     refusal: Option<String>,
 }
+fn primary_present() -> bool {
+    true
+}
+fn is_primary_present(value: &bool) -> bool {
+    *value
+}
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Game {
+    #[serde(
+        default = "primary_present",
+        skip_serializing_if = "is_primary_present"
+    )]
+    primary_resident: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     social: Option<social::State>,
     additional_players: BTreeMap<u64, multiplayer::Player>,
@@ -427,6 +438,7 @@ impl Game {
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         if saved.version != 1
             || (saved.rules_revision != RULES_REVISION
+                && saved.rules_revision != "verse-chamber-owned-v21"
                 && saved.rules_revision != "verse-chamber-owned-v20"
                 && saved.rules_revision != "verse-chamber-owned-v19"
                 && saved.rules_revision != "verse-chamber-owned-v18"
@@ -435,8 +447,14 @@ impl Game {
         {
             return Err("Unsupported world checkpoint".into());
         }
-        if saved.rules_revision != RULES_REVISION && saved.world.social.is_some() {
+        if saved.rules_revision != RULES_REVISION
+            && saved.rules_revision != "verse-chamber-owned-v21"
+            && saved.world.social.is_some()
+        {
             return Err("Legacy rules cannot contain hosted social state".into());
+        }
+        if saved.rules_revision != RULES_REVISION && !saved.world.primary_resident {
+            return Err("Legacy rules cannot contain an absent primary character".into());
         }
         let mut world = saved.world;
         world.validate_social()?;
@@ -706,7 +724,7 @@ impl Game {
     }
     fn validate_body_bindings(&self) -> Result<(), String> {
         if self.bodies.records().filter(|r| r.actor).count()
-            != self.ids.len() + 1 + self.additional_players.len()
+            != self.ids.len() + usize::from(self.primary_resident) + self.additional_players.len()
             || self.bodies.instance != self.admission.actor().instance
         {
             return Err("Checkpoint physics body ownership disagrees".into());
@@ -878,7 +896,11 @@ impl Game {
     fn sync_bodies(&mut self, dt: f32) -> Result<(), String> {
         use physics::lifetimes::{Hull, Phase};
         let snapshot = self.snapshot();
-        let mut actors = vec![(self.admission.actor(), 0, self.player)];
+        let mut actors = if self.primary_resident {
+            vec![(self.admission.actor(), 0, self.player)]
+        } else {
+            vec![]
+        };
         actors.extend(
             self.additional_players
                 .values()
@@ -1320,6 +1342,7 @@ impl Game {
             social,
             additional_players: BTreeMap::new(),
             next_player_actor,
+            primary_resident: true,
             migration_generation: 0,
             frame_clock: None,
             pending_movement: None,
@@ -1427,10 +1450,17 @@ impl Game {
         self.time >= self.scene.cut_at
     }
     pub fn snapshot(&self) -> Snapshot {
-        self.simulation.snapshot()
+        let mut snapshot = self.simulation.snapshot();
+        if !self.primary_resident {
+            snapshot.actors.retain(|a| a.id != 0);
+        }
+        snapshot
     }
     pub fn frame(&self) -> Frame {
         let mut frame = self.scene.frame(self.time);
+        if !self.primary_resident {
+            frame.actors.retain(|a| a.actor.id != self.player_actor());
+        }
         for actor in &mut frame.actors {
             actor.life = self.actor_life(actor.actor.id);
         }
@@ -2444,7 +2474,9 @@ impl Game {
     }
     /// Scene actor ID of the adventurer.
     pub(crate) fn player_actors(&self) -> Vec<u64> {
-        std::iter::once(self.player_actor())
+        self.primary_resident
+            .then_some(self.player_actor())
+            .into_iter()
             .chain(self.additional_players.keys().copied())
             .collect()
     }
@@ -2454,7 +2486,7 @@ impl Game {
     /// Feet position of a living scene actor, the adventurer included.
     pub fn actor_position(&self, actor: u64) -> Option<Vec3> {
         if actor == self.player_actor() {
-            return Some(self.player);
+            return self.primary_resident.then_some(self.player);
         }
         if let Some(p) = self.additional_players.get(&actor) {
             return Some(p.position);
@@ -2954,6 +2986,9 @@ impl Game {
     }
     /// Revives the adventurer at an authored spawn without resetting the encounter.
     pub fn respawn_player(&mut self) -> Result<(), String> {
+        if !self.primary_resident {
+            return Err("Primary character is absent".into());
+        }
         if self.snapshot().player.hp != 0 {
             return Err("The adventurer is still alive".into());
         }

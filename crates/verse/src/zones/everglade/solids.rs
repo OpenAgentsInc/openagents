@@ -17,6 +17,20 @@ pub use verse_world::social::solids::{Roof, STEP, Solids};
 ///
 /// Returns a message when the pack lacks a placed model.
 pub fn build(pack: &ZonePack, placements: &[Placement]) -> Result<Solids, String> {
+    build_with(pack, placements, &layout::board_blockers())
+}
+
+/// The solids of `placements` with the models in `pack`, and `boards`,
+/// footprints taller than anyone levitates past.
+///
+/// # Errors
+///
+/// Returns a message when the pack lacks a placed model.
+pub fn build_with(
+    pack: &ZonePack,
+    placements: &[Placement],
+    boards: &[crate::controller::Footprint],
+) -> Result<Solids, String> {
     let mut solids = Solids::over(height);
     for placement in placements {
         let model = pack
@@ -43,7 +57,7 @@ pub fn build(pack: &ZonePack, placements: &[Placement]) -> Result<Solids, String
             });
         }
     }
-    for footprint in layout::board_blockers() {
+    for &footprint in boards {
         solids.add_block(footprint, f32::INFINITY);
     }
     Ok(solids)

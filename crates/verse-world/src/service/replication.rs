@@ -200,6 +200,17 @@ pub(super) struct Sender {
     pub stats: Stats,
 }
 impl Sender {
+    pub(super) fn fork(&self) -> Self {
+        let mut stats = self.stats.clone();
+        stats.retained_bytes = 0;
+        Self {
+            saved: VecDeque::new(),
+            revision: self.revision,
+            outer_tick: self.outer_tick,
+            stats,
+        }
+    }
+
     pub(super) fn project(
         &mut self,
         state: State,

@@ -186,21 +186,33 @@ fn a_new_concentration_spell_ends_the_last_and_cooldowns_hold() {
 }
 
 #[test]
-fn wind_wall_rises_ahead_and_its_updraft_slows_a_fall_through_it() {
+fn wind_wall_rises_ahead_and_its_updraft_throws_the_player_up() {
     let mut runtime = entered();
     let start = runtime.player.pos;
     let forward = runtime.player.forward();
-    let inside = start + forward * 4.0 + Vec3::Y * 4.0;
-    let plain = fall_time(&mut runtime, inside);
-    runtime.player.pos = start;
     runtime.zone_intent(Intent::WindWall).unwrap();
     let glade = runtime.zone_state.everglade.as_ref().unwrap();
     assert!(glade.spell_mesh(&runtime.player).lines.len() > 40);
-    let lifted = fall_time(&mut runtime, inside);
-    assert!(lifted > plain + 0.04, "{lifted} against {plain}");
-    // Creatures pass through the wind; it is not a wall to walk into.
+    // Standing in the wind keeps the player aloft.
+    runtime.player.pos = start + forward * 4.0;
+    idle(&mut runtime, 2.0);
+    assert!(runtime.player.airborne());
+    // Walking into the wind throws the player up over the wall's top, and
+    // they come down on its far side.
     runtime.player.pos = start;
-    walk(&mut runtime, 2.0);
+    runtime.player.set_vertical_speed(0.0);
+    idle(&mut runtime, 1.0);
+    let wall_top = verse_world::wind_wall::HEIGHT as f32;
+    let forward_input = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    let mut peak = 0.0_f32;
+    for _ in 0..(4.0 / DT) as usize {
+        runtime.tick(&forward_input, DT);
+        peak = peak.max(runtime.player.pos.y);
+    }
+    assert!(peak > wall_top, "peak {peak}");
     assert!((runtime.player.pos - start).dot(forward) > 6.0);
 }
 

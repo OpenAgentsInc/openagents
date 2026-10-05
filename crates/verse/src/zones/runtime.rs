@@ -101,7 +101,11 @@ impl WorldRuntime {
                 self.zone_load_progress(received, total);
             }
             Some(everglade_pack::LoadEvent::Ready(pack)) => {
-                self.install_everglade(&pack);
+                if self.zone_state.destination == ZoneId::Grove {
+                    self.install_grove(&pack);
+                } else {
+                    self.install_everglade(&pack);
+                }
                 return self.zone_state.everglade.is_some();
             }
             Some(everglade_pack::LoadEvent::Failed(error)) => self.zone_load_failed(&error),
@@ -251,6 +255,75 @@ impl WorldRuntime {
                 .unwrap_or_else(|| "Everglade enters only from the plaza".into()))
         }
     }
+    /// Enter the Grove with Everglade's verified pack: the meadow, its
+    /// dummies, and Everglade's character and movement
+    /// ([`super::grove`]).
+    pub fn install_grove(&mut self, pack: &everglade_pack::ZonePack) {
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        let world = match super::grove::world(pack) {
+            Ok(world) => world,
+            Err(error) => {
+                self.zone_load_failed(&error);
+                return;
+            }
+        };
+        let mut spawn = self.player;
+        spawn.pos = super::grove::SPAWN;
+        spawn.yaw = super::grove::SPAWN_YAW;
+        let built = super::grove::glade(pack, &spawn).and_then(|mut glade| {
+            let grove = super::grove::Grove::new(pack, &glade)?;
+            glade.set_extra_blocks(
+                grove
+                    .dummies
+                    .iter()
+                    .map(super::grove::dummies::Dummy::block)
+                    .collect(),
+            );
+            Ok((glade, grove))
+        });
+        let (mut glade, grove) = match built {
+            Ok(built) => built,
+            Err(error) => {
+                self.zone_load_failed(&error);
+                return;
+            }
+        };
+        if let Some(scene) = &world.mesh.textured {
+            glade.bake_light(scene.clone());
+        }
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.world = world;
+        self.zone_state.everglade = Some(glade);
+        self.zone_state.grove = Some(grove);
+        self.zone = ZoneId::Grove;
+        self.zone_state.loading = LoadState::Idle;
+        self.zone_state.error = None;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(super::grove::SPAWN, super::grove::SPAWN_YAW);
+        self.player.set_surface_height(super::everglade::height(
+            self.player.pos.x,
+            self.player.pos.z,
+        ));
+        self.camera = crate::camera::FollowCamera::default();
+    }
+    /// Enter the Grove from Everglade's pack bytes the caller already
+    /// holds, as [`Self::install_everglade_bytes`] does.
+    pub fn install_grove_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let pack = everglade_pack::ZonePack::decode_pinned(bytes)?;
+        self.install_grove(&pack);
+        if self.zone == ZoneId::Grove {
+            Ok(())
+        } else {
+            Err(self
+                .zone_state
+                .error
+                .clone()
+                .unwrap_or_else(|| "The Grove enters only from the plaza".into()))
+        }
+    }
     /// The nearest portal in this zone and its destination.
     fn nearest_portal(&self) -> (ZoneId, Vec3) {
         let at = self.player.pos;
@@ -280,6 +353,19 @@ impl WorldRuntime {
         result
     }
     fn apply_zone_intent(&mut self, intent: Intent) -> Result<(), String> {
+        if self.zone == ZoneId::Grove
+            && let Some(spell) = super::grove::kit::Spell::of(intent)
+        {
+            let state = &mut self.zone_state;
+            let (Some(grove), Some(glade)) = (state.grove.as_mut(), state.everglade.as_mut())
+            else {
+                return Err("Enter the Grove first".into());
+            };
+            grove.cast(spell, &mut self.player, glade)?;
+            self.cancel_navigation();
+            self.zone_state.error = None;
+            return Ok(());
+        }
         match intent {
             Intent::Enter | Intent::Retry => {
                 let walked_in = intent == Intent::Retry && self.grid_retry_allowed();
@@ -323,6 +409,7 @@ impl WorldRuntime {
                 self.zone_state.lagrange = None;
                 self.zone_state.lab = None;
                 self.zone_state.everglade = None;
+                self.zone_state.grove = None;
                 self.zone = ZoneId::Plaza;
                 self.zone_revision = self.zone_revision.saturating_add(1);
                 if self.is_bare() {
@@ -459,6 +546,11 @@ impl WorldRuntime {
                 self.cancel_navigation();
                 self.zone_state.error = None;
             }
+            Intent::Thunderwave
+            | Intent::GustOfWind
+            | Intent::MistyStep
+            | Intent::Web
+            | Intent::LongRest => return Err("Enter the Grove first".into()),
             Intent::FeatherFall
             | Intent::WallOfStone
             | Intent::WindWall
@@ -607,6 +699,9 @@ impl WorldRuntime {
         &self,
     ) -> Option<[super::everglade::hotbar::Slot; super::everglade::hotbar::COUNT]> {
         use super::everglade::{hotbar::Slot, spells::Spell};
+        if self.zone != ZoneId::Everglade {
+            return None;
+        }
         let glade = self.zone_state.everglade.as_ref()?;
         let on = |enabled, active| Slot {
             enabled,
@@ -624,6 +719,14 @@ impl WorldRuntime {
             wind,
             reverse,
         ])
+    }
+
+    /// The Grove's hotbar and mana, or `None` outside the Grove.
+    #[must_use]
+    pub fn grove_bar(&self) -> Option<super::grove::hotbar::Bar> {
+        let grove = self.zone_state.grove.as_ref()?;
+        let glade = self.zone_state.everglade.as_ref()?;
+        Some(grove.bar(&self.player, glade))
     }
 
     /// While levitating in Everglade, climbs (`direction` 1) or descends
@@ -796,6 +899,11 @@ impl WorldRuntime {
             add("step", "Step", Intent::Step, true);
             add("return", "Plaza", Intent::Return, true);
             Lab::caption(&lab.snapshot())
+        } else if let Some(grove) = &self.zone_state.grove {
+            add("jump", "Jump", Intent::Jump, !self.player.airborne());
+            add("long_rest", "Long Rest", Intent::LongRest, true);
+            add("return", self.return_label(), Intent::Return, true);
+            grove.caption(&self.player)
         } else if let Some(glade) = &self.zone_state.everglade {
             add("jump", "Jump", Intent::Jump, !self.player.airborne());
             add(
@@ -1040,7 +1148,7 @@ impl WorldRuntime {
     /// Starts loading the pack of `destination` (Ruins or Everglade). The
     /// world stays where it is until [`Self::zone_tick`] installs the zone.
     fn start_zone_load(&mut self, destination: ZoneId) -> Result<(), String> {
-        let requested = if destination == ZoneId::Everglade {
+        let requested = if matches!(destination, ZoneId::Everglade | ZoneId::Grove) {
             self.zone_state
                 .everglade_loader
                 .as_mut()
@@ -1177,6 +1285,24 @@ impl WorldRuntime {
             .is_some_and(everglade_pack::Loader::idle)
     }
 
+    /// Start loading the Grove from the plaza, as `verse --grove` asks at
+    /// launch; it loads Everglade's pack. [`Self::zone_tick`] installs it.
+    ///
+    /// # Errors
+    /// The player is not in the plaza, a load is under way, or the pack
+    /// cannot be requested.
+    pub fn enter_grove(&mut self) -> Result<(), String> {
+        if !self.is_plaza() || self.zone_loading() {
+            return Err("The Grove enters only from the plaza".into());
+        }
+        self.zone_state.destination = ZoneId::Grove;
+        let result = self.start_zone_load(ZoneId::Grove);
+        if let Err(error) = &result {
+            self.zone_state.error = Some(error.chars().take(180).collect());
+        }
+        result
+    }
+
     pub fn enter_everglade(&mut self) -> Result<(), String> {
         if !self.is_plaza() || self.zone_loading() {
             return Err("Everglade enters only from the plaza".into());
@@ -1236,7 +1362,8 @@ impl WorldRuntime {
         if self.is_hosted() {
             return;
         }
-        let active = surface_active && self.zone_state.everglade.is_some();
+        let active =
+            surface_active && self.zone == ZoneId::Everglade && self.zone_state.everglade.is_some();
         let studio = &mut self.zone_state.studio;
         studio.set_active(active);
         studio.poll(dt, &self.world.blockers);
@@ -1289,6 +1416,7 @@ impl WorldRuntime {
         // In a hosted instance the `world` right admits walking only; a
         // panel opens under the grant's `observe`.
         if self.zone_state.everglade.is_none()
+            || self.zone != ZoneId::Everglade
             || self.zone_loading()
             || !self.zone_state.studio.access().read
         {
@@ -1310,6 +1438,7 @@ impl WorldRuntime {
         /// Targets farther from the camera than this are not selected, m.
         const REACH: f32 = 40.0;
         if self.zone_state.everglade.is_none()
+            || self.zone != ZoneId::Everglade
             || self.zone_loading()
             || !self.zone_state.studio.access().read
             || !aspect.is_finite()
@@ -1380,7 +1509,10 @@ impl WorldRuntime {
             lab.tick(dt);
         }
         let state = &mut self.zone_state;
-        if let Some(everglade) = &mut state.everglade {
+        if let (Some(glade), Some(grove)) = (&mut state.everglade, &mut state.grove) {
+            glade.tick(dt, &self.player, &[]);
+            grove.tick(dt, glade);
+        } else if let Some(everglade) = &mut state.everglade {
             // The seats move first, so the characters pose where they stand.
             state.studio.set_player(Some(self.player.pos));
             state.studio.tick(dt);
@@ -1405,11 +1537,22 @@ impl WorldRuntime {
             // The lab has no suit of its own; the plaza character walks it.
             mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));
         }
-        if let Some(everglade) = &self.zone_state.everglade {
+        if let (Some(glade), Some(grove)) = (&self.zone_state.everglade, &self.zone_state.grove) {
+            // Everglade's lit stage, the character and the dummies in one
+            // figure, the glade's spells, and the field's bars and effects.
+            mesh.extend(glade.dynamic());
+            mesh.extend(&crate::mesh::Mesh {
+                figure: Some(grove.figure(glade)),
+                ..crate::mesh::Mesh::default()
+            });
+            mesh.extend(&glade.spell_mesh(&self.player));
+            mesh.extend(&grove.mesh(self.view(1.0).eye, &self.player));
+        } else if let Some(everglade) = &self.zone_state.everglade {
             // Carries the lit stage the textured glade draws on.
             mesh.extend(everglade.dynamic());
             // The player, and the seats when the pack's character draws them.
-            mesh.extend(&everglade.player_mesh(&self.player, &self.gait));
+            // In first person the player's own character is not drawn.
+            mesh.extend(&everglade.player_mesh(&self.player, &self.gait, self.hides_avatar()));
             // The live spells: stone panels, wind, the cylinder, feathers.
             mesh.extend(&everglade.spell_mesh(&self.player));
             // The studio's nameplates, lamps, marks, bubbles, particles, and

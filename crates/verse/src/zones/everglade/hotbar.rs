@@ -41,7 +41,7 @@ const MARGIN: f32 = 8.0;
 
 /// Units to logical points: the chamber's height over 768, never smaller
 /// than one point a unit.
-fn unit(size: [f32; 2]) -> f32 {
+pub(crate) fn unit(size: [f32; 2]) -> f32 {
     (size[1] / 768.0).max(1.0)
 }
 
@@ -60,8 +60,14 @@ pub fn add_sprites(atlas: &mut Atlas) -> Result<(), String> {
 /// a phone's sticks).
 #[must_use]
 pub fn frame(size: [f32; 2], bottom: f32) -> [f32; 4] {
+    frame_of(size, bottom, SLOTS.len())
+}
+
+/// The frame of a tray of `count` slots, as [`frame`] lays it out.
+#[must_use]
+pub fn frame_of(size: [f32; 2], bottom: f32, count: usize) -> [f32; 4] {
     let u = unit(size);
-    let width = (2.0 * PAD + STEP * (SLOTS.len() as f32 - 1.0) + ICON) * u;
+    let width = (2.0 * PAD + STEP * (count.max(1) as f32 - 1.0) + ICON) * u;
     let height = (ICON + 2.0 * PAD) * u;
     [
         (size[0] - width) * 0.5,
@@ -86,17 +92,41 @@ fn slot_at(size: [f32; 2], frame: [f32; 4], index: usize) -> ([f32; 2], f32) {
 /// The intent under `point`, if any.
 #[must_use]
 pub fn hit(point: [f32; 2], size: [f32; 2], bottom: f32) -> Option<Intent> {
-    let frame = frame(size, bottom);
-    SLOTS.iter().enumerate().find_map(|(index, (intent, _))| {
+    hit_of(point, size, bottom, SLOTS.len()).map(|index| SLOTS[index].0)
+}
+
+/// The index of the slot under `point` in a tray of `count` slots.
+#[must_use]
+pub fn hit_of(point: [f32; 2], size: [f32; 2], bottom: f32, count: usize) -> Option<usize> {
+    let frame = frame_of(size, bottom, count);
+    (0..count).find(|&index| {
         let ([x, y], icon) = slot_at(size, frame, index);
-        (point[0] >= x && point[0] <= x + icon && point[1] >= y && point[1] <= y + icon)
-            .then_some(*intent)
+        point[0] >= x && point[0] <= x + icon && point[1] >= y && point[1] <= y + icon
     })
 }
 
 /// Draws the tray with `slots` (in [`SLOTS`] order) into `ui`.
 pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots: &[Slot; COUNT]) {
-    let frame = frame(size, bottom);
+    let keys: Vec<String> = (1..=COUNT).map(|n| n.to_string()).collect();
+    let sprites: Vec<(&str, &str)> = SLOTS
+        .iter()
+        .zip(&keys)
+        .map(|((_, sprite), key)| (*sprite, key.as_str()))
+        .collect();
+    draw_of(ui, atlas, size, bottom, &sprites, slots);
+}
+
+/// Draws a tray of `sprites`, each an icon sprite and its key's label,
+/// with `slots` in the same order, into `ui`.
+pub fn draw_of(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    size: [f32; 2],
+    bottom: f32,
+    sprites: &[(&str, &str)],
+    slots: &[Slot],
+) {
+    let frame = frame_of(size, bottom, sprites.len());
     let [left, top, width, height] = frame;
     let u = unit(size);
     for (inset, color) in [
@@ -114,14 +144,20 @@ pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots:
             color,
         );
     }
-    for (index, ((_, key), slot)) in SLOTS.iter().zip(slots).enumerate() {
+    for (index, ((sprite, key), slot)) in sprites.iter().zip(slots).enumerate() {
         let ([x, y], icon) = slot_at(size, frame, index);
         let tint = if slot.enabled {
             [1.0; 4]
         } else {
             [0.32, 0.32, 0.32, 1.0]
         };
-        ui.image_region(atlas, key, [x, y, icon, icon], [0.0, 1.0, 0.0, 1.0], tint);
+        ui.image_region(
+            atlas,
+            sprite,
+            [x, y, icon, icon],
+            [0.0, 1.0, 0.0, 1.0],
+            tint,
+        );
         ui.cooldown(atlas, [x, y, icon], slot.cooldown);
         let (edge, width) = if slot.active {
             ([0.98, 0.82, 0.38, 1.0], 2.0)
@@ -129,12 +165,11 @@ pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots:
             ([0.55, 0.45, 0.28, 1.0], 1.0)
         };
         ui.frame(atlas, x - 1.0, y - 1.0, icon + 2.0, icon + 2.0, width, edge);
-        let key = (index + 1).to_string();
         ui.text(
             atlas,
             x + icon - 3.0 - atlas.advance * key.len() as f32,
             y + 1.0,
-            &key,
+            key,
             [0.75, 0.75, 0.75, 1.0],
         );
     }

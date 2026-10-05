@@ -1,0 +1,229 @@
+    Blocking waiting for file lock on build directory
+   Compiling coder v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder)
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+   Compiling microcoder v1.0.0-rc.2 (/home/christopherdavid/work/openagents-verse-audit/crates/microcoder)
+   Compiling coder-labor v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-labor)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1270:9
+     |
+1270 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:225:12
+    |
+ 83 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+225 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+236 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+  --> crates/verse/src/zones/everglade/draw.rs:80:15
+   |
+80 | pub(super) fn triangles() -> u64 {
+   |               ^^^^^^^^^
+
+warning: `verse-world` (lib) generated 1 warning
+warning: `verse` (lib) generated 3 warnings (run `cargo fix --lib -p verse` to apply 1 suggestion)
+   Compiling openagents-cli v1.0.0-rc.2 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 09s
+     Running unittests src/main.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/openagents-26329545a7fe5236)
+
+running 3 tests
+test chamber::tests::abilities_parse_by_name_and_row_two_slot ... ok
+test chamber::tests::axes_are_bounded ... ok
+test chamber::tests::connection_flags_override_the_file ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 257 filtered out; finished in 0.00s
+
+     Running tests/chamber_reach.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/chamber_reach-a8e00ab914d0f489)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/chat.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/chat-a44f465a979a1eb9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/cloud_engine.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/cloud_engine-9a7e7293cb12834e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/completions.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/completions-76a45fd8c96a994e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/discover.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/discover-096d4e04aaa0b767)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/eval.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/eval-d5f82be316f1d5b3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/ext_eval.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/ext_eval-c21981ea4020f370)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/friendly_errors.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/friendly_errors-de76166bd35c4072)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/help.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/help-5e2bbef2b7b46447)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/host_first_run.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/host_first_run-bbda166086fdf443)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/kb_defaults.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/kb_defaults-847095f3f7ba3d95)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/mcp_serve.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/mcp_serve-8543325c044be3d8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/plugin_background.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/plugin_background-381e32cfab034d79)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/provider_key.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/provider_key-cfd180e218ba1fe4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/session.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/session-aa2349d9728c2826)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/studio_host.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/studio_host-b35c971b0b85d739)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/task_list.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/task_list-be9227c933618df3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/terminal.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/terminal-48d508736b853acc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/verify_card.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verify_card-5adaadf5e1ebddb3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/verse_args.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_args-cc745d02c7744d64)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+    Blocking waiting for file lock on build directory
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1270:9
+     |
+1270 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:225:12
+    |
+ 83 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+225 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+236 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+  --> crates/verse/src/zones/everglade/draw.rs:80:15
+   |
+80 | pub(super) fn triangles() -> u64 {
+   |               ^^^^^^^^^
+
+warning: `verse` (lib) generated 3 warnings (run `cargo fix --lib -p verse` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.70s
+     Running tests/chamber_reach.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/chamber_reach-a8e00ab914d0f489)
+
+running 1 test
+test a_reach_chamber_admits_world_grants_and_refuses_others ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.82s
+

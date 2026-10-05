@@ -79,6 +79,14 @@ impl Game {
             self.additional_players[&actor].frame_clock.as_ref()
         }
         .ok_or("Movement intervals have not been started")?;
+        if clock.expired(self.physics_steps) {
+            let message = format!(
+                "Movement interval clock expired at world step {}, confirmed step {}",
+                self.physics_steps, clock.step
+            );
+            self.handoff_player(frame.life, sender)?;
+            return Err(message);
+        }
         let mut next = clock.clone();
         next.admit(frame.clone(), self.physics_steps)?;
         if frame.tick > self.authority_tick
@@ -169,6 +177,38 @@ mod tests {
     fn ticks(g: &mut Game, n: usize) {
         for _ in 0..n {
             g.tick(1. / 30., [0.; 2]).unwrap();
+        }
+    }
+    #[test]
+    fn expired_admission_fences_control_before_the_next_simulation_tick() {
+        for secondary in [false, true] {
+            let mut g = world();
+            let owner = Controller(if secondary { 10 } else { 9 });
+            let life = if secondary {
+                g.add_player(owner, Vec3::new(5., 0., -22.)).unwrap()
+            } else {
+                g.player_life()
+            };
+            ticks(&mut g, 1);
+            g.begin_movement_frames(owner, life).unwrap();
+            ticks(&mut g, 9);
+            g.submit_movement_frame(owner, frame(&g, life, false))
+                .unwrap();
+            ticks(&mut g, 1);
+            let delayed = frame(&g, life, false);
+            let epoch = g.player_admission(life.actor).unwrap().epoch();
+            let error = g.submit_movement_frame(owner, delayed.clone()).unwrap_err();
+            assert!(error.contains("Movement interval clock expired"), "{error}");
+            assert_eq!(g.player_admission(life.actor).unwrap().epoch(), epoch + 1);
+            assert_eq!(
+                g.movement_baseline(life).unwrap().unwrap().profile,
+                crate::movement::Profile::Arrival
+            );
+            assert!(g.submit_movement_frame(owner, delayed).is_err());
+            assert_eq!(g.player_admission(life.actor).unwrap().epoch(), epoch + 1);
+            g.begin_movement_frames(owner, life).unwrap();
+            g.submit_movement_frame(owner, frame(&g, life, false))
+                .unwrap();
         }
     }
     #[test]

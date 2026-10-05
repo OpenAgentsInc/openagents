@@ -1,0 +1,53 @@
+    Blocking waiting for file lock on build directory
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.70s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-aa492b98797b877a)
+
+running 10 tests
+test service::persistence::migration::tests::crash_child ... ignored, Subprocess exits deliberately; launched by the crash recovery test.
+
+running 1 test
+test service::persistence::migration::tests::changed_source_revision_and_active_objective_are_refused ... ok
+
+running 1 test
+test service::persistence::migration::tests::a_corrupt_backup_cannot_replace_the_applied_world ... ok
+test service::persistence::migration::tests::a_storage_failure_recovers_the_source_after_storage_becomes_available ... ok
+test service::persistence::migration::tests::drift_unsafe_definitions_and_later_commit_refuse_without_discarding_source ... ok
+test service::persistence::migration::tests::revoked_character_reenrollment_keeps_its_actor_and_balances ... ok
+test service::persistence::migration::tests::reintroduced_npc_and_new_props_use_a_generation_beyond_previous_content ... ok
+test service::persistence::migration::tests::populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_quests ... ok
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+test service::persistence::migration::tests::interrupted_rollback_keeps_the_target_until_its_own_seal ... ok
+
+running 1 test
+
+running 1 test
+test service::persistence::migration::tests::crash_recovery_selects_source_before_seal_and_target_after_seal ... ok
+
+test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 478 filtered out; finished in 39.46s
+

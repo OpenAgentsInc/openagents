@@ -249,3 +249,14 @@ projections and commands use separate bounded work buckets. Excess work returns
 operation identity. Standalone and realm listener statistics expose aggregate
 refusal and connection outcome counters. [V08](../audits/2026-10-04-verse-engine-audit.md#v08-admission-and-request-work-have-bounded-policies)
 records the policy, scratch acceptance evidence, and its throughput limits.
+
+
+Realm wire version 25 separates account authentication from character selection.
+A known account can observe the destination before selecting its owned dormant
+character. `Client::select_character` uses an authority-chosen entry point;
+`Client::logout` commits the current character and closes its session. Account
+recovery requires the local operator control channel and current leases, preserves
+character IDs and inventory, and refuses the retired credential. Unrelated
+sessions remain live through admission, transfer, logout, and recovery.
+The [V09 audit](../audits/2026-10-04-verse-engine-audit.md#v09-persistent-accounts-and-characters-have-a-recovery-contract)
+records lifecycle, participation, recovery, and remaining operating limits.

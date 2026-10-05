@@ -1327,6 +1327,7 @@ mod tests {
         let invalid = verse_world::service::view::Camera { fov: 0., ..camera };
         assert!(remote_scene(&pack, &view, 0.5, invalid, Vec3::ZERO, false, Vec3::ZERO).is_err());
     }
+    #[cfg(feature = "remote-chamber")]
     #[test]
     #[ignore = "Explicit animated outfit GPU acceptance"]
     fn capture_owned_outfit_models() {

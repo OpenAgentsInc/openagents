@@ -163,6 +163,10 @@ name = "grid_engine_capture"
 required-features = ["capture"]
 
 [[example]]
+name = "grove_capture"
+required-features = ["capture"]
+
+[[example]]
 name = "bare_capture"
 required-features = ["capture"]
 

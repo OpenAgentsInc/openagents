@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 24;
+pub const VERSION: u16 = 25;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -116,6 +116,14 @@ impl From<Input> for Command<Ability> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Body {
+    Account {},
+    SelectCharacter {
+        character: u64,
+    },
+    Logout {
+        life: Life,
+        epoch: u64,
+    },
     Authenticate {
         public_key: [u8; 32],
         signature: Vec<u8>,
@@ -462,6 +470,15 @@ impl Inventory {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
+    Account {
+        account: super::accounts::Account,
+    },
+    CharacterSelected {
+        character: u64,
+    },
+    LoggedOut {
+        character: u64,
+    },
     Accepted,
     GearEquipped {
         slot: super::equipment::Slot,
@@ -678,6 +695,10 @@ impl Gateway {
         body: Body,
     ) -> Result<Reply, (&'static str, String)> {
         match body {
+            Body::Account {} | Body::SelectCharacter { .. } | Body::Logout { .. } => Err((
+                "realm_required",
+                "Character lifecycle requires a realm".into(),
+            )),
             Body::Authenticate {
                 public_key,
                 signature,

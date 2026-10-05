@@ -252,16 +252,24 @@ impl WorldRuntime {
     }
 
     /// Zooming in past the nearest orbit enters first person on the bare
-    /// world's grid. Coder's plaza and the zones keep the third-person orbit.
+    /// world's grid and in Everglade. Coder's plaza and the other zones keep
+    /// the third-person orbit.
     #[must_use]
     pub fn first_person_allowed(&self) -> bool {
-        self.bare && self.is_plaza()
+        (self.bare && self.is_plaza()) || self.zone == crate::zones::ZoneId::Everglade
     }
 
-    /// The camera is at the player's head and the local avatar is hidden.
+    /// The camera is at, or gliding to, the player's head.
     #[must_use]
     pub fn first_person(&self) -> bool {
         self.camera.first_person && self.first_person_allowed()
+    }
+
+    /// The eye is at or near the player's head, so the local avatar is not
+    /// drawn.
+    #[must_use]
+    pub fn hides_avatar(&self) -> bool {
+        self.camera.hides_avatar() && self.first_person_allowed()
     }
 
     /// The plaza with its objects: not a zone and not the bare world.
@@ -399,16 +407,22 @@ impl WorldRuntime {
         if self.camera.first_person && !self.first_person_allowed() {
             self.camera.leave_first_person();
         }
+        self.camera.advance(dt);
         self.doors.tick(dt);
-        if input.forward
+        let moving = input.forward
             || input.backward
             || input.left
             || input.right
             || input.strafe_left
             || input.strafe_right
-            || input.jump
-        {
+            || input.jump;
+        if moving {
             self.cancel_navigation();
+            // In first person the player walks where the eye looks: the
+            // body turns to the view rather than the view swinging back.
+            if self.first_person() {
+                self.player.yaw = wrap(self.player.yaw + self.camera.take_offset());
+            }
         }
         if self.navigation.is_active() {
             self.walk_route(dt);
@@ -511,6 +525,11 @@ impl WorldRuntime {
             eye.y = eye
                 .y
                 .max(verse_ruins::scene::Terrain::bundled().height(eye.x, eye.z) + 0.4);
+        } else if self.zone == crate::zones::ZoneId::Grove {
+            eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
+            eye.y = eye
+                .y
+                .max(crate::zones::everglade::height(eye.x, eye.z) + 0.4);
         } else if self.zone == crate::zones::ZoneId::Everglade {
             eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
             eye.y = eye
@@ -558,7 +577,11 @@ impl WorldRuntime {
     /// where the player walks as the outfitted character alone.
     #[must_use]
     pub fn companion_present(&self) -> bool {
-        !self.bare && self.zone != crate::zones::ZoneId::Everglade
+        !self.bare
+            && !matches!(
+                self.zone,
+                crate::zones::ZoneId::Everglade | crate::zones::ZoneId::Grove
+            )
     }
 
     /// Project the animated spade center into normalized viewport coordinates.
@@ -1061,7 +1084,7 @@ impl WorldRuntime {
             // Everglade, and to Lagrange 1, which is hidden for now; see
             // `zones::gate`), on the neutral stage; in first person the camera is inside the
             // avatar, which is hidden, and an unoccupied world has none.
-            let mut player = if self.first_person() || self.unoccupied {
+            let mut player = if self.hides_avatar() || self.unoccupied {
                 Mesh::default()
             } else {
                 avatar::mesh(&self.player, &self.gait)
@@ -1407,8 +1430,9 @@ mod tests {
             runtime.apply(Action::PinchZoom { scale: 1.1 }).unwrap();
         }
         assert!(runtime.first_person());
+        runtime.tick(&InputState::default(), 1.0);
         let view = runtime.view(0.5);
-        let head = runtime.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT;
+        let head = crate::camera::head(runtime.player.pos);
         assert!(view.eye.distance(head) < 1e-5, "{:?}", view.eye);
         // The avatar is hidden; the ball, blocks, portal (while shown), and
         // the Gym board's lettering still draw.
@@ -1432,12 +1456,13 @@ mod tests {
         for _ in 0..30 {
             runtime.tick(&walk, 1.0 / 60.0);
         }
-        let head = runtime.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT;
+        let head = crate::camera::head(runtime.player.pos);
         assert!(runtime.view(0.5).eye.distance(head) < 1e-5);
         // Zooming out returns to third person with the avatar.
         for _ in 0..3 {
             runtime.apply(Action::PinchZoom { scale: 0.9 }).unwrap();
         }
+        runtime.tick(&InputState::default(), 1.0);
         assert!(!runtime.first_person());
         assert_eq!(runtime.dynamic_mesh().lines.len(), third_person);
         assert!(runtime.camera.distance >= crate::camera::MIN_DISTANCE);

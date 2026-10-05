@@ -1,0 +1,65 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "incomplete",
+  "workload": {
+    "players": 2,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 1,
+    "seconds": 30,
+    "persistent_storage": false,
+    "gpu_timestamps_requested": false,
+    "native_movement_frames_requested": true,
+    "compiled_revisions": {
+      "host": "f5cac837a6d79ef1761ef787cbc8b6f7572039cb",
+      "headless_clients": "f5cac837a6d79ef1761ef787cbc8b6f7572039cb",
+      "native_client": "6ef79213ce"
+    },
+    "fixture_revision": "20355df02681b7e490fd7d3a7895b502d9744f53",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "observation": "Two-player diagnostic with the previous native client completes. Control transitions include interval entry, death, respawn, and later stale interval traffic; aggregate epoch reset counts are not clock-expiry counts.",
+  "native": {
+    "world_start": 10.502817153930664,
+    "world_end": 42.0,
+    "owned_life_changes": 1,
+    "respawn_attempts": [
+      {
+        "instance": 220,
+        "actor": 14,
+        "generation": 0
+      }
+    ],
+    "minimum_owned_hp": 0,
+    "reset_reasons": {
+      "control_epoch": 4,
+      "unavailable_or_dead": 1
+    },
+    "frame_interval_ms": {
+      "samples": 2254,
+      "omitted": 0,
+      "median": 9.956291,
+      "p95": 19.609416,
+      "max": 10930.558083
+    },
+    "correction_meters": {
+      "samples": 107,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 0.0,
+      "max": 0.4150579571723938
+    }
+  },
+  "limits": [
+    "This run uses the previous native client 6ef79213ce, before the outstanding-interval scheduling fix.",
+    "Two players and forty NPCs do not establish twenty-player acceptance.",
+    "Misty Step was refused after a control change around death; it was not an accepted teleport.",
+    "Epoch counts include expected lifecycle transitions; individual authority expiry causes are not recorded.",
+    "Persistence and GPU timestamps are disabled; hardware is shared with external builds."
+  ]
+}

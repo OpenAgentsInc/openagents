@@ -1,0 +1,116 @@
+
+$ retained check: /tmp/verse-v09-slots.log
+   Compiling verse-world v0.1.0 (/home/christopherdavid/openagents/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2470:19
+     |
+ 253 | impl Game {
+     | --------- method in this implementation
+...
+2470 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 37.21s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-aa492b98797b877a)
+
+running 1 test
+test play::multiplayer::tests::retired_player_slots_survive_turnover_beyond_the_body_history_budget ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 471 filtered out; finished in 1.05s
+
+
+$ retained check: /tmp/verse-v09-live-fork.log
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2484:19
+     |
+ 257 | impl Game {
+     | --------- method in this implementation
+...
+2484 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 35.97s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-aa492b98797b877a)
+
+running 1 test
+test service::realm::tests::admission_and_transfer_preserve_unrelated_live_sessions_and_replication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 472 filtered out; finished in 0.51s
+
+
+$ retained check: /tmp/verse-v09-lifecycle.log
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2484:19
+     |
+ 257 | impl Game {
+     | --------- method in this implementation
+...
+2484 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 30.46s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-aa492b98797b877a)
+
+running 1 test
+test service::realm::tests::primary_character_logout_resume_and_key_recovery_preserve_owned_receipts ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 473 filtered out; finished in 1.11s
+
+
+$ retained check: /tmp/verse-v09-lifecycle-tls-final.log
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 32.36s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-aa492b98797b877a)
+
+running 1 test
+TLS lifecycle: durable logout, owned selection, stale command refusal, live recovery, retired key refusal, two independent character inventories
+test service::realm::tests::real_tls_sdk_account_selection_logout_and_operator_recovery ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 482 filtered out; finished in 1.69s
+
+
+$ retained check: /tmp/verse-v09-limits.log
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.62s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-aa492b98797b877a)
+
+running 1 test
+test service::realm::tests::defeated_logout_keeps_resources_and_account_character_limits_refuse_without_mutation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 483 filtered out; finished in 1.44s
+

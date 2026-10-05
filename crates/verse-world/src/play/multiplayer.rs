@@ -126,13 +126,22 @@ pub(crate) struct PortablePlayer {
 }
 impl Game {
     pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+        let source = self
+            .player_source(actor)
+            .ok_or("Transfer character is missing")?;
+        if self.simulation.private_snapshot(source)?.player.hp == 0 {
+            return Err("Defeated characters cannot transfer".into());
+        }
+        self.take_resident_player(actor)
+    }
+    pub(crate) fn take_resident_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+        if actor == self.player_actor() {
+            return self.take_primary_player();
+        }
         let player = self
             .additional_players
             .get(&actor)
-            .ok_or("Primary scene anchor cannot transfer before character decoupling")?;
-        if self.simulation.private_snapshot(player.source)?.player.hp == 0 {
-            return Err("Defeated characters cannot transfer".into());
-        }
+            .ok_or("Resident character is missing")?;
         let appearance = self
             .scene
             .actors
@@ -166,9 +175,68 @@ impl Game {
             p.controls.forget_actor(source);
         }
         self.clear_social_seat(life);
+        if let Some(encounter) = &mut self.encounter {
+            encounter.casts.retain(|c| c.target_life != life);
+        }
         self.additional_players.remove(&actor);
         self.observed_health.remove(&source);
         self.scene.actors.retain(|a| a.id != actor);
+        let physical = physics::queries::Life {
+            instance: life.instance,
+            entity: life.actor,
+            generation: life.generation,
+        };
+        self.bodies.retire_actor(physical)?;
+        self.blockers.remove(physical)?;
+        self.sync_bodies(0.)?;
+        self.checkpoint()?;
+        Ok(portable)
+    }
+    fn take_primary_player(&mut self) -> Result<PortablePlayer, String> {
+        if !self.primary_resident {
+            return Err("Primary character is absent".into());
+        }
+        let life = self.player_life();
+        let appearance = self
+            .scene
+            .actors
+            .iter()
+            .find(|a| a.id == life.actor)
+            .cloned()
+            .ok_or("Primary appearance is missing")?;
+        let portable = PortablePlayer {
+            combat: self.simulation.take_player(0)?,
+            controls: self.controls.clone(),
+            bow_remaining: (self.bow_ready - self.time).max(0.),
+            time: self.time,
+            yaw: self.yaw,
+            appearance,
+        };
+        self.spells.end_concentration(life.actor)?;
+        let casts: Vec<_> = self
+            .spells
+            .owned
+            .iter()
+            .filter(|o| o.caster == life.actor)
+            .map(|o| o.cast)
+            .collect();
+        for cast in casts {
+            self.spells.end_cast(cast)?;
+        }
+        for player in self.additional_players.values_mut() {
+            player.controls.forget_actor(0);
+        }
+        self.clear_social_seat(life);
+        if let Some(encounter) = &mut self.encounter {
+            encounter.casts.retain(|c| c.target_life != life);
+        }
+        self.control_handoff(false)?;
+        self.controls = Controls::default();
+        self.casting = None;
+        self.last_cast = None;
+        self.bow_ready = 0.;
+        self.observed_health.remove(&0);
+        self.primary_resident = false;
         let physical = physics::queries::Life {
             instance: life.instance,
             entity: life.actor,
@@ -197,6 +265,8 @@ impl Game {
             .transfer_cooldowns(portable.time, self.time);
         p.bow_ready = self.time + portable.bow_remaining;
         p.yaw = portable.yaw;
+        let dead = portable.combat.defeated();
+        p.died_at = dead.then_some(self.time);
         self.simulation.put_player(p.source, portable.combat)?;
         self.simulation
             .teleport_chamber_actor(p.source, p.position.to_array(), p.yaw)?;
@@ -308,31 +378,106 @@ impl Game {
         Ok(Some(baseline))
     }
 
+    pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+        let origin = self
+            .scene
+            .actors
+            .iter()
+            .find(|a| a.id == self.player_actor())
+            .ok_or("Authored realm spawn is missing")?
+            .position;
+        let directions = [
+            Vec3::X,
+            -Vec3::X,
+            Vec3::Z,
+            -Vec3::Z,
+            Vec3::new(1., 0., 1.).normalize(),
+            Vec3::new(-1., 0., 1.).normalize(),
+            Vec3::new(1., 0., -1.).normalize(),
+            Vec3::new(-1., 0., -1.).normalize(),
+        ];
+        for distance in [1., 2., 4., 8.] {
+            for direction in directions {
+                let spawn = origin + direction * distance;
+                let mut character = physics::character::Character::new(spawn.as_dvec3());
+                if self.colliders.is_empty()
+                    || character
+                        .teleport(
+                            &self.query_scene,
+                            physics::queries::Filter::blocking(self.player_life().instance),
+                            physics::character::Settings::default(),
+                            spawn.as_dvec3(),
+                        )
+                        .is_ok()
+                {
+                    return Ok(spawn);
+                }
+            }
+        }
+        Err("Authored realm spawn has no vacant entry point".into())
+    }
     /// Binds a trusted controller to a new adventurer in this same world.
     /// A network host must admit membership and select the spawn before calling this.
     pub fn add_player(&mut self, controller: Controller, spawn: Vec3) -> Result<LifeId, String> {
-        if self.additional_players.len() >= 63
+        if self.additional_players.len() + usize::from(self.primary_resident) >= 64
             || self.scene.actors.len() >= 256
-            || self.bodies.records().count() >= 1024
             || !spawn.is_finite()
             || spawn.abs().max_element() > 10_000.
         {
             return Err("Controlled player admission budget exceeded".into());
         }
-        let mut actor = self.next_player_actor;
-        while self.scene.actors.iter().any(|a| a.id == actor)
-            || self.bodies.records().any(|r| r.life.entity == actor)
-        {
-            actor = actor.checked_add(1).ok_or("Player actor IDs exhausted")?;
-        }
-        let next = actor.checked_add(1).ok_or("Player actor IDs exhausted")?;
+        // Reuse retired player slots with a fresh life, retaining a bounded
+        // body fence per slot rather than a tombstone per past character.
+        let authored_max = self
+            .ids
+            .keys()
+            .copied()
+            .chain([self.player_actor()])
+            .filter(|id| *id < 1_000_000)
+            .max()
+            .unwrap_or(0);
+        let retired = self
+            .bodies
+            .records()
+            .find(|record| {
+                !record.actor
+                    && record.phase == physics::lifetimes::Phase::Removed
+                    && matches!(record.hull, physics::lifetimes::Hull::UprightCapsule { .. })
+                    && record.life.entity > authored_max
+                    && record.life.entity < self.next_player_actor
+                    && !self.scene.actors.iter().any(|a| a.id == record.life.entity)
+            })
+            .map(|record| record.life);
+        let (actor, generation) = if let Some(retired) = retired {
+            (
+                retired.entity,
+                retired
+                    .generation
+                    .checked_add(1)
+                    .ok_or("Player generations exhausted")?,
+            )
+        } else {
+            if self.bodies.records().count() >= 1024 {
+                return Err("Controlled player body budget exceeded".into());
+            }
+            let mut actor = self.next_player_actor;
+            while self.scene.actors.iter().any(|a| a.id == actor)
+                || self.bodies.records().any(|r| r.life.entity == actor)
+            {
+                actor = actor.checked_add(1).ok_or("Player actor IDs exhausted")?;
+            }
+            (actor, 0)
+        };
+        let next = self
+            .next_player_actor
+            .max(actor.checked_add(1).ok_or("Player actor IDs exhausted")?);
         if next >= 1_000_000 {
             return Err("Player actor IDs exhausted".into());
         }
         let life = LifeId {
             instance: self.player_life().instance,
             actor,
-            generation: 0,
+            generation,
         };
         let mut character = physics::character::Character::new(spawn.as_dvec3());
         if !self.colliders.is_empty() {
@@ -369,7 +514,7 @@ impl Game {
     }
     pub fn player_admission(&self, actor: u64) -> Option<&Admission> {
         if actor == self.player_actor() {
-            Some(&self.admission)
+            self.primary_resident.then_some(&self.admission)
         } else {
             self.additional_players.get(&actor).map(|p| &p.admission)
         }
@@ -445,7 +590,7 @@ impl Game {
     }
     pub(super) fn player_source(&self, actor: u64) -> Option<u32> {
         if actor == self.player_actor() {
-            Some(0)
+            self.primary_resident.then_some(0)
         } else {
             self.additional_players.get(&actor).map(|p| p.source)
         }
@@ -901,10 +1046,11 @@ impl Game {
     }
     pub(crate) fn living_players(&self) -> Vec<(LifeId, Vec3)> {
         let mut result = vec![];
-        if self
-            .simulation
-            .player_resources(0)
-            .is_some_and(|p| p.hp > 0)
+        if self.primary_resident
+            && self
+                .simulation
+                .player_resources(0)
+                .is_some_and(|p| p.hp > 0)
         {
             result.push((self.player_life(), self.player));
         }
@@ -1078,7 +1224,7 @@ impl Game {
     /// Resolves a combat-store caster ID to its exact current controlled life.
     pub fn projectile_caster_life(&self, source: u32) -> Option<LifeId> {
         if source == 0 {
-            Some(self.player_life())
+            self.primary_resident.then_some(self.player_life())
         } else {
             self.additional_players
                 .values()
@@ -1088,11 +1234,14 @@ impl Game {
     }
     /// Read-only effect projection for every controlled adventurer.
     pub fn controlled_effects(&self) -> impl Iterator<Item = (LifeId, Vec3, &Controls)> + '_ {
-        std::iter::once((self.player_life(), self.player, &self.controls)).chain(
-            self.additional_players
-                .values()
-                .map(|p| (p.admission.actor(), p.position, &p.controls)),
-        )
+        self.primary_resident
+            .then_some((self.player_life(), self.player, &self.controls))
+            .into_iter()
+            .chain(
+                self.additional_players
+                    .values()
+                    .map(|p| (p.admission.actor(), p.position, &p.controls)),
+            )
     }
     pub(crate) fn rebuild_players_after_restart(&mut self, previous: &Game) -> Result<(), String> {
         for (actor, p) in &previous.additional_players {
@@ -1105,6 +1254,9 @@ impl Game {
                 .insert(*actor, Player::new(admission, source, p.spawn));
         }
         self.next_player_actor = previous.next_player_actor;
+        if !previous.primary_resident {
+            self.take_primary_player()?;
+        }
         self.sync_bodies(0.)?;
         Ok(())
     }
@@ -1184,11 +1336,31 @@ impl Game {
             self.sync_bodies(0.)?;
         }
         self.next_player_actor = self.next_player_actor.max(previous.next_player_actor);
+        if !previous.primary_resident {
+            self.take_primary_player()?;
+        }
         self.checkpoint()?;
         Ok(self)
     }
     pub(super) fn validate_players(&self) -> Result<(), String> {
-        if self.additional_players.len() > 63 || self.next_player_actor >= 1_000_000 {
+        if self.primary_resident == self.simulation.primary_absent() {
+            return Err("Primary character and simulation ownership disagree".into());
+        }
+        if !self.primary_resident
+            && (self
+                .simulation
+                .player_resources(0)
+                .is_none_or(|r| r.hp != 0)
+                || self.agent_controlled
+                || self.pending_movement.is_some()
+                || self.pending_jump
+                || self.casting.is_some())
+        {
+            return Err("Absent primary character retains live authority".into());
+        }
+        if self.additional_players.len() + usize::from(self.primary_resident) > 64
+            || self.next_player_actor >= 1_000_000
+        {
             return Err("Player checkpoint capacity exceeded".into());
         }
         if self
@@ -1365,6 +1537,41 @@ mod tests {
             .unwrap();
         (g, life)
     }
+    #[test]
+    fn retired_player_slots_survive_turnover_beyond_the_body_history_budget() {
+        let (mut game, mut life) = world();
+        let original = life;
+        let body_slots = game.bodies.records().count();
+        let spawn = game.player_spawn(life.actor).unwrap();
+        let stale = game
+            .player_admission(life.actor)
+            .unwrap()
+            .command(
+                game.authority_tick,
+                Intent::Move {
+                    axes: [1., 0.],
+                    yaw: 0.,
+                },
+            )
+            .unwrap();
+        for generation in 1..=1100 {
+            let portable = game.take_transfer_player(life.actor).unwrap();
+            life = game.add_player(Controller(10), spawn).unwrap();
+            game.put_transfer_player(life, portable).unwrap();
+            assert_eq!((life.actor, life.generation), (original.actor, generation));
+            assert_eq!(game.bodies.records().count(), body_slots);
+        }
+        let before = game.checkpoint().unwrap();
+        assert!(game.submit(Controller(10), stale).is_err());
+        assert_eq!(game.checkpoint().unwrap(), before);
+        let recovered = Game::restore(&before).unwrap();
+        assert_eq!(
+            recovered.player_admission(life.actor).unwrap().actor(),
+            life
+        );
+        assert_eq!(recovered.bodies.records().count(), body_slots);
+    }
+
     #[test]
     fn movement_baselines_follow_the_spell_target_not_the_caster() {
         let (mut game, extra) = world();
@@ -1823,5 +2030,62 @@ mod tests {
         bad["world"]["additional_players"][life.actor.to_string()]["admission"]["actor"]["instance"] =
             9.into();
         assert!(Game::restore(&serde_json::to_vec(&bad).unwrap()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod vacant_anchor_tests {
+    use super::*;
+    #[test]
+    fn primary_equipment_resources_move_without_leaking_into_the_vacant_anchor() {
+        let mut game = super::super::social::tests::game(1951, super::super::social::Zone::Plaza);
+        let primary = game.player_life();
+        game.equipment_limits(primary.actor, 300, 30).unwrap();
+        game.recover_player_resources(primary.actor, 100, 10)
+            .unwrap();
+        let portable = game.take_resident_player(primary.actor).unwrap();
+        assert_eq!(game.snapshot().player.max_hp, 200);
+        Game::restore(&game.checkpoint().unwrap()).unwrap();
+        let life = game
+            .add_player(Controller(10), Vec3::new(-3., 0., -3.))
+            .unwrap();
+        game.put_transfer_player(life, portable).unwrap();
+        let resources = game.player_snapshot(life).unwrap().player;
+        assert_eq!(
+            (
+                resources.hp,
+                resources.max_hp,
+                resources.mana,
+                resources.max_mana
+            ),
+            (300, 300, 30, 30)
+        );
+        Game::restore(&game.checkpoint().unwrap()).unwrap();
+    }
+    #[test]
+    fn vacant_primary_anchor_does_not_reduce_the_sixty_four_resident_limit() {
+        let mut game = super::super::social::tests::game(1950, super::super::social::Zone::Plaza);
+        let primary = game.player_life();
+        game.take_resident_player(primary.actor).unwrap();
+        for n in 0..64 {
+            game.add_player(
+                Controller(n + 10),
+                Vec3::new(-10. + (n % 8) as f32, 0., -10. + (n / 8) as f32),
+            )
+            .unwrap();
+        }
+        assert_eq!(game.controlled_effects().count(), 64);
+        assert_eq!(game.simulation.player_ids().count(), 65);
+        assert!(game.player_admission(primary.actor).is_none());
+        let checkpoint = game.checkpoint().unwrap();
+        assert!(
+            game.add_player(Controller(80), Vec3::new(-1., 0., -1.))
+                .is_err()
+        );
+        assert_eq!(game.checkpoint().unwrap(), checkpoint);
+        let restored = Game::restore(&checkpoint).unwrap();
+        assert_eq!(restored.controlled_effects().count(), 64);
+        assert!(restored.player_admission(primary.actor).is_none());
+        assert!(game.simulation.revive_player(0, [0.; 3], 0.).is_err());
     }
 }
