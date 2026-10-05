@@ -1,0 +1,88 @@
+{
+  "label": "after-b",
+  "busy_panes": 16,
+  "seconds": 15.008395,
+  "spells": true,
+  "frames": 1689,
+  "interval_ms": {
+    "median": 8.341084,
+    "p95": 16.577084,
+    "p99": 16.874168,
+    "worst": 17.212585
+  },
+  "cpu_ms": {
+    "median": 8.2635,
+    "p95": 16.493374,
+    "p99": 16.786833,
+    "worst": 17.09996
+  },
+  "world_ms": {
+    "median": 4.8097086,
+    "p95": 12.996584,
+    "p99": 13.327166,
+    "worst": 13.6795845
+  },
+  "update_ms": {
+    "median": 3.172208,
+    "p95": 3.202208,
+    "p99": 3.225292,
+    "worst": 3.281583
+  },
+  "draw_ms": {
+    "median": 0.277208,
+    "p95": 0.34887502,
+    "p99": 0.378833,
+    "worst": 0.42937502
+  },
+  "mb_per_s": 23.893215,
+  "latency_ms": {
+    "median": 8.333,
+    "p95": 8.768875,
+    "p99": 16.799124,
+    "worst": 16.88496
+  },
+  "latency_samples": 97,
+  "frames_over_16_7_ms": 51,
+  "worst_frames": [
+    {
+      "interval_ms": 17.212585,
+      "cpu_ms": 17.09996,
+      "world_ms": 13.6795845,
+      "update_ms": 3.156542,
+      "draw_ms": 0.263834,
+      "bytes": 273861
+    },
+    {
+      "interval_ms": 17.161543,
+      "cpu_ms": 17.036167,
+      "world_ms": 13.508668,
+      "update_ms": 3.188334,
+      "draw_ms": 0.339166,
+      "bytes": 192112
+    },
+    {
+      "interval_ms": 17.133623,
+      "cpu_ms": 16.966959,
+      "world_ms": 13.383542,
+      "update_ms": 3.196125,
+      "draw_ms": 0.387292,
+      "bytes": 232675
+    },
+    {
+      "interval_ms": 17.113169,
+      "cpu_ms": 17.09,
+      "world_ms": 13.596917,
+      "update_ms": 3.159833,
+      "draw_ms": 0.33325002,
+      "bytes": 191767
+    },
+    {
+      "interval_ms": 17.108793,
+      "cpu_ms": 16.991123,
+      "world_ms": 13.467206,
+      "update_ms": 3.1947079,
+      "draw_ms": 0.329209,
+      "bytes": 161291
+    }
+  ]
+}
