@@ -8,11 +8,14 @@ publish.workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:winit", "dep:arboard", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host", "imported-desktop", "terminal"]
+desktop = ["dep:winit", "dep:arboard", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host", "imported-desktop", "terminal", "crypt"]
 model-host = ["dep:coder", "dep:coder-delegate"]
 xp-host = ["dep:xp-ledger", "verse-net/xp"]
 replay-host = ["dep:gym", "dep:knowledge"]
 capture = []
+# The crypt lab's models built into the binary (about 5.7 MB), which open
+# the zone and show its plaza arch. A build without them has neither.
+crypt = ["verse-zone-crypt/embedded"]
 # Rust Native panels (the chat transcript and the diff pane) painted by
 # `rust-native-desktop` and composited over the world.
 panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
@@ -88,6 +91,8 @@ verse-lagrange = { path = "../verse-lagrange" }
 verse-zone-lagrange = { path = "../verse-zone-lagrange" }
 # The Physics Lab zone; `verse` re-exports it as `zones::lab`.
 verse-zone-lab = { path = "../verse-zone-lab" }
+# The crypt lab zone; `verse` re-exports it as `zones::crypt`.
+verse-zone-crypt = { path = "../verse-zone-crypt" }
 # The Ruins zone and its pack loader; `verse` re-exports them as
 # `zones::ruins` and `zones::assets`.
 verse-zone-ruins = { path = "../verse-zone-ruins" }
@@ -242,6 +247,10 @@ required-features = ["capture"]
 [[example]]
 name = "crypt_lab"
 required-features = ["capture"]
+
+[[example]]
+name = "crypt_capture"
+required-features = ["capture", "crypt"]
 
 [[example]]
 name = "terminal_capture"

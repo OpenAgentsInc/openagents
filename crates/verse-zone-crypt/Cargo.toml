@@ -1,0 +1,23 @@
+[package]
+name = "verse-zone-crypt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's crypt lab zone: the candlelit hall from scripts/blender/chamber_lab.py, its lamps, effects, collision, and camera bounds."
+
+[features]
+# Builds the hall's 25 models into the binary (about 5.7 MB), so a desktop
+# build opens the zone without reading the repository.
+embedded = []
+
+[dependencies]
+glam = "0.30.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+verse-core = { path = "../verse-core" }
+verse-pbr = { path = "../verse-pbr" }
+verse-world = { path = "../verse-world" }
+
+[lints]
+workspace = true

@@ -15109,6 +15109,7 @@ dependencies = [
  "verse-pbr",
  "verse-ruins",
  "verse-world",
+ "verse-zone-crypt",
  "verse-zone-lab",
  "verse-zone-lagrange",
  "verse-zone-ruins",
@@ -15330,6 +15331,18 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "verse-engine",
+]
+
+[[package]]
+name = "verse-zone-crypt"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "serde",
+ "serde_json",
+ "verse-core",
+ "verse-pbr",
+ "verse-world",
 ]
 
 [[package]]

@@ -31,6 +31,8 @@
 //! window is not in front; `V` mutes them, and `--studio-mute` starts muted.
 //! the podium, and merge decisions from the merge station.
 //! `--grove` opens straight into the Grove, the druid training field.
+//! `--crypt` opens straight into the crypt lab, a candlelit laboratory hall;
+//! `F` at its door returns to the plaza.
 //! `--frame-times` prints one JSON line of frame times per second.
 //! `--everglade` opens straight into Everglade instead of the plaza, and
 //! `--studio-notice <text>` leads Everglade's caption with a notice;
@@ -207,6 +209,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--studio-mute" => options.studio_muted = true,
             "--everglade" => options.everglade = true,
             "--grove" => options.grove = true,
+            "--crypt" => options.crypt = true,
             #[cfg(feature = "remote-chamber")]
             "--join" => options.chamber = Some(value()?.into()),
             "--demolition" => {

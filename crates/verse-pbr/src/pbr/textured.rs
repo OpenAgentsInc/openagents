@@ -840,10 +840,45 @@ impl TexturedScene {
     /// Returns a message when the file cannot be read, a primitive is not a
     /// triangle list with normals, or an image is not a PNG.
     pub fn import_gltf(&mut self, path: &Path) -> Result<usize, String> {
+        let gltf = gltf::Gltf::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.import_document(path, gltf, path.parent())
+    }
+
+    /// Imports a binary glTF file held in memory, as [`Self::import_gltf`]
+    /// does from disk. `label` names the file in messages and keys its
+    /// images; the file must carry its buffers and images inside it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the bytes are not a self-contained glTF file,
+    /// a primitive is not a triangle list with normals, or an image is not a
+    /// PNG.
+    pub fn import_glb(&mut self, label: &str, bytes: &[u8]) -> Result<usize, String> {
+        let path = Path::new(label);
+        let gltf = gltf::Gltf::from_slice(bytes).map_err(|e| format!("{label}: {e}"))?;
+        let external = gltf
+            .document
+            .images()
+            .any(|image| matches!(image.source(), gltf::image::Source::Uri { .. }))
+            || gltf
+                .document
+                .buffers()
+                .any(|buffer| matches!(buffer.source(), gltf::buffer::Source::Uri(_)));
+        if external {
+            return Err(format!("{label}: the file refers to files outside it"));
+        }
+        self.import_document(path, gltf, None)
+    }
+
+    fn import_document(
+        &mut self,
+        path: &Path,
+        gltf: gltf::Gltf,
+        base: Option<&Path>,
+    ) -> Result<usize, String> {
         let fail = |message: &dyn std::fmt::Display| format!("{}: {message}", path.display());
-        let gltf = gltf::Gltf::open(path).map_err(|e| fail(&e))?;
         let buffers =
-            gltf::import_buffers(&gltf.document, path.parent(), gltf.blob).map_err(|e| fail(&e))?;
+            gltf::import_buffers(&gltf.document, base, gltf.blob).map_err(|e| fail(&e))?;
         let document = gltf.document;
         let scene = document
             .default_scene()

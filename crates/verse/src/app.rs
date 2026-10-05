@@ -74,6 +74,9 @@ pub struct Options {
     /// Open straight into the Grove, the druid training field, once the
     /// window shows (`verse --grove`).
     pub grove: bool,
+    /// Open straight into the crypt lab once the window shows (`verse
+    /// --crypt`).
+    pub crypt: bool,
     /// Open Everglade as the demolition yard (`--demolition`): two kit
     /// cottages to knock down with a sledgehammer.
     pub demolition: bool,
@@ -110,6 +113,7 @@ impl Default for Options {
             studio_muted: false,
             everglade: false,
             grove: false,
+            crypt: false,
             demolition: false,
             frame_times: false,
             terminal_stress: None,
@@ -1541,6 +1545,8 @@ impl App {
     fn open_everglade(&mut self, zone: zones::ZoneId) {
         let entered = if zone == zones::ZoneId::Grove {
             self.runtime.enter_grove()
+        } else if zone == zones::ZoneId::Crypt {
+            self.runtime.enter_crypt()
         } else {
             self.runtime.enter_everglade()
         };
@@ -2170,9 +2176,12 @@ impl App {
     /// (owner, 2026-10-04): the glade is the screen, and the player leaves
     /// through the arch. A load in progress or a failed one still shows the
     /// panel.
+    /// The crypt walks as Everglade does, with its hotbar and no map.
     fn in_bare_everglade(&self) -> bool {
-        self.runtime.zone == zones::ZoneId::Everglade
-            && self.runtime.zone_load_state() == zones::LoadState::Idle
+        matches!(
+            self.runtime.zone,
+            zones::ZoneId::Everglade | zones::ZoneId::Crypt
+        ) && self.runtime.zone_load_state() == zones::LoadState::Idle
     }
 
     /// The Grove shows its hotbar and nothing else over the meadow, as
@@ -2447,9 +2456,18 @@ impl App {
                     return self.zone_action(intent);
                 }
             }
+            // In the crypt, F at the door leaves, whichever way the player
+            // faces.
+            if code == KeyCode::KeyF && self.runtime.crypt_door_near() {
+                self.zone_action(ZoneIntent::Return);
+                return;
+            }
             // Everglade's town: Escape leaves Meteor Swarm's aim or stops
             // its cast, and R restores the buildings.
-            if self.in_bare_everglade() && !self.runtime.in_demolition() {
+            if self.in_bare_everglade()
+                && self.runtime.zone == zones::ZoneId::Everglade
+                && !self.runtime.in_demolition()
+            {
                 if code == KeyCode::Escape && self.runtime.demolition_cancel() {
                     return;
                 }
@@ -3471,10 +3489,18 @@ impl App {
                     ui.vertices
                         .extend(self.door_hud.draw(atlas, frame, self.scale).vertices);
                 }
+                // In the crypt, the door's panel stands above the hotbar.
+                let crypt_clearance = || {
+                    let logical = size.map(|v| v / self.scale);
+                    let tray = zones::everglade::hotbar::frame(logical, HOTBAR_BOTTOM);
+                    (logical[1] - tray[1] + 8.0).clamp(12.0, 2048.0)
+                };
                 let _ = self
                     .zone_hud
                     .set_bottom_clearance(if self.plaza_interactive() {
                         bottom_clearance
+                    } else if self.runtime.zone == zones::ZoneId::Crypt {
+                        crypt_clearance()
                     } else {
                         12.0
                     });
@@ -3486,7 +3512,8 @@ impl App {
                         && !self.board_open
                         && !self.gym_open
                         && self.picker.is_none()
-                        && !self.in_bare_everglade()
+                        // The crypt shows its panel only at the door.
+                        && (!self.in_bare_everglade() || self.runtime.crypt_door_near())
                         && !self.in_bare_grove(),
                 ));
                 if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.zone_frame) {
@@ -4021,6 +4048,12 @@ impl ApplicationHandler for App {
         // `--grove` likewise, through the same pending load.
         if std::mem::take(&mut self.connection_options.grove) {
             self.everglade_pending = Some(zones::ZoneId::Grove);
+            self.open_pending_everglade();
+        }
+        // `--crypt` likewise: the crypt loads Everglade's pack for its
+        // character.
+        if std::mem::take(&mut self.connection_options.crypt) {
+            self.everglade_pending = Some(zones::ZoneId::Crypt);
             self.open_pending_everglade();
         }
     }

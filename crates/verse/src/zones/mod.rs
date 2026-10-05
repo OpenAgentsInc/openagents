@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use verse_zone_crypt as crypt;
 pub use verse_zone_ruins::assets;
 pub mod everglade;
 pub mod everglade_pack;
@@ -13,6 +14,8 @@ pub use verse_zone_lab as lab;
 pub use verse_zone_lagrange as lagrange;
 pub mod operators;
 pub use verse_zone_ruins as ruins;
+#[cfg(test)]
+mod crypt_tests;
 #[cfg(test)]
 mod lab_tests;
 mod runtime;
@@ -54,15 +57,19 @@ pub enum ZoneId {
     /// The druid training field on Everglade's pack
     /// ([`grove`], `docs/verse/druid-demo.md`).
     Grove,
+    /// The candlelit crypt lab ([`crypt`]), walked as Everglade's
+    /// character.
+    Crypt,
 }
 impl ZoneId {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Plaza,
         Self::Ruins,
         Self::Lagrange1,
         Self::PhysicsLab,
         Self::Everglade,
         Self::Grove,
+        Self::Crypt,
     ];
 
     /// The zone a command line names, by world identifier or label
@@ -86,6 +93,7 @@ impl ZoneId {
             Self::PhysicsLab => "physics-lab-v1",
             Self::Everglade => "verse-everglade",
             Self::Grove => "verse-grove",
+            Self::Crypt => "verse-crypt",
         }
     }
     pub const fn label(self) -> &'static str {
@@ -96,6 +104,7 @@ impl ZoneId {
             Self::PhysicsLab => "Physics Lab",
             Self::Everglade => "Everglade",
             Self::Grove => "Grove",
+            Self::Crypt => "Crypt",
         }
     }
     pub const fn half_extent(self) -> f32 {
@@ -104,6 +113,7 @@ impl ZoneId {
             Self::Ruins | Self::Lagrange1 => 150.0,
             Self::PhysicsLab => lab::HALF_EXTENT,
             Self::Everglade | Self::Grove => everglade::HALF_EXTENT,
+            Self::Crypt => crypt::HALF_EXTENT,
         }
     }
     /// The zone's primary portal: the plaza's Ruins arch, or a zone's return.
@@ -113,12 +123,20 @@ impl ZoneId {
     /// Every portal in this zone with its destination.
     pub fn portals(self) -> Vec<(ZoneId, glam::Vec3)> {
         match self {
-            Self::Plaza => vec![
-                (Self::Ruins, glam::Vec3::new(-12.0, 0.0, 12.0)),
-                (Self::Lagrange1, glam::Vec3::new(12.0, 0.0, 12.0)),
-                (Self::PhysicsLab, glam::Vec3::new(0.0, 0.0, -22.0)),
-                (Self::Everglade, glam::Vec3::new(-24.0, 0.0, -24.0)),
-            ],
+            Self::Plaza => {
+                let mut portals = vec![
+                    (Self::Ruins, glam::Vec3::new(-12.0, 0.0, 12.0)),
+                    (Self::Lagrange1, glam::Vec3::new(12.0, 0.0, 12.0)),
+                    (Self::PhysicsLab, glam::Vec3::new(0.0, 0.0, -22.0)),
+                    (Self::Everglade, glam::Vec3::new(-24.0, 0.0, -24.0)),
+                ];
+                // The crypt's arch, opposite Everglade's, in a build that
+                // carries its models.
+                if crypt::EMBEDDED {
+                    portals.push((Self::Crypt, CRYPT_ARCH));
+                }
+                portals
+            }
             Self::Ruins => vec![(
                 Self::Plaza,
                 glam::Vec3::new(
@@ -131,6 +149,8 @@ impl ZoneId {
             Self::PhysicsLab => vec![(Self::Plaza, lab::RETURN_PORTAL)],
             Self::Everglade => vec![(Self::Plaza, everglade::RETURN_PORTAL)],
             Self::Grove => vec![(Self::Plaza, grove::RETURN_PORTAL)],
+            // The heavy door is the way out; it draws no arch.
+            Self::Crypt => vec![(Self::Plaza, crypt::DOOR)],
         }
     }
     /// Short arch lettering for a destination.
@@ -142,9 +162,13 @@ impl ZoneId {
             Self::PhysicsLab => "PHYSICS LAB",
             Self::Everglade => "EVERGLADE",
             Self::Grove => "GROVE",
+            Self::Crypt => "CRYPT",
         }
     }
 }
+
+/// The plaza's arch to the crypt, opposite Everglade's.
+pub const CRYPT_ARCH: glam::Vec3 = glam::Vec3::new(24.0, 0.0, -24.0);
 
 pub use verse_core::zone::Atmosphere;
 pub fn atmosphere(zone: ZoneId) -> Atmosphere {
@@ -191,6 +215,13 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
                 sun_strength: 0.4,
                 sun_exponent: 3.0,
             }),
+        },
+        // The candlelit hall's near-black air and low fog.
+        ZoneId::Crypt => Atmosphere {
+            color: crypt::FIELD,
+            fog_start: crypt::FOG_START,
+            fog_end: crypt::FOG_END,
+            height_fog: Some(crypt::HEIGHT_FOG),
         },
     }
 }
@@ -273,6 +304,9 @@ pub(crate) struct State {
     /// The Grove's training field. The Grove also fills `everglade`, whose
     /// movement, spells, and character it walks with.
     grove: Option<grove::Grove>,
+    /// The crypt's light and effects. The crypt also fills `everglade`,
+    /// whose movement, spells, and character it walks with.
+    crypt: Option<crypt::Crypt>,
     /// Open Everglade as the demolition yard (`verse --demolition`).
     demolition: bool,
     /// The Agent Studio Everglade draws. It keeps its source across visits
@@ -306,6 +340,7 @@ impl Default for State {
             lab: None,
             everglade: None,
             grove: None,
+            crypt: None,
             demolition: false,
             studio: everglade::studio::Studio::default(),
             studio_notice: None,
@@ -356,6 +391,9 @@ impl Manifest {
 /// A visible arch in the current zone. Only the plaza geometry is amber-bound.
 pub fn portal_mesh(zone: ZoneId, elapsed: f32) -> crate::mesh::Mesh {
     let mut mesh = crate::mesh::Mesh::default();
+    if zone == ZoneId::Crypt {
+        return mesh;
+    }
     for (destination, at) in zone.portals() {
         arch(&mut mesh, zone, destination.sign(), at, elapsed);
     }
@@ -397,6 +435,7 @@ pub(crate) fn arch(
         ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
         ZoneId::PhysicsLab => [0.3, 0.85, 1.0],
         ZoneId::Everglade | ZoneId::Grove => [0.95, 0.85, 0.4],
+        ZoneId::Crypt => [1.0, 0.56, 0.24],
     };
     // Broken concentric arcs leave the destination visible through the opening.
     for ring in 0..3 {

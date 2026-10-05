@@ -47,6 +47,14 @@ impl WorldRuntime {
                     .clamp(ground, ground + everglade.ceiling());
             }
             everglade.move_controlled(&mut self.player, input, &self.world.blockers, dt);
+            if self.zone_state.crypt.is_some() {
+                // The vault holds a levitating or jumping player under it.
+                let top = super::crypt::feet_ceiling(self.player.pos.x);
+                if self.player.pos.y > top {
+                    self.player.hold_altitude(top);
+                }
+                everglade.altitude = everglade.altitude.min(top);
+            }
         } else {
             self.player
                 .update(input, dt, &self.world.blockers, self.zone_half());
@@ -118,6 +126,8 @@ impl WorldRuntime {
             Some(everglade_pack::LoadEvent::Ready(pack)) => {
                 if self.zone_state.destination == ZoneId::Grove {
                     self.install_grove(&pack);
+                } else if self.zone_state.destination == ZoneId::Crypt {
+                    self.install_crypt(&pack);
                 } else {
                     self.install_everglade(&pack);
                 }
@@ -357,6 +367,72 @@ impl WorldRuntime {
                 .unwrap_or_else(|| "The Grove enters only from the plaza".into()))
         }
     }
+    /// Enter the crypt lab: the hall from the models built into this
+    /// binary, walked with Everglade's character, movement, and spells from
+    /// its verified pack ([`super::crypt`]).
+    pub fn install_crypt(&mut self, pack: &everglade_pack::ZonePack) {
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        match super::crypt::Hall::embedded() {
+            Ok(hall) => self.install_crypt_hall(pack, hall),
+            Err(error) => self.zone_load_failed(&error),
+        }
+    }
+
+    /// Enter the crypt lab built from `hall`, as [`Self::install_crypt`]
+    /// does with the built-in models.
+    pub fn install_crypt_hall(
+        &mut self,
+        pack: &everglade_pack::ZonePack,
+        hall: super::crypt::Hall,
+    ) {
+        use super::crypt;
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        let mut spawn = self.player;
+        spawn.pos = crypt::SPAWN;
+        spawn.yaw = crypt::SPAWN_YAW;
+        let built = crypt::solids()
+            .and_then(|solids| Everglade::with_solids(pack, &spawn, solids))
+            .and_then(|glade| Ok((glade, crypt::blocks()?)));
+        let (glade, blocks) = match built {
+            Ok(built) => built,
+            Err(error) => {
+                self.zone_load_failed(&error);
+                return;
+            }
+        };
+        let live = crypt::Crypt::new(&hall);
+        let mut world = crate::world::World::default();
+        // Routes go around what a step can't climb.
+        world.blockers = blocks
+            .into_iter()
+            .filter(|&(_, top)| top > super::everglade::solids::STEP)
+            .map(|(footprint, _)| footprint)
+            .collect();
+        world.mesh.textured = Some(std::sync::Arc::new(hall.scene));
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.world = world;
+        self.zone_state.everglade = Some(glade);
+        self.zone_state.crypt = Some(live);
+        self.zone = ZoneId::Crypt;
+        self.zone_state.loading = LoadState::Idle;
+        self.zone_state.error = None;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(crypt::SPAWN, crypt::SPAWN_YAW);
+        self.player.set_surface_height(0.0);
+        self.camera = crate::camera::FollowCamera::default();
+    }
+
+    /// Whether the player stands in reach of the crypt's door.
+    #[must_use]
+    pub fn crypt_door_near(&self) -> bool {
+        self.zone == ZoneId::Crypt && super::crypt::near_door(self.player.pos)
+    }
+
     /// The nearest portal in this zone and its destination.
     fn nearest_portal(&self) -> (ZoneId, Vec3) {
         let at = self.player.pos;
@@ -371,6 +447,10 @@ impl WorldRuntime {
             .unwrap_or((ZoneId::Plaza, self.zone.portal()))
     }
     fn portal_in_reach(&self, at: Vec3) -> bool {
+        // The crypt's door opens from closer than an arch.
+        if self.zone == ZoneId::Crypt {
+            return super::crypt::near_door(self.player.pos);
+        }
         let offset = self.player.pos - at;
         offset.x.hypot(offset.z) <= 6.0
             && (offset.y.abs() < 3.0 || self.is_plaza() && offset.y < 3.0)
@@ -447,6 +527,7 @@ impl WorldRuntime {
                 self.zone_state.lab = None;
                 self.zone_state.everglade = None;
                 self.zone_state.grove = None;
+                self.zone_state.crypt = None;
                 // A Wild Shape's pace ends with the Grove.
                 self.player.set_pace(1.0);
                 self.zone = ZoneId::Plaza;
@@ -621,6 +702,13 @@ impl WorldRuntime {
                     .meteor_swarm(&player)?;
                 self.zone_state.error = None;
             }
+            Intent::Interact if self.zone == ZoneId::Crypt => {
+                // The heavy door is the way out.
+                if !super::crypt::near_door(self.player.pos) {
+                    return Err("Walk up to the door".into());
+                }
+                return self.apply_zone_intent(Intent::Return);
+            }
             Intent::Interact => {
                 if self.studio_panel_here().is_none() {
                     return Err("Walk up to a station".into());
@@ -756,7 +844,8 @@ impl WorldRuntime {
         &self,
     ) -> Option<[super::everglade::hotbar::Slot; super::everglade::hotbar::COUNT]> {
         use super::everglade::{hotbar::Slot, spells::Spell};
-        if self.zone != ZoneId::Everglade {
+        // The crypt is walked with Everglade's bar.
+        if !matches!(self.zone, ZoneId::Everglade | ZoneId::Crypt) {
             return None;
         }
         let glade = self.zone_state.everglade.as_ref()?;
@@ -1193,6 +1282,17 @@ impl WorldRuntime {
             add("step", "Step", Intent::Step, true);
             add("return", "Plaza", Intent::Return, true);
             Lab::caption(&lab.snapshot())
+        } else if self.zone_state.crypt.is_some() {
+            add("jump", "Jump", Intent::Jump, !self.player.airborne());
+            add("return", self.return_label(), Intent::Return, true);
+            let door = if !super::crypt::near_door(self.player.pos) {
+                "The heavy door by the entrance leads out"
+            } else if self.interact_hint == crate::runtime::InteractHint::Tap {
+                "Tap Plaza to open the door and leave"
+            } else {
+                "F opens the door and leaves"
+            };
+            format!("Crypt\n{door}")
         } else if let Some(grove) = &self.zone_state.grove {
             add("jump", "Jump", Intent::Jump, !self.player.airborne());
             add("long_rest", "Long Rest", Intent::LongRest, true);
@@ -1249,6 +1349,14 @@ impl WorldRuntime {
             } else if self.nearest_portal().0 == ZoneId::PhysicsLab {
                 add("enter", "Enter Lab", Intent::Enter, true);
                 "Physics Lab · live rigid-body sandbox".into()
+            } else if self.nearest_portal().0 == ZoneId::Crypt {
+                add(
+                    "enter",
+                    "Enter Crypt",
+                    Intent::Enter,
+                    self.zone_state.everglade_loader.is_some(),
+                );
+                "Crypt · a candlelit laboratory".into()
             } else if self.nearest_portal().0 == ZoneId::Everglade {
                 add(
                     "enter",
@@ -1457,7 +1565,14 @@ impl WorldRuntime {
     /// Starts loading the pack of `destination` (Ruins or Everglade). The
     /// world stays where it is until [`Self::zone_tick`] installs the zone.
     fn start_zone_load(&mut self, destination: ZoneId) -> Result<(), String> {
-        let requested = if matches!(destination, ZoneId::Everglade | ZoneId::Grove) {
+        if destination == ZoneId::Crypt && !super::crypt::EMBEDDED {
+            return Err("This build does not carry the crypt".into());
+        }
+        // The Grove and the crypt walk with Everglade's character.
+        let requested = if matches!(
+            destination,
+            ZoneId::Everglade | ZoneId::Grove | ZoneId::Crypt
+        ) {
             self.zone_state
                 .everglade_loader
                 .as_mut()
@@ -1520,6 +1635,10 @@ impl WorldRuntime {
             if let Some(gate) = self.ritual_gate() {
                 mesh.extend(&gate.mesh(ZoneId::Plaza, super::gate::RITUAL_SIGN, elapsed));
             }
+            return mesh;
+        }
+        // The crypt's door is its way out; it has no arch.
+        if self.zone == ZoneId::Crypt {
             return mesh;
         }
         for (_, at) in self.zone.portals() {
@@ -1608,6 +1727,25 @@ impl WorldRuntime {
         }
         self.zone_state.destination = ZoneId::Grove;
         let result = self.start_zone_load(ZoneId::Grove);
+        if let Err(error) = &result {
+            self.zone_state.error = Some(error.chars().take(180).collect());
+        }
+        result
+    }
+
+    /// Start loading the crypt lab from the plaza, as `verse --crypt` asks
+    /// at launch; it loads Everglade's pack for the character.
+    /// [`Self::zone_tick`] installs it.
+    ///
+    /// # Errors
+    /// The player is not in the plaza, a load is under way, or the pack
+    /// cannot be requested.
+    pub fn enter_crypt(&mut self) -> Result<(), String> {
+        if !self.is_plaza() || self.zone_loading() {
+            return Err("The crypt enters only from the plaza".into());
+        }
+        self.zone_state.destination = ZoneId::Crypt;
+        let result = self.start_zone_load(ZoneId::Crypt);
         if let Err(error) = &result {
             self.zone_state.error = Some(error.chars().take(180).collect());
         }
@@ -1840,7 +1978,10 @@ impl WorldRuntime {
             lab.tick(dt);
         }
         let state = &mut self.zone_state;
-        if let (Some(glade), Some(grove)) = (&mut state.everglade, &mut state.grove) {
+        if let (Some(glade), Some(crypt)) = (&mut state.everglade, &mut state.crypt) {
+            glade.tick(dt, &self.player, &[]);
+            crypt.tick(dt);
+        } else if let (Some(glade), Some(grove)) = (&mut state.everglade, &mut state.grove) {
             glade.tick(dt, &self.player, &[]);
             grove.tick(dt, glade, &self.player);
             // The shape's pace holds however the player is placed.
@@ -1885,7 +2026,16 @@ impl WorldRuntime {
             // The lab has no suit of its own; the plaza character walks it.
             mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));
         }
-        if let (Some(glade), Some(grove)) = (&self.zone_state.everglade, &self.zone_state.grove) {
+        if let (Some(glade), Some(crypt)) = (&self.zone_state.everglade, &self.zone_state.crypt) {
+            // The hall's candlelit stage, moonbeam, and effects, the
+            // character (not in first person), and the glade's spells.
+            let eye = self.view(1.0).eye;
+            mesh.extend(&crypt.mesh(eye));
+            mesh.extend(&glade.player_mesh(&self.player, &self.gait, self.hides_avatar()));
+            mesh.extend(&glade.spell_mesh_from(&self.player, eye));
+        } else if let (Some(glade), Some(grove)) =
+            (&self.zone_state.everglade, &self.zone_state.grove)
+        {
             // Everglade's lit stage, the character and the dummies in one
             // figure, the glade's spells, and the field's bars and effects.
             mesh.extend(glade.dynamic());

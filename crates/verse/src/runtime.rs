@@ -246,11 +246,15 @@ impl WorldRuntime {
     }
 
     /// Zooming in past the nearest orbit enters first person on the bare
-    /// world's grid and in Everglade. Coder's plaza and the other zones keep
-    /// the third-person orbit.
+    /// world's grid, in Everglade, and in the crypt. Coder's plaza and the
+    /// other zones keep the third-person orbit.
     #[must_use]
     pub fn first_person_allowed(&self) -> bool {
-        (self.bare && self.is_plaza()) || self.zone == crate::zones::ZoneId::Everglade
+        (self.bare && self.is_plaza())
+            || matches!(
+                self.zone,
+                crate::zones::ZoneId::Everglade | crate::zones::ZoneId::Crypt
+            )
     }
 
     /// The camera is at, or gliding to, the player's head.
@@ -548,6 +552,13 @@ impl WorldRuntime {
             );
             // The demolition yard's meteors shake the camera.
             eye += self.demolition_shake();
+        } else if self.zone == crate::zones::ZoneId::Crypt {
+            // The camera stays in the hall: a wall, a pillar, or the vault
+            // behind the player pulls it in.
+            eye = crate::zones::crypt::keep_eye_inside(
+                self.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT,
+                self.camera.unclamped_eye(self.player.pos, self.player.yaw),
+            );
         }
         View {
             view_proj: self.camera.view_proj_from_eye(eye, self.player.yaw, aspect),
@@ -589,7 +600,9 @@ impl WorldRuntime {
         !self.bare
             && !matches!(
                 self.zone,
-                crate::zones::ZoneId::Everglade | crate::zones::ZoneId::Grove
+                crate::zones::ZoneId::Everglade
+                    | crate::zones::ZoneId::Grove
+                    | crate::zones::ZoneId::Crypt
             )
     }
 

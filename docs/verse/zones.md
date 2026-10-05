@@ -147,6 +147,25 @@ stations, and the caption names the station whose marker you stand at.
 [`zones/everglade/mod.rs`](../../crates/verse/src/zones/everglade/mod.rs)
 (`STATIONS`); the textured layout replaces the markers at the same points.
 
+### Crypt controls
+
+The crypt lab is the candlelit hall that
+[`chamber_lab.py`](../../scripts/blender/chamber_lab.py) models, with every prop
+where the `crypt_lab` capture places it
+([`verse-zone-crypt`](../../crates/verse-zone-crypt/src/lib.rs)). Desktop builds
+carry its models (the `crypt` feature, on with `desktop`), so its arch,
+`CRYPT`, stands on the plaza opposite Everglade's, and `verse --crypt` opens it
+directly. Entry loads Everglade's pack, because the player walks as Everglade's
+character with Everglade's hotbar: **1** or **L** levitates under the vault,
+**2** to **5** cast Feather Fall, Wind Wall, Reverse Gravity, and Wall of
+Stone, and Space jumps. Zooming all the way in is first person. The walls,
+pillars, tables, shelves, cauldrons, cage, sarcophagus, and door block; the
+floor and the dais's steps carry the player; and the camera pulls in when a
+wall, a pillar, or the vault is behind it. The player arrives just inside the
+heavy door, facing the hall. At the door, **F** (or **Plaza** on the panel
+that shows there) opens it and returns to the plaza. Builds without the models,
+such as the phones and the browser, have neither the arch nor the zone.
+
 ## Entry state
 
 ```mermaid
