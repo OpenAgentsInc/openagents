@@ -32,7 +32,7 @@ pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
   walkers N [--hz RATE] [--loopback] [--wait SECONDS]
                             Walk N simulated players with fresh keys in loops in
                             front of the spawn (default world verse-bare) at the
-                            phone's cadence, or RATE frames a second, until
+                            shared 5 Hz cadence, or RATE frames a second, until
                             stopped or for SECONDS; --loopback starts an in-process
                             relay and prints its address. NDJSON progress.
   move X,Y,Z [--yaw DEGREES] [--name NAME]

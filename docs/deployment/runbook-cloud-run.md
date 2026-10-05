@@ -87,6 +87,12 @@ starts, even with no traffic. Before a deploy:
   whole transaction.
 - Check new configuration in `crates/nostr-relay/src/gateway/config.rs`. A new
   required variable must be set on the service first.
+- The pose lane (`NOSTR_RELAY_RATE_POSE_PER_SEC_PUBKEY`, default 12, and
+  `NOSTR_RELAY_RATE_POSE_PER_SEC_IP`, default 400) counts NIP-MV frames and
+  gestures by the second, apart from the per-minute event budget. Verse
+  clients publish 5 frames a second while moving; a relay without the lane
+  throttles them to jerky motion. Set the IP lane with the largest crowd
+  behind one address in mind (20 players at 5 Hz is 100 a second).
 
 An older binary refuses to start against a ledger with a version it doesn't
 know (`database has unknown version`). The running instance keeps serving, but

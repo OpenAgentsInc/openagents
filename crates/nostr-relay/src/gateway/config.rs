@@ -24,6 +24,11 @@ pub struct GatewayLimits {
     pub gift_wraps_per_minute_recipient: u32,
     pub observer_events_per_second_ip: u32,
     pub observer_events_per_second_agent: u32,
+    /// The pose lane: NIP-MV frames and gestures (kinds 23300 and 23301) a
+    /// key may publish each second, counted apart from the per-minute budget.
+    pub pose_events_per_second_pubkey: u32,
+    /// Pose-lane events an IP address may publish each second.
+    pub pose_events_per_second_ip: u32,
     pub req_per_minute_ip: u32,
     pub media_per_minute_ip: u32,
     pub media_per_minute_pubkey: u32,
@@ -44,6 +49,8 @@ impl Default for GatewayLimits {
             gift_wraps_per_minute_recipient: 60,
             observer_events_per_second_ip: 200,
             observer_events_per_second_agent: 100,
+            pose_events_per_second_pubkey: 12,
+            pose_events_per_second_ip: 400,
             req_per_minute_ip: 120,
             media_per_minute_ip: 30,
             media_per_minute_pubkey: 15,
@@ -225,6 +232,8 @@ impl GatewayConfig {
                 "NOSTR_RELAY_RATE_OBSERVER_PER_SEC_AGENT",
                 "100",
             )?,
+            pose_events_per_second_pubkey: parse_or("NOSTR_RELAY_RATE_POSE_PER_SEC_PUBKEY", "12")?,
+            pose_events_per_second_ip: parse_or("NOSTR_RELAY_RATE_POSE_PER_SEC_IP", "400")?,
             req_per_minute_ip: parse_or("NOSTR_RELAY_RATE_REQ_PER_MIN_IP", "120")?,
             media_per_minute_ip: parse_or("NOSTR_RELAY_RATE_MEDIA_PER_MIN_IP", "30")?,
             media_per_minute_pubkey: parse_or("NOSTR_RELAY_RATE_MEDIA_PER_MIN_PUBKEY", "15")?,
@@ -349,6 +358,14 @@ impl GatewayConfig {
             (
                 "NOSTR_RELAY_RATE_OBSERVER_PER_SEC_AGENT",
                 self.limits.observer_events_per_second_agent,
+            ),
+            (
+                "NOSTR_RELAY_RATE_POSE_PER_SEC_PUBKEY",
+                self.limits.pose_events_per_second_pubkey,
+            ),
+            (
+                "NOSTR_RELAY_RATE_POSE_PER_SEC_IP",
+                self.limits.pose_events_per_second_ip,
             ),
             (
                 "NOSTR_RELAY_RATE_REQ_PER_MIN_IP",

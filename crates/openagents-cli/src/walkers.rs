@@ -60,7 +60,7 @@ const WALKS: [Walk; 3] = [
     },
 ];
 
-/// The cadence `--hz` asks for: the phone's profile by default, otherwise
+/// The cadence `--hz` asks for: the shared 5 Hz profile by default, otherwise
 /// `hz` moving frames a second within the session's bounds.
 pub fn intervals(hz: Option<f32>) -> Result<PublishIntervals, String> {
     let Some(hz) = hz else {
@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn hz_sets_the_moving_cadence_within_bounds() {
-        assert_eq!(intervals(None).unwrap().moving, Duration::from_secs(3));
+        assert_eq!(intervals(None).unwrap().moving, PublishIntervals::MOVING);
         assert_eq!(
             intervals(Some(5.0)).unwrap().moving,
             Duration::from_millis(200)

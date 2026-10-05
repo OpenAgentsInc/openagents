@@ -60,6 +60,10 @@ const MAX_ZONE_COMMANDS: usize = 64;
 pub const EVENT_BUDGET: usize = 54;
 /// Budget slots a pose frame leaves free for durable states.
 const FRAME_RESERVE: usize = 4;
+/// How long the first `rate-limited:` refusal slows publishing.
+const BACKOFF: Duration = Duration::from_secs(5);
+/// The longest a run of refusals slows publishing.
+const MAX_BACKOFF: Duration = Duration::from_secs(60);
 /// Shared-body reports held until the world takes them.
 const MAX_BODY_INBOX: usize = 512;
 const MAX_CHAT_IDS: usize = 4096;
@@ -99,20 +103,24 @@ pub struct PublishIntervals {
     pub state: Duration,
 }
 impl PublishIntervals {
-    /// Original moving cadence; occasional idle keepalive follows NIP-MV.
+    /// The moving cadence every platform shares: five frames a second, within
+    /// the relay's pose lane; the idle keepalive follows NIP-MV.
+    pub const MOVING: Duration = Duration::from_millis(200);
+    /// Desktop cadence: [`Self::MOVING`] and a frequent state heartbeat.
     #[must_use]
     pub fn desktop() -> Self {
         Self {
-            moving: Duration::from_millis(100),
+            moving: Self::MOVING,
             idle: Duration::from_secs(5),
             state: Duration::from_secs(3),
         }
     }
-    /// Conservative mobile cadence for a relay with a 60-event/minute default.
+    /// Phone cadence: [`Self::MOVING`] while the player moves, nothing but the
+    /// idle keepalive and a 30 s state heartbeat at rest.
     #[must_use]
     pub fn mobile() -> Self {
         Self {
-            moving: Duration::from_secs(3),
+            moving: Self::MOVING,
             idle: Duration::from_secs(5),
             state: Duration::from_secs(30),
         }
@@ -249,6 +257,9 @@ pub struct Session {
     last_frame: Option<Instant>,
     last_state: Option<(Instant, Vec3, f32)>,
     throttled_until: Option<Instant>,
+    /// How long the last `rate-limited:` refusal slowed publishing; doubles
+    /// with each refusal that lands while still throttled, up to a minute.
+    backoff: Duration,
     /// Pose frames published since the session started.
     frames_published: u64,
     /// `rate-limited:` refusals the relay answered.
@@ -435,6 +446,7 @@ impl Session {
             last_frame: None,
             last_state: None,
             throttled_until: None,
+            backoff: BACKOFF,
             frames_published: 0,
             refusals: 0,
             last_refusal: None,
@@ -1129,7 +1141,12 @@ impl Session {
             } if message.starts_with("rate-limited:") => {
                 self.refusals += 1;
                 self.last_refusal = Some(message);
-                self.throttled_until = Some(now + Duration::from_secs(5));
+                if self.throttled_until.is_some_and(|until| now < until) {
+                    self.backoff = (self.backoff * 2).min(MAX_BACKOFF);
+                } else {
+                    self.backoff = BACKOFF;
+                }
+                self.throttled_until = Some(now + self.backoff);
             }
             In::Ok {
                 accepted: false,
@@ -1979,6 +1996,36 @@ mod tests {
         let spawn = session.poll_spawn(&[], 100.0).unwrap();
         assert!(spawn.resumed);
         assert_eq!(spawn.pos, Vec3::new(1.0, 0.0, 2.0));
+    }
+
+    #[test]
+    fn repeated_refusals_back_off_further_and_a_quiet_spell_resets() {
+        let mut session = online_presence();
+        let now = Instant::now();
+        let refusal = || In::Ok {
+            id: "f".into(),
+            accepted: false,
+            message: "rate-limited: pose lane".into(),
+        };
+        session.handle(refusal(), now);
+        assert!(session.throttled(now + BACKOFF - Duration::from_millis(1)));
+        assert!(!session.throttled(now + BACKOFF));
+        // A refusal while still throttled doubles the back-off.
+        session.handle(refusal(), now + Duration::from_secs(1));
+        assert!(
+            session
+                .throttled(now + Duration::from_secs(1) + BACKOFF * 2 - Duration::from_millis(1))
+        );
+        assert!(!session.throttled(now + Duration::from_secs(1) + BACKOFF * 2));
+        for i in 0..8 {
+            session.handle(refusal(), now + Duration::from_secs(2 + i));
+        }
+        assert_eq!(session.backoff, MAX_BACKOFF);
+        // Once the throttle has lapsed, the next refusal starts over.
+        let later = now + Duration::from_secs(300);
+        session.handle(refusal(), later);
+        assert_eq!(session.backoff, BACKOFF);
+        assert_eq!(session.refusals(), 11);
     }
 
     #[test]

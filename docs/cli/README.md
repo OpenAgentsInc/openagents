@@ -458,7 +458,7 @@ openagents verse load --world verse-bare --players 20 --wait 60 --json   # what 
 ```
 
 `verse walkers` walks N fresh-key players in loops in front of the Grid spawn,
-on the phone's cadence or `--hz RATE`; `--loopback` starts an in-process relay.
+at the shared 5 Hz cadence or `--hz RATE`; `--loopback` starts an in-process relay.
 `verse load` listens to every pose frame in the world and reports each
 publisher's rate, gaps, and frame age; it exits 1 when fewer than `--players`
 publishers sent a frame. The retained 20-player receipt against the public relay
