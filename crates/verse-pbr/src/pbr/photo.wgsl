@@ -1388,6 +1388,65 @@ fn fs_glow(i: GlowOut) -> @location(0) vec4<f32> {
     return vec4<f32>(expose(i.radiance * k * k), 0.0);
 }
 
+// ---------------------------------------------------------------------------
+// Particle sprites (`crate::fx`): flipbook frames from the fx sheets, one
+// texture-array layer each, in premultiplied alpha. Group 2 is the textured
+// material's slot, so the sheets bind at group 3.
+
+@group(3) @binding(0) var fx_sheets: texture_2d_array<f32>;
+@group(3) @binding(1) var fx_sampler: sampler;
+
+struct SpriteIn {
+    @location(0) pos: vec3<f32>,
+    @location(1) color: vec4<f32>,
+    @location(2) uv_a: vec2<f32>,
+    @location(3) uv_b: vec2<f32>,
+    // x frame blend, y sheet layer, z additive, w 1 when lit.
+    @location(4) params: vec4<f32>,
+};
+
+struct SpriteOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) color: vec4<f32>,
+    @location(1) uv_a: vec2<f32>,
+    @location(2) uv_b: vec2<f32>,
+    @location(3) params: vec4<f32>,
+    @location(4) world: vec3<f32>,
+};
+
+@vertex
+fn vs_sprite(v: SpriteIn) -> SpriteOut {
+    var o: SpriteOut;
+    o.clip = f.view_proj * vec4<f32>(v.pos, 1.0);
+    o.color = v.color;
+    o.uv_a = v.uv_a;
+    o.uv_b = v.uv_b;
+    o.params = v.params;
+    o.world = v.pos;
+    return o;
+}
+
+@fragment
+fn fs_sprite(i: SpriteOut) -> @location(0) vec4<f32> {
+    // Both samples come first, in uniform control flow.
+    let layer = i32(i.params.y + 0.5);
+    let a = textureSample(fx_sheets, fx_sampler, i.uv_a, layer);
+    let b = textureSample(fx_sheets, fx_sampler, i.uv_b, layer);
+    // Premultiplied color and coverage.
+    let texel = mix(a, b, clamp(i.params.x, 0.0, 1.0));
+    let alpha = i.color.a;
+    // Emitted light in luminance, through the exposure.
+    let emitted = expose(texel.rgb * i.color.rgb);
+    // A lit surface in the scene's display scale, fogged like the faces
+    // around it: unpremultiplied for the fog, premultiplied again after.
+    let coverage = max(texel.a, 1.0 / 255.0);
+    let straight = texel.rgb / coverage * i.color.rgb * guide_scale();
+    let lit = neon_fog(straight, i.world, 1.0) * texel.a;
+    let rgb = mix(emitted, lit, i.params.w) * alpha;
+    let cover = texel.a * alpha * (1.0 - clamp(i.params.z, 0.0, 1.0));
+    return vec4<f32>(rgb, cover);
+}
+
 struct LegacyIn {
     @location(0) pos: vec3<f32>,
     @location(1) color: vec3<f32>,

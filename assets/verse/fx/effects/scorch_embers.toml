@@ -1,0 +1,43 @@
+# What smolders in a fresh scorch mark: glowing embers and thin wisps of
+# smoke for a few seconds after a blast.
+description = "Embers and smoke wisps smoldering in a fresh scorch."
+
+[[emitter]]
+name = "embers"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+orient = "ground"
+luminance = 14.0
+delay = 0.6
+rate = 9.0
+duration = 4.5
+life = [0.8, 1.6]
+shape = "disc"
+radius = 2.8
+size = [0.25, 0.45]
+color = [1.0, 0.45, 0.12]
+alpha = [0.0, 1.0, 0.0]
+priority = 2
+
+[[emitter]]
+name = "wisps"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+delay = 1.0
+rate = 3.0
+duration = 6.0
+life = [2.5, 4.0]
+shape = "disc"
+radius = 2.4
+speed = [0.3, 0.7]
+gravity = 0.4
+drag = 0.5
+size = [0.4, 0.7]
+scale = [0.6, 1.4, 2.0]
+color = [0.3, 0.29, 0.28]
+alpha = [0.0, 0.35, 0.0]
+spin = [-0.3, 0.3]
+priority = 1

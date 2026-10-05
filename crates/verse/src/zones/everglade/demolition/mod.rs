@@ -548,16 +548,15 @@ impl Demolition {
                 cracks(&mut mesh, index, spec, piece, self.site.piece_pose(index));
             }
         }
-        for puff in self.site.puffs() {
-            let x = puff.age / puff.life;
-            let size = puff.size * (0.4 + 1.2 * x.sqrt()) * (1.0 - x * x);
-            let spin = puff.age * 0.7 + puff.at.x;
-            let axes = [
-                Vec3::new(spin.cos(), 0.0, spin.sin()),
-                Vec3::Y,
-                Vec3::new(-spin.sin(), 0.0, spin.cos()),
-            ];
-            cloud(&mut mesh, puff.at, axes, size * 0.5, puff.color);
+        // Dust in the look of `assets/verse/fx/effects/debris_dust.toml`.
+        if let Some(dust) = crate::fx::Style::named("debris_dust") {
+            for puff in self.site.puffs() {
+                let t = puff.age / puff.life;
+                // Steady through the puff's life: what it was born with.
+                let seed = puff.life.to_bits() ^ puff.size.to_bits().rotate_left(11);
+                mesh.sprites
+                    .extend(dust.sprite(0, puff.at, puff.vel, t, puff.size, puff.color, seed));
+            }
         }
         self.swarm.draw(&mut mesh, eye);
         if !self.floaters.is_empty() {
@@ -659,19 +658,6 @@ fn sledgehammer(mesh: &mut Mesh, hold: &Hold) {
             Vec3::new(HEAD.x - 0.01, HEAD.y - 0.01, 0.012),
             STEEL,
         );
-    }
-}
-
-/// Appends a puff of dust: a shaded octahedron of `radius` about `center`
-/// on unit `axes`, flattened a little, so it reads as a cloud rather than
-/// a block.
-fn cloud(mesh: &mut Mesh, center: Vec3, axes: [Vec3; 3], radius: f32, color: [f32; 3]) {
-    let [x, y, z] = [axes[0] * radius, axes[1] * radius * 0.75, axes[2] * radius];
-    for (sx, sz) in [(1.0, 1.0), (-1.0, 1.0), (-1.0, -1.0), (1.0, -1.0)] {
-        let (a, b) = (center + x * sx, center + z * sz);
-        let (top, bottom) = (center + y, center - y);
-        quad(mesh, [a, b, top, top], color);
-        quad(mesh, [b, a, bottom, bottom], color);
     }
 }
 

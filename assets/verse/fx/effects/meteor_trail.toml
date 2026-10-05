@@ -1,0 +1,67 @@
+# What a falling meteor leaves in the air: fire that cools to smoke, and
+# embers streaking off. Moved with the meteor (`Particles::place`), its
+# axis back along the flight; stopped when it lands, so the trail lingers.
+description = "A meteor's trail of cooling fire, smoke, and streaking embers."
+
+# Fire that stays where it was shed, swells, and cools.
+[[emitter]]
+name = "fire"
+sheet = "fireball"
+frames = [2, 14]
+animate = "life"
+luminance = 14.0
+rate = 110.0
+life = [0.45, 0.8]
+inherit = 0.08
+spread = 180.0
+speed = [0.2, 1.0]
+gravity = 1.5
+drag = 1.5
+size = [0.7, 1.0]
+scale = [[0.0, 0.8], [0.4, 1.8], [1.0, 2.6]]
+color = [[1.0, 0.75, 0.4], [1.0, 0.4, 0.1], [0.5, 0.25, 0.15]]
+alpha = [1.0, 0.7, 0.0]
+additive = [1.0, 0.8, 0.2]
+spin = [-1.5, 1.5]
+priority = 6
+
+# Smoke that hangs behind it and drifts up.
+[[emitter]]
+name = "smoke"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+rate = 26.0
+life = [1.6, 2.6]
+inherit = 0.03
+spread = 180.0
+speed = [0.2, 0.8]
+gravity = 0.5
+drag = 1.0
+size = [0.7, 1.0]
+scale = [[0.0, 0.7], [0.5, 2.0], [1.0, 3.0]]
+color = [[0.38, 0.3, 0.26], [0.32, 0.31, 0.3], [0.4, 0.4, 0.4]]
+alpha = [[0.0, 0.0], [0.12, 0.55], [0.6, 0.35], [1.0, 0.0]]
+spin = [-0.6, 0.6]
+priority = 3
+
+# Embers flung back off the head, laid along their flight.
+[[emitter]]
+name = "embers"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 80.0
+rate = 70.0
+life = [0.3, 0.6]
+spread = 50.0
+speed = [4.0, 9.0]
+gravity = -6.0
+drag = 1.2
+size = [0.05, 0.09]
+stretch = 0.05
+stretch_max = 1.2
+rotate = false
+color = [[1.0, 0.9, 0.6], [1.0, 0.55, 0.15], [0.9, 0.2, 0.04]]
+alpha = [1.0, 1.0, 0.0]
+priority = 5

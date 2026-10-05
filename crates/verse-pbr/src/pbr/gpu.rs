@@ -337,6 +337,8 @@ struct Pipelines {
     bodies: wgpu::RenderPipeline,
     flare: wgpu::RenderPipeline,
     glow: wgpu::RenderPipeline,
+    /// Particle sprites from every fx sheet, premultiplied (`crate::fx`).
+    sprites: wgpu::RenderPipeline,
     legacy: wgpu::RenderPipeline,
     wide: wgpu::RenderPipeline,
     /// Textured meshes by [`Pass`], single-sided then double-sided.
@@ -452,6 +454,9 @@ pub struct Photo {
     star_count: u32,
     pub dynamic_lit: Stream,
     pub glow: Stream,
+    /// This frame's particle sprite quads (`crate::fx::vertices`).
+    pub sprites: Stream,
+    fx_group: wgpu::BindGroup,
     /// The display's headroom over reference white for space frames.
     pub headroom: f32,
 }
@@ -1010,6 +1015,67 @@ impl Photo {
         let screen = plan
             .runs(PhotoPass::ScreenTrace)
             .then(|| ScreenGpu::new(device));
+        // Every fx sheet as one layer of a texture array (group 3), so all
+        // particles draw in one pipeline. Group 2 is the textured
+        // material's slot in this shader module, so it stays empty here.
+        let fx_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("verse fx sheets"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: float,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let sprite_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("verse photo sprites"),
+            bind_group_layouts: &[
+                Some(&scene_layout),
+                Some(&guide_layout),
+                Some(&empty_layout),
+                Some(&fx_layout),
+            ],
+            immediate_size: 0,
+        });
+        // The low tier keeps the sheets at half size.
+        let skip = u32::from(capability.quality.tier == verse_engine::quality::Tier::Low);
+        let fx_view = upload_fx_sheets(device, queue, skip)?;
+        let fx_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("verse fx sheets"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
+        let fx_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse fx sheets"),
+            layout: &fx_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&fx_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&fx_sampler),
+                },
+            ],
+        });
+        const SPRITE: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32x4, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4
+        ];
         let pipelines = Pipelines {
             textured: textured_pipelines,
             textured_shadow: textured_shadow_opaque,
@@ -1109,6 +1175,21 @@ impl Photo {
                 triangles,
                 depth_state(false, wgpu::CompareFunction::GreaterEqual),
                 Some(ADDITIVE),
+                samples,
+            ),
+            sprites: make(
+                &sprite_layout,
+                "verse photo sprites",
+                "vs_sprite",
+                Some("fs_sprite"),
+                &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<crate::fx::SpriteVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &SPRITE,
+                }],
+                triangles,
+                depth_state(false, wgpu::CompareFunction::GreaterEqual),
+                Some(PREMULTIPLIED),
                 samples,
             ),
             legacy: make(
@@ -1212,6 +1293,8 @@ impl Photo {
             star_count: 0,
             dynamic_lit: Stream::new(device, "verse dynamic lit"),
             glow: Stream::new(device, "verse glow"),
+            sprites: Stream::new(device, "verse sprites"),
+            fx_group,
             headroom: 1.0,
         })
     }
@@ -1806,6 +1889,13 @@ impl Photo {
                 pass.set_vertex_buffer(0, self.glow.buffer.slice(..));
                 pass.draw(0..self.glow.count, 0..1);
             }
+            if self.sprites.count > 0 {
+                pass.set_pipeline(&self.pipelines.sprites);
+                pass.set_bind_group(2, &self.empty_group, &[]);
+                pass.set_bind_group(3, &self.fx_group, &[]);
+                pass.set_vertex_buffer(0, self.sprites.buffer.slice(..));
+                pass.draw(0..self.sprites.count, 0..1);
+            }
             if sky.sun_visible > 0.0 {
                 pass.set_pipeline(&self.pipelines.flare);
                 pass.draw(0..6, 0..1);
@@ -2263,6 +2353,13 @@ impl Photo {
                 pass.set_vertex_buffer(0, self.glow.buffer.slice(..));
                 pass.draw(0..self.glow.count, 0..1);
             }
+            if self.sprites.count > 0 {
+                pass.set_pipeline(&self.pipelines.sprites);
+                pass.set_bind_group(2, &self.empty_group, &[]);
+                pass.set_bind_group(3, &self.fx_group, &[]);
+                pass.set_vertex_buffer(0, self.sprites.buffer.slice(..));
+                pass.draw(0..self.sprites.count, 0..1);
+            }
         }
         self.post_chain(
             queue,
@@ -2642,6 +2739,64 @@ fn upload_mipped(
         h = nh;
     }
     texture.create_view(&Default::default())
+}
+
+/// Uploads every fx sheet as one layer of an sRGB texture array with its
+/// mip chain, dropping the `skip` largest levels.
+fn upload_fx_sheets(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    skip: u32,
+) -> Result<wgpu::TextureView, String> {
+    let levels = crate::fx::sheet::mip_layers(skip)?;
+    let layers = crate::fx::sheet::SHEETS.len() as u32;
+    let size = levels[0].0;
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("verse fx sheets"),
+        size: wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: layers,
+        },
+        mip_level_count: levels.len() as u32,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    for (mip, (edge, sheets)) in levels.iter().enumerate() {
+        for (layer, pixels) in sheets.iter().enumerate() {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: mip as u32,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layer as u32,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                pixels,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(edge * 4),
+                    rows_per_image: Some(*edge),
+                },
+                wgpu::Extent3d {
+                    width: *edge,
+                    height: *edge,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+    }
+    Ok(texture.create_view(&wgpu::TextureViewDescriptor {
+        label: Some("verse fx sheets"),
+        dimension: Some(wgpu::TextureViewDimension::D2Array),
+        ..Default::default()
+    }))
 }
 
 /// Uploads RGBA8 sRGB mip levels, largest first, as one texture.

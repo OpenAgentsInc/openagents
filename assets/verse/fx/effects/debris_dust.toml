@@ -1,0 +1,26 @@
+# The look of the demolition site's dust puffs. The site moves the puffs
+# itself and draws them through `fx::Style`, so only the first emitter's
+# sheet, curves, and blend apply; its color is multiplied by the puff's
+# material color. The rate and life make it previewable on its own.
+description = "A puff of plaster or brick dust from a breaking wall."
+
+[[emitter]]
+name = "puff"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+blend = "alpha"
+light = "lit"
+rate = 8.0
+life = [1.2, 2.5]
+shape = "sphere"
+radius = 0.4
+spread = 70.0
+speed = [0.4, 1.0]
+drag = 1.8
+size = [0.4, 0.6]
+scale = [[0.0, 0.7], [0.4, 1.6], [1.0, 2.2]]
+color = [1.6, 1.6, 1.6]
+alpha = [[0.0, 0.0], [0.08, 0.85], [0.5, 0.6], [1.0, 0.0]]
+spin = [-0.5, 0.5]
+priority = 2

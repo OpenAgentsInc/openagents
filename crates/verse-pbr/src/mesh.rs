@@ -34,6 +34,8 @@ pub struct Mesh {
     pub lit: Vec<crate::pbr::LitVertex>,
     /// Additive emissive triangles in physical luminance.
     pub glow: Vec<crate::pbr::GlowVertex>,
+    /// Textured particle sprites in physical frames (see [`crate::fx`]).
+    pub sprites: Vec<crate::fx::Sprite>,
     /// Present when this frame renders in physical units.
     pub sky: Option<crate::pbr::Sky>,
     /// Present when this frame renders the amber world as a neon stage.
@@ -145,6 +147,7 @@ impl Mesh {
         self.faces.extend_from_slice(&other.faces);
         self.lit.extend_from_slice(&other.lit);
         self.glow.extend_from_slice(&other.glow);
+        self.sprites.extend_from_slice(&other.sprites);
         if other.sky.is_some() {
             self.sky.clone_from(&other.sky);
         }

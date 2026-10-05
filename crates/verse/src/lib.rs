@@ -26,6 +26,7 @@ pub mod doors;
 pub mod edr;
 pub use verse_gfx::gles;
 pub use verse_net::feed;
+pub mod fx;
 #[cfg(test)]
 mod gles_tests;
 pub use verse_gfx::gpu_lifecycle;

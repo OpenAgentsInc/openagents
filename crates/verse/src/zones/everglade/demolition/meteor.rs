@@ -24,9 +24,15 @@
 //! support graph. The explosion flashes, swells into a fireball, sends a
 //! shockwave ring along the ground, throws sparks and dust, shakes the
 //! camera, and leaves a scorch mark that fades.
+//!
+//! The fire, smoke, sparks, and shockwave are sprite particles: the effects
+//! under `assets/verse/fx/effects/` (`meteor_head`, `meteor_trail`,
+//! `meteor_explosion`, `cast_embers`, and `scorch_embers`), run by
+//! [`crate::fx`].
 
 use super::site::{Blow, Site};
 use crate::controller::PlayerController;
+use crate::fx::{Handle, Particles, Spawn};
 use crate::mesh::{Mesh, Vertex};
 use crate::pbr::GlowVertex;
 use crate::zones::everglade::draw::shade;
@@ -72,31 +78,22 @@ const STAGGER: f32 = 0.13;
 const SHOULDER: f32 = 0.6;
 /// A meteor's radius, m.
 const METEOR_RADIUS: f32 = 0.55;
-/// How long an explosion's fire lasts, and a scorch mark, s.
-const BLAST_LIFE: f32 = 1.6;
+/// How long a scorch mark lasts, s.
 const SCORCH_LIFE: f32 = 16.0;
-/// Most smoke puffs alive at once.
-const MAX_SMOKE: usize = 360;
-/// Most sparks and scorch marks alive at once.
-const MAX_SPARKS: usize = 700;
+/// Most scorch marks at once.
 const MAX_SCORCHES: usize = 18;
 /// How long the camera shakes after a blast, at most, s.
 const SHAKE: f32 = 1.0;
 
-/// Fire's colors, from white heat to a dull red, and the targeting
-/// ring's.
-const WHITE_HOT: [f32; 3] = [1.0, 0.92, 0.7];
+/// Fire's colors, from yellow to a dull red, and the targeting ring's.
 const YELLOW: [f32; 3] = [1.0, 0.68, 0.22];
-const ORANGE: [f32; 3] = [1.0, 0.4, 0.08];
 const RED: [f32; 3] = [0.85, 0.16, 0.03];
 const RING: [f32; 3] = [1.0, 0.45, 0.1];
 const ROCK: [f32; 3] = [0.16, 0.07, 0.04];
 const CHAR: [f32; 3] = [0.03, 0.025, 0.022];
-const SMOKE: [f32; 3] = [0.16, 0.15, 0.14];
 /// Luminance of each glow, cd/m² before exposure.
 const RING_LUMINANCE: f32 = 7.0;
 const FIRE_LUMINANCE: f32 = 40.0;
-const FLASH_LUMINANCE: f32 = 160.0;
 
 /// A cast under way.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -114,6 +111,8 @@ struct Meteor {
     start: Vec3,
     end: Vec3,
     t: f32,
+    /// Its burning head and its trail, once it is falling.
+    fire: Option<[Handle; 2]>,
 }
 
 impl Meteor {
@@ -122,24 +121,12 @@ impl Meteor {
         let x = (t / FALL).clamp(0.0, 1.0);
         self.start + (self.end - self.start) * (0.55 * x + 0.45 * x * x)
     }
-}
 
-/// One explosion's fire.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Burst {
-    at: Vec3,
-    age: f32,
-    seed: u32,
-}
-
-/// A spark or a fleck of burning debris.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Spark {
-    at: Vec3,
-    vel: Vec3,
-    age: f32,
-    life: f32,
-    size: f32,
+    /// Its velocity at `t`, m/s.
+    fn velocity(&self, t: f32) -> Vec3 {
+        let x = (t / FALL).clamp(0.0, 1.0);
+        (self.end - self.start) * (0.55 + 0.9 * x) / FALL
+    }
 }
 
 /// A scorch mark on the ground.
@@ -177,11 +164,10 @@ pub struct Swarm {
     casting: Option<Casting>,
     meteors: Vec<Meteor>,
     damage: Damage,
-    bursts: Vec<Burst>,
-    sparks: Vec<Spark>,
-    /// Smoke from the meteors' trails and the explosions: puffs that
-    /// rise, swell, and thin.
-    smoke: Vec<Spark>,
+    /// The fire, smoke, sparks, and shockwaves.
+    fx: Particles,
+    /// The embers around the caster while the cast runs.
+    gathering: Option<Handle>,
     scorches: Vec<Scorch>,
     shake: f32,
     clock: f32,
@@ -202,9 +188,8 @@ impl Default for Swarm {
                 fire: 0,
                 bludgeoning: 0,
             },
-            bursts: Vec::new(),
-            sparks: Vec::new(),
-            smoke: Vec::new(),
+            fx: Particles::new(0x3E7E_0125),
+            gathering: None,
             scorches: Vec::new(),
             shake: 0.0,
             clock: 0.0,
@@ -349,21 +334,16 @@ impl Swarm {
                 }
             }
         }
-        // Sparks the casting hands throw up, and a meteor's embers.
-        if let Some(cast) = self.casting {
-            let k = cast.elapsed / CAST;
-            for _ in 0..2 {
-                let angle = self.unit() * TAU;
-                let at = player.pos
-                    + Vec3::new(
-                        angle.cos() * 0.6,
-                        1.0 + self.unit() * 0.8,
-                        angle.sin() * 0.6,
-                    );
-                let vel = Vec3::new(-angle.sin(), 1.2 + 1.5 * k, angle.cos()) * 1.2;
-                let life = 0.5 + 0.4 * self.unit();
-                self.spark(at, vel, life, 0.05 + 0.07 * k);
+        // Embers swirl up around the caster while the cast runs.
+        let hands = player.pos + Vec3::Y;
+        match (self.casting.is_some(), self.gathering) {
+            (true, None) => self.gathering = self.fx.start("cast_embers", Spawn::at(hands)),
+            (true, Some(embers)) => self.fx.place(embers, hands, Vec3::ZERO),
+            (false, Some(embers)) => {
+                self.fx.stop(embers);
+                self.gathering = None;
             }
+            (false, None) => {}
         }
         let mut blows = Vec::new();
         let mut landed = Vec::new();
@@ -387,6 +367,29 @@ impl Swarm {
                 None if meteor.t >= FALL => landed.push((index, b)),
                 None => {}
             }
+            // Its fire follows it, trailing back along its flight.
+            let velocity = meteor.velocity(meteor.t);
+            let back = -velocity.normalize_or(Vec3::NEG_Y);
+            match meteor.fire {
+                None => {
+                    let spawn = Spawn::at(b).moving(velocity).along(back);
+                    meteor.fire = self
+                        .fx
+                        .start("meteor_head", spawn)
+                        .zip(self.fx.start("meteor_trail", spawn))
+                        .map(|(head, trail)| [head, trail]);
+                }
+                Some(fire) => {
+                    for handle in fire {
+                        self.fx.place(handle, b, velocity);
+                    }
+                }
+            }
+        }
+        for &(index, _) in &landed {
+            for handle in self.meteors[index].fire.into_iter().flatten() {
+                self.fx.stop(handle);
+            }
         }
         for &(_, at) in &landed {
             blows.extend(self.explode(at, site));
@@ -397,46 +400,11 @@ impl Swarm {
             index += 1;
             !gone.contains(&(index - 1))
         });
-        let trail: Vec<(Vec3, Vec3)> = self
-            .meteors
-            .iter()
-            .filter(|m| m.t > 0.0)
-            .map(|m| (m.at(m.t), (m.end - m.start).normalize_or(Vec3::NEG_Y)))
-            .collect();
-        for (at, along) in trail {
-            for _ in 0..3 {
-                let vel = -along * 6.0 + Vec3::new(self.unit(), self.unit(), self.unit()) * 2.5;
-                let life = 0.35 + 0.3 * self.unit().abs();
-                self.spark(at, vel, life, 0.18);
-            }
-        }
-        for burst in &mut self.bursts {
-            burst.age += dt;
-        }
-        self.bursts.retain(|b| b.age < BLAST_LIFE);
-        for spark in &mut self.sparks {
-            spark.age += dt;
-            spark.vel.y -= 6.0 * dt;
-            spark.vel *= (1.0 - 0.9 * dt).max(0.0);
-            spark.at += spark.vel * dt;
-            let floor = height(spark.at.x, spark.at.z) + 0.05;
-            if spark.at.y < floor {
-                spark.at.y = floor;
-                spark.vel = Vec3::new(spark.vel.x * 0.4, -spark.vel.y * 0.25, spark.vel.z * 0.4);
-            }
-        }
-        self.sparks.retain(|s| s.age < s.life);
-        for puff in &mut self.smoke {
-            puff.age += dt;
-            puff.vel *= (1.0 - 1.2 * dt).max(0.0);
-            puff.vel.y += 0.6 * dt;
-            puff.at += puff.vel * dt;
-        }
-        self.smoke.retain(|s| s.age < s.life);
         for scorch in &mut self.scorches {
             scorch.age += dt;
         }
         self.scorches.retain(|s| s.age < SCORCH_LIFE);
+        self.fx.tick(dt, height);
         blows
     }
 
@@ -482,6 +450,7 @@ impl Swarm {
                 start: end + Vec3::Y * HEIGHT - away * slant,
                 end,
                 t: -(i as f32) * STAGGER,
+                fire: None,
             })
             .collect();
     }
@@ -493,37 +462,10 @@ impl Swarm {
         let center = Vec3::new(at.x, at.y.max(ground + 0.4), at.z);
         let blows = site.explode(center, BLAST, self.damage.total(), THROW);
         let seed = self.next();
-        self.bursts.push(Burst {
-            at: center,
-            age: 0.0,
-            seed,
-        });
-        for _ in 0..46 {
-            let up = 0.25 + 0.75 * self.unit().abs();
-            let angle = self.unit() * TAU;
-            let speed = 5.0 + 12.0 * self.unit().abs();
-            let vel = Vec3::new(
-                angle.cos() * (1.0 - up * 0.5),
-                up,
-                angle.sin() * (1.0 - up * 0.5),
-            ) * speed;
-            let life = 0.8 + 1.0 * self.unit().abs();
-            let size = 0.12 + 0.14 * self.unit().abs();
-            self.spark(center, vel, life, size);
-        }
-        // A dark pall that climbs out of the fireball.
-        for _ in 0..7 {
-            let angle = self.unit() * TAU;
-            let out = 1.0 + 2.0 * self.unit().abs();
-            let vel = Vec3::new(
-                angle.cos() * out,
-                2.0 + 2.5 * self.unit().abs(),
-                angle.sin() * out,
-            );
-            let life = 3.5 + 2.0 * self.unit().abs();
-            let size = 1.4 + 1.0 * self.unit().abs();
-            self.puff(center + Vec3::Y * 0.8, vel, life, size);
-        }
+        self.fx.start("meteor_explosion", Spawn::at(center));
+        let floor = Vec3::new(center.x, ground, center.z);
+        self.fx
+            .start("scorch_embers", Spawn::at(floor + Vec3::Y * 0.08));
         if self.scorches.len() >= MAX_SCORCHES {
             self.scorches.remove(0);
         }
@@ -536,32 +478,6 @@ impl Swarm {
         });
         self.shake = (self.shake + 0.55).min(1.0);
         blows
-    }
-
-    fn puff(&mut self, at: Vec3, vel: Vec3, life: f32, size: f32) {
-        if self.smoke.len() >= MAX_SMOKE {
-            self.smoke.remove(0);
-        }
-        self.smoke.push(Spark {
-            at,
-            vel,
-            age: 0.0,
-            life,
-            size,
-        });
-    }
-
-    fn spark(&mut self, at: Vec3, vel: Vec3, life: f32, size: f32) {
-        if self.sparks.len() >= MAX_SPARKS {
-            self.sparks.remove(0);
-        }
-        self.sparks.push(Spark {
-            at,
-            vel,
-            age: 0.0,
-            life: life.max(0.05),
-            size,
-        });
     }
 
     /// The targeting circle, the cast's gathering fire, the meteors, their
@@ -580,81 +496,7 @@ impl Swarm {
         for scorch in &self.scorches {
             scorch_mark(mesh, scorch);
         }
-        for puff in &self.smoke {
-            let x = puff.age / puff.life;
-            // It swells, then thins away.
-            let size = puff.size * (0.5 + 1.4 * x.sqrt()) * (1.0 - x * x * x);
-            // Hot at first, then a sooty grey.
-            let color = mix([0.3, 0.12, 0.05], SMOKE, (x * 4.0).min(1.0));
-            billow(mesh, puff.at, size, color, (puff.at.x * 13.0) as u32);
-        }
-        let glow = &mut mesh.glow;
-        for scorch in &self.scorches {
-            // Embers in the scorch for its first few seconds.
-            let fade = (1.0 - scorch.age / 5.0).max(0.0);
-            if fade <= 0.0 {
-                continue;
-            }
-            for i in 0..9 {
-                let angle = noise(scorch.seed, i) * TAU;
-                let r = scorch.radius * 0.8 * noise(scorch.seed, i + 20).sqrt();
-                let at = scorch.at + Vec3::new(angle.cos() * r, 0.08, angle.sin() * r);
-                let flicker = 0.6 + 0.4 * (self.clock * 9.0 + i as f32).sin();
-                flat(
-                    glow,
-                    at,
-                    0.5,
-                    tint(ORANGE, FIRE_LUMINANCE * 0.12 * fade * flicker),
-                );
-            }
-        }
-        for meteor in self.meteors.iter().filter(|m| m.t > 0.0) {
-            let at = meteor.at(meteor.t);
-            let along = (meteor.end - meteor.start).normalize_or(Vec3::NEG_Y);
-            // The tail, as long as the meteor has fallen.
-            let length = (at - meteor.start).length().min(16.0);
-            let count = 28;
-            for i in (0..count).rev() {
-                let x = i as f32 / count as f32;
-                let color = mix(YELLOW, RED, x);
-                let half = METEOR_RADIUS * (2.2 - 1.8 * x);
-                blob(
-                    glow,
-                    at - along * length * x,
-                    half,
-                    tint(color, FIRE_LUMINANCE * (1.0 - x) * 0.45),
-                    eye,
-                );
-            }
-            blob(
-                glow,
-                at,
-                METEOR_RADIUS * 3.6,
-                tint(ORANGE, FIRE_LUMINANCE * 0.3),
-                eye,
-            );
-            blob(
-                glow,
-                at,
-                METEOR_RADIUS * 1.8,
-                tint(WHITE_HOT, FIRE_LUMINANCE * 1.4),
-                eye,
-            );
-        }
-        for burst in &self.bursts {
-            fire(glow, burst, eye);
-        }
-        for spark in &self.sparks {
-            let x = spark.age / spark.life;
-            let color = mix(YELLOW, RED, x);
-            blob(
-                glow,
-                spark.at,
-                spark.size * (1.0 - 0.5 * x),
-                tint(color, FIRE_LUMINANCE * 0.9 * (1.0 - x)),
-                eye,
-            );
-        }
+        self.fx.draw(&mut mesh.sprites);
         for meteor in self.meteors.iter().filter(|m| m.t > 0.0) {
             rock(mesh, meteor.at(meteor.t), self.clock);
         }
@@ -772,71 +614,6 @@ fn circle(out: &mut Vec<GlowVertex>, at: Vec3, radius: f32, level: f32, clock: f
     );
 }
 
-/// One explosion's flash, fireball, rising column, and shockwave ring.
-fn fire(out: &mut Vec<GlowVertex>, burst: &Burst, eye: Vec3) {
-    let a = burst.age;
-    let at = burst.at;
-    // The flash.
-    if a < 0.22 {
-        let k = 1.0 - a / 0.22;
-        blob(
-            out,
-            at,
-            3.0 + 14.0 * a,
-            tint(WHITE_HOT, FLASH_LUMINANCE * k * k),
-            eye,
-        );
-    }
-    // The fireball swells fast, then cools and rises.
-    let grow = (a / 0.3).min(1.0);
-    let size = BLAST * (0.35 + 0.75 * (1.0 - (1.0 - grow) * (1.0 - grow)));
-    let cool = (a / BLAST_LIFE).clamp(0.0, 1.0);
-    let color = if cool < 0.3 {
-        mix(WHITE_HOT, YELLOW, cool / 0.3)
-    } else {
-        mix(ORANGE, RED, (cool - 0.3) / 0.7)
-    };
-    let fade = (1.0 - cool) * (1.0 - cool);
-    for i in 0..9u32 {
-        let angle = noise(burst.seed, i) * TAU;
-        let r = size * 0.45 * noise(burst.seed, i + 10);
-        let lift = a * (1.5 + 2.5 * noise(burst.seed, i + 30));
-        let p = at + Vec3::new(angle.cos() * r, 0.4 + lift + r * 0.4, angle.sin() * r);
-        let half = size * (0.55 + 0.35 * noise(burst.seed, i + 40));
-        blob(out, p, half, tint(color, FIRE_LUMINANCE * 0.5 * fade), eye);
-    }
-    // A column of fire that climbs.
-    for i in 0..6 {
-        let x = i as f32 / 6.0;
-        let p = at + Vec3::Y * (a * 7.0 * (0.3 + x));
-        blob(
-            out,
-            p,
-            BLAST * 0.45 * (1.0 - 0.5 * x),
-            tint(mix(ORANGE, RED, x), FIRE_LUMINANCE * 0.35 * fade),
-            eye,
-        );
-    }
-    // The shockwave along the ground.
-    if a < 0.55 {
-        let k = a / 0.55;
-        let r = BLAST * 2.3 * (1.0 - (1.0 - k) * (1.0 - k));
-        let strength = (1.0 - k) * (1.0 - k);
-        let count = 48;
-        for i in 0..count {
-            let angle = TAU * i as f32 / count as f32;
-            let x = at.x + angle.cos() * r;
-            let z = at.z + angle.sin() * r;
-            flat(
-                out,
-                Vec3::new(x, height(x, z) + 0.15, z),
-                0.5 + 0.6 * k,
-                tint(WHITE_HOT, FIRE_LUMINANCE * 0.5 * strength),
-            );
-        }
-    }
-}
-
 /// A dark ragged scorch on the ground, shrinking away at the end of its
 /// life.
 fn scorch_mark(mesh: &mut Mesh, scorch: &Scorch) {
@@ -865,59 +642,6 @@ fn scorch_mark(mesh: &mut Mesh, scorch: &Scorch) {
                 color,
                 fog: 1.0,
             });
-        }
-    }
-}
-
-/// A billow of smoke of about `size` m at `at`: three overlapping
-/// squat spheres, the same on every frame for one `seed`.
-fn billow(mesh: &mut Mesh, at: Vec3, size: f32, color: [f32; 3], seed: u32) {
-    if size <= 0.02 {
-        return;
-    }
-    for lobe in 0..3 {
-        let angle = TAU * (lobe as f32 / 3.0 + noise(seed, lobe));
-        let offset = Vec3::new(angle.cos(), 0.15 * lobe as f32, angle.sin()) * size * 0.45;
-        let r = size * (0.55 + 0.25 * noise(seed, lobe + 7));
-        let shade_k = 0.85 + 0.15 * noise(seed, lobe + 3);
-        sphere(mesh, at + offset, r, color.map(|c| c * shade_k));
-    }
-}
-
-/// A squat low-poly sphere of radius `r` at `at`.
-fn sphere(mesh: &mut Mesh, at: Vec3, r: f32, color: [f32; 3]) {
-    const AROUND: usize = 7;
-    const UP: usize = 4;
-    let point = |i: usize, j: usize| {
-        let theta = TAU * i as f32 / AROUND as f32;
-        let phi = std::f32::consts::PI * j as f32 / UP as f32;
-        at + Vec3::new(
-            theta.cos() * phi.sin(),
-            -phi.cos() * 0.8,
-            theta.sin() * phi.sin(),
-        ) * r
-    };
-    for j in 0..UP {
-        for i in 0..AROUND {
-            let (a, b, c, d) = (
-                point(i, j),
-                point(i + 1, j),
-                point(i + 1, j + 1),
-                point(i, j + 1),
-            );
-            for tri in [[a, c, b], [a, d, c]] {
-                if (tri[1] - tri[0]).cross(tri[2] - tri[0]).length_squared() < 1e-10 {
-                    continue;
-                }
-                let color = shade(color, tri[0], tri[1], tri[2]);
-                for p in tri {
-                    mesh.faces.push(Vertex {
-                        pos: p.to_array(),
-                        color,
-                        fog: 1.0,
-                    });
-                }
-            }
         }
     }
 }

@@ -1475,6 +1475,40 @@ pub fn capture_with_overlay(
         .map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
+/// Renders one frame as `capture_with_atmosphere` does and returns its
+/// sRGB RGBA8 pixels, rows top first, for tools that compose several
+/// frames into one image (`examples/fx_preview.rs`).
+///
+/// # Errors
+///
+/// Returns a message when no GPU is available.
+#[cfg(feature = "capture")]
+#[allow(clippy::too_many_arguments)]
+pub fn capture_rgba(
+    width: u32,
+    height: u32,
+    world: &Mesh,
+    view: View,
+    dynamic: &Mesh,
+    ui: &UiBatch,
+    atlas: &Atlas,
+    atmosphere: crate::zones::Atmosphere,
+) -> Result<Vec<u8>, String> {
+    offscreen(
+        width,
+        height,
+        world,
+        view,
+        dynamic,
+        ui,
+        atlas,
+        atmosphere,
+        CAPTURE_FORMAT,
+        1.0,
+        None,
+    )
+}
+
 /// Renders one frame offscreen in `format` and returns its tightly packed
 /// texels, `headroom` giving photographic frames their output ceiling.
 #[cfg(feature = "capture")]
@@ -2266,6 +2300,14 @@ impl Scene {
             queue,
             &dynamic.glow[..dynamic.glow.len().min(glow_limit)],
         );
+        let mut sprites = Vec::new();
+        crate::fx::vertices(
+            &dynamic.sprites,
+            view.eye,
+            crate::fx::budget(self.capability.quality.tier),
+            &mut sprites,
+        );
+        photo.sprites.write(device, queue, &sprites);
         let batches = Batches {
             #[cfg(not(target_arch = "wasm32"))]
             streamed: self
