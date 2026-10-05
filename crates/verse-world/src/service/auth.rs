@@ -70,9 +70,47 @@ struct Binding {
     session: Session,
 }
 
+/// Public admission policy: any authenticated key the chamber does not
+/// know joins as a player on a spawn ring until the cap is reached.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Guests {
+    /// Most guest players alive in the chamber at once (1..=63).
+    pub cap: u32,
+    /// Center of the spawn ring.
+    pub ring: [f32; 3],
+    /// Radius of the spawn ring in meters (0.5..=100).
+    pub radius: f32,
+}
+impl Guests {
+    pub fn validate(&self) -> Result<(), String> {
+        let ring = Vec3::from(self.ring);
+        if !(1..=63).contains(&self.cap)
+            || !ring.is_finite()
+            || ring.abs().max_element() > 10_000.
+            || !self.radius.is_finite()
+            || !(0.5..=100.).contains(&self.radius)
+        {
+            return Err("Invalid chamber guest admission policy".into());
+        }
+        Ok(())
+    }
+    /// The `index`th spawn on the ring; indexes past the cap keep circling
+    /// with a half-step offset so a blocked spawn finds a free neighbor.
+    pub fn spawn(&self, index: usize) -> Vec3 {
+        let cap = self.cap as usize;
+        let turn = std::f32::consts::TAU / cap as f32;
+        let angle = (index % cap) as f32 * turn + (index / cap) as f32 * turn * 0.5;
+        Vec3::from(self.ring) + Vec3::new(angle.cos(), 0., angle.sin()) * self.radius
+    }
+}
+
 /// Authenticates enrolled keys and derives dispatch authority from the transport.
 pub struct Gateway {
     pub(super) chamber: Chamber,
+    guests: Option<Guests>,
+    /// Player enrollments the configuration placed; guests count above them.
+    configured_players: usize,
     content: Option<[u8; 32]>,
     server: [u8; 32],
     next_connection: u64,
@@ -91,6 +129,8 @@ impl Gateway {
             .map_err(|_| "Cannot generate chamber authentication entropy")?;
         Ok(Self {
             chamber,
+            guests: None,
+            configured_players: 0,
             content: None,
             server,
             next_connection: 1,
@@ -102,6 +142,55 @@ impl Gateway {
             view_cache: None,
             view_index: None,
         })
+    }
+    /// Admits unknown keys as guest players, above `configured_players`
+    /// configured player enrollments.
+    pub fn with_guests(
+        mut self,
+        guests: Option<Guests>,
+        configured_players: usize,
+    ) -> Result<Self, String> {
+        if let Some(guests) = &guests {
+            guests.validate()?;
+        }
+        self.guests = guests;
+        self.configured_players = configured_players;
+        Ok(self)
+    }
+    pub fn guests(&self) -> Option<&Guests> {
+        self.guests.as_ref()
+    }
+    /// Guest players enrolled so far: owned adventurers beyond the primary
+    /// and the configured player enrollments.
+    pub fn guest_count(&self) -> usize {
+        let primary = self.game().player_life().actor;
+        self.chamber
+            .owners
+            .values()
+            .filter(|actor| **actor != primary)
+            .count()
+            .saturating_sub(self.configured_players)
+    }
+    /// Enrolls an authenticated unknown key on the guest spawn ring.
+    fn admit_guest(&mut self, principal: super::Principal) -> Result<(), String> {
+        let Some(guests) = self.guests.clone() else {
+            return Err("Principal is not enrolled".into());
+        };
+        let taken = self.guest_count();
+        if taken >= guests.cap as usize {
+            return Err("Chamber guest capacity exceeded".into());
+        }
+        let mut last = String::new();
+        for attempt in 0..guests.cap as usize * 2 {
+            match self
+                .chamber
+                .enroll_player(principal, guests.spawn(taken + attempt))
+            {
+                Ok(_) => return Ok(()),
+                Err(error) => last = error,
+            }
+        }
+        Err(format!("Chamber guest spawn ring is blocked: {last}"))
     }
     /// Fixes content identity before any opening challenge has been issued.
     pub fn with_content(mut self, content: [u8; 32]) -> Result<Self, String> {
@@ -398,6 +487,9 @@ impl Gateway {
                 &key,
             )
             .map_err(|_| "Connection signature refused")?;
+        if !self.chamber.grants.contains_key(&principal) {
+            self.admit_guest(principal)?;
+        }
         let session = self.chamber.connect(principal)?;
         self.bindings.retain(|_, b| b.principal != principal);
         self.purge_replication();
