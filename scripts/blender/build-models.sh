@@ -34,6 +34,7 @@ if [ "${GALLERY_ONLY:-0}" != 1 ]; then
   done
   "$blender" -b --factory-startup --python "$here/buildings.py" -- "$out/buildings" 2>&1 | grep -E '^BUILT|Error|Traceback' || true
   run street_props "$out/street"
+  run town_props "$out/town"
 fi
 run gallery "$out" "$gallery"
 echo "gallery: $gallery/gallery.png, $gallery/contact_sheet.png, $gallery/previews/"

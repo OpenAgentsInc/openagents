@@ -141,6 +141,20 @@ includes them, scaled to fit its grid.
 | `corner_shop` | 11,112 | Shop windows on two faces under striped awnings, hanging sign |
 | `l_house` | 13,660 | L-shaped house: side-gabled block with a gabled wing to the street |
 | `cottage_tower` | 7,805 | One-storey cottage with a round stone tower and cone roof |
+| `music_hall` | 7,783 | Octagonal hall of tall arched windows under a tiled cone and a lit cupola |
+| `meeting_hall` | 12,555 | Tall stone hall, broad gable, columned porch, bell-cote |
+| `guild_hall` | 19,224 | Stone and jettied timber, guild banners, dormers, a round corner turret |
+| `bakery` | 9,492 | Two storeys with a round brick bread oven and a tall stack |
+| `boardwalk_cafe` | 7,281 | One-storey café under a striped awning on a railed deck |
+| `smithy` | 6,184 | Stone smithy with an open lean-to forge and a glowing hearth |
+| `clock_tower` | 10,269 | Stone clock tower, open belfry, slate spire, a small hall behind |
+| `windmill` | 3,019 | Tapering tower mill with a tiled cap and four canvas sails |
+| `farmhouse`, `cottage_thatch` | 5,486, 3,645 | Timber-framed houses under thatch |
+| `log_cabin` | 1,086 | Round-log cabin with a porch and a stone chimney |
+| `lookout` | 555 | Timber lookout tower on four legs |
+| `boathouse` | 2,570 | Boathouse with its arch to the water |
+| `greenhouse` | 790 | Glasshouse with see-through glass |
+| `gazebo` | 378 | Open octagonal gazebo |
 
 ## Admitted into Everglade
 
@@ -164,6 +178,27 @@ more kinds of model made for it:
   two neutral images it derives from the kit, `T_Plaster_Luma` and
   `T_RoundTiles_Luma`. It writes the set's manifest, which records each
   file's source glb digest and the conversion.
+
+A second round on the same day brought the town closer to its map:
+
+- `buildings.py` gained fifteen buildings the map names: the Music Hall,
+  the meeting hall, the guild hall, the bakery, a Boardwalk Café, the
+  smithy, the clock tower, the windmill, a thatched farmhouse and cottage,
+  a log cabin, the lookout tower, the boathouse, the glasshouse, and a
+  gazebo (`assets/verse/generated/buildings/PROVENANCE.md`). They use
+  cheaper generated parts where the kit costs the most: octagonal and
+  tapered drums, cone roofs, roofs of two textured slabs (`slab_roof`),
+  thatch, and round logs. Their footprint JSON also gives the landing
+  roofs, the walk's end outside the door, and a point past an open doorway,
+  which `layout::generated` copies.
+- `town_props.py` builds twenty-six small pieces for the parks, gardens,
+  farm, ponds, and woods, from statues and a sundial to reeds, jetties,
+  rowboats, mossy rocks, fallen logs, toadstools, and cheap birches,
+  spruces, poplars, and fruit trees, each under about 1,000 triangles.
+  They're written to `assets/verse/generated/town/`.
+- The building scripts add five plaster colors (sage, sky, butter,
+  terracotta, and lilac) and four roof colors (teal, charcoal, ochre, and
+  plum), which the admission maps onto the neutral luma images.
 
 The animals and the training dummies are not admitted. The creatures are
 skinned and animated, and the pack holds static models and the one player

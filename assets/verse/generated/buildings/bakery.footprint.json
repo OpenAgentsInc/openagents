@@ -1,0 +1,66 @@
+{
+  "model": "bakery.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 9492,
+  "boxes": [
+    {
+      "name": "shop",
+      "center": [
+        0.0,
+        1.5,
+        -4.0
+      ],
+      "half_extents": [
+        3.1,
+        1.5,
+        4.1
+      ]
+    },
+    {
+      "name": "oven",
+      "center": [
+        3.775,
+        1.25,
+        -4.625
+      ],
+      "half_extents": [
+        0.775,
+        1.25,
+        1.575
+      ]
+    },
+    {
+      "name": "upper",
+      "center": [
+        0.0,
+        4.56,
+        -3.8
+      ],
+      "half_extents": [
+        3.1,
+        1.56,
+        4.3
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -3.8
+      ],
+      "slopes_z": false,
+      "half": [
+        3.6,
+        4.4
+      ],
+      "eave": 6.12,
+      "ridge": 10.888
+    }
+  ],
+  "front": [
+    -1.0,
+    0.9
+  ],
+  "inside": null
+}

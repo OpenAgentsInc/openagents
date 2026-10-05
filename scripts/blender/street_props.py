@@ -211,13 +211,16 @@ def footbridge(m):
 def wildflowers(m):
     rng = random.Random(13)
     colors = ["yellow", "white", "violet", "red", "pink", "yellow", "white"]
-    for i in range(20):
+    # Fourteen round blooms: about half the first version's triangles,
+    # since the meadows repeat it dozens of times.
+    for i in range(14):
         a = rng.uniform(0, 2 * math.pi)
         r = 1.3 * math.sqrt(rng.uniform(0, 1))
         x, y = r * math.cos(a), r * math.sin(a)
         h = rng.uniform(0.25, 0.5)
         kit.cyl("Stem%d" % i, 0.012, h, (x, y, h / 2), m["leaf"], verts=3, cap=False)
-        kit.cyl("Bloom%d" % i, rng.uniform(0.09, 0.13), 0.03, (x, y, h), m[colors[i % len(colors)]], verts=5)
+        kit.ball("Bloom%d" % i, rng.uniform(0.07, 0.1), (x, y, h), m[colors[i % len(colors)]], segs=5, rings=2,
+                 scale=(1, 1, 0.6))
 
 
 def bunting(m):

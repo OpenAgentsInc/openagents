@@ -1,0 +1,66 @@
+{
+  "model": "guild_hall.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 19224,
+  "boxes": [
+    {
+      "name": "tower",
+      "center": [
+        6.3,
+        6.0,
+        0.3
+      ],
+      "half_extents": [
+        1.3,
+        6.0,
+        1.3
+      ]
+    },
+    {
+      "name": "ground",
+      "center": [
+        0.0,
+        1.5,
+        -5.0
+      ],
+      "half_extents": [
+        6.1,
+        1.5,
+        5.1
+      ]
+    },
+    {
+      "name": "upper",
+      "center": [
+        0.0,
+        4.56,
+        -4.7
+      ],
+      "half_extents": [
+        6.1,
+        1.56,
+        5.4
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -4.7
+      ],
+      "slopes_z": true,
+      "half": [
+        6.0,
+        6.5
+      ],
+      "eave": 6.12,
+      "ridge": 11.985
+    }
+  ],
+  "front": [
+    0.0,
+    0.9
+  ],
+  "inside": null
+}

@@ -76,7 +76,35 @@ and shop signs, wall lanterns, and the striped awnings.
 | `l_house.glb` | 13,660 | Cream, green-grey, mid |
 | `cottage_tower.glb` | 7,805 | White, brown, dark |
 
+The second round, generated on October 5, 2026, for the buildings the city
+map names. These lean on cheaper generated parts where the kit's pieces cost
+the most: octagonal and tapered drums, cone and pyramid roofs, roofs of two
+textured slabs (`slab_roof`), thatch with courses and a ridge roll, round
+logs, a bread oven, a forge, windmill sails, and glazing.
+
+| Model | Triangles | Plaster, roof, timber | What it is |
+| --- | ---: | --- | --- |
+| `music_hall.glb` | 7,783 | White, teal, dark | Octagonal hall of tall arched windows on a stone plinth, a tiled cone, and a lit lantern cupola |
+| `meeting_hall.glb` | 12,555 | Sage, slate, dark | Tall stone hall under a broad gable, a columned porch, and a bell-cote |
+| `boathouse.glb` | 2,570 | White, brown, dark | Timber boathouse on a stone footing, its arch to the water, a side door, and a slab roof over board gables |
+| `boardwalk_cafe.glb` | 7,281 | Butter, red, mid | One-storey café with wide windows under a green awning, on a railed plank deck |
+| `bakery.glb` | 9,492 | Butter, red, mid | Two storeys with a round brick bread oven on its side, a tall stack, awnings, and a sign |
+| `smithy.glb` | 6,184 | White, charcoal, dark | Stone smithy with an open lean-to forge, a glowing hearth, a chimney, an anvil, and a trough |
+| `windmill.glb` | 3,019 | White, brown, mid | Tapering tower mill on a stone foot, a tiled cap, and four canvas sails |
+| `greenhouse.glb` | 790 | White, red, light | Glasshouse on a brick base with white glazing bars, see-through glass (glTF `BLEND`), and seedlings |
+| `clock_tower.glb` | 10,269 | White, slate, dark | Stone clock tower with four clock faces, an open belfry, and a slate spire, before a small hall |
+| `guild_hall.glb` | 19,224 | Lilac, plum, dark | Stone ground floor, jettied upper floor, guild banners, dormers, and a round corner turret |
+| `lookout.glb` | 555 | White, green, mid | Timber lookout tower on four legs with a ladder, a railed platform, and a flag |
+| `log_cabin.glb` | 1,086 | White, brown, mid | Round-log cabin with a porch, a stone chimney, and a slab roof |
+| `gazebo.glb` | 378 | White, teal, light | Open octagonal gazebo with railings and a tiled roof |
+| `farmhouse.glb` | 5,486 | White, thatch, dark | Long timber-framed farmhouse under thatch |
+| `cottage_thatch.glb` | 3,645 | Terracotta, thatch, mid | Small thatched cottage with shutters |
+
 Each `<name>.footprint.json` lists axis-aligned collision boxes in the glb's
 frame: 1 unit = 1 m, +Y up, +Z out of the front door, and the origin on the
 ground at the center of the main front wall. Steps, a library entrance bay,
-and the cottage's tower stand in front of that wall, at negative depth.
+and the cottage's tower stand in front of that wall, at negative depth. The
+second round's files also give `roofs` (the landing roofs), `front` (where
+a walk ends outside the door), and `inside` (a point past an open doorway),
+in glTF x and z, as `verse::zones::everglade::layout::generated::Model` takes
+them.

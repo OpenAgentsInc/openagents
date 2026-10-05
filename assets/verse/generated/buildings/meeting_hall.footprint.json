@@ -1,0 +1,66 @@
+{
+  "model": "meeting_hall.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 12555,
+  "boxes": [
+    {
+      "name": "hall",
+      "center": [
+        0.0,
+        2.08,
+        -5.0
+      ],
+      "half_extents": [
+        6.1,
+        2.08,
+        5.1
+      ]
+    },
+    {
+      "name": "porch",
+      "center": [
+        -2.3,
+        2.08,
+        2.325
+      ],
+      "half_extents": [
+        0.15,
+        2.08,
+        0.175
+      ]
+    },
+    {
+      "name": "porch",
+      "center": [
+        2.3,
+        2.08,
+        2.325
+      ],
+      "half_extents": [
+        0.15,
+        2.08,
+        0.175
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -5.0
+      ],
+      "slopes_z": false,
+      "half": [
+        6.8,
+        5.3
+      ],
+      "eave": 4.16,
+      "ridge": 10.071
+    }
+  ],
+  "front": [
+    0.0,
+    3.4
+  ],
+  "inside": null
+}

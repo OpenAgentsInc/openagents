@@ -1,0 +1,68 @@
+{
+  "model": "lookout.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 555,
+  "boxes": [
+    {
+      "name": "leg",
+      "center": [
+        -1.3,
+        3.5,
+        -0.2
+      ],
+      "half_extents": [
+        0.25,
+        3.5,
+        0.25
+      ]
+    },
+    {
+      "name": "leg",
+      "center": [
+        -1.3,
+        3.5,
+        -2.8
+      ],
+      "half_extents": [
+        0.25,
+        3.5,
+        0.25
+      ]
+    },
+    {
+      "name": "leg",
+      "center": [
+        1.3,
+        3.5,
+        -0.2
+      ],
+      "half_extents": [
+        0.25,
+        3.5,
+        0.25
+      ]
+    },
+    {
+      "name": "leg",
+      "center": [
+        1.3,
+        3.5,
+        -2.8
+      ],
+      "half_extents": [
+        0.25,
+        3.5,
+        0.25
+      ]
+    }
+  ],
+  "roofs": [],
+  "front": [
+    0.0,
+    1.0
+  ],
+  "inside": [
+    0.0,
+    -1.5
+  ]
+}

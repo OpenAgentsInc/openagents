@@ -1,0 +1,40 @@
+{
+  "model": "boardwalk_cafe.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 7281,
+  "boxes": [
+    {
+      "name": "cafe",
+      "center": [
+        0.0,
+        1.635,
+        -3.0
+      ],
+      "half_extents": [
+        4.1,
+        1.635,
+        3.1
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -3.0
+      ],
+      "slopes_z": true,
+      "half": [
+        3.7,
+        4.3
+      ],
+      "eave": 3.27,
+      "ridge": 8.111
+    }
+  ],
+  "front": [
+    1.0,
+    1.6
+  ],
+  "inside": null
+}

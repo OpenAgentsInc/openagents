@@ -1,0 +1,40 @@
+{
+  "model": "cottage_thatch.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 3645,
+  "boxes": [
+    {
+      "name": "house",
+      "center": [
+        0.0,
+        1.56,
+        -2.5
+      ],
+      "half_extents": [
+        3.1,
+        1.56,
+        2.6
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -2.5
+      ],
+      "slopes_z": true,
+      "half": [
+        3.25,
+        3.75
+      ],
+      "eave": 3.12,
+      "ridge": 6.02
+    }
+  ],
+  "front": [
+    -1.0,
+    0.9
+  ],
+  "inside": null
+}

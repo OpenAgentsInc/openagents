@@ -1,0 +1,65 @@
+{
+  "model": "music_hall.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 7783,
+  "boxes": [
+    {
+      "name": "hall_x",
+      "center": [
+        0.0,
+        2.59,
+        -5.553
+      ],
+      "half_extents": [
+        5.553,
+        2.59,
+        2.3
+      ]
+    },
+    {
+      "name": "hall_y",
+      "center": [
+        0.0,
+        2.59,
+        -5.553
+      ],
+      "half_extents": [
+        2.3,
+        2.59,
+        5.553
+      ]
+    },
+    {
+      "name": "diag",
+      "center": [
+        0.0,
+        2.59,
+        -5.553
+      ],
+      "half_extents": [
+        4.353,
+        2.59,
+        4.353
+      ]
+    },
+    {
+      "name": "step",
+      "center": [
+        0.0,
+        0.125,
+        0.6
+      ],
+      "half_extents": [
+        2.0,
+        0.125,
+        0.6
+      ]
+    }
+  ],
+  "roofs": [],
+  "front": [
+    0.0,
+    1.9
+  ],
+  "inside": null
+}

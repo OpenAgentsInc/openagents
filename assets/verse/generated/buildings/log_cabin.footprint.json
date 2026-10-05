@@ -1,0 +1,79 @@
+{
+  "model": "log_cabin.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 1086,
+  "boxes": [
+    {
+      "name": "cabin",
+      "center": [
+        0.0,
+        1.336,
+        -2.5
+      ],
+      "half_extents": [
+        3.2,
+        1.336,
+        2.7
+      ]
+    },
+    {
+      "name": "chimney",
+      "center": [
+        -3.55,
+        1.2,
+        -2.5
+      ],
+      "half_extents": [
+        0.5,
+        1.2,
+        0.6
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        -2.8,
+        1.15,
+        1.6
+      ],
+      "half_extents": [
+        0.12,
+        1.15,
+        0.12
+      ]
+    },
+    {
+      "name": "post",
+      "center": [
+        2.8,
+        1.15,
+        1.6
+      ],
+      "half_extents": [
+        0.12,
+        1.15,
+        0.12
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -2.5
+      ],
+      "slopes_z": false,
+      "half": [
+        3.6,
+        3.1
+      ],
+      "eave": 2.672,
+      "ridge": 4.872
+    }
+  ],
+  "front": [
+    -1.1,
+    1.0
+  ],
+  "inside": null
+}

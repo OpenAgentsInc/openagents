@@ -7,7 +7,8 @@ Every model here was written by Blender 5.2.2 LTS, run headless
 across versions, so compare rebuilds by their previews, not their bytes.
 
 The fountain, the observatory, the bandshell, the market stalls, the
-buildings, the street furniture, and the kit roof are admitted into the
+buildings, the street furniture, the town pieces, and the kit roof are
+admitted into the
 Everglade pack's `generated` set by `scripts/blender/everglade_admit.py`
 ([`assets/verse/everglade/generated/`](../everglade/generated/README.md)),
 following [the pipeline](../../../docs/verse/blender-pipeline.md). The
@@ -82,10 +83,45 @@ colors and writes it to `street/`:
 | `signpost.glb` | 64 | The crossings |
 | `lily_pads.glb` | 268 | The ponds |
 | `footbridge.glb` | 408 | Brownstone Row over Glade Run |
-| `wildflowers.glb` | 440 | The meadows |
+| `wildflowers.glb` | 364 | The meadows |
 | `bunting.glb` | 240 | Over the plaza and the streets |
 | `pine_low.glb` | 88 | The forest belt and the woods' stands |
 | `oak_low.glb` | 184 | The forest belt and the woods' stands |
+
+## Town, park, and woodland pieces
+
+`scripts/blender/town_props.py` builds the second round of small pieces the
+same way, in the street furniture's flat colors and materials, and writes
+them to `town/`:
+
+| File | Triangles | Use in Everglade |
+| --- | ---: | --- |
+| `statue.glb` | 540 | A bronze robed figure raising a lamp, on the Sculpture Walk |
+| `sculpture.glb` | 328 | A bronze ring on a cairn, on the Sculpture Walk |
+| `sundial.glb` | 296 | The Sculpture Walk |
+| `planter.glb` | 442 | The Fountain Plaza, the clock tower, and the glasshouse |
+| `garden_arch.glb` | 1,044 | The community garden's gate, under roses |
+| `picket_fence.glb` | 222 | Round the community garden, 2 m a piece |
+| `garden_gate.glb` | 404 | The orchard wall's gate |
+| `flower_bed.glb` | 780 | The community garden |
+| `veg_bed.glb` | 736 | The community garden and the farmhouse |
+| `rail_fence.glb` | 48 | The farm's paddock, 2 m a piece |
+| `haystack.glb` | 156 | The farm |
+| `hay_bales.glb` | 324 | The farm |
+| `beehives.glb` | 488 | The beekeeper's hut |
+| `rowboat.glb` | 248 | Moored at the jetties and in the boathouse |
+| `dock.glb` | 380 | Jetties on Lantern Pond, Reed Pond, and the Thinking Pond |
+| `reeds.glb` | 232 | Round the ponds' banks |
+| `fallen_log.glb` | 262 | Walden Woods and Fernhollow |
+| `mossy_rock.glb` | 112 | Walden Woods and Fernhollow |
+| `mushrooms.glb` | 524 | Walden Woods and Fernhollow |
+| `stump.glb` | 148 | The woods and the woodcutter's cottage |
+| `cafe_table.glb` | 296 | The Boardwalk Cafés' decks and the Fountain Plaza |
+| `birch_low.glb` | 118 | Walden Woods, Fernhollow, and the forest belt |
+| `poplar_low.glb` | 96 | The forest belt |
+| `spruce_low.glb` | 112 | Walden Woods, Fernhollow, and the forest belt |
+| `fruit_tree.glb` | 282 | The orchard |
+| `bush_round.glb` | 126 | The woods and the clearing's edge |
 
 ## Kit pieces
 

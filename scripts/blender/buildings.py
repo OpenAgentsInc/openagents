@@ -40,12 +40,21 @@ PLASTER = {
     "ochre": (0.86, 0.66, 0.38),
     "rose": (0.88, 0.70, 0.66),
     "white": (0.95, 0.93, 0.88),
+    "sage": (0.76, 0.81, 0.66),
+    "sky": (0.74, 0.82, 0.88),
+    "butter": (0.95, 0.86, 0.56),
+    "terracotta": (0.82, 0.54, 0.42),
+    "lilac": (0.80, 0.74, 0.86),
 }
 ROOF = {
     "red": None,
     "brown": (0.52, 0.33, 0.22),
     "slate": (0.33, 0.37, 0.44),
     "green": (0.42, 0.50, 0.42),
+    "teal": (0.26, 0.46, 0.46),
+    "charcoal": (0.29, 0.29, 0.31),
+    "ochre": (0.74, 0.54, 0.30),
+    "plum": (0.47, 0.29, 0.33),
 }
 TIMBER = {"light": 1.0, "mid": 0.75, "dark": 0.52}
 
@@ -131,6 +140,22 @@ def _material(name, image=None, color=(0.8, 0.8, 0.8), rough=0.85, emit=None):
     return mat
 
 
+def _clear_glass():
+    """A pale, see-through glass for the greenhouse: glTF BLEND."""
+    mat = bpy.data.materials.new("GreenhouseGlass")
+    mat.use_nodes = True
+    mat.use_backface_culling = False
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*_linear((0.78, 0.9, 0.88)), 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.1
+    bsdf.inputs["Alpha"].default_value = 0.32
+    if hasattr(mat, "surface_render_method"):
+        mat.surface_render_method = "BLENDED"
+    if hasattr(mat, "blend_method"):
+        mat.blend_method = "BLEND"
+    return mat
+
+
 def _linear(c):
     return tuple(((x + 0.055) / 1.055) ** 2.4 if x > 0.04045 else x / 12.92 for x in c)
 
@@ -172,6 +197,15 @@ def make_materials(scheme):
         "cloth2": _material("Cloth2", color=(0.88, 0.82, 0.68), rough=0.9),
         "clock": _material("ClockFace", color=(0.93, 0.91, 0.84), rough=0.6),
         "iron": _material("Iron", color=(0.12, 0.12, 0.13), rough=0.5),
+        "cloth3": _material("ClothGreen", color=(0.20, 0.42, 0.30), rough=0.9),
+        "cloth4": _material("ClothBlue", color=(0.18, 0.30, 0.55), rough=0.9),
+        "leaf": _material("Leaf", color=(0.20, 0.38, 0.12), rough=0.9),
+        "thatch": _material("Thatch", color=(0.66, 0.52, 0.27), rough=1.0),
+        "thatch_dark": _material("ThatchDark", color=(0.50, 0.38, 0.18), rough=1.0),
+        "boards": _material("Boards", color=(0.34, 0.22, 0.13), rough=0.9),
+        "coals": _material("Coals", color=(1.0, 0.45, 0.12), emit=(1.0, 0.4, 0.1)),
+        "white_paint": _material("WhitePaint", color=(0.92, 0.91, 0.86), rough=0.6),
+        "glass_clear": _clear_glass(),
     }
     mats["redbrick"] = mats["stone"]
     return mats
@@ -274,6 +308,11 @@ class Building:
         self.kit = Kit(self.mats)
         self.col = bpy.context.scene.collection
         self.boxes = []
+        # Landing roofs, the walk's end outside the door, and a point past
+        # an open doorway, in Blender x and y, for the layout's model data.
+        self.roofs = []
+        self.front = None
+        self.inside = None
         self.count = 0
 
     # -- placing ---------------------------------------------------------
@@ -492,6 +531,14 @@ class Building:
                      "origin on the ground at the center of the front wall",
             "triangles": self.triangles(),
             "boxes": boxes,
+            # In glTF x and z, as `layout::generated::Model` takes them.
+            "roofs": [
+                {"center": [round(cx, 3), round(-cy, 3)], "slopes_z": along_x,
+                 "half": [round(h0, 3), round(h1, 3)], "eave": round(eave, 3), "ridge": round(ridge, 3)}
+                for (cx, cy), along_x, (h0, h1), eave, ridge in self.roofs
+            ],
+            "front": None if self.front is None else [round(self.front[0], 3), round(-self.front[1], 3)],
+            "inside": None if self.inside is None else [round(self.inside[0], 3), round(-self.inside[1], 3)],
         }
         with open(os.path.join(out_dir, self.name + ".footprint.json"), "w") as f:
             json.dump(footprint, f, indent=2)
@@ -1066,6 +1113,772 @@ def cottage_tower():
     border(b, -1, 3, -0.05)
     b.collide("cottage", (-3.1, -0.1, 0), (3.1, d + 0.1, top))
     b.collide("roof", (-4.2, -0.9, top), (4.2, d + 0.9, top + 4.9))
+    return b
+
+
+# --------------------------------------------------------------------------
+# Cheap generated parts for the second round of buildings
+
+
+def poly_mesh(name, polys, mat, tile=2.0):
+    """Loose polygons, UVs projected on each face's dominant plane."""
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    for poly in polys:
+        f = bm.faces.new([bm.verts.new(p) for p in poly])
+        f.normal_update()
+        n = f.normal
+        ax = max(range(3), key=lambda i: abs(n[i]))
+        for loop in f.loops:
+            co = loop.vert.co
+            u, v = [(co.y, co.z), (co.x, co.z), (co.x, co.y)][ax]
+            loop[uv].uv = (u / tile, v / tile)
+    bm.normal_update()
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.materials.append(mat)
+    return mesh
+
+
+def frustum_mesh(name, center, r0, r1, z0, z1, sides, mat, tile=2.0, rot=0.0, band=None, cap=True):
+    """An upright tapered prism from radius `r0` at `z0` to `r1` at `z1`,
+    UV wrapped, with a flat top when `cap`."""
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    cx, cy = center
+    ring0, ring1 = [], []
+    for i in range(sides + 1):
+        a = rot + 2 * math.pi * i / sides
+        ring0.append(bm.verts.new((cx + r0 * math.cos(a), cy + r0 * math.sin(a), z0)))
+        ring1.append(bm.verts.new((cx + r1 * math.cos(a), cy + r1 * math.sin(a), z1)))
+    circ = 2 * math.pi * r0
+    for i in range(sides):
+        f = bm.faces.new([ring0[i], ring0[i + 1], ring1[i + 1], ring1[i]])
+        for loop, (s, h) in zip(f.loops, [(i, z0), (i + 1, z0), (i + 1, z1), (i, z1)]):
+            if band is None:
+                loop[uv].uv = (circ * s / sides / tile, h / tile)
+            else:
+                t = (h - z0) / (z1 - z0)
+                loop[uv].uv = (circ * s / sides / 2.0, band[0] + (band[1] - band[0]) * t)
+    if cap:
+        f = bm.faces.new(ring1[:sides])
+        for loop in f.loops:
+            loop[uv].uv = (loop.vert.co.x / tile, loop.vert.co.y / tile)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+    bm.normal_update()
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.materials.append(mat)
+    return mesh
+
+
+def log_mesh(name, p0, p1, r, mat, sides=6, band=DARK_WOOD):
+    """A horizontal log between `p0` and `p1`, along the wood atlas's band."""
+    p0, p1 = Vector(p0), Vector(p1)
+    axis = p1 - p0
+    length = axis.length
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    rings = []
+    for x in (0.0, length):
+        rings.append([bm.verts.new((x, r * math.cos(2 * math.pi * i / sides), r * math.sin(2 * math.pi * i / sides)))
+                      for i in range(sides)])
+    for i in range(sides):
+        j = (i + 1) % sides
+        f = bm.faces.new([rings[0][i], rings[1][i], rings[1][j], rings[0][j]])
+        for loop, (u, k) in zip(f.loops, [(0, i), (length, i), (length, i + 1), (0, i + 1)]):
+            loop[uv].uv = (u / 2.0, band[0] + (band[1] - band[0]) * k / sides)
+    for ring in (rings[0], rings[1][::-1]):
+        f = bm.faces.new(ring)
+        for loop in f.loops:
+            # The end grain: a light corner of the wood atlas.
+            loop[uv].uv = (0.3 + 0.3 * loop.vert.co.y, 0.85 + 0.1 * loop.vert.co.z)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    yaw = math.atan2(axis.y, axis.x)
+    pitch = math.atan2(axis.z, math.hypot(axis.x, axis.y))
+    xf = Matrix.Translation(p0) @ Matrix.Rotation(yaw, 4, "Z") @ Matrix.Rotation(-pitch, 4, "Y")
+    bmesh.ops.transform(bm, matrix=xf, verts=bm.verts)
+    bm.normal_update()
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.materials.append(mat)
+    return mesh
+
+
+def slab_roof(b, span, length, z, rise, center=(0.0, 0.0), along_x=False, mat="tiles", over=0.45,
+              thick=0.18, gable="plaster", tile=2.0, ridge_mat=None, courses=()):
+    """A cheap gabled roof of two textured slabs and two gable triangles.
+
+    The ridge runs along Y through `center` (along X with `along_x`), `rise`
+    above the eaves at `z`, and the slabs reach `over` past the walls.
+    `courses` lays strips of the ridge's material across each slope at those
+    fractions of its run, as on thatch. Returns the ridge's height.
+    """
+    cx, cy = center
+    half = span / 2
+    ang = math.atan2(rise, half)
+    run = (half + over) / math.cos(ang)
+    turn = Matrix.Translation(Vector((cx, cy, 0))) @ Matrix.Rotation(math.radians(-90 if along_x else 0), 4, "Z")
+    for flip in (0, 180):
+        xf = (turn @ Matrix.Rotation(math.radians(flip), 4, "Z") @ Matrix.Translation(Vector((0, 0, z + rise)))
+              @ Matrix.Rotation(ang, 4, "Y"))
+        b.solid("RoofSlab", box_mesh("RoofSlab", (0.0, -length / 2 - over, -thick), (run, length / 2 + over, 0.0),
+                                     b.mats[mat], tile=tile, xf=xf))
+        for t in courses:
+            x = run * t
+            b.solid("Course", box_mesh("Course", (x - 0.14, -length / 2 - over, -0.04), (x + 0.14, length / 2 + over, 0.07),
+                                       b.mats[ridge_mat or mat], xf=xf))
+    if gable:
+        tris = []
+        for y in (-length / 2, length / 2):
+            tri = [Vector((-half, y, z)), Vector((half, y, z)), Vector((0, y, z + rise - 0.05))]
+            tri = [turn @ p for p in tri]
+            tris.append(tri if y > 0 else tri[::-1])
+        b.solid("Gable", poly_mesh("Gable", tris, b.mats[gable]))
+    rid = Matrix.Translation(Vector((0, 0, z + rise)))
+    b.solid("Ridge", box_mesh("Ridge", (-0.14, -length / 2 - over - 0.05, -0.1), (0.14, length / 2 + over + 0.05, 0.12),
+                              b.mats[ridge_mat or mat], band=DARK_WOOD if (ridge_mat or mat) == "wood" else None,
+                              xf=turn @ rid))
+    return z + rise
+
+
+def lean_to(b, x0, x1, y0, y1, z_high, z_low, mat="wood", band=DARK_WOOD, thick=0.12):
+    """A single-slope roof falling from `z_high` at x0 to `z_low` at x1."""
+    dx = x1 - x0
+    ang = math.atan2(z_high - z_low, abs(dx))
+    length = math.hypot(dx, z_high - z_low)
+    sign = 1 if dx > 0 else -1
+    xf = (Matrix.Translation(Vector((x0, 0, z_high))) @ Matrix.Rotation(math.radians(0 if sign > 0 else 180), 4, "Z")
+          @ Matrix.Rotation(ang, 4, "Y"))
+    if sign < 0:
+        y0, y1 = -y1, -y0
+    b.solid("LeanTo", box_mesh("LeanTo", (0.0, y0, -thick), (length, y1, 0.0), b.mats[mat],
+                               band=band if mat == "wood" else None, xf=xf))
+
+
+def bell_cote(b, x, y, z, s=0.55):
+    """A little open bell-cote with a pyramid cap."""
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            b.beam((x + sx * s - 0.07, y + sy * s - 0.07, z - 0.4), (x + sx * s + 0.07, y + sy * s + 0.07, z + 1.3),
+                   band=DARK_WOOD)
+    b.block((x - s - 0.1, y - s - 0.1, z - 0.4), (x + s + 0.1, y + s + 0.1, z - 0.25), "wood", name="CoteFloor")
+    b.solid("Bell", cone_mesh("Bell", (x, y), 0.3, z + 0.2, z + 0.85, 8, b.mats["metal"], rings=1, flare=0.06))
+    b.solid("CoteRoof", cone_mesh("CoteRoof", (x, y), (s + 0.35) * math.sqrt(2), z + 1.3, z + 2.3, 4, b.mats["tiles"],
+                                  rings=1, rot=math.pi / 4, tile=(1.4, 1.2)))
+    b.solid("CoteSpire", cone_mesh("CoteSpire", (x, y), 0.05, z + 2.2, z + 2.8, 6, b.mats["iron"], rings=1))
+
+
+def clock_face(b, cx, cy, z, rot, r=0.75):
+    """A clock face on a wall facing `rot` degrees (0 faces -Y)."""
+    a = math.radians(rot)
+    out = Vector((math.sin(a), -math.cos(a), 0))
+    c = Vector((cx, cy, z))
+    b.solid("ClockRim", disc_mesh("ClockRim", c + out * 0.04, r, rot, b.mats["wood"], depth=0.08))
+    b.solid("ClockFace", disc_mesh("ClockFace", c + out * 0.09, r * 0.84, rot, b.mats["clock"], depth=0.05))
+    m = frame(rot, c + out * 0.13)
+    b.solid("ClockHand", box_mesh("ClockHand", (-0.03, -0.01, 0.0), (0.03, 0.01, r * 0.62), b.mats["iron"], xf=m))
+    b.solid("ClockHand", box_mesh("ClockHand", (0.0, -0.01, -0.03), (r * 0.45, 0.01, 0.03), b.mats["iron"], xf=m))
+
+
+def banner(b, x, y, z, rot=0, w=0.8, h=1.8, cloth="cloth4"):
+    """A hanging cloth banner with a gold roundel, from a rod on a wall."""
+    m = frame(rot, (x, y, z))
+    b.solid("BannerRod", box_mesh("BannerRod", (-w / 2 - 0.08, -0.16, -0.03), (w / 2 + 0.08, -0.1, 0.03),
+                                  b.mats["iron"], xf=m))
+    quad = [(-w / 2, -0.12, -0.05), (w / 2, -0.12, -0.05), (w / 2, -0.12, -h), (0, -0.12, -h - 0.3),
+            (-w / 2, -0.12, -h)]
+    b.solid("Banner", poly_mesh("Banner", [[m @ Vector(p) for p in quad]], b.mats[cloth]))
+    b.solid("BannerRoundel", disc_mesh("BannerRoundel", m @ Vector((0, -0.14, -h * 0.45)), w * 0.3, rot,
+                                       b.mats["paint"], depth=0.02))
+
+
+def anvil(b, x, y):
+    b.block((x - 0.3, y - 0.3, 0), (x + 0.3, y + 0.3, 0.5), "wood", name="AnvilStump", scale=1.0)
+    b.block((x - 0.12, y - 0.3, 0.5), (x + 0.12, y + 0.3, 0.72), "iron", name="AnvilWaist")
+    b.block((x - 0.2, y - 0.45, 0.72), (x + 0.2, y + 0.38, 0.9), "iron", name="AnvilFace")
+    horn = cone_mesh("AnvilHorn", (0, 0), 0.12, 0, 0.4, 4, b.mats["iron"], rings=1)
+    horn.transform(Matrix.Translation(Vector((x, y - 0.45, 0.82))) @ Matrix.Rotation(math.radians(90), 4, "X"))
+    b.solid("AnvilHorn", horn)
+
+
+# --------------------------------------------------------------------------
+# The second round: buildings the map names
+
+
+@building
+def music_hall():
+    """The Lantern Quarter's Music Hall: an octagonal hall of tall arched
+    windows on a stone plinth, under a tiled cone with a lit lantern cupola."""
+    b = Building("music_hall", {"plaster": "white", "roof": "teal", "timber": "dark"})
+    side, base, tall = 4.6, 0.5, 4.5
+    R = side / (2 * math.sin(math.pi / 8))
+    a = R * math.cos(math.pi / 8)
+    c = Vector((0.0, a, 0.0))
+    rot0 = math.radians(-67.5)
+    b.solid("Plinth", frustum_mesh("Plinth", c.xy, R + 0.45, R + 0.4, 0.0, base, 8, b.mats["rock"], tile=1.5, rot=rot0))
+    b.block((-2.0, -1.2, 0.0), (2.0, 0.0, 0.25), "rock", name="Step", scale=1.0)
+    pts = []
+    for k in range(8):
+        theta = math.radians(-90 + 45 * k)
+        v = c + Vector((R * math.cos(theta - math.pi / 8), R * math.sin(theta - math.pi / 8), 0))
+        pts.append((v.x, v.y))
+        if k == 0:
+            tokens = [("D", side)]
+        elif k == 4:
+            tokens = [("P", side / 2), ("Q", side / 2)]
+        else:
+            tokens = [("w", side / 2), ("w", side / 2)]
+        b.run(tokens, (v.x, v.y, base), math.degrees(theta) + 90, base, height=tall)
+    b.corners(pts, base, tall)
+    top = base + tall * (STOREY + WALL_TOP) / STOREY
+    b.solid("Frieze", frustum_mesh("Frieze", c.xy, R + 0.12, R + 0.12, top - 0.35, top + 0.05, 8, b.mats["wood"],
+                                   rot=rot0, band=DARK_WOOD, cap=False))
+    rh = 5.2
+    b.solid("Roof", cone_mesh("Roof", c.xy, R + 0.9, top, top + rh, 8, b.mats["tiles"], rings=3, rot=rot0,
+                              flare=0.3, tile=(1.8, 1.6)))
+    # The lantern cupola: a ring of lit glass under a little cone.
+    z = top + rh * (1 - 1.5 / (R + 0.9)) - 0.2
+    b.solid("CupolaBase", frustum_mesh("CupolaBase", c.xy, 1.55, 1.5, z, z + 0.3, 8, b.mats["wood"], rot=rot0,
+                                       band=DARK_WOOD))
+    b.solid("CupolaGlass", frustum_mesh("CupolaGlass", c.xy, 1.3, 1.3, z + 0.3, z + 1.4, 8, b.mats["lamp"], rot=rot0))
+    for k in range(8):
+        a8 = rot0 + math.pi * k / 4
+        p = c + Vector((1.38 * math.cos(a8), 1.38 * math.sin(a8), 0))
+        b.beam((p.x - 0.07, p.y - 0.07, z + 0.3), (p.x + 0.07, p.y + 0.07, z + 1.45), band=DARK_WOOD)
+    b.solid("CupolaRoof", cone_mesh("CupolaRoof", c.xy, 1.9, z + 1.4, z + 3.0, 8, b.mats["tiles"], rings=1, rot=rot0,
+                                    flare=0.12))
+    b.solid("Finial", cone_mesh("Finial", c.xy, 0.08, z + 2.8, z + 3.9, 6, b.mats["iron"], rings=1))
+    b.solid("FinialBall", cone_mesh("FinialBall", c.xy, 0.16, z + 3.2, z + 3.45, 8, b.mats["paint"], rings=1))
+    for x in (-1.75, 1.75):
+        lantern(b, x, -0.09, base + 2.5)
+    b.collide("hall_x", (-a, a - side / 2, 0), (a, a + side / 2, top))
+    b.collide("hall_y", (-side / 2, 0.0, 0), (side / 2, 2 * a, top))
+    b.collide("diag", (-a + 1.2, 1.2, 0), (a - 1.2, 2 * a - 1.2, top))
+    b.collide("step", (-2.0, -1.2, 0), (2.0, 0.0, 0.25))
+    b.front = (0.0, -1.9)
+    return b
+
+
+@building
+def meeting_hall():
+    """The meeting hall: a tall stone hall under a broad gable, a columned
+    porch at its door, and a bell-cote on the ridge."""
+    b = Building("meeting_hall", {"plaster": "sage", "roof": "slate", "timber": "dark"})
+    w, d, tall = 12, 10, 4.0
+    b.box_storey(w, d, 0, ["t", "w", ("E", 4), "w", "t"], sides=("BwBwB", "BwBwB"), back="BtwwtB",
+                 height=tall, stone=True)
+    top = tall * (STOREY + WALL_TOP) / STOREY
+    b.gable_roof(w, d + 0.6, top, center=(0, d / 2), size=8, piece_len=10)
+    ridge = b.roof_z(0, d / 2)
+    # The porch: four posts on a stone floor under a small cross gable.
+    b.block((-2.6, -2.6, 0), (2.6, 0, 0.2), "rock", name="PorchFloor", scale=1.0)
+    for x in (-2.3, -0.9, 0.9, 2.3):
+        b.beam((x - 0.13, -2.45, 0.2), (x + 0.13, -2.19, top - 0.1), band=LIGHT_WOOD)
+    b.beam((-2.5, -2.55, top - 0.25), (2.5, -2.1, top), band=DARK_WOOD)
+    b.gable_roof(5.4, 3.0, top, center=(0, -1.25), ends=(True, False), size=4)
+    bell_cote(b, 0, 1.6, b.roof_z(0, 1.6) + 0.3)
+    b.chimney(-4.0, d - 1.5, piece="Prop_Chimney2", above=1.2)
+    for x in (-3.2, 3.2):
+        lantern(b, x, -0.09, 2.6)
+    b.collide("hall", (-w / 2 - 0.1, -0.1, 0), (w / 2 + 0.1, d + 0.1, top))
+    b.collide("porch", (-2.45, -2.5, 0), (-2.15, -2.15, top))
+    b.collide("porch", (2.15, -2.5, 0), (2.45, -2.15, top))
+    b.roofs.append(((0.0, d / 2), False, (w / 2 + 0.8, d / 2 + 0.3), top, ridge))
+    b.front = (0.0, -3.4)
+    return b
+
+
+@building
+def boathouse():
+    """A timber boathouse on a stone footing, its wide arch facing the
+    water, with a side door and a hayloft hatch in the gable."""
+    b = Building("boathouse", {"plaster": "white", "roof": "brown", "timber": "dark"})
+    w, d, base = 6, 8, 0.35
+    b.block((-w / 2 - 0.2, -0.2, 0), (w / 2 + 0.2, d + 0.2, base), "stone", name="Footing", scale=2.6)
+    b.box_storey(w, d, base, [("A", 6)], sides=("PPQP", "PPPP"), back="PGP", height=3.6)
+    top = base + 3.6 * (STOREY + WALL_TOP) / STOREY
+    b.block((-w / 2 + 0.2, 0.2, base), (w / 2 - 0.2, d - 0.2, base + 0.04), "wood", name="Floor")
+    # A steep, cheap roof of tiled slabs over board gables: the pond's side
+    # of the town sees it from every bench.
+    ridge = slab_roof(b, w, d, top + 0.15, 3.4, center=(0, d / 2), mat="tiles", over=0.55, thick=0.2,
+                      gable="boards", ridge_mat="wood")
+    b.beam((-w / 2 - 0.1, -0.2, top - 0.3), (w / 2 + 0.1, 0.05, top), band=DARK_WOOD)
+    b.block((-0.6, -0.12, top + 0.4), (0.6, 0.0, top + 1.6), "boards", name="Hatch", scale=1.0)
+    b.beam((-0.7, -0.16, top + 0.3), (0.7, -0.04, top + 0.4), band=LIGHT_WOOD)
+    b.beam((-0.7, -0.16, top + 1.6), (0.7, -0.04, top + 1.7), band=LIGHT_WOOD)
+    lantern(b, -w / 2, 3.0 + 1.0, base + 2.3, rot=-90)
+    b.collide("boathouse", (-w / 2 - 0.2, -0.2, 0), (w / 2 + 0.2, d + 0.2, top))
+    b.roofs.append(((0.0, d / 2), False, (w / 2 + 0.55, d / 2 + 0.55), top + 0.15 - 0.55 * 3.4 / 3, ridge))
+    b.front = (-w / 2 - 1.0, 3.0)
+    return b
+
+
+@building
+def boardwalk_cafe():
+    """A Boardwalk Café: a one-storey timber café with wide windows under a
+    green-striped awning, on a plank deck with rails."""
+    b = Building("boardwalk_cafe", {"plaster": "butter", "roof": "red", "timber": "mid"})
+    w, d, base = 8, 6, 0.15
+    b.box_storey(w, d, base, ["F", "F", "Q", "F"], sides=("GFG", "GFG"), back="BPPB")
+    top = base + STOREY + WALL_TOP
+    b.gable_roof(d + 0.6, w, top, center=(0, d / 2), along_x=True, size=6, piece_len=8)
+    ridge = b.roof_z(0, d / 2)
+    awning(b, -w / 2 + 0.1, w / 2 - 0.1, -0.12, top - 0.35, depth=1.6, drop=0.5)
+    for o in b.col.objects:
+        if o.name.startswith("Awning.") and o.data.materials and o.data.materials[0] == b.mats["cloth"]:
+            o.data.materials[0] = b.mats["cloth3"]
+    # The deck: planks over joists, rails at its sides, open at the front.
+    b.block((-w / 2 - 0.6, -2.8, 0), (w / 2 + 0.6, 0, base), "wood", name="Deck", scale=2.0)
+    for sx in (-1, 1):
+        x = sx * (w / 2 + 0.5)
+        for y in (-2.7, -1.4, -0.1):
+            b.beam((x - 0.06, y - 0.06, base), (x + 0.06, y + 0.06, base + 1.0), band=DARK_WOOD)
+        b.beam((x - 0.05, -2.75, base + 0.92), (x + 0.05, 0, base + 1.02), band=LIGHT_WOOD)
+    for sx in (-1, 1):
+        for x in (sx * (w / 2 + 0.5), sx * 2.2):
+            b.beam((x - 0.06, -2.76, base), (x + 0.06, -2.64, base + 1.0), band=DARK_WOOD)
+        x0, x1 = sorted((sx * (w / 2 + 0.5), sx * 2.2))
+        b.beam((x0, -2.75, base + 0.92), (x1, -2.65, base + 1.02), band=LIGHT_WOOD)
+    hanging_sign(b, -w / 2 - 0.02, 1.0, 3.0, rot=-90, reach=1.0)
+    b.chimney(2.5, d - 1.2, piece="Prop_Chimney2", above=1.0)
+    b.collide("cafe", (-w / 2 - 0.1, -0.1, 0), (w / 2 + 0.1, d + 0.1, top))
+    b.roofs.append(((0.0, d / 2), True, (d / 2 + 0.7, w / 2 + 0.3), top, ridge))
+    b.front = (1.0, -1.6)
+    return b
+
+
+@building
+def bakery():
+    """The bakery: two storeys of warm plaster, a round brick bread oven
+    built onto its side with a tall chimney, an awning, and a hanging sign."""
+    b = Building("bakery", {"plaster": "butter", "roof": "red", "timber": "mid"})
+    w, d = 6, 8
+    b.box_storey(w, d, 0, "SDf", sides=("BSBB", "BPPB"), back="BFB")
+    b.jetty(w, STOREY, 0.4)
+    b.box_storey(w, d, STOREY, "TGT", sides=("PFPP", "PPFP"), back="PFP", jetty=0.4)
+    top = 2 * STOREY + WALL_TOP
+    b.gable_roof(w, d + 0.4, top, center=(0, (d - 0.4) / 2))
+    ridge = b.roof_z(0, d / 2)
+    # The oven: a brick drum on the east wall under a dome, and its stack.
+    ox, oy = w / 2, 4.6
+    b.solid("Oven", frustum_mesh("Oven", (ox, oy), 1.5, 1.5, 0.0, 1.6, 12, b.mats["brick"], tile=1.2,
+                                 rot=math.pi / 12, cap=False))
+    b.solid("OvenDome", cone_mesh("OvenDome", (ox, oy), 1.55, 1.6, 2.5, 12, b.mats["brick"], rings=2, flare=0.05,
+                                  tile=(1.2, 1.2), rot=math.pi / 12))
+    b.block((ox + 1.0, oy - 0.45, 0.4), (ox + 1.55, oy + 0.45, 1.2), "iron", name="OvenDoor", scale=1.0)
+    b.block((ox + 1.02, oy - 0.3, 0.5), (ox + 1.57, oy + 0.3, 1.0), "coals", name="OvenGlow", scale=1.0)
+    b.block((ox - 0.2, oy + 0.6, 0.0), (ox + 0.8, oy + 1.6, ridge + 1.6), "brick", name="Stack", scale=1.2)
+    b.block((ox - 0.3, oy + 0.5, ridge + 1.6), (ox + 0.9, oy + 1.7, ridge + 1.8), "rock", name="StackCap",
+            scale=1.0)
+    awning(b, -3.0, -1.0, -0.12, 2.75)
+    awning(b, 1.0, 3.0, -0.12, 2.75)
+    hanging_sign(b, -2.9, -0.5, 4.1, reach=1.3)
+    border(b, -3, 3, -0.05)
+    b.collide("shop", (-w / 2 - 0.1, -0.1, 0), (w / 2 + 0.1, d + 0.1, STOREY))
+    b.collide("oven", (ox, oy - 1.55, 0), (ox + 1.55, oy + 1.6, 2.5))
+    b.collide("upper", (-w / 2 - 0.1, -0.5, STOREY), (w / 2 + 0.1, d + 0.1, top))
+    b.roofs.append(((0.0, (d - 0.4) / 2), False, (w / 2 + 0.6, d / 2 + 0.4), top, ridge))
+    b.front = (-1.0, -0.9)
+    return b
+
+
+@building
+def smithy():
+    """The Foundry's forge: a low stone smithy under a slate roof with an
+    open lean-to forge on its side, a glowing hearth, a chimney, and an
+    anvil."""
+    b = Building("smithy", {"plaster": "white", "roof": "charcoal", "timber": "dark"})
+    w, d = 8, 8
+    b.box_storey(w, d, 0, ["B", "Q", "S", "B"], sides=("BSBB", "BBBB"), back="BBSB", stone=True)
+    top = STOREY + WALL_TOP
+    b.gable_roof(w, d, top, center=(0, d / 2), size=8, piece_len=8)
+    ridge = b.roof_z(0, d / 2)
+    # The open forge on the east side.
+    fx = w / 2
+    for y in (0.4, 4.0, 7.6):
+        b.beam((fx + 3.2, y - 0.12, 0), (fx + 3.44, y + 0.12, 2.5), band=DARK_WOOD)
+    b.beam((fx + 3.15, 0.2, 2.35), (fx + 3.5, 7.8, 2.55), band=DARK_WOOD)
+    lean_to(b, fx, fx + 3.8, 0.0, 8.0, 3.1, 2.4)
+    b.block((fx + 0.1, 2.5, 0), (fx + 1.6, 5.5, 0.85), "brick", name="Hearth", scale=1.2)
+    b.block((fx + 0.3, 2.8, 0.85), (fx + 1.4, 5.2, 0.92), "coals", name="Coals", scale=1.0)
+    b.solid("Hood", cone_mesh("Hood", (fx + 0.85, 4.0), 1.2, 1.9, 2.8, 4, b.mats["brick"], rings=1,
+                              rot=math.pi / 4, tile=(1.2, 1.2)))
+    b.block((fx + 0.35, 3.5, 2.6), (fx + 1.35, 4.5, ridge + 1.3), "brick", name="Chimney", scale=1.2)
+    b.block((fx + 0.25, 3.4, ridge + 1.3), (fx + 1.45, 4.6, ridge + 1.5), "rock", name="ChimneyCap", scale=1.0)
+    anvil(b, fx + 2.4, 2.0)
+    b.block((fx + 2.0, 6.2, 0), (fx + 3.0, 7.4, 0.6), "wood", name="Trough", scale=1.0)
+    b.block((fx + 2.08, 6.28, 0.5), (fx + 2.92, 7.32, 0.56), "glass", name="TroughWater", scale=1.0)
+    b.collide("smithy", (-w / 2 - 0.1, -0.1, 0), (w / 2 + 0.1, d + 0.1, top))
+    b.collide("forge", (fx, 0.2, 0), (fx + 3.5, 7.8, 2.4))
+    b.roofs.append(((0.0, d / 2), False, (w / 2 + 0.7, d / 2 + 0.3), top, ridge))
+    b.front = (-1.0, -0.9)
+    return b
+
+
+@building
+def windmill():
+    """A tower windmill for the long meadow: a tapering plaster tower on a
+    stone foot, a tiled cap, and four lattice sails with canvas."""
+    b = Building("windmill", {"plaster": "white", "roof": "brown", "timber": "mid"})
+    r0, r1, h = 3.2, 2.2, 9.0
+    a0 = r0 * math.cos(math.pi / 8)
+    cy = a0
+    rot0 = math.radians(-67.5)
+    b.solid("Foot", frustum_mesh("Foot", (0, cy), r0 + 0.25, r0 + 0.05, 0.0, 0.9, 8, b.mats["stone"], tile=2.6,
+                                 rot=rot0, cap=False))
+    b.solid("Tower", frustum_mesh("Tower", (0, cy), r0, r1, 0.0, h, 8, b.mats["plaster"], tile=3.0, rot=rot0))
+    for z, k in ((3.6, 0.0), (6.6, 0.0)):
+        rr = r0 + (r1 - r0) * z / h
+        b.solid("Band", frustum_mesh("Band", (0, cy), rr + 0.07, rr + 0.06, z, z + 0.22, 8, b.mats["wood"],
+                                     rot=rot0, band=DARK_WOOD, cap=False))
+    # The door and windows stand on the faces, leaning with them.
+    b.put("DoorFrame_Round_WoodDark", (0, 0.08, 0), 0)
+    b.put("Door_1_Round", (-0.55, 0.1, 0), 0)
+    for k, z in ((2, 4.2), (6, 4.2), (1, 6.8), (7, 6.8), (4, 5.5)):
+        theta = math.radians(-90 + 45 * k)
+        rz = (r0 + (r1 - r0) * (z + 1.3) / h) * math.cos(math.pi / 8)
+        p = Vector((rz * math.cos(theta), cy + rz * math.sin(theta), z))
+        b.put("Window_Thin_Round1", p + Vector((math.cos(theta), math.sin(theta), 0)) * 0.12,
+              math.degrees(theta) + 90)
+    # The cap: a short drum and a tiled cone, turned to the wind.
+    b.solid("CapRing", frustum_mesh("CapRing", (0, cy), r1 + 0.35, r1 + 0.3, h, h + 0.35, 8, b.mats["wood"],
+                                    rot=rot0, band=DARK_WOOD))
+    b.solid("Cap", cone_mesh("Cap", (0, cy), r1 + 0.55, h + 0.3, h + 3.0, 8, b.mats["tiles"], rings=3, rot=rot0,
+                             flare=0.15, tile=(1.6, 1.4)))
+    b.solid("CapFinial", cone_mesh("CapFinial", (0, cy), 0.1, h + 2.8, h + 3.5, 6, b.mats["iron"], rings=1))
+    hub = Vector((0, cy - r1 - 0.9, h + 0.9))
+    b.block((hub.x - 0.25, hub.y, hub.z - 0.25), (hub.x + 0.25, cy - r1 + 0.3, hub.z + 0.25), "wood", name="Shaft",
+            scale=1.0)
+    b.block((hub.x - 0.35, hub.y - 0.25, hub.z - 0.35), (hub.x + 0.35, hub.y + 0.1, hub.z + 0.35), "iron",
+            name="Hub", scale=1.0)
+    length, width = 7.2, 1.7
+    for k in range(4):
+        m = Matrix.Translation(hub) @ Matrix.Rotation(math.radians(45 + 90 * k), 4, "Y")
+        b.solid("Stock", box_mesh("Stock", (-0.1, -0.22, 0.2), (0.1, -0.08, length), b.mats["wood"],
+                                  band=LIGHT_WOOD, xf=m))
+        for x in (0.15, width):
+            b.solid("SailRail", box_mesh("SailRail", (x - 0.05, -0.2, 1.2), (x + 0.05, -0.1, length - 0.1),
+                                         b.mats["wood"], band=LIGHT_WOOD, xf=m))
+        for i in range(7):
+            z = 1.2 + (length - 1.3) * i / 6
+            b.solid("SailBar", box_mesh("SailBar", (0.1, -0.2, z - 0.04), (width + 0.05, -0.1, z + 0.04),
+                                        b.mats["wood"], band=LIGHT_WOOD, xf=m))
+        b.solid("Canvas", quad_mesh("Canvas", [[(0.2, -0.12, 1.25), (width - 0.05, -0.12, 1.25),
+                                                (width - 0.05, -0.12, length - 0.15), (0.2, -0.12, length - 0.15)]],
+                                    b.mats["cloth2"], xf=m))
+    b.collide("tower", (-r0 - 0.25, cy - a0 - 0.1, 0), (r0 + 0.25, cy + a0 + 0.1, h))
+    b.front = (0.0, -1.0)
+    return b
+
+
+@building
+def greenhouse():
+    """The Community Gardens' glasshouse: a brick base, white glazing bars,
+    pale glass, and benches of seedlings inside."""
+    b = Building("greenhouse", {"plaster": "white", "roof": "red", "timber": "light"})
+    w, d, base, eave, ridge = 4.4, 8.0, 0.6, 2.4, 3.6
+    hw = w / 2
+    for lo, hi in (((-hw, 0, 0), (hw, 0.22, base)), ((-hw, d - 0.22, 0), (hw, d, base)),
+                   ((-hw, 0, 0), (-hw + 0.22, d, base)), ((hw - 0.22, 0, 0), (hw, d, base))):
+        b.block(lo, hi, "brick", name="Base", scale=1.2)
+    glass = []
+    for x in (-hw + 0.11, hw - 0.11):
+        glass.append([(x, 0.1, base), (x, d - 0.1, base), (x, d - 0.1, eave), (x, 0.1, eave)])
+    for y in (0.11, d - 0.11):
+        glass.append([(-hw + 0.1, y, base), (hw - 0.1, y, base), (hw - 0.1, y, eave), (-hw + 0.1, y, eave)])
+        glass.append([(-hw + 0.1, y, eave), (hw - 0.1, y, eave), (0, y, ridge)])
+    for sx in (-1, 1):
+        glass.append([(sx * hw, 0.0, eave + 0.02), (sx * hw, d, eave + 0.02), (0, d, ridge + 0.02),
+                      (0, 0.0, ridge + 0.02)])
+    b.solid("Glass", poly_mesh("Glass", glass, b.mats["glass_clear"]))
+    white = "white_paint"
+    for i in range(9):
+        y = d * i / 8
+        for sx in (-1, 1):
+            b.block((sx * hw - 0.05, y - 0.05, base), (sx * hw + 0.05, y + 0.05, eave), white, name="Mullion")
+            m = (Matrix.Translation(Vector((sx * hw, y, eave))) @ Matrix.Rotation(math.radians(0 if sx < 0 else 180), 4, "Z")
+                 @ Matrix.Rotation(-math.atan2(ridge - eave, hw), 4, "Y"))
+            b.solid("Rafter", box_mesh("Rafter", (0.0, -0.05, 0.0), (math.hypot(hw, ridge - eave), 0.05, 0.08),
+                                       b.mats[white], xf=m))
+    for x in (-1.1, 0.0, 1.1):
+        for y in (0.11, d - 0.11):
+            if not (x == 0.0 and y < 1):
+                b.block((x - 0.04, y - 0.05, base), (x + 0.04, y + 0.05, eave), white, name="Mullion")
+    b.block((-hw - 0.06, -0.06, eave - 0.06), (hw + 0.06, d + 0.06, eave + 0.04), white, name="Plate")
+    b.block((-0.08, -0.1, ridge - 0.05), (0.08, d + 0.1, ridge + 0.12), white, name="RidgeBar")
+    for x in (-0.55, 0.47):
+        b.block((x, -0.08, 0), (x + 0.08, 0.08, 2.15), white, name="DoorJamb")
+    b.block((-0.55, -0.08, 2.07), (0.55, 0.08, 2.15), white, name="DoorHead")
+    b.block((-0.47, -0.04, 1.0), (0.47, 0.04, 1.06), white, name="DoorRail")
+    for sx in (-1, 1):
+        b.block((sx * 1.3 - 0.5, 0.6, 0.0), (sx * 1.3 + 0.5, d - 0.6, 0.8), "wood", name="Bench", scale=1.0)
+        for i in range(7):
+            y = 1.1 + i * 0.95
+            b.solid("Seedling", cone_mesh("Seedling", (sx * 1.3, y), 0.32, 0.8, 1.45, 5, b.mats["leaf"], rings=1))
+    b.collide("greenhouse", (-hw - 0.05, -0.1, 0), (hw + 0.05, d + 0.05, eave))
+    b.roofs.append(((0.0, d / 2), False, (hw, d / 2), eave, ridge))
+    b.front = (0.0, -0.9)
+    return b
+
+
+@building
+def clock_tower():
+    """A plaza landmark: a stone clock tower with an open belfry and a tall
+    slate spire, and a small chapel-like hall behind it."""
+    b = Building("clock_tower", {"plaster": "white", "roof": "slate", "timber": "dark"})
+    s, body = 2.2, 12.0
+    cz = s
+    b.block((-s - 0.2, -0.2, 0), (s + 0.2, 2 * s + 0.2, 0.7), "rock", name="TowerPlinth", scale=1.5)
+    b.block((-s, 0, 0.7), (s, 2 * s, body), "stone", name="Tower", scale=2.6)
+    for z in (4.6, 8.6, body - 0.2):
+        b.block((-s - 0.1, -0.1, z), (s + 0.1, 2 * s + 0.1, z + 0.3), "rock", name="Course", scale=1.0)
+    b.put("DoorFrame_Round_WoodDark", (0, -0.02, 0.7), 0)
+    b.door("Door_1_Round", Vector((0, -0.04, 0.7)), 0, 1.0, 1.0)
+    b.block((-1.0, -1.0, 0), (1.0, 0, 0.35), "rock", name="Step", scale=1.0)
+    for z in (5.4,):
+        b.put("Window_Thin_Round1", (0, -0.12, z), 0)
+        b.put("Window_Thin_Round1", (-s - 0.12, cz, z), -90)
+        b.put("Window_Thin_Round1", (s + 0.12, cz, z), 90)
+    for rot, (x, y) in ((0, (0, 0)), (90, (s, cz)), (180, (0, 2 * s)), (270, (-s, cz))):
+        clock_face(b, x, y, 10.2, rot, r=0.95)
+    # The belfry: four piers, a bell, louvres, and a cornice.
+    z0 = body + 0.1
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            px, py = sx * (s - 0.35), cz + sy * (s - 0.35)
+            b.block((px - 0.35, py - 0.35, z0), (px + 0.35, py + 0.35, z0 + 2.6), "stone", name="Pier", scale=2.6)
+    b.block((-s + 0.4, cz - s + 0.4, z0), (s - 0.4, cz + s - 0.4, z0 + 0.15), "wood", name="BelfryFloor")
+    b.solid("Bell", cone_mesh("Bell", (0, cz), 0.65, z0 + 0.7, z0 + 1.9, 10, b.mats["metal"], rings=1, flare=0.1))
+    for k in range(4):
+        zz = z0 + 0.9 + k * 0.4
+        b.beam((-s + 0.7, -0.05, zz), (s - 0.7, 0.05, zz + 0.1), band=DARK_WOOD)
+        b.beam((-s + 0.7, 2 * s - 0.05, zz), (s - 0.7, 2 * s + 0.05, zz + 0.1), band=DARK_WOOD)
+    b.block((-s - 0.25, -0.25, z0 + 2.6), (s + 0.25, 2 * s + 0.25, z0 + 3.0), "rock", name="Cornice", scale=1.0)
+    top = z0 + 3.0
+    b.solid("Spire", cone_mesh("Spire", (0, cz), (s + 0.3) * math.sqrt(2), top, top + 7.0, 4, b.mats["tiles"],
+                               rings=3, rot=math.pi / 4, flare=0.2, tile=(1.6, 1.4)))
+    b.solid("SpireRod", cone_mesh("SpireRod", (0, cz), 0.07, top + 6.7, top + 8.2, 6, b.mats["iron"], rings=1))
+    b.solid("SpireBall", cone_mesh("SpireBall", (0, cz), 0.2, top + 7.0, top + 7.3, 8, b.mats["paint"], rings=1))
+    for sx in (-1, 1):
+        b.solid("Pinnacle", cone_mesh("Pinnacle", (sx * s, 0), 0.25, top, top + 1.4, 4, b.mats["rock"], rings=1,
+                                      rot=math.pi / 4))
+        b.solid("Pinnacle", cone_mesh("Pinnacle", (sx * s, 2 * s), 0.25, top, top + 1.4, 4, b.mats["rock"], rings=1,
+                                      rot=math.pi / 4))
+    # The hall behind: stone walls, tall windows, a steep tiled roof.
+    hw, y0, y1, tall = 3.0, 2 * s, 2 * s + 8.0, 4.0
+    b.run("tTtT", (-hw, y1, 0), -90, 0, height=tall, stone=True)
+    b.run("TtTt", (hw, y0, 0), 90, 0, height=tall, stone=True)
+    b.run("BTB", (hw, y1, 0), 180, 0, height=tall, stone=True)
+    b.run("BPB", (-hw, y0, 0), 0, 0, height=tall, stone=True)
+    b.corners([(-hw, y0), (hw, y0), (-hw, y1), (hw, y1)], 0, tall)
+    htop = tall * (STOREY + WALL_TOP) / STOREY
+    b.gable_roof(2 * hw, y1 - y0 + 0.6, htop, center=(0, (y0 + y1) / 2 + 0.3), size=6, piece_len=8,
+                 ends=(False, True))
+    hall_ridge = b.roof_z(0, (y0 + y1) / 2 + 1.0)
+    b.collide("tower", (-s - 0.2, -0.2, 0), (s + 0.2, 2 * s + 0.2, top))
+    b.collide("hall", (-hw - 0.1, y0, 0), (hw + 0.1, y1 + 0.1, htop))
+    b.collide("step", (-1.0, -1.0, 0), (1.0, 0, 0.35))
+    b.roofs.append(((0.0, (y0 + y1) / 2 + 0.3), False, (hw + 0.6, (y1 - y0) / 2 + 0.3), htop, hall_ridge))
+    b.front = (0.0, -1.6)
+    return b
+
+
+@building
+def guild_hall():
+    """A guild hall: a stone ground floor with arched windows and double
+    doors, a jettied upper floor, guild banners, dormers, and a round
+    corner turret."""
+    b = Building("guild_hall", {"plaster": "lilac", "roof": "plum", "timber": "dark"})
+    w, d = 12, 10
+    b.box_storey(w, d, 0, ["W", "W", ("E", 4), "W", "W"], sides=("BWBWB", "BWBWB"), back="BFBBFB", stone=True)
+    b.jetty(w, STOREY, 0.6)
+    b.box_storey(w, d, STOREY, "SfGGfS", sides=("PFPFP", "PFPFP"), back="PFPPFP", jetty=0.6)
+    top = 2 * STOREY + WALL_TOP
+    b.gable_roof(d + 0.6, w, top, center=(0, (d - 0.6) / 2), along_x=True, size=8, piece_len=12)
+    ridge = b.roof_z(0, d / 2)
+    for x in (-3.0, 3.0):
+        b.dormer(x, -0.6)
+    b.chimney(-4.5, d - 2.0, piece="Prop_Chimney2", above=1.4)
+    b.chimney(4.5, d - 2.0, piece="Prop_Chimney2", above=1.4)
+    for x in (-1.5, 1.5):
+        banner(b, x, -0.69, 2 * STOREY - 0.15, w=0.8, h=1.7, cloth="cloth4")
+    for x in (-2.75, 2.75):
+        lantern(b, x, -0.09, 2.25)
+    round_tower(b, w / 2 + 0.3, -0.3, 1.3, 8.6, roof_h=3.4, windows=((-60, 2.4), (-30, 5.4), (30, 5.4)))
+    b.collide("ground", (-w / 2 - 0.1, -0.1, 0), (w / 2 + 0.1, d + 0.1, STOREY))
+    b.collide("upper", (-w / 2 - 0.1, -0.7, STOREY), (w / 2 + 0.1, d + 0.1, top))
+    b.roofs.append(((0.0, (d - 0.6) / 2), True, (d / 2 + 1.0, w / 2 + 0.5), top, ridge))
+    b.front = (0.0, -0.9)
+    return b
+
+
+@building
+def lookout():
+    """A timber lookout tower on four legs, with a ladder, a railed platform
+    seven meters up, and a pyramid roof."""
+    b = Building("lookout", {"plaster": "white", "roof": "green", "timber": "mid"})
+    h, s, cy = 7.0, 1.3, 1.5
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            x, y = sx * s, cy + sy * s
+            b.beam((x - 0.13, y - 0.13, 0), (x + 0.13, y + 0.13, h + 2.4), band=DARK_WOOD)
+            b.block((x - 0.25, y - 0.25, 0), (x + 0.25, y + 0.25, 0.3), "rock", name="Pad", scale=1.0)
+    for z in (2.4, 4.8):
+        b.beam((-s, cy - s - 0.06, z), (s, cy - s + 0.06, z + 0.14), band=LIGHT_WOOD)
+        b.beam((-s, cy + s - 0.06, z), (s, cy + s + 0.06, z + 0.14), band=LIGHT_WOOD)
+        b.beam((-s - 0.06, cy - s, z), (-s + 0.06, cy + s, z + 0.14), band=LIGHT_WOOD)
+        b.beam((s - 0.06, cy - s, z), (s + 0.06, cy + s, z + 0.14), band=LIGHT_WOOD)
+    b.block((-s - 0.4, cy - s - 0.4, h), (s + 0.4, cy + s + 0.4, h + 0.2), "wood", name="Platform")
+    for z in (h + 0.55, h + 1.0):
+        for sy in (-1, 1):
+            b.beam((-s - 0.35, cy + sy * (s + 0.35) - 0.04, z), (s + 0.35, cy + sy * (s + 0.35) + 0.04, z + 0.08),
+                   band=LIGHT_WOOD)
+        for sx in (-1, 1):
+            b.beam((sx * (s + 0.35) - 0.04, cy - s - 0.35, z), (sx * (s + 0.35) + 0.04, cy + s + 0.35, z + 0.08),
+                   band=LIGHT_WOOD)
+    for x in (-0.3, 0.3):
+        b.beam((x - 0.04, cy - s - 0.25, 0), (x + 0.04, cy - s - 0.17, h + 1.0), band=LIGHT_WOOD)
+    for i in range(int(h / 0.4)):
+        z = 0.3 + i * 0.4
+        b.beam((-0.3, cy - s - 0.24, z), (0.3, cy - s - 0.18, z + 0.05), band=LIGHT_WOOD)
+    b.solid("Roof", cone_mesh("Roof", (0, cy), (s + 0.6) * math.sqrt(2), h + 2.4, h + 4.0, 4, b.mats["tiles"],
+                              rings=2, rot=math.pi / 4, flare=0.12, tile=(1.4, 1.2)))
+    b.solid("Flagpole", cone_mesh("Flagpole", (0, cy), 0.04, h + 3.8, h + 5.2, 5, b.mats["iron"], rings=1))
+    b.solid("Flag", poly_mesh("Flag", [[(0.04, cy, h + 5.1), (0.9, cy, h + 4.85), (0.04, cy, h + 4.6)]],
+                              b.mats["cloth"]))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            x, y = sx * s, cy + sy * s
+            b.collide("leg", (x - 0.25, y - 0.25, 0), (x + 0.25, y + 0.25, h))
+    b.front = (0.0, -1.0)
+    b.inside = (0.0, cy)
+    return b
+
+
+@building
+def log_cabin():
+    """A Walden Woods cabin of round logs, a shingled roof, a stone
+    chimney, and a porch."""
+    b = Building("log_cabin", {"plaster": "white", "roof": "brown", "timber": "mid"})
+    w, d, r = 6.0, 5.0, 0.17
+    courses = 8
+    for i in range(courses):
+        z = r + i * 2 * r * 0.92
+        for y in (0.0, d):
+            b.solid("Log", log_mesh("Log", (-w / 2 - 0.35, y, z), (w / 2 + 0.35, y, z), r, b.mats["wood"]))
+        zz = z + r * 0.92
+        for x in (-w / 2, w / 2):
+            b.solid("Log", log_mesh("Log", (x, -0.35, zz), (x, d + 0.35, zz), r, b.mats["wood"]))
+    top = r + courses * 2 * r * 0.92
+    ridge = slab_roof(b, w, d, top, 2.2, center=(0, d / 2), mat="tiles", over=0.6, thick=0.16, gable="boards")
+    # Door and windows set in the front logs.
+    b.block((-1.6, -0.3, 0.0), (-0.6, -0.12, 2.1), "boards", name="Door", scale=1.0)
+    b.block((-1.72, -0.32, 0.0), (-1.6, -0.1, 2.2), "wood", name="Jamb", scale=1.0)
+    b.block((-0.6, -0.32, 0.0), (-0.48, -0.1, 2.2), "wood", name="Jamb", scale=1.0)
+    b.block((-1.72, -0.32, 2.1), (-0.48, -0.1, 2.25), "wood", name="Lintel", scale=1.0)
+    for x, y, rot in ((1.4, -0.2, 0), (-w / 2 - 0.2, 2.5, -90), (w / 2 + 0.2, 2.5, 90), (0.0, d + 0.2, 180)):
+        m = frame(rot, (x, y, 1.5))
+        b.solid("Window", box_mesh("Window", (-0.5, -0.08, -0.4), (0.5, 0.02, 0.4), b.mats["glass"], xf=m))
+        for lo, hi in (((-0.6, -0.12, -0.5), (0.6, 0.0, -0.4)), ((-0.6, -0.12, 0.4), (0.6, 0.0, 0.5)),
+                       ((-0.6, -0.12, -0.4), (-0.5, 0.0, 0.4)), ((0.5, -0.12, -0.4), (0.6, 0.0, 0.4)),
+                       ((-0.03, -0.11, -0.4), (0.03, -0.01, 0.4))):
+            b.solid("WindowFrame", box_mesh("WindowFrame", lo, hi, b.mats["wood"], band=LIGHT_WOOD, xf=m))
+    # The stone chimney on the west gable.
+    cx = -w / 2 - 0.55
+    b.block((cx - 0.5, 1.9, 0), (cx + 0.5, 3.1, 2.4), "stone", name="Chimney", scale=2.0)
+    b.block((cx - 0.35, 2.1, 2.4), (cx + 0.35, 2.9, ridge + 1.0), "stone", name="Chimney", scale=2.0)
+    # The porch: a plank floor, two posts, and a lean-to.
+    b.block((-w / 2, -1.8, 0), (w / 2, -0.2, 0.18), "wood", name="Porch")
+    for x in (-w / 2 + 0.2, w / 2 - 0.2):
+        b.beam((x - 0.1, -1.7, 0.18), (x + 0.1, -1.5, 2.3), band=DARK_WOOD)
+    m = Matrix.Translation(Vector((0, -0.2, 2.6))) @ Matrix.Rotation(math.radians(-90), 4, "Z") @ Matrix.Rotation(
+        math.atan2(0.45, 1.8), 4, "Y")
+    b.solid("PorchRoof", box_mesh("PorchRoof", (0.0, -w / 2 - 0.2, -0.1), (2.0, w / 2 + 0.2, 0.0), b.mats["tiles"],
+                                  xf=m))
+    b.collide("cabin", (-w / 2 - 0.2, -0.2, 0), (w / 2 + 0.2, d + 0.2, top))
+    b.collide("chimney", (cx - 0.5, 1.9, 0), (cx + 0.5, 3.1, 2.4))
+    for x in (-w / 2 + 0.2, w / 2 - 0.2):
+        b.collide("post", (x - 0.12, -1.72, 0), (x + 0.12, -1.48, 2.3))
+    b.roofs.append(((0.0, d / 2), False, (w / 2 + 0.6, d / 2 + 0.6), top, ridge))
+    b.front = (-1.1, -1.0)
+    return b
+
+
+@building
+def gazebo():
+    """An open octagonal garden gazebo on a raised floor, with railings and
+    a tiled roof."""
+    b = Building("gazebo", {"plaster": "white", "roof": "teal", "timber": "light"})
+    R, h = 2.6, 2.6
+    a = R * math.cos(math.pi / 8)
+    cy = a + 0.3
+    rot0 = math.radians(-67.5)
+    b.solid("Floor", frustum_mesh("Floor", (0, cy), R + 0.15, R + 0.1, 0.0, 0.22, 8, b.mats["wood"], rot=rot0,
+                                  band=LIGHT_WOOD))
+    pts = []
+    for k in range(8):
+        ang = rot0 + math.pi * k / 4
+        p = (R * math.cos(ang), cy + R * math.sin(ang))
+        pts.append(p)
+        b.block((p[0] - 0.09, p[1] - 0.09, 0.22), (p[0] + 0.09, p[1] + 0.09, h), "white_paint", name="Post")
+    for k in range(8):
+        if k == 7:  # The open side, between the two front posts.
+            continue
+        (x0, y0), (x1, y1) = pts[k], pts[(k + 1) % 8]
+        for z in (0.6, 1.0):
+            length = math.hypot(x1 - x0, y1 - y0)
+            m = Matrix.Translation(Vector((x0, y0, z))) @ Matrix.Rotation(math.atan2(y1 - y0, x1 - x0), 4, "Z")
+            b.solid("Rail", box_mesh("Rail", (0, -0.04, 0), (length, 0.04, 0.07), b.mats["white_paint"], xf=m))
+    b.solid("Roof", cone_mesh("Roof", (0, cy), R + 0.6, h, h + 2.0, 8, b.mats["tiles"], rings=2, rot=rot0,
+                              flare=0.15, tile=(1.4, 1.2)))
+    b.solid("Cupola", frustum_mesh("Cupola", (0, cy), 0.5, 0.5, h + 1.4, h + 2.0, 8, b.mats["white_paint"],
+                                   rot=rot0))
+    b.solid("CupolaRoof", cone_mesh("CupolaRoof", (0, cy), 0.75, h + 2.0, h + 2.7, 8, b.mats["tiles"], rings=1,
+                                    rot=rot0))
+    b.solid("Finial", cone_mesh("Finial", (0, cy), 0.05, h + 2.6, h + 3.1, 5, b.mats["iron"], rings=1))
+    b.block((-1.0, -0.25, 0), (1.0, 0.35, 0.11), "wood", name="Step")
+    for x, y in pts:
+        b.collide("post", (x - 0.12, y - 0.12, 0), (x + 0.12, y + 0.12, h))
+    b.front = (0.0, -0.8)
+    b.inside = (0.0, cy)
+    return b
+
+
+def thatched(name, scheme, w, d, fronts, sides, back, rise=3.0):
+    """A one-storey timber-framed house under a thick thatched roof."""
+    b = Building(name, scheme)
+    b.box_storey(w, d, 0, fronts, sides=sides, back=back)
+    top = STOREY + WALL_TOP
+    # The thatch sits on the wall plates, clear of the kit walls' top beams.
+    ridge = slab_roof(b, d, w, top + 0.3, rise, center=(0, d / 2), along_x=True, mat="thatch", over=0.8,
+                      thick=0.45, gable="plaster", ridge_mat="thatch_dark", courses=(0.36, 0.72, 0.97))
+    b.solid("RidgeRoll", log_mesh("RidgeRoll", (-w / 2 - 0.9, d / 2, ridge - 0.05), (w / 2 + 0.9, d / 2, ridge - 0.05),
+                                  0.32, b.mats["thatch_dark"], sides=8))
+    b.chimney(w / 2 - 1.4, d / 2 + 0.6, piece="Prop_Chimney2", above=1.0)
+    b.collide("house", (-w / 2 - 0.1, -0.1, 0), (w / 2 + 0.1, d + 0.1, top))
+    b.roofs.append(((0.0, d / 2), True, (d / 2 + 0.75, w / 2 + 0.75), top, ridge))
+    return b
+
+
+@building
+def farmhouse():
+    """A long farmhouse under thick thatch, for the farm edge by the orchard."""
+    b = thatched("farmhouse", {"plaster": "white", "roof": "red", "timber": "dark"}, 10, 6,
+                 ["G", "S", "Q", "S", "G"], ("GSG", "GSG"), "GPSPG", rise=3.2)
+    b.front = (0.0, -0.9)
+    return b
+
+
+@building
+def cottage_thatch():
+    """A small thatched cottage with a round-topped door and shuttered windows."""
+    b = thatched("cottage_thatch", {"plaster": "terracotta", "roof": "red", "timber": "mid"}, 6, 5,
+                 ["W", "D", "W"], ("PSP", "PSP"), "PFP", rise=2.6)
+    b.front = (-1.0, -0.9)
     return b
 
 

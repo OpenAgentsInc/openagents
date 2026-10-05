@@ -1,0 +1,40 @@
+{
+  "model": "farmhouse.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 5486,
+  "boxes": [
+    {
+      "name": "house",
+      "center": [
+        0.0,
+        1.56,
+        -3.0
+      ],
+      "half_extents": [
+        5.1,
+        1.56,
+        3.1
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -3.0
+      ],
+      "slopes_z": true,
+      "half": [
+        3.75,
+        5.75
+      ],
+      "eave": 3.12,
+      "ridge": 6.62
+    }
+  ],
+  "front": [
+    0.0,
+    0.9
+  ],
+  "inside": null
+}

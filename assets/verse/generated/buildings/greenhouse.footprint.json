@@ -1,0 +1,40 @@
+{
+  "model": "greenhouse.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 790,
+  "boxes": [
+    {
+      "name": "greenhouse",
+      "center": [
+        0.0,
+        1.2,
+        -3.975
+      ],
+      "half_extents": [
+        2.25,
+        1.2,
+        4.075
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -4.0
+      ],
+      "slopes_z": false,
+      "half": [
+        2.2,
+        4.0
+      ],
+      "eave": 2.4,
+      "ridge": 3.6
+    }
+  ],
+  "front": [
+    0.0,
+    0.9
+  ],
+  "inside": null
+}
