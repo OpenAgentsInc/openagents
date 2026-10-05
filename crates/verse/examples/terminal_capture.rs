@@ -72,6 +72,10 @@ fn main() -> Result<(), String> {
         overlay.draw(&mut batch, &atlas, size);
         std::thread::sleep(Duration::from_millis(50));
     }
+    // The hotbar button, with the pointer resting on it to show its card.
+    let button = Overlay::button_for(size, scale, None);
+    overlay.button = Some(button);
+    overlay.pointer([button.x + button.w / 2.0, button.y + button.h / 2.0]);
     let mut batch = verse::ui::UiBatch::default();
     overlay.draw(&mut batch, &atlas, size);
     let runtime = WorldRuntime::new();

@@ -38,7 +38,7 @@ pub struct KeyIn {
 }
 
 /// The overlay's help line.
-pub const HELP: &str = "Ctrl+B then: % side by side · \" stacked · arrows focus · x close · z zoom · c tab · n/p tabs · o OpenAgents Terminal · Esc world  |  Ctrl+` or Cmd+T: world";
+pub const HELP: &str = "Ctrl+B then  % \" split · arrows focus · x close · z zoom · c n p tabs · o OpenAgents Terminal · Esc world   Ctrl+` world";
 
 struct Pane {
     session: Session,
@@ -78,6 +78,9 @@ pub struct Overlay {
     next: PaneId,
     prefix: bool,
     mods: ModifiersState,
+    /// Where the hotbar button sits this frame, in pixels, when it shows.
+    pub button: Option<Rect>,
+    pointer: [f32; 2],
     /// The panes' area when last drawn, in pixels.
     area: Rect,
     cell: [f32; 2],
@@ -116,6 +119,8 @@ impl Overlay {
             next: 1,
             prefix: false,
             mods: ModifiersState::empty(),
+            button: None,
+            pointer: [-1.0, -1.0],
             area: Rect::new(0.0, 0.0, 960.0, 600.0),
             cell: [9.0, 18.0],
             notice: None,
@@ -182,6 +187,23 @@ impl Overlay {
         });
         self.first = Some(first.clone());
         first
+    }
+
+    /// The button's square in pixels: right of `tray` (a hotbar's frame
+    /// in pixels) when there is one, else in the bottom-right corner.
+    #[must_use]
+    pub fn button_for(size: [f32; 2], scale: f32, tray: Option<[f32; 4]>) -> Rect {
+        match tray {
+            Some([x, y, w, h]) => {
+                let inset = h * 0.15;
+                Rect::new(x + w + inset, y + inset, h - 2.0 * inset, h - 2.0 * inset)
+            }
+            None => {
+                let edge = 44.0 * scale;
+                let margin = 12.0 * scale;
+                Rect::new(size[0] - edge - margin, size[1] - edge - margin, edge, edge)
+            }
+        }
     }
 
     /// The panes' area in a window of `size` pixels: most of the screen,
@@ -659,8 +681,111 @@ impl Overlay {
         }
     }
 
-    /// Draws the overlay over a window of `size` pixels with `atlas`.
+    /// Draws the overlay over a window of `size` pixels with `atlas`, and
+    /// the terminal's hotbar button when it has a place.
     pub fn draw(&mut self, batch: &mut UiBatch, atlas: &Atlas, size: [f32; 2]) {
+        self.draw_overlay(batch, atlas, size);
+        if let Some(rect) = self.button {
+            self.draw_button(batch, atlas, size, rect);
+        }
+    }
+
+    /// Records where the pointer is, in pixels, for the button's card.
+    pub fn pointer(&mut self, point: [f32; 2]) {
+        self.pointer = point;
+    }
+
+    /// Whether `point` is on the terminal's hotbar button.
+    #[must_use]
+    pub fn on_button(&self, point: [f32; 2]) -> bool {
+        self.button.is_some_and(|rect| rect.contains(point))
+    }
+
+    /// The button: a hotbar slot with a prompt icon and its key, and a
+    /// card over it while the pointer rests on it.
+    fn draw_button(&self, batch: &mut UiBatch, atlas: &Atlas, size: [f32; 2], rect: Rect) {
+        let [cw, ch] = draw::cell_size(atlas);
+        let lit = self.open || rect.contains(self.pointer);
+        batch.rect(atlas, rect.x, rect.y, rect.w, rect.h, draw::field(0.85));
+        batch.frame(
+            atlas,
+            rect.x,
+            rect.y,
+            rect.w,
+            rect.h,
+            (rect.w / 32.0).round().max(1.0),
+            draw::white(
+                if lit {
+                    Intensity::Full
+                } else {
+                    Intensity::Half
+                },
+                1.0,
+            ),
+        );
+        let icon = ">_";
+        let x = rect.x + (rect.w - 2.0 * cw) / 2.0;
+        let y = rect.y + (rect.h - ch) / 2.0;
+        let color = draw::white(
+            if lit {
+                Intensity::Full
+            } else {
+                Intensity::ThreeQuarters
+            },
+            1.0,
+        );
+        batch.text(atlas, x, y, icon, color);
+        batch.text(atlas, x + 1.0, y, icon, color);
+        batch.text(
+            atlas,
+            rect.x + 3.0,
+            rect.y + 1.0,
+            "T",
+            draw::white(Intensity::Half, 1.0),
+        );
+        if !rect.contains(self.pointer) {
+            return;
+        }
+        let lines = [
+            ("Terminal", Intensity::Full),
+            (
+                "Opens terminals over the world: OpenAgents Terminal first,",
+                Intensity::ThreeQuarters,
+            ),
+            (
+                "then splits with your shell. Ctrl+B is the prefix.",
+                Intensity::ThreeQuarters,
+            ),
+            ("T or click · Ctrl+` focus", Intensity::Half),
+        ];
+        let width = lines
+            .iter()
+            .map(|(line, _)| line.chars().count())
+            .max()
+            .unwrap_or(0) as f32
+            * cw
+            + 2.0 * cw;
+        let height = lines.len() as f32 * (ch + 2.0) + ch;
+        let x = (rect.x + rect.w - width).clamp(4.0, (size[0] - width - 4.0).max(4.0));
+        let y = (rect.y - height - 8.0).max(4.0);
+        batch.rect(atlas, x, y, width, height, draw::field(0.95));
+        batch.frame(
+            atlas,
+            x,
+            y,
+            width,
+            height,
+            1.0,
+            draw::white(Intensity::Half, 1.0),
+        );
+        let mut line_y = y + ch / 2.0;
+        for (line, step) in lines {
+            batch.text(atlas, x + cw, line_y, line, draw::white(step, 1.0));
+            line_y += ch + 2.0;
+        }
+    }
+
+    fn draw_overlay(&mut self, batch: &mut UiBatch, atlas: &Atlas, size: [f32; 2]) {
         if !self.open {
             // Sessions keep running hidden; their output still applies.
             self.tick();

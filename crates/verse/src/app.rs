@@ -736,6 +736,10 @@ fn block_by_name(session: &mut Session, name: &str, block: bool) -> String {
 
 impl App {
     fn new(options: &Options) -> Result<Self, String> {
+        // Find OpenAgents Terminal for the terminal overlay ahead of time:
+        // a fresh build's first run can take seconds while macOS checks it.
+        #[cfg(not(test))]
+        std::thread::spawn(crate::terminal::pty::Program::openagents_terminal);
         let world = world::build();
         let mut player = PlayerController::new(world::SPAWN, 0.0);
         let mut session = match &options.relay {
@@ -2705,6 +2709,11 @@ impl App {
 
     fn button(&mut self, button: MouseButton, pressed: bool) {
         if button == MouseButton::Left {
+            if pressed && self.terminal.on_button(self.cursor) {
+                self.terminal_press = true;
+                self.toggle_terminal();
+                return;
+            }
             if pressed {
                 self.terminal_press = self.terminal.press(self.cursor);
                 if self.terminal_press {
@@ -3534,6 +3543,13 @@ impl App {
             }
             None => crate::ui::UiBatch::default(),
         };
+        // The terminal's hotbar button: right of Everglade's tray, else in
+        // the bottom-right corner.
+        let tray = self.in_bare_everglade().then(|| {
+            zones::everglade::hotbar::frame(size.map(|v| v / self.scale), HOTBAR_BOTTOM)
+                .map(|v| v * self.scale)
+        });
+        self.terminal.button = Some(crate::terminal::Overlay::button_for(size, self.scale, tray));
         // The terminal overlay draws over every other HUD element.
         match &self.atlas {
             Some(atlas) => self.terminal.draw(&mut ui, atlas, size),
@@ -3912,6 +3928,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = [position.x as f32, position.y as f32];
+                self.terminal.pointer(self.cursor);
                 if let Some(tap) = &mut self.companion_press {
                     tap.moved(self.cursor.map(|value| value / self.scale));
                 }

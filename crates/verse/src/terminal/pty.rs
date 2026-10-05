@@ -146,7 +146,7 @@ fn has_terminal(program: &Path) -> bool {
     else {
         return false;
     };
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + Duration::from_secs(15);
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return status.success(),
