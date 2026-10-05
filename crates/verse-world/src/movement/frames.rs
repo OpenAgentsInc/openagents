@@ -8,6 +8,61 @@ pub const MAX_QUEUED: usize = 16;
 pub const MAX_LAG: u64 = 32;
 pub const BOOTSTRAP_LAG: u64 = 48;
 pub const ACK_TICKS: u64 = 12;
+/// The authority boundary that retires an expired character clock.
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpiryOrigin {
+    Admission,
+    PrimaryTick,
+    AdditionalTick,
+}
+/// Numeric clock evidence contains no input, position, or principal identity.
+#[derive(Clone, Debug, Serialize)]
+pub struct ExpirySample {
+    pub actor: u64,
+    pub epoch: u64,
+    pub authority_tick: u64,
+    pub origin: ExpiryOrigin,
+    pub world_step: u64,
+    pub confirmed_step: u64,
+    pub projected_step: u64,
+    pub received_at: u64,
+    pub applied_sequence: u64,
+    pub queued_frames: usize,
+    pub queued_steps: u64,
+    pub first_start: Option<u64>,
+    pub last_end: Option<u64>,
+}
+/// Runtime-only totals and the first bounded expiry samples, separate from saves.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct ExpiryObservations {
+    pub total: u64,
+    pub admission: u64,
+    pub primary_tick: u64,
+    pub additional_tick: u64,
+    pub bootstrap: u64,
+    pub samples: Vec<ExpirySample>,
+    pub omitted: u64,
+}
+impl ExpiryObservations {
+    pub(crate) fn record(&mut self, sample: ExpirySample) {
+        self.total = self.total.saturating_add(1);
+        let count = match sample.origin {
+            ExpiryOrigin::Admission => &mut self.admission,
+            ExpiryOrigin::PrimaryTick => &mut self.primary_tick,
+            ExpiryOrigin::AdditionalTick => &mut self.additional_tick,
+        };
+        *count = count.saturating_add(1);
+        if sample.applied_sequence == 0 {
+            self.bootstrap = self.bootstrap.saturating_add(1);
+        }
+        if self.samples.len() < 32 {
+            self.samples.push(sample);
+        } else {
+            self.omitted = self.omitted.saturating_add(1);
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Segment {
@@ -151,6 +206,42 @@ impl Clock {
             } else {
                 MAX_LAG
             }
+    }
+    pub(crate) fn expiry_sample(
+        &self,
+        actor: u64,
+        epoch: u64,
+        authority_tick: u64,
+        world_step: u64,
+        origin: ExpiryOrigin,
+    ) -> ExpirySample {
+        let mut projected_step = self.step;
+        let mut work = 0;
+        for frame in &self.queue {
+            let Ok(end) = frame.end() else { break };
+            if end > world_step || work + frame.steps > MAX_STEPS {
+                break;
+            }
+            projected_step = end;
+            work += frame.steps;
+        }
+        ExpirySample {
+            actor,
+            epoch,
+            authority_tick,
+            origin,
+            world_step,
+            confirmed_step: self.step,
+            projected_step,
+            received_at: self.received_at,
+            applied_sequence: self.applied_sequence,
+            queued_frames: self.queue.len(),
+            queued_steps: self.queue.iter().fold(0u64, |sum, frame| {
+                sum.saturating_add(u64::from(frame.steps))
+            }),
+            first_start: self.queue.front().map(|frame| frame.start),
+            last_end: self.queue.back().and_then(|frame| frame.end().ok()),
+        }
     }
     pub fn take(&mut self, world_step: u64) -> Result<Vec<Frame>, String> {
         let mut work = Vec::new();

@@ -145,6 +145,11 @@ async fn serve(config: Config) -> Result<(), String> {
         exit.gateway.game().motor_recovery.last_diagnostic
     );
     println!(
+        "Movement expiry: {}",
+        serde_json::to_string(&exit.gateway.game().movement_expiry)
+            .map_err(|_| "Cannot encode movement expiry measurements")?
+    );
+    println!(
         "Checkpoint storage: {} commits, {} bytes, {:.6} seconds",
         exit.stats.checkpoint_commits, exit.stats.checkpoint_bytes, exit.stats.checkpoint_seconds
     );

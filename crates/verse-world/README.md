@@ -417,7 +417,9 @@ refusals, future ticks, changed controls, or uncertain transport.
 A character falling more than 32 substeps behind after ready work is considered
 stale. The first interval has a separate 48-substep startup allowance, and
 entry returns its initial snapshot directly. On expiry, its epoch advances,
-queued frames and holds clear, and ordinary gravity resumes. Repeated entry
+queued frames and holds clear, and ordinary gravity resumes. Runtime diagnostics
+count expiry across admission and both player tick paths, retaining the first 32
+clock and queue samples with an omitted count; checkpoints exclude this evidence. Repeated entry
 cannot renew this budget. Handoff, disconnect, restart,
 respawn, and teleport fence the interval context. Teleport commands drain earlier
 pipeline work. A refused interval stops the worker and requires reconnection;

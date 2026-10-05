@@ -845,6 +845,14 @@ impl Game {
                     .as_ref()
                     .is_some_and(|clock| clock.expired(self.physics_steps))
                 {
+                    self.movement_expiry
+                        .record(p.frame_clock.as_ref().unwrap().expiry_sample(
+                            actor,
+                            p.admission.epoch(),
+                            self.authority_tick,
+                            self.physics_steps,
+                            crate::movement::frames::ExpiryOrigin::AdditionalTick,
+                        ));
                     p.admission
                         .handoff(p.admission.controller())
                         .map_err(|e| format!("Expired interval handoff refused: {e:?}"))?;

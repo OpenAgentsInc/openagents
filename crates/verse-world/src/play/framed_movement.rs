@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     Command, Controller, Intent,
-    movement::frames::{Clock, Frame},
+    movement::frames::{Clock, ExpiryOrigin, Frame},
 };
 use verse_engine::core::LifeId;
 impl Game {
@@ -89,6 +89,13 @@ impl Game {
         }
         .ok_or("Movement intervals have not been started")?;
         if clock.expired(self.physics_steps) {
+            self.movement_expiry.record(clock.expiry_sample(
+                actor,
+                frame.epoch,
+                self.authority_tick,
+                self.physics_steps,
+                ExpiryOrigin::Admission,
+            ));
             let message = format!(
                 "Movement interval clock expired at world step {}, confirmed step {}",
                 self.physics_steps, clock.step
@@ -136,6 +143,14 @@ impl Game {
             .as_ref()
             .is_some_and(|clock| clock.expired(self.physics_steps))
         {
+            self.movement_expiry
+                .record(self.frame_clock.as_ref().unwrap().expiry_sample(
+                    self.player_actor(),
+                    self.admission.epoch(),
+                    self.authority_tick,
+                    self.physics_steps,
+                    ExpiryOrigin::PrimaryTick,
+                ));
             self.handoff_player(self.player_life(), self.admission.controller())?;
         }
         Ok(())
@@ -215,6 +230,18 @@ mod tests {
             );
             assert!(g.submit_movement_frame(owner, delayed).is_err());
             assert_eq!(g.player_admission(life.actor).unwrap().epoch(), epoch + 1);
+            assert_eq!(g.movement_expiry.total, 1);
+            assert_eq!(g.movement_expiry.admission, 1);
+            assert_eq!(g.movement_expiry.samples[0].actor, life.actor);
+            assert_eq!(g.movement_expiry.samples[0].epoch, epoch);
+            assert_eq!(g.movement_expiry.samples[0].applied_sequence, 1);
+            let saved = g.checkpoint().unwrap();
+            assert!(
+                !std::str::from_utf8(&saved)
+                    .unwrap()
+                    .contains("movement_expiry")
+            );
+            assert_eq!(Game::restore(&saved).unwrap().movement_expiry.total, 0);
             g.begin_movement_frames(owner, life).unwrap();
             g.submit_movement_frame(owner, frame(&g, life, false))
                 .unwrap();

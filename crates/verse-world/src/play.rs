@@ -212,6 +212,8 @@ pub struct Game {
     bodies: physics::lifetimes::Bodies,
     #[serde(skip)]
     pub motor_recovery: crate::movement::RecoveryObservations,
+    #[serde(skip)]
+    pub movement_expiry: crate::movement::frames::ExpiryObservations,
     pub navigation_plans: u64,
     pub navigation_budget_refusals: u64,
     #[serde(skip)]
@@ -1358,6 +1360,7 @@ impl Game {
             blockers: physics::walkable::Blockers::new(instance),
             bodies: physics::lifetimes::Bodies::new(instance),
             motor_recovery: Default::default(),
+            movement_expiry: Default::default(),
             navigation_plans: 0,
             navigation_budget_refusals: 0,
             navigation: crate::room::profile_navigation(
