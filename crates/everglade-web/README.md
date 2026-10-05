@@ -58,12 +58,10 @@ cottages.
 ### Grove mode
 
 The same module starts in the Grove, the druid training field
-(`docs/verse/druid-demo.md`), when the page's URL has the query parameter
-`zone=grove`, for example `/druid?zone=grove` or `/?gl&zone=grove`. The
-Grove is built on the same pinned pack, so the page serves the same files
-and nothing else changes. A page that always starts in the Grove, such as
-`/druid`, can redirect to its own URL with `?zone=grove`, or load the module
-from a page whose URL carries it.
+(`docs/verse/druid-demo.md`), when the page's path ends in `/druid`, as
+openagents.com's `/druid` does, or when its URL has the query parameter
+`zone=grove`, for example `/?gl&zone=grove`. The Grove is built on the same
+pinned pack, so the page serves the same files and nothing else changes.
 
 Download progress and errors appear in an element with the ID
 `everglade-status`. The module creates one at the bottom left when the page

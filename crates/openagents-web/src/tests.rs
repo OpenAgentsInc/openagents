@@ -65,10 +65,11 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 40] = [
+const PAGES: [&str; 41] = [
     "/",
     "/live",
     "/everglade",
+    "/druid",
     "/stats",
     "/efficiency",
     "/download",
@@ -397,6 +398,30 @@ async fn the_everglade_page_serves_the_web_build_and_its_pack() {
         let (status, _, _) = get_bytes(router(config.clone()), uri).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
     }
+}
+
+/// `/druid` (#10611): the same full-screen page and build, which starts in
+/// the Grove on this path, under the same policy.
+#[tokio::test]
+async fn the_druid_page_serves_the_same_build_for_the_grove() {
+    let root = tempfile::tempdir().unwrap();
+    let (config, _) = with_everglade(root.path());
+    let (status, headers, html) = get_with(router(config.clone()), "/druid", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<title>Druid"), "{html}");
+    assert!(html.contains("Loading the Grove"));
+    assert!(html.contains(&format!("<canvas id=\"{}\"", pages::CANVAS_ID)));
+    assert!(html.contains(&format!("data-wasm=\"/everglade/{}\"", pages::WASM)));
+    assert!(html.contains("<html lang=\"en\" class=\"stage\">"));
+    assert_eq!(
+        headers[header::CONTENT_SECURITY_POLICY],
+        pages::EVERGLADE_POLICY
+    );
+    let mut absent = config;
+    absent.everglade = None;
+    let (status, _, html) = get_with(router(absent), "/druid", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("Everglade is unavailable on this server"));
 }
 
 /// Without the build directory, or without the glue in it, the page says

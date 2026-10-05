@@ -221,14 +221,17 @@ async fn run() -> Result<(), String> {
     // The canvas takes drags and pinches instead of the page scrolling.
     let _ = canvas.style().set_property("touch-action", "none");
 
-    // `?zone=grove` starts in the Grove, the druid training field built on
-    // the same pack.
+    // `?zone=grove`, or the `/druid` page, starts in the Grove, the druid
+    // training field built on the same pack.
     let grove = window.location().search().is_ok_and(|query| {
         query
             .trim_start_matches('?')
             .split('&')
             .any(|part| part.eq_ignore_ascii_case("zone=grove"))
-    });
+    }) || window
+        .location()
+        .pathname()
+        .is_ok_and(|path| path.trim_end_matches('/').ends_with("/druid"));
     // `?zone=grid` opens the shared Grid, the spawn plaza, on the engine
     // renderer with the pack built into this module; nothing downloads.
     let grid = window.location().search().is_ok_and(|query| {

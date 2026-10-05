@@ -17,6 +17,11 @@
 //! with a year's immutable cache. Without the directory, or without the
 //! glue module in it, the page says Everglade is unavailable and runs no
 //! script.
+//!
+//! `/druid` (#10611) is the same page and build for the druid demo
+//! (`docs/verse/druid-demo.md`): the module starts in the Grove when the
+//! page's path is `/druid`, so the page needs no query and loads the same
+//! files from `/everglade/`.
 
 use std::path::{Path, PathBuf};
 
@@ -63,6 +68,7 @@ const PACK_CACHE: &str = "public, max-age=31536000, immutable";
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/everglade", get(everglade))
+        .route("/druid", get(druid))
         .route("/everglade/{file}", get(build_file))
         .route("/everglade/pack/{file}", get(pack_file))
 }
@@ -73,16 +79,41 @@ fn build(app: &App) -> Option<&Path> {
     (directory.join(GLUE).is_file() && directory.join(WASM).is_file()).then_some(directory)
 }
 
+/// What a page of the build shows: its heading, its canvas's label, and the
+/// name its status line loads.
+struct Stage {
+    title: &'static str,
+    label: &'static str,
+    loading: &'static str,
+}
+
+const EVERGLADE: Stage = Stage {
+    title: "Everglade",
+    label: "The Everglade zone",
+    loading: "Everglade",
+};
+
+const DRUID: Stage = Stage {
+    title: "Druid",
+    label: "The Grove, a druid training field",
+    loading: "the Grove",
+};
+
 /// The page is the canvas, filling the window, with the status line over its
 /// foot. The heading is for screen readers only.
-fn body(wasm_bytes: u64) -> String {
+fn body(stage: &Stage, wasm_bytes: u64) -> String {
+    let Stage {
+        title,
+        label,
+        loading,
+    } = stage;
     format!(
-        "<h1 class=\"unseen\">Everglade</h1>\
+        "<h1 class=\"unseen\">{title}</h1>\
 <div class=\"glade\" id=\"everglade\" data-module=\"/everglade/{GLUE}\" \
 data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PACK_PATH}\">\
-<canvas id=\"{CANVAS_ID}\" tabindex=\"0\" aria-label=\"The Everglade zone\"></canvas>\
-<p class=\"glade-status\" id=\"everglade-status\" aria-live=\"polite\">Loading Everglade…</p>\
-<noscript><p class=\"glade-status\">Turn on JavaScript to open Everglade.</p></noscript></div>\
+<canvas id=\"{CANVAS_ID}\" tabindex=\"0\" aria-label=\"{label}\"></canvas>\
+<p class=\"glade-status\" id=\"everglade-status\" aria-live=\"polite\">Loading {loading}…</p>\
+<noscript><p class=\"glade-status\">Turn on JavaScript to open {loading}.</p></noscript></div>\
 <script type=\"module\" src=\"/static/everglade.js\"></script>"
     )
 }
@@ -95,18 +126,27 @@ Everglade web build.</p>\
 on your phone and your Mac.</span></p></section>";
 
 async fn everglade(State(app): State<App>) -> Response {
-    if build(&app).is_none() {
-        return page("Everglade", None, UNAVAILABLE);
+    stage(&app, &EVERGLADE).await
+}
+
+/// `/druid`: the same build, which starts in the Grove on this path.
+async fn druid(State(app): State<App>) -> Response {
+    stage(&app, &DRUID).await
+}
+
+async fn stage(app: &App, stage: &Stage) -> Response {
+    if build(app).is_none() {
+        return page(stage.title, None, UNAVAILABLE);
     }
     // The loader reports the module's download against its uncompressed
     // size, since a compressed response's length is not what it reads.
-    let wasm_bytes = match build(&app) {
+    let wasm_bytes = match build(app) {
         Some(directory) => tokio::fs::metadata(directory.join(WASM))
             .await
             .map_or(0, |metadata| metadata.len()),
         None => 0,
     };
-    let mut response = fullscreen("Everglade", &body(wasm_bytes));
+    let mut response = fullscreen(stage.title, &body(stage, wasm_bytes));
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(EVERGLADE_POLICY),
