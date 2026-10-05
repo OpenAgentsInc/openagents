@@ -438,7 +438,8 @@ impl Client {
             return Err("Chamber response context mismatch".into());
         }
         if let Some(control) = &r.control {
-            if control.life.instance != self.instance
+            if control.credit_step < control.world_step
+                || control.life.instance != self.instance
                 || (self.logged_in
                     && !self.player
                     && !matches!(
@@ -452,7 +453,8 @@ impl Client {
                 return Err("Chamber response control identity mismatch".into());
             }
             if let Some(previous) = &self.control {
-                if control.world_step < previous.world_step
+                if control.credit_step < previous.credit_step
+                    || control.world_step < previous.world_step
                     || control.life.actor != previous.life.actor
                     || control.life.generation < previous.life.generation
                     || control.epoch < previous.epoch
@@ -2584,6 +2586,42 @@ mod tests {
         assert!(client.control().is_none());
         task.await.unwrap();
     }
+    #[tokio::test]
+    async fn historical_snapshot_verifies_credit_without_rewriting_its_state() {
+        let keys = [key(230), key(231), key(232)];
+        let (address, tls, stop, host) = start(&keys).await;
+        let mut client = Client::connect(address, name(), tls.config().clone(), 120, &keys[0])
+            .await
+            .unwrap();
+        let mut snapshot = client.request(Body::Snapshot {}).await.unwrap();
+        let body = serde_json::to_vec(&snapshot.body).unwrap();
+        let control = snapshot.control.as_mut().unwrap();
+        control.credit_step += 8;
+        client.control = Some(control.clone());
+        assert!(
+            client
+                .validate(snapshot.request_id, &Body::Snapshot {}, &snapshot)
+                .is_ok()
+        );
+        assert_eq!(serde_json::to_vec(&snapshot.body).unwrap(), body);
+        let mut regressed = snapshot.clone();
+        regressed.control.as_mut().unwrap().credit_step -= 1;
+        assert!(
+            client
+                .validate(snapshot.request_id, &Body::Snapshot {}, &regressed)
+                .is_err()
+        );
+        let mut missing = serde_json::to_value(&snapshot).unwrap();
+        missing["control"]
+            .as_object_mut()
+            .unwrap()
+            .remove("credit_step");
+        assert!(serde_json::from_value::<Response>(missing).is_err());
+        client.close().await.unwrap();
+        stop.send(()).unwrap();
+        assert!(host.await.unwrap().failure.is_none());
+    }
+
     #[test]
     fn context_and_control_regressions_are_refused() {
         let life = Life {
@@ -2592,6 +2630,7 @@ mod tests {
             generation: 0,
         };
         let control = Control {
+            credit_step: 4,
             world_step: 4,
             life,
             epoch: 2,
@@ -2631,7 +2670,7 @@ mod tests {
         let mut response = response;
         response.control.as_mut().unwrap().accepted_sequence = 4;
         assert!(client.validate(2, &request, &response).is_ok());
-        for field in 0..7 {
+        for field in 0..8 {
             let mut bad = response.clone();
             match field {
                 0 => bad.version += 1,
@@ -2640,7 +2679,8 @@ mod tests {
                 3 => bad.tick -= 1,
                 4 => bad.control.as_mut().unwrap().epoch -= 1,
                 5 => bad.control.as_mut().unwrap().accepted_sequence -= 2,
-                _ => bad.control.as_mut().unwrap().world_step -= 1,
+                6 => bad.control.as_mut().unwrap().world_step -= 1,
+                _ => bad.control.as_mut().unwrap().credit_step -= 1,
             }
             assert!(client.validate(2, &request, &bad).is_err());
         }

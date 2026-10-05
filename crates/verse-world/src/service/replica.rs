@@ -492,6 +492,7 @@ pub(super) mod tests {
                     .unwrap()
                     .life;
                 next.control = Some(Control {
+                    credit_step: 0,
                     world_step: 0,
                     life,
                     epoch: 1,
@@ -569,6 +570,7 @@ pub(super) mod tests {
             .unwrap()
             .life;
         first.control = Some(Control {
+            credit_step: 0,
             world_step: 0,
             life,
             epoch: 2,

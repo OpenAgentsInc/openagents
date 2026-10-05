@@ -639,7 +639,7 @@ impl Session {
                             self.prediction.grant_world_credit(
                                 control.life.into(),
                                 control.epoch,
-                                control.world_step,
+                                control.credit_step,
                             )?;
                         }
                     }
@@ -743,6 +743,17 @@ impl Session {
             if let (Some(baseline), Some(geometry)) = (movement, collision.as_ref()) {
                 self.prediction
                     .observe(baseline, geometry, r.tick, r.request_id)?;
+                if baseline.profile == verse_world::movement::Profile::Frames {
+                    let control = r
+                        .control
+                        .as_ref()
+                        .ok_or("Movement snapshot has no control")?;
+                    self.prediction.grant_world_credit(
+                        baseline.life,
+                        baseline.epoch,
+                        control.credit_step,
+                    )?;
+                }
                 if baseline.profile == verse_world::movement::Profile::Frames
                     && self.frame_cursor.is_none_or(|(life, epoch, _)| {
                         life != baseline.life || epoch != baseline.epoch

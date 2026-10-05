@@ -201,6 +201,7 @@ mod tests {
             instance: 1,
             tick,
             control: Some(Control {
+                credit_step: 0,
                 world_step: 0,
                 life: super::super::super::wire::Life {
                     instance: 1,

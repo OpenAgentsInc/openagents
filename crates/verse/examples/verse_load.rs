@@ -178,6 +178,7 @@ async fn player(
     update=receive.recv()=>match update.ok_or("Load worker output closed")? {
      Update::Snapshot(response)=>{
       epoch=response.control.as_ref().ok_or("Load lost player control")?.epoch;
+      if let Some(c)=&response.control {world_credit=Some((verse_engine::core::LifeId::from(c.life),c.epoch,c.credit_step));}
       snapshot_bytes+=serde_json::to_vec(&response).map_err(|_|"Cannot size load snapshot")?.len() as u64;
       let Reply::Snapshot {state:latest}=response.body else {return Err("Load snapshot refused".into())};
       if latest.movement.is_some_and(|b|b.profile==verse_world::movement::Profile::Frames) {observed_frame_snapshots+=1;}
@@ -199,7 +200,7 @@ async fn player(
       Err(message)=>{outstanding.remove(&token);refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"frame_binding","message":message}));}},
      },
      Update::Outcome(response)=>{
-      if let Some(c)=&response.control {world_credit=Some((verse_engine::core::LifeId::from(c.life),c.epoch,c.world_step));}
+      if let Some(c)=&response.control {world_credit=Some((verse_engine::core::LifeId::from(c.life),c.epoch,c.credit_step));}
       if let Some((started,ability,entry,token))=pending.pop_front() {
        if let Some(token)=token {outstanding.remove(&token);}
        if entry.is_some() && frame_entry==entry && matches!(&response.body,Reply::Refused {..}) {frame_entry=None;}

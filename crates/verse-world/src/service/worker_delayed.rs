@@ -177,7 +177,7 @@ async fn interval_stream(durable_stall: bool) {
                                 .grant_world_credit(
                                     control.life.into(),
                                     control.epoch,
-                                    control.world_step,
+                                    control.credit_step,
                                 )
                                 .unwrap();
                         }
@@ -213,6 +213,10 @@ async fn interval_stream(durable_stall: bool) {
                             response.tick,
                             response.request_id,
                         )
+                        .unwrap();
+                    let control = response.control.as_ref().unwrap();
+                    local
+                        .grant_world_credit(next.life, next.epoch, control.credit_step)
                         .unwrap();
                     local.advance(0.).unwrap();
                     corrections.push(before.distance(local.pose().unwrap().position));

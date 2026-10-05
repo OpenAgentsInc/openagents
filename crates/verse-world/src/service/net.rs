@@ -94,68 +94,54 @@ struct PendingReply {
 enum PendingResponse {
     Outcome(DispatchReply),
 }
-// Outcome snapshots retain their admitted body time. Earlier acknowledgments on that
-// connection cannot advertise credit beyond that body before it is delivered.
-fn cap_outcome_snapshot_credit(
-    controls: &mut BTreeMap<ConnectionId, Control>,
-    pending: &[PendingReply],
-) -> Result<(), String> {
-    for pending in pending {
-        if let PendingResponse::Outcome(Ok((bytes, _))) = &pending.response {
-            let response: ResponseHeader =
-                serde_json::from_slice(bytes).map_err(|_| "Invalid deferred chamber outcome")?;
-            if matches!(response.body.kind.as_str(), "snapshot" | "replicated") {
-                if let (Some(snapshot), Some(credit)) =
-                    (response.control, controls.get_mut(&pending.id))
-                {
-                    credit.world_step = credit.world_step.min(snapshot.world_step);
-                }
-            }
-        }
-    }
-    Ok(())
+// Preserve the admitted body and fences while attaching checkpointed clock credit.
+#[derive(serde::Deserialize, serde::Serialize)]
+struct CreditedResponse<'a> {
+    version: u16,
+    request_id: u64,
+    instance: u64,
+    tick: u64,
+    control: Option<Control>,
+    #[serde(borrow)]
+    body: &'a serde_json::value::RawValue,
 }
 fn promote_outcome_credit(result: DispatchReply, credit: Option<&Control>) -> DispatchReply {
     let (bytes, authenticated) = result?;
     let Some(credit) = credit else {
         return Ok((bytes, authenticated));
     };
-    let header: ResponseHeader =
+    let mut response: CreditedResponse<'_> =
         serde_json::from_slice(&bytes).map_err(|_| "Invalid deferred chamber outcome")?;
-    if matches!(header.body.kind.as_str(), "snapshot" | "replicated")
-        || header.control.as_ref().is_none_or(|control| {
-            control.life != credit.life
-                || control.epoch != credit.epoch
-                || control.world_step >= credit.world_step
-        })
+    let Some(control) = response.control.as_mut() else {
+        return Ok((bytes, authenticated));
+    };
+    if control.life != credit.life
+        || control.epoch != credit.epoch
+        || control.credit_step >= credit.credit_step
     {
         return Ok((bytes, authenticated));
     }
-    let mut response: Response =
-        serde_json::from_slice(&bytes).map_err(|_| "Invalid deferred chamber outcome")?;
-    response.control.as_mut().unwrap().world_step = credit.world_step;
-    response.encode().map(|bytes| (bytes, authenticated))
+    control.credit_step = credit.credit_step;
+    let bytes = serde_json::to_vec(&response).map_err(|_| "Cannot encode chamber clock credit")?;
+    if bytes.len() > MAX_RESPONSE_BYTES {
+        return Err("Credited chamber response exceeds the frame bound".into());
+    }
+    Ok((bytes, authenticated))
 }
 fn checkpoint_replies(
     pending: &mut Vec<PendingReply>,
-    mut credits: BTreeMap<ConnectionId, Control>,
+    credits: BTreeMap<ConnectionId, Control>,
 ) -> Result<Vec<(oneshot::Sender<DispatchReply>, DispatchReply)>, String> {
-    // A snapshot limits only earlier replies on its connection. Later replies
-    // can advertise the checkpoint's newer time without regressing that snapshot.
-    let mut replies = pending
+    pending
         .drain(..)
-        .rev()
         .map(|pending| {
-            cap_outcome_snapshot_credit(&mut credits, std::slice::from_ref(&pending))?;
             let PendingResponse::Outcome(result) = pending.response;
             Ok((
                 pending.reply,
                 promote_outcome_credit(result, credits.get(&pending.id)),
             ))
         })
-        .collect::<Result<Vec<_>, String>>()?;
-    replies.reverse();
-    Ok(replies)
+        .collect()
 }
 
 struct CommitView {
@@ -1416,6 +1402,7 @@ pub(super) mod tests {
         let old = snapshot.control.clone().unwrap();
         let mut current = old.clone();
         current.world_step += 4;
+        current.credit_step += 4;
         current.accepted_sequence += 10;
         let mut acknowledgment = snapshot.clone();
         acknowledgment.body = Reply::Accepted;
@@ -1424,8 +1411,8 @@ pub(super) mod tests {
                 .unwrap();
         let promoted: Response = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
-            promoted.control.as_ref().unwrap().world_step,
-            current.world_step
+            promoted.control.as_ref().unwrap().credit_step,
+            current.credit_step
         );
         assert_eq!(
             promoted.control.as_ref().unwrap().accepted_sequence,
@@ -1444,28 +1431,20 @@ pub(super) mod tests {
         let mut identities = gateway(&keys);
         let (first, _) = identities.open(0).unwrap();
         let (second, _) = identities.open(1).unwrap();
-        let mut controls = BTreeMap::from([(first, current.clone()), (second, current.clone())]);
-        let (reply, _receive) = oneshot::channel();
-        let pending = [PendingReply {
-            id: first,
-            reply,
-            response: PendingResponse::Outcome(Ok((snapshot.encode().unwrap(), true))),
-        }];
-        cap_outcome_snapshot_credit(&mut controls, &pending).unwrap();
-        assert_eq!(controls[&first].world_step, old.world_step);
-        assert_eq!(controls[&second].world_step, current.world_step);
-        let capped = promote_outcome_credit(
-            Ok((acknowledgment.encode().unwrap(), true)),
-            controls.get(&first),
-        )
-        .unwrap()
-        .0;
-        assert_eq!(capped, acknowledgment.encode().unwrap());
-        let unchanged =
+        let credited =
             promote_outcome_credit(Ok((snapshot.encode().unwrap(), true)), Some(&current))
                 .unwrap()
                 .0;
-        assert_eq!(unchanged, snapshot.encode().unwrap());
+        let decoded: Response = serde_json::from_slice(&credited).unwrap();
+        assert_eq!(decoded.control.as_ref().unwrap().world_step, old.world_step);
+        assert_eq!(
+            decoded.control.as_ref().unwrap().credit_step,
+            current.credit_step
+        );
+        let original_snapshot = snapshot.encode().unwrap();
+        let before: CreditedResponse<'_> = serde_json::from_slice(&original_snapshot).unwrap();
+        let after: CreditedResponse<'_> = serde_json::from_slice(&credited).unwrap();
+        assert_eq!(before.body.get(), after.body.get());
         let make_pending = |id, response: Response| {
             let (reply, _) = oneshot::channel();
             PendingReply {
@@ -1474,6 +1453,8 @@ pub(super) mod tests {
                 response: PendingResponse::Outcome(Ok((response.encode().unwrap(), true))),
             }
         };
+        let mut second_credit = current.clone();
+        second_credit.credit_step += 8;
         let mut ordered = vec![
             make_pending(first, acknowledgment.clone()),
             make_pending(second, acknowledgment.clone()),
@@ -1482,7 +1463,7 @@ pub(super) mod tests {
         ];
         let replies = checkpoint_replies(
             &mut ordered,
-            BTreeMap::from([(first, current.clone()), (second, current.clone())]),
+            BTreeMap::from([(first, current.clone()), (second, second_credit.clone())]),
         )
         .unwrap();
         let controls: Vec<_> = replies
@@ -1493,13 +1474,22 @@ pub(super) mod tests {
             })
             .collect();
         assert_eq!(controls[0].world_step, old.world_step);
-        assert_eq!(controls[1].world_step, current.world_step);
+        assert_eq!(controls[1].world_step, old.world_step);
         assert_eq!(controls[2].world_step, old.world_step);
-        assert_eq!(controls[3].world_step, current.world_step);
+        assert_eq!(controls[3].world_step, old.world_step);
         assert!(
             controls
                 .iter()
                 .all(|c| c.accepted_sequence == old.accepted_sequence)
+        );
+        assert_eq!(
+            controls.iter().map(|c| c.credit_step).collect::<Vec<_>>(),
+            vec![
+                current.credit_step,
+                second_credit.credit_step,
+                current.credit_step,
+                current.credit_step
+            ]
         );
         assert!(ordered.is_empty());
         let Reply::Snapshot { state } = snapshot.body else {

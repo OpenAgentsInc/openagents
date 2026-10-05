@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 27;
+pub const VERSION: u16 = 28;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -194,6 +194,12 @@ pub struct Request {
 impl State {
     pub fn validate_control(&self, instance: u64, control: &Option<Control>) -> Result<(), String> {
         self.validate(instance)?;
+        if control
+            .as_ref()
+            .is_some_and(|c| c.credit_step < c.world_step)
+        {
+            return Err("Checkpoint credit precedes admitted body time".into());
+        }
         if self.hud.as_ref().map(|h| h.life)
             != control
                 .as_ref()
@@ -378,8 +384,10 @@ impl Request {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Control {
-    /// Authority physics time, available only after this response is verified.
+    /// Physics time of the admitted response body.
     pub world_step: u64,
+    /// Durable authority physics credit, independent of historical snapshot time.
+    pub credit_step: u64,
     pub life: Life,
     pub epoch: u64,
     /// Highest admitted envelope, including subsequent gameplay refusals.
@@ -570,6 +578,7 @@ impl Gateway {
             Err(message) => (0, Err(("protocol", message))),
         };
         let control = self.admission(connection).ok().map(|a| Control {
+            credit_step: self.game().physics_steps,
             world_step: self.game().physics_steps,
             life: a.actor().into(),
             epoch: a.epoch(),
@@ -840,6 +849,7 @@ impl Gateway {
                     unreachable!()
                 };
                 let control = self.admission(id).ok().map(|a| Control {
+                    credit_step: self.game().physics_steps,
                     world_step: self.game().physics_steps,
                     life: a.actor().into(),
                     epoch: a.epoch(),
@@ -1592,6 +1602,7 @@ mod tests {
             generation: 0,
         };
         let control = Some(Control {
+            credit_step: 0,
             world_step: 0,
             life,
             epoch: 1,
