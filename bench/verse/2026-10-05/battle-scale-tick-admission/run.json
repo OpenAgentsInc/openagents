@@ -1,0 +1,72 @@
+{
+  "schema": "verse.battle.tick.admission.execution.v1",
+  "issue": 10559,
+  "base_revision": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "source_patch": "tick-admission-source.patch",
+  "executable_sha256": "c785e04754a5cd2fd223261d5f0b0f21ba2cf29ccb26a9b7385ea5c9d83352d1",
+  "status": "failed",
+  "error": "Cannot write chamber commit",
+  "movement_expiries": {
+    "total": 2,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 2,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 239,
+        "epoch": 2,
+        "authority_tick": 2087,
+        "origin": "additional_tick",
+        "world_step": 5948,
+        "confirmed_step": 5912,
+        "projected_step": 5912,
+        "received_at": 5912,
+        "applied_sequence": 786,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 242,
+        "epoch": 9,
+        "authority_tick": 2716,
+        "origin": "additional_tick",
+        "world_step": 8464,
+        "confirmed_step": 8428,
+        "projected_step": 8428,
+        "received_at": 8432,
+        "applied_sequence": 62,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 0
+  },
+  "workload_ticks": 2824,
+  "recovery": {
+    "characters_checked": 20,
+    "active_receipts": 23,
+    "ledger_revision": 171,
+    "retained_events": 512,
+    "checkpoint_bytes": 318557,
+    "restored_checkpoint_bytes": 318557,
+    "live_hostiles": 40,
+    "actor_count": 60
+  },
+  "limits": [
+    "The shared disk filled during this run; client diagnostics report OS error 28 and authority commit failed. This is not successful capacity or continuity acceptance.",
+    "Another compiler was observed at the midpoint. No own compiler ran during capture.",
+    "Two expiries and no primary expiry before terminal failure do not establish an improvement against completed runs.",
+    "Late snapshot-age and renderer observations include stopped authority time and cannot establish healthy sustained behavior."
+  ],
+  "sha256": {
+    "tick-admission-source.patch": "53dad3599745323b28fb1386278085bd27e58099377af23bf0eb78d8982e7731",
+    "combined-tick-admission-01.json": "7a57241813287fdafb14212eeebd8e274b8efa535111eed6b93b5065b658cb01",
+    "run.sh": "4b46b16f870ea611f25f5f40c126d3010fbd5f490d1eea3a3744d489428b6e5a",
+    "combined-tick-admission-01.log": "38aa448ad937ce80f8fbf375cfe6cf7b7df1f4b527585406ee364174bfb3fbf2"
+  }
+}
