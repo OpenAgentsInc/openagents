@@ -1,0 +1,38 @@
+{
+  "schema": "openagents.verse.source-manifest.v1",
+  "creator": "OpenAgents",
+  "license": "CC0-1.0",
+  "package": "Verse Wild Shape beasts: the Giant Spider from Quaternius's Easy Animated Enemy Pack, and generated bear, wolf, and eagle",
+  "files": {
+    "bear.bin": "dc5ff86c6291795cbc6be2318f246ffb793fbc0de80d836c68e10813ee8cb298",
+    "bear.gltf": "39d2ba40b687f72b4dccbc259584c0f94528d6d37d5d01b838ee281084049eab",
+    "eagle.bin": "5e0fa3fe24f85346a54414425fe9054242ea718fd108de8a9c1dc3ac183422d0",
+    "eagle.gltf": "8471d2a9eeb109488477d7df30af97b8b88d0dfbf12e5051b521c524ceda9f7b",
+    "giant_spider.bin": "d74bbc5e1e5ede9bc00d48e2c0cc5f334ebfc288928f5849ce88b4933bfda84e",
+    "giant_spider.gltf": "069e3cb1a4ea789114f8ccd725ea791f44399ecce6833eff86ff6e34031ec377",
+    "license.txt": "1c31d42141ec662e6d6375e2e04bcfa2ab952921652678ac0370e6599549404c",
+    "wolf.bin": "3abbb20896be54c790b3dd40646f4dbac21a201117cda45e5ea60e848d21fa01",
+    "wolf.gltf": "cc502ac8e7f2cb5769473f5ccfc51df36828501d4afbd4ed34e1ff2452b90564"
+  },
+  "originals": {
+    "bear.bin": "26551af8670a0f05c2fba66476e5f639d1728ab3b27ffe08a2b985ec164dd2e1",
+    "bear.gltf": "26551af8670a0f05c2fba66476e5f639d1728ab3b27ffe08a2b985ec164dd2e1",
+    "eagle.bin": "341b8d541e122551068219b5bd910d2ecf04656d4c144550378e8b515732e411",
+    "eagle.gltf": "341b8d541e122551068219b5bd910d2ecf04656d4c144550378e8b515732e411",
+    "giant_spider.bin": "4620fafa269122a8c2b1498daca1f96dcc4e6e4aebc76ab182f61b28ca2228a7",
+    "giant_spider.gltf": "4620fafa269122a8c2b1498daca1f96dcc4e6e4aebc76ab182f61b28ca2228a7",
+    "license.txt": "1c31d42141ec662e6d6375e2e04bcfa2ab952921652678ac0370e6599549404c",
+    "wolf.bin": "5e5604be6a8dffda399d35246068cbce18a7c6e77f66748043f765b1678a5b77",
+    "wolf.gltf": "5e5604be6a8dffda399d35246068cbce18a7c6e77f66748043f765b1678a5b77"
+  },
+  "transforms": {
+    "bear.bin": "split from assets/verse/generated/bear.glb by scripts/blender/beasts_admit.py: separate buffer, geometry, skin, and clips unchanged",
+    "bear.gltf": "split from assets/verse/generated/bear.glb by scripts/blender/beasts_admit.py: separate buffer, geometry, skin, and clips unchanged",
+    "eagle.bin": "split from assets/verse/generated/eagle.glb by scripts/blender/beasts_admit.py: separate buffer, geometry, skin, and clips unchanged",
+    "eagle.gltf": "split from assets/verse/generated/eagle.glb by scripts/blender/beasts_admit.py: separate buffer, geometry, skin, and clips unchanged",
+    "giant_spider.bin": "split from assets/verse/generated/giant_spider.glb by scripts/blender/beasts_admit.py: separate buffer, geometry, skin, and clips unchanged",
+    "giant_spider.gltf": "split from assets/verse/generated/giant_spider.glb by scripts/blender/beasts_admit.py: separate buffer, geometry, skin, and clips unchanged",
+    "wolf.bin": "split from assets/verse/generated/wolf.glb by scripts/blender/beasts_admit.py: separate buffer, geometry, skin, and clips unchanged",
+    "wolf.gltf": "split from assets/verse/generated/wolf.glb by scripts/blender/beasts_admit.py: separate buffer, geometry, skin, and clips unchanged"
+  }
+}

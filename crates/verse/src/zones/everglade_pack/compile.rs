@@ -17,6 +17,11 @@
 //! rather than under the Everglade sets. Only its base-color images, bounded
 //! to [`PLAYER_TEXTURE_EDGE`], its skeleton, and the clips in
 //! [`PLAYER_CLIPS`] are packed.
+//!
+//! The sets in [`FORM_SETS`] hold skinned, animated models instead, which
+//! compile to the pack's forms (`forms`): the Grove's Wild Shape beasts.
+
+mod forms;
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -36,7 +41,11 @@ pub const SCHEMA: &str = "openagents.verse.source-manifest.v1";
 /// `scripts/blender` builds, converted by `scripts/blender/everglade_admit.py`;
 /// they sample the village set's images (`../village/<file>.png`) rather
 /// than carrying their own.
-pub const SETS: [&str; 4] = ["nature", "village", "props", "generated"];
+pub const SETS: [&str; 5] = ["nature", "village", "props", "generated", "beasts"];
+/// The sets whose models are skinned forms rather than static models: the
+/// Wild Shape beasts, split from their committed glb by
+/// `scripts/blender/beasts_admit.py`.
+pub const FORM_SETS: [&str; 1] = ["beasts"];
 /// The longest edge of a texture that covers small or distant geometry.
 pub const SMALL_TEXTURE_EDGE: u32 = 512;
 /// The longest edge of a texture that covers large or near surfaces.
@@ -1101,13 +1110,20 @@ pub fn compile(
         textures: BTreeMap::new(),
     };
     let mut models = Vec::new();
+    let mut forms = Vec::new();
     for set in &loaded {
         for file in set.files.keys().filter(|name| name.ends_with(".gltf")) {
-            models.push(builder.model(set, file)?);
+            if FORM_SETS.contains(&set.name.as_str()) {
+                forms.push(builder.form(set, file)?);
+            } else {
+                models.push(builder.model(set, file)?);
+            }
         }
     }
     models.sort_by(|a, b| a.name.cmp(&b.name));
+    forms.sort_by(|a, b| a.name.cmp(&b.name));
     builder.contents.models = models;
+    builder.contents.forms = forms;
     if let Some(sources) = player {
         let character = builder.player(sources)?;
         builder.contents.character = Some(character);
@@ -1125,7 +1141,8 @@ pub fn compile(
         sha256: format!("{:x}", Sha256::digest(&bytes)),
         models: decoded.models.len(),
         triangles: decoded.models.iter().map(Model::triangles).sum::<u64>()
-            + decoded.character.as_ref().map_or(0, Character::triangles),
+            + decoded.character.as_ref().map_or(0, Character::triangles)
+            + decoded.forms.iter().map(Character::triangles).sum::<u64>(),
         decoded_texture_bytes: decoded.decoded_texture_bytes(),
         source_bytes,
         bytes,

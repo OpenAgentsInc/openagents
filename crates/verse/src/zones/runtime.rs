@@ -371,7 +371,11 @@ impl WorldRuntime {
     }
     fn apply_zone_intent(&mut self, intent: Intent) -> Result<(), String> {
         if self.zone == ZoneId::Grove
-            && let Some(spell) = super::grove::kit::Spell::of(intent)
+            && let Some(spell) = self
+                .zone_state
+                .grove
+                .as_ref()
+                .and_then(|grove| grove.resolve(intent))
         {
             let state = &mut self.zone_state;
             let (Some(grove), Some(glade)) = (state.grove.as_mut(), state.everglade.as_mut())
@@ -427,6 +431,8 @@ impl WorldRuntime {
                 self.zone_state.lab = None;
                 self.zone_state.everglade = None;
                 self.zone_state.grove = None;
+                // A Wild Shape's pace ends with the Grove.
+                self.player.set_pace(1.0);
                 self.zone = ZoneId::Plaza;
                 self.zone_revision = self.zone_revision.saturating_add(1);
                 if self.is_bare() {
@@ -567,7 +573,8 @@ impl WorldRuntime {
             | Intent::GustOfWind
             | Intent::MistyStep
             | Intent::Web
-            | Intent::LongRest => return Err("Enter the Grove first".into()),
+            | Intent::LongRest
+            | Intent::GroveSlot(_) => return Err("Enter the Grove first".into()),
             Intent::FeatherFall
             | Intent::WallOfStone
             | Intent::WindWall
@@ -872,19 +879,24 @@ impl WorldRuntime {
     ///
     /// Returns why a press's cast was refused, such as no dummy ahead.
     pub fn grove_key(&mut self, intent: Intent, down: bool) -> Result<bool, String> {
-        let Some(spell) = super::grove::kit::Spell::of(intent) else {
-            return Ok(false);
-        };
-        if self.zone != ZoneId::Grove || self.zone_state.grove.is_none() {
+        if self.zone != ZoneId::Grove {
             return Ok(false);
         }
+        let Some(slot) = self
+            .zone_state
+            .grove
+            .as_ref()
+            .and_then(|grove| grove.slot_of(intent))
+        else {
+            return Ok(false);
+        };
         let result = if down {
             self.zone_intent(intent)
         } else {
             Ok(())
         };
         if let Some(grove) = self.zone_state.grove.as_mut() {
-            grove.hold(spell, down);
+            grove.hold(slot, down);
         }
         result.map(|()| true)
     }
@@ -1758,9 +1770,15 @@ impl WorldRuntime {
         let state = &mut self.zone_state;
         if let (Some(glade), Some(grove)) = (&mut state.everglade, &mut state.grove) {
             glade.tick(dt, &self.player, &[]);
-            grove.tick(dt, glade);
-            // Held hotbar keys recast at their fixed rate.
-            for spell in grove.due() {
+            grove.tick(dt, glade, &self.player);
+            // The shape's pace holds however the player is placed.
+            self.player.set_pace(grove.form().map_or(1.0, |f| f.pace()));
+            // Held hotbar keys recast at their fixed rate, each casting
+            // what its slot holds now.
+            for slot in grove.due() {
+                let Some(spell) = grove.slot_spell(slot) else {
+                    continue;
+                };
                 if let Err(error) = grove.cast(spell, &mut self.player, glade) {
                     state.error = Some(error.chars().take(180).collect());
                 }

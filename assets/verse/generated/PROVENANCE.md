@@ -11,8 +11,11 @@ buildings, the street furniture, and the kit roof are admitted into the
 Everglade pack's `generated` set by `scripts/blender/everglade_admit.py`
 ([`assets/verse/everglade/generated/`](../everglade/generated/README.md)),
 following [the pipeline](../../../docs/verse/blender-pipeline.md). The
-creatures, the training dummies, the animals, and the sledgehammer are not
-admitted.
+giant spider, the bear, the wolf, and the eagle are admitted as the pack's
+Wild Shape forms by `scripts/blender/beasts_admit.py`
+([`assets/verse/everglade/beasts/`](../everglade/beasts/README.md)). The
+rat, frog, snake, and wasp, the training dummies, and the sledgehammer are
+not admitted.
 
 All models use 1 unit = 1 m and glTF's +Y up, with the origin at the center
 of the base. A model's front faces glTF +Z.

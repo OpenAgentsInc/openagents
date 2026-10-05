@@ -90,10 +90,19 @@ fn the_grove_opens_with_its_hotbar_and_no_cooldowns() {
     assert!(runtime.everglade_hotbar().is_none());
     let bar = runtime.grove_bar().expect("the Grove's bar");
     assert!(bar.slots.iter().all(|s| s.cooldown == 0.0));
-    assert_eq!(hotbar::key(1), Some(Intent::Thunderwave));
-    assert_eq!(hotbar::key(0), Some(Intent::LongRest));
-    assert_eq!(hotbar::SPRITES.len(), Spell::ALL.len());
-    for sprite in hotbar::SPRITES {
+    assert_eq!(bar.spells, hotbar::ROW);
+    assert_eq!(hotbar::key('1'), Some(Intent::GroveSlot(0)));
+    assert_eq!(hotbar::key('='), Some(Intent::GroveSlot(11)));
+    assert_eq!(
+        grove(&runtime).resolve(Intent::GroveSlot(0)),
+        Some(Spell::Thunderwave)
+    );
+    assert_eq!(
+        grove(&runtime).resolve(Intent::GroveSlot(11)),
+        Some(Spell::LongRest)
+    );
+    for spell in Spell::ALL {
+        let sprite = hotbar::info(spell).0;
         assert!(crate::imported::icons::icon(sprite).is_some(), "{sprite}");
     }
     assert!(runtime.zone_snapshot(1.0).caption.starts_with("Grove"));
@@ -298,12 +307,12 @@ fn every_press_casts_at_once_with_no_cooldown_or_mana_in_the_way() {
     face(&mut runtime, STRAW, 8.0);
     // Mashed within one frame: every press of every spell casts.
     for _ in 0..12 {
-        for spell in Spell::ALL {
-            if spell == Spell::LongRest {
+        for (index, spell) in hotbar::ROW.into_iter().enumerate() {
+            if !spell.spell() {
                 continue;
             }
             runtime
-                .zone_intent(spell.intent())
+                .zone_intent(Intent::GroveSlot(index as u8))
                 .unwrap_or_else(|e| panic!("{spell:?}: {e}"));
             // Misty Step moved the druid; stand back for the next round.
             if spell == Spell::MistyStep {
@@ -424,6 +433,92 @@ fn spam_keeps_the_effects_and_numbers_bounded() {
     let blasts = super::thunder::GLOW_QUADS * 6 * 6;
     assert!(mesh.glow.len() <= blasts, "{}", mesh.glow.len());
     assert!(mesh.lines.len() < 60_000, "{}", mesh.lines.len());
+}
+
+#[test]
+fn wild_shape_becomes_the_giant_spider_with_its_bite_and_web() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 2.5);
+    let figure = |runtime: &WorldRuntime| runtime.dynamic_mesh().figure.expect("a figure");
+    let size = figure(&runtime).vertices.len();
+    // The beast's attacks refuse in the druid's own shape.
+    assert_eq!(
+        grove(&runtime).resolve(Intent::GroveSlot(0)),
+        Some(Spell::Thunderwave)
+    );
+    assert!(
+        runtime.zone_intent(Intent::GroveSlot(10)).is_err(),
+        "no shape to drop"
+    );
+    runtime.zone_intent(Intent::GroveSlot(9)).unwrap();
+    assert_eq!(
+        grove(&runtime).form(),
+        Some(super::shape::Form::GiantSpider)
+    );
+    assert_eq!(runtime.player.pace(), 1.25);
+    let bar = runtime.grove_bar().unwrap();
+    assert_eq!(bar.spells[0], Spell::Bite);
+    assert_eq!(bar.spells[1], Spell::SpiderWeb);
+    assert!(bar.slots[9].active, "the shape's slot is lit");
+    // The spider draws where the druid stood: its vertices are in the
+    // figure and near the player, and the druid's are folded away.
+    idle(&mut runtime, 0.1);
+    let posed = figure(&runtime);
+    assert_eq!(posed.vertices.len(), size, "one figure for every shape");
+    let near = posed
+        .vertices
+        .iter()
+        .filter(|v| Vec3::from(v.pos).distance(runtime.player.pos) < 3.0)
+        .count();
+    assert!(near > 1000, "{near} spider vertices by the player");
+    // Bites land piercing and poison.
+    let mut poisoned = false;
+    for _ in 0..20 {
+        // The straw dummy falls before twenty bites; past that they refuse.
+        let _ = runtime.zone_intent(Intent::GroveSlot(0));
+        poisoned |= grove(&runtime).log.iter().any(|l| l.contains("poison"));
+        idle(&mut runtime, 0.05);
+    }
+    let dummy = &grove(&runtime).dummies[STRAW];
+    assert!(dummy.hp < dummy.kind.max_hp(), "twenty bites all missed");
+    assert!(poisoned, "{:?}", grove(&runtime).log);
+    // The web roots a dummy farther off.
+    grove_mut(&mut runtime)
+        .dummies
+        .iter_mut()
+        .for_each(Dummy::reset);
+    face(&mut runtime, STRAW, 12.0);
+    for _ in 0..10 {
+        let _ = runtime.zone_intent(Intent::GroveSlot(1));
+    }
+    let now = grove(&runtime).time;
+    assert!(
+        grove(&runtime).dummies[STRAW].rooted(now),
+        "ten webs all missed"
+    );
+    // Walking, the spider plays its walk and moves at its pace.
+    let start = runtime.player.pos;
+    let walk = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    for _ in 0..25 {
+        runtime.tick(&walk, DT);
+    }
+    let speed = runtime.player.pos.distance(start) / (25.0 * DT);
+    assert!(speed > crate::controller::RUN_SPEED * 1.15, "{speed}");
+    // Return to Form brings the druid back at the druid's own pace.
+    runtime.zone_intent(Intent::GroveSlot(10)).unwrap();
+    assert_eq!(grove(&runtime).form(), None);
+    assert_eq!(runtime.player.pace(), 1.0);
+    assert_eq!(runtime.grove_bar().unwrap().spells[0], Spell::Thunderwave);
+    // Long Rest and leaving the Grove end the shape too.
+    runtime.zone_intent(Intent::GroveSlot(9)).unwrap();
+    runtime.zone_intent(Intent::LongRest).unwrap();
+    assert_eq!(grove(&runtime).form(), None);
+    runtime.zone_intent(Intent::GroveSlot(9)).unwrap();
+    runtime.zone_intent(Intent::Return).unwrap();
+    assert_eq!(runtime.player.pace(), 1.0);
 }
 
 #[test]

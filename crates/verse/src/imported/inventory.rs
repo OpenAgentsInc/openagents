@@ -239,7 +239,7 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
     let (icons_hash, icons_bytes) = bundle(&icons);
     assets.push(source(
         "verse:source:game-icons",
-        "Lorc and Delapouite, game-icons.net",
+        "Lorc, Delapouite, and others, game-icons.net",
         License::CcBy30,
         "svg/credits",
         icons_hash,

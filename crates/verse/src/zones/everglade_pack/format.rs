@@ -2,8 +2,10 @@
 //!
 //! A pack holds base-color textures as PNG, materials with their alpha mode
 //! and face culling, static models whose primitives index one material each,
-//! and at most one skinned character: a joint hierarchy, skinned primitives,
-//! and named clips of joint keys. It holds no scripts, URLs, or shaders.
+//! at most one skinned character: a joint hierarchy, skinned primitives,
+//! and named clips of joint keys, and optionally the forms a character can
+//! take, each another skinned character, such as the Grove's Wild Shape
+//! beasts. It holds no scripts, URLs, or shaders.
 //! Every count, name, coordinate, and decoded allocation is bounded before it
 //! is allocated.
 //!
@@ -50,7 +52,14 @@
 //!       joint     u16 index
 //!       keys      translation, rotation, then scale: u16 count, then each
 //!                 key's time f32 and 3, 4, or 3 x f32
+//! forms           optional; absent when the pack has none
+//!   count         u8, 1 to MAX_FORMS
+//!   form          each a character section as above, without the flag;
+//!                 names strictly increase
 //! ```
+//!
+//! A pack without forms ends after its character section, so adding the
+//! forms section left every earlier pack's bytes unchanged.
 //!
 //! Character data is in its source's space, meters with Y up and the
 //! character facing +Z: a vertex is skinned by its joints' posed transforms
@@ -72,6 +81,8 @@ const SKINNED_VERTEX_BYTES: usize = 32;
 pub const MAX_JOINTS: usize = 256;
 /// Most clips in a character.
 pub const MAX_CLIPS: usize = 8;
+/// Most forms in a pack.
+pub const MAX_FORMS: usize = 8;
 /// Most keys on one channel of one track.
 pub const MAX_KEYS: usize = 4096;
 /// The longest clip, in seconds.
@@ -327,6 +338,9 @@ pub struct Contents {
     pub models: Vec<Model>,
     /// The player's character, if the pack carries one.
     pub character: Option<Character>,
+    /// Other skinned characters the player can take the form of, sorted by
+    /// name.
+    pub forms: Vec<Character>,
 }
 
 /// A decoded pack, ready for the zone renderer.
@@ -340,6 +354,9 @@ pub struct ZonePack {
     pub models: Vec<Model>,
     /// The player's character, if the pack carries one.
     pub character: Option<Character>,
+    /// Other skinned characters the player can take the form of, sorted by
+    /// name.
+    pub forms: Vec<Character>,
 }
 
 impl ZonePack {
@@ -349,6 +366,11 @@ impl ZonePack {
             .binary_search_by(|m| m.name.as_str().cmp(name))
             .ok()
             .map(|i| &self.models[i])
+    }
+
+    /// The form named `name`, such as `beasts/giant_spider`.
+    pub fn form(&self, name: &str) -> Option<&Character> {
+        self.forms.iter().find(|f| f.name == name)
     }
 
     /// The decoded bytes of every texture.
@@ -496,6 +518,18 @@ pub fn validate(contents: &Contents, limits: &Limits) -> Result<(), String> {
         check_character(character, contents.materials.len(), limits)?;
         triangles += character.triangles();
     }
+    if contents.forms.len() > MAX_FORMS {
+        return Err("Zone pack has too many forms".into());
+    }
+    let mut previous: Option<&str> = None;
+    for form in &contents.forms {
+        if previous.is_some_and(|p| p >= form.name.as_str()) {
+            return Err("Zone pack form names must be strictly increasing".into());
+        }
+        previous = Some(&form.name);
+        check_character(form, contents.materials.len(), limits)?;
+        triangles += form.triangles();
+    }
     if triangles > limits.triangles {
         return Err("Zone pack exceeds the triangle budget".into());
     }
@@ -640,6 +674,12 @@ pub fn encode(contents: &Contents, limits: &Limits) -> Result<Vec<u8>, String> {
         Some(character) => {
             out.push(1);
             put_character(&mut out, character);
+        }
+    }
+    if !contents.forms.is_empty() {
+        out.push(contents.forms.len() as u8);
+        for form in &contents.forms {
+            put_character(&mut out, form);
         }
     }
     if out.len() as u64 > limits.pack_bytes {
@@ -861,6 +901,15 @@ pub fn decode_contents(bytes: &[u8], limits: &Limits) -> Result<Contents, String
         1 => Some(reader.character(limits)?),
         _ => return Err("Zone pack has an invalid character flag".into()),
     };
+    if reader.offset < bytes.len() {
+        let count = reader.u8()? as usize;
+        if count == 0 || count > MAX_FORMS {
+            return Err("Zone pack has an invalid form count".into());
+        }
+        for _ in 0..count {
+            contents.forms.push(reader.character(limits)?);
+        }
+    }
     if reader.offset != bytes.len() {
         return Err("Zone pack has trailing data".into());
     }
@@ -895,6 +944,7 @@ pub fn decode(bytes: &[u8], limits: &Limits) -> Result<ZonePack, String> {
         materials: contents.materials,
         models: contents.models,
         character: contents.character,
+        forms: contents.forms,
     })
 }
 

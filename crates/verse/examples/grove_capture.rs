@@ -1,5 +1,5 @@
 //! Offline visual acceptance of the Grove with the shared renderer.
-//! Usage: grove_capture OUTPUT.png [field|action|tooltip|thunder [AGE]]
+//! Usage: grove_capture OUTPUT.png [field|action|tooltip|thunder [AGE]|spider|spider-walk]
 //!
 //! Installs the Grove from the committed, pinned Everglade pack, as
 //! `verse --grove` does after the download, and renders one view with its
@@ -13,6 +13,10 @@
 //!   Fireball slot, so its card shows above the tray.
 //! - `thunder`: Thunderwave mid-blast beside a straw dummy, `AGE` seconds
 //!   (0.12 by default) after the cast.
+//! - `spider`: the druid in Wild Shape as the Giant Spider, mid-bite on a
+//!   straw dummy, with its Bite and Web on the bar.
+//! - `spider-walk`: the Giant Spider walking across the meadow, seen from
+//!   its side.
 use std::path::{Path, PathBuf};
 use verse::{
     controller::InputState,
@@ -72,9 +76,39 @@ fn main() -> Result<(), String> {
                 runtime.tick(&idle, 0.05);
             }
         }
+        "spider" => {
+            runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -8.0), 0.0)?;
+            runtime.zone_intent(Intent::GroveSlot(9))?;
+            for _ in 0..16 {
+                runtime.tick(&idle, 0.05);
+            }
+            runtime.zone_intent(Intent::GroveSlot(0))?;
+            for _ in 0..6 {
+                runtime.tick(&idle, 0.05);
+            }
+        }
+        "spider-walk" => {
+            runtime.set_spawn(
+                glam::Vec3::new(-6.0, 0.0, -12.0),
+                std::f32::consts::FRAC_PI_2,
+            )?;
+            runtime.zone_intent(Intent::GroveSlot(9))?;
+            let walk = InputState {
+                forward: true,
+                ..InputState::default()
+            };
+            for _ in 0..23 {
+                runtime.tick(&walk, 0.05);
+            }
+            runtime.apply(Action::Orbit {
+                dx: 260.0,
+                dy: -20.0,
+            })?;
+            runtime.tick(&walk, 0.02);
+        }
         other => {
             return Err(format!(
-                "unknown view `{other}`; use field, action, tooltip, or thunder"
+                "unknown view `{other}`; use field, action, tooltip, thunder, spider, or spider-walk"
             ));
         }
     }
@@ -86,7 +120,7 @@ fn main() -> Result<(), String> {
         zones::grove::hotbar::draw(&mut ui, &atlas, [1280.0, 800.0], 14.0, &bar);
         if view == "tooltip" {
             // A simulated hover on Fireball, the seventh slot.
-            zones::grove::hotbar::draw_tip(&mut ui, &atlas, [1280.0, 800.0], 14.0, 6);
+            zones::grove::hotbar::draw_tip(&mut ui, &atlas, [1280.0, 800.0], 14.0, &bar, 6);
         }
     }
     verse::render::capture_with_atmosphere(

@@ -50,6 +50,8 @@ const WIND: [f32; 3] = [0.6, 0.95, 0.9];
 const ROT: [f32; 3] = [0.55, 0.9, 0.5];
 const METEOR: [f32; 3] = [1.0, 0.42, 0.18];
 const REST: [f32; 3] = [0.45, 1.0, 0.5];
+const BEAST: [f32; 3] = [0.78, 0.92, 0.5];
+const VENOM: [f32; 3] = [0.6, 1.0, 0.35];
 
 /// Every hotbar icon: the original ten abilities, then the SRD spell slots.
 pub const ICONS: &[Icon] = &[
@@ -142,6 +144,22 @@ pub const ICONS: &[Icon] = &[
         STONE
     ),
     icon!("rebuild-icon", "delapouite/house.svg", "Delapouite", OIL),
+    // The Grove's Wild Shape: the Giant Spider, its bite and web, and the
+    // way back.
+    icon!(
+        "wild-shape-spider-icon",
+        "carl-olsen/spider-alt.svg",
+        "Carl Olsen",
+        BEAST
+    ),
+    icon!("spider-bite-icon", "skoll/fangs.svg", "Skoll", VENOM),
+    icon!("spider-web-icon", "lorc/web-spit.svg", "Lorc", SILK),
+    icon!(
+        "return-to-form-icon",
+        "lorc/body-swapping.svg",
+        "Lorc",
+        BEAST
+    ),
 ];
 
 /// Edge length of a rasterized icon. The slot draws 36 logical units at up to
@@ -223,7 +241,8 @@ mod tests {
                 "{} has no credit line",
                 icon.author
             );
-            assert!(icon.file.starts_with(&icon.author.to_lowercase()));
+            let folder = icon.author.to_lowercase().replace(' ', "-");
+            assert!(icon.file.starts_with(&folder), "{}", icon.file);
         }
     }
 

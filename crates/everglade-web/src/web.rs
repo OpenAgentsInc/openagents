@@ -571,7 +571,7 @@ impl Page {
         if let (Some(layout), Some(bar)) = (&self.layout, self.runtime.grove_bar()) {
             zones::grove::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &bar);
             if let Some(index) = tip {
-                zones::grove::hotbar::draw_tip(&mut ui, layout, self.css_size(), 0.0, index);
+                zones::grove::hotbar::draw_tip(&mut ui, layout, self.css_size(), 0.0, &bar, index);
             }
         }
         for vertex in &mut ui.vertices {
@@ -697,13 +697,17 @@ impl Page {
     /// The hotbar's keys: 1 to 5 are its slots, 1 and L hold Levitate, and
     /// while levitating X holds a descent. Returns whether it used the key.
     fn hotbar_key(&mut self, code: &str, down: bool) -> bool {
-        // The Grove's bar: 1 to 9 cast, and 0 is Long Rest.
+        // The Grove's bar: 1 to 9, 0, -, and = cast what their slots hold.
         if self.runtime.grove_bar().is_some() {
-            let Some(intent) = code
-                .strip_prefix("Digit")
-                .and_then(|d| d.parse::<u8>().ok())
-                .and_then(zones::grove::hotbar::key)
-            else {
+            let key = match code {
+                "Minus" => Some('-'),
+                "Equal" => Some('='),
+                _ => code
+                    .strip_prefix("Digit")
+                    .and_then(|d| d.chars().next())
+                    .filter(|_| code.len() == 6),
+            };
+            let Some(intent) = key.and_then(zones::grove::hotbar::key) else {
                 return false;
             };
             // Every press casts, and a held key recasts until it is let go.

@@ -91,6 +91,9 @@ pub struct PlayerController {
     /// forward (1) or back (-1), and right (1) or left (-1).
     pub ahead: f32,
     pub side: f32,
+    /// What every movement speed is multiplied by: 1 for the character's
+    /// own pace, more or less for a form it has taken.
+    pace: f32,
 }
 
 impl PlayerController {
@@ -105,7 +108,24 @@ impl PlayerController {
             speed: 0.0,
             ahead: 0.0,
             side: 0.0,
+            pace: 1.0,
         }
+    }
+
+    /// The multiplier on every movement speed.
+    #[must_use]
+    pub fn pace(&self) -> f32 {
+        self.pace
+    }
+
+    /// Sets the multiplier on every movement speed, as a form the character
+    /// takes changes it. A value that isn't positive and finite restores 1.
+    pub fn set_pace(&mut self, pace: f32) {
+        self.pace = if pace.is_finite() && pace > 0.0 {
+            pace
+        } else {
+            1.0
+        };
     }
 
     /// The unit vector the character faces, on the ground plane.
@@ -190,7 +210,7 @@ impl PlayerController {
         let right = fwd.cross(Vec3::Y);
         let wish = fwd * ahead + right * side;
         let step = if wish.length_squared() > 0.0 {
-            wish.normalize() * speed
+            wish.normalize() * speed * self.pace
         } else {
             Vec3::ZERO
         };

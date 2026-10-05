@@ -22,27 +22,50 @@ const NAME: f32 = 0.2;
 const NUMBER: f32 = 0.42;
 /// How long a number floats, s.
 pub const FLOAT: f32 = 1.4;
+/// How long a change of shape's swirl lasts, s.
+const SHIFT: f32 = 0.7;
 
-/// The figure the player's character and the dummies share: the
-/// character's scene with the dummy's materials and primitives added once
-/// for each dummy, so the renderer uploads it once and rewrites only the
-/// vertices each frame.
+/// The figure the player's character, the Wild Shape beasts, and the
+/// dummies share: the character's scene with each beast's images,
+/// materials, and primitives, then the dummy's added once for each dummy,
+/// so the renderer uploads it once and rewrites only the vertices each
+/// frame.
 pub(super) struct Model {
     scene: Arc<TexturedScene>,
     /// How many vertices the character contributes, and the character
     /// scene they belong to.
     cast: Option<(Arc<TexturedScene>, usize)>,
+    /// How many vertices each beast contributes, in form order; zero for a
+    /// form the pack lacks.
+    forms: Vec<usize>,
     /// The dummy's vertices in model space, every primitive's in turn.
     dummy: Vec<TexturedVertex>,
 }
 
+/// Where a vertex goes that draws nothing: the character's or a beast's
+/// while another stands in its place.
+const FOLDED: TexturedVertex = TexturedVertex {
+    pos: [0.0, -100.0, 0.0],
+    normal: [0.0, 1.0, 0.0],
+    uv: [0.0; 2],
+    color: [0; 4],
+    light: crate::pbr::textured::UNBAKED,
+};
+
 impl Model {
-    /// The shared figure for `cast`'s characters and `count` dummies.
+    /// The shared figure for `cast`'s characters, the beasts in `forms`
+    /// (each in its bind pose, `None` for a form the pack lacks), and
+    /// `count` dummies.
     ///
     /// # Errors
     ///
     /// Returns a message when the pack has no dummy.
-    pub fn new(pack: &ZonePack, cast: Option<&Figure>, count: usize) -> Result<Self, String> {
+    pub fn new(
+        pack: &ZonePack,
+        cast: Option<&Figure>,
+        forms: &[Option<Figure>],
+        count: usize,
+    ) -> Result<Self, String> {
         let model = pack
             .model(DUMMY_MODEL)
             .ok_or_else(|| format!("The Everglade pack has no {DUMMY_MODEL}"))?;
@@ -57,6 +80,33 @@ impl Model {
             }
             let count = mesh.primitives.iter().map(|p| p.vertices.len()).sum();
             cast_vertices = Some((figure.scene.clone(), count));
+        }
+        // Each beast's images and materials after those before it.
+        let mut form_counts = Vec::with_capacity(forms.len());
+        for form in forms {
+            let Some(figure) = form else {
+                form_counts.push(0);
+                continue;
+            };
+            let (images, materials) = (scene.images.len(), scene.materials.len());
+            scene.images.extend(figure.scene.images.iter().cloned());
+            scene
+                .materials
+                .extend(figure.scene.materials.iter().map(|m| {
+                    crate::pbr::textured::TexturedMaterial {
+                        image: m.image.map(|i| i + images),
+                        ..m.clone()
+                    }
+                }));
+            let mut vertices = 0;
+            for primitive in figure.scene.meshes.iter().flat_map(|m| &m.primitives) {
+                vertices += primitive.vertices.len();
+                mesh.primitives.push(crate::pbr::textured::Primitive {
+                    material: primitive.material + materials,
+                    ..primitive.clone()
+                });
+            }
+            form_counts.push(vertices);
         }
         let mut copied = Copied::default();
         let mut primitives = Vec::with_capacity(model.primitives.len());
@@ -89,36 +139,47 @@ impl Model {
         Ok(Self {
             scene: Arc::new(scene),
             cast: cast_vertices,
+            forms: form_counts,
             dummy,
         })
     }
 
-    /// This frame's figure: `cast` posed, then each of `dummies` standing
-    /// where it is, wobbling after a hit and lying over while down. When
-    /// the character's scene changed under it, the dummies draw without
-    /// the character.
-    pub fn figure(&self, cast: Option<&Figure>, dummies: &[Dummy], now: f32) -> Figure {
+    /// This frame's figure: `cast` posed, or, while the druid wears a
+    /// beast's shape, `worn` (the form's index and its posed vertices) in
+    /// its place; then each of `dummies` standing where it is, wobbling
+    /// after a hit and lying over while down. When the character's scene
+    /// changed under it, the dummies draw without the character.
+    pub fn figure(
+        &self,
+        cast: Option<&Figure>,
+        worn: Option<(usize, &[TexturedVertex])>,
+        dummies: &[Dummy],
+        now: f32,
+    ) -> Figure {
         let mut vertices = Vec::with_capacity(
-            self.dummy.len() * dummies.len() + self.cast.as_ref().map_or(0, |c| c.1),
+            self.dummy.len() * dummies.len()
+                + self.cast.as_ref().map_or(0, |c| c.1)
+                + self.forms.iter().sum::<usize>(),
         );
         if let Some((scene, count)) = &self.cast {
             match cast {
                 Some(figure)
-                    if Arc::ptr_eq(scene, &figure.scene) && figure.vertices.len() == *count =>
+                    if worn.is_none()
+                        && Arc::ptr_eq(scene, &figure.scene)
+                        && figure.vertices.len() == *count =>
                 {
                     vertices.extend(figure.vertices.iter().copied());
                 }
                 // Keeps the vertex count the scene expects, folded away.
-                _ => vertices.extend(std::iter::repeat_n(
-                    TexturedVertex {
-                        pos: [0.0, -100.0, 0.0],
-                        normal: [0.0, 1.0, 0.0],
-                        uv: [0.0; 2],
-                        color: [0; 4],
-                        light: crate::pbr::textured::UNBAKED,
-                    },
-                    *count,
-                )),
+                _ => vertices.extend(std::iter::repeat_n(FOLDED, *count)),
+            }
+        }
+        for (index, &count) in self.forms.iter().enumerate() {
+            match worn {
+                Some((i, posed)) if i == index && posed.len() == count => {
+                    vertices.extend_from_slice(posed);
+                }
+                _ => vertices.extend(std::iter::repeat_n(FOLDED, count)),
             }
         }
         for dummy in dummies {
@@ -200,6 +261,8 @@ pub enum Effect {
     Web { at: Vec3, start: f32, until: f32 },
     /// Long Rest's green rings rising around the druid.
     Rest { at: Vec3, start: f32 },
+    /// A Wild Shape or Return to Form: a green swirl closing on the druid.
+    Shift { at: Vec3, start: f32 },
 }
 
 impl Effect {
@@ -214,6 +277,7 @@ impl Effect {
             Self::Mist { start, .. } => (*start, 0.8),
             Self::Web { until, .. } => return now >= *until,
             Self::Rest { start, .. } => (*start, 1.2),
+            Self::Shift { start, .. } => (*start, SHIFT),
         };
         now - start >= length
     }
@@ -226,7 +290,7 @@ impl Effect {
             Self::Burst { .. } | Self::Mist { .. } => 8,
             Self::Wave { .. } => 6,
             Self::Gust { .. } | Self::Web { .. } => 6,
-            Self::Rest { .. } => 1,
+            Self::Rest { .. } | Self::Shift { .. } => 1,
         }
     }
 }
@@ -499,6 +563,21 @@ impl Painter {
                 }
                 for k in 1..=3 {
                     ring(self, ground, r * k as f32 / 3.0, 10, 0.0, color);
+                }
+            }
+            Effect::Shift { at, start } => {
+                let k = ((now - start) / SHIFT).clamp(0.0, 1.0);
+                let color = [0.55, 1.0, 0.4].map(|c| c * (1.0 - k));
+                for i in 0..4 {
+                    let y = 0.2 + i as f32 * 0.5;
+                    let r = 2.2 * (1.0 - k) + 0.3;
+                    ring(self, at + Vec3::Y * y, r, 18, k * 6.0 + i as f32, color);
+                }
+                for i in 0..8 {
+                    let a = i as f32 / 8.0 * TAU + k * 4.0;
+                    let r = 2.0 * (1.0 - k) + 0.2;
+                    let foot = at + Vec3::new(a.cos() * r, 0.05, a.sin() * r);
+                    self.line(foot, foot + Vec3::Y * (1.8 * (1.0 - k) + 0.2), color);
                 }
             }
             Effect::Rest { at, start } => {

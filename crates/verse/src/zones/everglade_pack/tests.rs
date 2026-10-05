@@ -359,7 +359,11 @@ fn committed_manifests_admit_only_base_color_sources_with_licenses() {
         let directory = repository().join(PACK_DIRECTORY).join(set);
         let bytes = std::fs::read(directory.join("manifest.json")).unwrap();
         let manifest = compile::parse_manifest(&bytes).unwrap();
-        assert!(manifest.package.ends_with("MegaKit Standard"), "{set}");
+        if compile::FORM_SETS.contains(&set) {
+            assert!(manifest.package.contains("Quaternius"), "{set}");
+        } else {
+            assert!(manifest.package.ends_with("MegaKit Standard"), "{set}");
+        }
         let license = std::fs::read_to_string(directory.join("license.txt")).unwrap();
         assert!(license.contains("CC0"), "{set} license text");
         assert!(directory.join("README.md").is_file(), "{set} README");
@@ -368,6 +372,8 @@ fn committed_manifests_admit_only_base_color_sources_with_licenses() {
         for (name, transform) in &manifest.transforms {
             if set == "generated" {
                 assert!(transform.contains("everglade_admit.py"), "{set}/{name}");
+            } else if compile::FORM_SETS.contains(&set) {
+                assert!(transform.contains("beasts_admit.py"), "{set}/{name}");
             } else {
                 assert!(name.ends_with(".png"), "{set}/{name}");
             }
@@ -434,6 +440,17 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
     assert!(player.clip("run").unwrap().distance > player.clip("walk").unwrap().distance);
     assert_eq!(player.clip("idle").unwrap().distance, 0.0);
     assert!(player.triangles() <= Limits::EVERGLADE.character_triangles);
+    // The Wild Shape beasts: the Giant Spider with its five clips, a walk
+    // that carries it forward, and the stylized bear, wolf, and eagle.
+    let spider = pack.form("beasts/giant_spider").expect("the Giant Spider");
+    for clip in ["idle", "walk", "attack", "jump", "death"] {
+        assert!(spider.clip(clip).is_some(), "spider {clip}");
+    }
+    assert!(spider.clip("walk").unwrap().distance > 0.2);
+    assert_eq!(spider.clip("idle").unwrap().distance, 0.0);
+    for name in ["beasts/bear", "beasts/wolf", "beasts/eagle"] {
+        assert!(pack.form(name).is_some(), "{name}");
+    }
     assert!(compiled.triangles >= player.triangles());
     for primitive in &player.primitives {
         let texture = pack.materials[primitive.material as usize].texture.unwrap();

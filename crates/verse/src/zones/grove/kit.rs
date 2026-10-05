@@ -15,6 +15,8 @@ use super::super::Intent;
 pub const REPEAT: f32 = 1.0 / 6.0;
 /// The level 20 druid's spell attack bonus: proficiency 6 and Wisdom 5.
 pub const ATTACK_BONUS: i32 = 11;
+/// The Giant Spider's attack bonus, which a druid in its shape uses.
+pub const SPIDER_ATTACK_BONUS: i32 = 5;
 /// The druid's spell save DC: 8, proficiency 6, and Wisdom 5.
 pub const SAVE_DC: i32 = 19;
 /// The seed of the Grove's dice, so a session replays exactly.
@@ -35,7 +37,15 @@ pub enum Spell {
     Fireball,
     MistyStep,
     Web,
+    /// Wild Shape into the Giant Spider ([`super::shape`]).
+    WildShapeSpider,
+    /// Drop the beast's shape.
+    ReturnToForm,
     LongRest,
+    /// The Giant Spider's bite, on the bar while the druid wears its shape.
+    Bite,
+    /// The Giant Spider's web, likewise.
+    SpiderWeb,
 }
 
 /// A damage type, for resistances.
@@ -44,6 +54,8 @@ pub enum Damage {
     Fire,
     Thunder,
     Bludgeoning,
+    Piercing,
+    Poison,
 }
 
 impl Damage {
@@ -54,6 +66,8 @@ impl Damage {
             Self::Fire => "fire",
             Self::Thunder => "thunder",
             Self::Bludgeoning => "bludgeoning",
+            Self::Piercing => "piercing",
+            Self::Poison => "poison",
         }
     }
 
@@ -64,6 +78,8 @@ impl Damage {
             Self::Fire => [1.0, 0.45, 0.12],
             Self::Thunder => [0.45, 0.7, 1.0],
             Self::Bludgeoning => [0.9, 0.8, 0.55],
+            Self::Piercing => [0.92, 0.9, 0.86],
+            Self::Poison => [0.55, 1.0, 0.3],
         }
     }
 }
@@ -90,9 +106,9 @@ impl Ability {
 /// How a spell lands on a dummy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Delivery {
-    /// A spell attack roll against armor class; a natural 20 doubles the
-    /// dice.
-    Attack,
+    /// An attack roll with `bonus` against armor class; a natural 20
+    /// doubles the dice.
+    Attack { bonus: i32 },
     /// A saving throw of `ability` against [`SAVE_DC`]. A success takes
     /// half damage when `half` is set, and none otherwise, and avoids any
     /// push, lift, or root either way.
@@ -111,13 +127,20 @@ pub struct Def {
     pub range: f32,
     /// Damage dice, count and sides; `(0, 0)` deals no damage.
     pub dice: (u32, u32),
+    /// Damage added to the dice, not doubled on a critical hit.
+    pub bonus: i32,
     pub kind: Damage,
+    /// A second damage of another type that lands with the first, its
+    /// dice and type, such as a bite's poison.
+    pub extra: Option<(u32, u32, Damage)>,
     pub delivery: Delivery,
 }
 
 impl Spell {
-    /// Every slot, in hotbar order (keys 1 to 9, then 0).
-    pub const ALL: [Self; 10] = [
+    /// Every spell, in hotbar order; the beast's attacks come last because
+    /// they take another slot's place while the druid wears its shape
+    /// ([`super::hotbar`]).
+    pub const ALL: [Self; 14] = [
         Self::Thunderwave,
         Self::GustOfWind,
         Self::WindWall,
@@ -127,7 +150,11 @@ impl Spell {
         Self::Fireball,
         Self::MistyStep,
         Self::Web,
+        Self::WildShapeSpider,
+        Self::ReturnToForm,
         Self::LongRest,
+        Self::Bite,
+        Self::SpiderWeb,
     ];
 
     /// The spell's numbers: the SRD's dice and saves at level 20, and
@@ -135,10 +162,18 @@ impl Spell {
     #[must_use]
     pub const fn def(self) -> Def {
         use Ability::{Constitution, Dexterity, Strength};
-        use Delivery::{Attack, Automatic};
+        use Delivery::Automatic;
         const fn save(ability: Ability, half: bool) -> Delivery {
             Delivery::Save { ability, half }
         }
+        const SPELL: Delivery = Delivery::Attack {
+            bonus: ATTACK_BONUS,
+        };
+        const SPIDER: Delivery = Delivery::Attack {
+            bonus: SPIDER_ATTACK_BONUS,
+        };
+        let mut bonus = 0;
+        let mut extra = None;
         let (label, level, range, dice, kind, delivery) = match self {
             // A 15-foot cube from the caster: 2d8 thunder and a 10-foot
             // push; a Constitution save halves it and holds ground.
@@ -188,7 +223,7 @@ impl Spell {
                 Automatic,
             ),
             // A 120-foot bolt: an attack roll for 4d10 fire at level 17+.
-            Self::FireBolt => ("Fire Bolt", 0, 120.0 * FT, (4, 10), Damage::Fire, Attack),
+            Self::FireBolt => ("Fire Bolt", 0, 120.0 * FT, (4, 10), Damage::Fire, SPELL),
             // A 150-foot throw: 8d6 fire in a 20-foot radius, half on a
             // Dexterity save.
             Self::Fireball => (
@@ -210,22 +245,43 @@ impl Spell {
                 Damage::Fire,
                 save(Dexterity, false),
             ),
+            Self::WildShapeSpider => (
+                "Wild Shape: Giant Spider",
+                0,
+                0.0,
+                (0, 0),
+                Damage::Piercing,
+                Automatic,
+            ),
+            Self::ReturnToForm => ("Return to Form", 0, 0.0, (0, 0), Damage::Fire, Automatic),
             Self::LongRest => ("Long Rest", 0, 0.0, (0, 0), Damage::Fire, Automatic),
+            // The Giant Spider's bite: +5 to hit, reach 5 feet (a melee
+            // reach at the spider's size), 1d8 + 3 piercing and 2d6 poison.
+            Self::Bite => {
+                bonus = 3;
+                extra = Some((2, 6, Damage::Poison));
+                ("Bite", 0, 3.5, (1, 8), Damage::Piercing, SPIDER)
+            }
+            // The Giant Spider's web: +5 to hit at 60 feet; a hit restrains.
+            Self::SpiderWeb => ("Web", 0, 60.0 * FT, (0, 0), Damage::Piercing, SPIDER),
         };
         Def {
             label,
             level,
             range,
             dice,
+            bonus,
             kind,
+            extra,
             delivery,
         }
     }
 
-    /// The zone intent that casts it.
+    /// The named zone intent that casts it, for the spells that have one.
+    /// The hotbar sends its slot instead ([`Intent::GroveSlot`]).
     #[must_use]
-    pub const fn intent(self) -> Intent {
-        match self {
+    pub const fn intent(self) -> Option<Intent> {
+        Some(match self {
             Self::Thunderwave => Intent::Thunderwave,
             Self::GustOfWind => Intent::GustOfWind,
             Self::WindWall => Intent::WindWall,
@@ -236,13 +292,14 @@ impl Spell {
             Self::MistyStep => Intent::MistyStep,
             Self::Web => Intent::Web,
             Self::LongRest => Intent::LongRest,
-        }
+            _ => return None,
+        })
     }
 
-    /// The spell `intent` casts in the Grove, if any.
+    /// The spell a named `intent` casts in the Grove, if any.
     #[must_use]
     pub fn of(intent: Intent) -> Option<Self> {
-        Self::ALL.into_iter().find(|s| s.intent() == intent)
+        Self::ALL.into_iter().find(|s| s.intent() == Some(intent))
     }
 
     /// Everglade's spell behind it, for the three the glade already casts.
@@ -260,10 +317,26 @@ impl Spell {
     /// Whether the spell needs a dummy in front of the druid.
     #[must_use]
     pub const fn needs_target(self) -> bool {
-        matches!(self, Self::FireBolt | Self::Fireball | Self::Web)
+        matches!(
+            self,
+            Self::FireBolt | Self::Fireball | Self::Web | Self::Bite | Self::SpiderWeb
+        )
     }
 
-    pub(super) const fn index(self) -> usize {
-        self as usize
+    /// Whether it is a beast's own attack, which only its shape can use.
+    #[must_use]
+    pub const fn beast(self) -> bool {
+        matches!(self, Self::Bite | Self::SpiderWeb)
+    }
+
+    /// Whether the druid casts it as a druid: not a form change, a demo
+    /// control, or a beast's attack.
+    #[must_use]
+    pub const fn spell(self) -> bool {
+        !self.beast()
+            && !matches!(
+                self,
+                Self::WildShapeSpider | Self::ReturnToForm | Self::LongRest
+            )
     }
 }

@@ -1,0 +1,12 @@
+Wild Shape beasts for Verse
+
+giant_spider: the Spider from Easy Animated Enemy Pack (January 2019) by
+Quaternius (https://quaternius.com), converted to glTF by
+scripts/blender/enemy_pack.py.
+
+bear, wolf, eagle: generated from primitives by scripts/blender/animals.py.
+
+License:
+CC0 1.0 Universal (CC0 1.0)
+Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/

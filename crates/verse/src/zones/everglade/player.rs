@@ -30,7 +30,7 @@ use crate::controller::PlayerController;
 use crate::pbr::textured::{
     Figure, Primitive, TexturedMesh, TexturedScene, TexturedVertex, UNBAKED,
 };
-use crate::zones::everglade_pack::{Character, ZonePack};
+use crate::zones::everglade_pack::{Character, Clip as PackClip, ZonePack};
 
 /// What the player is doing, and so which clip plays.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,6 +187,8 @@ pub(crate) struct Rig {
 /// engine ID it plays under.
 const SWING: &str = "swing";
 const SWING_ID: u16 = 60;
+/// A form's attack clip, which plays where the player's swing would.
+const ATTACK: &str = "attack";
 /// The sledgehammer: how far the handle runs past the lower hand to its
 /// butt, and from that hand to the head's center, m.
 pub const BUTT: f32 = 0.16;
@@ -427,8 +429,27 @@ fn posture_id(index: usize) -> u16 {
     30 + index as u16
 }
 
+/// The clip a form without `motion`'s own clip plays instead: a gait
+/// walks, or flaps for a bird, and the rest stand idle.
+fn form_clip(character: &Character, motion: Motion) -> Option<&PackClip> {
+    character.clip(motion.clip()).or_else(|| match motion {
+        Motion::Idle => character.clips.first(),
+        Motion::Jump => form_clip(character, Motion::Idle),
+        Motion::Walk => character
+            .clip("flap")
+            .or_else(|| form_clip(character, Motion::Idle)),
+        _ => form_clip(character, Motion::Walk),
+    })
+}
+
 impl Rig {
+    /// The rig for the player's character, which needs a clip for every
+    /// motion. A form ([`Beast`]) plays a stand-in for a missing one.
     fn build(pack: &ZonePack, character: &Character) -> Result<Self, String> {
+        Self::build_with(pack, character, false)
+    }
+
+    fn build_with(pack: &ZonePack, character: &Character, form: bool) -> Result<Self, String> {
         let mut motions = [Loop {
             id: 0,
             duration: 1.0,
@@ -436,9 +457,12 @@ impl Rig {
         }; Motion::ALL.len()];
         let mut clips = Vec::new();
         for motion in Motion::ALL {
-            let clip = character
-                .clip(motion.clip())
-                .ok_or_else(|| format!("The Everglade player has no {} clip", motion.clip()))?;
+            let clip = if form {
+                form_clip(character, motion)
+            } else {
+                character.clip(motion.clip())
+            }
+            .ok_or_else(|| format!("{} has no {} clip", character.name, motion.clip()))?;
             let id = clip_id(motion.index());
             motions[motion.index()] = Loop {
                 id,
@@ -460,8 +484,10 @@ impl Rig {
                     .collect(),
             });
         }
-        // The demolition yard's swing, which a pack before it lacks.
-        let swing = character.clip(SWING).map(|clip| {
+        // The demolition yard's swing, which a pack before it lacks, or a
+        // form's attack.
+        let attack = character.clip(ATTACK).filter(|_| form);
+        let swing = character.clip(SWING).or(attack).map(|clip| {
             clips.push(Clip {
                 id: SWING_ID,
                 duration: clip.duration,
@@ -988,6 +1014,83 @@ impl Cast {
             scene: self.scene.clone(),
             vertices: Arc::new(vertices),
         }
+    }
+}
+
+/// A form the player takes, such as a Wild Shape beast: one of the pack's
+/// forms posed where the player stands, playing its gait by the player's
+/// speed and its attack clip when struck from [`Self::advance`].
+pub(crate) struct Beast {
+    rig: Rig,
+    actor: Actor,
+    vertices: Vec<TexturedVertex>,
+}
+
+impl Beast {
+    /// The form `character` from `pack`, standing in its bind pose.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the form has no clip to stand in.
+    pub fn new(pack: &ZonePack, character: &Character) -> Result<Self, String> {
+        let rig = Rig::build_with(pack, character, true)?;
+        Ok(Self {
+            vertices: rig.template.clone(),
+            rig,
+            actor: Actor::new(),
+        })
+    }
+
+    /// The form in its bind pose, for a figure that draws it beside others:
+    /// its images, materials, and one mesh.
+    #[must_use]
+    pub fn figure(&self) -> Figure {
+        Figure {
+            scene: Arc::new(self.rig.scene(1)),
+            vertices: Arc::new(self.rig.template.clone()),
+        }
+    }
+
+    /// How long the form's attack clip plays, s, when it has one.
+    #[must_use]
+    pub fn attack_length(&self) -> Option<f32> {
+        self.rig.swing.map(|clip| clip.duration)
+    }
+
+    /// Poses the form for `at` after `dt` seconds: at its place and facing,
+    /// `scale` times its modeled size, playing its attack `attack` seconds
+    /// in, or else the gait for its speed.
+    pub fn advance(&mut self, at: &PlayerController, scale: f32, attack: Option<f32>, dt: f32) {
+        let rig = &self.rig;
+        let scale = if scale.is_finite() && scale > 0.0 {
+            scale
+        } else {
+            1.0
+        };
+        let joints = match attack.zip(rig.swing) {
+            Some((t, clip)) => self.actor.hold_at(rig, clip, t, dt),
+            // A larger body covers more ground per stride.
+            None => self.actor.advance(
+                rig,
+                Play::Motion(Motion::of_player(at)),
+                at.speed / scale,
+                dt,
+            ),
+        }
+        .unwrap_or_default();
+        let root = Mat4::from_scale_rotation_translation(
+            Vec3::splat(scale),
+            Quat::from_rotation_y(at.yaw),
+            at.pos,
+        );
+        self.vertices.clear();
+        rig.skin(&joints, root, None, &mut self.vertices);
+    }
+
+    /// The posed vertices, in [`Self::figure`]'s order.
+    #[must_use]
+    pub fn vertices(&self) -> &[TexturedVertex] {
+        &self.vertices
     }
 }
 

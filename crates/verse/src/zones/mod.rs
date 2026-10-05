@@ -284,6 +284,10 @@ pub enum Intent {
     Web,
     /// The Grove's demo control: refills mana, cooldowns, and the dummies.
     LongRest,
+    /// The Grove's hotbar slot at this index: it casts what the slot holds
+    /// when the press arrives, which a Wild Shape changes
+    /// ([`grove::hotbar`](crate::zones::grove::hotbar)).
+    GroveSlot(u8),
     /// The demolition yard: swing the sledgehammer, aim Meteor Swarm, or
     /// rebuild the cottages ([`everglade::demolition`]).
     Swing,

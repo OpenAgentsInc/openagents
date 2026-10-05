@@ -342,10 +342,26 @@ shows the spell's school color and its initials until one is chosen.
 None of the kits on this Mac has a bear, wolf, or eagle. Quaternius's **Easy
 Animated Enemy Pack** (January 2019, CC0, in `~/Downloads`) has an animated
 **Spider**, plus a Rat, Frog, Snake, and Wasp, as FBX, OBJ, and Blender files.
-The Spider becomes the first real Wild Shape form (Giant Spider, scaled up).
-The pack has no glTF, and no Blender is installed here, so importing it needs
-an FBX-to-glTF conversion step first. Bear, wolf, and eagle stay stylized
-silhouettes until a CC0 pack with them is in hand.
+
+The Spider is the first real Wild Shape form (#10610).
+`scripts/blender/enemy_pack.py` converts it to glTF
+([the Blender pipeline](blender-pipeline.md)), and
+`scripts/blender/beasts_admit.py` admits it, with the generated bear, wolf,
+and eagle, into the Everglade pack's `beasts` set. The pack compiler turns
+each skinned model in that set into one of the pack's **forms**: a skinned
+character beside the player's, with its own skeleton and clips
+(`everglade_pack::compile::forms`). A gait's distance per loop is measured
+from the clip, so the feet keep pace with the ground.
+
+In the Grove, **Wild Shape: Giant Spider** (key `0`) swaps the druid's
+character for the spider at 1.5 times its modeled size, a Large creature's
+3 m. It plays idle standing, its walk by speed for every gait, and its
+attack clip on a bite, and it moves at 1.25 times the druid's pace. Its
+**Bite** (+5, 1d8 + 3 piercing and 2d6 poison, 3.5 m reach) and **Web** (+5
+at 18 m; a hit roots for 6 s) take the bar's first two slots, and the
+druid's spells still cast. **Return to Form** (`-`), Long Rest, and leaving
+the Grove end it. Climbing isn't implemented. The bear, wolf, and eagle are
+in the pack as forms but have no Wild Shape slots yet.
 
 The Circle of the Land is the only SRD druid subclass; the Circle of the Moon
 isn't in the SRD and stays out.
