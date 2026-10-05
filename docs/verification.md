@@ -93,6 +93,63 @@ to **1.97.1**. [`rustfmt.toml`](../rustfmt.toml) pins Rust and formatter style
 editions to **2024**. Run the pinned formatter once for formatting-only
 changes; do not mix a workspace reformat with behavioral fixes.
 
+## Faster test runs
+
+`cargo test` is the default runner. [cargo-nextest](https://nexte.st) also
+works, with settings in [`.config/nextest.toml`](../.config/nextest.toml):
+it reports every failure, flags tests that run longer than a minute, stops a
+test after 20 minutes, and starts Verse's three longest tests first.
+
+```sh
+cargo nextest run -p coder                 # each test in its own process
+cargo nextest run -p coder --retries 2     # rerun a failure to check for a flake
+cargo test -p coder --doc                  # nextest doesn't run doctests
+```
+
+Use nextest when a crate has many integration-test binaries, which
+`cargo test` runs one after another, or when you want per-test timeouts and
+retries. For `cargo test -p verse --lib`, keep `cargo test`: its wall time is
+set by its longest test, and that test ran slower in nextest's own process
+than inside `cargo test` (see the measurements below).
+
+Reuse your slot's target directory. The rustc wrapper, kache, restores a
+compiled crate into any target directory when the crate's sources, features,
+and flags match an earlier build, so a new directory mostly fills from the
+cache. Three things still rebuild:
+
+- **The test binary.** kache doesn't cache executables
+  (`cache_executables = false`, its default), and Verse's test unit compiles
+  at `opt-level = 3` from the dev profile override. A new target directory
+  or any edit to `crates/verse` recompiles it: about 220 seconds and 800 MB.
+  Enabling executable caching would only help when Verse is unchanged, at
+  800 MB a copy against a 30 GiB store, so leave it off.
+- **A different package selection.** `cargo build -p naga` and
+  `cargo test -p verse` unify features differently, so the same dependency
+  gets different cache keys. A repeat of the same command in another target
+  directory hits: `cargo build -p naga` took 29.6 seconds in one new
+  directory and 4.3 seconds in the next.
+- **A shared target directory.** Two checkouts at different commits that use
+  one target directory rebuild each other's workspace crates on every run.
+  Give each checkout its own.
+
+Measurements on 2026-10-05, on an 18-core Apple silicon Mac with 128 GB of
+memory, single runs with other agents keeping the load average between 35
+and 80:
+
+| Run of `cargo test -p verse --lib` at `58e31edb66` | Time |
+| --- | --- |
+| Build, agent slot that another checkout also used | 581 s |
+| Build, new target directory (880 kache misses, 60 hits) | 331 s |
+| Build, a second new target directory (772 hits, 2 misses: the Verse test unit and `coder`) | 280 s |
+| Build, nothing changed | 2 s |
+| Tests, `cargo test` (two runs) | 96 s, 129 s |
+| Tests, `cargo nextest run` (two runs) | 197 s, 196 s |
+
+In both nextest runs the longest test,
+`imported::characters::tests::standard_outfits_retarget_and_expose_runtime_states`,
+took 189 to 192 seconds; run alone it took 150 seconds under `cargo test`
+and 100 seconds under nextest, at different loads.
+
 ## Package policy and compiler version
 
 The workspace compiles on one compiler: **1.97.1**, the version

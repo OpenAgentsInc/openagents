@@ -1,0 +1,23 @@
+# cargo-nextest settings. `cargo test` stays the default runner; read
+# "Faster test runs" in docs/verification.md before changing this file.
+
+[profile.default]
+# Report every failing test in one run instead of stopping at the first.
+fail-fast = false
+# Name a test as slow after a minute, and stop it after twenty minutes, so a
+# hung test fails instead of holding an agent slot.
+slow-timeout = { period = "60s", terminate-after = 20 }
+# List the slow and failing tests again at the end of the run.
+final-status-level = "slow"
+
+# Start the longest tests first, so that one of them starting late doesn't
+# set the run's wall time. Each runs for one to three minutes.
+[[profile.default.overrides]]
+filter = '''
+package(verse) & (
+    test(=imported::characters::tests::standard_outfits_retarget_and_expose_runtime_states)
+    | test(=imported::props::tests::static_props_compile_with_provenance_and_admitted_collision)
+    | test(=zones::everglade_pack::tests::committed_sources_compile_within_budgets_to_the_pinned_pack)
+)
+'''
+priority = 100
