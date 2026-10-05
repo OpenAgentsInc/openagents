@@ -7,7 +7,7 @@
 //! the desktop agent or benchmark harness dependencies. The application palette
 //! belongs to `coder_ui::theme`. Read `docs/verse/README.md`.
 
-pub mod agent;
+pub use verse_core::agent;
 #[cfg(feature = "desktop")]
 pub mod app;
 #[cfg(feature = "native-audio")]
@@ -21,7 +21,7 @@ pub mod brain;
 pub use verse_gfx::camera;
 pub use verse_net::chat;
 pub mod controller;
-pub mod crowd;
+pub use verse_core::crowd;
 pub mod doors;
 #[cfg(all(target_os = "macos", feature = "desktop"))]
 pub mod edr;
@@ -36,13 +36,10 @@ pub mod grid_engine;
 pub mod grid_frame;
 pub mod grid_pack;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod gym;
-pub mod gym_evals;
-pub mod gym_hall;
-pub mod gym_notes;
-pub mod gym_replay;
+pub use verse_gym::gym;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod gym_results;
+pub use verse_gym::gym_results;
+pub use verse_gym::{gym_evals, gym_hall, gym_notes, gym_replay};
 #[cfg(feature = "hosted-social")]
 pub mod hosted;
 pub mod hud;

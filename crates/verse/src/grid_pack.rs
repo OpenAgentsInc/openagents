@@ -301,8 +301,9 @@ fn admit(pack: &mut Pack, dir: &Path) -> Result<(), String> {
     let (revision, bytes) = inventory::bundle(&[
         include_bytes!("grid_pack.rs"),
         include_bytes!("world.rs"),
+        include_bytes!("../../verse-core/src/world.rs"),
         include_bytes!("../../verse-core/src/avatar.rs"),
-        include_bytes!("agent.rs"),
+        include_bytes!("../../verse-core/src/agent.rs"),
         include_bytes!("../../verse-pbr/src/mesh.rs"),
         include_bytes!("../../verse-gfx/src/palette.rs"),
         include_bytes!("zones/mod.rs"),

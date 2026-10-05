@@ -7,14 +7,17 @@ publish.workspace = true
 description = "What Verse's zones share: the static world, zone controls and atmosphere, the avatar figure, particle effects, tooltips, and scene labels."
 
 [dependencies]
+atif = { path = "../atif" }
 coder-ui = { path = "../coder-ui" }
 glam = "0.30.10"
 serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 verse-engine = { path = "../verse-engine" }
 verse-gfx = { path = "../verse-gfx" }
+verse-net = { path = "../verse-net" }
 verse-pbr = { path = "../verse-pbr" }
 verse-world = { path = "../verse-world" }
+web-time = "1.1.0"
 
 [lints]
 workspace = true

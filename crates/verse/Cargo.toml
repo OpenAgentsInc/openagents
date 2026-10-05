@@ -59,6 +59,10 @@ verse-core = { path = "../verse-core" }
 # The imported content and the RITUAL client; `verse` re-exports them
 # as `imported` and `ritual`.
 verse-imported = { path = "../verse-imported" }
+# The Grid's Gym boards, hall, notes, and results; `verse` re-exports them
+# as `gym`, `gym_evals`, `gym_hall`, `gym_notes`, `gym_replay`, and
+# `gym_results`.
+verse-gym = { path = "../verse-gym" }
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
 coder-delegate = { path = "../coder-delegate", optional = true }

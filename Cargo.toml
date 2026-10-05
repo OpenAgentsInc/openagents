@@ -61,6 +61,8 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.verse-core]
 opt-level = 3
+[profile.dev.package.verse-gym]
+opt-level = 3
 [profile.dev.package.verse-imported]
 opt-level = 3
 [profile.dev.package.verse-host]

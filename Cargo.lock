@@ -15101,6 +15101,7 @@ dependencies = [
  "verse-core",
  "verse-engine",
  "verse-gfx",
+ "verse-gym",
  "verse-host",
  "verse-imported",
  "verse-lagrange",
@@ -15139,14 +15140,17 @@ dependencies = [
 name = "verse-core"
 version = "0.1.0"
 dependencies = [
+ "atif",
  "coder-ui",
  "glam",
  "serde",
  "toml",
  "verse-engine",
  "verse-gfx",
+ "verse-net",
  "verse-pbr",
  "verse-world",
+ "web-time",
 ]
 
 [[package]]
@@ -15175,6 +15179,26 @@ dependencies = [
  "verse-engine",
  "verse-world",
  "wgpu",
+]
+
+[[package]]
+name = "verse-gym"
+version = "0.1.0"
+dependencies = [
+ "coder-ui",
+ "glam",
+ "gym-bridge",
+ "gym-leaderboard",
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "verse-core",
+ "verse-net",
+ "verse-pbr",
 ]
 
 [[package]]

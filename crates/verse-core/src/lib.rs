@@ -5,14 +5,20 @@
 //! scene labels. `verse` re-exports each item under its old path. Read
 //! `docs/verse/README.md`.
 
+pub mod agent;
 pub mod avatar;
+pub mod crowd;
 pub mod fx;
 pub mod label;
+pub mod place;
 pub mod tooltip;
 pub mod world;
 pub mod zone;
 
 // The paths the moved modules were written against.
+#[cfg(test)]
+use verse_gfx::palette;
 use verse_gfx::ui;
+use verse_net::mv;
 use verse_pbr::mesh;
 use verse_world::social::controller;

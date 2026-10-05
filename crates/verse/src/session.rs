@@ -35,13 +35,8 @@ use crate::identity::{self, Identity};
 use crate::mv::{self, EntityPose, Frame, Gesture, Received, State};
 use crate::net::{In, Link, Out};
 
-/// The world this client joins.
-pub const WORLD: &str = "verse-plaza";
-/// The world of the OpenAgents app's bare plaza. It is a separate coordinate
-/// space from [`WORLD`]: the bare world has none of the plaza's buildings or
-/// collision, so its positions are not valid plaza positions (NIP-MV requires
-/// a distinct world identifier for each separately loaded coordinate space).
-pub const BARE_WORLD: &str = "verse-bare";
+/// The world this client joins, and the OpenAgents app's bare plaza.
+pub use verse_core::world::{BARE_WORLD, PLAZA_WORLD as WORLD};
 /// Public plaza relay used by unconfigured Coder mobile installs.
 pub const PUBLIC_RELAY: &str = "wss://relay.openagents.com";
 /// The relay used when none is named.
