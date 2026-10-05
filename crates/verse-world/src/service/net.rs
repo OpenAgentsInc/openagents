@@ -485,11 +485,6 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                         if let Some(writer) = &writer {
                             let room = pending.len() < QUEUE && fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0;
                             let history = gateway.chamber.rewards.history_capacity().unwrap_or(false);
-                            if !room || !history {
-                                stats.storage_refusals += 1;
-                                let _ = reply.send(committed.busy(id, &bytes));
-                                continue;
-                            }
                             let mutating = Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
                                 Body::Authenticate {..} | Body::Social {..} | Body::BeginMovementFrames {..} | Body::MovementFrame {..} | Body::Command {..} | Body::Respawn {..} | Body::ClaimQuest {..}
                                 | Body::AcceptQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..} | Body::EquipGear {..}));
@@ -510,6 +505,11 @@ pub(super) async fn serve_with_store<F: Future<Output = ()>>(
                                         .map(|bytes| (bytes, gateway.authenticated(id)));
                                     let _ = reply.send(result);
                                 }
+                                continue;
+                            }
+                            if !room || !history {
+                                stats.storage_refusals += 1;
+                                let _ = reply.send(committed.busy(id, &bytes));
                                 continue;
                             }
                             let response = if mutating {
@@ -1338,6 +1338,14 @@ pub(super) mod tests {
             (control.life, control.epoch, control.accepted_sequence),
             committed_control
         );
+        let snapshot = b.snapshot();
+        tokio::pin!(snapshot);
+        assert!(
+            timeout(Duration::from_millis(120), &mut snapshot)
+                .await
+                .is_err(),
+            "Snapshot bypassed the durability fence or was refused for writer capacity"
+        );
         drop(release);
         let admitted = timeout(Duration::from_secs(2), &mut command)
             .await
@@ -1348,6 +1356,10 @@ pub(super) mod tests {
             "Unexpected admission after storage drain: {:?}",
             admitted.body
         );
+        timeout(Duration::from_secs(2), &mut snapshot)
+            .await
+            .unwrap()
+            .unwrap();
         stop.send(()).unwrap();
         let exit = timeout(Duration::from_secs(2), server)
             .await
