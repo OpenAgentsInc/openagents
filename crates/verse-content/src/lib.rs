@@ -1,4 +1,6 @@
 //! Portable admission shared by render clients, Rust tools, and dedicated hosts.
+#[cfg(feature = "authoring")]
+pub mod authoring;
 pub mod collision;
 #[cfg(feature = "compiler")]
 pub mod compiler;

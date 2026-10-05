@@ -35,6 +35,7 @@ fn config(root: &Path) -> Config {
         private_key_der: "key.der".into(),
         state_dir: Some(root.into()),
         authored_combat_health: false,
+        authored: None,
         social_profile: None,
         guests: None,
         profile: None,

@@ -794,6 +794,15 @@ impl Game {
             world.scene.collision_profile.as_deref(),
             world.primary.admission.actor().instance,
         )?;
+        if let Some(settings) = world
+            .encounter
+            .as_ref()
+            .and_then(|e| e.authored_settings.clone())
+        {
+            if let Some(region) = &settings.navigation {
+                world.configure_authored_navigation(region, &settings.blockers)?;
+            }
+        }
         world.navigation_cover = world.navigation_obstacles();
         for collider in world.blockers.colliders()? {
             world.colliders.push(physics::kinematic::Aabb {
@@ -1185,6 +1194,68 @@ impl Game {
     pub fn navigation_work(&self) -> (usize, usize, usize, usize) {
         let (plans, nodes, work) = self.navigation_scheduler.used();
         (plans, nodes, work, self.navigation_scheduler.pending())
+    }
+    /// Compiles an author preview over the authority's current collision scene.
+    pub(crate) fn configure_authored_navigation(
+        &mut self,
+        region: &crate::content::NavigationRegion,
+        blockers: &BTreeMap<u64, crate::content::Bounds>,
+    ) -> Result<(), String> {
+        region.validate()?;
+        let instance = self.player_life().instance;
+        let mut geometry = self.static_queries()?;
+        for (id, bounds) in blockers {
+            geometry.insert(physics::queries::MeshCollider {
+                key: physics::queries::ColliderKey {
+                    life: physics::queries::Life {
+                        instance,
+                        entity: 2_000_000 + *id,
+                        generation: self.player_life().generation,
+                    },
+                    shape: 0,
+                },
+                layers: 1,
+                usage: physics::queries::Usage::Blocking,
+                mesh: physics::queries::Mesh::from_box(bounds.min.into(), bounds.max.into())?,
+            })?;
+        }
+        let navigation = physics::walkable::Navigation::compile(
+            &geometry,
+            physics::walkable::Config {
+                instance,
+                layers: 1,
+                min: region.min.into(),
+                max: region.max.into(),
+                cell: region.cell,
+                character: physics::character::Settings::default(),
+                work_budget: 1_000_000,
+            },
+        )?;
+        self.navigation = Some(std::sync::Arc::new(navigation));
+        Ok(())
+    }
+    pub fn navigation_preview(
+        &self,
+        min: glam::DVec3,
+        max: glam::DVec3,
+        cell: f64,
+    ) -> Result<physics::walkable::Navigation, String> {
+        physics::walkable::Navigation::compile(
+            &self.query_scene,
+            physics::walkable::Config {
+                instance: self.player_life().instance,
+                layers: 1,
+                min,
+                max,
+                cell,
+                character: physics::character::Settings::default(),
+                work_budget: 1_000_000,
+            },
+        )
+    }
+    /// Returns owned diagnostic geometry without granting mutation authority.
+    pub fn collision_geometry(&self) -> Result<physics::queries::SceneSnapshot, String> {
+        self.query_scene.snapshot(self.player_life().instance)
     }
     pub fn navigation_blockers(&self) -> &physics::walkable::Blockers {
         &self.blockers

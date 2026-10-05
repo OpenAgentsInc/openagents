@@ -1,5 +1,9 @@
 fn run() -> Result<(), String> {
-    let mut args = std::env::args_os().skip(1);
+    let all: Vec<_> = std::env::args_os().skip(1).collect();
+    if all.first().is_some_and(|s| s == "author") {
+        return verse_content::authoring::cli::run(&all[1..]).map_err(|e| e.to_string());
+    }
+    let mut args = all.into_iter();
     let name = args
         .next()
         .ok_or("Usage: verse-content ritual|observatory DIRECTORY")?;

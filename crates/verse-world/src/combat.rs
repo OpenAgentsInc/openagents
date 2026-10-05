@@ -8,6 +8,8 @@ use verse_engine::director::{Action, Scene};
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Definition {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub authored_timeline: bool,
     pub duration: f32,
     pub enemy_health: u32,
     pub boss_health: u32,
@@ -17,6 +19,7 @@ pub struct Definition {
 impl Default for Definition {
     fn default() -> Self {
         Self {
+            authored_timeline: false,
             duration: 200.,
             enemy_health: 15,
             boss_health: 300_000,
@@ -67,6 +70,8 @@ impl EnemyCast {
 
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Encounter {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored_settings: Option<crate::content::Authored>,
     #[serde(default)]
     pub definition: Definition,
     pub positions: BTreeMap<u64, Vec3>,
@@ -116,6 +121,13 @@ impl Game {
         }
         fresh.adopt_restart_fences(self)?;
         fresh.rebuild_players_after_restart(self)?;
+        if let Some(settings) = self
+            .encounter
+            .as_ref()
+            .and_then(|e| e.authored_settings.clone())
+        {
+            settings.apply(&mut fresh)?;
+        }
         fresh.time = fresh.scene.cut_at - if agent { 3. } else { 0. };
         *self = fresh;
         Ok(())
@@ -153,6 +165,15 @@ impl Game {
     pub fn combat_authored_in(scene: Scene, agent: bool, instance: u64) -> Result<Self, String> {
         Self::combat_authored_definition(scene, agent, instance, Definition::default())
     }
+    /// Preserves an author's duration and dialogue instead of applying the ritual script.
+    pub fn combat_content_in(scene: Scene, instance: u64) -> Result<Self, String> {
+        let definition = Definition {
+            authored_timeline: true,
+            duration: scene.duration,
+            ..Default::default()
+        };
+        Self::combat_authored_definition(scene, false, instance, definition)
+    }
     pub(crate) fn combat_authored_definition(
         mut scene: Scene,
         agent: bool,
@@ -162,17 +183,19 @@ impl Game {
         definition.validate()?;
         scene.duration = definition.duration;
         // Combat dialogue and attacks replace the staged post-handoff reactions.
-        scene
-            .cues
-            .retain(|cue| cue.at < scene.cut_at || !matches!(cue.action, Action::Yell { .. }));
-        scene.cues.push(verse_engine::director::Cue {
-            at: scene.cut_at + 0.4,
-            actor: 3,
-            action: Action::Yell {
-                text: "Seal the chamber! Protect our ensouled master!".into(),
-                animation: verse_engine::motion::State::Yell.into(),
-            },
-        });
+        if !definition.authored_timeline {
+            scene
+                .cues
+                .retain(|cue| cue.at < scene.cut_at || !matches!(cue.action, Action::Yell { .. }));
+            scene.cues.push(verse_engine::director::Cue {
+                at: scene.cut_at + 0.4,
+                actor: 3,
+                action: Action::Yell {
+                    text: "Seal the chamber! Protect our ensouled master!".into(),
+                    animation: verse_engine::motion::State::Yell.into(),
+                },
+            });
+        }
         let mut game = Self::new_in(scene, instance)?;
         let mut encounter = Encounter {
             definition,
@@ -198,13 +221,28 @@ impl Game {
         encounter.boss_remaining = encounter.boss_max;
         game.encounter = Some(encounter);
         game.control_handoff(agent)?;
-        game.selected = 1;
+        game.selected = if game
+            .encounter
+            .as_ref()
+            .is_some_and(|e| e.definition.authored_timeline)
+        {
+            game.scene
+                .actors
+                .iter()
+                .find(|a| a.nameplate && !a.friendly && a.model != "adventurer")
+                .map_or(0, |a| a.id)
+        } else {
+            1
+        };
         Ok(game)
     }
 }
 impl Encounter {
     pub fn validate(&self, game: &Game) -> Result<(), String> {
         self.definition.validate()?;
+        if let Some(settings) = &self.authored_settings {
+            settings.validate()?;
+        }
         if let Some(ritual) = &self.ritual {
             ritual.validate()?;
         }
@@ -273,12 +311,11 @@ impl Encounter {
 
     pub fn step(&mut self, game: &mut Game, dt: f32) -> Result<(), String> {
         let frame = game.frame();
-        let boss = frame
-            .actors
-            .iter()
-            .find(|a| a.actor.model == "claude")
-            .ok_or("Missing combat boss")?;
-        self.boss_remaining = boss.health;
+        let boss = frame.actors.iter().find(|a| a.actor.model == "claude");
+        if boss.is_none() && !self.definition.authored_timeline {
+            return Err("Missing combat boss".into());
+        }
+        self.boss_remaining = boss.map_or(0, |a| a.health);
         self.kills = frame
             .actors
             .iter()
@@ -287,9 +324,20 @@ impl Encounter {
         if self.ended.is_some() {
             return Ok(());
         }
-        if game.living_players().is_empty() || boss.health == 0 {
+        let victory = boss.map_or_else(
+            || {
+                !frame.actors.iter().any(|a| {
+                    a.actor.nameplate
+                        && !a.actor.friendly
+                        && a.actor.model != "adventurer"
+                        && a.health > 0
+                })
+            },
+            |a| a.health == 0,
+        );
+        if game.living_players().is_empty() || victory {
             self.ended = Some(game.time);
-            if game.living_players().is_empty() {
+            if game.living_players().is_empty() && !self.definition.authored_timeline {
                 game.scene.cues.push(verse_engine::director::Cue {
                     at: game.time,
                     actor: 1,
@@ -301,8 +349,12 @@ impl Encounter {
             }
             game.casting = None;
             self.casts.clear();
-            game.message = if boss.health == 0 {
-                "Claude defeated"
+            game.message = if victory {
+                if self.definition.authored_timeline {
+                    "Encounter complete"
+                } else {
+                    "Claude defeated"
+                }
             } else {
                 "The adventurer has fallen"
             }
@@ -314,17 +366,19 @@ impl Encounter {
             self.ritual = Some(ritual);
         }
         let empowered = self.ritual.as_ref().is_some_and(|r| r.empowered);
-        let enraged = boss.health * 4 < self.boss_max;
+        let enraged = boss.is_some_and(|a| a.health * 4 < self.boss_max);
         if enraged && self.enrage.is_none() {
             self.enrage = Some(game.time);
-            game.scene.cues.push(verse_engine::director::Cue {
-                at: game.time,
-                actor: 1,
-                action: Action::Yell {
-                    text: "You almost unmade me. Now face my full wrath!".into(),
-                    animation: verse_engine::motion::State::Yell.into(),
-                },
-            });
+            if !self.definition.authored_timeline {
+                game.scene.cues.push(verse_engine::director::Cue {
+                    at: game.time,
+                    actor: 1,
+                    action: Action::Yell {
+                        text: "You almost unmade me. Now face my full wrath!".into(),
+                        animation: verse_engine::motion::State::Yell.into(),
+                    },
+                });
+            }
         }
         let mut keep = Vec::new();
         for mut cast in self.casts.drain(..) {

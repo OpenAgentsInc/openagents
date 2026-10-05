@@ -353,3 +353,80 @@ fn two_original_worlds_use_the_same_dedicated_host_and_authentication() {
     }
     assert_ne!(identities[0], identities[1]);
 }
+
+#[test]
+fn an_authored_generation_loads_and_recovers_through_the_dedicated_host() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("ritual");
+    verse_content::compiler::worlds::compile("ritual", &source).unwrap();
+    let mut workspace = verse_content::authoring::Workspace::init(
+        &source,
+        &root.path().join("author"),
+        "chamber-outpost".into(),
+    )
+    .unwrap();
+    let tx = verse_content::authoring::parse::<verse_content::authoring::Transaction>(
+        "outpost.transaction.json",
+        include_bytes!("../../../assets/verse/authoring/chamber-outpost.transaction.json"),
+        2 * 1024 * 1024,
+    )
+    .unwrap();
+    workspace.transact(&tx).unwrap();
+    let build = workspace.build().unwrap();
+    let mut json: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(build.path.join("host-template.json")).unwrap())
+            .unwrap();
+    let key = secp256k1::Keypair::from_secret_key(
+        &secp256k1::Secp256k1::new(),
+        &secp256k1::SecretKey::from_byte_array([81; 32]).unwrap(),
+    );
+    json["enrollments"] = serde_json::json!([{"public_key":key.x_only_public_key().0.to_string(),"role":{"type":"primary"}}]);
+    json["guests"] = serde_json::Value::Null;
+    json["state_dir"] = serde_json::json!(root.path().join("state"));
+    let config = Config::from_json(&serde_json::to_vec(&json).unwrap()).unwrap();
+    let (mut gateway, mut store) = verse_host::prepare(&config).unwrap();
+    assert_eq!(gateway.content(), Some(build.content));
+    assert_eq!(gateway.quest_log(14)[0].giver, Some(100));
+    let (id, challenge) = gateway.open(0).unwrap();
+    let digest = challenge.signing_digest(key.x_only_public_key().0.serialize());
+    let signature = secp256k1::Secp256k1::new()
+        .sign_schnorr_no_aux_rand(&digest, &key)
+        .to_byte_array();
+    gateway
+        .authenticate(id, 1, key.x_only_public_key().0.serialize(), signature)
+        .unwrap();
+    let admission = gateway.admission(id).unwrap();
+    let giver = gateway.game().actor_life(100).unwrap();
+    gateway
+        .accept_quest(id, admission.actor(), admission.epoch(), 1, giver)
+        .unwrap();
+    for _ in 0..30 {
+        gateway.tick(1. / 30.).unwrap();
+    }
+    assert!(gateway.quest_log(14)[0].accepted);
+    store.as_mut().unwrap().commit(&mut gateway).unwrap();
+    let expected = gateway.checkpoint().unwrap();
+    drop(store);
+    let (recovered, store) = verse_host::prepare(&config).unwrap();
+    assert_eq!(recovered.content(), Some(build.content));
+    assert_eq!(recovered.checkpoint().unwrap(), expected);
+    drop(store);
+    let mut changed = config.clone();
+    changed.progression.quests[0].experience += 1;
+    assert!(verse_host::prepare(&changed).is_err());
+    let path = root.path().join("host.json");
+    json["state_dir"] = serde_json::Value::Null;
+    std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_verse-host"))
+        .arg(&path)
+        .args(["--check", "60"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    println!("Authored host: {}", String::from_utf8_lossy(&output.stdout));
+    assert_eq!(admission.actor().actor, 14);
+}

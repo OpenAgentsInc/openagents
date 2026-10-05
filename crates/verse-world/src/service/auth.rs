@@ -245,7 +245,6 @@ impl Gateway {
         self.content
     }
     /// Binds durable storage to this live host authority.
-    #[cfg(feature = "service-net")]
     pub(super) fn server_identity(&self) -> [u8; 32] {
         self.server
     }

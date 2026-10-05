@@ -31,6 +31,8 @@ pub struct Config {
     pub guests: Option<super::auth::Guests>,
     #[serde(default)]
     pub authored_combat_health: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored: Option<crate::content::Authored>,
     /// Explicit hosted social rules. Omission retains the combat profile.
     #[serde(default)]
     pub social_profile: Option<crate::play::social::Profile>,
@@ -103,16 +105,41 @@ impl Config {
     /// Prepares combat using only the operator's configured health policy.
     pub fn prepare_game(&self, scene: verse_engine::director::Scene) -> Result<Game, String> {
         self.validate()?;
-        if let Some(profile) = &self.social_profile {
+        let mut game = if let Some(profile) = &self.social_profile {
             Game::social_in(scene, self.instance, profile.clone())
+        } else if self.authored.is_some() {
+            Game::combat_content_in(scene, self.instance)
         } else if self.authored_combat_health {
             Game::combat_authored_in(scene, false, self.instance)
         } else {
             Game::combat_in(scene, false, self.instance)
+        }?;
+        if let Some(authored) = &self.authored {
+            authored.apply(&mut game)?;
         }
+        Ok(game)
     }
     /// Includes social geometry and rules in the scene/asset content identity.
     pub fn bind_content(&self, content: [u8; 32]) -> Result<[u8; 32], String> {
+        let content = self
+            .authored
+            .as_ref()
+            .map_or(Ok(content), |a| a.bind_content(content))?;
+        let content = if self.authored.is_some() {
+            crate::content::bind_gameplay(
+                content,
+                &crate::content::Gameplay {
+                    authored_combat_health: self.authored_combat_health,
+                    rewards: &self.rewards,
+                    progression: &self.progression,
+                    items: &self.items,
+                    outfits: &self.outfits,
+                    equipment: &self.equipment,
+                },
+            )?
+        } else {
+            content
+        };
         let Some(profile) = &self.social_profile else {
             return Ok(content);
         };
@@ -141,7 +168,20 @@ impl Config {
         Ok(config)
     }
     pub fn validate(&self) -> Result<(), String> {
+        if let Some(authored) = &self.authored {
+            authored.validate()?;
+        }
         if let Some(profile) = &self.social_profile {
+            if self
+                .authored
+                .as_ref()
+                .is_some_and(|a| a.character.is_some() || !a.blockers.is_empty())
+            {
+                return Err(
+                    "Author social collision in social_profile; character tuning requires combat"
+                        .into(),
+                );
+            }
             profile.validate()?;
             if self.authored_combat_health || !self.rewards.is_empty() {
                 return Err("Social profiles cannot enable combat health or kill rewards".into());
@@ -358,6 +398,7 @@ mod tests {
             }],
             guests: None,
             authored_combat_health: false,
+            authored: None,
             social_profile: None,
             profile: None,
             state_dir: None,

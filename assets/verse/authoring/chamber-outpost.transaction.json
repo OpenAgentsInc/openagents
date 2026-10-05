@@ -1,0 +1,163 @@
+{
+  "expected_revision": 1,
+  "label": "Create chamber outpost with an archivist and a tuned encounter",
+  "edits": [
+    {
+      "op": "zone",
+      "name": "chamber-outpost"
+    },
+    {
+      "op": "scene",
+      "duration": 120,
+      "cut_at": 0,
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "collision_profile": "original-chamber-v1"
+    },
+    {
+      "op": "actor",
+      "actor": {
+        "id": 100,
+        "name": "Outpost archivist",
+        "model": "cultist",
+        "position": [
+          2,
+          0,
+          -22
+        ],
+        "yaw": 0,
+        "scale": 1,
+        "health": 100,
+        "nameplate": true,
+        "friendly": true
+      }
+    },
+    {
+      "op": "actor",
+      "actor": {
+        "id": 2,
+        "name": "Outpost guardian",
+        "model": "cultist",
+        "position": [
+          0,
+          0,
+          -8.23
+        ],
+        "yaw": 3.1415927,
+        "scale": 1,
+        "health": 175,
+        "nameplate": true
+      }
+    },
+    {
+      "op": "quest",
+      "quest": {
+        "id": 1,
+        "name": "Secure the outpost",
+        "giver": 100,
+        "dialogue": {
+          "offer": "Defeat the outpost guardian.",
+          "active": "The guardian still guards the chamber.",
+          "turn_in": "The outpost is secure."
+        },
+        "objective": 10,
+        "goal": 1,
+        "experience": 25,
+        "items": []
+      }
+    },
+    {
+      "op": "rewards",
+      "policies": [
+        {
+          "target": 2,
+          "experience": 10,
+          "items": [],
+          "quests": [
+            {
+              "id": 10,
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "op": "cue",
+      "cue": {
+        "id": 1000,
+        "cue": {
+          "at": 0,
+          "actor": 100,
+          "kind": "yell",
+          "text": "Welcome to the outpost.",
+          "animation": "yell"
+        }
+      }
+    },
+    {
+      "op": "authored",
+      "settings": {
+        "character": null,
+        "blockers": {
+          "1": {
+            "min": [
+              -4,
+              0,
+              -16
+            ],
+            "max": [
+              -2,
+              2,
+              -14
+            ]
+          }
+        }
+      }
+    },
+    {
+      "op": "primitive",
+      "key": "author/outpost-barricade",
+      "shape": {
+        "min": [
+          -4,
+          0,
+          -16
+        ],
+        "max": [
+          -2,
+          2,
+          -14
+        ],
+        "texture": 0,
+        "tint": [
+          0.45,
+          0.3,
+          0.15
+        ]
+      }
+    },
+    {
+      "op": "placement",
+      "id": 1000,
+      "placement": {
+        "model": "author/outpost-barricade",
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": 1
+      }
+    }
+  ]
+}

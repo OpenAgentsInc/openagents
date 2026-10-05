@@ -158,7 +158,7 @@ Evidence labels:
 | V17 | P1 | Shared rendering, compiled content, and dedicated TLS hosting have working consumers. | Code, recorded | Engine extraction and host packaging | Complete ([#10636](https://github.com/OpenAgentsInc/openagents/issues/10636)) |
 | V18 | P0 | Contained crowd recovery and a durable 20/40 battle pass the declared profile. | Recorded, code | Movement failure handling and scale acceptance | Complete ([#10637](https://github.com/OpenAgentsInc/openagents/issues/10637)), one native renderer |
 | V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Complete ([#10735](https://github.com/OpenAgentsInc/openagents/issues/10735)) |
-| V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Open |
+| V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | In progress ([#10736](https://github.com/OpenAgentsInc/openagents/issues/10736)) |
 | V21 | P2 | Animation needs production locomotion and authoring support. | Code, gap | Animation and character content | Open |
 | V22 | P2 | Lighting paths need a common visual and performance contract. | Code, risk | Rendering and art direction | Open |
 | V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Open |
