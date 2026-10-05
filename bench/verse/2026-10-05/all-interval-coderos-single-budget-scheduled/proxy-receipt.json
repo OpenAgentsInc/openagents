@@ -1,0 +1,66 @@
+{
+  "schema": "verse.delayed-route.v2",
+  "delay_ms": 40,
+  "jitter_ms": 20,
+  "delay_mode": "scheduled",
+  "delay_queue_capacity": 32,
+  "delay_queue_peak": 4,
+  "connections": 20,
+  "upstream_bytes": 7111549,
+  "downstream_bytes": 208729891,
+  "forwarded_chunks": 49638,
+  "errors": 7,
+  "refused_connections": 0,
+  "error_details": [
+    {
+      "elapsed_seconds": 83.96624874999999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.98036741599999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.982377375,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.996533375,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.99655937499999,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.996611958,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    },
+    {
+      "elapsed_seconds": 83.996632666,
+      "direction": "upstream",
+      "type": "ConnectionResetError",
+      "errno": 54
+    }
+  ],
+  "omitted_error_details": 0,
+  "limits": [
+    "Delay applies to each TCP read chunk, not decrypted game messages.",
+    "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+    "Serial mode adds delay after each read and also limits chunk throughput.",
+    "TCP preserves byte order; this fixture does not simulate packet loss."
+  ],
+  "wall_seconds": 93.456219666
+}
