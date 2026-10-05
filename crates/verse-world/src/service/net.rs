@@ -738,12 +738,9 @@ async fn session_until<S: Transport>(
                     .map_err(|_| "Chamber write timed out")??;
                 continue;
             }
+            let wait_for_storage = authenticated && matches!(&request.body, Body::MovementFrame { .. });
             let authenticate_key = match request.body { Body::Authenticate { public_key, .. } => Some(public_key), _ => None };
-            let (reply, receive) = oneshot::channel();
-            send.send(Event::Request { id, bytes, reply })
-                .await
-                .map_err(|_| "Chamber host stopped")?;
-            let (bytes, admitted) = receive.await.map_err(|_| "Chamber host stopped")??;
+            let (bytes, admitted) = request_with_storage_backpressure(&send, id, bytes, wait_for_storage).await?;
             let response: ResponseHeader = serde_json::from_slice(&bytes).map_err(|_| "Invalid chamber response")?;
             let retry_admission = response.body.kind == "refused" && response.body.code.as_deref() == Some("storage_busy");
             if admitted && !authenticated && response.body.kind == "accepted" {
@@ -762,6 +759,39 @@ async fn session_until<S: Transport>(
     .await;
     let _ = send.send(Event::Close(id)).await;
     outcome
+}
+
+// Hold only explicitly unadmitted intervals, preserving their bytes and connection order.
+// An IO failure or any other refusal is never retried here.
+async fn request_with_storage_backpressure(
+    send: &mpsc::Sender<Event>,
+    id: ConnectionId,
+    bytes: Vec<u8>,
+    wait_for_storage: bool,
+) -> DispatchReply {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        let (reply, receive) = oneshot::channel();
+        send.send(Event::Request {
+            id,
+            bytes: bytes.clone(),
+            reply,
+        })
+        .await
+        .map_err(|_| "Chamber host stopped")?;
+        let result = receive.await.map_err(|_| "Chamber host stopped")??;
+        let response: ResponseHeader =
+            serde_json::from_slice(&result.0).map_err(|_| "Invalid chamber response")?;
+        if !wait_for_storage
+            || !result.1
+            || response.body.kind != "refused"
+            || response.body.code.as_deref() != Some("storage_busy")
+            || tokio::time::Instant::now() >= deadline
+        {
+            return Ok(result);
+        }
+        tokio::time::sleep(Duration::from_millis(33)).await;
+    }
 }
 
 #[cfg(test)]
@@ -979,6 +1009,86 @@ pub(super) mod tests {
             (exit.stats.admission.pending, exit.stats.admission.active),
             (0, 0)
         );
+    }
+
+    #[tokio::test]
+    async fn interval_storage_backpressure_preserves_exact_request_and_refusal_boundaries() {
+        for (wait, admitted, code, count) in [
+            (true, true, "storage_busy", 3),
+            (false, true, "storage_busy", 1),
+            (true, false, "storage_busy", 1),
+            (true, true, "command", 1),
+        ] {
+            let keys = [key(177), key(178), key(179)];
+            let (id, _) = gateway(&keys).open_json(0).unwrap();
+            let request = vec![1, 2, 3, 4];
+            let expected = request.clone();
+            let (send, mut receive) = mpsc::channel(4);
+            let peer = tokio::spawn(async move {
+                for attempt in 0..count {
+                    let Event::Request {
+                        id: actual,
+                        bytes,
+                        reply,
+                    } = receive.recv().await.unwrap()
+                    else {
+                        panic!()
+                    };
+                    assert_eq!(actual, id);
+                    assert_eq!(bytes, expected);
+                    let response = Response {
+                        version: VERSION,
+                        request_id: 9,
+                        instance: 120,
+                        tick: attempt,
+                        control: None,
+                        body: if attempt == 2 {
+                            Reply::Accepted
+                        } else {
+                            Reply::Refused {
+                                code: code.into(),
+                                message: "Not admitted".into(),
+                            }
+                        },
+                    };
+                    reply
+                        .send(Ok((response.encode().unwrap(), admitted)))
+                        .unwrap();
+                }
+                assert!(
+                    timeout(Duration::from_millis(80), receive.recv())
+                        .await
+                        .is_err()
+                );
+            });
+            let result = request_with_storage_backpressure(&send, id, request, wait)
+                .await
+                .unwrap();
+            let response: Response = serde_json::from_slice(&result.0).unwrap();
+            assert_eq!(matches!(response.body, Reply::Accepted), count == 3);
+            peer.await.unwrap();
+        }
+        let keys = [key(177), key(178), key(179)];
+        let (id, _) = gateway(&keys).open_json(0).unwrap();
+        let (send, mut receive) = mpsc::channel(4);
+        let peer = tokio::spawn(async move {
+            let Event::Request { reply, .. } = receive.recv().await.unwrap() else {
+                panic!()
+            };
+            reply.send(Err("Uncertain storage result".into())).unwrap();
+            assert!(
+                timeout(Duration::from_millis(80), receive.recv())
+                    .await
+                    .is_err()
+            );
+        });
+        assert_eq!(
+            request_with_storage_backpressure(&send, id, vec![1], true)
+                .await
+                .unwrap_err(),
+            "Uncertain storage result"
+        );
+        peer.await.unwrap();
     }
 
     #[tokio::test]
