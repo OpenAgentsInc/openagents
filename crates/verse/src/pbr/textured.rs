@@ -44,7 +44,10 @@ pub const MAX_MATERIALS: usize = 1024;
 /// Most placements in one scene.
 pub const MAX_PLACEMENTS: usize = 1 << 16;
 /// Most bytes of merged vertices and indices, the zone geometry bound.
-pub const MAX_BYTES: usize = 96 * 1024 * 1024;
+/// Everglade's city, about 1.8 million triangles, merges to about 110 MiB;
+/// half of wgpu's default 256 MiB buffer limit keeps headroom on phones and
+/// in browsers.
+pub const MAX_BYTES: usize = 128 * 1024 * 1024;
 
 /// One vertex of a textured mesh.
 #[repr(C)]
@@ -843,6 +846,46 @@ pub(crate) fn in_frustum(min: Vec3, max: Vec3, view_proj: Mat4) -> bool {
     planes
         .iter()
         .all(|p| p.truncate().dot(center) + p.w + p.truncate().abs().dot(half) >= 0.0)
+}
+
+/// Whether the box from `min` to `max` lies within the side planes of
+/// `view_proj`, ignoring its near and far planes: a shadow map's caster
+/// test, since a caster beyond the light's near plane still shades.
+pub(crate) fn in_slab(min: Vec3, max: Vec3, view_proj: Mat4) -> bool {
+    let rows = view_proj.transpose();
+    let planes = [
+        rows.w_axis + rows.x_axis,
+        rows.w_axis - rows.x_axis,
+        rows.w_axis + rows.y_axis,
+        rows.w_axis - rows.y_axis,
+    ];
+    let center = (min + max) * 0.5;
+    let half = (max - min) * 0.5;
+    planes
+        .iter()
+        .all(|p| p.truncate().dot(center) + p.w + p.truncate().abs().dot(half) >= 0.0)
+}
+
+/// The smallest size a cell may have at a distance and still draw, as a
+/// fraction of that distance: about two pixels on a 1080-pixel-tall view.
+/// A cell of small ground cover drops out a few tens of meters off, where
+/// it would cover a pixel or two, while a cell of buildings or trees draws
+/// until the fog.
+pub(crate) const DETAIL: f32 = 1.0 / 90.0;
+
+/// Whether a cell's box from `min` to `max` draws from `eye` under
+/// `view_proj` when fog is total at `far` meters: it is in view, some of it
+/// is nearer than `far`, and it is not too small to see at its distance
+/// ([`DETAIL`]). An infinite `far` keeps every cell in view.
+pub(crate) fn drawn(min: Vec3, max: Vec3, view_proj: Mat4, eye: Vec3, far: f32) -> bool {
+    if !in_frustum(min, max, view_proj) {
+        return false;
+    }
+    if !far.is_finite() {
+        return true;
+    }
+    let distance = eye.clamp(min, max).distance(eye);
+    distance <= far && (max - min).length() >= distance * DETAIL
 }
 
 /// How a pass's cells rasterize.

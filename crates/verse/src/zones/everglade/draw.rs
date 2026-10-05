@@ -50,10 +50,12 @@ const ROUGHNESS: f32 = 0.95;
 /// grid, so its triangles run parallel to the grass under them, and it
 /// reaches past the yard, the path, and the roads so its mask fades to
 /// nothing before its border.
-const DIRT_MIN: [f32; 2] = [-47.0, -49.0];
-const DIRT_MAX: [f32; 2] = [55.0, 55.0];
-/// The dirt image's size, texels: about 10 cm on the ground.
-const DIRT_SIZE: [u32; 2] = [1024, 1024];
+const DIRT_MIN: [f32; 2] = [-125.0, -103.0];
+const DIRT_MAX: [f32; 2] = [121.0, 101.0];
+/// The dirt image's size, texels: about 15 cm on the ground.
+const DIRT_SIZE: [u32; 2] = [1640, 1360];
+/// Side of the square buckets the dirt's roads are indexed in, m.
+const ROAD_BUCKET: f32 = 8.0;
 /// Height of the water above the ground, m, and its look: dark, slightly
 /// green, and glossy, so it takes the sky's reflection.
 pub(super) const WATER_LIFT: f32 = 0.05;
@@ -396,15 +398,51 @@ pub(super) fn dirt_cover(x: f32, z: f32) -> (f32, f32) {
         x,
         z,
     );
-    let road = super::layout::ROADS
+    let road = near_roads(x, z)
         .iter()
-        .map(|&(a, b, half)| super::layout::segment_distance(a, b, x, z) - half)
+        .map(|&i| {
+            let (a, b, half) = super::layout::roads()[i as usize];
+            super::layout::segment_distance(a, b, x, z) - half
+        })
         .fold(f32::INFINITY, f32::min);
     let bank = super::layout::PONDS
         .iter()
         .map(|&([cx, cz], r)| (cx - x).hypot(cz - z) - r - BANK)
         .fold(f32::INFINITY, f32::min);
     (cover(yard), cover(path.min(road).min(bank)))
+}
+
+/// The roads whose dirt may reach `(x, z)`: those within a bucket of the
+/// sheet's [`ROAD_BUCKET`] grid, indexed once. Beyond a road's half width
+/// plus the fade and the wander its cover is nothing, so the others are
+/// left out.
+fn near_roads(x: f32, z: f32) -> &'static [u16] {
+    static INDEX: std::sync::OnceLock<(usize, Vec<Vec<u16>>)> = std::sync::OnceLock::new();
+    let (side, lists) = INDEX.get_or_init(|| {
+        let side = ((HALF_EXTENT * 2.0) / ROAD_BUCKET).ceil() as usize + 1;
+        let mut lists = vec![Vec::new(); side * side];
+        let reach = FADE + WANDER + ROAD_BUCKET;
+        for (i, &(a, b, half)) in super::layout::roads().iter().enumerate() {
+            let cell = |v: f32| {
+                (((v + HALF_EXTENT) / ROAD_BUCKET).floor().max(0.0) as usize).min(side - 1)
+            };
+            let r = half + reach;
+            for j in cell(a[1].min(b[1]) - r)..=cell(a[1].max(b[1]) + r) {
+                for k in cell(a[0].min(b[0]) - r)..=cell(a[0].max(b[0]) + r) {
+                    lists[j * side + k].push(i as u16);
+                }
+            }
+        }
+        (side, lists)
+    });
+    let cell = |v: f32| {
+        if v.is_finite() {
+            (((v + HALF_EXTENT) / ROAD_BUCKET).floor().max(0.0) as usize).min(side - 1)
+        } else {
+            0
+        }
+    };
+    &lists[cell(z) * side + cell(x)]
 }
 
 /// The dirt sheet's image: the yard's and the path's dirt with gravel

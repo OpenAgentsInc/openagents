@@ -210,8 +210,11 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
         // The Grove stands under Everglade's sky, haze, and light.
         ZoneId::Everglade | ZoneId::Grove => Atmosphere {
             color: [0.72, 0.66, 0.50],
+            // The city is about 270 m across: the fog closes past its far
+            // districts, so the tree ring shows as haze from the center,
+            // and the renderer skips every cell beyond it.
             fog_start: 40.0,
-            fog_end: 170.0,
+            fog_end: 180.0,
             height_fog: Some(verse_engine::lighting::HeightFog {
                 density: 0.005,
                 base: 0.0,

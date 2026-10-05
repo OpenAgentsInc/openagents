@@ -6,16 +6,20 @@
 use glam::Vec3;
 use std::f32::consts::FRAC_PI_2;
 
-/// Half the walkable square, m. The glade is about 240 m across, a small
-/// town around the workshop; the square runs past the tree ring so its
+/// Half the walkable square, m. The town is about 510 m across, sixteen
+/// times the first glade's area; the square runs past the tree ring so its
 /// rising ground closes the view. Navigation's 2 m grid starts at the
 /// square's edge, so an odd half extent puts grid lines through the hall's
-/// doorways at x = -1 and 1.
-pub const HALF_EXTENT: f32 = 135.0;
+/// doorways at x = -1 and 1, and the ground's 30 m tiles divide the square
+/// (255 = 17 x 15).
+pub const HALF_EXTENT: f32 = 255.0;
 /// Radius of the flat clearing the town stands in, m.
-pub const CLEARING_RADIUS: f32 = 68.0;
+pub const CLEARING_RADIUS: f32 = 136.0;
 /// Radius of the tree ring, where the ground finishes its rise, m.
-pub const RING_RADIUS: f32 = 92.0;
+pub const RING_RADIUS: f32 = 176.0;
+/// Observatory Hill in the Knowledge District: its top's center, x and z,
+/// the radius of its flat top and of its foot, and its height, m.
+pub const OBSERVATORY_HILL: ([f32; 2], f32, f32, f32) = ([88.0, -69.0], 7.0, 26.0, 5.0);
 /// Half the square the studio's seats route in, m: every station, with
 /// room around them. Seats never walk into the rest of the town, so their
 /// routes search this smaller grid.
@@ -164,7 +168,8 @@ pub const STATIONS: [Station; 10] = [
     },
 ];
 
-/// Ground height at `(x, z)`, m: zero inside the clearing, rising smoothly to
+/// Ground height at `(x, z)`, m: zero inside the clearing but for
+/// Observatory Hill ([`OBSERVATORY_HILL`]), rising smoothly to
 /// [`RING_RISE`] at the tree ring with a low undulation, then climbing
 /// gently to the edge of the zone. Always finite and within
 /// `0..=MAX_HEIGHT`; a nonfinite coordinate reads as the clearing.
@@ -180,7 +185,22 @@ pub fn height(x: f32, z: f32) -> f32 {
     // the ground never dips below it.
     let wave = (x * 0.13 + 0.4).sin() * (z * 0.11 - 0.7).cos();
     let outer = (r - RING_RADIUS).max(0.0) * OUTER_SLOPE;
-    (rise * (RING_RISE + UNDULATION * wave) + outer).clamp(0.0, MAX_HEIGHT)
+    (rise * (RING_RISE + UNDULATION * wave) + outer + hill(x, z)).clamp(0.0, MAX_HEIGHT)
+}
+
+/// Observatory Hill's rise at `(x, z)`, m: flat on its top, easing down to
+/// nothing at its foot.
+fn hill(x: f32, z: f32) -> f32 {
+    let ([cx, cz], top, foot, rise) = OBSERVATORY_HILL;
+    let t = ((foot - (x - cx).hypot(z - cz)) / (foot - top)).clamp(0.0, 1.0);
+    rise * t * t * (3.0 - 2.0 * t)
+}
+
+/// Whether `(x, z)` lies on Observatory Hill, short of its foot.
+#[must_use]
+pub fn on_hill(x: f32, z: f32) -> bool {
+    let ([cx, cz], _, foot, _) = OBSERVATORY_HILL;
+    (x - cx).hypot(z - cz) < foot
 }
 
 /// The station whose standing point is nearest `(x, z)` within

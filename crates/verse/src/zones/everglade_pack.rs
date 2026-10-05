@@ -35,10 +35,15 @@ pub const PACK_SHA256: &str = "3bbdbfc043c8f0e02159e93190889b69fd5d58d873bbad990
 /// Transfer size of the reviewed Everglade pack.
 pub const PACK_BYTES: u64 = 15020817;
 /// The most triangles the Everglade layout may place, counting each placement.
-/// The town is four times the first glade's area and places about 700,000;
-/// the merged 8 m cells are culled against the view and fog closes it at
-/// 170 m, so a frame draws a fraction of them on a phone or in a browser.
-pub const PLACED_TRIANGLE_BUDGET: u64 = 720_000;
+/// The city is sixteen times the first glade's area and places about 1.8
+/// million with the ground, which merges to about 107 MiB, under the
+/// renderer's 128 MiB bound (`pbr::textured::MAX_BYTES`). Roofs are the
+/// largest share, about 4,500 triangles each. A frame draws only the merged
+/// 8 m cells in view, nearer than the fog's close at 180 m, and large
+/// enough to see at their distance, so a street-level view draws a third
+/// to a half of them (`tests::a_frame_draws_a_fraction_of_the_city`), and a
+/// shadow cascade draws only the cells within its sides.
+pub const PLACED_TRIANGLE_BUDGET: u64 = 1_850_000;
 /// Where packs are committed, relative to the repository root.
 pub const PACK_DIRECTORY: &str = "assets/verse/everglade";
 /// The pack file extension.

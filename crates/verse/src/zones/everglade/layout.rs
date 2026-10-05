@@ -20,6 +20,8 @@ use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use verse_world::social::everglade::DESK_SEATS;
 
+pub mod city;
+
 /// How a placement blocks walking.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Collision {
@@ -224,7 +226,15 @@ pub fn board_blockers() -> Vec<Footprint> {
 /// The ponds the ground draws: center and water radius, m. Lantern Pond
 /// lies on the commons; Reed Pond in the long meadow by the Knowledge
 /// District.
-pub const PONDS: [([f32; 2], f32); 2] = [([-1.0, 29.0], 4.5), ([6.0, -42.0], 4.0)];
+/// The city's are the Fountain Plaza's fountain, the Thinking Pond in
+/// Walden Woods, and the Fern Pond in Fernhollow.
+pub const PONDS: [([f32; 2], f32); 5] = [
+    ([-1.0, 29.0], 4.5),
+    ([6.0, -42.0], 4.0),
+    ([-6.0, 77.0], 2.0),
+    ([-114.0, -64.0], 5.0),
+    ([90.0, 76.0], 4.5),
+];
 
 /// Each pond's blockers: a cross of two boxes inside its water, so the
 /// player stops at the bank.
@@ -285,6 +295,28 @@ pub const ROADS: [([f32; 2], [f32; 2], f32); 22] = [
     ([-13.0, 4.0], [-16.4, 4.0], 1.0),
     ([21.0, 1.2], [21.0, 9.4], 1.0),
 ];
+
+/// Every road of the town and the city ([`city::roads`]), with each city
+/// building's walk.
+#[must_use]
+pub fn roads() -> &'static [([f32; 2], [f32; 2], f32)] {
+    static ROADS_ALL: std::sync::OnceLock<Vec<([f32; 2], [f32; 2], f32)>> =
+        std::sync::OnceLock::new();
+    ROADS_ALL.get_or_init(|| {
+        let mut out = ROADS.to_vec();
+        out.extend(city::roads());
+        out
+    })
+}
+
+/// Every closed building's doorway, the first town's ([`DOORS`]) and the
+/// city's: a point outside it on its walk and a point inside, m.
+#[must_use]
+pub fn doors() -> Vec<(&'static str, [f32; 2], [f32; 2])> {
+    let mut out = DOORS.to_vec();
+    out.extend(city::doors());
+    out
+}
 
 /// Each closed building's doorway: a point outside it on its walk and a
 /// point inside, m. The straight line between them passes the doorway.
@@ -353,11 +385,11 @@ pub(crate) const TREES: [&str; 5] = [
 /// Trees in the ring.
 /// Trees in the Grove's ring, which keeps the first glade's ring.
 pub(crate) const RING_TREES: u32 = 22;
-/// Trees in the town's ring, which is twice as far out.
-const TOWN_RING_TREES: u32 = 30;
+/// Trees in the town's ring, four times as far out as the Grove's.
+const TOWN_RING_TREES: u32 = 44;
 /// Bushes tried around the clearing's edge; those on a road or a plot are
 /// left out.
-const EDGE_BUSHES: u32 = 12;
+const EDGE_BUSHES: u32 = 24;
 /// Grass and clover clumps scattered in the clearing.
 pub(crate) const GRASS: [&str; 4] = [
     "nature/Grass_Common_Short",
@@ -365,7 +397,7 @@ pub(crate) const GRASS: [&str; 4] = [
     "nature/Clover_1",
     "nature/Grass_Common_Tall",
 ];
-const GRASS_CLUMPS: usize = 80;
+const GRASS_CLUMPS: usize = 160;
 /// Small plants at the clearing's edge.
 pub(crate) const PLANTS: [(&str, f32); 4] = [
     ("nature/Plant_1", 1.0),
@@ -373,7 +405,7 @@ pub(crate) const PLANTS: [(&str, f32); 4] = [
     ("nature/Plant_7_Big", 1.0),
     ("nature/Plant_1_Big", 0.5),
 ];
-const EDGE_PLANTS: usize = 36;
+const EDGE_PLANTS: usize = 60;
 
 /// A deterministic value in `0..1` for `n` in stream `salt`.
 pub(crate) fn noise(n: u32, salt: u32) -> f32 {
@@ -450,6 +482,7 @@ fn reserved() -> Vec<([f32; 2], [f32; 2])> {
     out.extend(SHOPS);
     out.extend(HOMES);
     out.extend(CABINS);
+    out.extend(city::reserved());
     out
 }
 
@@ -468,7 +501,7 @@ pub fn segment_distance(a: [f32; 2], b: [f32; 2], x: f32, z: f32) -> f32 {
 
 /// Whether `(x, z)` lies on a road or within `margin` of one.
 fn on_road(x: f32, z: f32, margin: f32) -> bool {
-    ROADS
+    roads()
         .iter()
         .any(|&(a, b, half)| segment_distance(a, b, x, z) <= half + margin)
 }
@@ -742,6 +775,11 @@ fn house(
 /// An 8 x 10 round-tile roof for every 8 m of `rect`'s width, each with
 /// brick gables at its south and north ends.
 fn roof(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2])) {
+    roof_at(out, rect, WALL_TOP);
+}
+
+/// [`roof`] with its eaves `lift` meters up, over a taller building.
+fn roof_at(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2]), lift: f32) {
     let ([cx, cz], [hx, hz]) = rect;
     let spans = ((2.0 * hx / 8.0).round() as i32).max(1);
     for k in 0..spans {
@@ -754,12 +792,12 @@ fn roof(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2])) {
                 0.0,
                 Collision::None,
             )
-            .lift(WALL_TOP),
+            .lift(lift),
         );
         for (z, facing) in [(cz - hz, SOUTH), (cz + hz, NORTH)] {
             out.push(
                 Placement::new("village/Roof_Front_Brick8", [x, z], facing, Collision::None)
-                    .lift(WALL_TOP),
+                    .lift(lift),
             );
         }
     }
@@ -915,6 +953,7 @@ fn town(out: &mut Vec<Placement>) {
     homes(out);
     woods(out);
     gardens(out);
+    city::build(out);
 }
 
 /// The commons: the great lawn north of the hall, with Lantern Pond, its
@@ -1345,7 +1384,14 @@ fn woods(out: &mut Vec<Placement>) {
 /// The community gardens' fenced beds and the orchard's rows of young
 /// fruit trees between the commons walk and Stoop Lane.
 fn gardens(out: &mut Vec<Placement>) {
-    let ([gx, gz], [ghx, ghz]) = GARDENS;
+    garden_plot(out, GARDENS, 45);
+    orchard(out);
+}
+
+/// A fenced garden on `rect`, gated in the middle of its east side, with
+/// four rows of beds; `salt` varies the plants' headings.
+fn garden_plot(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2]), salt: u32) {
+    let ([gx, gz], [ghx, ghz]) = rect;
     let (west, east, south, north) = (gx - ghx, gx + ghx, gz - ghz, gz + ghz);
     for i in 0..6 {
         let x = west + 1.0 + 2.0 * i as f32;
@@ -1384,11 +1430,15 @@ fn gardens(out: &mut Vec<Placement>) {
                 out,
                 model,
                 [x, z],
-                noise(k + 8 * row as u32, 45) * TAU,
+                noise(k + 8 * row as u32, salt) * TAU,
                 scale,
             );
         }
     }
+}
+
+/// The first orchard's young fruit trees.
+fn orchard(out: &mut Vec<Placement>) {
     let ([ox, oz], [ohx, ohz]) = ORCHARD;
     for i in 0..3 {
         for j in 0..2 {
@@ -1699,7 +1749,7 @@ fn paths(out: &mut Vec<Placement>) {
 fn glade(out: &mut Vec<Placement>) {
     for k in 0..TOWN_RING_TREES {
         let angle = (k as f32 + 0.4 * noise(k, 1)) / TOWN_RING_TREES as f32 * TAU;
-        let r = 74.0 + (k % 3) as f32 * 7.0 + 3.0 * noise(k, 2);
+        let r = 146.0 + (k % 3) as f32 * 9.0 + 4.0 * noise(k, 2);
         out.push(
             Placement::new(
                 TREES[k as usize % TREES.len()],
@@ -1715,7 +1765,7 @@ fn glade(out: &mut Vec<Placement>) {
     // Bushes around the clearing's edge, where the ground is open.
     for k in 0..EDGE_BUSHES {
         let angle = (k as f32 + 0.5 * noise(k, 5)) / EDGE_BUSHES as f32 * TAU;
-        let at = [angle.cos() * 66.0, angle.sin() * 66.0];
+        let at = [angle.cos() * 132.0, angle.sin() * 132.0];
         if !open_ground(at[0], at[1]) {
             continue;
         }
@@ -1727,12 +1777,14 @@ fn glade(out: &mut Vec<Placement>) {
         out.push(Placement::new(model, at, noise(k, 15) * TAU, Collision::Core(0.55)).scale(1.1));
     }
     for (i, (model, at)) in [
-        ("nature/Rock_Medium_1", [-14.0, 62.0]),
-        ("nature/Rock_Medium_3", [56.0, 18.0]),
-        ("nature/Rock_Medium_2", [60.0, -24.0]),
-        ("nature/Rock_Medium_1", [-56.0, 14.0]),
+        ("nature/Rock_Medium_1", [-30.0, 64.0]),
+        ("nature/Rock_Medium_3", [116.0, 14.0]),
+        ("nature/Rock_Medium_2", [118.0, -30.0]),
+        ("nature/Rock_Medium_1", [-124.0, 10.0]),
         ("nature/Rock_Medium_3", [26.0, -58.0]),
         ("nature/Rock_Medium_2", [-6.0, -50.0]),
+        ("nature/Rock_Medium_1", [30.0, -112.0]),
+        ("nature/Rock_Medium_3", [-40.0, 104.0]),
     ]
     .into_iter()
     .enumerate()
@@ -1809,8 +1861,8 @@ fn glade(out: &mut Vec<Placement>) {
             .scale(0.3),
         );
     }
-    scatter(out, &GRASS.map(|m| (m, 1.0)), GRASS_CLUMPS, 12.0, 66.0, 20);
-    scatter(out, &PLANTS, EDGE_PLANTS, 58.0, 70.0, 21);
+    scatter(out, &GRASS.map(|m| (m, 1.0)), GRASS_CLUMPS, 12.0, 132.0, 20);
+    scatter(out, &PLANTS, EDGE_PLANTS, 120.0, 138.0, 21);
 }
 
 /// Places `count` pieces of ground cover, cycling through `models`, at

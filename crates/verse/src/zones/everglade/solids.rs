@@ -10,8 +10,9 @@ use crate::zones::everglade_pack::ZonePack;
 use glam::Vec3;
 pub use verse_world::social::solids::{Roof, STEP, Solids};
 
-/// The solids of `placements` with the models in `pack`, and the boards
-/// and the ponds, which are taller than anyone levitates past them.
+/// The solids of `placements` with the models in `pack`, the city's walls,
+/// and the boards and the ponds, which are taller than anyone levitates
+/// past them.
 ///
 /// # Errors
 ///
@@ -21,7 +22,12 @@ pub fn build(pack: &ZonePack, placements: &[Placement]) -> Result<Solids, String
     // their water.
     let mut walls = layout::board_blockers();
     walls.extend(layout::pond_blockers());
-    build_with(pack, placements, &walls)
+    let mut solids = build_with(pack, placements, &walls)?;
+    // The city's walls, one block per run, as tall as their stories.
+    for (footprint, top) in layout::city::blocks() {
+        solids.add_block(footprint, top);
+    }
+    Ok(solids)
 }
 
 /// The solids of `placements` with the models in `pack`, and `boards`,

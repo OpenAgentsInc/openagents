@@ -231,7 +231,7 @@ fn the_ground_is_flat_in_the_clearing_and_rises_gently_within_bounds() {
                 h.is_finite() && (0.0..=MAX_HEIGHT).contains(&h),
                 "{x},{z}: {h}"
             );
-            if x.hypot(z) <= CLEARING_RADIUS {
+            if x.hypot(z) <= CLEARING_RADIUS && !verse_world::social::everglade::on_hill(x, z) {
                 assert_eq!(h, 0.0, "the clearing is flat at {x},{z}");
             }
             // Gentle: no step steeper than 0.6 m per meter.
@@ -341,6 +341,7 @@ fn prop_bounds_become_navigation_blockers() {
         .flat_map(|p| p.footprints(pack().model(p.model).unwrap().bounds()))
         .chain(layout::board_blockers())
         .chain(layout::pond_blockers())
+        .chain(layout::city::blocks().into_iter().map(|(f, _)| f))
         .collect();
     assert_eq!(world().blockers, expected);
     for placement in &placements {
@@ -384,8 +385,8 @@ fn no_blocker_covers_a_path() {
             "{a:?} to {b:?} is blocked"
         );
     }
-    // Every road of the town is walkable along its length.
-    for (a, b, _) in layout::ROADS {
+    // Every road of the town and the city is walkable along its length.
+    for &(a, b, _) in layout::roads() {
         assert!(
             crate::nav::segment_clear(a, b, blockers, HALF_EXTENT),
             "the road {a:?} to {b:?} is blocked"
@@ -559,7 +560,7 @@ fn the_map_lists_the_return_portal_and_the_studio_stations() {
 fn walking_and_jumping_follow_the_slope_and_the_camera_stays_above_it() {
     let mut runtime = entered();
     // On the rise, facing outward toward the tree ring.
-    let at = Vec3::new(0.0, 0.0, -76.0);
+    let at = Vec3::new(0.0, 0.0, -140.0);
     runtime
         .set_spawn(at.with_y(height(at.x, at.z)), std::f32::consts::PI)
         .unwrap();
@@ -1161,13 +1162,19 @@ fn a_hosted_instance_walks_the_pinned_packs_content_under_the_social_rules() {
 }
 
 #[test]
-fn the_town_is_four_times_the_glade_and_every_door_opens_from_the_spawn() {
-    // The clearing the town stands in has four times the area of the
-    // 34 m glade it grew from, and the town stays inside it.
-    assert!(CLEARING_RADIUS * CLEARING_RADIUS >= 4.0 * 34.0 * 34.0);
+fn the_city_is_sixteen_times_the_glade_and_every_door_opens_from_the_spawn() {
+    // The clearing the city stands in has sixteen times the area of the
+    // 34 m glade it grew from, and every doorway stays inside it.
+    assert!(CLEARING_RADIUS * CLEARING_RADIUS >= 16.0 * 34.0 * 34.0);
     let blockers = &world().blockers;
+    // Within navigation's bound: every blocker counts in a route.
+    assert!(blockers.len() <= 4_096, "{}", blockers.len());
     let spawn = [Everglade::spawn().x, Everglade::spawn().z];
-    for (name, outside, inside) in layout::DOORS {
+    let doors = layout::doors();
+    assert!(doors.len() >= 70, "{}", doors.len());
+    let mut names = std::collections::BTreeSet::new();
+    for (name, outside, inside) in doors {
+        assert!(names.insert(name), "duplicate {name}");
         let route = crate::nav::plan(spawn, outside, blockers, HALF_EXTENT);
         assert!(route.is_ok(), "{name}: {route:?}");
         assert!(
@@ -1180,10 +1187,99 @@ fn the_town_is_four_times_the_glade_and_every_door_opens_from_the_spawn() {
     for ([x, z], _) in layout::PONDS {
         assert!(blockers.iter().any(|b| b.contains(x, z, 0.0)));
     }
-    // Each district has its buildings: a few dozen roofs, not one hall.
+    // Each district has its buildings: dozens of roofs, not one hall.
     let roofs = layout::placements()
         .iter()
         .filter(|p| p.model == "village/Roof_RoundTiles_8x10")
         .count();
-    assert!(roofs >= 20, "{roofs}");
+    assert!(roofs >= 80, "{roofs}");
+    // No two city buildings overlap.
+    let rects: Vec<_> = layout::city::BUILDINGS
+        .iter()
+        .map(|b| (b.name, b.rect))
+        .collect();
+    for (i, (a, ([ax, az], [ahx, ahz]))) in rects.iter().enumerate() {
+        for (b, ([bx, bz], [bhx, bhz])) in &rects[i + 1..] {
+            let apart = (ax - bx).abs() >= ahx + bhx + 1.0 || (az - bz).abs() >= ahz + bhz + 1.0;
+            assert!(apart, "{a} and {b} overlap");
+        }
+    }
+    // The observatory stands on its hill's flat top.
+    let observatory = layout::city::BUILDINGS
+        .iter()
+        .find(|b| b.name == "observatory")
+        .unwrap();
+    let ([ox, oz], [ohx, ohz]) = observatory.rect;
+    let top = height(ox, oz);
+    assert!(top > 4.0);
+    for (dx, dz) in [(-ohx, -ohz), (ohx, -ohz), (-ohx, ohz), (ohx, ohz)] {
+        assert!((height(ox + dx, oz + dz) - top).abs() < 1e-3);
+    }
+}
+
+/// Triangles a frame draws from a camera at `eye` looking along `toward`:
+/// with view culling alone, and with the fog and detail culling the stage
+/// applies (`pbr::textured::drawn`). A frame-cost proxy for the town.
+fn drawn_triangles(eye: Vec3, toward: Vec3) -> (u64, u64) {
+    use crate::pbr::textured;
+    let scene = world().mesh.textured.as_ref().unwrap();
+    let merged = scene.merge().unwrap();
+    let view = glam::Mat4::look_to_rh(eye, toward.normalize(), Vec3::Y);
+    let proj =
+        glam::Mat4::perspective_rh(crate::camera::FOV_Y, 16.0 / 9.0, 0.1, crate::camera::FAR);
+    let view_proj = proj * view;
+    let far = atmosphere(ZoneId::Everglade).fog_end;
+    let (mut frustum, mut drawn) = (0, 0);
+    for b in &merged.batches {
+        let triangles = u64::from(b.count / 3);
+        if textured::in_frustum(b.min, b.max, view_proj) {
+            frustum += triangles;
+        }
+        if textured::drawn(b.min, b.max, view_proj, eye, far) {
+            drawn += triangles;
+        }
+    }
+    (frustum, drawn)
+}
+
+#[test]
+fn a_frame_draws_a_fraction_of_the_city() {
+    let scene = world().mesh.textured.as_ref().unwrap();
+    let merged = scene.merge().unwrap();
+    let total = merged.indices.len() as u64 / 3;
+    let vertex_bytes =
+        merged.vertices.len() * std::mem::size_of::<crate::pbr::textured::TexturedVertex>();
+    let index_bytes = merged.indices.len() * 4;
+    eprintln!(
+        "Everglade merges {total} triangles in {} cells: {} MB of vertices and indices",
+        merged.batches.len(),
+        (vertex_bytes + index_bytes) / (1 << 20)
+    );
+    let views = [
+        (
+            "spawn",
+            Vec3::new(0.0, 2.6, -24.0),
+            Vec3::new(0.0, -0.15, 1.0),
+        ),
+        (
+            "center",
+            Vec3::new(0.0, 2.6, 20.0),
+            Vec3::new(0.0, -0.1, 1.0),
+        ),
+        (
+            "market",
+            Vec3::new(0.0, 2.6, 50.0),
+            Vec3::new(-1.0, -0.1, 0.0),
+        ),
+        (
+            "lantern",
+            Vec3::new(-60.0, 2.6, -8.0),
+            Vec3::new(1.0, -0.1, 0.2),
+        ),
+    ];
+    for (name, eye, toward) in views {
+        let (frustum, drawn) = drawn_triangles(eye, toward);
+        eprintln!("from the {name}: {frustum} triangles in view, {drawn} drawn");
+        assert!(drawn <= frustum && drawn < total * 3 / 4, "{name}: {drawn}");
+    }
 }

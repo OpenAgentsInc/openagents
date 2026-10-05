@@ -93,7 +93,7 @@ fn the_social_profile_admits_a_session_without_hostiles_and_walls_stop_it() {
 #[test]
 fn walking_climbs_the_heightfield_like_a_local_player() {
     let mut profile = profile();
-    profile.spawn = Vec3::new(0.0, 0.0, -74.0);
+    profile.spawn = Vec3::new(0.0, 0.0, -142.0);
     let mut world = World::new(profile, 0);
     let who = Controller(1);
     let life = world.join(who).unwrap();
@@ -103,7 +103,7 @@ fn walking_climbs_the_heightfield_like_a_local_player() {
         world.step();
     }
     let at = world.avatar(life).unwrap().pos;
-    assert!(at.z < -84.0, "{at}");
+    assert!(at.z < -151.0, "{at}");
     assert!((at.y - height(at.x, at.z)).abs() < 1e-3, "{at}");
     assert!(at.y > 1.0, "{at}");
 }

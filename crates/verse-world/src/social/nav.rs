@@ -8,7 +8,10 @@ use super::controller::{Footprint, RADIUS};
 const CELL: f32 = 2.0;
 const CLEARANCE: f32 = RADIUS + 0.05;
 const MAX_NODES: usize = 80_000;
-const MAX_BLOCKERS: usize = 2_048;
+const MAX_BLOCKERS: usize = 4_096;
+/// Side of the square buckets a plan indexes blockers in, m, so a grid
+/// step tests only the blockers near it.
+const BUCKET: f32 = 8.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NavError {
@@ -54,32 +57,86 @@ fn clear(point: [f32; 2], blockers: &[Footprint], half: f32) -> bool {
 /// Exact clearance for a straight ground segment, including thin walls and corners.
 #[must_use]
 pub fn segment_clear(a: [f32; 2], b: [f32; 2], blockers: &[Footprint], half: f32) -> bool {
-    if !in_bounds(a, half) || !in_bounds(b, half) {
-        return false;
+    in_bounds(a, half) && in_bounds(b, half) && !blockers.iter().any(|block| crosses(a, b, block))
+}
+
+/// Whether the segment from `a` to `b` comes within [`CLEARANCE`] of `block`.
+fn crosses(a: [f32; 2], b: [f32; 2], block: &Footprint) -> bool {
+    let mut enter = 0.0_f32;
+    let mut leave = 1.0_f32;
+    for axis in 0..2 {
+        let lo = block.min[axis] - CLEARANCE;
+        let hi = block.max[axis] + CLEARANCE;
+        let delta = b[axis] - a[axis];
+        if delta.abs() < f32::EPSILON {
+            if a[axis] < lo || a[axis] > hi {
+                return false;
+            }
+        } else {
+            let t0 = (lo - a[axis]) / delta;
+            let t1 = (hi - a[axis]) / delta;
+            enter = enter.max(t0.min(t1));
+            leave = leave.min(t0.max(t1));
+            if enter > leave {
+                return false;
+            }
+        }
     }
-    !blockers.iter().any(|block| {
-        let mut enter = 0.0_f32;
-        let mut leave = 1.0_f32;
-        for axis in 0..2 {
-            let lo = block.min[axis] - CLEARANCE;
-            let hi = block.max[axis] + CLEARANCE;
-            let delta = b[axis] - a[axis];
-            if delta.abs() < f32::EPSILON {
-                if a[axis] < lo || a[axis] > hi {
-                    return false;
+    true
+}
+
+/// The blockers of one plan in square buckets over the world, each bucket
+/// listing the blockers whose inflated footprint reaches it.
+struct Buckets {
+    side: usize,
+    half: f32,
+    lists: Vec<Vec<u32>>,
+}
+
+impl Buckets {
+    fn new(blockers: &[Footprint], half: f32) -> Self {
+        let side = (2.0 * half / BUCKET).ceil() as usize + 1;
+        let mut lists = vec![Vec::new(); side * side];
+        let mut this = Self {
+            side,
+            half,
+            lists: Vec::new(),
+        };
+        for (i, block) in blockers.iter().enumerate() {
+            let (x0, z0) = this.cell(block.min[0] - CLEARANCE, block.min[1] - CLEARANCE);
+            let (x1, z1) = this.cell(block.max[0] + CLEARANCE, block.max[1] + CLEARANCE);
+            for z in z0..=z1 {
+                for x in x0..=x1 {
+                    lists[z * side + x].push(i as u32);
                 }
-            } else {
-                let t0 = (lo - a[axis]) / delta;
-                let t1 = (hi - a[axis]) / delta;
-                enter = enter.max(t0.min(t1));
-                leave = leave.min(t0.max(t1));
-                if enter > leave {
-                    return false;
+            }
+        }
+        this.lists = lists;
+        this
+    }
+
+    /// The bucket holding `(x, z)`, clamped to the world.
+    fn cell(&self, x: f32, z: f32) -> (usize, usize) {
+        let at = |v: f32| (((v + self.half) / BUCKET).floor().max(0.0) as usize).min(self.side - 1);
+        (at(x), at(z))
+    }
+
+    /// [`segment_clear`] for a segment between two in-bounds points, testing
+    /// only the blockers in the buckets the segment's box reaches.
+    fn segment_clear(&self, a: [f32; 2], b: [f32; 2], blockers: &[Footprint]) -> bool {
+        let (x0, z0) = self.cell(a[0].min(b[0]), a[1].min(b[1]));
+        let (x1, z1) = self.cell(a[0].max(b[0]), a[1].max(b[1]));
+        for z in z0..=z1 {
+            for x in x0..=x1 {
+                for &i in &self.lists[z * self.side + x] {
+                    if crosses(a, b, &blockers[i as usize]) {
+                        return false;
+                    }
                 }
             }
         }
         true
-    })
+    }
 }
 
 fn distance(a: [f32; 2], b: [f32; 2]) -> f32 {
@@ -134,9 +191,31 @@ pub fn plan(
         .checked_mul(side)
         .filter(|n| *n <= MAX_NODES)
         .ok_or(NavError::WorldBounds)?;
-    let walkable: Vec<bool> = (0..count)
-        .map(|i| clear(point(i, side, half), blockers, half))
+    // Every in-bounds grid point is walkable until a blocker's inflated
+    // footprint covers it: the same test as `clear`, applied per blocker to
+    // the points it can reach rather than per point to every blocker.
+    let mut walkable: Vec<bool> = (0..count)
+        .map(|i| in_bounds(point(i, side, half), half))
         .collect();
+    for block in blockers {
+        let range = |axis: usize| {
+            let lo = ((block.min[axis] - CLEARANCE + half) / CELL).floor() as i64 - 1;
+            let hi = ((block.max[axis] + CLEARANCE + half) / CELL).ceil() as i64 + 1;
+            lo.max(0) as usize..=(hi.max(0) as usize).min(side - 1)
+        };
+        for y in range(1) {
+            for x in range(0) {
+                let index = y * side + x;
+                let p = point(index, side, half);
+                if (block.min[0] - CLEARANCE..=block.max[0] + CLEARANCE).contains(&p[0])
+                    && (block.min[1] - CLEARANCE..=block.max[1] + CLEARANCE).contains(&p[1])
+                {
+                    walkable[index] = false;
+                }
+            }
+        }
+    }
+    let buckets = Buckets::new(blockers, half);
     let nearest = |at: [f32; 2]| -> Option<usize> {
         let x = ((at[0] + half) / CELL).round() as i32;
         let y = ((at[1] + half) / CELL).round() as i32;
@@ -148,7 +227,7 @@ pub fn plan(
                 }
                 let index = ny as usize * side + nx as usize;
                 let p = point(index, side, half);
-                if walkable[index] && segment_clear(at, p, blockers, half) {
+                if walkable[index] && buckets.segment_clear(at, p, blockers) {
                     let candidate = (distance(at, p), index);
                     if best.is_none_or(|previous| candidate < previous) {
                         best = Some(candidate);
@@ -194,11 +273,10 @@ pub fn plan(
                 let next_cost = cost + if dx == 0 || dy == 0 { 1000 } else { 1414 };
                 if walkable[next]
                     && next_cost < costs[next]
-                    && segment_clear(
+                    && buckets.segment_clear(
                         point(current, side, half),
                         point(next, side, half),
                         blockers,
-                        half,
                     )
                 {
                     costs[next] = next_cost;
@@ -231,7 +309,7 @@ pub fn plan(
     while index < path.len() {
         let mut farthest = index;
         for (candidate, &next) in path.iter().enumerate().skip(index + 1) {
-            if segment_clear(anchor, next, blockers, half) {
+            if buckets.segment_clear(anchor, next, blockers) {
                 farthest = candidate;
             } else {
                 break;

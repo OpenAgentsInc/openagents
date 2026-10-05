@@ -150,7 +150,8 @@ The zone renderer gains textured static meshes:
 - Fog is exponential height fog (item A3, `HeightFog` in
   `zones::atmosphere`): it starts at 40 m, thins with height so hilltops
   stay clearer than hollows, brightens toward the Sun, and still closes in
-  completely by 170 m.
+  completely by 180 m. The renderer skips every textured cell beyond that
+  distance, and cells too small to see at their distance.
 
 ## The zone
 
@@ -163,23 +164,29 @@ ring, with grass and path textures. Its sign reads `EVERGLADE`.
 
 ## Layout
 
-The glade is about 240 m across, with a flat clearing 136 m across: four
+The zone is about 510 m across, with a flat clearing 272 m across: sixteen
 times the first glade's area. The workshop stands at its center on a flat
-pad, with a yard in front, and a small town grows around it toward the
+pad, with a yard in front, and a city grows around it after the
 [illustrated map](everglade-map.svg), joined by dirt roads, inside a tree
-ring. Every building is the workshop's own kit pieces; no model was added
-to the pack.
+ring about 300 m across. Every building is the workshop's own kit pieces,
+one to three stories under round-tile roofs; no model was added to the
+pack. The city's buildings are a table in `layout::city`, and each wall run
+blocks walking as one footprint.
 
 | District | Built from | Roads |
 | --- | --- | --- |
 | The Commons | Lantern Pond with reeds and stones, benches, an open bandshell | The commons walk, west of the hall |
-| Main Street | Four shops (bakery, café, bookshop, grocer), market stalls, benches | Main Street |
-| Creative District | The Makers' Hall: workbenches, anvil, crates | Studio Road |
-| The Foundry | The Server Barn with racks of metal crates, a fenced fab yard with bench, anvil, and wagon | Foundry Road |
-| Knowledge District | The Stacks library with bookcases, the Old College, Reed Pond and the long meadow | Library Way |
-| Stoop Lane | Four homes with lanterns and gardens, the cottage | Stoop Lane, Hearth Road |
-| Walden Woods | Two timber cabins among pines | The woods path |
-| Gardens and orchard | Fenced beds, rows of young fruit trees | |
+| Main Street | Twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), market stalls, street trees | Main Street, about 200 m long |
+| Fountain Plaza | A paved plaza with a fountain and stalls, two cafés, the two-story Market Hall | Market Way |
+| Creative District | The Makers' Hall, a studio, an atelier, a pottery, the Atelier Hall, the Sculpture Walk | Studio Road |
+| The Foundry | The Server Barn and fab yard, a workshop, the Fab Hall, the forge, an annex | Foundry Road |
+| Knowledge District | The Stacks, the Old College, the college and lecture halls, the archive, the map room, Observatory Hill's three-story tower, Reed Pond, the long meadow and its sketch cabin | Library Way |
+| Stoop Lane | Ten homes and townhouses with lanterns and little gardens, the cottage | Stoop Lane, Hearth Road |
+| Lantern Quarter | The Music Hall, the meeting hall, the guild and choir houses, four pubs | Hearth Road, Lantern Road |
+| Brownstone Row | Six two-story brownstones with stoops, six row houses, a community garden | Brownstone Row |
+| Walden Woods | The writing and code cabins, the quiet cabin, the prototype shed, the Thinking Pond, pines | The woods paths, Lantern Road |
+| Fernhollow | The lookout hut by the Fern Pond, pines and ferns | The Fernhollow path |
+| Gardens and orchards | Fenced beds, two orchards of young fruit trees, the beekeeper's hut | The orchard lane |
 
 The studio's stations stay where they were:
 

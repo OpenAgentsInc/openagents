@@ -1406,11 +1406,17 @@ impl Photo {
         })
     }
 
-    /// The textured cells this frame draws, in drawing order.
-    fn textured_order(textured: Option<&TexturedGpu>, view: crate::render::View) -> Vec<usize> {
+    /// The textured cells this frame draws, in drawing order: those in view,
+    /// and, when fog is total at `far` meters, those nearer than the fog and
+    /// large enough to see ([`textured::drawn`]).
+    fn textured_order(
+        textured: Option<&TexturedGpu>,
+        view: crate::render::View,
+        far: f32,
+    ) -> Vec<usize> {
         textured.map_or_else(Vec::new, |gpu| {
             textured::draw_order(&gpu.batches, &gpu.materials, view.eye, |b| {
-                textured::in_frustum(b.min, b.max, view.view_proj)
+                textured::drawn(b.min, b.max, view.view_proj, view.eye, far)
             })
         })
     }
@@ -1689,7 +1695,7 @@ impl Photo {
 
         self.encode_shadow(queue, encoder, &frame, &shadow, &world);
         self.encode_screen(queue, encoder, targets, &frame, Some(sun), &world);
-        let order = Self::textured_order(world.textured, view);
+        let order = Self::textured_order(world.textured, view, f32::INFINITY);
         let figure_order = Self::figure_order(world.figure, view);
 
         // Scene pass.
@@ -1889,7 +1895,10 @@ impl Photo {
                 &self.pipelines.textured_shadow,
                 &self.pipelines.textured_shadow_masked,
             ];
-            self.draw_casters(&mut pass, casters, lit, [world.textured, figure]);
+            // A cell outside the cascade's sides casts nothing into its map.
+            let matrix = cascade.matrix;
+            let keep = |b: &textured::Batch| textured::in_slab(b.min, b.max, matrix);
+            self.draw_casters(&mut pass, casters, lit, [world.textured, figure], &keep);
         }
     }
 
@@ -1902,6 +1911,7 @@ impl Photo {
         pipelines: [&wgpu::RenderPipeline; 3],
         lit: [(&wgpu::Buffer, u32); 2],
         textured: [Option<&TexturedGpu>; 2],
+        keep: &dyn Fn(&textured::Batch) -> bool,
     ) {
         let [lit_pipeline, opaque_pipeline, masked_pipeline] = pipelines;
         pass.set_pipeline(lit_pipeline);
@@ -1911,7 +1921,11 @@ impl Photo {
                 pass.draw(0..count, 0..1);
             }
         }
-        for gpu in textured.into_iter().flatten() {
+        // `keep` culls the world's cells; the figure's always draw.
+        for (k, gpu) in textured.into_iter().enumerate() {
+            let Some(gpu) = gpu else {
+                continue;
+            };
             pass.set_vertex_buffer(0, gpu.vertices.slice(..));
             pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
             for masked in [false, true] {
@@ -1923,7 +1937,9 @@ impl Photo {
                 }
                 for batch in &gpu.batches {
                     let cell_pass = gpu.materials[batch.material].alpha.pass();
-                    if textured::raster(cell_pass, false).shadow != Some(masked) {
+                    if textured::raster(cell_pass, false).shadow != Some(masked)
+                        || (k == 0 && !keep(batch))
+                    {
                         continue;
                     }
                     if masked {
@@ -1981,6 +1997,7 @@ impl Photo {
                 [&prepass.lit, &prepass.textured, &prepass.masked],
                 [world.lit, dynamic],
                 [world.textured, world.figure],
+                &|_| true,
             );
         }
         let uniform = ScreenUniform::new(
@@ -2126,8 +2143,14 @@ impl Photo {
         } else {
             Vec::new()
         };
+        // Fog is total at the stage's fog end, so no cell beyond it shows.
+        let far = if neon.fog_end > 0.0 {
+            neon.fog_end
+        } else {
+            f32::INFINITY
+        };
         let order = if lit.is_some() {
-            Self::textured_order(world.textured, view)
+            Self::textured_order(world.textured, view, far)
         } else {
             Vec::new()
         };
