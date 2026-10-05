@@ -1,0 +1,74 @@
+{
+  "schema": "verse.storage.resume.regression.v1",
+  "issue": 10559,
+  "base_revision": "ad9f62ed8829bd2d5f092b1116e4996036987e51",
+  "platform": "Linux CoderOS, scratch TLS host and temporary durable store",
+  "toolchain": "1.97.1",
+  "cargo_target": "/home/christopherdavid/work/openagents-target-verse-battle-agent1",
+  "build_jobs": 1,
+  "source_sha256": {
+    "crates/verse-world/src/service/net.rs": "c63089da54d2fa31a2fb476a7223d6bedea0b7a169d1ff522ad03567e8be4d5b",
+    "crates/verse-world/src/service/net/resume_tests.rs": "d58fcdc752a5fa2c8f1bf4346c0859ba14ec68a8d240d0363f91c07e71f7ace3"
+  },
+  "before": {
+    "log": "before.log",
+    "production": "Unchanged base scheduler; test-only module added",
+    "result": "failed",
+    "trial": 3,
+    "expiry_origin": "primary_tick",
+    "world_step": 44,
+    "confirmed_step": 8,
+    "queued_frames_at_expiry": 0,
+    "storage_paused_ticks": 4
+  },
+  "first_after": {
+    "log": "first-after.log",
+    "result": "passed",
+    "trials": 16,
+    "note": "Same corrected fixture; scheduler drained captured requests after a storage pause. Final revision also avoids simulation advancement while reply bounds require flushing part of that cohort."
+  },
+  "limits": [
+    "One authenticated player; no crowd, GPU rendering, or physical input-to-display measurement.",
+    "Trial scheduling uses actual TLS and disk writes; repetition exercises runtime ordering and is not a deterministic scheduler enumeration.",
+    "The earlier fixture armed at MAX_LAG before the second writer slot filled; its failures are excluded from this before/after comparison.",
+    "This fixture does not establish high-resolution 20-player/40-NPC performance."
+  ],
+  "final": {
+    "transport_tests": 23,
+    "transport_log": "final-transport.log",
+    "delayed_tests": 4,
+    "delayed_log": "final-delayed.log",
+    "expiry_boundary_trials": 16,
+    "pressure_players": 20,
+    "background_requests": 1118,
+    "writer_stall_ms": 1200,
+    "mode_resets": 0,
+    "correction_p95_meters": 0.0,
+    "correction_maximum_meters": 0.0,
+    "formatting": "rustfmt --check for both edited Rust files; git diff --check passed",
+    "commands": [
+      "cargo test -p verse-world --features service-auth,service-reach service::net:: -- --nocapture",
+      "cargo test -p verse-world --features service-auth,service-reach service::worker::delayed:: -- --nocapture"
+    ],
+    "note": "An intermediate worker filter matched zero tests; it is retained in the transport log and is not counted as verification. The corrected filter executed all four delayed fixtures."
+  },
+  "artifact_sha256": {
+    "first-after.log": "4f4f43ff3e8d511c44b6171650f1a288593febbf5d6e2b03ee200cc24929f4b8",
+    "final-delayed.log": "0296cdaae0b1dab4410c1c1398fcdd617b91eb69263d299886bd52bed07dd502",
+    "final-transport.log": "8b3c4a23f443f931a57ae7632fc5fe67ca21128b0dd17998b15d7ea860c36806",
+    "before.log": "498836f34ac5364581612b7cca2b15cd93722981d4f819f765b057a41e9b0aea",
+    "integrated.log": "b69b8288b0bbce8de0668a29ab007df2acc1eb93b8ff6e87fbd0350019bc7639"
+  },
+  "integration": {
+    "base_revision": "f50562c31f04ecc05d9feaeec6ff9b445ee7e134",
+    "log": "integrated.log",
+    "result": "passed",
+    "expiry_boundary_trials": 16,
+    "source_sha256": {
+      "crates/verse-world/src/service/net.rs": "84705ce951e9883d4f90878d73b50be8a0b48ef9ba22f13868955bc54fbe30dd",
+      "crates/verse-world/src/service/net/resume_tests.rs": "d58fcdc752a5fa2c8f1bf4346c0859ba14ec68a8d240d0363f91c07e71f7ace3"
+    },
+    "patch_sha256": "b8f9c6bd3674f217f275403b63ca6407386d8f173ea9659176c8ad1d4004654c",
+    "note": "Resolved overlapping net.rs declarations and loop initialization by retaining operator diagnostics and movement resume handling. Only the affected movement regression was repeated; unrelated main suites were not repeated."
+  }
+}

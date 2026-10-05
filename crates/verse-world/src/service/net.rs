@@ -27,6 +27,8 @@ use super::{
 use std::collections::BTreeMap;
 #[cfg(test)]
 mod operator_tests;
+#[cfg(test)]
+mod resume_tests;
 mod session_pipeline;
 mod timing;
 pub use timing::{Phases, Timing};
@@ -641,6 +643,8 @@ async fn serve_loop<F: Future<Output = ()>>(
     let mut dirty = false;
     let mut diagnostics = tokio::time::interval(Duration::from_secs(1));
     diagnostics.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut storage_paused = false;
+    let mut resume_requests = 0usize;
     tokio::pin!(shutdown);
     loop {
         stats.request_queue_peak = stats.request_queue_peak.max(receive.len());
@@ -651,6 +655,12 @@ async fn serve_loop<F: Future<Output = ()>>(
                     .map(|fence: &Fence| fence.reply_bytes)
                     .sum::<usize>(),
         );
+        let request_room = writer.as_ref().is_none_or(|writer| {
+            pending.len() < QUEUE
+                && fences.len() < 2
+                && pending_bytes <= REPLY_BYTES - MAX_HELD_REPLY_BYTES
+                && writer.send.as_ref().unwrap().capacity() > 0
+        });
         tokio::select! {
             _ = &mut shutdown => break,
             _ = async { monitor.unwrap().draining().await }, if monitor.is_some() => break,
@@ -665,6 +675,12 @@ async fn serve_loop<F: Future<Output = ()>>(
                 let result = completed.ok_or_else(|| "Chamber storage writer stopped".to_string())
                     .and_then(|done| finish(done, &mut fences, &mut committed, &mut stats));
                 if let Err(error) = result {failure = Some(error); break;}
+                if storage_paused {
+                    // Admit the bounded FIFO cohort that arrived during the pause
+                    // before resumed time can retire its movement clocks.
+                    resume_requests = resume_requests.max(receive.len());
+                    storage_paused = false;
+                }
             }
             accepted = listener.accept() => {
                 match accepted {
@@ -697,7 +713,9 @@ async fn serve_loop<F: Future<Output = ()>>(
                     Err(_) => {failure = Some("Chamber listener failed".into()); break;}
                 }
             }
-            _ = ticker.tick() => {
+            // If reply or writer bounds block admission, a tick must still flush
+            // admitted state. New arrivals cannot extend the captured FIFO cohort.
+            _ = ticker.tick(), if resume_requests == 0 || !request_room => {
                 let now = Instant::now();
                 let elapsed = now.duration_since(last_tick).as_secs_f64();
                 last_tick = now;
@@ -707,11 +725,12 @@ async fn serve_loop<F: Future<Output = ()>>(
                     Err(error) => {failure = Some(error); break;}
                 };
                 if !room {
+                    storage_paused = true;
                     stats.storage_paused_ticks += 1;
                     stats.storage_paused_seconds += elapsed;
                     continue;
                 }
-                if history {
+                if history && resume_requests == 0 {
                     let batch = match schedule.advance(elapsed) {
                         Ok(batch) => batch,
                         Err(error) => {failure = Some(error); break;}
@@ -769,10 +788,8 @@ async fn serve_loop<F: Future<Output = ()>>(
             }
             // Leave requests in the bounded transport queue while both persistence
             // slots are occupied. Completion wakes this loop without a retry tick.
-            event = receive.recv(), if writer.as_ref().is_none_or(|writer|
-                pending.len() < QUEUE && fences.len() < 2
-                    && pending_bytes <= REPLY_BYTES - MAX_HELD_REPLY_BYTES
-                    && writer.send.as_ref().unwrap().capacity() > 0) => {
+            event = receive.recv(), if request_room => {
+                resume_requests = resume_requests.saturating_sub(1);
                 let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                 match event {
                     Some(Event::Open {spectate, reply}) => {

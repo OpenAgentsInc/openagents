@@ -1,0 +1,27 @@
+ M crates/verse-world/src/service/net.rs
+?? crates/verse-world/src/service/net/resume_tests.rs
+From https://github.com/OpenAgentsInc/openagents
+ * branch                  main       -> FETCH_HEAD
+Previous HEAD position was ad9f62ed88 Cover owned intervals under shared player storage pressure
+HEAD is now at f50562c31f Add Verse operator diagnostics and verified chamber recovery
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/verse-battle-host-agent1/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2872:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2872 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized] target(s) in 2m 37s
+
+running 1 test
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-verse-battle-agent1/debug/deps/verse_world-5115cbce0f3ef316)
+test service::net::resume_tests::queued_intervals_survive_storage_resume_without_expiry ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 580 filtered out; finished in 10.50s
+

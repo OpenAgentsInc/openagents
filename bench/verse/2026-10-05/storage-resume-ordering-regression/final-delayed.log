@@ -1,0 +1,31 @@
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized] target(s) in 0.26s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-verse-battle-agent1/debug/deps/verse_world-5115cbce0f3ef316)
+
+running 4 tests
+VERSE_V04_TLS_EVIDENCE {"up_ms":0,"down_ms":0,"durable_stall_ms":300,"bound":85,"accepted":84,"observations":52,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":1,"background_requests":0}
+test service::worker::delayed::durable_writer_stall_preserves_owned_interval_timeline ... ok
+VERSE_V04_TLS_EVIDENCE {"up_ms":67,"down_ms":100,"durable_stall_ms":0,"bound":89,"accepted":84,"observations":13,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":1,"background_requests":0}
+test service::worker::delayed::delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline ... ok
+VERSE_V04_TLS_EVIDENCE {"up_ms":40,"down_ms":40,"durable_stall_ms":1200,"bound":88,"accepted":84,"observations":20,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":1,"background_requests":0}
+test service::worker::delayed::delayed_route_and_long_writer_stall_preserve_owned_interval_timeline ... ok
+VERSE_V04_TLS_EVIDENCE {"up_ms":40,"down_ms":40,"durable_stall_ms":1200,"bound":86,"accepted":84,"observations":14,"p95_m":0.0,"maximum_m":0.0,"mode_resets":0}
+VERSE_PRESSURE_EVIDENCE {"players":20,"background_requests":1118}
+test service::worker::delayed::shared_player_pressure_and_long_writer_stall_preserve_owned_interval_timeline ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 555 filtered out; finished in 5.68s
+

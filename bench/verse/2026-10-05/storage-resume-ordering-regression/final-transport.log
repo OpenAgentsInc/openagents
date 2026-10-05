@@ -1,0 +1,64 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/verse-battle-host-agent1/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized] target(s) in 1m 56s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-verse-battle-agent1/debug/deps/verse_world-5115cbce0f3ef316)
+
+running 23 tests
+test service::net::admission::tests::mapped_ipv4_connections_share_the_pending_ip_limit ... ok
+test service::net::admission::tests::pending_partitions_and_drop_leave_admitted_capacity ... ok
+test service::net::admission::tests::aggregate_projection_limit_preserves_other_principals_commands ... ok
+test service::net::admission::tests::reconnect_retires_old_connection_without_refilling_work ... ok
+test service::net::session_pipeline::tests::storage_refusal_preserves_the_delivered_control_prefix_at_the_same_tick ... ok
+test service::net::tests::frame_budget_rejects_header_before_waiting_for_payload ... ok
+test service::net::timing::tests::startup_storage_and_tick_outliers_stay_out_of_steady_percentiles ... ok
+test service::net::tests::durable_clock_credit_preserves_the_admission_prefix_and_byte_bounds ... ok
+test service::net::tests::durable_travel_confirmation_preserves_body_and_cannot_cross_admission_prefix ... ok
+test service::net::tests::tls_and_frame_refusals_leave_the_world_available ... ok
+test service::net::tests::checkpoint_credit_preserves_sequence_snapshots_and_other_connections ... ok
+test service::net::session_pipeline::tests::admission_is_bounded_and_replies_wait_for_ordered_durability ... ok
+test service::net::tests::durable_host_stops_without_acknowledgment_on_storage_failure ... ok
+test service::net::tests::tls_players_and_spectator_share_one_world_and_shutdown_parks_controls ... ok
+{"schema":"verse.admission.fixture.v1","admitted_commands":40,"snapshot_refusals":24,"stats":{"capacity_refusals":0,"pre_auth_refusals":0,"ip_refusals":40,"handshake_rate_refusals":0,"principal_capacity_refusals":0,"principal_work_refusals":24,"aggregate_work_refusals":0,"projections":17,"commands":40,"pending_peak":8,"active_peak":3,"pending":0,"active":0,"principal_records":2,"completed":11,"handshake_timeouts":0,"handshake_refusals":8,"authentication_timeouts":0,"authentication_refusals":0,"grant_refusals":0,"retired_connections":1,"frame_failures":0,"read_timeouts":0,"write_failures":0,"request_rate_failures":0,"host_failures":0,"transport_closures":2,"cancelled_workers":0}}
+test service::net::tests::overload_keeps_admitted_commands_live_and_reconnects_share_budgets ... ok
+test service::net::tests::storage_busy_does_not_extend_the_authentication_deadline ... ok
+test service::net::tests::catch_up_ticks_each_leave_their_own_simulation_observation ... ok
+test service::net::tests::durable_tls_host_recovers_acknowledged_combat_after_abrupt_restart ... ok
+test service::net::tests::slow_writer_fences_replies_and_backpressures_the_bounded_request_queue ... ok
+test service::net::tests::movement_entry_storage_backpressure_preserves_exact_request_and_refusal_boundaries ... ok
+test service::net::tests::durable_two_player_input_cadence_records_checkpoint_cost ... ok
+{"schema":"verse.durable.fixture.v2","players":2,"spectators":1,"accepted_movement_commands":180,"wall_seconds":3.100070354,"world_ticks":96,"checkpoint_commits":98,"checkpoint_bytes":1980961,"checkpoint_seconds":0.8274668400000003,"dropped_seconds":0.0,"simulation":{"observations":96,"total_seconds":0.343648202,"maximum_ms":7.390815,"p50_upper_ms":4.0,"p95_upper_ms":7.390815,"p99_upper_ms":7.390815},"capture":{"observations":98,"total_seconds":0.009995299000000004,"maximum_ms":0.324494,"p50_upper_ms":0.1,"p95_upper_ms":0.25,"p99_upper_ms":0.324494},"commits":{"observations":98,"total_seconds":0.8274668400000003,"maximum_ms":32.810303,"p50_upper_ms":8.0,"p95_upper_ms":16.0,"p99_upper_ms":32.810303},"writer_queue_peak":1,"storage_refusals":0,"storage_paused_ticks":0,"storage_paused_seconds":0.0}
+test service::net::tests::slow_tls_handshake_expires_and_releases_its_pending_slot ... ok
+test service::net::resume_tests::queued_intervals_survive_storage_resume_without_expiry ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 536 filtered out; finished in 10.42s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 559 filtered out; finished in 0.00s
+
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized] target(s) in 0.32s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-verse-battle-agent1/debug/deps/verse_world-5115cbce0f3ef316)

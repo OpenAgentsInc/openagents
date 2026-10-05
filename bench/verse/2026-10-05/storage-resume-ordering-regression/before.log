@@ -1,0 +1,31 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/verse-battle-host-agent1/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2848:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2848 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized] target(s) in 1m 56s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-verse-battle-agent1/debug/deps/verse_world-5115cbce0f3ef316)
+
+running 1 test
+test service::net::resume_tests::queued_intervals_survive_storage_resume_without_expiry ... FAILED
+
+failures:
+
+failures:
+    service::net::resume_tests::queued_intervals_survive_storage_resume_without_expiry
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 558 filtered out; finished in 2.75s
+
+
+thread 'service::net::resume_tests::queued_intervals_survive_storage_resume_without_expiry' (4105509) panicked at crates/verse-world/src/service/net/resume_tests.rs:135:9:
+Attempt 3: Refused { code: "command", message: "Movement interval control is stale or unavailable" }; expiries ExpiryObservations { total: 1, admission: 0, primary_tick: 1, additional_tick: 0, bootstrap: 0, samples: [ExpirySample { actor: 14, epoch: 4, authority_tick: 11, origin: PrimaryTick, world_step: 44, confirmed_step: 8, projected_step: 8, received_at: 8, applied_sequence: 1, queued_frames: 0, queued_steps: 0, first_start: None, last_end: None }], omitted: 0 }; paused ticks 4
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `-p verse-world --lib`
