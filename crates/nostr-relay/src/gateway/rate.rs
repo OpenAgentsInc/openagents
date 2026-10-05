@@ -9,6 +9,7 @@ use super::GatewayLimits;
 
 const WINDOW: Duration = Duration::from_secs(60);
 const OBSERVER_WINDOW: Duration = Duration::from_secs(1);
+const POSE_WINDOW: Duration = Duration::from_secs(1);
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_RATE_KEYS: usize = 100_000;
 
@@ -25,6 +26,8 @@ struct State {
     gift_wrap_recipient: HashMap<String, Counter>,
     observer_ip: HashMap<IpAddr, Counter>,
     observer_agent: HashMap<String, Counter>,
+    pose_ip: HashMap<IpAddr, Counter>,
+    pose_pubkey: HashMap<String, Counter>,
     req_ip: HashMap<IpAddr, Counter>,
     media_ip: HashMap<IpAddr, Counter>,
     media_pubkey: HashMap<String, Counter>,
@@ -51,6 +54,8 @@ impl RateLimiter {
                 gift_wrap_recipient: HashMap::new(),
                 observer_ip: HashMap::new(),
                 observer_agent: HashMap::new(),
+                pose_ip: HashMap::new(),
+                pose_pubkey: HashMap::new(),
                 req_ip: HashMap::new(),
                 media_ip: HashMap::new(),
                 media_pubkey: HashMap::new(),
@@ -136,6 +141,34 @@ impl RateLimiter {
             agent_pubkey,
             self.limits.observer_events_per_second_agent,
             OBSERVER_WINDOW,
+        )
+    }
+
+    /// Whether `ip` may publish one more pose-lane event this second.
+    pub fn pose_from_ip(&self, ip: IpAddr) -> bool {
+        let Ok(mut state) = self.inner.lock() else {
+            return false;
+        };
+        state.cleanup();
+        allow_ip_for(
+            &mut state.pose_ip,
+            ip,
+            self.limits.pose_events_per_second_ip,
+            POSE_WINDOW,
+        )
+    }
+
+    /// Whether `pubkey` may publish one more pose-lane event this second.
+    pub fn pose_from_pubkey(&self, pubkey: &str) -> bool {
+        let Ok(mut state) = self.inner.lock() else {
+            return false;
+        };
+        state.cleanup();
+        allow_string_for(
+            &mut state.pose_pubkey,
+            pubkey,
+            self.limits.pose_events_per_second_pubkey,
+            POSE_WINDOW,
         )
     }
 
@@ -226,6 +259,10 @@ impl State {
             .retain(|_, counter| now.duration_since(counter.started) < OBSERVER_WINDOW);
         self.observer_agent
             .retain(|_, counter| now.duration_since(counter.started) < OBSERVER_WINDOW);
+        self.pose_ip
+            .retain(|_, counter| now.duration_since(counter.started) < POSE_WINDOW);
+        self.pose_pubkey
+            .retain(|_, counter| now.duration_since(counter.started) < POSE_WINDOW);
         self.req_ip
             .retain(|_, counter| now.duration_since(counter.started) < WINDOW);
         self.media_ip
@@ -298,6 +335,31 @@ mod tests {
         assert!(!limiter.media_from_ip(ip));
         assert!(limiter.media_from_pubkey("a"));
         assert!(!limiter.media_from_pubkey("a"));
+    }
+
+    #[test]
+    fn the_pose_lane_is_counted_apart_from_the_minute_budget() {
+        let limits = GatewayLimits {
+            events_per_minute_ip: 1,
+            events_per_minute_pubkey: 1,
+            pose_events_per_second_ip: 1,
+            pose_events_per_second_pubkey: 2,
+            ..GatewayLimits::default()
+        };
+        let limiter = RateLimiter::new(limits);
+        let ip = "127.0.0.3".parse::<IpAddr>().unwrap();
+        assert!(limiter.event_from_ip(ip));
+        assert!(!limiter.event_from_ip(ip));
+        assert!(limiter.event_from_pubkey("walker"));
+        assert!(!limiter.event_from_pubkey("walker"));
+        // A spent minute budget leaves the pose lane open, and the other way
+        // round.
+        assert!(limiter.pose_from_pubkey("walker"));
+        assert!(limiter.pose_from_pubkey("walker"));
+        assert!(!limiter.pose_from_pubkey("walker"));
+        assert!(limiter.pose_from_pubkey("other"));
+        assert!(limiter.pose_from_ip(ip));
+        assert!(!limiter.pose_from_ip(ip));
     }
 
     #[test]

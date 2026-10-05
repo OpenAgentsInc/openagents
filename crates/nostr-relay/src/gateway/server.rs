@@ -2189,12 +2189,24 @@ enum EventPreflightRejection {
     InvalidCrypto(crate::domain::DomainError),
 }
 
+/// Whether `kind` travels in the pose lane: NIP-MV frames and gestures,
+/// ephemeral events a moving player publishes several times a second, which
+/// the relay counts by the second instead of against the per-minute budget.
+fn is_pose_lane(kind: u16) -> bool {
+    kind == nostr::kinds::MV_FRAME || kind == nostr::kinds::MV_GESTURE
+}
+
 fn event_preflight(
     rate: &RateLimiter,
     ip: std::net::IpAddr,
     event: &Event,
 ) -> Result<(), EventPreflightRejection> {
-    if !rate.event_from_ip(ip) {
+    let allowed = if is_pose_lane(event.kind) {
+        rate.pose_from_ip(ip)
+    } else {
+        rate.event_from_ip(ip)
+    };
+    if !allowed {
         return Err(EventPreflightRejection::IpRate);
     }
     event
@@ -2218,9 +2230,14 @@ fn event_key_rate_rejection_for(
     event: &Event,
     virtual_owner: Option<&str>,
 ) -> Option<EventKeyRateRejection> {
-    if !rate.event_from_pubkey(&event.pubkey)
-        || virtual_owner.is_some_and(|owner| !rate.event_from_pubkey(owner))
-    {
+    let allowed = if is_pose_lane(event.kind) {
+        rate.pose_from_pubkey(&event.pubkey)
+            && virtual_owner.is_none_or(|owner| rate.pose_from_pubkey(owner))
+    } else {
+        rate.event_from_pubkey(&event.pubkey)
+            && virtual_owner.is_none_or(|owner| rate.event_from_pubkey(owner))
+    };
+    if !allowed {
         return Some(EventKeyRateRejection::Event);
     }
     if event.kind == 1_059

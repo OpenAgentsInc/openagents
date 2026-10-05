@@ -3,7 +3,8 @@
 //! Frames arrive a few times a second with network jitter. Each entity
 //! keeps a short buffer of timed poses and is drawn [`DELAY`] in the past,
 //! interpolated with `lerp` for position and `slerp` for orientation, so
-//! motion looks continuous. An entity with no recent frame falls back to
+//! motion looks continuous. When the next frame is late, the entity keeps
+//! its last velocity for up to one frame interval, then holds still. An entity with no recent frame falls back to
 //! its durable state and is drawn dim: offline, where its owner left it.
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -17,8 +18,9 @@ use crate::avatar::{self, Gait};
 use crate::mesh::Mesh;
 use crate::mv::{EntityPose, Received};
 
-/// How far in the past remote entities are drawn.
-pub const DELAY: Duration = Duration::from_millis(150);
+/// How far in the past remote entities are drawn: a frame and a half at the
+/// shared 5 Hz cadence, so one late frame does not stop the motion.
+pub const DELAY: Duration = Duration::from_millis(300);
 /// With no frame for this long, an entity counts as offline.
 pub const STALE: Duration = Duration::from_secs(10);
 /// Most entities tracked per publisher.
@@ -28,6 +30,9 @@ const MAX_TRACKED: usize = 512;
 /// Most buffered samples per entity.
 const SAMPLES: usize = 32;
 const MAX_SESSIONS: usize = 16;
+/// Fastest motion continued past the newest sample; anything quicker is a
+/// teleport or a new session, which holds still instead.
+const MAX_EXTRAPOLATED_SPEED: f32 = 15.0;
 
 #[derive(Debug)]
 struct SessionOrder {
@@ -343,7 +348,23 @@ fn interpolate(samples: &VecDeque<Sample>, at: Instant) -> (Vec3, Quat) {
         }
     }
     let last = samples.back().expect("non-empty");
-    (last.pos, last.rot)
+    let n = samples.len();
+    if n < 2 {
+        return (last.pos, last.rot);
+    }
+    // Past the newest sample: continue at the last velocity for at most one
+    // frame interval, the most a single missed frame can cost.
+    let prev = samples[n - 2];
+    let interval = last.at.saturating_duration_since(prev.at);
+    if interval.is_zero() {
+        return (last.pos, last.rot);
+    }
+    let velocity = (last.pos - prev.pos) / interval.as_secs_f32();
+    if velocity.length() > MAX_EXTRAPOLATED_SPEED {
+        return (last.pos, last.rot);
+    }
+    let ahead = at.saturating_duration_since(last.at).min(interval);
+    (last.pos + velocity * ahead.as_secs_f32(), last.rot)
 }
 
 #[cfg(test)]
@@ -374,8 +395,8 @@ mod tests {
         let mut crowd = Crowd::new("me");
         let t0 = Instant::now();
         crowd.apply(frame(1, "s", 0.0), t0);
-        crowd.apply(frame(2, "s", 10.0), t0 + Duration::from_millis(100));
-        let shown = crowd.shown(t0 + Duration::from_millis(200));
+        crowd.apply(frame(2, "s", 10.0), t0 + Duration::from_millis(200));
+        let shown = crowd.shown(t0 + DELAY + Duration::from_millis(100));
         assert_eq!(shown.len(), 1);
         assert!((shown[0].pos.x - 5.0).abs() < 0.01, "{}", shown[0].pos.x);
         assert!(shown[0].online);
@@ -386,6 +407,34 @@ mod tests {
             1,
             "Stale geometry is retained but not counted as live"
         );
+    }
+
+    #[test]
+    fn a_late_frame_is_bridged_by_one_interval_of_extrapolation() {
+        let mut crowd = Crowd::new("me");
+        let t0 = Instant::now();
+        let step = Duration::from_millis(200);
+        crowd.apply(frame(1, "s", 0.0), t0);
+        crowd.apply(frame(2, "s", 2.0), t0 + step);
+        let x_at = |after: Duration| crowd.shown(t0 + DELAY + after)[0].pos.x;
+        // Half a frame past the newest sample: still moving at 10 m/s.
+        assert!(
+            (x_at(step + step / 2) - 3.0).abs() < 0.01,
+            "{}",
+            x_at(step + step / 2)
+        );
+        // One interval past: a full frame of motion, then the entity holds.
+        assert!((x_at(step * 2) - 4.0).abs() < 0.01);
+        assert!((x_at(step * 5) - 4.0).abs() < 0.01);
+        // A jump too fast to be walking holds still.
+        let mut jump = Crowd::new("me");
+        jump.apply(frame(1, "s", 0.0), t0);
+        jump.apply(frame(2, "s", 50.0), t0 + step);
+        assert!((jump.shown(t0 + DELAY + step * 2)[0].pos.x - 50.0).abs() < 0.01);
+        // A single sample has no velocity to continue.
+        let mut lone = Crowd::new("me");
+        lone.apply(frame(1, "s", 7.0), t0);
+        assert!((lone.shown(t0 + Duration::from_secs(2))[0].pos.x - 7.0).abs() < 0.01);
     }
 
     #[test]
