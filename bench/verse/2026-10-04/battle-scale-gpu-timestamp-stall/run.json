@@ -1,0 +1,13 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "compiled_revision": "f0544f5704",
+  "limits": [
+    "Native client exceeds the 160-second deadline after optional encoder timestamp instrumentation is enabled.",
+    "No native frame or GPU-timing receipt is produced; the primary.json file is configuration, not a result, and is not retained.",
+    "The 261-byte video container has no usable frames and is not retained.",
+    "Host completes 5101 ticks and twenty connections with zero dropped elapsed seconds; this does not prove native usability.",
+    "Synthetic credentials and configuration remain outside the repository.",
+    "GPU timestamps are being made explicitly opt-in; native timestamp execution remains unvalidated."
+  ]
+}

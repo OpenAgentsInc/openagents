@@ -597,18 +597,22 @@ impl Renderer {
                 )
                 .map_err(|e| e.to_string())?;
                 let adapter_name = adapter.get_info().name;
-                let (device, queue) =
-                    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+                let (device, queue) = pollster::block_on(
+                    adapter.request_device(&wgpu::DeviceDescriptor {
                         label: Some("Verse imported world"),
                         required_limits: adapter.limits(),
-                        required_features: if adapter.features().contains(gpu_timing::FEATURES) {
+                        required_features: if std::env::var_os("VERSE_GPU_TIMING")
+                            .is_some_and(|value| value == "1")
+                            && adapter.features().contains(gpu_timing::FEATURES)
+                        {
                             gpu_timing::FEATURES
                         } else {
                             wgpu::Features::empty()
                         },
                         ..Default::default()
-                    }))
-                    .map_err(|e| e.to_string())?;
+                    }),
+                )
+                .map_err(|e| e.to_string())?;
                 GpuContext {
                     #[cfg(feature = "imported-desktop")]
                     instance,
