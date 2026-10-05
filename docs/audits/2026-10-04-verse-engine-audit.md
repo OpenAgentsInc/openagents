@@ -158,7 +158,7 @@ Evidence labels:
 | V12 | P1 | Cooked static chunks have bounded native streaming residency. | Code, recorded | Content loading and residency | Complete ([#10625](https://github.com/OpenAgentsInc/openagents/issues/10625)), static-content profile |
 | V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload | Complete ([#10629](https://github.com/OpenAgentsInc/openagents/issues/10629)) |
 | V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics | Complete ([#10630](https://github.com/OpenAgentsInc/openagents/issues/10630)) |
-| V15 | P1 | Navigation needs tiled content and scheduled crowd work. | Code, gap | Navigation and AI | Open |
+| V15 | P1 | Content-bound navigation tiles have scheduled routes and local invalidation. | Code, recorded | Navigation and AI | Complete ([#10634](https://github.com/OpenAgentsInc/openagents/issues/10634)), grounded profile |
 | V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters | Open |
 | V17 | P1 | Engine boundaries remain intertwined with the Verse application. | Code | Engine extraction and host packaging | Open |
 | V18 | P0 | Crowd recovery improves, but failure containment and scale acceptance remain. | Recorded, code | Movement failure handling and scale acceptance | Open |
@@ -1106,23 +1106,54 @@ plus speculative rigid margins, do not establish general rotating-debris CCD.
 The retained Ruins capsule/OBB stub stays separate from the shared solver's working
 capsule/OBB path. V18 retains whole-game overload and tick-budget acceptance.
 
-### V15: Navigation needs a world-content lifecycle
+### V15: Content-bound tiles and scheduled navigation
 
-[`walkable::Navigation`](../../crates/physics/src/walkable.rs) compiles
-multilayer cells, supports bounded routing, and fences dynamic blockers. It caps
-cells and nodes at 65,536, allocates per-query search arrays, and compiles links
-through collision queries. [`room`](../../crates/verse-world/src/room.rs) caches
-navigation for named built-in profiles. The older horizontal box router is not
-the complete current chamber navigation implementation.
+**Completed:** [#10634](https://github.com/OpenAgentsInc/openagents/issues/10634).
 
-**Improve:** Cook tiled navigation with content identities, reuse search
-scratch, schedule route work, and add hierarchical paths, off-mesh links, and
-crowd avoidance. Specify local invalidation when doors, construction, or spell
-geometry changes. Path goals must continue through collision admission.
+[`walkable`](../../crates/physics/src/walkable.rs) now cooks aligned tiles with
+local collision source and character-setting identities. Directed seams connect
+multilayer spans; a coarse tile corridor guides fine search, which can leave that
+corridor when obstructions or height layers require it. Explicit `Grounded`
+transitions must pass capsule motor admission in each declared direction.
+[`VNT1`](../../crates/physics/src/walkable/tiled.rs) encodes a graph pinned by a
+trusted content manifest, with structural checks before loading. Limits are
+4,096 tiles, 1,048,576 cells/spans, and 64 MiB of cooked bytes. The source snapshot
+retains its existing 4,096-collider and 16,384-triangle limits.
 
-**Acceptance:** A multilevel zone routes crowds through stairs and doors,
-replans around construction, and reports no-path separately from exhausted work.
-Measure route p99 and total per-tick navigation cost during synchronized pursuit.
+Epoch-stamped search storage reuses distance, parent, and heap allocations.
+[`Game`](../../crates/verse-world/src/play.rs) uses a 256-request FIFO with actor
+life fencing and expiring request heartbeats. Each authority tick reserves at
+most four searches, 65,536 expansions, and 2,000,000 collision work units,
+including unsuccessful searches. Deferral holds position. Direct probes have a
+2,048-unit soft quota; optional smoothing has a 4,096-unit total quota. Ending
+those quotas retains compiled waypoints. Hard work exhaustion remains distinct
+from no path. Occupied starts and stalled motor probes stop early.
+
+Doors, construction props, corpses, and spell walls invalidate routes in affected
+tiles. Distant routes keep their obstruction revision. Transient spell-wall
+bounds fence graph edges without changing the durable blocker life book. Seven
+sampled velocities avoid up to 16 selected nearby actors, using bounded spatial
+buckets and stable actor priority. Every final movement continues through the
+capsule motor. Checkpoint revision v23 preserves queued route work and rejects
+stale actor lives or future scheduling ticks; v22 checkpoints remain readable.
+
+The [retained crowd fixture](../../bench/verse/2026-10-05/navigation-crowd/README.md)
+uses 40 live capsules, stairs, a closing/reopening door, and construction over
+360 ticks at 30 Hz. All 40 receive admitted routes; construction invalidates 31
+routes. It records 264 no-path outcomes, zero ordinary hard-budget exhaustions,
+and an independent exhaustion probe. Complete trajectories, outcomes, and
+content identities replay identically. On a shared i7-14700K pinned to CPU 0,
+route p99 is **3.42 ms** and total navigation tick p99 is **5.60 ms**. The archive
+pins sources, executable, compiler, and the 119,680-byte cooked graph.
+
+**Limits:** Seven actors reach their goals within the 12-second congested run.
+Local avoidance and conservative replanning do not guarantee crowd liveness.
+The graph remains resident; tile unloading and new walkable-surface edits need
+content orchestration. Explicit transitions cover continuous grounded movement;
+jumps and ladders need their own admitted controller actions. The component
+measurement does not establish a whole-game or production MMO frame gate; V18
+owns those budgets. Physics, Verse, world, native consumer, and browser checks
+cover the shared implementation; no owner host or phone run is claimed.
 
 ### V16: The primary adventurer remains a special implementation path
 

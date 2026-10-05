@@ -1,0 +1,83 @@
+{
+  "recorded_at_utc": "2026-10-05T08:16:09.726387+00:00",
+  "checkout_base_commit": "c7f6673219fa7ceb53120a615bc4baae06e14768",
+  "cpu": "Intel(R) Core(TM) i7-14700K",
+  "cpu_affinity": [
+    0
+  ],
+  "exclusive_cpu": false,
+  "warmup_seconds": 0,
+  "profile": "release",
+  "command": "cargo build -p physics --release --example navigation_crowd; taskset -c 0 \"$CARGO_TARGET_DIR/release/examples/navigation_crowd\"",
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+  "platform": "Linux-6.18.49-x86_64-with-glibc2.42",
+  "source_sha256": {
+    "crates/physics/examples/navigation_crowd.rs": "aae11dc3deea70569c5abf17644c468132affed4f2f48315702b0b993600e566",
+    "crates/physics/examples/oracle_scenes.rs": "33600d813edae908b3842e7ef49936725226f00860c53c72655d2c2c9977a145",
+    "crates/physics/examples/scene_broadphase.rs": "b226c4bb282e8bab8a2816691a35098f4b6e1b5c949bebb5f6556282ba48d010",
+    "crates/physics/src/body.rs": "f7adb942015568bc32b26a5c60d7ba012f14f7dbe20af0d62650542b17c7df9b",
+    "crates/physics/src/broadphase.rs": "bcf0adda9b3c232388fa2c58af3538485f1dfcf83d10001ac05788ad8bc17425",
+    "crates/physics/src/character.rs": "13624a07093053fb58b8d991d6f5740d62f27f8a02eac94d1926e59063ba2099",
+    "crates/physics/src/clock.rs": "803f8ceeb49a0b05bd87e461e7ba12e381b9617ac6059a1ac14f6f86ce2b6251",
+    "crates/physics/src/collision/index_tests.rs": "73c026453d074b58841e59e585f1b747c3998660999b7a2738f14e0e7758f9da",
+    "crates/physics/src/collision.rs": "cd7a5a87ea6e041378fc4c3303b3e05b5056fb764fea287b03f2e6e9b307c05c",
+    "crates/physics/src/contact.rs": "9ec7411379af9f3f7cf73dfd53555ecbe3018dbd29391fe3e093c6759200c671",
+    "crates/physics/src/continuous.rs": "6c57e0cf70ad1de7b8b765ada71538c384aab345c26e18ca2c8e6788aed1fc20",
+    "crates/physics/src/joint.rs": "5d2238a56f57d9d78dfeea79883cc3f477f270731f16aa8e5f2c709a17aa4143",
+    "crates/physics/src/kinematic.rs": "cdda87d8b05456c1e51b9c3256c3bcca1c83772a8b1a518f9e9eac3997e072f3",
+    "crates/physics/src/ledger.rs": "2cbb69b3ac11d30fdaf4627cbae17e917d591e1441173f936a2f7f155d60a366",
+    "crates/physics/src/lib.rs": "49a8a88fbaed0cb6aaaa2d58e36b3bad21a8b5809ac81fb8e2c8d95fa967aeb3",
+    "crates/physics/src/lifetimes.rs": "aad3858d3294edac523726319085fd486c9cd9fa735980e3afe6ee52cd69ebed",
+    "crates/physics/src/modal.rs": "3ba3fe7ede3b4a48cbf85f7ba960bf5d7c6e3fc771fc20846114e9d3ffea2ecb",
+    "crates/physics/src/navigation.rs": "5bfa2763f44675910a2adfefaf85caf041c2747ce36d9bec04c1a02ece718a74",
+    "crates/physics/src/oracle.rs": "ca2717c789abd8b124ba21b49aa47a5b9e898161b9ae61ab40e0285da95eca22",
+    "crates/physics/src/plume.rs": "2d617807f1623001d208b52e27928246605e24604c36fdb3831a163f48a5f599",
+    "crates/physics/src/queries/index_tests.rs": "99b55f1a48497c9f19a2c898a812740562e66f9d1200f17a2ecbf3cade2cfb95",
+    "crates/physics/src/queries/profiling.rs": "7c2722193e4a31d0ab77246549d101cd0217b3371ff4b3768ae040cb145f2085",
+    "crates/physics/src/queries/snapshot.rs": "517f81eb3480890442974e77bd7107e87a86676ee4e02552f785c5b5ffc142ae",
+    "crates/physics/src/queries.rs": "7073c1da546fc74b878406eac5dd6a8534869f474d97954586a4b21042894939",
+    "crates/physics/src/rope.rs": "8c0f3fbadf8ab407484f8f8246d95a2f3e56df1341b5cb46eedda3d0db77ace2",
+    "crates/physics/src/sensors.rs": "7d03850a2beb99da5475d9bb7f63a85e79295feae732a741ef3acc7302df7247",
+    "crates/physics/src/solid.rs": "f95ebe09eae5aa62b30f9369b1d58402c53531a269a929eb1279ba69528b11d9",
+    "crates/physics/src/tests.rs": "2c58fa1f96780f7dab144706518201c0366f82e078bf4c90bfaac6ada1b8fea5",
+    "crates/physics/src/thrusters.rs": "82f5dd9a48ae321b4f3adc519227787720074b6ff70608dce0edb5860ce2098c",
+    "crates/physics/src/trace.rs": "771c37cda0d583f6d27450d115539e4a9c1b9b17603353dbbd17a5f6f2a46a8b",
+    "crates/physics/src/walkable/tiled/tests.rs": "16187e500816b15a3c41a024bb8dfaa4093642cc3ecce1b2639b23f0c3d86dcd",
+    "crates/physics/src/walkable/tiled.rs": "d5c107a0789422e5ac4549cd8d5de2c98fdb1697a711d7298a878fb4cc110dab",
+    "crates/physics/src/walkable.rs": "61667c6512a539e6c22312c0cf87a95fa796bae426258910a20392b3920f162d",
+    "crates/physics/src/world.rs": "24b7f04724165db8936aa8d0b173708668517c1844f92ac8a91326ee331a4005",
+    "crates/physics/Cargo.toml": "87553bc289006197720fb079dfe074baab8b869dadfae2ff83d7ee6cb4e54de4",
+    "crates/verse-world/src/play.rs": "b14960dafad62ea66e0fd2d83f6b59dc1f271a41220b1f7d5a922894e9dbbf3c",
+    "Cargo.toml": "ee540d1fae9a6150471cf4b54c5bb487d0a8ca923ed5e0d8cc97889258dd6c93",
+    "Cargo.lock": "7b9f218ea97fc8702e44e8143b88af153b43064936abb3fc34720a3c9ef8c432",
+    "rust-toolchain.toml": "8e390d6a0838315f972690f46ef8bae8b7ecc9ee6c1ed70140ef852869c2482e"
+  },
+  "executable_sha256": "cd5d077c66771a395f50a4f9d37842506bb50a3ca876f7f58aca7760bf418a48",
+  "cooked_sha256": "ee3ee8f91e6fc1d7a7751bb34abe127119b868cd10655dc3c49587c2b2f8c7a1",
+  "diagnostic_provenance": "Earlier uncommitted implementation. Exact source fingerprints unavailable; different goal spacing/retry policy. Diagnostic only; not a controlled before/after comparison.",
+  "integrated_base_commit": "46cc402e2181371174e456b021a05b2babe150c6",
+  "integration": {
+    "changed_build_inputs": {
+      "Cargo.toml": "13d5443cec76fe1d84daf4625cbb324d962c29d3034c3ee2b9c01d41054adc00",
+      "Cargo.lock": "4eca7e075e3a2d55dd87f6b578c4f12c8b7977bf9a3b96479cdaab48c34eb3e5"
+    },
+    "unit_command": "cargo test -p physics -p verse-world -p verse --no-default-features --lib",
+    "unit_results": {
+      "physics": 130,
+      "verse": 586,
+      "verse_world": 317,
+      "ignored": 15
+    },
+    "native_command": "cargo check -p openagents-desktop -p coder-mobile -p openagents-cli",
+    "web_command": "cargo check -p verse --no-default-features --features web --target wasm32-unknown-unknown",
+    "format_command": "cargo fmt -p physics -p verse-world -- --check",
+    "physics_sources_unchanged": true,
+    "world_merge": "Preserve movement-expiry observations from main alongside navigation fields and constructor defaults.",
+    "integrated_world_sha256": "1afbf8fb6a3335513eb0cde613f0ab7b939ad212b9a474a034f42ffea3d84246",
+    "focused_integration_results": {
+      "compiled_navigation_tests": 5,
+      "checkpoint_tests": 4,
+      "framed_movement": 5
+    }
+  }
+}

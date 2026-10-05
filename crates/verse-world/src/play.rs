@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
-/// Checkpoint revision. v21 adds closed hosted social profiles.
-pub const RULES_REVISION: &str = "verse-chamber-owned-v22";
+/// Checkpoint revision. v23 persists bounded navigation scheduling.
+pub const RULES_REVISION: &str = "verse-chamber-owned-v23";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
@@ -214,6 +214,14 @@ pub struct Game {
     pub motor_recovery: crate::movement::RecoveryObservations,
     #[serde(skip)]
     pub movement_expiry: crate::movement::frames::ExpiryObservations,
+    #[serde(default)]
+    navigation_scheduler: physics::walkable::Scheduler,
+    #[serde(skip)]
+    navigation_scratch: physics::walkable::SearchScratch,
+    #[serde(skip)]
+    navigation_crowd: physics::walkable::Crowd,
+    #[serde(skip)]
+    navigation_cover: BTreeMap<(u8, u64), (glam::DVec3, glam::DVec3)>,
     pub navigation_plans: u64,
     pub navigation_budget_refusals: u64,
     #[serde(skip)]
@@ -443,6 +451,7 @@ impl Game {
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         if saved.version != 1
             || (saved.rules_revision != RULES_REVISION
+                && saved.rules_revision != "verse-chamber-owned-v22"
                 && saved.rules_revision != "verse-chamber-owned-v21"
                 && saved.rules_revision != "verse-chamber-owned-v20"
                 && saved.rules_revision != "verse-chamber-owned-v19"
@@ -453,12 +462,16 @@ impl Game {
             return Err("Unsupported world checkpoint".into());
         }
         if saved.rules_revision != RULES_REVISION
+            && saved.rules_revision != "verse-chamber-owned-v22"
             && saved.rules_revision != "verse-chamber-owned-v21"
             && saved.world.social.is_some()
         {
             return Err("Legacy rules cannot contain hosted social state".into());
         }
-        if saved.rules_revision != RULES_REVISION && !saved.world.primary_resident {
+        if saved.rules_revision != RULES_REVISION
+            && saved.rules_revision != "verse-chamber-owned-v22"
+            && !saved.world.primary_resident
+        {
             return Err("Legacy rules cannot contain an absent primary character".into());
         }
         let mut world = saved.world;
@@ -497,6 +510,23 @@ impl Game {
             })
         {
             return Err("Invalid world navigation checkpoint".into());
+        }
+        world
+            .navigation_scheduler
+            .validate(world.admission.actor().instance)?;
+        if world
+            .navigation_scheduler
+            .tick()
+            .is_some_and(|tick| tick > world.authority_tick)
+        {
+            return Err("Navigation scheduler belongs to a future authority tick".into());
+        }
+        if world.navigation_scheduler.pending_lives().any(|life| {
+            world.lives.get(&life.entity).is_none_or(|current| {
+                current.instance != life.instance || current.generation != life.generation
+            })
+        }) {
+            return Err("Navigation scheduler contains a stale actor life".into());
         }
         world.character.validate()?;
         for character in world.npc_characters.values() {
@@ -590,6 +620,7 @@ impl Game {
             world.scene.collision_profile.as_deref(),
             world.admission.actor().instance,
         )?;
+        world.navigation_cover = world.navigation_obstacles();
         for collider in world.blockers.colliders()? {
             world.colliders.push(physics::kinematic::Aabb {
                 min: collider
@@ -976,6 +1007,11 @@ impl Game {
         self.sync_actor_colliders()?;
         Ok(())
     }
+    /// Current tick's reserved plans, expansions, collision work, and queued actors.
+    pub fn navigation_work(&self) -> (usize, usize, usize, usize) {
+        let (plans, nodes, work) = self.navigation_scheduler.used();
+        (plans, nodes, work, self.navigation_scheduler.pending())
+    }
     pub fn navigation_blockers(&self) -> &physics::walkable::Blockers {
         &self.blockers
     }
@@ -1044,6 +1080,71 @@ impl Game {
         self.blockers = next;
         self.simulation.set_colliders(self.colliders.clone());
         self.sync_actor_colliders()?;
+        self.refresh_navigation_obstacles()?;
+        Ok(())
+    }
+    fn navigation_obstacles(&self) -> BTreeMap<(u8, u64), (glam::DVec3, glam::DVec3)> {
+        self.blockers
+            .active_bounds()
+            .map(|(life, min, max)| ((0, life.entity), (min, max)))
+            .chain(
+                crate::spells::wall_of_stone::cover(&self.spells)
+                    .into_iter()
+                    .map(|(id, bounds)| ((1, id.0 as u64), (bounds.min, bounds.max))),
+            )
+            .collect()
+    }
+    fn refresh_navigation_obstacles(&mut self) -> Result<(), String> {
+        let next = self.navigation_obstacles();
+        let Some(navigation) = &self.navigation else {
+            self.navigation_cover = next;
+            return Ok(());
+        };
+        let mut changed = std::collections::BTreeSet::new();
+        for (id, bounds) in self.navigation_cover.iter().chain(next.iter()) {
+            if self.navigation_cover.get(id) != next.get(id) {
+                changed.extend(navigation.affected_tiles(bounds.0, bounds.1)?);
+            }
+        }
+        if !changed.is_empty() {
+            let snapshot = self.snapshot();
+            let positions: BTreeMap<_, _> = self
+                .ids
+                .iter()
+                .filter_map(|(actor, id)| {
+                    snapshot
+                        .actors
+                        .iter()
+                        .find(|source| source.id == *id)
+                        .map(|source| (*actor, Vec3::from(source.pos).as_dvec3()))
+                })
+                .collect();
+            let mut invalid = vec![];
+            for (actor, route) in &mut self.routes {
+                let start = positions
+                    .get(actor)
+                    .copied()
+                    .unwrap_or(route.target.as_dvec3());
+                let mut points = route.points[route.cursor..].to_vec();
+                points.push(route.target.as_dvec3());
+                if navigation
+                    .route_tiles(start, &points)?
+                    .iter()
+                    .any(|tile| changed.contains(tile))
+                {
+                    invalid.push(*actor);
+                } else {
+                    route.blocker_revision = self.blockers.revision;
+                }
+            }
+            for actor in invalid {
+                self.routes.remove(&actor);
+            }
+        }
+        for route in self.routes.values_mut() {
+            route.blocker_revision = self.blockers.revision;
+        }
+        self.navigation_cover = next;
         Ok(())
     }
     pub(super) fn move_hostile(
@@ -1085,6 +1186,7 @@ impl Game {
             entity: actor,
             generation: life.generation,
         });
+        self.refresh_navigation_obstacles()?;
         let replan = self.routes.get(&actor).is_none_or(|route| {
             route.life != life
                 || route.blocker_revision != self.blockers.revision
@@ -1094,25 +1196,36 @@ impl Game {
                         || route.points.is_empty())
         });
         if replan {
+            self.navigation_scheduler.begin_tick(self.authority_tick);
+            let budget = physics::walkable::Budget {
+                nodes: 16_384,
+                ..Default::default()
+            };
+            if !self.navigation_scheduler.request(ignore.unwrap(), budget)? {
+                return Ok(position);
+            }
             self.navigation_plans = self
                 .navigation_plans
                 .checked_add(1)
                 .ok_or("Navigation plan counter exhausted")?;
+            let navigation_blockers = self.blockers.with_obstacles(
+                crate::spells::wall_of_stone::cover(&self.spells)
+                    .into_iter()
+                    .map(|(_, bounds)| bounds),
+            )?;
             let result = self
                 .navigation
                 .as_ref()
                 .ok_or("Compiled navigation is missing")?
-                .path(
+                .path_with_scratch(
                     &self.query_scene,
-                    &self.blockers,
+                    &navigation_blockers,
                     instance,
                     position.as_dvec3(),
                     target.as_dvec3(),
                     ignore,
-                    physics::walkable::Budget {
-                        nodes: 16_384,
-                        ..Default::default()
-                    },
+                    budget,
+                    &mut self.navigation_scratch,
                 );
             let (points, refusal) = match result {
                 Ok(Some(path)) => (path.points, None),
@@ -1165,6 +1278,14 @@ impl Game {
         let delta = waypoint - position.as_dvec3();
         let horizontal = glam::DVec3::new(delta.x, 0., delta.z);
         let movement = horizontal.normalize_or_zero() * horizontal.length().min(distance as f64);
+        let movement = self.navigation_crowd.steer(
+            physics::walkable::CrowdAgent {
+                life: ignore.unwrap(),
+                feet: position.as_dvec3(),
+                radius: 0.35,
+            },
+            movement,
+        )?;
         let steps = (movement.length() / 0.05).ceil().max(1.) as usize;
         let mut character = physics::character::Character::new(position.as_dvec3());
         let mut filter = physics::queries::Filter::blocking(instance);
@@ -1361,6 +1482,10 @@ impl Game {
             bodies: physics::lifetimes::Bodies::new(instance),
             motor_recovery: Default::default(),
             movement_expiry: Default::default(),
+            navigation_scheduler: Default::default(),
+            navigation_scratch: Default::default(),
+            navigation_crowd: Default::default(),
+            navigation_cover: Default::default(),
             navigation_plans: 0,
             navigation_budget_refusals: 0,
             navigation: crate::room::profile_navigation(
@@ -2008,6 +2133,26 @@ impl Game {
         }
         self.step_additional(physics_steps as u32, dt)?;
         let source_actors = self.snapshot().actors;
+        self.navigation_scheduler.begin_tick(self.authority_tick);
+        self.navigation_scheduler.retain(|life| {
+            self.lives.get(&life.entity).is_some_and(|current| {
+                current.instance == life.instance && current.generation == life.generation
+            })
+        });
+        self.navigation_crowd
+            .rebuild(self.ids.iter().filter_map(|(actor, id)| {
+                let source = source_actors.iter().find(|source| source.id == *id)?;
+                let life = self.lives.get(actor)?;
+                Some(physics::walkable::CrowdAgent {
+                    life: physics::queries::Life {
+                        instance: life.instance,
+                        entity: life.actor,
+                        generation: life.generation,
+                    },
+                    feet: Vec3::from(source.pos).as_dvec3(),
+                    radius: 0.35,
+                })
+            }))?;
         let mut falls = vec![];
         for a in self.scene.frame(self.time).actors {
             if let Some(id) = self.ids.get(&a.actor.id).copied() {
@@ -2944,6 +3089,7 @@ impl Game {
         self.spells.couple(&mut movers)?;
         couple_characters(&mut movers);
         self.spells.insert_query_colliders(&mut self.query_scene)?;
+        self.refresh_navigation_obstacles()?;
         self.simulation.set_spell_cover(
             self.colliders.clone(),
             crate::spells::wall_of_stone::cover(&self.spells),
@@ -4382,6 +4528,85 @@ mod compiled_navigation_tests {
         let mut game = Game::new(scene).unwrap();
         game.time = 30.;
         game
+    }
+    #[test]
+    fn prop_invalidation_preserves_distant_routes_and_replans_local_changes() {
+        let mut g = game();
+        let start = Vec3::new(-2., 0., -15.);
+        let target = Vec3::new(2., 0., -15.);
+        g.simulation
+            .place_chamber_actor(g.ids[&2], start.to_array(), 0.)
+            .unwrap();
+        g.sync_bodies(0.).unwrap();
+        g.move_hostile(2, start, target, 0.04).unwrap();
+        assert!(g.routes.contains_key(&2));
+        let distant = physics::queries::Life {
+            instance: g.admission.actor().instance,
+            entity: 900,
+            generation: 0,
+        };
+        g.set_navigation_blocker(
+            distant,
+            glam::DVec3::new(-18., 0., 4.),
+            glam::DVec3::new(-17., 2., 5.),
+        )
+        .unwrap();
+        assert!(g.routes.contains_key(&2));
+        assert_eq!(g.routes[&2].blocker_revision, g.blockers.revision);
+        let local = physics::queries::Life {
+            entity: 901,
+            ..distant
+        };
+        g.set_navigation_blocker(
+            local,
+            glam::DVec3::new(-0.6, 0., -15.6),
+            glam::DVec3::new(0.6, 3., -14.4),
+        )
+        .unwrap();
+        assert!(!g.routes.contains_key(&2));
+        g.move_hostile(2, start, target, 0.04).unwrap();
+        assert!(g.routes[&2].refusal.is_none());
+        let checkpoint = g.checkpoint().unwrap();
+        let restored = Game::restore(&checkpoint).unwrap();
+        assert_eq!(checkpoint, restored.checkpoint().unwrap());
+    }
+    #[test]
+    fn exhausted_tick_defers_movement_and_queue_replays_after_checkpoint() {
+        let mut g = game();
+        let life = g.actor_life(2).unwrap();
+        let physical = physics::queries::Life {
+            instance: life.instance,
+            entity: life.actor,
+            generation: life.generation,
+        };
+        g.navigation_scheduler.begin_tick(g.authority_tick);
+        for _ in 0..4 {
+            assert!(
+                g.navigation_scheduler
+                    .request(
+                        physical,
+                        physics::walkable::Budget {
+                            nodes: 16_384,
+                            ..Default::default()
+                        }
+                    )
+                    .unwrap()
+            );
+        }
+        let start = Vec3::new(-2., 0., -15.);
+        let target = Vec3::new(2., 0., -15.);
+        assert_eq!(g.move_hostile(2, start, target, 0.04).unwrap(), start);
+        assert_eq!(g.navigation_plans, 0);
+        assert_eq!(g.navigation_work().3, 1);
+        let mut restored = Game::restore(&g.checkpoint().unwrap()).unwrap();
+        g.authority_tick += 1;
+        restored.authority_tick += 1;
+        assert_eq!(
+            g.move_hostile(2, start, target, 0.04).unwrap(),
+            restored.move_hostile(2, start, target, 0.04).unwrap()
+        );
+        assert_eq!(g.checkpoint().unwrap(), restored.checkpoint().unwrap());
+        assert!(g.navigation_work().0 <= 4);
     }
     #[test]
     fn cultist_climbs_authored_stairs_without_teleporting() {

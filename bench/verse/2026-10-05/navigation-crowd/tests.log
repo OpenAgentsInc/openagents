@@ -1,0 +1,1265 @@
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+   Compiling verse-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-lagrange)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2650:19
+     |
+ 272 | impl Game {
+     | --------- method in this implementation
+...
+2650 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `combat`, `controls`, `bow_remaining`, `time`, `yaw`, and `appearance` are never read
+   --> crates/verse-world/src/play/multiplayer.rs:120:5
+    |
+119 | pub(crate) struct PortablePlayer {
+    |                   -------------- fields in this struct
+120 |     combat: crate::rules::transfer::Portable,
+    |     ^^^^^^
+121 |     controls: Controls,
+    |     ^^^^^^^^
+122 |     bow_remaining: f32,
+    |     ^^^^^^^^^^^^^
+123 |     time: f32,
+    |     ^^^^
+124 |     yaw: f32,
+    |     ^^^
+125 |     appearance: verse_engine::director::Actor,
+    |     ^^^^^^^^^^
+    |
+    = note: `PortablePlayer` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `take_transfer_player`, `take_resident_player`, and `put_transfer_player` are never used
+   --> crates/verse-world/src/play/multiplayer.rs:128:19
+    |
+127 | impl Game {
+    | --------- methods in this implementation
+128 |     pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+137 |     pub(crate) fn take_resident_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+251 |     pub(crate) fn put_transfer_player(
+    |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:381:19
+     |
+ 289 | impl Game {
+     | --------- methods in this implementation
+...
+ 381 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1264 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: fields `state` and `elapsed` are never read
+ --> crates/verse-world/src/rules/transfer.rs:5:5
+  |
+4 | pub(crate) struct Portable {
+  |                   -------- fields in this struct
+5 |     state: PlayerState,
+  |     ^^^^^
+6 |     elapsed: f32,
+  |     ^^^^^^^
+  |
+  = note: `Portable` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `defeated` is never used
+ --> crates/verse-world/src/rules/transfer.rs:9:19
+  |
+8 | impl Portable {
+  | ------------- method in this implementation
+9 |     pub(crate) fn defeated(&self) -> bool {
+  |                   ^^^^^^^^
+
+warning: method `put_player` is never used
+  --> crates/verse-world/src/rules/transfer.rs:58:19
+   |
+13 | impl Simulation {
+   | --------------- method in this implementation
+...
+58 |     pub(crate) fn put_player(&mut self, id: u32, mut portable: Portable) -> Result<(), String> {
+   |                   ^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, `quest_log`, and `configure_rewards` are never used
+   --> crates/verse-world/src/service.rs:148:8
+    |
+ 98 | impl Chamber {
+    | ------------ methods in this implementation
+...
+148 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+256 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+307 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+...
+403 |     fn configure_rewards(&mut self, policies: Vec<rewards::Policy>) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: method `validate_use` is never used
+  --> crates/verse-world/src/service/items.rs:54:19
+   |
+27 | impl Catalog {
+   | ------------ method in this implementation
+...
+54 |     pub(super) fn validate_use(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^
+
+warning: method `validate_change` is never used
+  --> crates/verse-world/src/service/outfits.rs:70:19
+   |
+33 | impl Catalog {
+   | ------------ method in this implementation
+...
+70 |     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^^^^
+
+warning: method `progress` is never used
+   --> crates/verse-world/src/service/progression.rs:193:19
+    |
+142 | impl Config {
+    | ----------- method in this implementation
+...
+193 |     pub(super) fn progress(&self, actor: u64, _instance: u64, ledger: &Ledger) -> Vec<Progress> {
+    |                   ^^^^^^^^
+
+warning: methods `revision` and `transactions` are never used
+   --> crates/verse-world/src/service/rewards.rs:235:19
+    |
+205 | impl Ledger {
+    | ----------- methods in this implementation
+...
+235 |     pub(super) fn revision(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+381 |     pub(super) fn transactions(&self) -> Vec<Transaction> {
+    |                   ^^^^^^^^^^^^
+
+warning: method `transfer_cooldowns` is never used
+  --> crates/verse-world/src/utilities.rs:58:19
+   |
+57 | impl Controls {
+   | ------------- method in this implementation
+58 |     pub(crate) fn transfer_cooldowns(&self, source_time: f32, destination_time: f32) -> Self {
+   |                   ^^^^^^^^^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, and `quest_log` are never used
+   --> crates/verse-world/src/service.rs:148:8
+    |
+ 98 | impl Chamber {
+    | ------------ methods in this implementation
+...
+148 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+256 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+307 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+
+warning: `verse-world` (lib) generated 13 warnings
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `details`
+   --> crates/verse/src/imported/mod.rs:783:21
+    |
+783 |                 let details = adapter_details(&adapter);
+    |                     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_details`
+
+warning: associated function `move_player` is never used
+   --> crates/verse/src/zones/everglade/mod.rs:353:12
+    |
+110 | impl Everglade {
+    | -------------- associated function in this implementation
+...
+353 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib test) generated 5 warnings (4 duplicates)
+warning: `verse` (lib test) generated 3 warnings (run `cargo fix --lib -p verse --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 51.08s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/physics-9f8a668d09d6abbf)
+
+running 131 tests
+test body::tests::a_composite_of_two_bodies_uses_the_parallel_axis_theorem ... ok
+test character::tests::crowded_capsules_finish_recovery_before_movement ... ok
+test character::tests::gravity_override_scales_descent_and_bounds_its_speed ... ok
+test character::tests::endpoint_and_surface_recovery ... ok
+test character::tests::filled_box_spawn_and_teleport ... ok
+test character::tests::moving_platform_carries_and_removed_support_releases ... ok
+test character::tests::jump_is_blocked_without_headroom ... ok
+test clock::tests::a_long_frame_runs_the_cap_and_reports_the_rest ... ok
+test clock::tests::frames_become_whole_steps ... ok
+test continuous::tests::caps_tangency_and_initial_overlap ... ok
+test continuous::tests::moving_actor_crosses_stationary_projectile ... ok
+test continuous::tests::relative_translation_preserves_contact_and_equal_motion_misses ... ok
+test kinematic::tests::fast_box_cannot_tunnel_through_a_thin_wall ... ok
+test kinematic::tests::contact_allows_parallel_and_outward_motion_but_blocks_inward ... ok
+test kinematic::tests::slides_along_walls_and_stops_at_a_corner ... ok
+test lifetimes::tests::checkpoint_and_invalid_updates_preserve_ownership ... ok
+test ledger::tests::recorded_impulses_balance_and_unrecorded_ones_show ... ok
+test modal::tests::a_restored_mode_continues_bit_for_bit ... ok
+test oracle::tests::tank_into_panel_matches_genesis ... ignored, needs a Genesis trace from oracle/genesis_oracle.py
+test lifetimes::tests::actor_retirement_keeps_generation_fences_without_live_collision ... ok
+test plume::tests::a_plate_across_the_axis_takes_the_dynamic_pressure ... ok
+test plume::tests::a_sphere_and_a_capsule_take_their_projected_area ... ok
+test plume::tests::an_enclosure_catches_the_whole_thrust ... ok
+test plume::tests::surfaces_behind_out_of_range_or_facing_away_are_left_alone ... ok
+test lifetimes::tests::death_masks_expiry_and_replacement_are_fenced ... ok
+test queries::capsule_contact_tests::capsule_queries_obey_pose_life_instance_layers_and_removal ... ok
+test modal::tests::critical_and_overdamped_modes_settle_without_overshoot ... ok
+test queries::capsule_contact_tests::fast_capsules_stop_at_exact_contact_and_tangent_travel_is_free ... ok
+test queries::capsule_contact_tests::overlap_bounds_keep_contacts_within_narrow_phase_tolerance ... ok
+test navigation::tests::refuses_bad_queries_and_reports_an_unreachable_target ... ok
+test queries::capsule_contact_tests::world_capsule_cache_tracks_pose_removal_and_reinsertion_and_prunes_distant_tests ... ok
+test modal::tests::free_ring_down_follows_the_exact_envelope ... ok
+test queries::profiling::tests::measurements_are_optional_bounded_and_count_failed_calls ... ok
+test queries::profiling::tests::scene_profiling_preserves_hits_and_observes_real_query_failures ... ok
+test navigation::tests::routes_around_a_column_without_intersecting_it ... ok
+test character::tests::airborne_motion_is_ballistic_and_landing_reports_the_fall ... ok
+test character::tests::unresolvable_recovery_preserves_character_state ... ok
+test queries::snapshot::tests::cached_capsule_pose_updates_and_shape_replacement_keep_queries_current ... ok
+test character::tests::ground_jump_land_and_ceiling ... ok
+test queries::snapshot::tests::cached_pose_updates_reuse_meshes_and_replacement_is_atomic ... ok
+test queries::tests::life_instance_layer_and_usage_filters_are_independent ... ok
+test queries::tests::malformed_geometry_and_nonfinite_queries_are_refused ... ok
+test queries::tests::capsule_stops_at_a_thin_triangle_wall_at_the_correct_time ... ok
+test ledger::tests::a_coasting_system_keeps_its_momentum ... ok
+test queries::snapshot::tests::snapshot_round_trip_preserves_solid_boxes_meshes_capsules_and_poses ... ok
+test queries::tests::scene_clones_share_mesh_buffers_and_keep_collider_membership_independent ... ok
+test queries::tests::ramp_and_stair_queries_return_ground_height_and_surface_normals ... ok
+test queries::tests::rounded_edge_contacts_do_not_use_an_expanded_box_approximation ... ok
+test queries::tests::nearest_results_are_bounded_and_independent_of_collider_insertion_order ... ok
+test body::tests::intermediate_axis_spin_flips_but_major_axis_spin_is_stable ... ok
+test modal::tests::a_step_load_rings_about_the_static_deflection ... ok
+test modal::tests::any_step_length_is_stable_and_never_adds_energy ... ok
+test rope::tests::a_one_way_rope_leaves_its_bodies_alone ... ok
+test queries::tests::mesh_hierarchy_prunes_distant_geometry_and_preserves_source_triangle_ids ... ok
+test queries::snapshot::tests::rejects_foreign_duplicate_invalid_and_over_budget_geometry ... ok
+test solid::tests::a_segment_finds_its_point_nearest_a_solid ... ok
+test solid::tests::bounds_enclose_each_solid ... ok
+test solid::tests::distances_and_normals_point_out_of_each_solid ... ok
+test tests::a_grip_saturates_at_its_limit ... ok
+test body::tests::free_tumble_conserves_momentum_and_energy ... ok
+test character::tests::thin_wall_and_slide ... ok
+test tests::a_hard_weld_holds_under_impact ... ok
+test tests::a_force_on_a_sleeping_body_moves_it ... ok
+test oracle::tests::scenes_round_trip_and_run_deterministically ... ok
+test tests::a_hard_point_joint_holds_a_pendulum ... ok
+test character::tests::a_calibrated_shove_slides_its_distance_and_a_wall_stops_it ... ok
+test character::tests::admitted_stair_and_tall_step ... ok
+test tests::box_on_box_manifold_through_a_scripted_sweep ... ok
+test tests::a_tether_catches_without_adding_energy ... ok
+test collision::index_tests::scripted_motion_wakes_near_sleepers_without_enumerating_distant_pairs ... ok
+test tests::debug_lines_show_contacts_and_joints ... ok
+test tests::a_moving_kinematic_body_wakes_what_it_touches_or_holds ... ok
+test tests::filters_choose_which_pairs_touch ... ok
+test tests::a_spinning_tank_striking_a_panel_edge_takes_angular_impulse ... ok
+test collision::index_tests::sparse_background_prunes_pairs_and_tracks_kind_changes_and_reused_leaves ... ok
+test tests::a_small_stack_settles_and_stays ... ok
+test tests::fast_bodies_do_not_tunnel_through_thin_panels ... ok
+test tests::collisions_between_free_bodies_conserve_momentum ... ok
+test tests::a_settled_body_sleeps_and_wakes_on_contact_force_or_joint ... ok
+test queries::index_tests::foreign_instances_and_distant_shapes_do_not_enter_local_candidates ... ok
+test tests::a_soft_grip_settles_critically_and_conserves_momentum ... ok
+test tests::raycasts_hit_each_shape_where_geometry_says ... ok
+test tests::the_imu_reads_thrust_free_fall_and_spin ... ok
+test thrusters::tests::one_off_center_thruster_pushes_and_turns ... ok
+test thrusters::tests::an_infeasible_request_saturates_toward_it ... ok
+test tests::removed_bodies_stop_interacting ... ok
+test thrusters::tests::pid_terms_add ... ok
+test thrusters::tests::pure_force_and_pure_torque_requests_are_met ... ok
+test tests::contact_force_reads_weight_and_impacts ... ok
+test thrusters::tests::small_requests_are_met_like_large_ones ... ok
+test walkable::tests::configuration_and_compilation_work_are_bounded ... ok
+test tests::torsional_friction_resists_spin_up_to_its_limit ... ok
+test tests::a_slowly_drifting_body_never_sleeps ... ok
+test walkable::tiled::tests::crowd_steering_is_instance_scoped_stable_and_bounded ... ok
+test character::tests::walkable_slope_climbs_and_steep_slope_blocks ... ok
+test rope::tests::a_restored_rope_continues_bit_for_bit ... ok
+test walkable::tests::blockers_replan_and_fence_reused_lives ... ok
+test walkable::tests::column_route_and_no_path_are_distinct_from_budget_refusal ... ok
+test walkable::tiled::tests::scheduler_bounds_failed_search_reservations_fairness_and_restore ... ok
+test rope::tests::a_taut_rope_lies_straight_along_its_anchors ... ok
+test world::tests::a_restored_world_continues_bit_for_bit ... ok
+test world::tests::gravity_is_exact_in_velocity_and_static_bodies_stay ... ok
+test world::tests::interpolation_runs_from_the_previous_pose ... ok
+test world::tests::other_layout_versions_are_refused ... ok
+test walkable::tiled::tests::pinned_malformed_graph_is_refused_before_indexing ... ok
+test rope::tests::a_coupled_rope_conserves_momentum_with_its_bodies ... ok
+test walkable::tiled::tests::transient_hard_wall_bounds_fence_compiled_edges_and_budget ... ok
+test walkable::tests::disconnected_layers_do_not_create_a_vertical_shortcut ... ok
+test rope::tests::a_slack_rope_curves_and_carries_a_whip_wave ... ok
+test tests::friction_holds_below_the_coulomb_limit_and_slips_past_it ... ok
+test walkable::tiled::tests::local_source_edit_changes_only_overlapping_tile_identities ... ok
+test queries::index_tests::transformed_mixed_shapes_filters_limits_and_updates_match_exhaustive_queries ... ok
+test rope::tests::a_wrapped_rope_restores_bit_for_bit ... ok
+test rope::tests::a_taut_path_bends_only_where_a_solid_blocks_the_view ... ok
+test character::tests::enclosed_four_capsules_recover_without_crossing_walls ... ok
+test rope::tests::a_loose_end_drifts_and_the_reel_takes_it_in ... ok
+test walkable::tiled::tests::tile_seams_match_admitted_graph_and_pinned_round_trip ... ok
+test tests::a_settled_pile_sleeps_and_steps_cheaply ... ok
+test rope::tests::a_rope_swung_around_a_post_wraps_it ... ok
+test tests::tall_stacks_settle_and_sleep ... ok
+test walkable::tiled::tests::grounded_transition_refuses_gaps_and_changes_identity ... ok
+test tests::randomized_collisions_conserve_momentum ... ok
+test tests::randomized_joints_keep_their_invariants ... ok
+test rope::tests::a_hanging_rope_sags_without_gaining_energy ... ok
+test tests::randomized_friction_obeys_the_coulomb_limit ... ok
+test collision::index_tests::bounded_motion_matches_exhaustive_manifolds_after_moves_filters_and_removal ... ok
+test collision::index_tests::indexed_steps_replay_exhaustive_state_through_wake_reuse_and_restore ... ok
+test walkable::tests::stairs_and_low_clearance ... ok
+test walkable::tests::slope_admission_uses_the_character_profile ... ok
+test broadphase::tests::ordered_insertions_updates_removal_and_reuse_preserve_bounds_and_candidates ... ok
+test plume::tests::the_lobe_carries_exactly_the_thrust ... ok
+
+test result: ok. 130 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.16s
+
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-71f2b241db481c07)
+
+running 600 tests
+test agent::tests::a_scanning_agent_does_not_greet ... ok
+test agent::tests::a_greeting_faces_the_other_agent_and_bows ... ok
+test agent::tests::a_short_step_earns_no_look_around ... ok
+test agent::tests::a_tap_reaction_survives_a_late_scan_result_or_greeting ... ok
+test agent::tests::a_visiting_agent_flies_to_its_goal_and_faces_it ... ok
+test agent::tests::every_emote_starts_and_ends_at_rest ... ok
+test agent::tests::the_agent_starts_beside_the_player ... ok
+test agent::tests::catching_up_after_a_run_earns_a_look_around ... ok
+test agent::tests::the_agent_lags_then_catches_up ... ok
+test agent::tests::tapping_wiggles_once_then_finishes_without_interrupting_following ... ok
+test agent::tests::the_ghost_is_one_step_down_the_ladder ... ok
+test agent::tests::the_look_around_faces_what_the_scan_found ... ok
+test agent::tests::the_look_around_goes_left_then_right ... ok
+test avatar::tests::a_standing_gait_does_not_swing ... ok
+test avatar::tests::the_avatar_stands_on_its_feet ... ok
+test agent::tests::the_spade_is_its_size_and_amber ... ok
+test agent::tests::an_idle_agent_plays_every_idle_emote ... ok
+test ball::tests::the_step_stays_within_lagrange_time_budget ... ignored, wall-clock; run in release on an idle machine: cargo test --release -p verse --lib ball -- --ignored --nocapture
+test blocks::tests::the_blocks_stand_inside_the_walls_clear_of_the_pillar ... ok
+test camera::tests::zoom_is_bounded ... ok
+test camera::tests::upward_view_keeps_its_pitch_when_ground_clearance_lifts_the_eye ... ok
+test chat::tests::ads_wait_a_minute_and_all_draws_on_a_budget ... ok
+test blocks::tests::the_default_layout_keeps_the_demos_apart_and_ahead ... ok
+test camera::tests::mouselook_takes_the_orbit_angle ... ok
+test camera::tests::the_first_person_near_plane_stays_clear_of_walls_at_arms_length ... ok
+test camera::tests::zooming_past_the_nearest_orbit_enters_first_person_and_back ... ok
+test chat::tests::bang_commands_mute_and_unmute ... ok
+test chat::tests::lines_land_in_their_windows ... ok
+test camera::tests::the_camera_starts_behind_and_above ... ok
+test chat::tests::shortcuts_pick_the_channel_for_one_line ... ok
+test crowd::tests::a_late_frame_is_bridged_by_one_interval_of_extrapolation ... ok
+test crowd::tests::a_longer_delay_keeps_sparse_frames_continuous ... ok
+test camera::tests::the_eye_never_sinks_below_the_ground ... ok
+test camera::tests::ordinary_orbit_views_still_point_at_the_player ... ok
+test crowd::tests::a_publisher_cannot_flood_the_crowd ... ok
+test camera::tests::pitch_is_clamped ... ok
+test crowd::tests::an_offline_entity_rests_at_its_state ... ok
+test crowd::tests::frames_interpolate_in_the_past ... ok
+test ball::tests::the_ball_draws_lit_with_a_studio_key ... ok
+test crowd::tests::my_own_events_are_ignored ... ok
+test chat::tests::long_broadcasts_and_shouting_are_refused ... ok
+test doors::tests::changing_keys_reselects_and_timers_are_bounded ... ok
+test chat::tests::scope_follows_distance_and_zone ... ok
+test crowd::tests::hosted_presence_retains_discovery_without_spatial_authority ... ok
+test doors::tests::empty_reuses_memory_and_incompatible_keys_never_overwrite_it ... ok
+test doors::tests::intents_serialize_as_closed_native_requests ... ok
+test doors::tests::every_catalog_combination_selects_only_its_declared_route ... ok
+test chat::tests::an_unknown_shortcut_is_a_private_message ... ok
+test camera::tests::settle_swings_back_behind ... ok
+test doors::tests::preferences_round_trip_only_held_items_and_compatible_memories ... ok
+test doors::tests::invalid_preferences_are_rejected_without_partial_import ... ok
+test feed::tests::relay_names_shorten ... ok
+test crowd::tests::stale_and_reordered_frames_are_dropped ... ok
+test feed::tests::notes_are_tidied_for_a_chat_line ... ok
+test doors::hud::tests::item_strip_respects_native_controls_and_capture_cancellation ... ok
+test gles::tests::an_unterminated_block_is_refused - should panic ... ok
+test grid_frame::tests::states_follow_speed_and_height ... ok
+test grid_frame::tests::timing_summarizes_each_second ... ok
+test grid_pack::tests::a_gait_maps_onto_the_walk_clip_by_distance ... ok
+test feed::tests::visitors_stand_apart_on_the_ring ... ok
+test gles::tests::variants_differ_only_where_gles_needs_them ... ok
+test doors::tests::geometry_stays_finite_bounded_and_uses_only_the_product_palette ... ok
+test crowd::tests::publisher_session_tracking_is_bounded_even_for_unrendered_entities ... ok
+test gym::tests::a_previous_visit_cannot_update_the_new_board ... ok
+test gym::tests::a_real_board_without_fresh_snapshots_goes_stale ... ok
+test gym::tests::confirmation_and_reconciliation_queue_one_identical_logical_request ... ok
+test gym::tests::entry_loads_but_exit_and_background_stop_observation ... ok
+test gym::tests::leaving_during_launch_keeps_identity_and_marks_the_outcome_unknown ... ok
+test gym::tests::stale_and_changed_recipes_cannot_be_confirmed ... ok
+test gym::tests::starting_requires_a_current_reviewed_recipe_and_explicit_confirmation ... ok
+test gym::tests::the_synthetic_preview_refreshes_like_a_host_while_inside ... ok
+test gym::tests::unknown_cost_and_metric_denominators_survive_projection ... ok
+test grid_pack::tests::the_pinned_pack_blocks_exactly_the_grid_gym_walls ... ok
+test gym_evals::tests::a_result_without_a_baseline_says_so ... ok
+test gles::tests::the_default_photo_shader_does_not_translate_to_glsl_es ... ok
+test gym_evals::tests::forged_and_foreign_events_never_reach_the_board ... ok
+test gym_evals::tests::names_fall_back_to_the_references_without_releases ... ok
+test gles::tests::textured_entries_translate_and_only_masked_entries_discard ... ok
+test grid_pack::tests::the_figure_swings_its_limbs_like_the_legacy_gait ... ok
+test gles::tests::sun_cascades_sample_a_depth_array_on_glsl_es ... ok
+test grid_pack::tests::the_floor_keeps_the_legacy_lattice ... ok
+test gym_notes::tests::a_note_round_trips_and_malformed_notes_are_refused ... ok
+test gym_replay::tests::stations_stand_inside_the_hall_clear_of_its_walls ... ok
+test gles::tests::daylight_sky_validates_without_textures ... ok
+test gles::tests::the_sky_light_and_height_fog_translate_for_webgl2 ... ok
+test gym_replay::tests::the_replay_and_the_viewer_agree_on_every_step_and_time ... ok
+test gym_notes::tests::an_agent_is_quiet_when_off_alone_or_without_results ... ok
+test gym_notes::tests::readers_render_their_own_text_from_verified_results ... ok
+test gym_notes::tests::the_hourly_cap_and_restarts_hold ... ok
+test gym_notes::tests::two_agents_exchange_one_opener_and_one_answer_then_wait ... ok
+test hud::gym::tests::missing_measurements_and_unenforced_spend_are_not_free_or_bounded ... ok
+test hud::gym::tests::tall_charts_can_scroll_even_when_the_number_of_rows_is_small ... ok
+test ball::tests::a_push_from_the_side_rolls_it_sideways ... ok
+test gym_evals::tests::results_group_by_test_set_with_names_checks_and_credit ... ok
+test hud::tests::a_point_ahead_projects_to_the_screen_center ... ok
+test ball::tests::the_step_stays_within_lagrange_budget ... ok
+test ball::tests::the_grids_gym_walls_stop_the_ball ... ok
+test gym_notes::tests::ungrounded_notes_are_held_back ... ok
+test ball::tests::a_teleport_does_not_fling_the_ball ... ok
+test grid_frame::tests::the_bare_grid_frame_has_one_figure_per_player_and_its_arches ... ok
+test ball::tests::the_pillar_stops_the_ball_and_resets_everything_when_walked_into ... ok
+test identity::tests::a_bad_profile_name_is_refused ... ok
+test ball::tests::the_ball_rests_on_the_ground_until_touched ... ok
+test identity::tests::the_key_file_is_private ... ok
+test identity::tests::a_profile_is_created_once_then_reused ... ok
+test imported::chamber::tests::explosions_light_the_room_then_fade_with_the_effect ... ok
+test identity::tests::reading_never_writes_a_key_but_uses_one_that_exists ... ok
+test blocks::tests::the_stack_and_the_dominoes_stand_still_until_disturbed ... ok
+test imported::chamber::tests::many_effects_keep_the_brightest_local_lights_and_respect_the_gpu_bound ... ok
+test imported::chamber::tests::simultaneous_impacts_keep_a_finite_deterministic_particle_budget ... ok
+test imported::characters::tests::material_coordinates_are_explicit ... ok
+test ball::tests::a_restored_spawn_leaves_the_shared_arrangement_in_place ... ok
+test imported::culling::tests::bone_bounds_contain_weighted_skinning_and_refuse_unsafe_culling ... ok
+test imported::culling::tests::cube_faces_keep_crossing_bounds_and_reject_only_separated_geometry ... ok
+test blocks::tests::pushing_the_first_domino_topples_the_row ... ok
+test imported::flat::tests::odd_line_indices_are_refused ... ok
+test grid_pack::tests::the_pinned_pack_is_what_the_sources_compile_to ... ok
+test imported::gpu_timing::tests::invalid_sample_reasons_are_counted_and_examples_are_bounded ... ok
+test imported::gpu_timing::tests::native_timestamp_resolve_without_shadow_pass ... ignored, Requires a native GPU; proves unwritten shadow queries are not resolved
+test imported::gpu_timing::tests::native_timestamp_resolve_without_video_capture ... ignored, Requires a native GPU; run explicitly when diagnosing timestamp readback
+test imported::gpu_timing::tests::timestamp_units_and_invalid_order_are_explicit ... ok
+test imported::icons::tests::every_icon_is_credited ... ok
+test imported::icons::tests::every_ability_and_spell_slot_has_an_icon ... ok
+test blocks::tests::a_toppled_stack_steps_within_budget ... ok
+test imported::icons::tests::write_icon_sheet ... ignored, writes review evidence; run with VERSE_ICON_SHEET=path
+test imported::instancing::tests::storage_shader_validates_and_reads_an_instance_index ... ok
+test imported::icons::tests::reverse_gravity_is_the_flipped_artwork ... ok
+test imported::instancing::tests::world_storage_shader_validates_independent_flat_pose_indices ... ok
+test imported::lighting::tests::all_cube_faces_look_outward_and_bad_lights_are_refused ... ok
+test imported::lighting::tests::fog_packs_its_density_and_shape ... ok
+test imported::lighting::tests::shadowed_lights_come_first_and_keep_their_flicker ... ok
+test imported::lighting::tests::uniform_capacity_admits_all_slots_and_refuses_overflow ... ok
+test imported::material_gpu::tests::lines_and_unlit_surfaces_keep_their_own_materials ... ok
+test imported::material_gpu::tests::packing_preserves_factors_and_presence_flags ... ok
+test imported::material_gpu::tests::shared_base_color_does_not_merge_distinct_materials ... ok
+test imported::material_gpu::tests::shared_source_has_separate_channel_and_effective_cutoff_variants ... ok
+test blocks::tests::the_ball_knocks_the_stack_over ... ok
+test imported::mip_tests::uploaded_roles_and_material_bindings_match_linear_light_and_mask_recipes ... ignored, requires a native GPU; uses generated assets and no display
+test grid_pack::tests::the_pinned_pack_verifies_and_admits ... ok
+test ball::tests::walking_into_the_ball_pushes_it_rolling_and_it_comes_to_rest ... ok
+test blocks::tests::walking_into_the_stack_topples_it_and_it_comes_to_rest ... ok
+test imported::overlay::action_tests::classic_hit_regions_keep_six_unit_gaps_at_every_ui_scale ... ok
+test imported::overlay::action_tests::clickable_slots_match_hotkeys_and_empty_slots_do_not_cast ... ok
+test gym_results::tests::a_trace_loads_on_demand_and_plays ... ok
+test gym_results::tests::a_bundle_that_changed_after_publication_is_refused ... ok
+test imported::overlay::respawn_tests::respawn_hit_bounds_scale_with_the_visible_button ... ok
+test imported::overlay::tests::combat_bursts_sum_health_loss_without_mixing_incoming_or_expired_hits ... ok
+test gym_results::tests::entering_loads_the_current_publication_and_leaving_cancels ... ok
+test hud::tests::a_slash_lists_the_shortcuts ... ok
+test hud::studio::tests::the_bar_sits_top_center_and_the_badge_shows_only_while_decisions_wait ... ok
+test grid_pack::tests::the_built_in_pack_is_the_pinned_one ... ok
+test gym_results::tests::a_leaderboard_that_doesnt_verify_is_refused ... ok
+test hud::studio::tests::a_long_goal_is_cut_to_fit ... ok
+test imported::shadow_cache::tests::exhaustion_refuses_without_relabeling_previous_pose ... ok
+test imported::shadow_cache::tests::face_keys_track_light_pose_caster_revision_and_removal ... ok
+test imported::shadow_cache::tests::pose_identity_and_eligibility_changes_remove_cached_casters ... ok
+test imported::tests::additive_instances_match_uniform_pixels_and_reduce_draws ... ignored, requires a GPU; compares additive batching with the uniform fallback
+test imported::tests::corpse_grounding_ignores_world_translation_but_tracks_skin_and_basis_changes ... ok
+test imported::tests::device_loss_preserves_actor_playback_without_surface_or_source_files ... ignored, requires a Vulkan adapter; device recovery uses only scratch assets
+test imported::tests::reload_motion_identity_ignores_source_paths_and_tracks_animation_changes ... ok
+test imported::tests::textured_skin_shader_validates ... ok
+test mesh::tests::a_cube_has_twelve_edges_and_twelve_triangles ... ok
+test mesh::tests::cube_edges_are_unit_length ... ok
+test hud::tests::pills_tabs_and_the_bar_are_clickable ... ok
+test minimap::tests::every_landmark_has_a_separate_footer_target ... ok
+test minimap::tests::insets_and_visibility_bound_capture ... ok
+test hud::tests::the_open_board_is_a_clickable_panel ... ok
+test minimap::tests::map_selects_exact_positions_and_cancelled_drags_do_nothing ... ok
+test minimap::tests::route_segments_clip_at_every_edge_and_can_cross_the_entire_plot ... ok
+test minimap::tests::small_viewports_hide_both_map_sizes_and_refuse_capture ... ok
+test hud::tests::long_lines_wrap_within_the_window ... ok
+test hud::tests::a_replay_shows_top_right_and_its_list_is_a_panel ... ok
+test mv::tests::a_frame_round_trips ... ok
+test mv::tests::a_gesture_round_trips ... ok
+test mv::tests::a_tampered_frame_is_refused ... ok
+test mv::tests::a_state_round_trips_with_its_address ... ok
+test mv::tests::a_body_snapshot_round_trips_and_is_checked ... ok
+test mv::tests::cells_follow_the_floor ... ok
+test mv::tests::another_world_is_refused ... ok
+test mv::tests::bad_numbers_are_refused ... ok
+test mv::tests::gesture_version_duration_and_coordinates_are_checked ... ok
+test mv::tests::only_a_shared_body_carries_a_stamp ... ok
+test mv::tests::world_chat_round_trips_with_its_scope ... ok
+test net::tests::a_req_carries_every_filter ... ok
+test nav::tests::seeded_world_gym_is_reachable_through_the_doorway ... ok
+test imported::icons::tests::icons_rasterize_deterministically_with_visible_artwork ... ok
+test net::tests::cancellation_interrupts_an_unfinished_websocket_handshake ... ok
+test net::tests::relay_messages_parse ... ok
+test net::tests::relay_parsing_and_queues_are_bounded ... ok
+test overlay::tests::premultiplied_pixels_become_straight_alpha_and_bounds_hold ... ok
+test palette::tests::full_is_the_terminal_full_white ... ok
+test palette::tests::neutral_steps_are_gray_and_full_is_white ... ok
+test nav::tests::every_map_landmark_has_a_clear_route_from_spawn ... ok
+test palette::tests::the_ladder_stays_ordered_in_linear_light ... ok
+test pbr::bake::tests::a_corner_is_occluded_and_open_ground_is_not ... ok
+test pbr::bake::tests::rays_hit_the_nearest_face_and_miss_open_space ... ok
+test pbr::environment::tests::clouds_cover_more_of_the_sky_as_cover_grows ... ok
+test pbr::environment::tests::the_cpu_sky_matches_the_sky_pass_landmarks ... ok
+test pbr::bake::tests::a_sunlit_white_floor_lights_a_probe_from_below ... ok
+test net::tests::offline_queue_keeps_ordinary_events_and_replaces_only_replaceable_addresses ... ok
+test pbr::gpu::tests::a_fixed_key_shadow_is_one_map_and_a_cascaded_one_follows_the_tier ... ok
+test pbr::environment::tests::the_sky_light_takes_the_keys_level_and_the_skys_gradient ... ok
+test pbr::gpu::tests::earthshine_at_l1_is_a_few_millionths_of_sunlight ... ok
+test pbr::gpu::tests::half_floats_round_trip_the_values_the_probes_hold ... ok
+test pbr::environment::tests::the_reflection_cube_holds_the_drawn_sky ... ok
+test pbr::gpu::tests::the_frame_uniform_matches_the_shader ... ok
+test gym_results::tests::offline_shows_the_cached_copy_labeled_and_without_a_cache_asks_for_a_connection ... ok
+test pbr::gpu::tests::the_tier_sets_the_shadow_filter_and_material_detail_constants ... ok
+test pbr::gpu::tests::the_tier_gates_the_screen_space_passes ... ok
+test pbr::screen::tests::a_corner_darkens_the_floor_at_the_wall_base ... ok
+test pbr::screen::tests::the_uniform_carries_the_light_only_when_one_casts ... ok
+test pbr::sky::tests::epoch_and_j2000_are_the_published_julian_dates ... ok
+test pbr::sky::tests::malformed_catalogues_are_refused ... ok
+test pbr::sky::tests::star_colors_run_from_blue_to_red_and_magnitudes_scale ... ok
+test pbr::sky::tests::the_celestial_basis_is_a_rotation_that_keeps_ecliptic_north_up ... ok
+test pbr::sky::tests::the_earth_is_past_the_september_equinox_at_the_epoch ... ok
+test pbr::sky::tests::the_sun_lies_in_the_scene_minus_z_direction_in_celestial_terms ... ok
+test pbr::tests::stages_draw_daylight_only_when_asked ... ok
+test pbr::textured::tests::a_mirroring_placement_keeps_front_faces_counterclockwise ... ok
+test pbr::textured::tests::blended_cells_draw_last_from_far_to_near ... ok
+test pbr::textured::tests::double_sided_materials_draw_both_faces ... ok
+test pbr::textured::tests::frustum_culling_keeps_boxes_in_view_and_drops_boxes_behind ... ok
+test pbr::textured::tests::invalid_scenes_are_refused ... ok
+test pbr::screen::tests::a_flat_floor_is_unoccluded_and_casts_no_contact_shadow ... ok
+test pbr::textured::tests::mip_chains_skip_levels_above_the_device_limit ... ok
+test pbr::textured::tests::masked_mips_keep_their_alpha_coverage_at_the_cutoff ... ok
+test pbr::textured::tests::mips_average_color_in_linear_light ... ok
+test pbr::textured::tests::only_masked_cells_discard_and_only_blended_cells_skip_depth_and_shadows ... ok
+test pbr::textured::tests::placements_merge_into_cells_per_material ... ok
+test pbr::textured::tests::the_cutoff_keeps_alpha_at_or_above_it ... ok
+test pbr::textured::tests::oversized_mask_fitting_preserves_coverage_before_runtime_cooking ... ok
+test pbr::screen::tests::the_screen_shader_validates_and_matches_its_uniform ... ok
+test pbr::textured_bake::tests::a_leaf_card_occludes_partially_and_stays_lit ... ok
+test pbr::textured_bake::tests::a_job_delivers_vertices_to_the_scene_and_probes_to_the_zone ... ok
+test pbr::textured_bake::tests::a_point_under_a_roof_is_occluded ... ok
+test pbr::textured_bake::tests::a_white_wall_beside_sunlit_grass_turns_green ... ok
+test pbr::textured_bake::tests::open_ground_sees_the_whole_sky ... ok
+test pbr::textured_bake::tests::the_key_follows_the_sun_and_the_light_channel_round_trips ... ok
+test imported::overlay::tests::quest_marker_draws_only_for_the_matching_living_friendly_life ... ok
+test pillar::tests::jumping_over_the_cap_does_not_press ... ok
+test pillar::tests::the_button_lights_only_when_armed ... ok
+test pillar::tests::walking_into_the_pillar_presses_once_and_stops_the_player ... ok
+test profiling::tests::delayed_gpu_samples_use_submission_phase_and_keep_startup_outliers ... ok
+test profiling::tests::omitted_and_invalid_observations_do_not_become_latency_values ... ok
+test pbr::textured_bake::tests::probes_darken_under_cover_and_characters_sample_them ... ok
+test render::tests::excess_glow_does_not_consume_required_geometry_admission ... ok
+test render::tests::material_cutoff_variants_are_reserved_before_texture_upload ... ok
+test pbr::textured_bake::tests::the_threaded_bake_matches_the_stepped_one ... ok
+test render::tests::renderer_options_and_extents_are_bounded_before_gpu_work ... ok
+test imported::overlay::tests::friendly_nameplates_are_green_and_dead_plates_are_hidden ... ok
+test render::tests::scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits ... ok
+test render::tests::the_glow_budget_grows_by_tier_and_holds_spell_particles ... ok
+test replay::tests::a_side_that_starts_late_waits_on_the_plaza ... ok
+test replay::tests::a_visit_spans_from_the_previous_event_to_its_own ... ok
+test replay::tests::places_are_apart_and_the_ghost_stands_beside_the_agent ... ok
+test replay::tests::each_microcoder_event_visits_its_place ... ok
+test replay::tests::the_agents_travel_at_a_bounded_speed_and_arrive ... ok
+test replay::tests::the_clock_plays_at_1_10_and_60_times ... ok
+test replay::tests::the_replay_draws_every_studio_station_at_a_landmark ... ok
+test ritual::tests::a_configuration_needs_its_files ... ok
+test runtime::tests::bad_input_and_resume_gaps_cannot_poison_the_simulation ... ok
+test runtime::tests::blocked_door_route_is_visible_and_restoration_never_restarts_it ... ok
+test runtime::tests::changed_obstacles_stop_navigation_before_the_player_crosses_them ... ok
+test runtime::tests::companion_picking_refuses_foreground_static_player_and_remote_faces ... ok
+test runtime::tests::all_door_destinations_remain_reachable_and_gym_ends_outside_the_hall ... ok
+test runtime::tests::companion_refuses_invalid_projection_input_and_distant_reactions ... ok
+test render::tests::over_capacity_frames_fail_instead_of_silently_clipping ... ok
+test runtime::tests::computer_action_prompt_requires_an_interactive_host ... ok
+test runtime::tests::computer_picking_rejects_distance_back_faces_invalid_input_and_occlusion ... ok
+test runtime::tests::computer_picking_respects_presented_remote_geometry_without_advancing_it ... ok
+test render::tests::dynamic_buffers_grow_to_hold_the_full_bounded_crowd ... ok
+test runtime::tests::doors_preview_then_walk_and_reset_cancels_only_their_own_route ... ok
+test runtime::tests::computer_picking_tracks_the_monitor_in_portrait_landscape_and_oblique_views ... ok
+test runtime::tests::companion_picking_uses_the_spade_in_portrait_landscape_and_animated_views ... ok
+test runtime::tests::external_agent_motion_is_not_advanced_as_a_follower ... ok
+test runtime::tests::gym_action_prompt_requires_an_interactive_host_and_tracks_proximity ... ok
+test imported::overlay::tests::crowded_plates_stay_anchored_and_selected_target_has_priority ... ok
+test runtime::tests::gym_entry_requires_the_real_doorway_and_excludes_walls_and_roof ... ok
+test runtime::tests::door_anchors_are_hittable_on_approach_and_reject_front_obstructions ... ok
+test runtime::tests::gym_picking_respects_static_player_and_presented_remote_faces ... ok
+test runtime::tests::navigation_walks_around_a_building_without_teleporting_or_entering_it ... ok
+test runtime::tests::navigation_uses_the_seeded_gym_door_and_camera_control_does_not_cancel_it ... ok
+test runtime::tests::semantic_input_advances_the_same_world_deterministically ... ok
+test runtime::tests::the_bare_world_is_a_neutral_grid_with_only_the_player ... ignored, the Grid's ball and blocks are off for now (2026-10-01)
+test runtime::tests::the_computer_is_visible_then_reachable_without_walking_through_it ... ok
+test runtime::tests::gym_picking_refuses_back_faces_distance_outside_invalid_input_and_other_zones ... ok
+test runtime::tests::manual_movement_jump_and_explicit_cancel_stop_routes ... ok
+test imported::inventory::tests::procedural_inventory_is_complete_and_distributable ... ok
+test runtime::tests::zooming_all_the_way_in_on_the_grid_looks_through_the_players_eyes ... ignored, the Grid's ball and blocks are off for now (2026-10-01)
+test session::tests::a_bare_world_player_stays_within_the_event_budget_while_playing ... ignored, the Grid's ball and blocks are off for now (2026-10-01)
+test runtime::tests::gym_picking_tracks_the_physical_front_in_portrait_landscape_and_oblique_views ... ok
+test runtime::tests::the_grids_evals_board_picks_apart_from_the_other_boards_and_only_in_the_grid ... ok
+test minimap::tests::compact_map_draws_a_route_to_an_offscreen_destination ... ok
+test runtime::tests::players_cannot_walk_through_each_others_avatars ... ok
+test runtime::tests::the_grids_results_board_picks_apart_from_the_live_board_and_only_in_the_grid ... ok
+test session::tests::body_reports_reach_the_inbox_and_never_the_crowd ... ignored, the Grid's ball and blocks are off for now (2026-10-01)
+test runtime::tests::the_grids_gym_is_entered_through_its_doorway_and_its_board_picks_like_the_plazas ... ok
+test session::tests::a_display_name_is_cleaned_to_what_the_tag_font_draws ... ok
+test session::tests::a_greeting_is_returned_from_a_little_farther ... ok
+test session::tests::greetings_go_to_the_nearest_agent_in_range_once_per_cooldown ... ok
+test session::tests::mobile_keepalive_has_room_before_remote_presence_expires ... ok
+test session::tests::a_full_session_publishes_a_set_name_as_its_profile ... ok
+test session::tests::a_presence_session_names_its_states_only_once_a_name_is_set ... ok
+test session::tests::both_world_subscriptions_must_be_ready_and_refusals_stay_visible ... ok
+test session::tests::published_poses_name_the_avatar_and_its_agent ... ok
+test session::tests::repeated_refusals_back_off_further_and_a_quiet_spell_resets ... ok
+test session::tests::rejected_auth_does_not_become_connected_on_eose ... ok
+test session::tests::socket_open_is_not_authenticated_and_reconnect_resets_pose_identity ... ok
+test session::tests::random_spawns_land_on_the_plaza_and_clear ... ok
+test session::tests::profiles_require_signatures_and_room_labels_require_pinned_authority ... ok
+test session::tests::nonblocking_spawn_only_accepts_the_injected_players_signature ... ok
+test session::tests::unanswered_join_steps_are_repeated_after_join_retry ... ok
+test shared::tests::implausible_reports_change_nothing ... ok
+test minimap::tests::seeded_world_and_far_route_fit_the_renderer_hud_budget ... ok
+test session::tests::stopped_link_cannot_echo_a_chat_as_success_and_history_identity_is_bounded ... ok
+test shared::tests::stamps_order_by_epoch_then_revision_then_owner ... ok
+test net::tests::authentication_ack_restores_live_and_unfinished_one_shot_subscriptions ... ok
+test shared::tests::a_report_from_a_newer_epoch_sends_every_older_body_home ... ok
+test shared::tests::a_late_joiner_finds_every_rest_pose_from_the_snapshots ... ok
+test spectator::tests::an_unoccupied_world_leaves_the_bodies_at_rest ... ignored, the Grid's ball and blocks are off for now (2026-10-01)
+test spectator::tests::the_camera_looks_down_on_the_plaza_and_drifts ... ok
+test spectator::tests::the_tour_circles_the_plaza_low_and_keeps_it_in_frame ... ok
+test streaming::tests::cooked_shader_validates_both_depth_conventions ... ok
+test streaming::tests::gpu_partial_uploads_draw_and_rebuild_without_source_files ... ignored, Explicit scratch GPU: partial image rows, both depth conventions, retained rebuild
+test tooltip::tests::a_card_drops_below_a_slot_at_the_top_edge ... ok
+test tooltip::tests::a_card_sits_centered_above_its_slot ... ok
+test tooltip::tests::a_card_stays_inside_the_left_and_right_edges ... ok
+test imported::chamber::tests::controlled_adventurers_keep_distinct_shield_and_light_projections ... ok
+test tooltip::tests::a_long_press_is_held_past_its_threshold ... ok
+test tooltip::tests::hovering_waits_for_the_delay_and_sweeping_skips_it ... ok
+test shared::tests::simultaneous_claims_resolve_to_the_same_owner_everywhere ... ok
+test shared::tests::corrections_are_drawn_away_smoothly ... ok
+test spectator::tests::an_offline_grid_is_empty_and_draws_no_avatar_of_its_own ... ok
+test shared::tests::the_last_toucher_takes_the_ball_and_the_old_owner_yields ... ok
+test gles::tests::default_variants_are_valid_and_translate_to_metal ... ok
+test shared::tests::a_body_left_moving_by_a_silent_owner_is_adopted_and_recorded ... ok
+test imported::overlay::tests::ritual_limits_hostile_bars_without_overlap_in_both_camera_shots ... ok
+test shared::tests::pushing_the_ball_into_the_stack_claims_the_cubes_it_strikes ... ok
+test shared::tests::the_pusher_owns_the_ball_and_the_other_follows_it ... ok
+test shared::tests::a_reset_outranks_every_older_stamp_and_reaches_everyone ... ok
+test world::tests::computer_display_stays_inside_the_physical_monitor_and_changes_with_proximity ... ok
+test world::tests::computer_text_reads_left_to_right_from_the_monitors_front ... ok
+test world::tests::every_color_is_on_the_amber_ladder ... ok
+test tooltip::tests::the_card_draws_in_color_never_gray ... ok
+test world::tests::gym_display_is_readable_geometry_inside_the_board_with_host_owned_action_cues ... ok
+test imported::overlay::tests::shared_damage_text_matches_local_rendering_and_preserves_colors_and_expiry ... ok
+test world::tests::faces_are_near_black ... ok
+test world::tests::gym_hall_and_door_are_clear_and_signage_is_world_geometry ... ok
+test world::tests::the_computer_has_one_solid_footprint_and_clear_approach ... ok
+test world::tests::the_grids_gym_is_neutral_world_geometry_with_its_sign_facing_the_spawn ... ok
+test world::tests::the_plaza_site_is_the_identity_and_the_grid_site_faces_the_spawn ... ok
+test world::tests::the_city_is_the_same_every_launch ... ok
+test world::tests::the_city_has_buildings ... ok
+test world::tests::the_quest_board_stands_on_the_open_plaza ... ok
+test world::tests::the_spawn_is_clear ... ok
+test world::tests::the_replay_landmarks_stand_clear_of_the_city ... ok
+test zones::assets::tests::cache_directory_symlink_is_not_followed_by_loader_or_pruner ... ok
+test zones::assets::tests::cache_symlinks_are_refused ... ok
+test imported::chamber::tests::local_and_read_only_prop_values_share_native_model_and_box_transforms ... ok
+test imported::chamber::tests::local_and_read_only_blocker_bounds_share_native_transforms_and_table_proxy_rules ... ok
+test zones::assets::tests::canceled_cache_install_does_not_publish_an_entry ... ok
+test zones::assets::tests::malformed_geometry_and_allocation_bounds_are_refused_before_allocation ... ok
+test zones::assets::tests::altered_hash_truncation_and_growth_are_refused ... ok
+test tooltip::tests::a_card_wraps_to_its_width_and_a_narrow_screen ... ok
+test zones::everglade::boards::tests::each_shown_card_is_a_target_on_the_wall ... ok
+test zones::everglade::boards::tests::goal_text_wraps_between_words_into_the_board_alphabet ... ok
+test zones::everglade::boards::tests::the_goal_board_faces_the_approach_and_shows_the_goal ... ok
+test zones::everglade::boards::tests::the_ring_lights_whole_segments_for_progress ... ok
+test zones::assets::tests::canceled_generation_discards_late_results_without_overlapping_workers ... ok
+test zones::everglade::demolition::chunks::tests::a_cut_through_a_wall_is_capped_in_its_material_around_a_window ... ok
+test zones::everglade::demolition::chunks::tests::clipping_a_triangle_keeps_the_part_on_one_side_with_its_attributes ... ok
+test zones::everglade::demolition::hotbar::tests::keys_and_slots_send_the_yard_intents ... ok
+test zones::everglade::demolition::tests::a_hit_lowers_the_struck_pieces_hit_points ... ok
+test zones::everglade::demolition::tests::a_swing_at_nothing_misses ... ok
+test zones::assets::tests::original_models_decode_with_distinct_animated_poses_and_leaf_geometry ... ok
+test ui::sprite_layout_tests::cooldown_sector_area_matches_remaining_fraction_at_half_and_full ... ok
+test ui::tests::action_icons_pack_into_existing_rows_without_exponential_growth ... ok
+test zones::assets::tests::pruning_keeps_unknown_files_links_active_temps_and_the_current_pack ... ok
+test ui::tests::color_sprites_preserve_glyph_texels_and_layout ... ok
+test zones::assets::tests::cached_entry_uses_worker_and_duplicate_requests_are_refused ... ok
+test zones::everglade::demolition::tests::meteor_swarm::cancelling_spends_nothing ... ok
+test zones::assets::tests::construction_is_inert_and_cache_install_is_atomic_and_verified ... ok
+test zones::everglade::demolition::tests::meteor_swarm::targeting_clamps_to_the_spells_range ... ok
+test zones::everglade::demolition::tests::breaking_two_south_sections_leaves_the_roof_up ... ok
+test zones::everglade::demolition::tests::only_standing_walls_and_posts_block_the_player ... ok
+test zones::everglade::demolition::tests::enough_hits_break_a_wall_into_chunks_that_fall_and_settle ... ok
+test ui::tests::text_is_monospaced ... ok
+test ui::tests::logical_layout_preserves_uvs_without_copying_the_bitmap ... ok
+test ui::tests::native_geometry_uses_the_portable_overlay_contract ... ok
+test ui::tests::the_font_rasterizes_printable_ascii ... ok
+test zones::everglade::hotbar::tests::every_slot_has_a_name_and_one_sentence ... ok
+test zones::everglade::demolition::tests::debris_has_a_lifetime ... ok
+test zones::everglade::hotbar::tests::the_pointer_finds_each_slot_and_none_between_them ... ok
+test zones::everglade::player::tests::a_head_turns_toward_what_it_looks_at_within_its_reach ... ok
+test zones::everglade::player::tests::a_moving_seat_walks_or_runs_and_a_still_one_holds_its_posture ... ok
+test zones::everglade::player::tests::engine_clip_ids_avoid_the_fallback_and_held_clips ... ok
+test zones::everglade::player::tests::movement_state_picks_the_clip ... ok
+test zones::everglade::draw::tests::the_grass_texture_tiles_and_stays_near_its_mean ... ok
+test zones::everglade::demolition::tests::a_wall_section_with_no_neighbours_left_topples_outward ... ok
+test ui::tests::wrapping_breaks_at_spaces_and_splits_long_words ... ok
+test imported::meteor_swarm::tests::the_busiest_playground_frame_stays_within_the_instance_budget ... ok
+test zones::everglade::demolition::hotbar::tests::each_slot_has_a_card_over_the_help ... ok
+test zones::everglade::signals::tests::a_burst_plays_the_most_urgent_signal ... ok
+test zones::everglade::signals::tests::a_notice_names_the_change_and_clips_its_text ... ok
+test zones::everglade::signals::tests::a_signal_plays_once_per_change ... ok
+test zones::everglade::signals::tests::each_change_maps_to_its_signal ... ok
+test zones::everglade::signals::tests::the_badge_names_the_waiting_count_and_the_key ... ok
+test zones::everglade::signals::tests::the_summary_shows_the_newest_goal_under_way ... ok
+test ui::sprite_layout_tests::additional_fonts_survive_atlas_growth_and_cropped_images_keep_uvs ... ok
+test zones::everglade::demolition::tests::rebuilding_restores_every_piece ... ok
+test pbr::gpu::tests::bundled_sky_textures_decode_at_their_documented_sizes ... ok
+test imported::flat::tests::lines_take_their_tint_and_fade_into_the_fog ... ok
+test zones::everglade::hotbar::tests::the_end_slots_cards_stay_on_a_phone_screen ... ok
+test zones::everglade::demolition::tests::meteor_swarm::casts_follow_each_other_at_once ... ok
+test imported::original::tests::complete_pack_uses_only_generated_files_and_animated_actors ... ok
+test zones::everglade::demolition::tests::meteor_swarm::a_strike_breaks_the_pieces_near_its_center_and_leaves_far_ones_standing ... ok
+test zones::everglade::demolition::tests::knocking_out_an_eave_wall_drops_the_roof_onto_the_rest ... ok
+test imported::overlay::action_tests::exact_target_frame_reuses_portraits_health_and_hides_dead_or_stale_lives ... ok
+test zones::everglade::spells::motes::tests::more_of_the_glow_sits_on_the_edge_than_inside ... ok
+test zones::everglade::spells::motes::tests::particles_lift_off_climb_inside_and_gather_under_the_top ... ok
+test zones::everglade::spells::motes::tests::the_edge_band_draws_first_within_the_medium_budget ... ok
+test zones::everglade::spells::motes::tests::the_edge_band_hugs_the_circle_all_the_way_round_and_up ... ok
+test zones::everglade::spells::motes::tests::the_same_age_draws_the_same_frame_and_the_count_is_bounded ... ok
+test zones::everglade::spells::tests::wall_of_stone_stands_for_ten_minutes_then_its_blocks_go ... ok
+test zones::everglade::spells::tests::wind_wall_and_reverse_gravity_last_a_minute ... ok
+test zones::everglade::spells::tests::wind_wall_needs_level_ground ... ok
+test zones::everglade::studio::intents::tests::a_goal_with_several_repositories_asks_which_first ... ok
+test zones::everglade::studio::intents::tests::approvals_come_before_questions_and_goal_decisions ... ok
+test zones::everglade::studio::intents::tests::each_action_names_its_operation_and_right ... ok
+test zones::everglade::studio::intents::tests::tab_completes_seats_commands_tasks_and_decisions ... ok
+test zones::everglade::studio::intents::tests::task_changes_name_their_operations ... ok
+test zones::everglade::studio::intents::tests::the_console_changes_tasks_and_spawns_seats ... ok
+test zones::everglade::studio::intents::tests::the_console_reads_goals_messages_and_commands ... ok
+test zones::everglade::studio::tests::a_bubble_wraps_its_text_between_words ... ok
+test zones::everglade::demolition::tests::meteor_swarm::the_roof_falls_when_its_walls_are_destroyed ... ok
+test zones::everglade::studio::tests::a_nameplate_never_grows_past_its_screen_bound ... ok
+test zones::everglade::studio::tests::a_seat_at_its_desk_stands_out_of_the_players_camera_path ... ok
+test zones::everglade::studio::tests::a_seat_stands_at_its_own_desk_and_seats_share_other_stations ... ok
+test imported::overlay::action_tests::owned_hud_uses_shared_icons_resources_cast_and_respawn_geometry ... ok
+test zones::everglade::studio::tests::a_waiting_seat_walks_over_to_a_player_near_the_podium_and_back ... ok
+test zones::everglade::studio::tests::each_activity_has_its_posture ... ok
+test zones::everglade::studio::tests::lettering_keeps_the_board_alphabet ... ok
+test zones::everglade::studio::tests::seats_hold_their_posture_where_they_stand_and_walk_between ... ok
+test zones::everglade::studio::tests::seats_walk_to_their_station_and_skip_ahead_when_activity_outruns_them ... ok
+test zones::everglade::studio::tests::stations_open_their_panels ... ok
+test zones::everglade::studio::tests::the_hall_camera_sees_desk_nameplates_whole ... ok
+test zones::everglade::draw::tests::the_ground_covers_the_square_on_the_heightfield_facing_up ... ok
+test zones::everglade::studio::tests::the_lead_asks_the_person_then_hands_a_worker_its_task ... ok
+test zones::everglade::studio::tests::the_mark_stands_over_the_seat_whose_decision_the_podium_answers_next ... ok
+test zones::everglade::draw::tests::the_dirt_edge_is_soft_and_inside_its_sheet ... ok
+test zones::everglade::studio::tests::the_world_draws_seats_lamps_beacons_and_live_boards ... ok
+test zones::everglade::studio::tests::viewers_of_a_hosted_instance_draw_the_authoritys_seats ... ok
+test zones::everglade::tests::a_canceled_load_stays_in_the_plaza ... ok
+test pbr::textured::tests::the_quaternius_props_import_with_shared_trim_sheets ... ok
+test imported::original::tests::original_timeline_runs_the_full_kit_and_actual_defeat ... ok
+test gles::tests::every_shader_translates_to_glsl_es_300 ... ok
+test zones::everglade::tests::a_station_caption_names_the_control_the_device_has ... ok
+test gym_results::tests::every_published_trace_opens_on_demand ... ok
+test zones::everglade::pose::tests::the_skeleton_is_found_by_its_shape ... ok
+test zones::everglade::pose::tests::a_seated_seat_sits_on_its_stool_and_types_at_the_bench ... ok
+test zones::everglade::tests::identity_and_atmosphere_are_the_zones_own ... ok
+test zones::everglade::pose::tests::every_posture_moves_from_idle_and_loops ... ok
+test zones::everglade::tests::a_hosted_instance_walks_the_pinned_packs_content_under_the_social_rules ... ok
+test zones::everglade::tests::every_placement_names_an_admitted_model_and_stays_in_the_glade ... ok
+test zones::everglade::player::tests::the_player_carries_the_sledgehammer_and_chops_with_both_hands ... ok
+test zones::everglade::player::tests::the_cast_draws_the_player_and_every_seat_as_one_figure ... ok
+test zones::everglade::demolition::tests::the_yard_builds_from_the_pack_and_draws_with_the_character ... ok
+test zones::everglade::studio::tests::the_studio_loads_only_while_the_player_is_in_everglade ... ok
+test zones::everglade::tests::no_blocker_covers_a_path ... ok
+test zones::everglade::tests::stations_have_fixed_reachable_points_and_furniture_ahead ... ok
+test zones::everglade::tests::prop_bounds_become_navigation_blockers ... ok
+test zones::everglade::tests::every_seat_reaches_its_desk_and_faces_its_monitor ... ok
+test zones::everglade::spell_tests::the_hotbar_holds_levitate_then_four_spells_with_keys_one_to_five ... ok
+test zones::everglade::tests::the_city_is_sixteen_times_the_glade_and_every_door_opens_from_the_spawn ... ok
+test zones::everglade::tests::the_layout_stays_within_the_placed_triangle_budget ... ok
+test zones::everglade::tests::the_map_lists_the_return_portal_and_the_studio_stations ... ok
+test zones::everglade::tests::a_studio_notice_leads_the_everglade_caption ... ok
+test zones::everglade::tests::the_task_wall_faces_its_station_with_a_column_per_state ... ok
+test zones::everglade::tests::the_ground_is_flat_in_the_clearing_and_rises_gently_within_bounds ... ok
+test zones::everglade::spell_tests::every_one_of_several_wind_walls_lifts_the_player ... ok
+test zones::everglade::spell_tests::feather_fall_toggles_off_and_the_player_falls_at_full_speed ... ok
+test zones::everglade::studio::tests::the_interact_intent_needs_a_station_with_a_panel ... ok
+test zones::everglade::studio::tests::a_viewer_with_only_the_world_right_opens_no_studio_panel ... ok
+test zones::everglade_pack::tests::a_character_round_trips_and_is_bounded ... ok
+test zones::everglade_pack::tests::cache_install_is_verified_atomic_and_served_without_network ... ok
+test zones::everglade_pack::tests::changed_sources_are_refused_by_digest ... ok
+test zones::everglade_pack::tests::committed_manifests_admit_only_base_color_sources_with_licenses ... ok
+test zones::everglade::studio::tests::a_click_on_a_seat_selects_it ... ok
+test zones::everglade::tests::other_zones_intents_are_refused_in_everglade ... ok
+test zones::everglade_pack::tests::every_budget_is_enforced_by_the_compiler ... ok
+test zones::everglade_pack::tests::manifests_must_pin_license_digests_and_transforms ... ok
+test zones::everglade_pack::tests::only_https_sources_and_own_temp_names_are_used ... ok
+test zones::everglade_pack::tests::malformed_packs_are_refused_before_allocation ... ok
+test zones::everglade_pack::tests::placeholder_pin_refuses_every_pack_until_published ... ok
+test zones::everglade_pack::tests::oversized_textures_are_downscaled_with_alpha_weighting ... ok
+test zones::everglade_pack::tests::pruning_removes_only_named_history_and_stale_own_temps ... ok
+test zones::everglade_pack::tests::synthetic_sources_compile_deterministically_and_round_trip ... ok
+test zones::everglade_pack::tests::unadmitted_and_linked_files_are_refused ... ok
+test zones::everglade_pack::tests::vertex_padding_must_be_zero ... ok
+test zones::gate::tests::the_arch_is_neutral ... ok
+test zones::gate::tests::the_everglade_portal_faces_the_spawn_clear_of_everything_on_the_grid ... ok
+test zones::gate::tests::the_grid_portal_faces_the_spawn_clear_of_the_ball_and_blocks ... ok
+test zones::gate::tests::the_opening_admits_feet_passing_through_and_nothing_beside_it ... ok
+test zones::gate::tests::the_return_stands_in_front_facing_away_and_outside_the_opening ... ok
+test zones::grove::hotbar::tests::the_pointer_finds_each_slot_and_its_card_names_the_spell ... ok
+test zones::grove::tests::a_dummy_resets_after_ten_seconds_untouched ... ok
+test zones::everglade::spell_tests::the_oldest_wind_wall_drops_past_the_cap ... ok
+test zones::everglade::tests::movement_drives_the_characters_clips ... ok
+test zones::everglade::spell_tests::rapid_casts_all_fire_and_spells_stand_together ... ok
+test zones::everglade::tests::movement_hotbar_levitates_changes_altitude_and_lands ... ok
+test zones::everglade::spell_tests::reverse_gravity_inside_the_hall_stops_at_the_roof ... ok
+test zones::grove::hotbar::tests::a_card_clears_the_tray_and_the_screen_edge ... ok
+test zones::everglade::tests::landing_over_the_hall_comes_down_on_its_roof ... ok
+test zones::grove::tests::repeated_roots_diminish_and_the_third_is_immune ... ok
+test zones::everglade::spell_tests::feather_fall_caps_a_fall_and_ends_on_landing ... ok
+test zones::everglade::spell_tests::wind_wall_rises_ahead_and_its_updraft_throws_the_player_up ... ok
+test zones::everglade::spell_tests::wall_of_stone_blocks_walking_until_it_ends ... ok
+test zones::grove::tests::the_field_stands_at_the_demo_distances ... ok
+test imported::original::tests::original_presentation_survives_arbitrary_clip_ids ... ok
+test zones::everglade::tests::the_player_is_the_outfitted_character_and_no_companion_follows ... ok
+test zones::everglade::tests::a_frame_draws_a_fraction_of_the_city ... ok
+test zones::everglade::tests::the_camera_stays_inside_the_hall_with_the_player ... ok
+test zones::everglade::tests::the_caption_names_the_station_in_reach ... ok
+test zones::grove::tests::zone_names_include_the_grove ... ok
+test zones::everglade::tests::the_world_is_ground_textured_placements_and_boards ... ok
+test zones::grove::thunder::tests::every_frame_is_bounded_and_finite_and_the_blast_ends ... ok
+test zones::grove::thunder::tests::the_front_fills_the_cube_ahead_of_the_caster_in_a_quarter_second ... ok
+test zones::hud::tests::cancelled_or_multitouch_buttons_do_not_activate ... ok
+test zones::hud::tests::unchanged_frame_layout_keeps_a_pressed_button ... ok
+test zones::grove::thunder::tests::the_same_age_and_seed_draw_the_same_frame ... ok
+test zones::everglade::tests::walking_and_jumping_follow_the_slope_and_the_camera_stays_above_it ... ok
+test zones::lab::tests::a_soft_grip_settles_and_slips_past_its_force_limit ... ok
+test zones::everglade::spell_tests::reverse_gravity_lifts_to_the_top_hovers_and_drops_when_ended ... ok
+test zones::lab::tests::frame_rate_does_not_change_the_simulation ... ok
+test zones::lab::tests::intents_serialize_as_plain_strings_for_native_hosts ... ok
+test zones::everglade::tests::zooming_all_the_way_in_looks_through_the_players_eyes_and_hides_the_character ... ok
+test zones::lab::tests::friction_holds_at_half_the_limit_and_slips_past_it ... ok
+test zones::lab::tests::intents_walk_the_knobs_pause_and_step ... ok
+test zones::lab::tests::lab_controls_are_scoped_to_the_lab ... ok
+test zones::lab::tests::projectiles_stop_at_the_panel_at_every_speed ... ok
+test zones::lab::tests::the_lab_portal_enters_immediately_and_returns_to_the_plaza_pose ... ok
+test zones::lab::tests::solver_iterations_and_count_change_the_stack ... ok
+test zones::lab::tests::the_tether_catches_and_the_weld_holds_under_impact ... ok
+test zones::lab::tests::torsional_friction_holds_below_its_limit_and_slips_past_it ... ok
+test zones::lab::tests::zero_g_collisions_keep_the_ledger_balanced_with_and_without_gravity ... ok
+test zones::lagrange::draw::tests::boxes_have_outward_unit_normals_and_brushed_tangents ... ok
+test zones::lagrange::draw::tests::frustum_normals_face_out_and_caps_close_it ... ok
+test zones::operators::tests::admits_only_self_by_default ... ok
+test zones::operators::tests::extends_from_lines_and_rejects_malformed ... ok
+test zones::operators::tests::loads_the_file_beside_the_keys ... ok
+test zones::lab::tests::thrusters_recover_from_a_tumble_and_follow_a_command ... ok
+test zones::lab::tests::reset_replays_bit_for_bit ... ok
+test zones::runtime::tests::ruins_uses_source_strafe_and_terrain_camera_and_stops_defeated_players ... ok
+test zones::lab::tests::every_scenario_builds_steps_and_draws_without_nans ... ok
+test zones::runtime::tests::return_drops_combat_and_restores_the_plaza_pose ... ok
+test zones::lab::tests::every_knob_option_builds_and_steps ... ok
+test zones::runtime::tests::ruins_runs_immediately_and_fireball_spends_mana_while_moving ... ok
+test zones::tests::fog_profiles_are_independent_and_bounded ... ok
+test zones::tests::entering_and_returning_replace_only_the_zone_and_preserve_plaza_choices ... ok
+test zones::tests::loading_requires_explicit_nearby_entry_and_cancellation_keeps_the_plaza ... ok
+test zones::tests::manifest_requires_the_exact_supported_profiles_and_content ... ok
+test zones::everglade::tests::walls_stop_the_player_and_the_doorways_let_it_in ... ok
+test zones::tests::plaza_portals_stand_clear_of_structures ... ok
+test zones::tests::coder_plaza_arches_still_need_their_button_and_stay_amber ... ok
+test zones::tests::spells_and_construction_are_scoped_to_their_zones ... ok
+test zones::runtime::tests::zone_command_refuses_without_a_simulation_or_in_another_zone ... ok
+test zones::tests::only_lagrange_frames_carry_a_physical_sky_in_real_units ... ok
+test zones::runtime::tests::zone_command_flies_grabs_and_refuses_headless_verbs ... ok
+test zones::everglade::tests::a_launch_into_everglade_loads_from_anywhere_in_the_plaza ... ok
+test zones::tests::the_grid_shows_no_portal_while_it_is_hidden ... ok
+test zones::tests::the_l1_portal_enters_immediately_and_returns_to_the_plaza_pose ... ok
+test zones::tests::the_bare_world_is_named_the_grid_and_coders_plaza_keeps_its_name ... ok
+test zones::tests::the_plaza_renders_as_a_neon_stage_in_its_own_palette ... ok
+test zones::tests::walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_returns ... ignored, the Grid's ball and blocks are off for now (2026-10-01)
+test zones::tests::zone_names_resolve_to_their_shared_worlds ... ok
+test zones::tests::the_ritual_arch_appears_with_a_pinned_chamber_and_a_walk_through_hands_it_over_once ... ok
+test zones::tests::the_tether_button_unclips_and_clips_back_on ... ok
+test zones::tests::the_lines_wrap_the_structure_as_it_is_drawn ... ok
+test zones::grove::tests::wall_of_stone_rises_at_the_target_and_shoves_it_past_the_wall ... ok
+test zones::grove::tests::long_rest_ends_the_spells_and_stands_the_dummies_back_up ... ok
+test zones::grove::tests::thunderwave_damages_and_pushes_a_dummy_that_fails_its_save ... ok
+test zones::grove::tests::a_held_key_recasts_six_times_a_second_until_let_go ... ok
+test zones::grove::tests::web_roots_a_dummy_so_pushes_no_longer_move_it ... ok
+test zones::grove::tests::spells_outside_the_grove_are_refused_and_return_leaves_it ... ok
+test zones::grove::tests::misty_step_blinks_toward_the_target ... ok
+test zones::grove::tests::gust_of_wind_pushes_a_dummy_down_its_line ... ok
+test zones::everglade::tests::pack_bytes_a_browser_downloaded_install_only_when_pinned ... ok
+test zones::grove::tests::the_grove_opens_with_its_hotbar_and_no_cooldowns ... ok
+test zones::grove::tests::wind_wall_rises_through_the_target_and_lifts_it ... ok
+test zones::grove::tests::fireball_burns_the_target_and_the_warded_dummy_resists_fire ... ok
+test zones::grove::tests::reverse_gravity_lifts_the_dummies_around_the_druid ... ok
+test zones::grove::tests::every_press_casts_at_once_with_no_cooldown_or_mana_in_the_way ... ok
+test zones::grove::tests::fire_bolt_rolls_attacks_that_land_damage ... ok
+test zones::grove::tests::spam_keeps_the_effects_and_numbers_bounded ... ok
+test zones::everglade::tests::the_everglade_portal_loads_the_pinned_pack_and_returns_to_the_plaza_pose ... ok
+test zones::tests::l1_flight_is_inertial_and_carries_parts_to_the_jig ... ok
+test zones::everglade::tests::walking_through_the_grids_everglade_arch_loads_the_pack_and_the_grid_arch_returns ... ok
+test imported::props::tests::static_props_compile_with_provenance_and_admitted_collision ... ok
+test zones::everglade_pack::tests::committed_sources_compile_within_budgets_to_the_pinned_pack ... ok
+test imported::characters::tests::standard_outfits_retarget_and_expose_runtime_states ... ok
+
+test result: ok. 586 passed; 0 failed; 14 ignored; 0 measured; 0 filtered out; finished in 41.46s
+
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-40e98d4a69a19c2a)
+
+running 317 tests
+test black_tentacles::tests::placement_needs_range_and_level_ground ... ok
+test controls::tests::opposing_keys_net_and_autorun_is_cancelled_by_edges ... ok
+test controls::tests::orbit_preserves_facing_steering_aligns_and_both_buttons_run ... ok
+test controls::tests::reference_rates_and_camera_return_are_frame_independent ... ok
+test controls::tests::turn_keys_become_strafe_only_during_right_mouselook ... ok
+test controls::tests::zoom_pitch_limits_and_focus_reset ... ok
+test feather_fall::tests::an_unwarded_creature_lands_with_normal_damage ... ok
+test feather_fall::tests::at_most_five_targets_and_only_falling_creatures_in_range ... ok
+test feather_fall::tests::checkpoints_round_trip_and_reject_corruption ... ok
+test feather_fall::tests::drag_reaches_the_cap_within_two_tenths_of_a_second_without_a_snap ... ok
+test gust::tests::a_failed_save_pushes_fifteen_feet_and_a_pass_does_not ... ok
+test gust::tests::a_tall_object_caught_low_tips_from_the_off_center_push ... ok
+test gust::tests::arrows_into_the_wind_fall_short_and_across_it_curve ... ok
+test gust::tests::candles_go_out_and_lanterns_gutter_half_the_time ... ok
+test gust::tests::concentration_end_removes_the_field ... ok
+test gust::tests::drag_scales_with_area_over_mass_and_never_overshoots ... ok
+test gust::tests::movement_toward_the_caster_is_halved ... ok
+test gust::tests::re_aim_waits_for_its_cooldown ... ok
+test gust::tests::re_aiming_onto_a_creature_makes_it_save ... ok
+test gust::tests::the_line_is_sixty_by_ten_feet ... ok
+test gust::tests::saves_repeat_every_turn_inside_and_restart_on_entry ... ok
+test gust::tests::secured_props_feel_the_wind_without_moving ... ok
+test feather_fall::tests::descent_is_capped_within_two_tenths_and_horizontal_velocity_is_preserved ... ok
+test feather_fall::tests::the_minute_runs_out ... ok
+test levitate::tests::a_blown_object_keeps_drifting_and_leaving_sixty_feet_ends_the_spell ... ok
+test levitate::tests::an_unwilling_creature_that_saves_is_unaffected ... ok
+test gust::tests::light_props_fly_the_crate_slides_the_barrel_tips_and_the_anvil_stays ... ok
+test levitate::tests::input_without_a_surface_in_reach_does_nothing ... ok
+test levitate::tests::a_push_off_in_reach_moves_the_target_no_faster_than_climbing ... ok
+test levitate::tests::a_drifting_target_bounces_off_the_far_wall_at_reduced_speed ... ok
+test levitate::tests::the_weight_limit_and_loose_objects_are_enforced ... ok
+test levitate::tests::momentum_persists_and_the_ledger_shows_no_hidden_source ... ok
+test meteor_swarm::tests::a_crate_three_meters_out_flies_about_fifteen_meters ... ok
+test meteor_swarm::tests::a_creature_in_two_spheres_is_damaged_once ... ok
+test meteor_swarm::tests::a_meteor_detonates_on_a_creature_in_its_path ... ok
+test meteor_swarm::tests::an_obstructed_meteor_detonates_at_the_obstruction ... ok
+test meteor_swarm::tests::blast_impulses_balance_the_ledger ... ok
+test levitate::tests::the_end_of_the_spell_floats_the_target_down_gently ... ok
+test meteor_swarm::tests::creatures_are_not_displaced ... ok
+test meteor_swarm::tests::damage_is_twenty_d6_of_each_type_or_half_on_a_save ... ok
+test meteor_swarm::tests::four_meteors_fall_a_quarter_second_apart_and_strike_their_points ... ok
+test feather_fall::tests::warded_dummies_land_slowly_unharmed_and_the_others_take_six_d6 ... ok
+test meteor_swarm::tests::placement_is_validated ... ok
+test meteor_swarm::tests::slow_recording_flight_lands_on_all_four_points ... ok
+test meteor_swarm::tests::the_sphere_reaches_exactly_forty_feet ... ok
+test meteor_swarm::tests::overlapping_spheres_damage_an_object_once_but_blast_it_twice ... ok
+test movement::frames::tests::full_interval_queue_refuses_without_renewing_lag_credit ... ok
+test movement::frames::tests::queued_intervals_cannot_spend_future_time_or_duplicate_elapsed_time ... ok
+test movement::frames::tests::refusal_diagnostics_preserve_the_confirmed_clock_and_queue ... ok
+test movement::frames::tests::saved_intervals_refuse_foreign_controls_and_invalid_boundaries ... ok
+test movement::tests::contained_recovery_records_a_bounded_diagnostic_without_suppressing_errors ... ok
+test levitate::tests::a_checkpoint_mid_drift_replays_identically ... ok
+test movement::tests::replay_jumps_once_and_lands_on_the_same_ground ... ok
+test movement::tests::replay_climbs_an_admitted_step_and_matches_direct_substeps ... ok
+test movement::tests::walking_matches_speed_diagonal_and_yaw_conventions ... ok
+test meteor_swarm::tests::unattended_objects_take_full_damage_break_and_feel_the_blast ... ok
+test levitate::tests::altitude_changes_by_twenty_feet_once_per_turn ... ok
+test levitate::tests::the_rise_is_twenty_feet_or_less_and_no_faster_than_the_hold_speed ... ok
+test movement::tests::replay_preserves_exact_capsule_state_and_cannot_cross_a_thin_wall ... ok
+test meteor_swarm::tests::flammable_objects_ignite_and_burn_only_themselves ... ok
+test black_tentacles::tests::the_ledger_balances ... ok
+test black_tentacles::tests::a_failure_deals_three_d6_and_restrains_with_two_or_three_tentacles ... ok
+test play::checkpoint_tests::restart_fences_commands_from_the_previous_encounter ... ok
+test play::body_lifetime_tests::living_capsules_block_other_lives_ignore_self_and_rebuild_on_load ... ok
+test combat::obstruction_tests::cover_blocks_a_released_hostile_impact ... ok
+test play::checkpoint_tests::checkpoint_refuses_wrong_revision_and_invalid_health ... ok
+test play::body_lifetime_tests::restart_and_checkpoint_reject_stale_body_ownership ... ok
+test combat::hostile_flight_tests::actual_hostile_flight_hits_before_scheduled_area_time_and_only_once ... ok
+test play::compiled_navigation_tests::exhausted_tick_defers_movement_and_queue_replays_after_checkpoint ... ok
+test play::compiled_navigation_tests::prop_invalidation_preserves_distant_routes_and_replans_local_changes ... ok
+test combat::hostile_flight_tests::hostile_flight_shield_and_target_life_fences_precede_damage ... ok
+test combat::hostile_flight_tests::stored_hostile_position_replays_and_forged_flight_is_refused ... ok
+test play::checkpoint_tests::admitted_remote_movement_is_solved_and_handoff_clears_it ... ok
+test play::friendly_tests::authored_entrance_giver_is_reachable_without_changing_player_ids ... ok
+test play::compiled_navigation_tests::blocker_replanning_collision_and_checkpoint_keep_the_same_life ... ok
+test play::framed_movement::tests::interval_movement_interrupts_an_active_cast_without_rewinding_its_resources ... ok
+test play::friendly_tests::friendly_bodies_ignore_fields_roots_prone_and_falling_damage ... ok
+test play::friendly_tests::friendly_giver_stays_out_of_combat_and_survives_restore_and_reset ... ok
+test play::body_lifetime_tests::corpse_collision_navigation_and_respawn_share_exact_life ... ok
+test play::framed_movement::tests::primary_and_secondary_lifecycle_changes_fence_delayed_intervals ... ok
+test play::friendly_tests::checkpoint_fences_scene_factions_and_legacy_friendly_roles ... ok
+test play::compiled_navigation_tests::cultist_climbs_authored_stairs_without_teleporting ... ok
+test play::motor_containment_tests::query_measurements_survive_dynamic_blocker_scene_replacement ... ok
+test play::framed_movement::tests::expired_admission_fences_control_before_the_next_simulation_tick ... ok
+test play::framed_movement::tests::interval_admission_is_not_a_physics_ack_and_invalid_frames_do_not_consume_sequence ... ok
+test play::framed_movement::tests::no_input_and_repeated_entry_cannot_freeze_a_character_or_renew_elapsed_time ... ok
+test play::multiplayer::tests::corrupted_player_checkpoint_and_obstructed_spawn_are_refused ... ok
+test play::motor_containment_tests::blocked_player_recovery_does_not_stop_the_world_clock ... ok
+test play::multiplayer::tests::defeat_and_revival_fence_only_the_dead_players_life ... ok
+test meteor_swarm::tests::a_checkpoint_mid_fall_replays_identically ... ok
+test play::multiplayer::tests::foreign_stale_and_handoff_commands_cannot_move_another_adventurer ... ok
+test play::multiplayer::tests::dead_adventurers_do_not_drift_with_previous_external_motion ... ok
+test play::multiplayer::tests::held_movement_stops_on_zero_input_handoff_death_and_respawn ... ok
+test play::multiplayer::tests::movement_baselines_follow_the_spell_target_not_the_caster ... ok
+test play::multiplayer::tests::authored_instances_fence_commands_targets_and_survive_reset ... ok
+test play::interruption_tests::movement_interrupts_before_spending_mana_and_bow_damage_applies_once ... ok
+test play::multiplayer::tests::shared_reset_keeps_controllers_and_advances_every_player_life ... ok
+test play::multiplayer::vacant_anchor_tests::primary_equipment_resources_move_without_leaking_into_the_vacant_anchor ... ok
+test play::multiplayer::vacant_anchor_tests::vacant_primary_anchor_does_not_reduce_the_sixty_four_resident_limit ... ok
+test play::original_collision_tests::blink_uses_collision_admitted_destination_and_matching_effect ... ok
+test play::multiplayer::tests::controlled_capsules_jump_stop_at_walls_and_admit_teleport_endpoints ... ok
+test play::original_collision_tests::obstructed_player_attacks_do_not_spend_resources_or_start_casts ... ok
+test black_tentacles::tests::the_tentacles_rise_from_the_ground_and_writhe ... ok
+test play::original_collision_tests::original_camera_shortens_at_walls_and_restores_requested_zoom_in_open_space ... ok
+test play::multiplayer::tests::held_remote_movement_survives_gaps_then_expires_and_replays_checkpoints ... ok
+test play::original_collision_tests::original_hostile_routes_around_a_real_chamber_column ... ok
+test play::original_collision_tests::scene_refuses_unknown_collision_profiles ... ok
+test play::original_collision_tests::owned_locomotion_selects_backward_and_strafe_states_from_actual_motion ... ok
+test play::original_collision_tests::thunderwave_does_not_damage_a_cultist_behind_a_column ... ok
+test play::interruption_tests::fireball_resolves_against_owned_hostiles ... ok
+test play::original_collision_tests::delayed_bow_and_spell_recheck_obstruction ... ok
+test play::player_respawn_tests::restored_health_requires_the_current_player_maximum ... ok
+test play::prop_body_tests::prop_geometry_body_and_reused_life_replay_together ... ok
+test play::social::tests::social_movement_uses_authored_collision_and_disables_combat ... ok
+test play::social::tests::social_profiles_and_checkpoint_rules_are_closed ... ok
+test play::social::tests::social_seats_share_control_fences_and_refusals_do_not_mutate ... ok
+test play::social::tests::social_terrain_uses_the_same_sloped_mesh_after_recovery ... ok
+test combat::obstruction_tests::an_obstructed_cultist_routes_instead_of_casting_through_a_column ... ok
+test play::tests::classic_movement_uses_backpedal_speed_and_never_boosts_diagonals ... ok
+test play::grounded_movement_tests::frame_rates_produce_identical_grounded_authority ... ok
+test play::original_collision_tests::original_player_stops_at_column_and_slides_along_its_face ... ok
+test play::tests::manual_instant_spell_reports_damage_once ... ok
+test play::tests::queued_ability_cannot_cross_control_handoff_or_spend_resources ... ok
+test play::tests::floating_incoming_damage_excludes_absorption_and_caps_lethal_hits ... ok
+test play::grounded_movement_tests::four_substeps_jump_checkpoint_and_read_only_interpolation ... ok
+test play::original_collision_tests::the_bow_is_drawn_after_a_shot_and_stowed_later ... ok
+test play::grounded_movement_tests::fractional_frames_retain_input_and_share_one_clock_across_replay ... ok
+test black_tentacles::tests::a_thunderwave_push_stretches_the_tentacles_but_does_not_free ... ok
+test play::multiplayer::tests::movement_interrupts_only_its_casters_windup_and_checkpoints_replay ... ok
+test play::multiplayer::tests::hostile_encounters_retarget_a_surviving_adventurer_and_replay ... ok
+test play::tests::utility_spells_share_resources_and_change_presented_world_state ... ok
+test prediction::local::tests::accepted_jump_is_not_repeated_and_rejected_movement_is_removed ... ok
+test prediction::local::tests::chained_unsent_replacements_preserve_motion_and_retire_with_the_real_ack ... ok
+test prediction::local::tests::delayed_baselines_do_not_extend_the_clock_or_renew_unacknowledged_holds ... ok
+test prediction::local::tests::input_moves_before_binding_and_acknowledgment_then_uses_authoritative_hold ... ok
+test play::tests::cultists_respawn_sixty_seconds_after_each_death_with_fresh_state ... ok
+test prediction::local::tests::movement_policy_preserves_slowing_and_control_routing ... ok
+test prediction::local::tests::overtaken_pending_intervals_preserve_move_jump_stop_and_expire ... ok
+test prediction::local::tests::lifecycle_clear_and_bounded_history_never_replay_old_inputs ... ok
+test prediction::local::tests::overtaken_unacknowledged_hold_keeps_its_age_and_expires ... ok
+test prediction::local::tests::refused_replacement_cancels_its_entire_bounded_local_chain ... ok
+test prediction::local::tests::timing_distinguishes_local_steps_input_binding_and_authoritative_ack ... ok
+test prediction::tests::acknowledged_jump_is_not_replayed_and_external_motor_state_survives ... ok
+test prediction::local::tests::pending_geometry_corrects_unacknowledged_travel_and_retires_removed_walls ... ok
+test prediction::tests::changed_collision_replays_pending_input_against_current_geometry ... ok
+test prediction::tests::coalesced_authority_inputs_correct_the_estimate_without_duplicate_travel ... ok
+test prediction::tests::delayed_ack_discards_only_applied_inputs_and_replays_exact_motor_state ... ok
+test prediction::tests::new_life_and_epoch_retire_old_input_and_conflicting_acks_are_atomic ... ok
+test prediction::tests::newer_observation_can_correct_external_motion_at_the_same_server_tick ... ok
+test prediction::tests::physics_watermarks_cannot_regress_without_a_control_reset ... ok
+test prediction::tests::overflow_and_duplicate_input_preserve_the_prediction ... ok
+test prediction::tests::substep_budget_and_foreign_collision_context_are_refused_atomically ... ok
+test playground::tests::the_hall_loads_with_its_named_profile ... ok
+test reverse_gravity::tests::a_creature_hovering_at_the_top_falls_one_hundred_feet_for_ten_dice ... ok
+test reverse_gravity::tests::a_ceiling_strike_deals_falling_damage_for_the_upward_distance ... ok
+test reverse_gravity::tests::anchored_and_secured_bodies_stay_down ... ok
+test reverse_gravity::tests::a_passed_save_with_a_fixed_object_in_reach_holds_the_creature ... ok
+test reverse_gravity::tests::leaving_the_cylinder_restores_normal_gravity ... ok
+test reverse_gravity::tests::the_cylinder_is_fifty_feet_by_one_hundred_feet ... ok
+test reverse_gravity::tests::bodies_hover_at_the_top_without_overshooting ... ok
+test reverse_gravity::tests::the_end_drops_everything_with_falling_damage ... ok
+test black_tentacles::tests::the_area_is_a_twenty_foot_square_and_halves_speed_inside ... ok
+test reverse_gravity::tests::unanchored_bodies_rise_and_bodies_outside_stay ... ok
+test room::playground_navigation_tests::the_playground_hall_compiles_a_route_around_the_stone_wall ... ok
+test room::query_tests::compiled_room_queries_match_floor_column_and_instance_scope ... ok
+test rules::multiplayer_tests::admission_rejects_corrupt_player_and_caster_checkpoint_state ... ok
+test rules::multiplayer_tests::cooperative_players_do_not_intercept_arrows_or_receive_area_burns ... ok
+test rules::multiplayer_tests::explicit_second_player_casts_obey_cover_and_moving_target_collision ... ok
+test rules::multiplayer_tests::friendly_npcs_reject_damage_and_do_not_intercept_spell_flights ... ok
+test rules::multiplayer_tests::friendly_roles_refuse_players_late_changes_and_hostile_checkpoint_effects ... ok
+test rules::multiplayer_tests::invalid_player_requests_and_capacity_refusals_preserve_the_store ... ok
+test rules::multiplayer_tests::revival_cancels_only_that_casters_flights_and_preserves_other_players ... ok
+test rules::multiplayer_tests::revival_preserves_another_casters_existing_burns ... ok
+test rules::multiplayer_tests::shared_clock_and_pending_paths_replay_both_players_exactly ... ok
+test rules::multiplayer_tests::simultaneous_casts_share_targets_but_not_resources_or_cooldowns ... ok
+test rules::tests::admitted_teleport_does_not_sweep_the_skipped_space ... ok
+test rules::tests::bow_can_miss_a_moving_target_and_expires_without_scheduled_damage ... ok
+test rules::tests::bow_hits_first_actor_once_and_replays_in_flight ... ok
+test rules::tests::bow_stops_at_cover_inserted_after_launch ... ok
+test rules::tests::checkpoint_replays_pending_projectiles_and_cooldowns ... ok
+test reverse_gravity::tests::a_checkpoint_mid_rise_replays_identically ... ok
+test rules::tests::controller_path_avoids_false_endpoint_chord_contact ... ok
+test room::navigation_tests::original_chamber_compiles_stairs_and_column_routes ... ok
+test rules::tests::crossing_behind_thin_cover_does_not_receive_damage ... ok
+test rules::tests::homing_flights_do_not_transfer_to_a_replacement_actor ... ok
+test rules::tests::curved_controller_path_hits_when_endpoint_chord_misses ... ok
+test rules::tests::swept_projectile_hits_thin_cover_before_actor ... ok
+test service::equipment::tests::catalogs_and_saved_changes_refuse_ambiguous_or_unbounded_gear ... ok
+test service::items::tests::catalog_refuses_ambiguous_names_ids_and_unbounded_effects ... ok
+test service::outfits::tests::catalogs_refuse_ambiguous_ids_models_and_consumable_overlap ... ok
+test service::progression::marker_tests::authored_dialogue_is_bounded_and_follows_quest_state ... ok
+test service::progression::marker_tests::markers_follow_enrollment_objectives_claims_and_prerequisites ... ok
+test service::progression::tests::authored_levels_and_quest_definitions_enforce_boundaries ... ok
+test service::progression::tests::prerequisite_graph_rejects_invalid_edges_and_preserves_legacy_configs ... ok
+test service::rewards::tests::cooperative_batch_failure_leaves_all_characters_and_receipts_unchanged ... ok
+test service::rewards::tests::invalid_and_overflowing_grants_preserve_every_field ... ok
+test reverse_gravity::tests::the_spell_ends_after_one_minute ... ok
+test rules::tests::moving_actor_crossing_is_hit_and_replays_pending_motion ... ok
+test service::rewards::tests::retries_return_original_receipts_and_conflicting_reuse_is_atomic ... ok
+test service::rewards::tests::lifetime_transaction_count_does_not_exhaust_the_ledger ... ok
+test service::tests::admission_budgets_foreign_handles_and_respawn_rights ... ok
+test service::participation_tests::authored_participation_excludes_disconnected_and_distant_recipients ... ok
+test service::tests::hosting_existing_players_clears_every_pending_controller_input ... ok
+test service::tests::reconnect_disconnect_revocation_and_reset_fence_queued_input ... ok
+test service::tests::session_casts_spend_only_owned_resources_and_respawn_only_owned_lives ... ok
+test play::player_respawn_tests::respawn_preserves_hostiles_and_fences_old_commands_through_repeated_deaths ... ok
+test play::tests::handoff_enforces_input_gate_and_retains_spell_damage_and_mana ... ok
+test service::tests::cooperative_rewards_follow_npc_lives_without_connection_duplicates ... ok
+test social::controller::tests::a_footprint_stops_the_character ... ok
+test social::controller::tests::a_jump_leaves_and_returns_to_the_ground ... ok
+test social::controller::tests::a_turns_without_mouselook_and_strafes_with_it ... ok
+test social::controller::tests::s_backpedals_slower_and_wins_over_w ... ok
+test social::controller::tests::the_world_edge_holds ... ok
+test social::controller::tests::w_runs_forward_along_positive_z ... ok
+test social::controller::tests::wrap_keeps_angles_in_range ... ok
+test social::nav::tests::rejects_invalid_blocked_and_sealed_destinations ... ok
+test social::nav::tests::routes_are_deterministic_and_do_not_cut_inflated_corners ... ok
+test social::tests::a_content_digest_decodes_from_its_pin ... ok
+test social::tests::studio::every_viewer_sees_the_authoritys_seat_at_the_same_place ... ok
+test social::tests::the_social_profile_admits_a_session_without_hostiles_and_walls_stop_it ... ok
+test social::tests::studio::the_world_right_alone_walks_but_opens_no_studio_panel ... ok
+test spells::dice::tests::falling_damage_counts_one_die_per_ten_feet_up_to_twenty ... ok
+test spells::dice::tests::seeded_rolls_repeat_and_forced_saves_come_first ... ok
+test spells::fields::tests::every_area_shape_contains_its_inside_and_not_its_outside ... ok
+test social::tests::walking_climbs_the_heightfield_like_a_local_player ... ok
+test social::hosted::tests::the_everglade_profile_is_closed_and_follows_the_heightfield ... ok
+test spells::integration_tests::gravity_impacts_break_props_without_losing_momentum ... ok
+test spells::integration_tests::hostile_impact_damages_the_stone_panel_and_retains_its_debris ... ok
+test spells::integration_tests::invalid_effect_body_references_are_refused_before_they_are_indexed ... ok
+test service::tests::two_players_and_spectator_share_one_clock_with_owned_commands ... ok
+test spells::integration_tests::invalid_tentacle_target_references_are_refused_on_restore ... ok
+test spells::integration_tests::tentacle_terrain_halves_admitted_walking_without_a_restraint ... ok
+test spells::integration_tests::a_full_prop_budget_still_allows_stone_panels_to_break ... ok
+test spells::tests::a_knocked_character_shoves_a_crate_and_slows ... ok
+test prediction::latency::current_moving_support_geometry_reports_a_separate_distribution ... ok
+test spells::tests::a_secured_prop_does_not_move ... ok
+test spells::tests::a_wall_stops_a_pushed_prop ... ok
+test spells::tests::an_unobstructed_push_slides_ten_feet_whatever_the_mass ... ok
+test spells::tests::spell_bodies_joints_and_fields_leave_when_their_cast_ends ... ok
+test spells::thunderwave::tests::a_creature_that_saves_takes_half_damage_and_stays ... ok
+test black_tentacles::tests::a_successful_escape_frees_and_the_creature_walks_out ... ok
+test spells::tests::a_saved_world_with_props_in_flight_continues_identically ... ok
+test spells::thunderwave::tests::a_failed_save_slides_ten_feet_and_a_wall_stops_the_next ... ok
+test spells::thunderwave::tests::a_prop_partly_inside_gets_no_impulse_and_a_secured_prop_stays ... ok
+test spells::thunderwave::tests::a_shove_off_the_ledge_deals_falling_damage ... ok
+test spells::integration_tests::wind_reaim_and_concentration_end_use_admitted_controls ... ok
+test telekinesis::tests::a_checkpoint_mid_grip_replays_identically ... ok
+test telekinesis::tests::a_gripped_body_still_stops_at_a_wall ... ok
+test telekinesis::tests::a_failed_save_suspends_a_creature_for_exactly_six_seconds_then_it_falls ... ok
+test telekinesis::tests::a_gripped_crate_knocks_over_a_standing_plank ... ok
+test telekinesis::tests::a_successful_save_means_no_movement ... ok
+test telekinesis::tests::a_target_beyond_range_or_larger_than_huge_is_refused ... ok
+test telekinesis::tests::falling_dice_follow_the_srd ... ok
+test telekinesis::tests::a_huge_limit_holds_a_thousand_kilogram_block_steadily ... ok
+test telekinesis::tests::released_velocity_is_preserved_and_the_ledger_balances ... ok
+test telekinesis::tests::switching_targets_releases_the_first ... ok
+test telekinesis::tests::hand_path_per_application_is_at_most_thirty_feet ... ok
+test telekinesis::tests::the_hand_never_leaves_range_and_moves_at_most_six_meters_a_second ... ok
+test telekinesis::tests::the_grip_releases_beyond_sixty_feet ... ok
+test tests::bounded_ticks_and_invalid_intents_are_refused_without_mutation ... ok
+test tests::controller_and_life_fences_precede_sequence_consumption ... ok
+test utilities::shield_tests::shield_spends_mana_absorbs_only_its_capacity_and_expires ... ok
+test utilities::tests::control_expires_and_light_does_not_need_a_target ... ok
+test utilities::tests::rejected_casts_do_not_spend_mana_or_start_cooldowns ... ok
+test utilities::tests::teleport_wave_and_resource_gates ... ok
+test tests::returning_controller_cannot_replay_queued_input ... ok
+test visuals::blocker_tests::active_bounds_preserve_box_lives_and_omit_retired_cover ... ok
+test visuals::prop_tests::extracted_props_follow_physics_box_poses_and_omit_removed_bodies ... ok
+test wall_of_stone::tests::a_forced_30_foot_cantilever_breaks_at_its_root ... ok
+test spells::feather_fall::tests::the_chamber_reaction_lands_three_unharmed_and_replays_identically ... ok
+test wall_of_stone::tests::a_wall_through_a_creature_pushes_it_to_the_chosen_side ... ok
+test wall_of_stone::tests::an_enclosed_creature_saves_to_escape ... ok
+test wall_of_stone::tests::a_wall_held_for_ten_minutes_is_permanent ... ok
+test wall_of_stone::tests::damage_respects_immunities_and_destroys_at_zero ... ok
+test spells::thunderwave::tests::the_chamber_wave_still_spares_a_cultist_behind_a_column_and_knocks_cultists_together ... ok
+test prediction::latency::delayed_input_profile_measures_authority_corrections ... ok
+test wall_of_stone::tests::a_checkpoint_with_broken_joints_replays_identically ... ok
+test wall_of_stone::tests::panel_hit_points_follow_thickness ... ok
+test wall_of_stone::tests::debris_keeps_the_panel_mass_and_momentum ... ok
+test wall_of_stone::tests::spans_over_20_feet_need_half_size_supports ... ok
+test wall_of_stone::tests::the_validator_refuses_unsupported_and_disconnected_walls_and_long_spans ... ok
+test wall_of_stone::tests::shapes_stand_by_the_rules ... ok
+test wind_wall::tests::an_airborne_small_prop_bounces_and_grounded_things_pass ... ok
+test wind_wall::tests::appearance_damage_is_four_d8_or_half_on_a_save ... ok
+test wind_wall::tests::concentration_end_removes_the_field_and_the_colliders ... ok
+test wall_of_stone::tests::ending_concentration_early_drops_what_stood_on_the_wall ... ok
+test play::multiplayer::tests::both_adventurers_use_the_complete_original_kit_with_independent_shields ... ok
+test wind_wall::tests::a_checkpoint_with_a_deflected_flight_replays_identically ... ok
+test wind_wall::tests::siege_and_spell_flights_are_unaffected ... ok
+test wind_wall::tests::the_wall_clears_overlapping_gas ... ok
+test wind_wall::tests::shapes_are_at_most_fifty_feet_continuous_and_grounded ... ok
+test wind_wall::tests::lightweight_bodies_rise_and_a_crate_is_not_lifted ... ok
+test wind_wall::tests::every_ordinary_flight_toward_a_target_behind_the_wall_is_deflected ... ok
+test prediction::latency::initial_entry_snapshot_can_arrive_after_a_full_downlink_delay ... ok
+test wall_of_stone::tests::an_intact_20_foot_bridge_carries_a_large_creature ... ok
+test wall_of_stone::tests::destroying_the_middle_panel_drops_both_halves ... ok
+test play::compiled_navigation_tests::directed_intent_advances_in_authority_and_replays_through_stairs ... ok
+test spells::integration_tests::selected_props_and_active_panels_restore_with_projectile_cover ... ok
+test spells::thunderwave::tests::checkpoints_replay_identically_with_props_in_flight ... ok
+test combat::tests::manual_combat_never_selects_or_casts_for_the_player ... ok
+test black_tentacles::tests::props_are_grabbed_without_a_save_and_telekinesis_steals_them ... ok
+test black_tentacles::tests::saves_come_on_cast_entry_and_each_round_at_most_once_per_round ... ok
+test black_tentacles::tests::a_checkpoint_mid_grab_replays_identically ... ok
+test prediction::latency::confirmed_intervals_reconcile_delayed_delivery ... ok
+test prediction::latency::intervals_cover_jitter_coalescing_jump_wall_and_stairs ... ok
+test combat::tests::agent_fights_with_the_full_kit_against_high_health_claude ... ok
+test combat::tests::floating_numbers_account_for_health_loss ... ok
+test combat::tests::direct_agent_mode_entry_uses_the_same_admitted_combat_rules ... ok
+test play::multiplayer::tests::retired_player_slots_survive_turnover_beyond_the_body_history_budget ... ok
+test combat::tests::original_character_variants_fight_after_the_cinematic_handoff ... ok
+test combat::tests::moving_cultists_walk_and_death_playback_never_rewinds ... ok
+test spells::integration_tests::reverse_gravity_hovers_creature_feet_at_one_hundred_feet ... ok
+test play::player_respawn_tests::obstructed_spawn_is_refused_without_mutation_and_expired_corpses_can_respawn ... ok
+test black_tentacles::tests::the_end_removes_every_tentacle_body_and_joint ... ok
+test play::checkpoint_tests::mid_battle_checkpoint_replays_casts_projectiles_ai_and_defeat ... ok
+test spells::integration_tests::every_spell_frame_preserves_momentum ... ok
+test playground::tests::every_scenario_plays_replays_identically_and_passes_its_check ... ok
+
+test result: ok. 317 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.52s
+

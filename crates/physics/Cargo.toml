@@ -9,6 +9,8 @@ publish.workspace = true
 [dependencies]
 glam = { version = "0.30.10", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 serde_json = { version = "1", features = ["float_roundtrip"] }

@@ -1,0 +1,68 @@
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2653:19
+     |
+ 274 | impl Game {
+     | --------- method in this implementation
+...
+2653 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:381:19
+     |
+ 289 | impl Game {
+     | --------- methods in this implementation
+...
+ 381 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1272 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, and `quest_log` are never used
+   --> crates/verse-world/src/service.rs:148:8
+    |
+ 98 | impl Chamber {
+    | ------------ methods in this implementation
+...
+148 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+256 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+307 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+
+warning: method `validate_use` is never used
+  --> crates/verse-world/src/service/items.rs:54:19
+   |
+27 | impl Catalog {
+   | ------------ method in this implementation
+...
+54 |     pub(super) fn validate_use(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^
+
+warning: method `validate_change` is never used
+  --> crates/verse-world/src/service/outfits.rs:70:19
+   |
+33 | impl Catalog {
+   | ------------ method in this implementation
+...
+70 |     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib test) generated 5 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-36b886cf51d106c0)
+
+running 4 tests
+test play::checkpoint_tests::restart_fences_commands_from_the_previous_encounter ... ok
+test play::checkpoint_tests::checkpoint_refuses_wrong_revision_and_invalid_health ... ok
+test play::checkpoint_tests::admitted_remote_movement_is_solved_and_handoff_clears_it ... ok
+test play::checkpoint_tests::mid_battle_checkpoint_replays_casts_projectiles_ai_and_defeat ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 311 filtered out; finished in 4.19s
+

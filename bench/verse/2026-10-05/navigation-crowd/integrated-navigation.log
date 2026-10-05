@@ -1,0 +1,72 @@
+    Blocking waiting for file lock on build directory
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2653:19
+     |
+ 274 | impl Game {
+     | --------- method in this implementation
+...
+2653 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:381:19
+     |
+ 289 | impl Game {
+     | --------- methods in this implementation
+...
+ 381 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1272 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, and `quest_log` are never used
+   --> crates/verse-world/src/service.rs:148:8
+    |
+ 98 | impl Chamber {
+    | ------------ methods in this implementation
+...
+148 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+256 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+307 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+
+warning: method `validate_use` is never used
+  --> crates/verse-world/src/service/items.rs:54:19
+   |
+27 | impl Catalog {
+   | ------------ method in this implementation
+...
+54 |     pub(super) fn validate_use(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^
+
+warning: method `validate_change` is never used
+  --> crates/verse-world/src/service/outfits.rs:70:19
+   |
+33 | impl Catalog {
+   | ------------ method in this implementation
+...
+70 |     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib test) generated 5 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4m 03s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-36b886cf51d106c0)
+
+running 5 tests
+test play::compiled_navigation_tests::exhausted_tick_defers_movement_and_queue_replays_after_checkpoint ... ok
+test play::compiled_navigation_tests::prop_invalidation_preserves_distant_routes_and_replans_local_changes ... ok
+test play::compiled_navigation_tests::blocker_replanning_collision_and_checkpoint_keep_the_same_life ... ok
+test play::compiled_navigation_tests::cultist_climbs_authored_stairs_without_teleporting ... ok
+test play::compiled_navigation_tests::directed_intent_advances_in_authority_and_replays_through_stairs ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 310 filtered out; finished in 0.61s
+

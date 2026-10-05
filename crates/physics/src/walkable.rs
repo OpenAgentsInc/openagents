@@ -11,11 +11,14 @@ use std::{
     collections::{BTreeMap, BinaryHeap},
 };
 
+mod tiled;
+pub use tiled::{Crowd, CrowdAgent, Scheduler, SearchScratch, Tile, Transition, TransitionKind};
+
 const SKIN: f64 = 2e-5;
 const MAX_CELLS: usize = 65_536;
 const MAX_NODES: usize = 65_536;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub instance: u64,
     pub layers: u32,
@@ -25,26 +28,30 @@ pub struct Config {
     pub character: Settings,
     pub work_budget: usize,
 }
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct CompileStats {
     pub cells: usize,
     pub spans: usize,
     pub links: usize,
     pub work_units: usize,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cell {
     pub feet: DVec3,
     /// Cardinal portals, including directed stair transitions.
     pub links: Vec<usize>,
 }
 /// Immutable walkable spans, eroded by the admitted capsule's clearance.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Navigation {
     config: Config,
     pub stats: CompileStats,
+    #[serde(with = "tiled::cell_pairs")]
     cells: BTreeMap<(i32, i32), Vec<usize>>,
     nodes: Vec<Cell>,
+    tiles: Vec<Tile>,
+    node_tiles: Vec<usize>,
+    tile_links: Vec<Vec<usize>>,
 }
 impl Navigation {
     /// Binds the same compiled local geometry to another world instance.
@@ -57,6 +64,9 @@ impl Navigation {
         &self.nodes
     }
     pub fn compile(scene: &Scene, config: Config) -> Result<Self, String> {
+        Self::compile_tiled(scene, config, 16, &[])
+    }
+    fn compile_tile(scene: &Scene, config: Config) -> Result<Self, String> {
         config.character.validate()?;
         if config.layers == 0
             || !config.min.is_finite()
@@ -84,6 +94,9 @@ impl Navigation {
             stats: CompileStats::default(),
             cells: BTreeMap::new(),
             nodes: vec![],
+            tiles: vec![],
+            node_tiles: vec![],
+            tile_links: vec![],
         };
         let mut filter = Filter::blocking(config.instance);
         filter.limit = 128;
@@ -241,7 +254,7 @@ impl Navigation {
         }
         candidates.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
         for (index, _) in candidates {
-            work.charge(blockers.entries.len() + 1)?;
+            work.charge(blockers.work_size() + 1)?;
             if !blockers.clear(
                 p,
                 self.nodes[index].feet,
@@ -273,6 +286,29 @@ impl Navigation {
         ignore: Option<Life>,
         budget: Budget,
     ) -> Result<Option<Path>, String> {
+        self.path_with_scratch(
+            scene,
+            blockers,
+            instance,
+            start,
+            goal,
+            ignore,
+            budget,
+            &mut SearchScratch::default(),
+        )
+    }
+    /// Reuses bounded search storage. Tile reachability rejects disconnected content first.
+    pub fn path_with_scratch(
+        &self,
+        scene: &Scene,
+        blockers: &Blockers,
+        instance: u64,
+        start: DVec3,
+        goal: DVec3,
+        ignore: Option<Life>,
+        budget: Budget,
+        scratch: &mut SearchScratch,
+    ) -> Result<Option<Path>, String> {
         if instance != self.config.instance || instance != blockers.instance {
             return Err("Navigation query belongs to another instance".into());
         }
@@ -292,7 +328,7 @@ impl Navigation {
             used: 0,
             limit: budget.work_units,
         };
-        work.charge(2 * (blockers.entries.len() + 1))?;
+        work.charge(2 * (blockers.work_size() + 1))?;
         let mut filter = Filter::blocking(instance);
         filter.ignore = ignore;
         filter.layers = self.config.layers;
@@ -307,9 +343,17 @@ impl Navigation {
         let Some(target) = self.nearest(scene, goal, filter, blockers, &mut work)? else {
             return Ok(None);
         };
-        work.charge(blockers.entries.len() + 1)?;
+        work.charge(blockers.work_size() + 1)?;
         if blockers.clear(start, goal, self.config.character, ignore)
-            && traverse(scene, filter, self.config.character, start, goal, &mut work)?
+            && shortcut(
+                scene,
+                filter,
+                self.config.character,
+                start,
+                goal,
+                &mut work,
+                2048,
+            )?
         {
             return Ok(Some(Path {
                 points: vec![goal],
@@ -318,18 +362,20 @@ impl Navigation {
                 blocker_revision: blockers.revision,
             }));
         }
-        let mut distance = vec![f64::INFINITY; self.nodes.len()];
-        let mut parent = vec![usize::MAX; self.nodes.len()];
-        let mut queue = BinaryHeap::new();
-        distance[source] = 0.;
-        queue.push(Visit {
+        let Some(corridor) = self.tile_corridor(source, target, &mut work)? else {
+            return Ok(None);
+        };
+        scratch.begin(self.nodes.len());
+        scratch.set(source, 0., usize::MAX);
+        scratch.queue.push(Visit {
+            tier: 0,
             estimate: 0.,
             cost: 0.,
             node: source,
         });
         let mut expanded = 0;
-        while let Some(visit) = queue.pop() {
-            if visit.cost > distance[visit.node] + 1e-10 {
+        while let Some(visit) = scratch.queue.pop() {
+            if visit.cost > scratch.cost(visit.node) + 1e-10 {
                 continue;
             }
             if expanded == budget.nodes {
@@ -344,25 +390,30 @@ impl Navigation {
                         return Err("Navigation waypoint budget exceeded".into());
                     }
                     corridor.push(self.nodes[node].feet);
-                    node = parent[node];
+                    node = scratch.parent[node];
                 }
                 corridor.push(self.nodes[source].feet);
                 corridor.push(start);
                 corridor.reverse();
                 let mut points = vec![];
                 let mut current = 0;
+                let smoothing_end = work.used.saturating_add(4096).min(work.limit);
                 // Shortcuts are independently admitted by the capsule controller.
                 // Limit shortcut tests rather than searching every waypoint pair.
                 while current + 1 < corridor.len() {
                     let mut next = current + 1;
                     for candidate in (current + 2..corridor.len().min(current + 18)).rev() {
+                        if work.used.saturating_add(blockers.work_size() + 1) >= smoothing_end {
+                            break;
+                        }
                         let a = corridor[current];
                         let b = corridor[candidate];
-                        work.charge(blockers.entries.len() + 1)?;
+                        work.charge(blockers.work_size() + 1)?;
                         if !blockers.clear(a, b, self.config.character, ignore) {
                             continue;
                         }
-                        if traverse(scene, filter, self.config.character, a, b, &mut work)? {
+                        let quota = smoothing_end.saturating_sub(work.used);
+                        if shortcut(scene, filter, self.config.character, a, b, &mut work, quota)? {
                             next = candidate;
                             break;
                         }
@@ -380,15 +431,15 @@ impl Navigation {
             let a = self.nodes[visit.node].feet;
             for next in &self.nodes[visit.node].links {
                 let b = self.nodes[*next].feet;
-                work.charge(blockers.entries.len() + 1)?;
-                if !blockers.clear(a, b, self.config.character, ignore) {
-                    continue;
-                }
                 let cost = visit.cost + a.distance(b);
-                if cost + 1e-10 < distance[*next] {
-                    distance[*next] = cost;
-                    parent[*next] = visit.node;
-                    queue.push(Visit {
+                if cost + 1e-10 < scratch.cost(*next) {
+                    work.charge(blockers.work_size() + 1)?;
+                    if !blockers.clear(a, b, self.config.character, ignore) {
+                        continue;
+                    }
+                    scratch.set(*next, cost, visit.node);
+                    scratch.queue.push(Visit {
+                        tier: u8::from(!corridor[self.node_tiles[*next]]),
                         estimate: cost + b.distance(self.nodes[target].feet),
                         cost,
                         node: *next,
@@ -420,13 +471,14 @@ struct Work {
 }
 impl Work {
     fn charge(&mut self, amount: usize) -> Result<(), String> {
-        self.used = self
+        let next = self
             .used
             .checked_add(amount)
             .ok_or("Navigation work counter exhausted")?;
-        if self.used > self.limit {
+        if next > self.limit {
             return Err("Navigation collision work budget exceeded".into());
         }
+        self.used = next;
         Ok(())
     }
 }
@@ -441,13 +493,17 @@ pub struct Path {
 }
 #[derive(Clone, Copy)]
 struct Visit {
+    tier: u8,
     estimate: f64,
     cost: f64,
     node: usize,
 }
 impl PartialEq for Visit {
     fn eq(&self, other: &Self) -> bool {
-        self.estimate == other.estimate && self.node == other.node && self.cost == other.cost
+        self.tier == other.tier
+            && self.estimate == other.estimate
+            && self.node == other.node
+            && self.cost == other.cost
     }
 }
 impl Eq for Visit {}
@@ -459,10 +515,37 @@ impl PartialOrd for Visit {
 impl Ord for Visit {
     fn cmp(&self, other: &Self) -> Ordering {
         other
-            .estimate
-            .total_cmp(&self.estimate)
+            .tier
+            .cmp(&self.tier)
+            .then_with(|| other.estimate.total_cmp(&self.estimate))
             .then(other.node.cmp(&self.node))
             .then(other.cost.total_cmp(&self.cost))
+    }
+}
+
+/// Optional shortcut probes have their own soft quota. When it ends, retain
+/// the compiled corridor; only exhausting the caller's hard quota fails a route.
+fn shortcut(
+    scene: &Scene,
+    filter: Filter,
+    settings: Settings,
+    start: DVec3,
+    goal: DVec3,
+    work: &mut Work,
+    quota: usize,
+) -> Result<bool, String> {
+    let hard_limit = work.limit;
+    let soft_limit = work.used.saturating_add(quota).min(hard_limit);
+    work.limit = soft_limit;
+    let result = traverse(scene, filter, settings, start, goal, work);
+    work.limit = hard_limit;
+    match result {
+        Err(error)
+            if soft_limit < hard_limit && error == "Navigation collision work budget exceeded" =>
+        {
+            Ok(false)
+        }
+        other => other,
     }
 }
 
@@ -503,13 +586,32 @@ fn traverse(
         }
         return Ok(true);
     }
+    // A route probe cannot recover a compiled waypoint through another actor.
+    // Reject occupied starts before the motor's bounded recovery loop.
+    work.charge(1)?;
+    let overlaps = scene.overlap(settings.capsule(start), filter)?;
+    if overlaps.truncated || overlaps.hits.iter().any(|hit| hit.penetration > SKIN) {
+        return Ok(false);
+    }
     let mut character = Character::new(start);
     let steps = (length / 0.05).ceil().max(1.) as usize;
     let velocity = horizontal * (120. / steps as f64);
     for _ in 0..steps {
         // A controller step has bounded sweeps and overlaps; charge its worst case.
         work.charge(64)?;
-        character.step(scene, filter, settings, velocity, false, 1. / 120.)?;
+        let previous = character.feet;
+        if matches!(
+            character.step_contained(scene, filter, settings, velocity, false, 1. / 120.)?,
+            crate::character::Step::BlockedRecovery { .. }
+        ) {
+            return Ok(false);
+        }
+        let progress = character.feet - previous;
+        let horizontal_progress =
+            DVec3::new(progress.x, 0., progress.z).dot(horizontal.normalize_or_zero());
+        if length > 1e-6 && horizontal_progress < length / steps as f64 * 0.2 {
+            return Ok(false);
+        }
         if character.support.is_none() {
             return Ok(false);
         }
@@ -530,6 +632,8 @@ pub struct Blockers {
     pub instance: u64,
     pub revision: u64,
     entries: BTreeMap<u64, Entry>,
+    #[serde(skip)]
+    obstacles: Vec<crate::kinematic::Aabb>,
 }
 impl Blockers {
     pub fn new(instance: u64) -> Self {
@@ -537,7 +641,33 @@ impl Blockers {
             instance,
             revision: 0,
             entries: BTreeMap::new(),
+            obstacles: vec![],
         }
+    }
+    /// Adds transient hard geometry to a route query. These bounds do not alter
+    /// the durable life book, its revision, or the shared cooked graph.
+    pub fn with_obstacles(
+        &self,
+        obstacles: impl IntoIterator<Item = crate::kinematic::Aabb>,
+    ) -> Result<Self, String> {
+        let mut query = self.clone();
+        query.obstacles.clear();
+        for bounds in obstacles {
+            if query.obstacles.len() == 1024
+                || !bounds.min.is_finite()
+                || !bounds.max.is_finite()
+                || !bounds.min.cmplt(bounds.max).all()
+                || bounds.min.abs().max_element() > 1_000_000.
+                || bounds.max.abs().max_element() > 1_000_000.
+            {
+                return Err("Invalid navigation obstruction or obstruction budget exceeded".into());
+            }
+            query.obstacles.push(bounds);
+        }
+        Ok(query)
+    }
+    fn work_size(&self) -> usize {
+        self.entries.len() + self.obstacles.len()
     }
     pub fn validate(&self) -> Result<(), String> {
         if self.entries.len() > 256
@@ -638,17 +768,14 @@ impl Blockers {
         self.entries
             .values()
             .filter(|e| e.alive && Some(e.life) != ignore)
-            .all(|e| {
-                crate::kinematic::sweep_box(
-                    center,
-                    half,
-                    goal - start,
-                    &[crate::kinematic::Aabb {
-                        min: e.min,
-                        max: e.max,
-                    }],
-                )
-                .is_ok_and(|hit| hit.is_none())
+            .map(|e| crate::kinematic::Aabb {
+                min: e.min,
+                max: e.max,
+            })
+            .chain(self.obstacles.iter().copied())
+            .all(|bounds| {
+                crate::kinematic::sweep_box(center, half, goal - start, &[bounds])
+                    .is_ok_and(|hit| hit.is_none())
             })
     }
 }
@@ -656,7 +783,7 @@ impl Blockers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn add(scene: &mut Scene, id: u32, min: DVec3, max: DVec3) {
+    pub(super) fn add(scene: &mut Scene, id: u32, min: DVec3, max: DVec3) {
         scene
             .insert(MeshCollider {
                 key: ColliderKey {
@@ -673,7 +800,7 @@ mod tests {
             })
             .unwrap();
     }
-    fn fixture() -> (Scene, Config) {
+    pub(super) fn fixture() -> (Scene, Config) {
         let mut scene = Scene::default();
         add(
             &mut scene,
