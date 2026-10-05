@@ -1,0 +1,641 @@
+{
+  "schema": "verse.battle.acceptance.evidence.v1",
+  "wire_version": 28,
+  "workload": {
+    "players": 20,
+    "live_hostiles": 40,
+    "persistent": true,
+    "delay_mode": "scheduled",
+    "delay_ms": 40,
+    "jitter_ms": 20
+  },
+  "acceptance": "failed",
+  "compiled_revisions": {
+    "host": "d6d4f87a54ac1dcab20735947fdfc070c1766be3",
+    "native_client": "94555e0d65e06618137bed77e71f51cb12f5f695",
+    "headless_clients": "62b1515f90d18d9c74256aa7d49ff4c21826aa29"
+  },
+  "movement_expiry": {
+    "total": 13,
+    "admission": 0,
+    "primary_tick": 11,
+    "additional_tick": 2,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 233,
+        "epoch": 2,
+        "authority_tick": 972,
+        "origin": "additional_tick",
+        "world_step": 1488,
+        "confirmed_step": 1452,
+        "projected_step": 1452,
+        "received_at": 1456,
+        "applied_sequence": 204,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 241,
+        "epoch": 2,
+        "authority_tick": 974,
+        "origin": "additional_tick",
+        "world_step": 1496,
+        "confirmed_step": 1460,
+        "projected_step": 1460,
+        "received_at": 1464,
+        "applied_sequence": 223,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 4,
+        "authority_tick": 1129,
+        "origin": "primary_tick",
+        "world_step": 2116,
+        "confirmed_step": 2083,
+        "projected_step": 2083,
+        "received_at": 2104,
+        "applied_sequence": 139,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 8,
+        "authority_tick": 1203,
+        "origin": "primary_tick",
+        "world_step": 2412,
+        "confirmed_step": 2378,
+        "projected_step": 2378,
+        "received_at": 2396,
+        "applied_sequence": 5,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 10,
+        "authority_tick": 1242,
+        "origin": "primary_tick",
+        "world_step": 2568,
+        "confirmed_step": 2533,
+        "projected_step": 2533,
+        "received_at": 2556,
+        "applied_sequence": 10,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 12,
+        "authority_tick": 1430,
+        "origin": "primary_tick",
+        "world_step": 3320,
+        "confirmed_step": 3286,
+        "projected_step": 3286,
+        "received_at": 3308,
+        "applied_sequence": 96,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 14,
+        "authority_tick": 1459,
+        "origin": "primary_tick",
+        "world_step": 3436,
+        "confirmed_step": 3401,
+        "projected_step": 3401,
+        "received_at": 3416,
+        "applied_sequence": 5,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 16,
+        "authority_tick": 1509,
+        "origin": "primary_tick",
+        "world_step": 3636,
+        "confirmed_step": 3603,
+        "projected_step": 3603,
+        "received_at": 3620,
+        "applied_sequence": 18,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 18,
+        "authority_tick": 1534,
+        "origin": "primary_tick",
+        "world_step": 3736,
+        "confirmed_step": 3700,
+        "projected_step": 3700,
+        "received_at": 3724,
+        "applied_sequence": 2,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 20,
+        "authority_tick": 1698,
+        "origin": "primary_tick",
+        "world_step": 4392,
+        "confirmed_step": 4358,
+        "projected_step": 4358,
+        "received_at": 4376,
+        "applied_sequence": 75,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 22,
+        "authority_tick": 1793,
+        "origin": "primary_tick",
+        "world_step": 4772,
+        "confirmed_step": 4738,
+        "projected_step": 4738,
+        "received_at": 4756,
+        "applied_sequence": 45,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 24,
+        "authority_tick": 1896,
+        "origin": "primary_tick",
+        "world_step": 5184,
+        "confirmed_step": 5148,
+        "projected_step": 5148,
+        "received_at": 5168,
+        "applied_sequence": 46,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 26,
+        "authority_tick": 1975,
+        "origin": "primary_tick",
+        "world_step": 5500,
+        "confirmed_step": 5464,
+        "projected_step": 5464,
+        "received_at": 5480,
+        "applied_sequence": 35,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 0
+  },
+  "steady_measurements": {
+    "client_preparation_cpu_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.45641699999999996,
+      "p95": 1.541917,
+      "p99": 3.0005,
+      "maximum": 7.773375
+    },
+    "command_finish_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.636875000000001,
+      "p95": 9.421833,
+      "p99": 14.077083,
+      "maximum": 21.397541999999998
+    },
+    "command_turnaround_ms": {
+      "samples": 672,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 151.507375,
+      "p95": 185.593791,
+      "p99": 260.993459,
+      "maximum": 361.37141699999995
+    },
+    "command_verified_to_sample_ms": {
+      "samples": 674,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 11.436292,
+      "p95": 42.595124999999996,
+      "p99": 91.018792,
+      "maximum": 162.970958
+    },
+    "events_turnaround_ms": {
+      "samples": 225,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 149.350833,
+      "p95": 182.276834,
+      "p99": 248.998208,
+      "maximum": 366.526791
+    },
+    "events_verified_to_sample_ms": {
+      "samples": 226,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 12.173542000000001,
+      "p95": 46.416958,
+      "p99": 77.083084,
+      "maximum": 82.00391599999999
+    },
+    "frame_interval_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 14.836375,
+      "p95": 44.787209000000004,
+      "p99": 72.278792,
+      "maximum": 182.643958
+    },
+    "gpu_overlay_ms": {
+      "samples": 1748,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.029541,
+      "p95": 0.397792,
+      "p99": 3.344083,
+      "maximum": 23.839
+    },
+    "gpu_query_poll_cpu_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.013167,
+      "p95": 0.5215000000000001,
+      "p99": 0.804459,
+      "maximum": 10.033999999999999
+    },
+    "gpu_shadow_ms": {
+      "samples": 1748,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 2.359208,
+      "p95": 6.394209,
+      "p99": 9.527958,
+      "maximum": 28.891667
+    },
+    "gpu_total_ms": {
+      "samples": 1748,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.661458,
+      "p95": 22.0075,
+      "p99": 26.9925,
+      "maximum": 46.334416
+    },
+    "gpu_world_ms": {
+      "samples": 1748,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.903541,
+      "p95": 18.088792,
+      "p99": 21.569208,
+      "maximum": 26.904166
+    },
+    "input_channel_depth": {
+      "samples": 1199,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 1.0,
+      "maximum": 4.0
+    },
+    "inventory_turnaround_ms": {
+      "samples": 40,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 151.940667,
+      "p95": 182.284208,
+      "p99": 300.002042,
+      "maximum": 300.002042
+    },
+    "inventory_verified_to_sample_ms": {
+      "samples": 40,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 15.671500000000002,
+      "p95": 47.187167,
+      "p99": 112.52387499999999,
+      "maximum": 112.52387499999999
+    },
+    "oldest_input_handler_to_next_submit_cpu_ms": {
+      "samples": 23,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 11.664291,
+      "p95": 20.432958,
+      "p99": 21.452833000000002,
+      "maximum": 21.452833000000002
+    },
+    "overlay_encode_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.001959,
+      "p95": 0.003334,
+      "p99": 0.004583,
+      "maximum": 0.039084
+    },
+    "pending_requests": {
+      "samples": 1199,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.0,
+      "p95": 5.0,
+      "p99": 6.0,
+      "maximum": 7.0
+    },
+    "prepare_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 3.7725419999999996,
+      "p95": 8.206833,
+      "p99": 10.929291000000001,
+      "maximum": 16.930667
+    },
+    "present_call_cpu_ms": {
+      "samples": 284,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.016915999999999997,
+      "p95": 0.029207999999999998,
+      "p99": 0.046333,
+      "maximum": 0.076042
+    },
+    "presentation_encode_cpu_ms": {
+      "samples": 284,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.142292,
+      "p95": 0.198791,
+      "p99": 0.215333,
+      "maximum": 0.230208
+    },
+    "presentation_queue_submit_cpu_ms": {
+      "samples": 284,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.054375,
+      "p95": 0.5597500000000001,
+      "p99": 0.675542,
+      "maximum": 1.214667
+    },
+    "queue_submit_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.777292,
+      "p95": 33.716958999999996,
+      "p99": 60.605417,
+      "maximum": 169.892708
+    },
+    "rendered_snapshot_applied_age_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 88.166166,
+      "p95": 171.903792,
+      "p99": 235.688916,
+      "maximum": 377.226834
+    },
+    "sdk_verified_snapshot_age_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 80.988666,
+      "p95": 161.581209,
+      "p99": 209.73266600000002,
+      "maximum": 350.50320800000003
+    },
+    "shadow_encode_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.549084,
+      "p95": 1.008417,
+      "p99": 2.0913749999999998,
+      "maximum": 7.810208
+    },
+    "snapshot_turnaround_ms": {
+      "samples": 258,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 154.7115,
+      "p95": 186.71125,
+      "p99": 271.069917,
+      "maximum": 366.50908300000003
+    },
+    "snapshot_verified_to_sample_ms": {
+      "samples": 259,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 11.439667,
+      "p95": 39.880041999999996,
+      "p99": 92.274417,
+      "maximum": 110.397333
+    },
+    "surface_acquire_cpu_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.032417,
+      "p95": 1.417917,
+      "p99": 5.918583,
+      "maximum": 13.350291
+    },
+    "surface_configure_cpu_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "maximum": 0.0
+    },
+    "total_draw_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 12.347,
+      "p95": 43.390166,
+      "p99": 70.61658299999999,
+      "maximum": 180.60008299999998
+    },
+    "update_channel_depth": {
+      "samples": 1199,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 1.0,
+      "p95": 3.0,
+      "p99": 4.0,
+      "maximum": 6.0
+    },
+    "window_present_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.033041,
+      "p95": 1.676542,
+      "p99": 6.183584,
+      "maximum": 14.799958
+    },
+    "world_encode_ms": {
+      "samples": 2042,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 0.18225000000000002,
+      "p95": 0.302792,
+      "p99": 0.639792,
+      "maximum": 4.0325
+    }
+  },
+  "reset_reasons": {
+    "control_epoch": 17
+  },
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "94555e0d65e06618137bed77e71f51cb12f5f695",
+      "verse_load": "62b1515f90d18d9c74256aa7d49ff4c21826aa29"
+    },
+    "sha256": {
+      "verse_remote": "6f09d5c4d93e0fc75fb470e86dbb13589205680917258f969bfc06d1bf8b2d7f",
+      "verse_load": "96b4135148556e15d6bcca22895311b1c8edd82f98f7b394d5300b89767b3b47"
+    },
+    "native_build": {
+      "compiled_revision": "94555e0d65e06618137bed77e71f51cb12f5f695",
+      "sha256": "6f09d5c4d93e0fc75fb470e86dbb13589205680917258f969bfc06d1bf8b2d7f",
+      "platform": "macOS arm64",
+      "features": [
+        "imported-desktop",
+        "remote-chamber"
+      ],
+      "build_wall_seconds": 546,
+      "compiler_cache_disabled": true,
+      "behavior_revision": "62b1515f90d18d9c74256aa7d49ff4c21826aa29"
+    },
+    "headless_build": {
+      "platform": "Linux x86_64",
+      "features": [
+        "remote-chamber"
+      ],
+      "wall_seconds": 158,
+      "compiler_cache_disabled": true
+    },
+    "wire_version": 28,
+    "sequenced_teleport_skips_pre_send_drain": true,
+    "post_teleport_reply_barrier": true,
+    "authority_build": {
+      "compiled_revision": "d6d4f87a54ac1dcab20735947fdfc070c1766be3",
+      "sha256": "9af3ad26044d9961b2dc43fbf98e3ff5844667c563f74288751e4fbcf6fa7ab7",
+      "wall_seconds": 206,
+      "platform": "Linux x86_64",
+      "features": [
+        "remote-chamber"
+      ],
+      "partial_interval_consumption": true
+    }
+  },
+  "exits": {
+    "clients": {
+      "primary": 0,
+      "load": 0
+    },
+    "host": 0,
+    "proxy": 0
+  },
+  "remote_load_proxy": {
+    "schema": "verse.delayed-route.v2",
+    "delay_ms": 40,
+    "jitter_ms": 20,
+    "delay_mode": "scheduled",
+    "delay_queue_capacity": 32,
+    "delay_queue_peak": 5,
+    "connections": 19,
+    "upstream_bytes": 10241286,
+    "downstream_bytes": 189028883,
+    "forwarded_chunks": 77211,
+    "errors": 2,
+    "refused_connections": 0,
+    "error_details": [
+      {
+        "elapsed_seconds": 83.59382817102596,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 104
+      },
+      {
+        "elapsed_seconds": 83.60367164103081,
+        "direction": "upstream",
+        "type": "ConnectionResetError",
+        "errno": 104
+      }
+    ],
+    "omitted_error_details": 0,
+    "limits": [
+      "Delay applies to each TCP read chunk, not decrypted game messages.",
+      "Scheduled mode bounds queued chunks and preserves order without a per-chunk throughput cap.",
+      "Serial mode adds delay after each read and also limits chunk throughput.",
+      "TCP preserves byte order; this fixture does not simulate packet loss."
+    ],
+    "wall_seconds": 84.38933301001089
+  },
+  "load_deployment": {
+    "schema": "verse.battle.remote-load.v1",
+    "compiled_revision": "62b1515f90d18d9c74256aa7d49ff4c21826aa29",
+    "binary_sha256": "96b4135148556e15d6bcca22895311b1c8edd82f98f7b394d5300b89767b3b47",
+    "native_route": "Mac delayed proxy to SSH-forwarded Linux authority",
+    "headless_route": "Linux delayed loopback proxy to Linux authority",
+    "limits": [
+      "Headless drivers and authority share Linux CPU and storage.",
+      "Only the native player renders.",
+      "Headless route has no SSH forwarding hop."
+    ]
+  },
+  "limitations": [
+    "Movement expiry and frame timing targets are not met.",
+    "Two remote load-proxy errors remain unclassified.",
+    "Shared hardware and intervening authority changes prevent isolated causal comparisons.",
+    "Only the native primary renders; headless players establish server workload.",
+    "Input-to-display latency and one-way network age are not measured."
+  ],
+  "diagnosis": "The persistent battle completes with thirteen expiries: eleven primary and two additional tick. The prior early startup cluster does not recur. First expiries occur at world steps 1488 and 1496 with empty authority input queues. Trace producer and worker freshness around those later contexts; frame p95 also fails acceptance."
+}

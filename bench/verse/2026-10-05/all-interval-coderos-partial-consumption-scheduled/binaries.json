@@ -1,0 +1,43 @@
+{
+  "compiled_revisions": {
+    "verse_remote": "94555e0d65e06618137bed77e71f51cb12f5f695",
+    "verse_load": "62b1515f90d18d9c74256aa7d49ff4c21826aa29"
+  },
+  "sha256": {
+    "verse_remote": "6f09d5c4d93e0fc75fb470e86dbb13589205680917258f969bfc06d1bf8b2d7f",
+    "verse_load": "96b4135148556e15d6bcca22895311b1c8edd82f98f7b394d5300b89767b3b47"
+  },
+  "native_build": {
+    "compiled_revision": "94555e0d65e06618137bed77e71f51cb12f5f695",
+    "sha256": "6f09d5c4d93e0fc75fb470e86dbb13589205680917258f969bfc06d1bf8b2d7f",
+    "platform": "macOS arm64",
+    "features": [
+      "imported-desktop",
+      "remote-chamber"
+    ],
+    "build_wall_seconds": 546,
+    "compiler_cache_disabled": true,
+    "behavior_revision": "62b1515f90d18d9c74256aa7d49ff4c21826aa29"
+  },
+  "headless_build": {
+    "platform": "Linux x86_64",
+    "features": [
+      "remote-chamber"
+    ],
+    "wall_seconds": 158,
+    "compiler_cache_disabled": true
+  },
+  "wire_version": 28,
+  "sequenced_teleport_skips_pre_send_drain": true,
+  "post_teleport_reply_barrier": true,
+  "authority_build": {
+    "compiled_revision": "d6d4f87a54ac1dcab20735947fdfc070c1766be3",
+    "sha256": "9af3ad26044d9961b2dc43fbf98e3ff5844667c563f74288751e4fbcf6fa7ab7",
+    "wall_seconds": 206,
+    "platform": "Linux x86_64",
+    "features": [
+      "remote-chamber"
+    ],
+    "partial_interval_consumption": true
+  }
+}
