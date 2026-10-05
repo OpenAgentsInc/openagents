@@ -1,0 +1,17 @@
+{
+  "compiled_revisions": {
+    "verse_remote": "aaca60049e",
+    "verse_load": "aaca60049e"
+  },
+  "wire_version": 26,
+  "sha256": {
+    "verse_remote": "5e77a1b514e6371cb79a13d2bc44a933833a002f0c8b6c8523d2025238953625",
+    "verse_load": "b362677c430c3ea6f609c1d18b0704791342c793d30f63bff46b72d151630f40"
+  },
+  "client_platform": "macOS arm64",
+  "client_features": [
+    "imported-desktop",
+    "remote-chamber"
+  ],
+  "movement_send_steps": 6
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "host_revision": "194613eba2",
+  "client_revision": "aaca60049e",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "movement_send_steps": 6,
+  "wire_version": 26,
+  "timings": {
+    "frame_p95_ms": 19.16425,
+    "gpu_p95_ms": 10.057,
+    "verified_snapshot_age_p95_ms": 121.848625,
+    "command_turnaround_p95_ms": 204.416125
+  },
+  "movement_expiries": 206,
+  "native_reset_reasons": {
+    "control_epoch": 20,
+    "teleport": 1
+  },
+  "limits": [
+    "Shared machine and disk load varies; this run does not isolate causal effects.",
+    "Movement continuity, frame timing, and command latency still fail acceptance.",
+    "No impaired-network, input-to-display, or soak acceptance."
+  ],
+  "validation": [
+    "17 focused worker checks passed.",
+    "Both client binaries built together.",
+    "Host and client exits zero."
+  ]
+}
