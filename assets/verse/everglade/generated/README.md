@@ -31,6 +31,8 @@ then repin the pack (`verse::zones::everglade_pack`).
 | Models | Script | Use in Everglade |
 | --- | --- | --- |
 | `townhouse_jettied`, `townhouse_balcony`, `row_townhouse`, `library`, `tavern`, `market_hall`, `corner_shop`, `l_house`, `cottage_tower` | `buildings.py` | Buildings in the city's districts (`layout::city::STAND_INS`) and the Stacks |
+| `music_hall`, `meeting_hall`, `guild_hall`, `bakery`, `boardwalk_cafe`, `smithy`, `clock_tower`, `windmill`, `farmhouse`, `cottage_thatch`, `log_cabin`, `lookout`, `boathouse`, `greenhouse`, `gazebo` | `buildings.py` | The map's named buildings (`layout::city::STAND_INS` and `GROUNDS`) |
+| `statue`, `sculpture`, `sundial`, `planter`, `garden_arch`, `picket_fence`, `garden_gate`, `flower_bed`, `veg_bed`, `rail_fence`, `haystack`, `hay_bales`, `beehives`, `rowboat`, `dock`, `reeds`, `fallen_log`, `mossy_rock`, `mushrooms`, `stump`, `cafe_table`, `birch_low`, `poplar_low`, `spruce_low`, `fruit_tree`, `bush_round` | `town_props.py` | Parks, gardens, the farm, the ponds, and the woods (`layout::parks`) |
 | `observatory`, `fountain`, `bandshell`, `market_stall_red`, `market_stall_blue` | `observatory.py`, `fountain.py`, `bandshell.py`, `market_stall.py` | Observatory Hill, the Fountain Plaza, the commons, and the markets |
 | `lamp_post`, `barrel`, `flower_box`, `well`, `stone_wall`, `hedge`, `hand_cart`, `signpost`, `lily_pads`, `footbridge`, `wildflowers`, `bunting` | `street_props.py` | Street furniture, ponds, and meadows |
 

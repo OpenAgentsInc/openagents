@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|winds|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|winds|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT|air:EX,EY,EZ,TX,TZ] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -36,6 +36,8 @@
 //!   Observatory Hill, and Foundry Road.
 //! - `at:X,Z,YAW,TILT`: the player standing anywhere, at `(X, Z)` facing
 //!   `YAW` radians, with the camera tilted by `TILT`.
+//! - `air:EX,EY,EZ,TX,TZ`: as `overhead`, from an eye at `(EX, EY, EZ)`
+//!   looking at `(TX, 0, TZ)`, for a closer look at one district.
 //! - `studio-atrium`: inside the gate, at the goal board, with the goal
 //!   bar and its waiting badge over the view.
 //! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
@@ -100,6 +102,7 @@ fn main() -> Result<(), String> {
         "reverse" | "reverse-top" => (glam::Vec3::new(0.0, 0.0, REVERSE_Z), 0.0, 0.0),
         "hall" | "studio-hall" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
         "overhead" => (glam::Vec3::new(0.0, 0.0, -20.0), 0.0, 0.0),
+        other if other.starts_with("air:") => (glam::Vec3::new(0.0, 0.0, -20.0), 0.0, 0.0),
         "town-north" => (glam::Vec3::new(-11.0, 0.0, 14.0), 0.35, 30.0),
         "town-west" => (glam::Vec3::new(-34.0, 0.0, 40.0), 2.9, 30.0),
         // The city's districts, from their streets.
@@ -133,7 +136,7 @@ fn main() -> Result<(), String> {
                 "unknown view `{other}`; use approach, winds, sky, yard, hall, lane-east, lane-west, reverse, reverse-top, \
                  overhead, town-north, town-west, tooltip, city-market, city-stoop, city-lantern, \
                  city-brownstone, city-observatory, city-foundry, studio-yard, studio-hall, studio-atrium, eyes, \
-                 hall-eyes, or at:X,Z,YAW,TILT"
+                 hall-eyes, at:X,Z,YAW,TILT, or air:EX,EY,EZ,TX,TZ"
             ));
         }
     };
@@ -193,11 +196,10 @@ fn main() -> Result<(), String> {
     let mut shot = runtime.view(1.6);
     let mut dynamic = runtime.dynamic_mesh();
     let mut air = zones::atmosphere(runtime.zone);
-    if view == "overhead" {
+    if let Some((eye, target)) = aerial(&view)? {
         // A camera high over the approach, looking down across the city,
-        // with the haze pushed back past the tree ring.
-        let eye = glam::Vec3::new(0.0, 210.0, -230.0);
-        let target = glam::Vec3::new(0.0, 0.0, 0.0);
+        // or over any point (`air:`), with the haze pushed back past the
+        // tree ring.
         shot.eye = eye;
         shot.view_proj = glam::Mat4::perspective_rh(0.9, 1.6, 0.5, 2000.0)
             * glam::Mat4::look_at_rh(eye, target, glam::Vec3::Y);
@@ -221,6 +223,32 @@ fn main() -> Result<(), String> {
         &atlas,
         air,
     )
+}
+
+/// The aerial camera's eye and target: `overhead`'s, or
+/// `air:EX,EY,EZ,TX,TZ`'s eye at (EX, EY, EZ) looking at (TX, 0, TZ).
+fn aerial(view: &str) -> Result<Option<(glam::Vec3, glam::Vec3)>, String> {
+    if view == "overhead" {
+        return Ok(Some((
+            glam::Vec3::new(0.0, 210.0, -230.0),
+            glam::Vec3::new(0.0, 0.0, 0.0),
+        )));
+    }
+    let Some(rest) = view.strip_prefix("air:") else {
+        return Ok(None);
+    };
+    let v: Vec<f32> = rest
+        .split(',')
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .map_err(|_| format!("`{view}` is not air:EX,EY,EZ,TX,TZ"))?;
+    let [ex, ey, ez, tx, tz] = v[..] else {
+        return Err(format!("`{view}` is not air:EX,EY,EZ,TX,TZ"));
+    };
+    Ok(Some((
+        glam::Vec3::new(ex, ey, ez),
+        glam::Vec3::new(tx, 0.0, tz),
+    )))
 }
 
 /// Casts Reverse Gravity and lets its particles climb. For `reverse` the

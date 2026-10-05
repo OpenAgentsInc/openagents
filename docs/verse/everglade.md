@@ -74,7 +74,8 @@ holds the models `scripts/blender` builds ([Generated models with
 Blender](blender-pipeline.md)): the village buildings assembled from the
 Medieval Village MegaKit's pieces, the landmarks (the observatory, the
 fountain, the bandshell, and the market stalls), the street furniture, the
-far forest's low-poly trees, and a lighter copy of the kit's round-tile roof.
+park, garden, farm, pond, and woodland pieces, the far forest's low-poly
+trees, and a lighter copy of the kit's round-tile roof.
 `scripts/blender/everglade_admit.py` converts each committed glb to the
 glTF and `.bin` the compiler reads and points its textures at the village
 set's admitted images, so the pack carries one copy of each kit image.
@@ -108,10 +109,13 @@ Admission follows the Fantasy Props precedent:
   redirects, exact length and digest, bounded decoding, and the
   content-addressed disk cache. Committed files are the pack and the curated
   sources, not the full kits.
-- Budgets: at most 46 MB committed for sources and pack together (30.5 MB
-  before the generated set), a pack of at most 24 MiB, at most 420,000
-  triangles in the pack's models with at most 20,000 in any one, at most
-  1,850,000 triangles placed with the ground
+- Budgets: at most 56 MB committed for sources and pack together (30.5 MB
+  before the generated set, 46 MB before the second round of generated
+  buildings and the Grove's beasts), a pack of at most 28 MiB (24 MiB before
+  the second round, whose fifteen buildings and twenty-six small pieces add
+  about 5 MB to the download), at most 420,000 triangles in the pack's
+  models with at most
+  20,000 in any one, at most 1,850,000 triangles placed with the ground
   (`everglade_pack::PLACED_TRIANGLE_BUDGET`), and at most 64 MB of decoded
   textures.
 
@@ -201,39 +205,61 @@ Row's footbridge, into Walden Woods.
 The city's buildings are a table in `layout::city`. Most are the workshop's
 own kit pieces, one to three stories under round-tile roofs, painted in
 varied plaster and roof colors, and each wall run blocks walking as one
-footprint. Twenty places hold a whole generated building instead
+footprint. Thirty-four places hold a whole generated building instead
 (`city::STAND_INS`), mixed among the kit-built ones: jettied and balconied
 townhouses on Main Street, Stoop Lane, and in the Creative District, corner
-shops at Main Street's corners, the open market hall on the Fountain Plaza,
-the tavern in the Lantern Quarter, terraces of row houses on Brownstone Row,
-L-shaped houses, the cottage with its round tower in Walden Woods, and the
-observatory on its hill; the Stacks is the generated library. A generated
-building blocks by the boxes of its `<name>.footprint.json`, its roofs are
-surfaces to land on (`layout::generated`), and its door is closed: a walk
-leads to its front step. The market hall's arcade stays open.
+shops at Main Street's corners, the bakehouse with its bread oven on Main
+Street, the open market hall on the Fountain Plaza, the round Music Hall,
+the meeting hall behind its porch, the tavern, and the guild hall with its
+turret in the Lantern Quarter, terraces of row houses on Brownstone Row,
+L-shaped houses, two Boardwalk Cafés facing each other across Studio Road,
+the smithy and its open forge in the Foundry, the clock tower on its little
+square on Library Way, the windmill and the thatched farmhouse on the farm
+lane, log cabins in the long meadow and by the Fern Pond, the lookout tower
+in Fernhollow, the cottage with its round tower and the woodcutter's
+thatched cottage in Walden Woods, and the observatory on its hill; the
+Stacks is the generated library. Three more stand on open ground
+(`city::GROUNDS`): the boathouse on Lantern Pond's north bank, the
+glasshouse by the community garden, and the gazebo on the commons' east
+lawn. A generated building blocks by the boxes of its
+`<name>.footprint.json`, its roofs are surfaces to land on
+(`layout::generated`), and its door is closed: a walk leads to its front
+step. The market hall's arcade, the gazebo, and the lookout's legs stay
+open.
 
 Street furniture (`layout::streets`) follows the map: warm lamps along the
 paved streets and the main lanes, flower boxes under the shop fronts,
 bunting over the plaza and the streets, a clipped hedge between Main Street
 and the commons, signposts at the crossings, wells, lily pads on the ponds,
 a dry-stone wall around the orchard, wildflower meadows, and park trees on
-the commons. Each piece stands only on open ground: off every road, walk,
-building, pond, and station.
+the commons. The second round (`layout::parks`) adds life on the ponds
+(reeds, more lily pads, three jetties with rowboats, and a boat in the
+boathouse), the community garden's picket fence, rose arch, and raised beds,
+the farm's paddock with its haystack and bales, café tables on the cafés'
+decks and the Fountain Plaza, planters, statues, a sculpture, and a sundial
+on the Sculpture Walk, beehives at the beekeeper's hut, a fruit orchard, and
+undergrowth that sets the woods apart: ferns, mossy rocks, fallen logs,
+stumps, and toadstools in Walden Woods among dark spruces and pale birches,
+and denser spruce and birch round the Fern Pond. The forest belt mixes
+pines with spruces, oaks, birches, and poplars, and round bushes line the
+clearing's edge. Each piece stands only on open ground: off every road,
+walk, building, pond, and station.
 
 | District | Built from | Roads |
 | --- | --- | --- |
-| The Commons | Lantern Pond with reeds, stones, and lily pads, benches, park trees, wildflowers, the generated bandshell | The commons walk, west of the hall |
-| Main Street | Twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), two generated corner shops and three townhouses among them, red and blue market stalls, lamps, flower boxes, bunting, street trees | Main Street, about 200 m long, cobbled |
-| Fountain Plaza | A cobbled plaza with the generated fountain, stalls, barrels, a hand cart, two cafés, the generated market hall | Market Way |
-| Creative District | The Makers' Hall, a studio, an atelier, a pottery, the Atelier Hall, the Sculpture Walk | Studio Road |
-| The Foundry | The Server Barn and fab yard, a workshop, the Fab Hall, the forge, an annex | Foundry Road |
-| Knowledge District | The Stacks (the generated library up its steps), the Old College, the college and lecture halls, the archive, the map room, an L-shaped seminar house, the generated observatory on Observatory Hill, Reed Pond, the long meadow's wildflowers and its sketch cabin | Library Way |
+| The Commons | Lantern Pond with reeds, stones, lily pads, a jetty, and a rowboat, the generated boathouse on its north bank, benches, park trees, wildflowers, the generated bandshell, the gazebo on the east lawn | The commons walk, west of the hall |
+| Main Street | Twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), the generated bakehouse with its bread oven, two generated corner shops and three townhouses among them, red and blue market stalls, lamps, flower boxes, bunting, street trees | Main Street, about 200 m long, cobbled |
+| Fountain Plaza | A cobbled plaza with the generated fountain, stalls, barrels, a hand cart, two cafés with tables out front, planters, the generated market hall with its stock under the arcade | Market Way |
+| Creative District | The Makers' Hall, a studio, two generated Boardwalk Cafés with tables on their decks, the Atelier Hall, the Sculpture Walk's statues, sculpture, and sundial | Studio Road |
+| The Foundry | The Server Barn and fab yard, a workshop, the Fab Hall, the generated smithy with its open forge, an annex | Foundry Road |
+| Knowledge District | The Stacks (the generated library up its steps), the Old College, the generated clock tower on its square, the college hall, the archive, the map room, an L-shaped seminar house, the generated observatory on Observatory Hill, Reed Pond and its jetty, the long meadow's wildflowers and its log cabin | Library Way |
 | Stoop Lane | Ten homes and townhouses, four of them generated, with lanterns, flower boxes, and little gardens, the cottage, a well | Stoop Lane, Hearth Road |
-| Lantern Quarter | The generated tavern and music hall, the meeting hall, the guild and choir houses, the pubs, an L-shaped house, bunting, a well | Hearth Road, Lantern Road |
-| Brownstone Row | Four two-story brownstones with stoops, two terraces of generated row houses, six row houses, a community garden, the footbridge over Glade Run | Brownstone Row |
-| Walden Woods | The writing and code cabins, the generated cottage with its tower, the prototype shed, the Thinking Pond, dense stands of pines | The woods paths, Lantern Road |
-| Fernhollow | The lookout hut by the Fern Pond, stands of pines and ferns | The Fernhollow path |
-| Gardens and orchards | Fenced beds, two orchards of young fruit trees behind a dry-stone wall, the beekeeper's hut | The orchard lane |
+| Lantern Quarter | The generated Music Hall, meeting hall, tavern, and guild hall, the choir house, the pubs, an L-shaped house, bunting, a well | Hearth Road, Lantern Road |
+| Brownstone Row | Four two-story brownstones with stoops, two terraces of generated row houses, six row houses, the community garden behind its picket fence with the glasshouse, the footbridge over Glade Run | Brownstone Row |
+| Walden Woods | The writing and code cabins, the generated cottage with its tower, the woodcutter's thatched cottage, the prototype shed, the Thinking Pond and its jetty, stands of pines, spruces, and birches over ferns, mossy rocks, fallen logs, stumps, and toadstools | The woods paths, Lantern Road |
+| Fernhollow | The lookout tower and the log cabin by the Fern Pond, spruces, birches, and pines over ferns, mossy rocks, and toadstools | The Fernhollow path |
+| Gardens and orchards | Fenced beds, an orchard of fruit trees behind a dry-stone wall with a gate, the beekeeper's hut and hives | The orchard lane |
+| The farm | The generated windmill and thatched farmhouse, a rail-fenced paddock with a haystack and bales, vegetable beds | The farm lane, south from Brownstone Row |
 
 The studio's stations stay where they were:
 

@@ -185,6 +185,169 @@ pub const BANDSHELL: Model = Model {
     inside: None,
 };
 
+/// The Lantern Quarter's Music Hall: an octagon of tall arched windows
+/// under a tiled cone, blocked as three crossing boxes.
+pub const MUSIC_HALL: Model = Model {
+    name: "generated/music_hall",
+    blocks: &[
+        [-5.55, 5.55, -7.85, -3.25, 5.18],
+        [-2.3, 2.3, -11.11, 0.0, 5.18],
+        [-4.35, 4.35, -9.91, -1.2, 5.18],
+    ],
+    roofs: &[],
+    front: [0.0, 1.9],
+    inside: None,
+};
+
+/// The meeting hall, with its porch posts.
+pub const MEETING_HALL: Model = Model {
+    name: "generated/meeting_hall",
+    blocks: &[
+        [-6.1, 6.1, -10.1, 0.1, 4.16],
+        [-2.45, -2.15, 2.15, 2.5, 4.16],
+        [2.15, 2.45, 2.15, 2.5, 4.16],
+    ],
+    roofs: &[gable([0.0, -5.0], false, [6.8, 5.3], 4.16, 10.07)],
+    front: [0.0, 3.4],
+    inside: None,
+};
+
+/// The boathouse: its arch faces the water and its door is on its west
+/// side.
+pub const BOATHOUSE: Model = Model {
+    name: "generated/boathouse",
+    blocks: &[[-3.2, 3.2, -8.2, 0.2, 4.09]],
+    roofs: &[gable([0.0, -4.0], false, [3.55, 4.55], 3.62, 7.64)],
+    front: [-4.0, -3.0],
+    inside: None,
+};
+
+/// A Boardwalk Café; its deck in front does not block.
+pub const BOARDWALK_CAFE: Model = Model {
+    name: "generated/boardwalk_cafe",
+    blocks: &[[-4.1, 4.1, -6.1, 0.1, 3.27]],
+    roofs: &[gable([0.0, -3.0], true, [3.7, 4.3], 3.27, 8.11)],
+    front: [1.0, 1.6],
+    inside: None,
+};
+
+/// The bakery and its bread oven on its east side (+x).
+pub const BAKERY: Model = Model {
+    name: "generated/bakery",
+    blocks: &[[-3.1, 3.1, -8.1, 0.1, 6.12], [3.0, 4.55, -6.2, -3.05, 2.5]],
+    roofs: &[gable([0.0, -3.8], false, [3.6, 4.4], 6.12, 10.89)],
+    front: [-1.0, 0.9],
+    inside: None,
+};
+
+/// The smithy and its open forge on its east side (+x).
+pub const SMITHY: Model = Model {
+    name: "generated/smithy",
+    blocks: &[[-4.1, 4.1, -8.1, 0.1, 3.12], [4.0, 7.5, -7.8, -0.2, 2.4]],
+    roofs: &[gable([0.0, -4.0], false, [4.7, 4.3], 3.12, 9.03)],
+    front: [-1.0, 0.9],
+    inside: None,
+};
+
+/// The windmill's tower; its sails turn high over the ground in front.
+pub const WINDMILL: Model = Model {
+    name: "generated/windmill",
+    blocks: &[[-3.45, 3.45, -6.01, 0.1, 9.0]],
+    roofs: &[],
+    front: [0.0, 1.0],
+    inside: None,
+};
+
+pub const GREENHOUSE: Model = Model {
+    name: "generated/greenhouse",
+    blocks: &[[-2.25, 2.25, -8.05, 0.1, 2.4]],
+    roofs: &[gable([0.0, -4.0], false, [2.2, 4.0], 2.4, 3.6)],
+    front: [0.0, 0.9],
+    inside: None,
+};
+
+/// The clock tower at the front and the hall behind it.
+pub const CLOCK_TOWER: Model = Model {
+    name: "generated/clock_tower",
+    blocks: &[[-2.4, 2.4, -4.6, 0.2, 15.1], [-3.1, 3.1, -12.5, -4.4, 4.16]],
+    roofs: &[gable([0.0, -8.7], false, [3.6, 4.3], 4.16, 8.99)],
+    front: [0.0, 1.6],
+    inside: None,
+};
+
+/// The guild hall and its round turret at the front's east corner (+x).
+pub const GUILD_HALL: Model = Model {
+    name: "generated/guild_hall",
+    blocks: &[[5.0, 7.6, -1.0, 1.6, 12.0], [-6.1, 6.1, -10.1, 0.1, 6.12]],
+    roofs: &[gable([0.0, -4.7], true, [6.0, 6.5], 6.12, 11.98)],
+    front: [0.0, 0.9],
+    inside: None,
+};
+
+/// The lookout tower: four legs a walker passes between, under the
+/// platform.
+pub const LOOKOUT: Model = Model {
+    name: "generated/lookout",
+    blocks: &[
+        [-1.55, -1.05, -0.45, 0.05, 7.0],
+        [-1.55, -1.05, -3.05, -2.55, 7.0],
+        [1.05, 1.55, -0.45, 0.05, 7.0],
+        [1.05, 1.55, -3.05, -2.55, 7.0],
+    ],
+    roofs: &[],
+    front: [0.0, 1.0],
+    inside: Some([0.0, -1.5]),
+};
+
+/// A log cabin with its chimney and porch posts.
+pub const LOG_CABIN: Model = Model {
+    name: "generated/log_cabin",
+    blocks: &[
+        [-3.2, 3.2, -5.2, 0.2, 2.67],
+        [-4.05, -3.05, -3.1, -1.9, 2.4],
+        [-2.92, -2.68, 1.48, 1.72, 2.3],
+        [2.68, 2.92, 1.48, 1.72, 2.3],
+    ],
+    roofs: &[gable([0.0, -2.5], false, [3.6, 3.1], 2.23, 4.87)],
+    front: [-1.1, 1.0],
+    inside: None,
+};
+
+/// The open gazebo: eight posts round a floor, open at the front.
+pub const GAZEBO: Model = Model {
+    name: "generated/gazebo",
+    blocks: &[
+        [0.88, 1.11, -0.42, -0.18, 2.6],
+        [2.28, 2.52, -1.83, -1.59, 2.6],
+        [2.28, 2.52, -3.82, -3.58, 2.6],
+        [0.88, 1.11, -5.22, -4.98, 2.6],
+        [-1.11, -0.88, -5.22, -4.98, 2.6],
+        [-2.52, -2.28, -3.82, -3.58, 2.6],
+        [-2.52, -2.28, -1.83, -1.59, 2.6],
+        [-1.11, -0.88, -0.42, -0.18, 2.6],
+    ],
+    roofs: &[],
+    front: [0.0, 0.8],
+    inside: Some([0.0, -2.7]),
+};
+
+/// The thatched farmhouse; its thatch reaches well past the walls.
+pub const FARMHOUSE: Model = Model {
+    name: "generated/farmhouse",
+    blocks: &[[-5.1, 5.1, -6.1, 0.1, 3.12]],
+    roofs: &[gable([0.0, -3.0], true, [3.8, 5.8], 2.7, 6.62)],
+    front: [0.0, 0.9],
+    inside: None,
+};
+
+pub const COTTAGE_THATCH: Model = Model {
+    name: "generated/cottage_thatch",
+    blocks: &[[-3.1, 3.1, -5.1, 0.1, 3.12]],
+    roofs: &[gable([0.0, -2.5], true, [3.3, 3.8], 2.7, 6.02)],
+    front: [-1.0, 0.9],
+    inside: None,
+};
+
 /// One generated model placed in the town.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Instance {

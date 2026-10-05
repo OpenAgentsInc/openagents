@@ -17,8 +17,10 @@
 //! observatory, which block by their own boxes (`generated`).
 
 use super::generated::{
-    CORNER_SHOP, COTTAGE_TOWER, FOUNTAIN, Instance, L_HOUSE, MARKET_HALL, Model, OBSERVATORY,
-    ROW_TOWNHOUSE, TAVERN, TOWNHOUSE_BALCONY, TOWNHOUSE_JETTIED,
+    BAKERY, BOARDWALK_CAFE, BOATHOUSE, CLOCK_TOWER, CORNER_SHOP, COTTAGE_THATCH, COTTAGE_TOWER,
+    FARMHOUSE, FOUNTAIN, GAZEBO, GREENHOUSE, GUILD_HALL, Instance, L_HOUSE, LOG_CABIN, LOOKOUT,
+    MARKET_HALL, MEETING_HALL, MUSIC_HALL, Model, OBSERVATORY, ROW_TOWNHOUSE, SMITHY, TAVERN,
+    TOWNHOUSE_BALCONY, TOWNHOUSE_JETTIED, WINDMILL,
 };
 use super::{
     Collision, DOOR_HALF, EAST, NORTH, Piece, Placement, SOUTH, WALL_TOP, WEST, dress, height,
@@ -110,10 +112,10 @@ use Side::{East as E, North as N, South as S, West as W};
 use Style::{Plaster, Stone, Timber};
 
 /// Every building of the city, by district.
-pub const BUILDINGS: [Building; 57] = [
+pub const BUILDINGS: [Building; 62] = [
     // Main Street's far blocks, on its north side.
     building("corner shop", [-88.0, 55.0], 8.0, S, 46.0, 2, Plaster),
-    building("chandler", [-72.0, 55.0], 8.0, S, 46.0, 1, Timber),
+    building("bakehouse", [-72.0, 55.0], 8.0, S, 46.0, 1, Timber),
     building("tailor", [-56.0, 55.0], 8.0, S, 46.0, 2, Plaster),
     building("tea house", [-40.0, 55.0], 8.0, S, 46.0, 1, Plaster),
     building("print shop", [40.0, 55.0], 8.0, S, 46.0, 2, Plaster),
@@ -187,8 +189,25 @@ pub const BUILDINGS: [Building; 57] = [
     building("atelier", [92.0, 38.0], 8.0, S, 29.0, 1, Timber),
     building("pottery", [76.0, 20.0], 8.0, N, 29.0, 1, Plaster),
     building("atelier hall", [96.0, 20.0], 16.0, N, 29.0, 2, Plaster),
-    // Fernhollow's lookout hut.
+    // Fernhollow's lookout tower.
     building("lookout hut", [72.0, 77.0], 8.0, W, 64.0, 2, Timber),
+    // The second round, after the map: the clock tower on Library Way, the
+    // farm at the long meadow's edge on its lane south of Brownstone Row,
+    // the woodcutter's cottage in Walden Woods, and the cabin by the Fern
+    // Pond. Each holds a generated model (`STAND_INS`).
+    building("clock tower", [24.0, -21.0], 8.0, S, -29.0, 3, Stone),
+    building("windmill", [30.0, -103.0], 8.0, N, -96.0, 3, Plaster),
+    building("farmhouse", [14.0, -109.0], 8.0, N, -96.0, 1, Timber),
+    building(
+        "woodcutter's cottage",
+        [-106.0, -74.0],
+        8.0,
+        E,
+        -100.0,
+        1,
+        Timber,
+    ),
+    building("fern cabin", [88.0, 93.0], 8.0, S, 86.0, 1, Timber),
 ];
 
 /// The beekeeper's hut by the orchard.
@@ -236,8 +255,9 @@ const fn stand_in(
 /// and Stoop Lane, the open market hall on the Fountain Plaza, the tavern
 /// in the Lantern Quarter, terraces of row houses on Brownstone Row, the
 /// observatory on its hill, and the cottage with its tower in Walden Woods.
-pub const STAND_INS: [StandIn; 20] = [
+pub const STAND_INS: [StandIn; 34] = [
     stand_in("corner shop", "corner shop", &CORNER_SHOP, 0.0),
+    stand_in("bakehouse", "bakehouse", &BAKERY, 0.0),
     stand_in("tailor", "tailor", &TOWNHOUSE_BALCONY, 0.0),
     stand_in("tea house", "tea house", &TOWNHOUSE_JETTIED, 0.0),
     stand_in("print shop", "print shop", &CORNER_SHOP, 0.0),
@@ -247,7 +267,16 @@ pub const STAND_INS: [StandIn; 20] = [
     stand_in("townhouse 3", "townhouse 3", &TOWNHOUSE_BALCONY, 0.0),
     stand_in("townhouse 4", "townhouse 4", &TOWNHOUSE_BALCONY, 0.0),
     stand_in("townhouse 6", "townhouse 6", &TOWNHOUSE_JETTIED, 0.0),
-    stand_in("music hall", "music hall", &TAVERN, 0.0),
+    // The Lantern Quarter: the round Music Hall, the meeting hall back from
+    // Hearth Road behind its porch, the tavern on its corner, and the guild
+    // hall, a little south so its turret clears the Music Hall.
+    stand_in("music hall", "music hall", &MUSIC_HALL, 0.0),
+    StandIn {
+        setback: 2.0,
+        ..stand_in("meeting hall", "meeting hall", &MEETING_HALL, 0.0)
+    },
+    stand_in("the lantern", "the lantern", &TAVERN, 0.0),
+    stand_in("guild hall", "guild hall", &GUILD_HALL, -2.0),
     stand_in("the snug", "the snug", &L_HOUSE, 0.0),
     stand_in("brownstone 3 west", "brownstone 3", &ROW_TOWNHOUSE, -2.1),
     stand_in("brownstone 3 east", "brownstone 3", &ROW_TOWNHOUSE, 2.1),
@@ -262,6 +291,42 @@ pub const STAND_INS: [StandIn; 20] = [
     },
     stand_in("quiet cabin", "quiet cabin", &COTTAGE_TOWER, 0.0),
     stand_in("studio", "studio", &TOWNHOUSE_BALCONY, 0.0),
+    // The Boardwalk Cafés face each other across Studio Road, their decks
+    // to the street.
+    StandIn {
+        setback: 0.6,
+        ..stand_in("boardwalk cafe east", "atelier", &BOARDWALK_CAFE, 0.0)
+    },
+    StandIn {
+        setback: 0.6,
+        ..stand_in("boardwalk cafe west", "pottery", &BOARDWALK_CAFE, 0.0)
+    },
+    stand_in("smithy", "forge", &SMITHY, -2.0),
+    stand_in("sketch cabin", "sketch cabin", &LOG_CABIN, 0.0),
+    stand_in("lookout", "lookout hut", &LOOKOUT, 0.0),
+    stand_in("clock tower", "clock tower", &CLOCK_TOWER, 0.0),
+    stand_in("windmill", "windmill", &WINDMILL, 0.0),
+    stand_in("farmhouse", "farmhouse", &FARMHOUSE, 0.0),
+    stand_in(
+        "woodcutter's cottage",
+        "woodcutter's cottage",
+        &COTTAGE_THATCH,
+        0.0,
+    ),
+    stand_in("fern cabin", "fern cabin", &LOG_CABIN, 0.0),
+];
+
+/// Generated models that stand on open ground rather than in a building's
+/// place: the boathouse on Lantern Pond's north bank, its arch to the
+/// water; the glasshouse in the community garden behind Brownstone Row;
+/// and the gazebo on the commons' east lawn.
+pub const GROUNDS: [Instance; 3] = [
+    Instance {
+        scale: 0.85,
+        ..Instance::new("boathouse", &BOATHOUSE, [3.5, 35.4], PI)
+    },
+    Instance::new("glasshouse", &GREENHOUSE, [-52.0, -58.0], PI),
+    Instance::new("gazebo", &GAZEBO, [30.0, 26.0], -FRAC_PI_2),
 ];
 
 /// The Fountain Plaza's fountain, on the plaza's west half clear of
@@ -327,18 +392,35 @@ pub(super) fn kit_rects() -> impl Iterator<Item = ([f32; 2], [f32; 2])> {
     all().filter(|b| !replaced(b)).map(|b| b.rect)
 }
 
-/// The city's generated models: the stand-ins and the plaza's fountain.
+/// The city's generated models: the stand-ins, the plaza's fountain, and
+/// the models on open ground ([`GROUNDS`]).
 #[must_use]
 pub fn instances() -> Vec<Instance> {
     STAND_INS
         .iter()
         .map(place)
         .chain(std::iter::once(PLAZA_FOUNTAIN))
+        .chain(GROUNDS)
         .collect()
 }
 
+/// The ground each of [`GROUNDS`] covers: the box around its blocks.
+fn grounds_rects() -> impl Iterator<Item = ([f32; 2], [f32; 2])> {
+    GROUNDS.iter().map(|i| {
+        let (mut min, mut max) = ([f32::INFINITY; 2], [f32::NEG_INFINITY; 2]);
+        for (f, _) in i.blocks() {
+            min = [min[0].min(f.min[0]), min[1].min(f.min[1])];
+            max = [max[0].max(f.max[0]), max[1].max(f.max[1])];
+        }
+        (
+            [(min[0] + max[0]) / 2.0, (min[1] + max[1]) / 2.0],
+            [(max[0] - min[0]) / 2.0, (max[1] - min[1]) / 2.0],
+        )
+    })
+}
+
 /// The city's streets: each a segment and its half width, m.
-pub const STREETS: [([f32; 2], [f32; 2], f32); 19] = [
+pub const STREETS: [([f32; 2], [f32; 2], f32); 23] = [
     // Main Street's far blocks.
     ([-100.0, 46.0], [-34.0, 46.0], 1.6),
     ([44.0, 46.0], [104.0, 46.0], 1.6),
@@ -371,6 +453,12 @@ pub const STREETS: [([f32; 2], [f32; 2], f32); 19] = [
     ([-80.0, 46.0], [-80.0, 77.0], 1.1),
     // Around the Thinking Pond.
     ([-100.0, -56.0], [-107.0, -56.0], 1.0),
+    // The farm lane south from Brownstone Row to the windmill and the
+    // farmhouse, and the path from Fernhollow's lookout to the fern cabin.
+    ([20.0, -78.0], [20.0, -96.0], 1.0),
+    ([8.0, -96.0], [34.0, -96.0], 1.0),
+    ([64.0, 77.0], [66.0, 82.0], 0.9),
+    ([66.0, 82.0], [87.0, 86.0], 0.9),
 ];
 
 /// The Fountain Plaza's paving: center and half extents, m.
@@ -380,10 +468,13 @@ pub const GARDEN: ([f32; 2], [f32; 2]) = ([-66.0, -54.0], [6.0, 5.0]);
 /// The orchard's rows north of Main Street.
 pub const ORCHARD: ([f32; 2], [f32; 2]) = ([-100.0, 76.0], [12.0, 9.0]);
 
-/// The footprints the city reserves: its buildings, the plaza, the garden,
-/// and the orchard.
+/// The footprints the city reserves: its buildings, the models on open
+/// ground, the plaza, the garden, and the orchard.
 pub fn reserved() -> impl Iterator<Item = ([f32; 2], [f32; 2])> {
-    all().map(|b| b.rect).chain([PLAZA, GARDEN, ORCHARD])
+    all()
+        .map(|b| b.rect)
+        .chain(grounds_rects())
+        .chain([PLAZA, GARDEN, ORCHARD])
 }
 
 /// The centers of a building's doorways on its wall line: a double door in
@@ -678,17 +769,22 @@ fn market(out: &mut Vec<Placement>) {
     for (dx, dz, yaw) in [(-3.6, 0.0, FRAC_PI_2), (3.6, 0.0, FRAC_PI_2)] {
         prop(out, "generated/flower_box", [fx + dx, fz + dz], yaw);
     }
-    // The market hall's long tables under its arcade, clear of its open
-    // bay.
+    // The market hall's stock under its arcade, clear of its open bay: a
+    // hand cart of sacks, barrels, and crates.
     let hall = place(
         STAND_INS
             .iter()
             .find(|s| s.building == "market hall")
             .unwrap(),
     );
-    for local in [[-3.0, -4.0], [3.6, -4.0]] {
-        prop(out, "props/Table_Large", hall.world(local), 0.0);
+    prop(out, "generated/hand_cart", hall.world([-3.0, -4.2]), 1.2);
+    for (k, local) in [[3.0, -4.6], [4.0, -3.6], [-4.6, -6.4]]
+        .into_iter()
+        .enumerate()
+    {
+        prop(out, "generated/barrel", hall.world(local), 0.9 * k as f32);
     }
+    prop(out, "village/Prop_Crate", hall.world([3.6, -6.0]), 0.3);
     for (i, x) in [-80.0_f32, -48.0, 48.0, 80.0].into_iter().enumerate() {
         tree(
             out,
@@ -750,7 +846,10 @@ fn lanterns(out: &mut Vec<Placement>) {
         };
         wall_lantern(out, d, b.door.outward(), along);
     }
-    for b in [BUILDINGS[18], BUILDINGS[20]] {
+    for b in [BUILDINGS[18], BUILDINGS[20]]
+        .iter()
+        .filter(|b| !replaced(b))
+    {
         let ([cx, cz], _) = b.rect;
         prop(out, "props/Table_Large", [cx + 1.0, cz], FRAC_PI_2);
     }
@@ -758,7 +857,7 @@ fn lanterns(out: &mut Vec<Placement>) {
     let tavern = place(
         STAND_INS
             .iter()
-            .find(|s| s.building == "music hall")
+            .find(|s| s.building == "the lantern")
             .unwrap(),
     );
     for (k, local) in [[-4.8, 1.0], [-4.0, 1.3], [4.6, 1.1]]
@@ -795,7 +894,6 @@ fn brownstones(out: &mut Vec<Placement>) {
             );
         }
     }
-    super::garden_plot(out, GARDEN, 60);
 }
 
 /// The college's furniture, the observatory's bench, and the long meadow's
@@ -839,21 +937,26 @@ fn workshops(out: &mut Vec<Placement>) {
     prop(out, "props/Workbench", [80.0, 2.6], 0.0);
     prop(out, "props/Anvil", [72.0, -2.6], 0.4);
     prop(out, "props/Workbench", [80.0, 26.4], PI);
+    // The Sculpture Walk: a statue, a bronze ring on its cairn, a sundial,
+    // and a second statue on brick pavers, facing the walk.
     for (i, z) in [14.0_f32, 20.0, 26.0, 32.0].into_iter().enumerate() {
         let at = [58.0, z];
         out.push(Placement::new("village/Floor_Brick", at, 0.0, Collision::None).lift(0.03));
-        let model = ["nature/Rock_Medium_3", "nature/Rock_Medium_1"][i % 2];
+        let model = [
+            "generated/statue",
+            "generated/sculpture",
+            "generated/sundial",
+            "generated/statue",
+        ][i];
         out.push(
-            Placement::new(model, at, noise(i as u32, 94) * TAU, Collision::Bounds)
-                .scale(0.45)
-                .lift(0.03),
+            Placement::new(model, at, WEST + 0.3 * (i as f32 - 1.5), Collision::Bounds).lift(0.03),
         );
     }
 }
 
 /// Fernhollow: pines around the Fern Pond, ferns, and mushrooms.
 fn fernhollow(out: &mut Vec<Placement>) {
-    for (i, at) in [[100.0, 82.0], [84.0, 88.0], [104.0, 66.0], [80.0, 64.0]]
+    for (i, at) in [[100.0, 82.0], [78.0, 90.0], [104.0, 66.0], [80.0, 64.0]]
         .into_iter()
         .enumerate()
     {
@@ -869,30 +972,33 @@ fn fernhollow(out: &mut Vec<Placement>) {
     dress(out, "nature/Mushroom_Common", [88.0, 84.0], 0.6, 1.3);
 }
 
-/// The orchard's rows of young fruit trees and the beekeeper's hives.
+/// The orchard's rows of fruit trees and the beekeeper's hives.
 fn orchard(out: &mut Vec<Placement>) {
     let ([ox, oz], [ohx, ohz]) = ORCHARD;
     for i in 0..4 {
         for j in 0..3 {
+            // Rows a little uneven, as an old orchard's are.
             let at = [
-                ox - ohx + 3.0 + 6.0 * i as f32,
-                oz - ohz + 3.0 + 6.0 * j as f32,
+                ox - ohx + 3.0 + 6.0 * i as f32 + noise(i * 3 + j, 96) - 0.5,
+                oz - ohz + 3.0 + 6.0 * j as f32 + noise(i * 3 + j, 98) - 0.5,
             ];
-            let model = if (i + j) % 2 == 0 {
-                "nature/CommonTree_5"
-            } else {
-                "nature/CommonTree_3"
-            };
-            tree(out, model, at, noise(i * 3 + j, 97) * TAU, 0.6);
+            let scale = 0.9 + 0.3 * noise(i * 3 + j, 99);
+            tree(
+                out,
+                "generated/fruit_tree",
+                at,
+                noise(i * 3 + j, 97) * TAU,
+                scale,
+            );
         }
     }
     let ([bx, bz], [_, bhz]) = BEEKEEPER.rect;
-    for k in 0..4 {
+    for k in 0..2 {
         prop(
             out,
-            "village/Prop_Crate",
-            [bx - 1.5 + 2.0 * k as f32, bz + bhz + 1.6],
-            0.2 * k as f32,
+            "generated/beehives",
+            [bx - 1.0 + 3.4 * k as f32, bz + bhz + 1.8],
+            0.1 * k as f32,
         );
     }
     dress(out, "nature/Flower_4_Group", [bx + 6.0, bz + 6.0], 0.3, 1.0);
@@ -902,10 +1008,21 @@ fn orchard(out: &mut Vec<Placement>) {
 /// the Lantern Quarter, and the Thinking Pond's bench.
 fn woods(out: &mut Vec<Placement>) {
     prop(out, "props/Bench", [-107.4, -58.0], WEST);
-    let models = ["nature/Pine_1", "nature/CommonTree_4", "nature/Pine_2"];
+    // Dark spruces and pale birches among the kit's pines: Walden's own
+    // trees, cheaper than the kit's, so the woods stand thicker.
+    let models = [
+        "nature/Pine_1",
+        "generated/spruce_low",
+        "generated/birch_low",
+        "nature/CommonTree_4",
+        "generated/spruce_low",
+        "generated/birch_low",
+        "nature/Pine_2",
+        "generated/spruce_low",
+    ];
     let mut placed = 0;
-    for n in 0..400_u32 {
-        if placed == 20 {
+    for n in 0..600_u32 {
+        if placed == 34 {
             break;
         }
         let x = -132.0 + 52.0 * noise(n, 98);

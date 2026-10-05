@@ -66,6 +66,25 @@ MODELS = [
     ("buildings/l_house.glb", "l_house"),
     ("buildings/cottage_tower.glb", "cottage_tower"),
 ] + [
+    (f"buildings/{name}.glb", name)
+    for name in [
+        "music_hall",
+        "meeting_hall",
+        "boathouse",
+        "boardwalk_cafe",
+        "bakery",
+        "smithy",
+        "windmill",
+        "greenhouse",
+        "clock_tower",
+        "guild_hall",
+        "lookout",
+        "log_cabin",
+        "gazebo",
+        "farmhouse",
+        "cottage_thatch",
+    ]
+] + [
     ("kit/roof_round_tiles_8x10.glb", "roof_round_tiles_8x10"),
 ] + [
     (f"street/{name}.glb", name)
@@ -84,6 +103,36 @@ MODELS = [
         "bunting",
         "pine_low",
         "oak_low",
+    ]
+] + [
+    (f"town/{name}.glb", name)
+    for name in [
+        "statue",
+        "sculpture",
+        "sundial",
+        "planter",
+        "garden_arch",
+        "picket_fence",
+        "garden_gate",
+        "flower_bed",
+        "veg_bed",
+        "rail_fence",
+        "haystack",
+        "hay_bales",
+        "beehives",
+        "rowboat",
+        "dock",
+        "reeds",
+        "fallen_log",
+        "mossy_rock",
+        "mushrooms",
+        "stump",
+        "cafe_table",
+        "birch_low",
+        "poplar_low",
+        "spruce_low",
+        "fruit_tree",
+        "bush_round",
     ]
 ]
 

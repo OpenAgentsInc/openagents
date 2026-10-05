@@ -23,6 +23,7 @@ use verse_world::social::everglade::DESK_SEATS;
 
 pub mod city;
 pub mod generated;
+pub mod parks;
 pub mod streets;
 
 /// How a placement blocks walking.
@@ -232,7 +233,7 @@ pub fn board_blockers() -> Vec<Footprint> {
 /// Pond in Fernhollow; the Fountain Plaza's fountain is a generated model
 /// (`city::PLAZA_FOUNTAIN`).
 pub const PONDS: [([f32; 2], f32); 4] = [
-    ([-1.0, 29.0], 4.5),
+    ([-1.0, 29.0], 6.0),
     ([6.0, -42.0], 4.0),
     ([-114.0, -64.0], 5.0),
     ([90.0, 76.0], 4.5),
@@ -388,8 +389,10 @@ pub const PAVED: [([f32; 2], [f32; 2], f32); 6] = [
     ([-11.0, -2.0], [-11.0, 46.0], 1.8),
 ];
 /// The cobbled squares: center and half extents, m. The Fountain Plaza and
-/// the market hall's forecourt.
-pub const PAVED_SQUARES: [([f32; 2], [f32; 2]); 1] = [([0.0, 74.5], [11.0, 10.5])];
+/// the market hall's forecourt, and the little square before the clock
+/// tower on Library Way.
+pub const PAVED_SQUARES: [([f32; 2], [f32; 2]); 2] =
+    [([0.0, 74.5], [11.0, 10.5]), ([24.0, -29.0], [6.5, 3.0])];
 
 /// Every road of the town and the city ([`city::roads`]), with each city
 /// building's walk.
@@ -1198,12 +1201,9 @@ fn commons(out: &mut Vec<Placement>) {
         }
     }
     let ([px, pz], r) = PONDS[0];
-    // Benches face the water from the south, the east, and the north.
-    for (at, yaw) in [
-        ([px, pz - r - 2.6], 0.0),
-        ([px + r + 2.6, pz], -FRAC_PI_2),
-        ([px, pz + r + 2.6], PI),
-    ] {
+    // Benches face the water from the south and the east; the boathouse
+    // stands on the north bank (`city::GROUNDS`).
+    for (at, yaw) in [([px, pz - r - 2.6], 0.0), ([px + r + 2.6, pz], -FRAC_PI_2)] {
         prop(out, "props/Bench", at, yaw + PI);
     }
     // The bandshell faces the pond across the lawn (`generated`), with a
@@ -1227,7 +1227,7 @@ fn commons(out: &mut Vec<Placement>) {
         };
         dress(out, model, at, noise(i as u32, 43) * TAU, 1.0);
     }
-    tree(out, "nature/CommonTree_1", [-6.0, 41.0], 0.4, 1.0);
+    tree(out, "nature/CommonTree_4", [-6.0, 41.0], 0.4, 1.0);
     tree(out, "nature/CommonTree_3", [22.0, 38.0], 2.2, 0.9);
 }
 
@@ -1906,6 +1906,31 @@ fn glade(out: &mut Vec<Placement>) {
     for k in 0..TOWN_RING_TREES {
         let angle = (k as f32 + 0.4 * noise(k, 1)) / TOWN_RING_TREES as f32 * TAU;
         let r = 146.0 + (k % 3) as f32 * 9.0 + 4.0 * noise(k, 2);
+        // Every third place keeps a kit tree; the others hold a trio of the
+        // forest's cheap trees, which the edge stands around them match
+        // (`streets::woods`).
+        if k % 3 != 0 {
+            for i in 0..3_u32 {
+                let a = noise(k * 3 + i, 10) * TAU;
+                let d = 2.5 + 3.0 * noise(k * 3 + i, 11);
+                let model = [
+                    "generated/spruce_low",
+                    "generated/oak_low",
+                    "generated/birch_low",
+                ][((k + i) % 3) as usize];
+                out.push(
+                    Placement::new(
+                        model,
+                        [angle.cos() * r + a.cos() * d, angle.sin() * r + a.sin() * d],
+                        noise(k * 3 + i, 12) * TAU,
+                        Collision::Core(0.35),
+                    )
+                    .scale(1.0 + 0.4 * noise(k * 3 + i, 13))
+                    .lift(-0.1),
+                );
+            }
+            continue;
+        }
         out.push(
             Placement::new(
                 TREES[k as usize % TREES.len()],

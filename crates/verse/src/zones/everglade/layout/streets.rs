@@ -26,6 +26,9 @@ const LANE_LAMP_STEP: f32 = 22.0;
 /// the trees in each.
 const BELT_STANDS: u32 = 64;
 const STAND_TREES: u32 = 11;
+/// Smaller stands at the clearing's edge, round the tree ring.
+const EDGE_STANDS: u32 = 40;
+const EDGE_STAND_TREES: u32 = 7;
 /// The lanes that get lamps too, besides the paved streets: Stoop Lane,
 /// Lantern Road, Foundry Road, Studio Road, and the Foundry's east road.
 const LIT_LANES: [([f32; 2], [f32; 2], f32); 5] = [
@@ -75,6 +78,7 @@ pub fn build(out: &mut Vec<Placement>) {
     wells(out, &mut placed);
     ponds(out);
     orchard_wall(out, &mut placed);
+    super::parks::build(out, &mut placed);
     meadows(out, &mut placed);
     park(out, &mut placed);
     woods(out);
@@ -82,7 +86,7 @@ pub fn build(out: &mut Vec<Placement>) {
 
 /// Places `model` at `at` when the ground is clear for `r` meters and no
 /// earlier piece stands there; returns whether it did.
-fn try_put(
+pub(super) fn try_put(
     out: &mut Vec<Placement>,
     placed: &mut Vec<([f32; 2], f32)>,
     placement: Placement,
@@ -263,7 +267,17 @@ fn orchard_wall(out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>) {
     let (west, east, south, north) = (ox - ohx, ox + ohx, oz - ohz - 1.0, oz + ohz);
     let mut x = west + 1.0;
     while x < east {
-        let wall = Placement::new("generated/stone_wall", [x, south], 0.0, Collision::Bounds);
+        // A gate between stone piers in the middle of the south side.
+        let wall = if (x - (ox - 1.0)).abs() < 0.5 {
+            Placement::new(
+                "generated/garden_gate",
+                [x, south],
+                0.0,
+                Collision::Opening(0.65),
+            )
+        } else {
+            Placement::new("generated/stone_wall", [x, south], 0.0, Collision::Bounds)
+        };
         try_put(out, placed, wall, 1.05);
         x += 2.0;
     }
@@ -316,7 +330,7 @@ fn meadows(out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>) {
 /// lawn, as the map draws them.
 fn park(out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>) {
     let models = [
-        "nature/CommonTree_1",
+        "nature/CommonTree_5",
         "nature/CommonTree_3",
         "nature/CommonTree_4",
     ];
@@ -354,25 +368,40 @@ fn park(out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>) {
 /// cheap low-poly trees past the kit's.
 fn woods(out: &mut Vec<Placement>) {
     // Stands of trees around hashed centers, so the forest reads as groves
-    // and glades rather than an even sprinkle.
-    for n in 0..BELT_STANDS * STAND_TREES {
-        let stand = n / STAND_TREES;
-        let angle = (stand as f32 + 0.5 * noise(stand, 145)) / BELT_STANDS as f32 * TAU;
-        let r = 172.0 + 58.0 * noise(stand, 146);
-        let spread = 6.0 + 9.0 * noise(stand, 147);
-        let around = noise(n, 140) * TAU;
-        let d = spread * noise(n, 141).sqrt();
+    // and glades rather than an even sprinkle: the belt, and an inner edge
+    // of smaller stands round the tree ring, so the woods close in on the
+    // town as the map draws them.
+    let belt = (0..BELT_STANDS * STAND_TREES).map(|n| (n, n / STAND_TREES, false));
+    let edge = (0..EDGE_STANDS * EDGE_STAND_TREES).map(|n| (n, n / EDGE_STAND_TREES, true));
+    for (n, stand, inner) in belt.chain(edge) {
+        let (stands, near, deep, salt) = if inner {
+            (EDGE_STANDS, 146.0, 14.0, 300)
+        } else {
+            (BELT_STANDS, 172.0, 58.0, 0)
+        };
+        let angle = (stand as f32 + 0.5 * noise(stand, 145 + salt)) / stands as f32 * TAU;
+        let r = near + deep * noise(stand, 146 + salt);
+        let spread = 6.0 + 9.0 * noise(stand, 147 + salt);
+        let around = noise(n, 140 + salt) * TAU;
+        let d = spread * noise(n, 141 + salt).sqrt();
         let (x, z) = (
             angle.cos() * r + around.cos() * d,
             angle.sin() * r + around.sin() * d,
         );
-        if x.abs() > HALF_EXTENT - 6.0 || z.abs() > HALF_EXTENT - 6.0 {
+        if x.abs() > HALF_EXTENT - 6.0
+            || z.abs() > HALF_EXTENT - 6.0
+            || x.hypot(z) < CLEARING_RADIUS + 3.0
+        {
             continue;
         }
-        let model = if noise(n, 142) < 0.8 {
-            "generated/pine_low"
-        } else {
-            "generated/oak_low"
+        let n = n + salt * 16;
+        // Mostly pines, with spruces, oaks, birches, and the odd poplar.
+        let model = match noise(n, 142) {
+            r if r < 0.5 => "generated/pine_low",
+            r if r < 0.68 => "generated/spruce_low",
+            r if r < 0.84 => "generated/oak_low",
+            r if r < 0.95 => "generated/birch_low",
+            _ => "generated/poplar_low",
         };
         out.push(
             Placement::new(model, [x, z], noise(n, 143) * TAU, Collision::Core(0.35))
@@ -402,10 +431,13 @@ fn woods(out: &mut Vec<Placement>) {
             if x.hypot(z) > 200.0 || !super::open_ground(x, z) {
                 continue;
             }
-            let model = if (planted + k) % 3 == 0 {
-                "generated/oak_low"
-            } else {
-                "generated/pine_low"
+            // Walden's groves (the first two) are spruce and birch among
+            // pines; Fernhollow's are spruce and pine, darker and denser.
+            let model = match ((planted + k) % 4, k < 2) {
+                (0, true) => "generated/birch_low",
+                (0, false) | (2, _) => "generated/spruce_low",
+                (1, true) => "generated/oak_low",
+                _ => "generated/pine_low",
             };
             out.push(
                 Placement::new(
