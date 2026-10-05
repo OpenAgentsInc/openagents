@@ -18,7 +18,7 @@ pub struct Health {
     pub invalid_period: u64,
     pub map_errors: u64,
     pub busy_frames: u64,
-    pub coalesced: u64,
+    pub batched_completions: u64,
     pub invalid_examples: [Option<[u64; 4]>; 4],
 }
 #[derive(Debug, PartialEq)]
@@ -109,10 +109,10 @@ impl Timer {
             health: Health::default(),
         })
     }
-    pub fn begin(&mut self, device: &wgpu::Device) -> (Option<usize>, Option<Sample>) {
+    pub fn begin(&mut self, device: &wgpu::Device) -> (Option<usize>, [Option<Sample>; 3]) {
         let _ = device.poll(wgpu::PollType::Poll);
-        let mut latest: Option<Sample> = None;
-        for slot in &mut self.slots {
+        let mut completed = [None; 3];
+        for (index, slot) in self.slots.iter_mut().enumerate() {
             let Some((frame, has_shadow, receiver)) = &slot.pending else {
                 continue;
             };
@@ -129,12 +129,7 @@ impl Timer {
                         match sample(*frame, ticks, self.period) {
                             Ok(value) => {
                                 self.health.valid = self.health.valid.saturating_add(1);
-                                if latest.is_some() {
-                                    self.health.coalesced = self.health.coalesced.saturating_add(1);
-                                }
-                                if latest.is_none_or(|previous| previous.frame < value.frame) {
-                                    latest = Some(value);
-                                }
+                                completed[index] = Some(value);
                             }
                             Err(reason) => self.health.reject(reason, ticks),
                         }
@@ -158,7 +153,10 @@ impl Timer {
         if free.is_none() {
             self.health.busy_frames = self.health.busy_frames.saturating_add(1);
         }
-        (free, latest)
+        if completed.iter().flatten().count() > 1 {
+            self.health.batched_completions = self.health.batched_completions.saturating_add(1);
+        }
+        (free, completed)
     }
     pub fn health(&self) -> Health {
         self.health
@@ -264,8 +262,12 @@ mod tests {
                 timeout: Some(std::time::Duration::from_secs(5)),
             })
             .unwrap();
-        let (_, sample) = timer.begin(&device);
-        let sample = sample.expect("Timestamp readback produces a valid sample");
+        let (_, samples) = timer.begin(&device);
+        let sample = samples
+            .into_iter()
+            .flatten()
+            .next()
+            .expect("Timestamp readback produces a valid sample");
         assert!(sample.total_ms > 0., "GPU timestamps must advance");
         eprintln!(
             "Timestamp probe: {}",

@@ -95,7 +95,7 @@ pub(crate) struct Profile {
 impl Profile {
     pub fn render(&mut self, timing: super::FrameTimings, present_ms: f64) {
         self.gpu_health = timing.gpu_health;
-        if let Some(sample) = timing.gpu_sample {
+        for sample in timing.gpu_samples.into_iter().flatten() {
             for (name, value) in [
                 ("gpu_shadow_ms", sample.shadow_ms),
                 ("gpu_world_ms", sample.world_ms),
@@ -367,6 +367,32 @@ mod tests {
         assert_eq!(movement_axes(8.), [0., 1.]);
         assert_eq!(movement_axes(f64::NAN), [0., 0.]);
         assert_eq!(movement_axes(-1.), [0., 0.]);
+    }
+    #[test]
+    fn all_completed_gpu_samples_are_retained_in_one_render_update() {
+        let mut profile = Profile::default();
+        let sample = |frame, total_ms| super::super::gpu_timing::Sample {
+            frame,
+            shadow_ms: total_ms / 4.,
+            world_ms: total_ms / 2.,
+            overlay_ms: total_ms / 4.,
+            total_ms,
+        };
+        profile.render(
+            super::super::FrameTimings {
+                gpu_samples: [
+                    Some(sample(8, 1.)),
+                    Some(sample(6, 9.)),
+                    Some(sample(7, 3.)),
+                ],
+                ..Default::default()
+            },
+            0.,
+        );
+        let summary = profile.summary();
+        assert_eq!(summary["renderer_phase_ms"]["gpu_total_ms"]["samples"], 3);
+        assert_eq!(summary["renderer_phase_ms"]["gpu_total_ms"]["median"], 3.);
+        assert_eq!(summary["renderer_phase_ms"]["gpu_total_ms"]["max"], 9.);
     }
     #[test]
     fn profile_samples_are_bounded_and_percentiles_preserve_units() {

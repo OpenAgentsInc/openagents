@@ -134,7 +134,7 @@ fn ground_lift(model: &verse_engine::assets::Model, palette: &Pose) -> f32 {
 }
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct FrameTimings {
-    pub gpu_sample: Option<gpu_timing::Sample>,
+    pub gpu_samples: [Option<gpu_timing::Sample>; 3],
     pub gpu_health: Option<gpu_timing::Health>,
     pub gpu_timestamps_available: bool,
     pub prepare_ms: f64,
@@ -1675,11 +1675,11 @@ impl Renderer {
             }
         }
         let prepared = Instant::now();
-        let (gpu_slot, gpu_sample) = self
+        let (gpu_slot, gpu_samples) = self
             .gpu_timer
             .as_mut()
             .map(|timer| timer.begin(&self.device))
-            .unwrap_or((None, None));
+            .unwrap_or((None, [None; 3]));
         let mut instance_cursor = 0u32;
         let mut shadow_draws = 0;
         let world_draws = std::cell::Cell::new(0usize);
@@ -2075,7 +2075,7 @@ impl Renderer {
         let submitted = Instant::now();
         if !capture {
             self.last_timings = FrameTimings {
-                gpu_sample,
+                gpu_samples,
                 gpu_timestamps_available: self.gpu_timer.is_some(),
                 gpu_health: self.gpu_timer.as_ref().map(|timer| timer.health()),
                 prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
@@ -2121,7 +2121,7 @@ impl Renderer {
         drop(mapped);
         self.readback.unmap();
         self.last_timings = FrameTimings {
-            gpu_sample,
+            gpu_samples,
             gpu_timestamps_available: self.gpu_timer.is_some(),
             gpu_health: self.gpu_timer.as_ref().map(|timer| timer.health()),
             prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
