@@ -1,0 +1,22 @@
+{
+  "players": 20,
+  "hostile_npcs": 40,
+  "cultist_health": 20000,
+  "native_clients": 1,
+  "headless_clients": 19,
+  "seconds": 45,
+  "persistent_storage": false,
+  "gpu_timestamps_requested": false,
+  "native_movement_frames_requested": true,
+  "compiled_revisions": {
+    "host": "f5cac837a6d79ef1761ef787cbc8b6f7572039cb",
+    "headless_clients": "f5cac837a6d79ef1761ef787cbc8b6f7572039cb",
+    "native_client": "6ef79213ce"
+  },
+  "fixture_revision": "6ef79213ce8a8cc52e1a9423a21dd3b0b11c84c5",
+  "limits": [
+    "NPC health is raised in the authored load scene to sustain spell and AI work.",
+    "Headless player connections do not establish rendering performance on their machines.",
+    "Native player and load generator share one host machine."
+  ]
+}
