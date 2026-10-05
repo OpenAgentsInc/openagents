@@ -154,7 +154,7 @@ Evidence labels:
 | V08 | P1 | Grant-based admission and transport work have bounded policies. | Code | World access and transport | Complete ([#10602](https://github.com/OpenAgentsInc/openagents/issues/10602)) |
 | V09 | P1 | Persistent accounts own recoverable resident and dormant characters. | Code | Persistent character domain | Complete ([#10603](https://github.com/OpenAgentsInc/openagents/issues/10603)) |
 | V10 | P1 | CPU, GPU, capture, and transport costs have separate measurement contracts. | Code, recorded | Profiling and acceptance | Complete ([#10619](https://github.com/OpenAgentsInc/openagents/issues/10619)) |
-| V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities | Open |
+| V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities | Complete ([#10623](https://github.com/OpenAgentsInc/openagents/issues/10623)) |
 | V12 | P1 | Whole-pack preparation is not large-world asset streaming. | Code, gap | Content loading and residency | Open |
 | V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload | Open |
 | V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics | Open |
@@ -875,33 +875,86 @@ process CPU is unavailable. The PBR renderer and realm host do not yet expose
 all of this chamber-specific attribution. V11, V18, V19, and V24 own the common
 quality, population, operational, and platform acceptance work.
 
-### V11: Rendering paths need common budgets and graceful degradation
+### V11: Shared renderer budgets and bounded device recovery are implemented
 
-[`pbr::gpu`](../../crates/verse/src/pbr/gpu.rs) consumes engine quality tiers.
-The original chamber's [`imported::Renderer`](../../crates/verse/src/imported/mod.rs)
-uses fixed four-sample pipelines and its own lighting/shadow setup instead.
-[`ResolvedInstances`](../../crates/verse-engine/src/presentation.rs) caps one
-extracted frame at 1,024 instances. The latest change raises that limit from 256
-and indexes attachment parents instead of scanning the full frame for each
-mount. Renderable instances include equipment and effects as well as actors,
-so player capacity alone does not determine fit.
+Resolved for the measured native rendering profile in
+[#10623](https://github.com/OpenAgentsInc/openagents/issues/10623).
+[`quality::Budget`](../../crates/verse-engine/src/quality.rs) declares common
+instance, optional-effect, surface, target, geometry, texture, and buffer limits.
+The chamber and physical adapters probe actual renderable/filterable/blendable
+formats and supported color/depth multisampling. `VERSE_QUALITY` can lower the
+supported tier. Low quality uses one sample, 128 optional effects, and six
+256-pixel chamber shadow faces; high uses four samples, 768 optional effects,
+and 24 512-pixel faces. Physical lighting retains its tier-specific cascades.
+Managed payload reservations precede initial GPU allocations and target resize;
+a rejected resize preserves the active extent. Timings remain measured targets,
+not frame cancellation deadlines.
 
-The chamber already has conservative frustum bounds, reusable world/shadow
-bundles, and exact frozen-caster caches. It evaluates actor palettes and bounds
-before visibility rejection, retains per-instance palette buffers, and submits
-actor/model surfaces independently. There is no authored mesh or animation LOD
-contract in the reviewed pack/frame path.
+[`VisualSelection`](../../crates/verse-engine/src/presentation.rs) admits up to
+8,192 source instances and selects optional visuals before the 1,024-instance
+extraction cap. Smaller priorities and then source order determine retention.
+Every source value is validated, including omitted effects. Actor roots and
+mounts cannot be classified as optional. The chamber adapter prioritizes known
+stock effect and particle models; callers must use the portable selector for
+other optional content. Counts distinguish actor roots, mounts, retained and
+dropped effects, surface batches, shadow views, upload payload, and reservations.
+Physical glow uses a bounded triangle prefix; it does not invent actor counts
+for geometry without life identities.
 
-**Improve:** Share capability admission and measurable quality budgets across
-both renderers. Count actors, mounts, effects, surfaces, shadow views, upload
-bytes, and target memory separately. Add animation/mesh LOD and batching where
-profiling supports them. Define prioritization for excess visual effects;
-valid gameplay should not fail because optional visuals exhaust a frame cap.
+Opaque and shadow instancing already existed at implementation time. V11 adds
+compatible additive triangle instancing after measuring excess effect draws;
+alpha-blended effects retain their existing ordering. A GPU comparison reduces
+32 additive draws to one with identical captured RGBA pixels. No authored mesh
+LOD is claimed, and actor animation remains fully evaluated. The retained crowd
+measurements identify enough headroom for this fixture without introducing an
+untested animation LOD policy.
 
-**Acceptance:** A crowded battle stays within declared CPU/GPU/memory budgets,
-with a tested low-quality fallback and observable degradation. Device loss
-recreates admitted resources and presentation state; successful hot reload does
-not substitute for device-loss recovery evidence.
+[`gpu_lifecycle`](../../crates/verse/src/gpu_lifecycle.rs) records the device's
+loss callback and polling errors. Native recovery creates a new admitted device,
+pipelines, targets, and presentation bindings from retained verified source
+values, without reopening deleted asset files. It preserves compatible actor
+playback and monotonically increasing frame IDs, rejects old catalogs and
+presenters, and stops after three recoveries. Grid, chamber, remote-window, and
+physical surface adapters invoke recovery. Browser callers receive an async
+recovery API. Capture fence and callback waits are bounded to five seconds.
+A zero-shadow frame resolves only written timestamp queries; resolving the
+unwritten shadow query previously stalled the hardware queue.
+Reload performs fallible resize before transferring active playback.
+
+**Acceptance evidence:** The
+[renderer budget receipt](../../bench/verse/2026-10-04/renderer-budgets/run.json)
+retains 300-frame, 1280×720 debug workloads with 120 startup frames on an RTX 4080
+and Vulkan. Each has 20 synthetic player roots, 40 synthetic NPC roots, 20 bow
+mounts, and 2,000 optional effects. High-quality sparks retain 768 effects and
+record CPU p95 6.35 ms and GPU p95 2.56 ms; low retains 128 and records 4.89 ms
+and 0.97 ms. Both fit the declared 16.67 ms frame target and each managed resource
+category. All roots and mounts remain present. A separate mist workload records
+high CPU p95 27.75 ms, above target, and low CPU p95 7.70 ms, below target;
+its fallback, rather than high-quality acceptance, is the supported result.
+
+Explicit software-Vulkan tests on a scratch X11 display destroy drained devices
+and verify new presentation submissions for both paths, physical world/overlay
+preservation at normal and low quality, source-file-independent actor playback,
+and stale-handle refusal. These exercise actual wgpu device destruction and
+resource recreation rather than hot reload. An RTX 4080 offscreen test also destroys and recreates
+the device after the source files are removed, preserves actor graph playback
+and a bow mount, and completes a subsequent frame. A hardware zero-shadow
+timestamp test verifies the queue-stall fix. The receipt records targeted unit,
+shader, consumer-compilation, formatting, and GPU checks, including failures.
+
+**Limits:** Resource figures are logical payloads or conservative reservations,
+not process RSS or driver memory. Driver padding, swapchain images, fixed
+shader-private resources, transient replacement peaks, and asynchronous capture
+copies are excluded. Reserved ordinary dynamic buffer capacity is reported
+separately. Frame counts do not establish server population capacity; V18 owns
+networked 20/40-player acceptance. The scratch display and llvmpipe recovery
+checks do not establish physical scanout. Hardware destruction/recreation is
+verified, while a spontaneous driver reset remains outside this fixture. The chamber
+still requires cube-array textures and explicitly refuses adapters below that
+contract. Platform recovery integration, externally owned `Layer` devices,
+capture-worker interruption, browser lifecycle acceptance, and physical display
+latency remain V18/V24 acceptance work. Authored mesh/animation LOD remains a
+content capability gap for V20/V21 and larger future profiles.
 
 ### V12: Catalog handles do not implement streaming residency
 

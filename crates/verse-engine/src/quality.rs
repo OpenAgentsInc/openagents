@@ -120,6 +120,47 @@ pub struct Quality {
 }
 
 impl Quality {
+    /// Shared admission limits. Timings are targets, not a deadline that cancels a frame.
+    pub const fn budget(&self) -> Budget {
+        let (effects, memory) = match self.tier {
+            Tier::Low => (128, 128 * 1024 * 1024),
+            Tier::Medium => (384, 256 * 1024 * 1024),
+            Tier::High => (768, 1024 * 1024 * 1024),
+        };
+        Budget {
+            instances: crate::presentation::ResolvedInstances::MAX_INSTANCES,
+            optional_effects: effects,
+            surfaces: 16_384,
+            target_bytes: memory,
+            geometry_bytes: memory,
+            texture_bytes: memory,
+            buffer_bytes: memory,
+            cpu_frame_ms: 1000. / 60.,
+            gpu_frame_ms: 1000. / 60.,
+        }
+    }
+    pub const fn sample_ceiling(&self) -> u32 {
+        if !matches!(self.tier, Tier::Low) {
+            4
+        } else {
+            1
+        }
+    }
+    /// Cube-shadow views for the chamber; the physical path uses its cascade count.
+    pub const fn local_shadow_views(&self) -> u32 {
+        match self.tier {
+            Tier::Low => 6,
+            Tier::Medium => 12,
+            Tier::High => 24,
+        }
+    }
+    pub const fn local_shadow_size(&self) -> u32 {
+        if matches!(self.tier, Tier::Low) {
+            256
+        } else {
+            512
+        }
+    }
     /// The sky light's reflection cube: its edge in texels at the sharpest
     /// level, and the GGX samples averaged per texel of each blurrier level.
     /// Every tier builds it on the CPU and samples it with an explicit level
@@ -131,6 +172,46 @@ impl Quality {
             Tier::Medium => (32, 64),
             Tier::High => (64, 64),
         }
+    }
+}
+
+/// Resource limits shared by rendering adapters; byte counts exclude driver-private storage.
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+pub struct Budget {
+    pub instances: usize,
+    pub optional_effects: usize,
+    pub surfaces: usize,
+    pub target_bytes: u64,
+    pub geometry_bytes: u64,
+    pub texture_bytes: u64,
+    pub buffer_bytes: u64,
+    pub cpu_frame_ms: f64,
+    pub gpu_frame_ms: f64,
+}
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+pub struct Resources {
+    pub target_bytes: u64,
+    pub geometry_bytes: u64,
+    pub texture_bytes: u64,
+    pub buffer_bytes: u64,
+    pub retained_source_bytes: u64,
+}
+impl Budget {
+    /// Reject resource excess before an adapter allocates or replaces active targets.
+    pub fn admit(&self, value: Resources) -> Result<(), String> {
+        for (name, used, limit) in [
+            ("target", value.target_bytes, self.target_bytes),
+            ("geometry", value.geometry_bytes, self.geometry_bytes),
+            ("texture", value.texture_bytes, self.texture_bytes),
+            ("buffer", value.buffer_bytes, self.buffer_bytes),
+        ] {
+            if used > limit {
+                return Err(format!(
+                    "Renderer {name} bytes exceed the admitted quality budget"
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -202,6 +283,56 @@ impl Tier {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn resource_excess_is_refused_and_lower_tiers_reduce_optional_work() {
+        for tier in Tier::ALL {
+            let quality = tier.quality();
+            let budget = quality.budget();
+            assert!(
+                budget
+                    .admit(Resources {
+                        target_bytes: budget.target_bytes,
+                        geometry_bytes: budget.geometry_bytes,
+                        texture_bytes: budget.texture_bytes,
+                        buffer_bytes: budget.buffer_bytes,
+                        retained_source_bytes: 0
+                    })
+                    .is_ok()
+            );
+            assert!(
+                budget
+                    .admit(Resources {
+                        target_bytes: budget.target_bytes + 1,
+                        ..Default::default()
+                    })
+                    .is_err()
+            );
+            assert!(
+                budget
+                    .admit(Resources {
+                        geometry_bytes: budget.geometry_bytes + 1,
+                        ..Default::default()
+                    })
+                    .is_err()
+            );
+            assert!(
+                budget
+                    .admit(Resources {
+                        texture_bytes: budget.texture_bytes + 1,
+                        ..Default::default()
+                    })
+                    .is_err()
+            );
+        }
+        assert_eq!(Tier::Low.quality().sample_ceiling(), 1);
+        assert!(
+            Tier::Low.quality().local_shadow_views() < Tier::High.quality().local_shadow_views()
+        );
+        assert!(
+            Tier::Low.quality().budget().optional_effects
+                < Tier::High.quality().budget().optional_effects
+        );
+    }
 
     fn probe(platform: Platform) -> Probe {
         Probe {

@@ -26,6 +26,7 @@ pub mod doors;
 pub mod edr;
 pub mod feed;
 pub(crate) mod gles;
+mod gpu_lifecycle;
 #[cfg(feature = "imported-desktop")]
 pub mod grid_engine;
 pub mod grid_frame;

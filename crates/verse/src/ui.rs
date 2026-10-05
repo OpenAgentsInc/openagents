@@ -48,6 +48,7 @@ struct Glyph {
 }
 
 /// The rasterized font.
+#[derive(Clone)]
 pub struct Atlas {
     /// Atlas width in pixels.
     pub width: u32,

@@ -76,6 +76,9 @@ fn sample(frame: u64, ticks: [u64; 4], period: f64) -> Result<Sample, Invalid> {
     })
 }
 impl Timer {
+    pub fn resume_after(&mut self, frame: u64) {
+        self.frame = frame;
+    }
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Self> {
         if !device.features().contains(FEATURES) {
             return None;
@@ -173,11 +176,25 @@ impl Timer {
             end_of_pass_write_index: end,
         })
     }
-    pub fn resolve(&self, encoder: &mut wgpu::CommandEncoder, slot: Option<usize>) {
+    pub fn resolve(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        slot: Option<usize>,
+        has_shadow: bool,
+    ) {
         if let Some(slot) = slot {
             let slot = &self.slots[slot];
-            encoder.resolve_query_set(&slot.query, 0..4, &slot.resolve, 0);
-            encoder.copy_buffer_to_buffer(&slot.resolve, 0, &slot.readback, 0, 32);
+            // Resolving an unwritten query can wait indefinitely on Vulkan.
+            // Query-resolve offsets require 256-byte alignment; shift the copy instead.
+            let first = if has_shadow { 0 } else { 1 };
+            encoder.resolve_query_set(&slot.query, first..4, &slot.resolve, 0);
+            encoder.copy_buffer_to_buffer(
+                &slot.resolve,
+                0,
+                &slot.readback,
+                u64::from(first) * 8,
+                u64::from(4 - first) * 8,
+            );
         }
     }
     pub fn submitted(&mut self, slot: Option<usize>, has_shadow: bool) {
@@ -199,6 +216,14 @@ mod tests {
     #[test]
     #[ignore = "Requires a native GPU; run explicitly when diagnosing timestamp readback"]
     fn native_timestamp_resolve_without_video_capture() {
+        native_resolve(true);
+    }
+    #[test]
+    #[ignore = "Requires a native GPU; proves unwritten shadow queries are not resolved"]
+    fn native_timestamp_resolve_without_shadow_pass() {
+        native_resolve(false);
+    }
+    fn native_resolve(has_shadow: bool) {
         let instance =
             wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter =
@@ -232,7 +257,7 @@ mod tests {
         });
         let view = texture.create_view(&Default::default());
         let mut encoder = device.create_command_encoder(&Default::default());
-        for first in 0..4 {
+        for first in (if has_shadow { 0 } else { 1 })..4 {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 timestamp_writes: Some(wgpu::RenderPassTimestampWrites {
                     query_set: &timer.slots[slot.unwrap()].query,
@@ -251,10 +276,10 @@ mod tests {
                 ..Default::default()
             });
         }
-        timer.resolve(&mut encoder, slot);
+        timer.resolve(&mut encoder, slot, has_shadow);
         eprintln!("Timestamp probe: submitting");
         let submission = queue.submit([encoder.finish()]);
-        timer.submitted(slot, true);
+        timer.submitted(slot, has_shadow);
         eprintln!("Timestamp probe: polling completion");
         device
             .poll(wgpu::PollType::Wait {
@@ -269,6 +294,9 @@ mod tests {
             .next()
             .expect("Timestamp readback produces a valid sample");
         assert!(sample.total_ms > 0., "GPU timestamps must advance");
+        if !has_shadow {
+            assert_eq!(sample.shadow_ms, 0.);
+        }
         eprintln!(
             "Timestamp probe: {}",
             serde_json::to_string(&sample).unwrap()

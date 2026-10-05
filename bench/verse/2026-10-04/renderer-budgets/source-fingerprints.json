@@ -1,0 +1,19 @@
+{
+  "crates/verse-engine/src/loading.rs": "1b8192b69d632bddfd5bd0ba978096247b38340ec2ba48007a20e0a2b1ac2547",
+  "crates/verse-engine/src/presentation.rs": "ae537c6d07b7f99030fbd0d44c1c8d1b66f01a19142f94a8204bc5c57cac1533",
+  "crates/verse-engine/src/quality.rs": "0dfc21775d15495e5e0598d710b9d4941de3e94dc8b2bc95c2e9d463b761c3b0",
+  "crates/verse/examples/chamber_app/mod.rs": "c5f4d0dfd80940ae8aea56ccf82e5e9143f38ba7da185a10fd8b03cdf76b9399",
+  "crates/verse/src/grid_engine.rs": "5f8d6e0c721d621fa5173ce0bb0aad136fb5c334de56bffd88bac5ef2a816c8b",
+  "crates/verse/src/imported/gpu_timing.rs": "a908e456758e8b0b778efe3ef68f068036c8ce5384a20c3b03cd508fda707f23",
+  "crates/verse/src/imported/instancing.rs": "319122ef2a7a2179634a01cb11b373f8effbdc9b8a8e63ab3f2173a64481dc0a",
+  "crates/verse/src/imported/mod.rs": "c994aa866c5879fc8150d7d1563350e9205bcf9bb9d868fe66ca0dbd1709dd69",
+  "crates/verse/src/imported/remote_record.rs": "90b4ab2609b4e4badee872256439ca1ee09e68a47d9ac00008b4727691ab3919",
+  "crates/verse/src/imported/remote_window.rs": "fdec7a43f9d8028c3616dc4555fad6f5f4e639107f510a81fb63d093d5499e16",
+  "crates/verse/src/lib.rs": "7f3fe670ad695500dd27d3c75872468243dc22c4fb334b7b7d72133686c371e5",
+  "crates/verse/src/pbr/gpu.rs": "19c52d5a1e37bbd140e93c1b200424917a774cfed3eb8420b54f2b4a25b121e7",
+  "crates/verse/src/render.rs": "10189240df926f7f7389d685d6f26942d0d99d5a96cc4e28073e0e5e9b9ab825",
+  "crates/verse/src/ui.rs": "1bf0194a2df9d91b3bc0859158e56bb15b198e6d922f3d32f05150e84b7fdc87",
+  "crates/verse/src/gpu_lifecycle.rs": "53e7890c0df4a1802d4045a82e138629adc4af4761058e9407e44e5eb0d48c41",
+  "crates/verse/src/imported/admission.rs": "8989bc1c9475230ca008c15e053c36be1ef688fd6b29c278d23a3f37a356f3f0",
+  "crates/verse/examples/renderer_budget.rs": "aacc028a5956cc7610f25e54678981ee464a6cd5c616cb63d415c8b27ed27cc3"
+}

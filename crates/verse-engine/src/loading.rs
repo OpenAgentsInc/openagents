@@ -71,8 +71,9 @@ pub struct Receipt {
     pub textures: Vec<TextureReceipt>,
 }
 /// Validated, eight-bit sRGB RGBA bytes in pack texture order.
+#[derive(Clone)]
 pub struct Texture {
-    pixels: Vec<u8>,
+    pixels: std::sync::Arc<[u8]>,
     width: u32,
     height: u32,
 }
@@ -88,8 +89,9 @@ impl Texture {
     }
 }
 /// No partial prepared pack escapes if any declared dependency is refused.
+#[derive(Clone)]
 pub struct Prepared {
-    pack: Pack,
+    pack: std::sync::Arc<Pack>,
     textures: Vec<Texture>,
     receipt: Receipt,
 }
@@ -294,13 +296,13 @@ impl Prepared {
                 height: texture.height,
             });
             textures.push(Texture {
-                pixels,
+                pixels: pixels.into(),
                 width: texture.width,
                 height: texture.height,
             });
         }
         Ok(Self {
-            pack,
+            pack: std::sync::Arc::new(pack),
             textures,
             receipt,
         })
@@ -315,6 +317,14 @@ impl Prepared {
         &self.receipt
     }
     pub fn into_parts(self) -> (Pack, Vec<Texture>, Receipt) {
+        (
+            std::sync::Arc::unwrap_or_clone(self.pack),
+            self.textures,
+            self.receipt,
+        )
+    }
+    /// Retain verified source for resource recreation without reopening mutable files.
+    pub fn into_shared_parts(self) -> (std::sync::Arc<Pack>, Vec<Texture>, Receipt) {
         (self.pack, self.textures, self.receipt)
     }
 }

@@ -198,6 +198,47 @@ pub(crate) struct Capability {
 }
 
 impl Capability {
+    /// Reserve both ordinary and physical targets before native allocation.
+    /// Includes cascade maps and a conservative screen-space allowance; excludes swapchain images.
+    pub fn target_reservation(&self, width: u32, height: u32, output_bytes: u64) -> u64 {
+        let pixels = u64::from(width) * u64::from(height);
+        let samples = u64::from(self.samples);
+        let scene_bytes = self.hdr.map_or(output_bytes, |format| {
+            u64::from(format.block_copy_size(None).unwrap_or(8))
+        });
+        let ordinary = pixels
+            * (4 * samples
+                + if samples > 1 {
+                    output_bytes * samples
+                } else {
+                    0
+                });
+        let physical = pixels
+            * (scene_bytes
+                + 4 * samples
+                + if samples > 1 {
+                    scene_bytes * samples
+                } else {
+                    0
+                });
+        let post = if self.hdr.is_some() {
+            (pixels * scene_bytes).div_ceil(3)
+                + 2 * scene_bytes
+                + (verse_engine::lighting::GRADE_LUT_SIZE as u64).pow(3) * 8
+        } else {
+            0
+        };
+        let screen = if self.quality.screen_space {
+            pixels * 24
+        } else {
+            0
+        };
+        ordinary
+            + physical
+            + post
+            + screen
+            + u64::from(SHADOW_SIZE).pow(2) * u64::from(self.quality.cascades) * 4
+    }
     pub fn probe(
         adapter: &wgpu::Adapter,
         device: &wgpu::Device,
@@ -233,6 +274,14 @@ impl Capability {
                 .get_texture_format_features(scene)
                 .flags
                 .sample_count_supported(4)
+            && adapter
+                .get_texture_format_features(output)
+                .flags
+                .sample_count_supported(4)
+            && adapter
+                .get_texture_format_features(DEPTH)
+                .flags
+                .sample_count_supported(4)
         {
             4
         } else {
@@ -253,11 +302,12 @@ impl Capability {
         let asked = std::env::var("VERSE_QUALITY")
             .ok()
             .and_then(|name| Tier::parse(&name));
+        let quality = probe.select(asked).quality();
         Self {
             hdr,
-            samples,
+            samples: samples.min(quality.sample_ceiling()),
             gles,
-            quality: probe.select(asked).quality(),
+            quality,
         }
     }
 

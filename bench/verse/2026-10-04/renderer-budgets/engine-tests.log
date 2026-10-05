@@ -1,0 +1,138 @@
+    Blocking waiting for file lock on build directory
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 22.49s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-284012c2309cc06e)
+
+running 123 tests
+test animation::semantic_tests::selected_playback_delivers_markers_and_preserves_pose_on_refusal ... ok
+test animation::semantic_tests::legacy_json_and_numeric_sampling_remain_an_explicit_compatibility_path ... ok
+test animation::semantic_tests::semantic_resolution_uses_declared_ids_modes_and_transition_duration ... ok
+test animation::tests::child_inherits_interpolated_parent_motion ... ok
+test animation::tests::death_holds_the_final_pose_while_idle_keeps_looping ... ok
+test animation::tests::interrupted_transitions_preserve_pose_and_rotation_length ... ok
+test animation::tests::inverse_bind_cancels_rest_hierarchy_and_preserves_joint_pivot ... ok
+test animation_graph::tests::additive_rotation_scale_and_singular_reference_are_explicit ... ok
+test animation_graph::tests::admitted_motion_is_immutable_and_replacement_and_seek_reset_baselines ... ok
+test animation_graph::tests::blend_endpoints_sample_only_the_selected_branch ... ok
+test animation_graph::tests::blend_space_and_masked_layers_evaluate_before_hierarchy ... ok
+test animation_graph::tests::changing_phase_policy_establishes_a_marker_baseline ... ok
+test animation_graph::tests::distance_driven_phase_can_pause_and_seek_without_advancing_authority ... ok
+test animation_graph::tests::graph_crossfade_interrupts_from_current_pose_and_resets_exact_lives ... ok
+test animation_graph::tests::duplicate_serialized_selector_names_are_refused ... ok
+test animation_graph::tests::graph_pose_endpoints_preserve_exact_rotations_across_interruptions ... ok
+test animation_graph::tests::inactive_layers_do_not_sample_singular_additive_references ... ok
+test animation_graph::tests::invalid_parameters_and_epoch_exhaustion_preserve_playback ... ok
+test animation_graph::tests::refuses_cycles_bad_masks_missing_states_and_invalid_skeletons ... ok
+test animation_graph::tests::semantic_graph_version_and_selector_aliases_are_refused ... ok
+test animation_graph::tests::semantic_graphs_select_named_states_without_numeric_clip_ids ... ok
+test animation_graph::tests::serialization_retains_graph_data_and_refuses_unknown_fields ... ok
+test animation_graph::tests::transactional_candidates_share_immutable_pose_buffers ... ok
+test animation_graph::tests::transition_refuses_invalid_targets_and_boolean_conditions ... ok
+test animation_graph::tests::weighted_markers_change_source_without_replay_and_refusals_are_atomic ... ok
+test animation_graph::tests::transition_priority_is_authored_and_types_are_checked ... ok
+test animation_graph::tests::zero_weight_and_zero_mask_are_identity_without_reference_sampling ... ok
+test assets::tests::rejects_path_traversal_and_cyclic_skeletons ... ok
+test assets::tests::duplicate_semantic_names_are_refused_during_decoding ... ok
+test audio::tests::refuses_invalid_input_and_bounds_capacity_without_stealing ... ok
+test audio::tests::exact_life_release_preserves_a_new_generation ... ok
+test core::tests::pauses_are_bounded_and_invalid_time_does_not_mutate_clock ... ok
+test audio::tests::resamples_spatializes_and_retires_finished_pcm ... ok
+test director::tests::cues_cannot_target_missing_actors ... ok
+test director::tests::legacy_scene_omits_friendly_role_and_player_cannot_be_friendly ... ok
+test director::tests::outfitted_cultist_variants_keep_the_same_cinematic_motion ... ok
+test inventory::tests::compiled_model_mutation_requires_a_new_content_fingerprint ... ok
+test director::tests::scene_cues_drive_dialogue_camera_projectiles_and_health ... ok
+test lighting::tests::a_frustum_reads_the_lens_from_the_camera_matrix ... ok
+test environment::tests::a_uniform_sky_projects_to_constant_irradiance ... ok
+test director::legacy_origin_tests::legacy_scene_origin_reads_and_serializes_with_the_current_name ... ok
+test lighting::tests::camera_atmosphere_and_point_sources_reject_invalid_values ... ok
+test lighting::tests::cascade_settings_refuse_what_cannot_be_fitted ... ok
+test core::tests::render_rates_produce_the_same_ticks ... ok
+test lighting::tests::cascades_blend_at_their_ends_and_fade_at_the_distance ... ok
+test lighting::tests::grades_refuse_invalid_values_and_compare_tables ... ok
+test lighting::tests::height_fog_starts_late_caps_and_thins_with_height ... ok
+test lighting::tests::invalid_height_fog_is_refused ... ok
+test lighting::tests::every_cube_face_projects_outward_with_finite_depth ... ok
+test lighting::tests::splits_run_from_near_to_far_and_lean_logarithmic ... ok
+test director::tests::friendly_role_preserves_pose_and_refuses_directed_damage ... ok
+test lighting::tests::shadow_maps_go_to_the_lights_that_matter_most ... ok
+test lighting::tests::output_curves_keep_black_hue_and_their_ceiling ... ok
+test lighting::tests::the_chamber_grade_keeps_the_retired_curves_mid_grey ... ok
+test lighting::tests::the_sun_lobe_glows_toward_the_sun_only ... ok
+test lighting::tests::the_table_shaper_keeps_black_and_round_trips ... ok
+test inventory::tests::graph_refuses_cycles_missing_edges_duplicate_ids_and_omitted_textures ... ok
+test lighting::tests::uniform_distance_fog_is_the_chambers_exponential ... ok
+test environment::tests::the_shader_uniform_reproduces_the_irradiance ... ok
+test inventory::tests::texture_identity_survives_reordered_storage ... ok
+test lighting::tests::texel_snapping_holds_shadow_texels_still_under_sub_texel_motion ... ok
+test inventory::tests::every_authored_material_map_requires_a_provenance_dependency ... ok
+test lighting::tests::height_fog_has_the_closed_form_of_its_density ... ok
+test lighting::tests::cascades_cover_the_view_their_blend_bands_and_their_casters ... ok
+test markers::tests::held_clips_deliver_once_and_budget_refusals_are_atomic ... ok
+test markers::tests::invalid_tracks_and_times_do_not_change_delivery ... ok
+test markers::tests::life_selection_and_backward_seek_reset_without_catchup ... ok
+test environment::tests::texel_solid_angles_cover_the_sphere ... ok
+test markers::tests::loop_crossings_are_ordered_and_never_repeated ... ok
+test environment::tests::a_sky_brighter_above_lights_upward_normals_more ... ok
+test material::tests::old_materials_have_explicit_defaults_and_new_channels_round_trip ... ok
+test material::tests::rejects_nonfinite_out_of_range_and_invalid_dependencies ... ok
+test overlay::tests::extraction_borrows_geometry_and_fences_replaced_atlases ... ok
+test inventory::tests::persistent_resolution_survives_container_and_file_relocation ... ok
+test lighting::tests::capacity_and_derived_overflow_are_admitted_before_submission ... ok
+test lighting::tests::grade_terms_do_what_they_name ... ok
+test inventory::tests::renamed_research_and_local_only_origins_cannot_cross_rights_gates ... ok
+test core::tests::reused_slots_and_respawns_refuse_old_identities ... ok
+test environment::tests::each_face_center_looks_along_its_axis ... ok
+test lighting::tests::an_identity_grade_bakes_an_exact_table ... ok
+test overlay::tests::rejects_invalid_geometry_before_submission ... ok
+test presentation::tests::animation_admission_matches_named_and_compatibility_playback ... ok
+test presentation::tests::extraction_preserves_life_and_animation_without_copying_source_instances ... ok
+test presentation::tests::mounts_bind_exact_lives_models_and_unique_parents_independent_of_order ... ok
+test quality::tests::a_request_can_lower_the_tier_but_never_raise_it ... ok
+test presentation::tests::reload_fences_empty_and_populated_frames ... ok
+test quality::tests::platforms_and_adapters_set_the_ceiling ... ok
+test loading::tests::complete_preparation_is_immutable_ordered_and_bound_to_the_manifest ... ok
+test presentation::tests::invalid_inputs_never_produce_an_extracted_frame ... ok
+test quality::tests::resource_excess_is_refused_and_lower_tiers_reduce_optional_work ... ok
+test quality::tests::tier_names_round_trip ... ok
+test quality::tests::tiers_scale_every_effect_monotonically ... ok
+test quality::tests::webgl2_and_gles_select_the_low_tier ... ok
+test loading::tests::manifest_file_reads_are_bounded_and_validated ... ok
+test loading::tests::mutated_missing_duplicate_and_invalid_dependencies_refuse_the_whole_pack ... ok
+test environment::tests::prefiltering_keeps_a_uniform_sky_and_blurs_a_bright_one ... ok
+test presentation::tests::modular_battle_frames_remain_bounded_above_the_previous_limit ... ok
+test loading::tests::symlink_files_and_nonregular_dependencies_are_refused ... ok
+test render_graph::chamber_tests::cache_refresh_precedes_copy_and_dynamic_draw ... ok
+test loading::tests::all_budget_classes_are_enforced_without_a_partial_result ... ok
+test loading::tests::animated_png_requires_a_separate_declared_asset_contract ... ok
+test loading::tests::pinned_directory_and_no_follow_open_survive_namespace_changes ... ok
+test loading::tests::placement_dependencies_and_material_values_are_admitted_before_io ... ok
+test render_graph::photo_tests::only_the_high_tier_runs_screen_space_passes ... ok
+test render_graph::chamber_tests::cached_faces_skip_refresh_but_keep_dynamic_shadows ... ok
+test render_graph::tests::permits_read_sharing_and_orders_read_modify_write ... ok
+test render_graph::tests::refuses_cycles_invalid_indices_and_capacity_overflow ... ok
+test render_graph::tests::refuses_uninitialized_reads_and_unordered_hazards ... ok
+test render_graph::tests::schedules_producers_before_consumers_with_stable_ties ... ok
+test loading::tests::unsupported_channels_depth_and_malformed_png_are_refused_before_upload ... ok
+test render_world::tests::frame_borrows_inputs_and_fences_all_catalog_replacements ... ok
+test residency::tests::rebuilding_rejects_old_handles_even_when_names_match ... ok
+test render_world::tests::no_invalid_input_produces_an_admitted_world ... ok
+test residency::tests::reordered_slots_never_relabel_old_references ... ok
+test sockets::tests::malformed_metadata_palettes_and_derived_overflow_are_refused ... ok
+test sockets::tests::supplied_skin_palette_rotates_translates_and_scales_equipment_frames ... ok
+test audio_cues::tests::noise_variants_change_without_relabeling_cue_or_rate ... ok
+test presentation::tests::optional_overflow_preserves_actor_roots_and_mounts_in_source_order ... ok
+test lighting::tests::a_baked_grade_matches_the_analytic_grade ... ok
+test render_graph::chamber_tests::every_supported_cache_mask_is_admitted ... ok
+test presentation::tests::omitted_visuals_still_require_valid_models_and_values ... ok
+test overlay::tests::enforces_the_existing_native_upload_budget ... ok
+test audio_cues::tests::cues_are_original_bounded_reproducible_and_audible ... ok
+
+test result: ok. 123 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+   Doc-tests verse_engine
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

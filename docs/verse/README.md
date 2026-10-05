@@ -609,3 +609,18 @@ These build on the direction in [`docs/game/README.md`](../game/README.md):
 - A per-second lane on the production relay for NIP-MV frames, and
   cell-scoped subscriptions as the world grows.
 - A web build over WebGPU, following Ruins of Atlantis.
+
+## Renderer budgets and device recovery
+
+`VERSE_QUALITY=low|medium|high` selects at most the adapter's supported tier.
+Both native rendering paths use shared resource admission. Low quality reduces
+multisampling, shadow work, and optional effects while preserving required actor
+roots and mounts. Renderer counters expose retained and omitted visuals and
+logical payload reservations; these are not total driver memory.
+
+Native adapters recreate lost devices from retained world and asset values,
+with a three-recovery bound. Physical browser callers await
+`recover_if_lost_async` before drawing again. Hosts that supply a device to
+`render::Layer` own its recreation. See the
+[V11 audit and retained measurements](../audits/2026-10-04-verse-engine-audit.md#v11-shared-renderer-budgets-and-bounded-device-recovery-are-implemented)
+for the tested quality profiles and platform limits.

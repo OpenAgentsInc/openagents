@@ -18,6 +18,8 @@ pub struct GridEngine {
     renderer: Renderer,
     presenter: WindowPresenter,
     size: [u32; 2],
+    window: Arc<Window>,
+    atlas: Atlas,
 }
 
 impl GridEngine {
@@ -40,11 +42,13 @@ impl GridEngine {
             atlas,
             &statics,
         )?;
-        let presenter = renderer.attach_window(window)?;
+        let presenter = renderer.attach_window(window.clone())?;
         Ok(Self {
             renderer,
             presenter,
             size,
+            window,
+            atlas: atlas.clone(),
         })
     }
 
@@ -63,8 +67,10 @@ impl GridEngine {
         if width == 0 || height == 0 {
             return Ok(());
         }
+        self.recover()?;
+        self.renderer.resize(width, height)?;
         self.size = [width, height];
-        self.renderer.resize(width, height)
+        Ok(())
     }
 
     /// Draws and presents one frame; returns the renderer's own time for it
@@ -76,11 +82,18 @@ impl GridEngine {
         ui: &UiBatch,
         lighting: &Lighting,
     ) -> Result<f64, String> {
+        self.recover()?;
         let [width, height] = self.size();
         self.renderer.set_overlay_size(width, height);
         self.renderer.draw_live(view, dynamic, ui, lighting)?;
         self.renderer
             .present_window(&mut self.presenter, self.size)?;
         Ok(self.renderer.last_timings.total_ms)
+    }
+    fn recover(&mut self) -> Result<(), String> {
+        if self.renderer.recover_if_lost(&self.atlas)? {
+            self.presenter = self.renderer.attach_window(self.window.clone())?;
+        }
+        Ok(())
     }
 }

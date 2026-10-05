@@ -1,0 +1,10 @@
+
+running 1 test
+Timestamp probe: submitting
+Timestamp probe: polling completion
+Timestamp probe: {"frame":1,"shadow_ms":0.0,"world_ms":0.002048,"overlay_ms":0.002048,"total_ms":0.004096}
+test imported::gpu_timing::tests::native_timestamp_resolve_without_shadow_pass ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 595 filtered out; finished in 0.22s
+
+Exit: 0

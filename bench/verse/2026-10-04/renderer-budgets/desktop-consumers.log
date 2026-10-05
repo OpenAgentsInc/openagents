@@ -1,0 +1,167 @@
+    Blocking waiting for file lock on build directory
+    Checking serde_json v1.0.151
+    Checking futures-util v0.3.34
+    Checking aho-corasick v1.1.5
+   Compiling quick-xml v0.42.0
+    Checking object v0.39.1
+    Checking coder-boundary v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-boundary)
+    Checking supervise v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/supervise)
+    Checking wayland-client v0.31.15
+    Checking wast v259.0.0
+    Checking net_core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-ruins/vendor/crates/net_core)
+    Checking vte v0.15.0
+    Checking bstr v1.13.1
+    Checking usvg v0.48.1
+    Checking collision_static v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-ruins/vendor/crates/collision_static)
+   Compiling coder v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder)
+    Checking openagents-deck v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-deck)
+    Checking yasna v0.6.0
+    Checking coder-vt v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-vt)
+    Checking plist v1.10.1
+    Checking rcgen v0.14.10
+    Checking resvg v0.48.1
+    Checking regex-automata v0.4.18
+    Checking nostr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/nostr)
+    Checking atif v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/atif)
+    Checking coder-history v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-history)
+    Checking route-contract v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/route-contract)
+    Checking wit-parser v0.254.0
+    Checking coder-service v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-service)
+    Checking fxprof-processed-profile v0.8.1
+    Checking coder-pty v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-pty)
+    Checking data_runtime v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-ruins/vendor/crates/data_runtime)
+    Checking acp-client v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/acp-client)
+    Checking schemars v1.2.2
+    Checking syntect v5.3.0
+    Checking background v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/background)
+    Checking receipts v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/receipts)
+    Checking verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+    Checking wayland-protocols v0.32.13
+    Checking wayland-cursor v0.31.14
+    Checking calloop-wayland-source v0.3.0
+    Checking gltf-json v1.4.1
+    Checking server_core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-ruins/vendor/crates/server_core)
+    Checking client_core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-ruins/vendor/crates/client_core)
+    Checking tokio-util v0.7.19
+    Checking tower v0.5.3
+    Checking hyper-util v0.1.20
+    Checking tokio-tungstenite v0.30.0
+    Checking regex v1.13.1
+    Checking netlink-sys v0.8.8
+    Checking secret-service v5.2.0
+    Checking tower-http v0.6.11
+    Checking futures v0.3.34
+    Checking netlink-proto v0.12.2
+   Compiling tree-sitter v0.27.0
+   Compiling two-face v0.4.5
+    Checking globset v0.4.20
+    Checking verse-ruins v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-ruins)
+    Checking n0-future v0.3.2
+    Checking tokio-stream v0.1.19
+    Checking n0-watcher v1.0.0
+    Checking tokio-websockets v0.13.3
+    Checking ignore v0.4.33
+    Checking netwatch v0.19.3
+    Checking noq v1.3.0
+   Compiling wit-component v0.254.0
+    Checking hyper-rustls v0.27.9
+   Compiling code-highlight v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/code-highlight)
+    Checking gltf v1.4.1
+    Checking reqwest v0.12.28
+    Checking reqwest v0.13.5
+    Checking wat v1.259.0
+    Checking zbus-secret-service-keyring-store v1.0.1
+    Checking wasm-compose v0.254.0
+    Checking keyring v4.2.0
+    Checking wasmtime-environ v48.0.2
+    Checking wasmtime-internal-jit-debug v48.0.2
+    Checking n0-dns-resolver v0.1.0
+    Checking jev v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/jev)
+    Checking codex-transport v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/codex-transport)
+    Checking openrouter v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openrouter)
+    Checking tree-sitter-highlight v0.27.0
+    Checking iroh-dns v1.3.0
+   Compiling wasmtime-internal-wit-bindgen v48.0.2
+    Checking iroh-relay v1.3.0
+    Checking model-access v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/model-access)
+   Compiling wasmtime-internal-component-macro v48.0.2
+    Checking iroh v1.3.0
+    Checking wayland-protocols-wlr v0.3.12
+    Checking wayland-protocols-plasma v0.3.12
+    Checking rust-native v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/rust-native)
+    Checking smithay-client-toolkit v0.19.2
+    Checking winit v0.30.13
+    Checking nostr-transport v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/nostr-transport)
+    Checking xp-ledger v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/xp-ledger)
+    Checking coder-reach v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-reach)
+    Checking playtest v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/playtest)
+    Checking capability v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/capability)
+    Checking gym-leaderboard v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/gym-leaderboard)
+    Checking coder-connect v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-connect)
+    Checking jev-hosted v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/jev-hosted)
+    Checking coder-ui v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-ui)
+    Checking rust-native-desktop v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/rust-native-desktop)
+    Checking coder-terminal v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-terminal)
+    Checking knowledge v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/knowledge)
+    Checking openagents-chat v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-chat)
+    Checking coder-access v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-access)
+    Checking gym-bridge v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/gym-bridge)
+    Checking wasmtime-internal-unwinder v48.0.2
+    Checking wasmtime-internal-cache v48.0.2
+    Checking wasmtime-internal-fiber v48.0.2
+    Checking gym v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/gym)
+    Checking microcoder-loop v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/microcoder-loop)
+    Checking wasmtime-internal-cranelift v48.0.2
+    Checking iroh-mdns-address-lookup v0.5.0
+    Checking wasmtime v48.0.2
+    Checking openagents-connect v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-connect)
+    Checking verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+    Checking coder-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-host)
+    Checking coder-computers v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-computers)
+    Checking openagents-chat-app v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-chat-app)
+    Checking plugin v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/plugin)
+    Checking coder-delegate v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-delegate)
+    Checking ext-eval v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/ext-eval)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2502:19
+     |
+ 264 | impl Game {
+     | --------- method in this implementation
+...
+2502 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+    Checking verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused variable: `numbers`
+    --> crates/verse/src/imported/overlay.rs:1270:9
+     |
+1270 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated functions `social_profile` and `move_player` are never used
+   --> crates/verse/src/zones/everglade/mod.rs:308:12
+    |
+ 91 | impl Everglade {
+    | -------------- associated functions in this implementation
+...
+308 |     pub fn social_profile(pack: &ZonePack) -> Result<verse_world::social::world::Profile, String> {
+    |            ^^^^^^^^^^^^^^
+...
+319 |     pub fn move_player(
+    |            ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+  --> crates/verse/src/zones/everglade/draw.rs:92:15
+   |
+92 | pub(super) fn triangles() -> u64 {
+   |               ^^^^^^^^^
+
+warning: `verse` (lib) generated 3 warnings (run `cargo fix --lib -p verse` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 33.63s

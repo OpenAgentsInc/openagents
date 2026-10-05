@@ -7,8 +7,9 @@ pub(super) struct Shadows {
     pub group: wgpu::BindGroup,
     pub pipeline: wgpu::RenderPipeline,
     pub world_pipeline: wgpu::RenderPipeline,
+    pub additive_pipeline: wgpu::RenderPipeline,
 }
-pub(super) const INDEX_CAPACITY: u32 = 26 * 1024;
+pub(super) const INDEX_CAPACITY: u32 = 27 * 1024;
 fn source() -> String {
     include_str!("scene.wgsl")
         .split("@fragment fn fs(")
@@ -40,6 +41,7 @@ impl Shadows {
         world_frame: &wgpu::BindGroupLayout,
         world_material: &wgpu::BindGroupLayout,
         world_format: wgpu::TextureFormat,
+        samples: u32,
     ) -> Option<Self> {
         let size = std::mem::size_of::<Pose>() as u64 * 1024;
         let limits = device.limits();
@@ -117,7 +119,8 @@ impl Shadows {
             bind_group_layouts: &[Some(world_frame), Some(world_material), Some(&layout)],
             immediate_size: 0,
         });
-        let world_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let world_pipeline = |additive: bool| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Verse instanced opaque world"), layout: Some(&world_layout),
             vertex: wgpu::VertexState { module: &world_shader, entry_point: Some("vs"), compilation_options: Default::default(),
                 buffers: &[wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<GpuVertex>() as u64,
@@ -125,20 +128,25 @@ impl Shadows {
                     attributes: &wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3] }] },
             primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
             depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: Some(true), depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                depth_write_enabled: Some(!additive), depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: Default::default(), bias: Default::default() }),
-            multisample: wgpu::MultisampleState { count: 4, ..Default::default() },
+            multisample: wgpu::MultisampleState { count: samples, ..Default::default() },
             fragment: Some(wgpu::FragmentState { module: &world_shader, entry_point: Some("fs"),
                 compilation_options: Default::default(), targets: &[Some(wgpu::ColorTargetState {
-                    format: world_format, blend: None, write_mask: wgpu::ColorWrites::ALL })] }),
+                    format: world_format, blend: additive.then_some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},
+                        alpha:wgpu::BlendComponent::OVER,
+                    }), write_mask: wgpu::ColorWrites::ALL })] }),
             multiview_mask: None, cache: None,
-        });
+        })
+        };
         Some(Self {
             poses,
             indices,
             group,
             pipeline,
-            world_pipeline,
+            world_pipeline: world_pipeline(false),
+            additive_pipeline: world_pipeline(true),
         })
     }
 }
