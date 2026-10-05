@@ -142,10 +142,14 @@ async fn player(
        intent=Intent::Cast {ability,target:target.map(|p|p.life.into()),aim};
       }
      }
+     let mut interval_work=0;
+     // Casts and complete movement intervals share a wake-up, not a production slot.
+     for emission in 0..if movement_frames {1+verse_world::movement::frames::MAX_STEPS/verse_world::movement::frames::SEND_STEPS} else {1} {
+     let intent=if emission==0 {intent.clone()} else {Intent::Move {axes,yaw:std::f32::consts::PI}};
      token=token.checked_add(1).ok_or("Load input identities exhausted")?;
      let moving=matches!(intent,Intent::Move {..});
      let input=if movement_frames && moving {
-      let Some(baseline)=state.movement else {continue};
+      let Some(baseline)=state.movement else {break};
       let context=(baseline.life,baseline.epoch);
       if baseline.profile!=verse_world::movement::Profile::Frames {
        frame_cursor=None;
@@ -156,13 +160,13 @@ async fn player(
          Err(_)=>return Err("Load worker input closed".into()),
         }
        }
-       continue;
+       break;
       }
       let start=match frame_cursor {Some((life,old_epoch,start)) if (life,old_epoch)==context=>start,_=>baseline.physics_step};
       let credited=world_credit.filter(|(life,epoch,_)|(*life,*epoch)==context).map_or(baseline.world_step,|(_,_,step)|baseline.world_step.max(step));
       let limit=credited.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
-      let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::SEND_STEPS)) as u32;
-      if steps<verse_world::movement::frames::SEND_STEPS {continue;}
+      let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::SEND_STEPS)).min(u64::from(verse_world::movement::frames::MAX_STEPS-interval_work)) as u32;
+      if steps<verse_world::movement::frames::SEND_STEPS {break;}
       let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
        segments:vec![verse_world::movement::frames::Segment {offset:0,axes,yaw:std::f32::consts::PI,until:start+verse_world::movement::HELD_STEPS,jump:false}]};
       frame.validate_payload()?;
@@ -170,9 +174,10 @@ async fn player(
      } else {Input::TrackedCommand {token,life:hud.life,epoch,intent}};
      let proposed_end=match &input {Input::MovementFrame {frame,..}=>Some((frame.life,frame.epoch,frame.end()?)),_=>None};
      match send.try_send(input) {
-      Ok(())=>{outstanding.insert(token);if let Some(cursor)=proposed_end {frame_cursor=Some(cursor);} if moving {movement+=1;}},
-      Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>pressure+=1,
+      Ok(())=>{outstanding.insert(token);if let Some(cursor)=proposed_end {frame_cursor=Some(cursor);interval_work+=verse_world::movement::frames::SEND_STEPS;} if moving {movement+=1;}},
+      Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>{pressure+=1;break;},
       Err(_)=>return Err("Load worker input closed".into()),
+     }
      }
     }
     update=receive.recv()=>match update.ok_or("Load worker output closed")? {

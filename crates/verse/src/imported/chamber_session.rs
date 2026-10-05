@@ -815,7 +815,7 @@ impl Session {
             self.frame_cursor = None;
             return Ok(());
         }
-        let start = match self.frame_cursor {
+        let mut start = match self.frame_cursor {
             Some((old_life, old_epoch, start)) if life == old_life && epoch == old_epoch => start,
             _ => {
                 let start = self.prediction.physics_step();
@@ -827,32 +827,42 @@ impl Session {
             .prediction
             .movement_frame_limit()
             .ok_or("Movement interval time credit is unavailable")?;
-        let steps = end
-            .saturating_sub(start)
-            .min(u64::from(verse_world::movement::frames::SEND_STEPS)) as u32;
-        // Keep local prediction immediate while amortizing durable ordered requests.
-        // The complete history retains direction changes, lease expiries, and jump edges.
-        if steps < verse_world::movement::frames::SEND_STEPS
-            || self.input.capacity() == 0
-            || self.pending.len() >= PENDING_LIMIT
+        // Drain at most one authority work budget without dropping completed history.
+        for _ in
+            0..verse_world::movement::frames::MAX_STEPS / verse_world::movement::frames::SEND_STEPS
         {
-            return Ok(());
-        }
-        let frame = self.prediction.movement_frame(start, steps)?;
-        let token = self
-            .input_token
-            .checked_add(1)
-            .ok_or("Input token exhausted")?;
-        match self.input.try_send(Input::MovementFrame { token, frame }) {
-            Ok(()) => {
-                self.input_token = token;
-                self.frame_cursor = Some((life, epoch, start + u64::from(steps)));
-                self.frame_bindings.insert(token, (life, epoch));
-                self.pending.push_back((None, Some(token)));
+            let steps = end
+                .saturating_sub(start)
+                .min(u64::from(verse_world::movement::frames::SEND_STEPS))
+                as u32;
+            // Keep local prediction immediate while amortizing durable ordered requests.
+            // The complete history retains direction changes, lease expiries, and jump edges.
+            if steps < verse_world::movement::frames::SEND_STEPS
+                || self.input.capacity() == 0
+                || self.pending.len() >= PENDING_LIMIT
+            {
+                break;
             }
-            Err(mpsc::error::TrySendError::Full(_)) => self.status = "Input queue is busy".into(),
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                return Err("Chamber connection stopped".into());
+            let frame = self.prediction.movement_frame(start, steps)?;
+            let token = self
+                .input_token
+                .checked_add(1)
+                .ok_or("Input token exhausted")?;
+            match self.input.try_send(Input::MovementFrame { token, frame }) {
+                Ok(()) => {
+                    self.input_token = token;
+                    start += u64::from(steps);
+                    self.frame_cursor = Some((life, epoch, start));
+                    self.frame_bindings.insert(token, (life, epoch));
+                    self.pending.push_back((None, Some(token)));
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    self.status = "Input queue is busy".into();
+                    break;
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    return Err("Chamber connection stopped".into());
+                }
             }
         }
         Ok(())

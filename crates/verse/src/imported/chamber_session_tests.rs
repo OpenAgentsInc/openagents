@@ -509,6 +509,41 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
             .distance(gateway.game().actor_position(life.actor).unwrap())
             < 0.0001
     );
+    // A delayed render wake-up drains two contiguous packets and preserves both turns.
+    gateway.tick(0.1).unwrap();
+    updates
+        .try_send(Update::Snapshot(request(
+            &mut gateway,
+            connection,
+            304,
+            Body::Snapshot {},
+        )))
+        .unwrap();
+    session.consume(&scene).unwrap();
+    let start = session.frame_cursor.unwrap().2;
+    session.send(Input::Command(Intent::Move {
+        axes: [1., 0.],
+        yaw: 0.,
+    }));
+    session.prediction.advance(6. / 120.).unwrap();
+    session.send(Input::Command(Intent::Move {
+        axes: [0., 1.],
+        yaw: 0.,
+    }));
+    session.prediction.advance(6. / 120.).unwrap();
+    session.send_movement_interval().unwrap();
+    let Input::MovementFrame { frame: first, .. } = inputs.try_recv().unwrap() else {
+        panic!("Missing first catch-up interval");
+    };
+    let Input::MovementFrame { frame: second, .. } = inputs.try_recv().unwrap() else {
+        panic!("Missing second catch-up interval");
+    };
+    assert_eq!(first.start, start);
+    assert_eq!(first.end().unwrap(), second.start);
+    assert_eq!(second.end().unwrap(), start + 12);
+    assert_eq!(first.segments[0].axes, [1., 0.]);
+    assert_eq!(second.segments[0].axes, [0., 1.]);
+    assert!(inputs.try_recv().is_err());
     let context = session.prediction.context().unwrap();
     let cursor = session.frame_cursor;
     let token = session.input_token + 1;
