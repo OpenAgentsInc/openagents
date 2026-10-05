@@ -1,0 +1,12 @@
+{
+  "acceptance": "failed",
+  "reason": "All clients complete and observe interval movement; storage pauses, snapshot age, and client frame stalls remain.",
+  "steady_frame_p95_ms": 19.422708,
+  "steady_snapshot_age_p95_ms": 517.5265,
+  "limits": [
+    "Shared hardware, different trajectories, and host feature-set change prevent an isolated causal comparison.",
+    "Histogram p99 upper bound is not an exact percentile.",
+    "No injected delay; impaired-network acceptance remains separate.",
+    "Two out-of-order GPU results are excluded; input-to-display remains unmeasured."
+  ]
+}
