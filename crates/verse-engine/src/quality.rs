@@ -131,7 +131,12 @@ impl Quality {
             instances: crate::presentation::ResolvedInstances::MAX_INSTANCES,
             optional_effects: effects,
             surfaces: 16_384,
-            target_bytes: memory,
+            // A Retina desktop window at the medium tier's multisampling needs
+            // about 260 MB of targets, and a full-screen one about 430 MB.
+            target_bytes: match self.tier {
+                Tier::Medium => 512 * 1024 * 1024,
+                _ => memory,
+            },
             geometry_bytes: memory,
             texture_bytes: memory,
             buffer_bytes: memory,
