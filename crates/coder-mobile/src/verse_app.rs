@@ -30,6 +30,10 @@ pub(crate) struct Config {
     pub synthetic_gym: bool,
     #[serde(default)]
     pub world_relay: Option<String>,
+    /// The name shown over this player's head, from Account; the short key
+    /// when absent.
+    #[serde(default)]
+    pub display_name: Option<String>,
     /// An explicit Leave choice overrides the public default and any stale URL.
     #[serde(default)]
     pub world_offline: bool,
@@ -660,7 +664,6 @@ struct WorldTap {
 const TAP_DRIFT_POINTS: f32 = 12.0;
 /// Slack past the mobile moving-pose interval for relay and scheduling jitter
 /// when drawing bare-world players in the past.
-const BARE_PRESENCE_MARGIN: Duration = Duration::from_millis(300);
 const WORLD_TAP_SECONDS: f64 = 0.25;
 /// Radius of the movement stick's drawn base, in logical points.
 const STICK_RADIUS_POINTS: f32 = 56.0;
@@ -834,6 +837,8 @@ pub(crate) struct Scene {
     pub(crate) evals_panel: bool,
     /// **Compare notes**, kept across relay changes.
     gym_notes: bool,
+    /// The name over this player's head, from Account.
+    display_name: Option<String>,
     /// The eval credit last passed to the hall.
     eval_credit_from: Option<usize>,
     /// The read-only NIP-XP reader, while the world is online. It trusts
@@ -885,6 +890,9 @@ fn playtest_preview(secret: secp256k1::SecretKey) -> Result<verse::xp::Snapshot,
     };
     Ok(verse::xp::snapshot(&events, &trust))
 }
+
+/// Added to the moving interval for the crowd's drawing delay.
+const BARE_PRESENCE_MARGIN: Duration = Duration::from_millis(300);
 
 impl Scene {
     pub fn new(config: Config) -> Result<Self, String> {
@@ -1031,6 +1039,7 @@ impl Scene {
             evals_open: false,
             evals_panel: false,
             gym_notes: config.gym_notes,
+            display_name: config.display_name.clone(),
             eval_credit_from: None,
             xp: None,
             xp_snapshot: if config.xp_preview {
@@ -1118,6 +1127,7 @@ impl Scene {
         let intervals = verse::session::PublishIntervals::mobile();
         let mut session = if self.world.is_bare() {
             let mut session = Session::start_presence(identity, relay, verse::session::BARE_WORLD)?;
+            session.set_display_name(self.display_name.as_deref());
             // Every bare-world player publishes at this mobile cadence; draw
             // them one moving interval in the past so they walk continuously
             // between sparse poses instead of jumping at each one.
@@ -1699,7 +1709,17 @@ impl Scene {
             let Some([x, y]) = verse::hud::project(view_proj, size, head) else {
                 continue;
             };
-            let tag = verse::xp::name_tag(self.xp_snapshot.as_ref(), pubkey);
+            let name = self
+                .session
+                .as_ref()
+                .map(|session| session.name_of(pubkey))
+                .filter(|name| !name.ends_with('…'))
+                .or_else(|| {
+                    (pubkey == self.public_key)
+                        .then(|| self.display_name.clone())
+                        .flatten()
+                });
+            let tag = verse::xp::name_tag(self.xp_snapshot.as_ref(), pubkey, name.as_deref());
             let width = self.atlas.measure(&tag);
             let top = y - self.atlas.line;
             ui.text(&self.atlas, x - width / 2.0, top, &tag, TAG_COLOR);
@@ -3421,6 +3441,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: false,
             world_relay: None,
+            display_name: None,
             world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
@@ -3652,6 +3673,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: true,
             world_relay: None,
+            display_name: None,
             world_offline: false,
             door_preferences: None,
             zone_cache_directory: None,
@@ -3730,6 +3752,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: false,
             world_relay: None,
+            display_name: None,
             world_offline: false,
             door_preferences: Some(saved.clone()),
             zone_cache_directory: None,
@@ -4623,6 +4646,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: false,
             world_relay: relay.map(str::to_owned),
+            display_name: None,
             world_offline: offline,
             door_preferences: None,
             zone_cache_directory: None,
@@ -4712,6 +4736,7 @@ mod tests {
             synthetic_gym: false,
             world_offline: relay.is_none(),
             world_relay: relay,
+            display_name: None,
             door_preferences: None,
             zone_cache_directory: None,
             results_base: None,
@@ -4734,6 +4759,7 @@ mod tests {
             gym_code: None,
             synthetic_gym: false,
             world_relay: None,
+            display_name: None,
             world_offline: true,
             door_preferences: None,
             zone_cache_directory: None,
@@ -4757,7 +4783,7 @@ mod tests {
         let plain = bare_scene();
         let key = plain.public_key.clone();
         assert_eq!(
-            verse::xp::name_tag(plain.xp_snapshot.as_ref(), &key),
+            verse::xp::name_tag(plain.xp_snapshot.as_ref(), &key, None),
             key[..8]
         );
         let plain_vertices = plain.player_tags().vertices.len();
@@ -4777,7 +4803,7 @@ mod tests {
         let snapshot = preview.xp_snapshot.as_ref().unwrap();
         assert_eq!(snapshot.xp_of(std::slice::from_ref(&key)), 300);
         assert_eq!(
-            verse::xp::name_tag(Some(snapshot), &key),
+            verse::xp::name_tag(Some(snapshot), &key, None),
             format!("{} · lv 3", &key[..8])
         );
         assert!(preview.player_tags().vertices.len() > plain_vertices);
@@ -4810,7 +4836,7 @@ mod tests {
         );
         // Playtest XP never reaches the level on the tag.
         assert_eq!(
-            verse::xp::name_tag(scene.xp_snapshot.as_ref(), &key),
+            verse::xp::name_tag(scene.xp_snapshot.as_ref(), &key, None),
             format!("{} · lv 3", &key[..8])
         );
         let marked = scene.player_tags().vertices;

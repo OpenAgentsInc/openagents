@@ -253,10 +253,13 @@ fn a_reproduction_shows_on_the_board_the_tag_and_the_card() {
 
     // The name tag is the prefix and the level; a key without XP shows its
     // prefix alone.
-    assert_eq!(name_tag(Some(&snap), &me), format!("{} · lv 3", &me[..8]));
+    assert_eq!(
+        name_tag(Some(&snap), &me, None),
+        format!("{} · lv 3", &me[..8])
+    );
     let nobody = signer(63).pubkey().to_owned();
-    assert_eq!(name_tag(Some(&snap), &nobody), nobody[..8].to_owned());
-    assert_eq!(name_tag(None, &me), me[..8].to_owned());
+    assert_eq!(name_tag(Some(&snap), &nobody, None), nobody[..8].to_owned());
+    assert_eq!(name_tag(None, &me, None), me[..8].to_owned());
 
     // The card names its curve and lists the counted awards behind the level.
     let card = card(&snap, std::slice::from_ref(&me));
@@ -400,19 +403,22 @@ fn a_level_shows_over_a_head_only_after_the_trainer_opts_in() {
         .collect();
     let snap = snapshot(&events, &trust);
     assert_eq!(snap.xp_of(std::slice::from_ref(&key)), 100);
-    assert_eq!(name_tag(Some(&snap), &key), key[..8]);
+    assert_eq!(name_tag(Some(&snap), &key, None), key[..8]);
     assert_eq!(trainer_level_tag(Some(&snap), &key), None);
     // Opting in shows it.
     let mut shown = events.clone();
     let parts = xp::profile(&key, true, &[]).unwrap();
     shown.push(me.sign(at, parts.kind, parts.tags, parts.content));
     let snap = snapshot(&shown, &trust);
-    assert_eq!(name_tag(Some(&snap), &key), format!("{} · lv 2", &key[..8]));
+    assert_eq!(
+        name_tag(Some(&snap), &key, None),
+        format!("{} · lv 2", &key[..8])
+    );
     // A newer profile that hides it hides it again.
     let parts = xp::profile(&key, false, &[]).unwrap();
     shown.push(me.sign(at + 1, parts.kind, parts.tags, parts.content));
     let snap = snapshot(&shown, &trust);
-    assert_eq!(name_tag(Some(&snap), &key), key[..8]);
+    assert_eq!(name_tag(Some(&snap), &key, None), key[..8]);
     // The trainer's own card still counts its XP.
     assert_eq!(card(&snap, std::slice::from_ref(&key)).xp, 100);
 }
@@ -437,15 +443,21 @@ fn a_linked_key_raises_the_trainers_level_over_both_heads() {
     events.push(phone.sign(at, parts.kind, parts.tags, parts.content));
     let snap = snapshot(&events, &trust);
     // One-sided: the phone's level is its own.
-    assert_eq!(name_tag(Some(&snap), &p), p[..8]);
+    assert_eq!(name_tag(Some(&snap), &p, None), p[..8]);
     assert_eq!(trainer_keys(&snap, &p), std::slice::from_ref(&p));
     // Two-sided: both heads show the trainer's level.
     let parts = xp::link(&l, Some(&p)).unwrap();
     events.push(laptop.sign(at, parts.kind, parts.tags, parts.content));
     let snap = snapshot(&events, &trust);
     assert_eq!(trainer_keys(&snap, &l), [p.clone(), l.clone()]);
-    assert_eq!(name_tag(Some(&snap), &p), format!("{} · lv 2", &p[..8]));
-    assert_eq!(name_tag(Some(&snap), &l), format!("{} · lv 2", &l[..8]));
+    assert_eq!(
+        name_tag(Some(&snap), &p, None),
+        format!("{} · lv 2", &p[..8])
+    );
+    assert_eq!(
+        name_tag(Some(&snap), &l, None),
+        format!("{} · lv 2", &l[..8])
+    );
 }
 
 #[test]

@@ -372,6 +372,7 @@ mod tests {
                 Some(BarePresence {
                     secret_hex: secret.repeat(32),
                     relay: Some(relay.url.clone()),
+                    name: None,
                 }),
                 BareGym {
                     panel: true,

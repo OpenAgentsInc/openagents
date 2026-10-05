@@ -81,9 +81,22 @@ struct IdentityKeysScreen: View {
     @State private var account: AccountPacket?
     @State private var nsec: String?
     @State private var warning = false
+    @State private var displayName = ""
 
     var body: some View {
         List {
+            Section {
+                TextField("Shown over your head", text: $displayName)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .onSubmit { bridge.setDisplayName(displayName) { account = $0; displayName = $0.display_name ?? "" } }
+                    .accessibilityIdentifier("identity-display-name")
+            } header: {
+                Text("Display name")
+            } footer: {
+                Text("Other players in the Grid read this over your avatar. Up to 24 letters, digits, and punctuation.")
+            }
             Section {
                 KeyText(value: account?.npub)
                 CopyButton(title: "Copy npub", value: account?.npub)
@@ -130,7 +143,11 @@ struct IdentityKeysScreen: View {
             Text("Anyone with your nsec can act as this device on your computers. Never share it, and make sure no one can see your screen.")
         }
         .onAppear {
-            bridge.account { account = $0 }
+            bridge.account {
+                account = $0
+                displayName = $0.display_name ?? ""
+                UserDefaults.standard.set($0.display_name, forKey: VerseWorld.displayNameKey)
+            }
             #if targetEnvironment(simulator)
             // `--identity-script warn` shows the warning and `reveal` answers
             // it, so a simulator check needs no taps.

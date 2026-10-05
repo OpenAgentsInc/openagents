@@ -98,6 +98,9 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
             // Compare notes, as the player last left it; off until switched on.
             config.put("gym_notes", context.getSharedPreferences("verse", Context.MODE_PRIVATE)
                 .getBoolean("gym_notes", false))
+            // The name over this player's head, as Account last saved it.
+            context.getSharedPreferences("verse", Context.MODE_PRIVATE)
+                .getString("display_name", null)?.let { config.put("display_name", it) }
             handle = OpenAgentsNative.verseCreate(holder.surface, config.toString())
             check(handle != 0L) { "The world renderer couldn't start on this device." }
             attached = true
@@ -409,5 +412,14 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
             handle = 0; attached = false
         }
         holder.removeCallback(this)
+    }
+
+    companion object {
+        /** Keeps the display name Account last saved, for the world's config; `null` clears it. */
+        fun saveDisplayName(context: Context, name: String?) {
+            context.getSharedPreferences("verse", Context.MODE_PRIVATE).edit().apply {
+                if (name == null) remove("display_name") else putString("display_name", name)
+            }.apply()
+        }
     }
 }

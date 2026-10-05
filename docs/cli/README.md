@@ -446,7 +446,8 @@ newer ones.
 
 ```sh
 openagents key show                     # this identity's public key (creates it)
-openagents verse who --json             # every entity with a state, nearest first
+openagents verse who --json             # every entity with a state, nearest first, with names
+openagents verse name Alice             # the name over this key's head (24 drawable chars)
 openagents verse look --at 0,0,0 --radius 1 --wait 5
 openagents verse move 3,0,-2 --yaw 90 --name devin
 openagents verse say "hello" --to near

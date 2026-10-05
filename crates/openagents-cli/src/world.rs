@@ -1096,10 +1096,12 @@ fn gesture(output: &Output, context: &mut Context, args: &Args) -> Result<u8, St
 }
 
 fn name(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
-    let display = args.positional().join(" ");
-    if display.trim().is_empty() || display.len() > 64 {
-        return Err("NAME is 1 to 64 bytes".into());
-    }
+    let display = verse::session::display_name(&args.positional().join(" ")).ok_or_else(|| {
+        format!(
+            "NAME needs 1 to {} characters the name tag can draw",
+            verse::session::MAX_DISPLAY_NAME
+        )
+    })?;
     let event = mv::profile_event(&context.identity.signer, &display, unix_now());
     let published = context.client.publish(event, DEFAULT_WAIT)?;
     if let Some(state) = context.own_state(DEFAULT_WAIT)? {

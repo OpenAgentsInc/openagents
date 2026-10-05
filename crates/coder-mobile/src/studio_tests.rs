@@ -31,6 +31,7 @@ fn scene() -> Scene {
         gym_code: None,
         synthetic_gym: false,
         world_relay: None,
+        display_name: None,
         world_offline: false,
         door_preferences: None,
         zone_cache_directory: None,

@@ -1144,15 +1144,18 @@ pub fn trainer_level_tag(snapshot: Option<&Snapshot>, pubkey: &str) -> Option<St
     level_tag(Some(snapshot), &snapshot.trainers.keys_of(trainer))
 }
 
-/// A name tag: the first eight hex characters of `pubkey`, then ` · lv n`
-/// when its trainer opted in with a shown profile and has XP under
-/// `snapshot`, such as `650a2a22 · lv 3`.
+/// A name tag: `name` when the player set one, else the first eight hex
+/// characters of `pubkey`, then ` · lv n` when its trainer opted in with a
+/// shown profile and has XP under `snapshot`, such as `alice · lv 3` or
+/// `650a2a22 · lv 3`.
 #[must_use]
-pub fn name_tag(snapshot: Option<&Snapshot>, pubkey: &str) -> String {
-    let prefix = &pubkey[..pubkey.len().min(8)];
+pub fn name_tag(snapshot: Option<&Snapshot>, pubkey: &str, name: Option<&str>) -> String {
+    let shown = name
+        .filter(|name| !name.is_empty())
+        .unwrap_or(&pubkey[..pubkey.len().min(8)]);
     match trainer_level_tag(snapshot, pubkey) {
-        Some(level) => format!("{prefix} · {level}"),
-        None => prefix.to_owned(),
+        Some(level) => format!("{shown} · {level}"),
+        None => shown.to_owned(),
     }
 }
 

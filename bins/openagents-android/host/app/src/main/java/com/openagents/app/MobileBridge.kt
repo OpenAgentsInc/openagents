@@ -279,6 +279,19 @@ class MobileBridge(private val context: Context, private val computersFixture: B
      */
     fun trainerProfile(shown: Boolean, received: (JSONObject) -> Unit) = trainerCall(json("op" to "trainer_profile", "shown" to shown), received)
 
+    /**
+     * Sets the display name shown over the player's head in the Verse; an
+     * empty name clears it. The answer is the account packet with the name
+     * as the app cleaned it, which is also kept for the Verse surface.
+     */
+    fun setDisplayName(name: String, received: (JSONObject) -> Unit) = call(json("op" to "set_display_name", "name" to name)) { text ->
+        text?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?.takeIf { it.optString("schema") == "openagents.account.v1" }?.let { packet ->
+                VerseSurface.saveDisplayName(context, packet.optString("display_name").ifEmpty { null })
+                received(packet)
+            }
+    }
+
     /** Adds a key (npub or hex) to, or removes one from, the trainer profile, and publishes it. */
     fun trainerLink(add: String? = null, remove: String? = null, received: (JSONObject) -> Unit) =
         trainerCall(json("op" to "trainer_link", "add" to add, "remove" to remove), received)

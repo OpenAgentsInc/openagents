@@ -281,6 +281,10 @@ pub struct Session {
     pub log: chat::Log,
     /// Lines floating over speakers' heads.
     pub bubbles: Vec<Bubble>,
+    /// The name this player shows over their head and in states; the
+    /// profile name until set, and none in a presence-only session that has
+    /// not set one.
+    display_name: Option<String>,
     /// Display names by pubkey.
     names: HashMap<String, String>,
     asked_names: HashSet<String>,
@@ -435,6 +439,7 @@ impl Session {
         Ok(Self {
             link,
             crowd: Crowd::new(&me),
+            display_name: (!presence_only).then(|| id.profile.clone()),
             id,
             status: Status::Connecting,
             connection_error: None,
@@ -943,7 +948,7 @@ impl Session {
     }
 
     fn publish_states(&mut self, player: &PlayerController, agent: &Agent, online: bool) {
-        let name = (!self.presence_only).then(|| self.id.profile.clone());
+        let name = self.display_name.clone();
         for pose in self.poses(player, agent) {
             let state = State {
                 v: 1,
@@ -1261,12 +1266,42 @@ impl Session {
     #[must_use]
     pub fn name_of(&self, pubkey: &str) -> String {
         if pubkey == self.pubkey() {
-            return self.id.profile.clone();
+            return self
+                .display_name
+                .clone()
+                .unwrap_or_else(|| format!("{}…", &pubkey[..pubkey.len().min(8)]));
         }
         self.names
             .get(pubkey)
             .cloned()
             .unwrap_or_else(|| format!("{}…", &pubkey[..pubkey.len().min(8)]))
+    }
+
+    /// The name this player shows, if any.
+    #[must_use]
+    pub fn display_name(&self) -> Option<&str> {
+        self.display_name.as_deref()
+    }
+
+    /// Sets the name shown over this player's head, cleaned by
+    /// [`display_name`]; `None` or an unusable name clears it. The next
+    /// state carries it at once, and a full session also publishes it as
+    /// the key's NIP-01 profile.
+    pub fn set_display_name(&mut self, name: Option<&str>) {
+        let name = name.and_then(display_name);
+        if name == self.display_name {
+            return;
+        }
+        self.display_name = name;
+        self.last_state = None;
+        if !self.presence_only {
+            let event = mv::profile_event(
+                &self.id.signer,
+                self.display_name.as_deref().unwrap_or(&self.id.profile),
+                unix_now(),
+            );
+            self.publish_now(event);
+        }
     }
 
     fn want_name(&mut self, pubkey: &str) {
@@ -1616,13 +1651,37 @@ fn profile_name(content: &str) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
+/// The longest display name, in characters.
+pub const MAX_DISPLAY_NAME: usize = 24;
+
+/// Cleans a display name for a tag: only characters the tag font draws (so
+/// no control characters or other scripts), runs of spaces folded to one,
+/// trimmed, and cut to [`MAX_DISPLAY_NAME`] characters. `None` when nothing
+/// drawable is left.
+#[must_use]
+pub fn display_name(raw: &str) -> Option<String> {
+    let cleaned = clean_name(raw);
+    (!cleaned.is_empty()).then_some(cleaned)
+}
+
 fn clean_name(name: &str) -> String {
-    name.chars()
-        .filter(|c| crate::ui::drawable(*c))
-        .take(24)
-        .collect::<String>()
-        .trim()
-        .to_owned()
+    let mut out = String::new();
+    let mut space = true;
+    for c in name.chars().filter(|c| crate::ui::drawable(*c)) {
+        if c == ' ' {
+            if !space {
+                out.push(c);
+            }
+            space = true;
+        } else {
+            out.push(c);
+            space = false;
+        }
+        if out.chars().count() == MAX_DISPLAY_NAME {
+            break;
+        }
+    }
+    out.trim().to_owned()
 }
 
 /// Creates the Verse NIP-29 rooms on `relay`, signing as the relay itself
@@ -1832,6 +1891,77 @@ mod tests {
         }
         assert_eq!(session.status, Status::Online);
         session
+    }
+
+    #[test]
+    fn a_display_name_is_cleaned_to_what_the_tag_font_draws() {
+        assert_eq!(display_name("  Alice   Smith "), Some("Alice Smith".into()));
+        assert_eq!(display_name("al\u{7}ice\n\t"), Some("alice".into()));
+        assert_eq!(display_name("Zoë · lv 9"), Some("Zoë · lv 9".into()));
+        assert_eq!(display_name("\u{200b}\u{1F600}"), None);
+        assert_eq!(display_name("ألِس"), None);
+        assert_eq!(display_name(""), None);
+        let long = "a".repeat(40);
+        assert_eq!(
+            display_name(&long).unwrap().chars().count(),
+            MAX_DISPLAY_NAME
+        );
+    }
+
+    #[test]
+    fn a_presence_session_names_its_states_only_once_a_name_is_set() {
+        let mut session = online_presence();
+        let player = PlayerController::new(Vec3::ZERO, 0.0);
+        let agent = Agent::new(&player);
+        let now = Instant::now();
+        assert_eq!(session.display_name(), None);
+        assert!(session.name_of(&session.pubkey().to_owned()).ends_with('…'));
+        session.tick(now, &player, &agent);
+        let states = |session: &Session| -> Vec<Option<String>> {
+            session
+                .published
+                .borrow()
+                .iter()
+                .filter(|e| e.kind == mv::STATE_KIND)
+                .map(|e| serde_json::from_str::<State>(&e.content).unwrap().name)
+                .collect()
+        };
+        assert_eq!(states(&session), vec![None]);
+
+        session.set_display_name(Some("  Alice  "));
+        assert_eq!(session.display_name(), Some("Alice"));
+        assert_eq!(session.name_of(&session.pubkey().to_owned()), "Alice");
+        // The next tick republishes the state with the name, well before
+        // the state heartbeat would be due.
+        session.tick(now + Duration::from_millis(100), &player, &agent);
+        assert_eq!(states(&session), vec![None, Some("Alice".into())]);
+        // Presence-only sessions publish no profile.
+        assert!(session.published.borrow().iter().all(|e| e.kind != 0));
+
+        session.set_display_name(Some("\u{7}"));
+        assert_eq!(session.display_name(), None);
+    }
+
+    #[test]
+    fn a_full_session_publishes_a_set_name_as_its_profile() {
+        let identity = Identity::from_secret("desk", identity::random_secret()).unwrap();
+        let mut session = Session::with_link(identity, Link::idle()).unwrap();
+        assert_eq!(session.display_name(), Some("desk"));
+        session.set_display_name(Some("Bob"));
+        let profiles: Vec<String> = session
+            .published
+            .borrow()
+            .iter()
+            .filter(|e| e.kind == 0)
+            .map(|e| e.content.clone())
+            .collect();
+        assert_eq!(profiles, vec![r#"{"name":"Bob"}"#.to_owned()]);
+        session.set_display_name(Some("Bob"));
+        assert_eq!(
+            session.published.borrow().len(),
+            1,
+            "an unchanged name publishes nothing"
+        );
     }
 
     #[test]
