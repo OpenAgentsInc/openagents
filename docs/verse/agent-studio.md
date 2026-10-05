@@ -1,33 +1,55 @@
 # Agent Studio
 
-Status: partly implemented, October 4, 2026. This document began as the
+Status: implemented, October 4, 2026. This document began as the
 specification of a place in Verse where a team of coding agents does real work
 on a real repository, and where people watch, steer, answer, and approve that
 work by walking around. Any engine the Coder host can run works there, not
 only Claude. The world borrows its idea from AgentCraft; the panels for
 reading, answering, and reviewing are harvested from Zeron.
 
-What runs today, per the [Agent Studio audit](agent-studio-audit.md):
+What runs today:
 
-- The host's studio coordinator takes a goal, raises a decision when the
-  lead's plan is missing or invalid, releases planned tasks as their
+- A real goal ran end to end on a scratch host on October 4: a Codex lead
+  (`codex/loop`) planned two tasks, a worker on the Claude Agent SDK
+  (`claude/sdk`) asked two approvals and continued its turn after each, the
+  change merged into the checkout without a push, and the lead's review
+  finished the goal for $0.19.
+- The host's studio coordinator releases planned tasks as their
   dependencies clear, gives each task its own worktree and branch, serves
-  reviews at exact revisions, and merges locally without pushing. Every
-  steering intent returns a receipt over NIP-HOST.
-- On the desktop, [Everglade](everglade.md) draws the studio from a live
-  host's snapshots, and its panels send every intent in this document.
-  Phones observe only (#10570).
-- No real engine has driven a studio goal yet. The mixed-engine run (#10477)
-  is an owner step in [`NEEDS_OWNER.md`](../../NEEDS_OWNER.md).
-- `openagents studio` sets up seats, submits goals, lists goals and plans,
-  messages seats, keeps shared memory, and runs `up` and `down`. It can't
-  list or answer task decisions, open a review, merge, request changes,
-  reject, or pause, resume, stop, cancel, retry, reassign, or prioritize.
-  Those steps need Verse on the desktop until #10566 adds them.
-- A merge can land a task that hasn't finished, and a refusal reaches the
-  client as a bare code (#10567).
-- The simulated team runs on a scratch host (`openagents studio up --sim`).
-  See [Simulated team](#simulated-team).
+  reviews at exact revisions, merges only finished changes, sends a
+  conflicting merge back to its seat with the merge already started, and
+  merges locally without pushing.
+- `openagents studio` does every step from the command line (#10566), and
+  [Everglade](everglade.md) does them on the desktop. Phones act through a
+  paired computer (#10570, #10579).
+- Seats choose their engine: `codex/loop`, `claude/loop`, `claude/session`,
+  `codex/session`, or `claude/sdk` (#10568, #10571).
+- The simulated team runs on a scratch host with no model spend
+  (`openagents studio up --sim`). See [Simulated team](#simulated-team).
+
+### Use it for day-to-day work
+
+Seats edit files only. The host commits a seat's change when it lands, and
+a conflict comes back with the merge already started, so seats never write
+Git's shared directory.
+
+```sh
+OA=~/work/openagents-target-agent1/release/openagents   # a build from main
+$OA studio up --repo ~/code/myproject --workspace myproject --full-access \
+  --team "lead=codex/loop:gpt-6.1-sol,ada=claude/sdk:claude-opus-5-5,bob=codex/loop:gpt-6.1-sol"
+$OA studio goal submit "Add a --verbose flag to the CLI" --workspace myproject
+$OA studio watch                      # or walk Everglade: verse --everglade
+$OA studio decisions                  # questions and approvals
+$OA studio answer DECISION allow      # or text, or --always for a standing rule
+$OA studio tasks                      # done tasks wait for review
+$OA studio review TASK --diff
+$OA studio merge TASK                 # lands in the checkout; push it yourself
+$OA studio down
+```
+
+`--full-access` is needed for `session` and `sdk` seats; `loop` seats run
+inside the host's boundary. Use a checkout no one else edits: a merge
+refuses a dirty one.
 
 ## Reference: AgentCraft
 
