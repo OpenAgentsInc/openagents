@@ -328,13 +328,20 @@ impl App {
             view_proj: frame.view_projection(dimensions[0] as f32 / dimensions[1] as f32),
             eye: frame.eye,
         };
-        let mut ui = overlay::cinematic(
+        let mut ui = overlay::cinematic_with_focus(
             &self.atlas,
             &frame,
             &self.heights,
             view.view_proj,
             width,
             height,
+            &std::collections::BTreeMap::new(),
+            self.game.player,
+            frame
+                .actors
+                .iter()
+                .find(|a| a.actor.id == self.game.selected)
+                .and_then(|a| a.life),
         );
         overlay::damage_numbers(
             &mut ui,
@@ -1874,13 +1881,20 @@ fn record_spell(
             view_proj: frame.view_projection(1280.0 / 720.0),
             eye: frame.eye,
         };
-        let mut ui = overlay::cinematic(
+        let mut ui = overlay::cinematic_with_focus(
             &app.atlas,
             &frame,
             &app.heights,
             view.view_proj,
             1280.0,
             720.0,
+            &std::collections::BTreeMap::new(),
+            game.player,
+            frame
+                .actors
+                .iter()
+                .find(|a| a.actor.id == game.selected)
+                .and_then(|a| a.life),
         );
         overlay::damage_numbers(
             &mut ui,

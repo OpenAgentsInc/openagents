@@ -32,7 +32,7 @@ pub fn cinematic_with_markers(
     height: f32,
     markers: &BTreeMap<verse_engine::core::LifeId, verse_world::service::progression::Marker>,
 ) -> UiBatch {
-    cinematic_with_focus(
+    cinematic_with_policy(
         atlas,
         frame,
         heights,
@@ -42,6 +42,7 @@ pub fn cinematic_with_markers(
         markers,
         frame.target,
         None,
+        false,
     )
 }
 
@@ -55,6 +56,23 @@ pub fn cinematic_with_focus(
     markers: &BTreeMap<verse_engine::core::LifeId, verse_world::service::progression::Marker>,
     focus: glam::Vec3,
     target: Option<verse_engine::core::LifeId>,
+) -> UiBatch {
+    cinematic_with_policy(
+        atlas, frame, heights, projection, width, height, markers, focus, target, true,
+    )
+}
+
+fn cinematic_with_policy(
+    atlas: &Atlas,
+    frame: &Frame,
+    heights: &BTreeMap<String, f32>,
+    projection: Mat4,
+    width: f32,
+    height: f32,
+    markers: &BTreeMap<verse_engine::core::LifeId, verse_world::service::progression::Marker>,
+    focus: glam::Vec3,
+    target: Option<verse_engine::core::LifeId>,
+    selected_only: bool,
 ) -> UiBatch {
     let mut ui = UiBatch::default();
     let diagonal = width.hypot(height);
@@ -79,6 +97,7 @@ pub fn cinematic_with_focus(
         .actors
         .iter()
         .filter(|a| a.visible && a.actor.nameplate && a.health > 0)
+        .filter(|a| !selected_only || (target.is_some() && a.life == target))
         .filter(|a| {
             (target.is_some() && a.life == target)
                 || a.actor.position.distance_squared(focus) <= 18. * 18.
