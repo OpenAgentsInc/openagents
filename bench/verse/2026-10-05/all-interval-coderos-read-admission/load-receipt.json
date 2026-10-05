@@ -1,0 +1,2891 @@
+{
+  "schema": "verse.multiplayer.load.v3",
+  "movement_frames_requested": true,
+  "status": "complete",
+  "seconds": 75,
+  "players": [
+    {
+      "player": 0,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 966,
+          "control": {
+            "world_step": 1468,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 243
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1549,
+          "control": {
+            "world_step": 3796,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 643
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2153,
+          "control": {
+            "world_step": 6212,
+            "life": {
+              "instance": 220,
+              "actor": 227,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 1056
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1097,
+      "snapshot_bytes": 79471331,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 775,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 772,
+      "movement_inputs": 1122,
+      "input_pressure": 0,
+      "refusals": 3,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 1150,
+        "p95": 119.672583,
+        "max": 543.231416
+      }
+    },
+    {
+      "player": 1,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1480,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 245
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1551,
+          "control": {
+            "world_step": 3804,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1552,
+          "control": {
+            "world_step": 3812,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1611,
+          "control": {
+            "world_step": 4048,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 37
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1671,
+          "control": {
+            "world_step": 4288,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 77
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1731,
+          "control": {
+            "world_step": 4528,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 119
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2155,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2156,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 228,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1094,
+      "snapshot_bytes": 79244964,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 772,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 764,
+      "movement_inputs": 1115,
+      "input_pressure": 0,
+      "refusals": 9,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 1146,
+        "p95": 122.58783299999999,
+        "max": 545.3151670000001
+      }
+    },
+    {
+      "player": 2,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1480,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1127,
+          "control": {
+            "world_step": 2108,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 103
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1247,
+          "control": {
+            "world_step": 2592,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 185
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1370,
+          "control": {
+            "world_step": 3080,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 269
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1428,
+          "control": {
+            "world_step": 3312,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 309
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1610,
+          "control": {
+            "world_step": 4044,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 35
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1670,
+          "control": {
+            "world_step": 4284,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 76
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1730,
+          "control": {
+            "world_step": 4520,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 119
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1972,
+          "control": {
+            "world_step": 5492,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 284
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2153,
+          "control": {
+            "world_step": 6216,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 408
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 2213,
+          "control": {
+            "world_step": 6456,
+            "life": {
+              "instance": 220,
+              "actor": 229,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 448
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1090,
+      "snapshot_bytes": 78959308,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 769,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 761,
+      "movement_inputs": 1113,
+      "input_pressure": 0,
+      "refusals": 12,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 2,
+        "Grease": 1,
+        "Light": 2,
+        "Misty Step": 2,
+        "Shield": 3,
+        "Shoot Bow": 1,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 1144,
+        "p95": 120.02250000000001,
+        "max": 512.882917
+      }
+    },
+    {
+      "player": 3,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 964,
+          "control": {
+            "world_step": 1460,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1125,
+          "control": {
+            "world_step": 2100,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 106
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1244,
+          "control": {
+            "world_step": 2576,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 187
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1364,
+          "control": {
+            "world_step": 3060,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 269
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1546,
+          "control": {
+            "world_step": 3784,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1548,
+          "control": {
+            "world_step": 3792,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1606,
+          "control": {
+            "world_step": 4028,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 36
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1667,
+          "control": {
+            "world_step": 4272,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 76
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2151,
+          "control": {
+            "world_step": 6204,
+            "life": {
+              "instance": 220,
+              "actor": 230,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 408
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1085,
+      "snapshot_bytes": 78580496,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 765,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 757,
+      "movement_inputs": 1116,
+      "input_pressure": 0,
+      "refusals": 9,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 2,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 1147,
+        "p95": 124.954083,
+        "max": 550.3881670000001
+      }
+    },
+    {
+      "player": 4,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 965,
+          "control": {
+            "world_step": 1464,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 243
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1244,
+          "control": {
+            "world_step": 2576,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 434
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1365,
+          "control": {
+            "world_step": 3060,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 516
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1607,
+          "control": {
+            "world_step": 4028,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 33
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1667,
+          "control": {
+            "world_step": 4272,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 74
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2151,
+          "control": {
+            "world_step": 6208,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2152,
+          "control": {
+            "world_step": 6212,
+            "life": {
+              "instance": 220,
+              "actor": 231,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1080,
+      "snapshot_bytes": 78221114,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 761,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 753,
+      "movement_inputs": 1115,
+      "input_pressure": 0,
+      "refusals": 9,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 2,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 192,
+      "binding_to_outcome_ms": {
+        "samples": 1145,
+        "p95": 122.712417,
+        "max": 543.093208
+      }
+    },
+    {
+      "player": 5,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1480,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 242
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1551,
+          "control": {
+            "world_step": 3804,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 642
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2155,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2156,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 232,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1082,
+      "snapshot_bytes": 78393433,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 763,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 758,
+      "movement_inputs": 1117,
+      "input_pressure": 0,
+      "refusals": 5,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 168,
+      "binding_to_outcome_ms": {
+        "samples": 1147,
+        "p95": 123.240708,
+        "max": 551.506167
+      }
+    },
+    {
+      "player": 6,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1484,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1550,
+          "control": {
+            "world_step": 3804,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 391
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2155,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 233,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 803
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1078,
+      "snapshot_bytes": 78093893,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 760,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 754,
+      "movement_inputs": 1115,
+      "input_pressure": 0,
+      "refusals": 3,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 18,
+      "binding_to_outcome_ms": {
+        "samples": 1146,
+        "p95": 123.294083,
+        "max": 658.7978330000001
+      }
+    },
+    {
+      "player": 7,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1309,
+          "control": {
+            "world_step": 2836,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 226
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1369,
+          "control": {
+            "world_step": 3080,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 267
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1551,
+          "control": {
+            "world_step": 3804,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 390
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1611,
+          "control": {
+            "world_step": 4048,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 432
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1671,
+          "control": {
+            "world_step": 4288,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 474
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2155,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2156,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 234,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1079,
+      "snapshot_bytes": 78161863,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 761,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 753,
+      "movement_inputs": 1113,
+      "input_pressure": 0,
+      "refusals": 9,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 2
+      },
+      "minimum_hp": 182,
+      "binding_to_outcome_ms": {
+        "samples": 1142,
+        "p95": 124.65950000000001,
+        "max": 659.8502080000001
+      }
+    },
+    {
+      "player": 8,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 966,
+          "control": {
+            "world_step": 1464,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 966,
+          "control": {
+            "world_step": 1464,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1304,
+          "control": {
+            "world_step": 2820,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 227
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1365,
+          "control": {
+            "world_step": 3064,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 268
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1548,
+          "control": {
+            "world_step": 3792,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1549,
+          "control": {
+            "world_step": 3800,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1607,
+          "control": {
+            "world_step": 4028,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 37
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1667,
+          "control": {
+            "world_step": 4272,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 75
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1727,
+          "control": {
+            "world_step": 4508,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 119
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1848,
+          "control": {
+            "world_step": 4996,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 202
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1909,
+          "control": {
+            "world_step": 5240,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 242
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1969,
+          "control": {
+            "world_step": 5476,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 283
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2151,
+          "control": {
+            "world_step": 6208,
+            "life": {
+              "instance": 220,
+              "actor": 235,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 408
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1073,
+      "snapshot_bytes": 77708501,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 755,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 747,
+      "movement_inputs": 1115,
+      "input_pressure": 0,
+      "refusals": 13,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 2,
+        "Grease": 1,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 1
+      },
+      "minimum_hp": 150,
+      "binding_to_outcome_ms": {
+        "samples": 1145,
+        "p95": 125.79754100000001,
+        "max": 550.386417
+      }
+    },
+    {
+      "player": 9,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 964,
+          "control": {
+            "world_step": 1460,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 243
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1548,
+          "control": {
+            "world_step": 3792,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2150,
+          "control": {
+            "world_step": 6204,
+            "life": {
+              "instance": 220,
+              "actor": 236,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 407
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1080,
+      "snapshot_bytes": 78259634,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 764,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 758,
+      "movement_inputs": 1119,
+      "input_pressure": 0,
+      "refusals": 5,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 72,
+      "binding_to_outcome_ms": {
+        "samples": 1147,
+        "p95": 120.734667,
+        "max": 550.410709
+      }
+    },
+    {
+      "player": 10,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 966,
+          "control": {
+            "world_step": 1468,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 242
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1247,
+          "control": {
+            "world_step": 2588,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 435
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1549,
+          "control": {
+            "world_step": 3796,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 643
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2154,
+          "control": {
+            "world_step": 6216,
+            "life": {
+              "instance": 220,
+              "actor": 237,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 1055
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1073,
+      "snapshot_bytes": 77752185,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 758,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 755,
+      "movement_inputs": 1122,
+      "input_pressure": 0,
+      "refusals": 4,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 2,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 134,
+      "binding_to_outcome_ms": {
+        "samples": 1150,
+        "p95": 124.312667,
+        "max": 545.914708
+      }
+    },
+    {
+      "player": 11,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 966,
+          "control": {
+            "world_step": 1468,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1126,
+          "control": {
+            "world_step": 2104,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 103
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1549,
+          "control": {
+            "world_step": 3800,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 391
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1912,
+          "control": {
+            "world_step": 5248,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 639
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2156,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2156,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2156,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 2274,
+          "control": {
+            "world_step": 6700,
+            "life": {
+              "instance": 220,
+              "actor": 238,
+              "generation": 0
+            },
+            "epoch": 6,
+            "accepted_sequence": 76
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1058,
+      "snapshot_bytes": 76612178,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 743,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 734,
+      "movement_inputs": 1112,
+      "input_pressure": 0,
+      "refusals": 11,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 2,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 2
+      },
+      "minimum_hp": 160,
+      "binding_to_outcome_ms": {
+        "samples": 1142,
+        "p95": 125.719,
+        "max": 608.7795
+      }
+    },
+    {
+      "player": 12,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 966,
+          "control": {
+            "world_step": 1468,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 244
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1549,
+          "control": {
+            "world_step": 3800,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 644
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1611,
+          "control": {
+            "world_step": 4044,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 684
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1670,
+          "control": {
+            "world_step": 4284,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 726
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1912,
+          "control": {
+            "world_step": 5252,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 890
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Chamber storage is busy; retry without changing operation identity",
+          "code": "storage_busy",
+          "tick": 1972,
+          "control": {
+            "world_step": 5488,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 932
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2154,
+          "control": {
+            "world_step": 6216,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2155,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 239,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1055,
+      "snapshot_bytes": 76390759,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 739,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 734,
+      "movement_inputs": 1120,
+      "input_pressure": 0,
+      "refusals": 8,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 2
+      },
+      "minimum_hp": 152,
+      "binding_to_outcome_ms": {
+        "samples": 1149,
+        "p95": 127.33166700000001,
+        "max": 550.442416
+      }
+    },
+    {
+      "player": 13,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 966,
+          "control": {
+            "world_step": 1468,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1549,
+          "control": {
+            "world_step": 3800,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 395
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2154,
+          "control": {
+            "world_step": 6216,
+            "life": {
+              "instance": 220,
+              "actor": 240,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 807
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1059,
+      "snapshot_bytes": 76665434,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 743,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 738,
+      "movement_inputs": 1119,
+      "input_pressure": 0,
+      "refusals": 5,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 96,
+      "binding_to_outcome_ms": {
+        "samples": 1149,
+        "p95": 125.90279200000002,
+        "max": 550.4334170000001
+      }
+    },
+    {
+      "player": 14,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 966,
+          "control": {
+            "world_step": 1468,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 244
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1128,
+          "control": {
+            "world_step": 2112,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 354
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1308,
+          "control": {
+            "world_step": 2836,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 478
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1369,
+          "control": {
+            "world_step": 3080,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 518
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1549,
+          "control": {
+            "world_step": 3800,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 643
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1611,
+          "control": {
+            "world_step": 4044,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 684
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1670,
+          "control": {
+            "world_step": 4284,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 724
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1851,
+          "control": {
+            "world_step": 5004,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 849
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1912,
+          "control": {
+            "world_step": 5248,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 890
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2154,
+          "control": {
+            "world_step": 6220,
+            "life": {
+              "instance": 220,
+              "actor": 241,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1057,
+      "snapshot_bytes": 76532855,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 743,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 737,
+      "movement_inputs": 1118,
+      "input_pressure": 0,
+      "refusals": 10,
+      "accepted_casts": {
+        "Fire Bolt": 2,
+        "Fireball": 2,
+        "Grease": 2,
+        "Light": 3,
+        "Magic Missile": 1,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 1
+      },
+      "minimum_hp": 184,
+      "binding_to_outcome_ms": {
+        "samples": 1147,
+        "p95": 127.09362499999999,
+        "max": 570.41325
+      }
+    },
+    {
+      "player": 15,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 244
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1551,
+          "control": {
+            "world_step": 3808,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 642
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2155,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 2156,
+          "control": {
+            "world_step": 6224,
+            "life": {
+              "instance": 220,
+              "actor": 242,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1056,
+      "snapshot_bytes": 76462697,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 742,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 736,
+      "movement_inputs": 1116,
+      "input_pressure": 0,
+      "refusals": 4,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 160,
+      "binding_to_outcome_ms": {
+        "samples": 1147,
+        "p95": 133.95679199999998,
+        "max": 550.4625
+      }
+    },
+    {
+      "player": 16,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1484,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1484,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 971,
+          "control": {
+            "world_step": 1488,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1551,
+          "control": {
+            "world_step": 3804,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 391
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1638,
+          "control": {
+            "world_step": 4156,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1639,
+          "control": {
+            "world_step": 4156,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 1640,
+          "control": {
+            "world_step": 4164,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 5,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2154,
+          "control": {
+            "world_step": 6220,
+            "life": {
+              "instance": 220,
+              "actor": 243,
+              "generation": 1
+            },
+            "epoch": 7,
+            "accepted_sequence": 343
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1049,
+      "snapshot_bytes": 75954373,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 736,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 726,
+      "movement_inputs": 1108,
+      "input_pressure": 0,
+      "refusals": 9,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 1138,
+        "p95": 128.361625,
+        "max": 644.009417
+      }
+    },
+    {
+      "player": 17,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1484,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 970,
+          "control": {
+            "world_step": 1484,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Movement interval control is stale or unavailable",
+          "code": "command",
+          "tick": 971,
+          "control": {
+            "world_step": 1488,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 3,
+            "accepted_sequence": 0
+          }
+        },
+        {
+          "stage": "frame_binding",
+          "message": "Movement interval control changed before transmission"
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1550,
+          "control": {
+            "world_step": 3804,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 390
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2154,
+          "control": {
+            "world_step": 6216,
+            "life": {
+              "instance": 220,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 4,
+            "accepted_sequence": 802
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1036,
+      "snapshot_bytes": 74962940,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 722,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 716,
+      "movement_inputs": 1115,
+      "input_pressure": 0,
+      "refusals": 6,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 3,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 192,
+      "binding_to_outcome_ms": {
+        "samples": 1144,
+        "p95": 129.38866700000003,
+        "max": 599.706041
+      }
+    },
+    {
+      "player": 18,
+      "status": "complete",
+      "failure_stage": null,
+      "observation_error": null,
+      "worker_error": null,
+      "refusal_trace": [
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 969,
+          "control": {
+            "world_step": 1476,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 242
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 1551,
+          "control": {
+            "world_step": 3804,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 643
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Target is blocked by chamber geometry",
+          "code": "command",
+          "tick": 1611,
+          "control": {
+            "world_step": 4044,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 683
+          }
+        },
+        {
+          "stage": "outcome",
+          "message": "Teleport destination is occupied",
+          "code": "command",
+          "tick": 2154,
+          "control": {
+            "world_step": 6216,
+            "life": {
+              "instance": 220,
+              "actor": 245,
+              "generation": 0
+            },
+            "epoch": 2,
+            "accepted_sequence": 1054
+          }
+        }
+      ],
+      "omitted_latency_samples": 0,
+      "snapshots": 1024,
+      "snapshot_bytes": 74086815,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 712,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_profile": "authority_credit_intervals",
+      "observed_frame_snapshots": 709,
+      "movement_inputs": 1120,
+      "input_pressure": 0,
+      "refusals": 4,
+      "accepted_casts": {
+        "Fire Bolt": 3,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_hp": 110,
+      "binding_to_outcome_ms": {
+        "samples": 1150,
+        "p95": 133.578916,
+        "max": 570.598375
+      }
+    }
+  ],
+  "limits": [
+    "Headless authenticated clients measure transport and authority load, not rendering.",
+    "Headless intervals use confirmed server time plus the existing bounded authority lookahead, without native prediction or rendering; the receipt declares the requested movement mode.",
+    "Binding-to-outcome includes server processing and client delivery, not isolated RTT.",
+    "Timing retains at most 8192 samples per player."
+  ]
+}
