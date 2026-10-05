@@ -362,6 +362,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "the Grid's ball is off (owner, 2026-10-01); this exercises the ball"]
     fn desktop_and_mobile_equivalent_grid_clients_share_presence_and_bodies() {
         use std::time::{Duration, Instant};
         let relay = relay::LoopbackRelay::start();

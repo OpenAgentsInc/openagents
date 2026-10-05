@@ -114,6 +114,7 @@ fn busiest_minute(relay: &loopback_relay::LoopbackRelay, pubkey: &str) -> usize 
 }
 
 #[test]
+#[ignore = "the Grid's ball is off (owner, 2026-10-01); this exercises the ball"]
 fn bare_world_players_share_the_ball_its_rest_and_the_reset() {
     let relay = loopback_relay::LoopbackRelay::start();
     let clock = Instant::now();

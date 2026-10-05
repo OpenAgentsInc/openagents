@@ -1145,6 +1145,11 @@ impl WorldRuntime {
     /// player is in Everglade and [`Self::update_studio`] is called active.
     pub fn set_studio_source(&mut self, source: Box<dyn Source>) {
         self.zone_state.studio.set_source(source);
+        // A world that opened no panel (the OpenAgents app's bare world)
+        // opens a station's panel by tap once a studio is connected.
+        if self.interact_hint == crate::runtime::InteractHint::None {
+            self.interact_hint = crate::runtime::InteractHint::Tap;
+        }
     }
 
     /// The host supplies whether its surface is active, once a frame, with

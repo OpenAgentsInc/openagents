@@ -4678,27 +4678,10 @@ mod tests {
         }
         scene.pointer(2, PointerPhase::Up, sx, sy - 80.0).unwrap();
         assert!(scene.world.player.pos.distance(start) > 1.0);
-        // Walking on into the ball ahead pushes it.
-        let ball = scene
-            .world
-            .ball()
-            .expect("the bare world's ball")
-            .body()
-            .pos;
-        scene.pointer(5, PointerPhase::Down, sx, sy).unwrap();
-        scene.pointer(5, PointerPhase::Move, sx, sy - 80.0).unwrap();
-        for frame in 31..=180 {
-            scene.update(1.0 + f64::from(frame) / 60.0).unwrap();
-        }
-        scene.pointer(5, PointerPhase::Up, sx, sy - 80.0).unwrap();
-        let pushed = scene.world.ball().unwrap().body().pos;
-        assert!(pushed.z > ball.z + 1.0, "{ball:?} {pushed:?}");
+        // The Grid keeps only the Gym: no ball (owner, 2026-10-01).
+        assert!(scene.world.ball().is_none());
         let packet = serde_json::to_value(scene.packet()).unwrap();
-        assert!(
-            packet["ball"]["speed"]
-                .as_f64()
-                .is_some_and(|speed| speed > 0.5)
-        );
+        assert!(packet["ball"].is_null(), "{}", packet["ball"]);
         // A double tap on open ground jumps.
         for (id, at) in [(3, 10.0), (4, 10.1)] {
             scene
@@ -4801,6 +4784,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "the Grid's ball is off (owner, 2026-10-01); this exercises the ball"]
     fn playtest_titles_draw_as_shapes_on_the_tag_the_ground_and_the_ball() {
         // No playtest referee key exists yet, so a live scene reads none.
         assert!(verse::xp::playtest_trust().is_none());
