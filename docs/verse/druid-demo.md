@@ -1,6 +1,7 @@
 # Druid demo: an Archdruid on the web
 
-Status: proposed specification, October 4, 2026. The owner asked for a web
+Status: specification, October 4, 2026; the Grove implements the four-row
+bar as of October 5 ([Implemented](#implemented)). The owner asked for a web
 demo, ready to show the next day, of a high-level druid in a field of training
 dummies with a full action bar of druid abilities from the System Reference
 Document. This page researches what a level 20 SRD druid can do, lays out the
@@ -337,6 +338,61 @@ shows the spell's school color and its initials until one is chosen.
 | **Next** | The remaining spells' effects (Wall of Thorns, Fire Storm, Storm of Vengeance, Shapechange, Conjure Animals, Polymorph, and Insect Plague first); Land's Aid; Nature's Sanctuary; Wild Companion; the Spellbook panel. | About a week. |
 | **Beasts** | Real Wild Shape forms once a CC0 animal pack is in hand: bear, wolf, eagle, and spider with their own attacks and animations. | Blocked on an asset pack. |
 
+## Implemented
+
+As of October 5 (#10609), the Grove (`crates/verse/src/zones/grove/`) has
+the four rows above, adapted to the playable demo: no mana, no cooldowns,
+and no charges, so every press casts and a held key recasts six times a
+second.
+
+- **The bar:** `slots.rs` holds the rows and each ability's icon and
+  tooltip sentence; `hotbar.rs` draws them. Row 1 is on `1` to `=`, and
+  `Shift`, `Ctrl`, and `Alt` reach rows 2 to 4. A desktop stacks all four
+  rows; a screen under 640 points either way shows one row and a switcher.
+  Row 4's last two slots are empty, since the land spells fill keys 5 to 0.
+  In a browser on Windows or Linux, `Ctrl` with a digit may switch tabs
+  first; clicking a slot always works.
+- **Tooltips:** each card gives the sentence, the key, the level, the range
+  in meters, the area, the damage range from the dice, the attack or save,
+  the condition and its seconds, and concentration.
+- **Spells with effects:** every **Done** spell and Produce Flame, Starry
+  Wisp, Shillelagh, Poison Spray, Elementalism, Entangle, Faerie Fire, Ice
+  Knife, Healing Word, Moonbeam, Spike Growth, Call Lightning, Conjure
+  Animals, Ice Storm, Wall of Fire, Polymorph, Mass Cure Wounds, Sunbeam,
+  Wall of Thorns, Fire Storm, Sunburst, Storm of Vengeance, Land's Aid, and
+  every land spell except Blur and Freedom of Movement. Each lands by its
+  area (`cast.rs`): a projectile, the target, a burst, a cone, a line, or a
+  lasting zone or wall (`aura.rs`) that acts each second, each round, or as
+  a dummy is pushed through it. A maintained spell ends the druid's other
+  maintained area.
+- **Placeholders:** Wild Companion, Nature's Sanctuary, Nature Magician,
+  Wild Resurgence, Shapechange, Blur, and Freedom of Movement cast a labeled
+  burst and say so in the log. Speak with Animals answers in the log.
+- **Choose Land** cycles Arid, Polar, Temperate, and Tropical and swaps row
+  4's six land slots.
+- **Wild Shape:** the Giant Spider and the generated stylized bear, wolf,
+  and eagle are pack forms (see [Beast models](#beast-models)). Each swaps
+  the druid's model and pace and puts its attacks on row 2's first slots;
+  the eagle flies with Everglade's levitation, Jump climbing and X
+  descending.
+- **Conditions:** timed debuffs on the dummies, shown as tags with their
+  seconds over the health bars: rooted, knocked down, blinded, poisoned
+  (3 poison a second), outlined (a fifth more damage), polymorphed (drawn
+  small), paralyzed, asleep (damage wakes it), slowed, and starlit. Hard
+  control diminishes within 15 seconds, and the third is immune.
+- **Combat log:** the lower left shows the land and the form over the newest
+  eight lines, with damage by type, crits, halved saves, resistances, and
+  conditions.
+- **Effects:** sprite particles from the [effect pipeline](particles.md)
+  (`assets/verse/fx/effects/grove_*.toml`) and line-drawn rings, cones,
+  beams, lightning strokes, columns, walls, and vines. Live effects, areas,
+  particles, and floating numbers each have a cap, oldest first, so spam
+  stays bounded.
+
+Not built yet: the Spellbook panel, the resource bar (the playable Grove
+has no mana or charges to show), Wild Shape's temporary hit points, and the
+spider's climbing.
+
 ## Beast models
 
 None of the kits on this Mac has a bear, wolf, or eagle. Quaternius's **Easy
@@ -353,15 +409,17 @@ character beside the player's, with its own skeleton and clips
 (`everglade_pack::compile::forms`). A gait's distance per loop is measured
 from the clip, so the feet keep pace with the ground.
 
-In the Grove, **Wild Shape: Giant Spider** (key `0`) swaps the druid's
+In the Grove, **Wild Shape: Giant Spider** (key `4`) swaps the druid's
 character for the spider at 1.5 times its modeled size, a Large creature's
 3 m. It plays idle standing, its walk by speed for every gait, and its
 attack clip on a bite, and it moves at 1.25 times the druid's pace. Its
 **Bite** (+5, 1d8 + 3 piercing and 2d6 poison, 3.5 m reach) and **Web** (+5
-at 18 m; a hit roots for 6 s) take the bar's first two slots, and the
-druid's spells still cast. **Return to Form** (`-`), Long Rest, and leaving
-the Grove end it. Climbing isn't implemented. The bear, wolf, and eagle are
-in the pack as forms but have no Wild Shape slots yet.
+at 18 m; a hit roots for 6 s) take row 2's first two slots (`Shift+1` and
+`Shift+2`), and the druid's spells still cast. **Return to Form** (`5`),
+Long Rest, and leaving the Grove end it. Climbing isn't implemented. The
+stylized bear (key `1`, slow, with a bite and a claw that knocks down),
+wolf (`2`, fast, with a bite that knocks down), and eagle (`3`, flying, with
+its talons) work the same way.
 
 The Circle of the Land is the only SRD druid subclass; the Circle of the Moon
 isn't in the SRD and stays out.

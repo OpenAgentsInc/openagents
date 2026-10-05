@@ -1,0 +1,26 @@
+# Ice Storm's hail, started about 8 m above the ground. The hail falls
+# for about a second and bounces off the ground.
+description = "White-blue hailstones falling fast over a 6 m disc and bouncing."
+
+[[emitter]]
+name = "hail"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 30.0
+rate = 40.0
+duration = 1.0
+life = [0.8, 1.2]
+shape = "disc"
+radius = 6.0
+direction = [0.0, -1.0, 0.0]
+spread = 4.0
+speed = [14.0, 18.0]
+gravity = -10.0
+bounce = 0.3
+size = [0.05, 0.08]
+stretch = 0.04
+stretch_max = 1.0
+rotate = false
+color = [[0.95, 0.98, 1.0], [0.8, 0.9, 1.0], [0.7, 0.82, 1.0]]
+alpha = [[0.0, 1.0], [0.8, 1.0], [1.0, 0.0]]
+priority = 4

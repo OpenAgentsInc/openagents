@@ -1,0 +1,24 @@
+# Sleet Storm, started about 8 m above the ground. Runs until the spell
+# ends.
+description = "Gray-blue sleet streaks falling over a 6 m disc."
+
+[[emitter]]
+name = "sleet"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 6.0
+rate = 38.0
+life = [0.7, 0.8]
+shape = "disc"
+radius = 6.0
+direction = [0.15, -1.0, 0.0]
+spread = 4.0
+speed = [10.0, 12.0]
+gravity = -4.0
+size = [0.03, 0.05]
+stretch = 0.06
+stretch_max = 1.2
+rotate = false
+color = [0.7, 0.76, 0.85]
+alpha = [[0.0, 0.0], [0.1, 0.8], [0.9, 0.8], [1.0, 0.0]]
+priority = 2

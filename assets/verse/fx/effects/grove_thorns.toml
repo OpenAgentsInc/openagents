@@ -1,0 +1,42 @@
+# Spike Growth's thorny ground. Runs until the spell ends; kept subtle.
+description = "Low brown-green dust and a few thorny sparks over a 6 m disc."
+
+[[emitter]]
+name = "dust"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+blend = "alpha"
+light = "lit"
+rate = 10.0
+life = [1.0, 1.6]
+shape = "disc"
+radius = 6.0
+speed = [0.1, 0.3]
+drag = 1.0
+size = [0.3, 0.5]
+scale = [0.5, 1.2, 1.5]
+color = [0.4, 0.38, 0.22]
+alpha = [[0.0, 0.0], [0.3, 0.5], [1.0, 0.0]]
+spin = [-0.6, 0.6]
+priority = 1
+
+[[emitter]]
+name = "thorns"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 8.0
+rate = 8.0
+life = [0.2, 0.4]
+shape = "disc"
+radius = 6.0
+spread = 30.0
+speed = [1.0, 2.0]
+drag = 2.0
+size = [0.03, 0.05]
+stretch = 0.08
+stretch_max = 0.3
+rotate = false
+color = [0.6, 0.7, 0.3]
+alpha = [1.0, 1.0, 0.0]
+priority = 1

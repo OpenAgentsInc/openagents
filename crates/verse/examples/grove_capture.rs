@@ -1,33 +1,45 @@
 //! Offline visual acceptance of the Grove with the shared renderer.
-//! Usage: grove_capture OUTPUT.png [field|action|tooltip|thunder [AGE]|spider|spider-walk]
+//! Usage: grove_capture OUTPUT.png [VIEW [ARGS]]
 //!
 //! Installs the Grove from the committed, pinned Everglade pack, as
-//! `verse --grove` does after the download, and renders one view with its
-//! hotbar:
+//! `verse --grove` does after the download, and renders one view with the
+//! Archdruid's four-row bar and the combat log:
 //!
 //! - `field` (the default): from the spawn over the meadow and its
 //!   training dummies.
 //! - `action`: the same view a moment after Web and Fire Bolt, with a
 //!   bolt in flight, a rooted dummy, and a floating result.
-//! - `tooltip`: the field with the pointer resting on the hotbar's
-//!   Fireball slot, so its card shows above the tray.
-//! - `thunder`: Thunderwave mid-blast beside a straw dummy, `AGE` seconds
-//!   (0.12 by default) after the cast.
+//! - `tooltip`: the field with the pointer resting on Fireball's slot
+//!   (Alt+8), so its card shows above the bar.
+//! - `phone`: the field at a phone's 844 × 390, where the bar shows one row
+//!   and its switcher.
+//! - `thunder [AGE]`: Thunderwave mid-blast beside a straw dummy, `AGE`
+//!   seconds (0.12 by default) after the cast.
 //! - `spider`: the druid in Wild Shape as the Giant Spider, mid-bite on a
-//!   straw dummy, with its Bite and Web on the bar.
+//!   straw dummy, with its Bite and Web on row 2.
 //! - `spider-walk`: the Giant Spider walking across the meadow, seen from
 //!   its side.
+//! - `spell SLOT [AGE] [BACK] [SLOT...]`: casts the bar's slot `SLOT`
+//!   (row × 12 + column) at the straw dummy from `BACK` m (8 by default),
+//!   then any further slots, and renders `AGE` seconds (0.4 by default)
+//!   later.
 use std::path::{Path, PathBuf};
 use verse::{
     controller::InputState,
     runtime::{Action, WorldRuntime},
-    zones::{self, Intent, everglade_pack},
+    zones::{self, Intent, everglade_pack, grove::hotbar},
 };
 
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let output = PathBuf::from(args.next().ok_or("Expected an output PNG path")?);
     let view = args.next().unwrap_or_else(|| "field".into());
+    let rest: Vec<String> = args.collect();
+    let number = |i: usize, default: f32| -> Result<f32, String> {
+        rest.get(i)
+            .map_or(Ok(default), |a| a.parse())
+            .map_err(|e| format!("bad number: {e}"))
+    };
     let pack = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(everglade_pack::PACK_DIRECTORY)
@@ -48,51 +60,41 @@ fn main() -> Result<(), String> {
     for _ in 0..10 {
         runtime.tick(&idle, 0.05);
     }
+    let run = |runtime: &mut WorldRuntime, seconds: f32| {
+        let steps = (seconds / 0.01).round() as usize;
+        for _ in 0..steps {
+            runtime.tick(&InputState::default(), 0.01);
+        }
+    };
     match view.as_str() {
-        "field" | "tooltip" => {}
+        "field" | "tooltip" | "phone" => {}
         "thunder" => {
-            let age: f32 = args
-                .next()
-                .map_or(Ok(0.12), |a| a.parse())
-                .map_err(|e| format!("bad age: {e}"))?;
+            let age = number(0, 0.12)?;
             runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -7.5), 0.0)?;
-            for _ in 0..4 {
-                runtime.tick(&idle, 0.05);
-            }
+            run(&mut runtime, 0.2);
             runtime.zone_intent(Intent::Thunderwave)?;
-            let steps = (age / 0.01).round() as usize;
-            for _ in 0..steps {
-                runtime.tick(&idle, 0.01);
-            }
+            run(&mut runtime, age);
         }
         "action" => {
             runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -11.0), 0.0)?;
             runtime.zone_intent(Intent::Web)?;
-            for _ in 0..22 {
-                runtime.tick(&idle, 0.05);
-            }
+            run(&mut runtime, 1.1);
             runtime.zone_intent(Intent::Firebolt)?;
-            for _ in 0..3 {
-                runtime.tick(&idle, 0.05);
-            }
+            run(&mut runtime, 0.15);
         }
         "spider" => {
             runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -8.0), 0.0)?;
-            runtime.zone_intent(Intent::GroveSlot(9))?;
-            for _ in 0..16 {
-                runtime.tick(&idle, 0.05);
-            }
-            runtime.zone_intent(Intent::GroveSlot(0))?;
-            for _ in 0..6 {
-                runtime.tick(&idle, 0.05);
-            }
+            runtime.zone_intent(Intent::GroveSlot(3))?;
+            run(&mut runtime, 0.8);
+            runtime.zone_intent(Intent::GroveSlot(12))?;
+            run(&mut runtime, 0.3);
         }
         "spider-walk" => {
             runtime.set_spawn(
                 glam::Vec3::new(-6.0, 0.0, -12.0),
                 std::f32::consts::FRAC_PI_2,
             )?;
-            runtime.zone_intent(Intent::GroveSlot(9))?;
+            runtime.zone_intent(Intent::GroveSlot(3))?;
             let walk = InputState {
                 forward: true,
                 ..InputState::default()
@@ -106,29 +108,53 @@ fn main() -> Result<(), String> {
             })?;
             runtime.tick(&walk, 0.02);
         }
+        "spell" => {
+            let slot = number(0, 17.0)? as u8;
+            let age = number(1, 0.4)?;
+            let back = number(2, 8.0)?;
+            runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -5.0 - back), 0.0)?;
+            run(&mut runtime, 0.2);
+            runtime.zone_intent(Intent::GroveSlot(slot))?;
+            for extra in rest.iter().skip(3) {
+                let extra: u8 = extra.parse().map_err(|e| format!("bad slot: {e}"))?;
+                run(&mut runtime, 0.05);
+                runtime.zone_intent(Intent::GroveSlot(extra))?;
+            }
+            run(&mut runtime, age);
+        }
         other => {
             return Err(format!(
-                "unknown view `{other}`; use field, action, tooltip, thunder, spider, or spider-walk"
+                "unknown view `{other}`; use field, action, tooltip, phone, thunder, spider, spider-walk, or spell"
             ));
         }
     }
+    let (width, height) = if view == "phone" {
+        (844, 390)
+    } else {
+        (1280, 800)
+    };
+    let size = [width as f32, height as f32];
     let mut atlas = verse::ui::Atlas::new(16.0);
-    zones::grove::hotbar::add_sprites(&mut atlas)?;
+    hotbar::add_sprites(&mut atlas)?;
     eprintln!("{}", runtime.zone_snapshot(1.6).caption);
     let mut ui = verse::ui::UiBatch::default();
     if let Some(bar) = runtime.grove_bar() {
-        zones::grove::hotbar::draw(&mut ui, &atlas, [1280.0, 800.0], 14.0, &bar);
+        let layout = hotbar::Layout::for_screen(size, 0);
+        hotbar::draw(&mut ui, &atlas, size, 14.0, layout, &bar);
+        if let Some((status, lines)) = runtime.grove_log() {
+            hotbar::draw_log(&mut ui, &atlas, size, 14.0, layout, &status, &lines);
+        }
         if view == "tooltip" {
-            // A simulated hover on Fireball, the seventh slot.
-            zones::grove::hotbar::draw_tip(&mut ui, &atlas, [1280.0, 800.0], 14.0, &bar, 6);
+            // A simulated hover on Fireball, Alt+8.
+            hotbar::draw_tip(&mut ui, &atlas, size, 14.0, layout, &bar, 43);
         }
     }
     verse::render::capture_with_atmosphere(
         &output,
-        1280,
-        800,
+        width,
+        height,
         &runtime.world.mesh,
-        runtime.view(1.6),
+        runtime.view(width as f32 / height as f32),
         &runtime.dynamic_mesh(),
         &ui,
         &atlas,

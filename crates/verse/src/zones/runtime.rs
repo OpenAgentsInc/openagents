@@ -30,6 +30,19 @@ impl WorldRuntime {
         } else if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.move_player(&mut self.player, input, self.camera.pitch, dt);
         } else if let Some(everglade) = &mut self.zone_state.everglade {
+            // As the Grove's Giant Eagle, Jump climbs.
+            let flying = self
+                .zone_state
+                .grove
+                .as_ref()
+                .and_then(super::grove::Grove::form)
+                .is_some_and(super::grove::shape::Form::flies);
+            if flying && input.jump && everglade.levitating {
+                use super::everglade::{CLIMB_RATE, LEVITATE_CEILING};
+                let ground = super::everglade::height(self.player.pos.x, self.player.pos.z);
+                everglade.altitude =
+                    (everglade.altitude + CLIMB_RATE * dt).clamp(ground, ground + LEVITATE_CEILING);
+            }
             everglade.move_controlled(&mut self.player, input, &self.world.blockers, dt);
         } else {
             self.player
@@ -915,6 +928,14 @@ impl WorldRuntime {
         if let Some(grove) = self.zone_state.grove.as_mut() {
             grove.release();
         }
+    }
+
+    /// The Grove's combat log: its heading (the land and the form) and its
+    /// newest lines, oldest first, or `None` outside the Grove.
+    #[must_use]
+    pub fn grove_log(&self) -> Option<(String, Vec<String>)> {
+        let grove = self.zone_state.grove.as_ref()?;
+        Some((grove.status(), grove.log.clone()))
     }
 
     /// The Grove's hotbar, or `None` outside the Grove.

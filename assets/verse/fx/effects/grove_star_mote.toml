@@ -1,0 +1,34 @@
+# Starry Wisp's mote in flight. Moved with the projectile every frame.
+description = "A pale blue-white star flare trailing sparkles."
+
+[[emitter]]
+name = "star"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 60.0
+rate = 12.0
+life = [0.12, 0.14]
+inherit = 1.0
+size = [0.3, 0.34]
+scale = [0.9, 1.0, 1.1]
+color = [0.8, 0.88, 1.0]
+alpha = [1.0, 0.8, 0.0]
+priority = 5
+
+[[emitter]]
+name = "sparkles"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 40.0
+rate = 24.0
+life = [0.4, 0.7]
+inherit = 0.05
+spread = 180.0
+speed = [0.2, 0.6]
+drag = 1.0
+size = [0.05, 0.08]
+color = [[0.9, 0.94, 1.0], [0.7, 0.8, 1.0], [0.55, 0.65, 1.0]]
+alpha = [[0.0, 1.0], [0.25, 0.4], [0.5, 1.0], [0.75, 0.3], [1.0, 0.0]]
+priority = 3

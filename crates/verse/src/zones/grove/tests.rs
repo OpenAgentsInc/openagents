@@ -2,9 +2,9 @@
 //! each spell's effect on a dummy.
 
 use super::draw::Effect;
-use super::dummies::{Dummy, FIELD, Kind, POST, RESET_AFTER};
-use super::hotbar;
-use super::kit::{REPEAT, Spell};
+use super::dummies::{Condition, Dummy, FIELD, Kind, POST, RESET_AFTER};
+use super::kit::{Area, Land, REPEAT, Spell};
+use super::slots;
 use super::{Grove, MAX_EFFECTS, MAX_FLOATERS, SPAWN};
 use crate::controller::InputState;
 use crate::runtime::WorldRuntime;
@@ -62,6 +62,38 @@ fn face(runtime: &mut WorldRuntime, i: usize, back: f32) {
 
 /// The first straw dummy, 10 m ahead of the spawn.
 const STRAW: usize = 0;
+/// Slots: Wall of Stone (Arid, Alt+0) and Reverse Gravity (Ctrl+=).
+const STONE_SLOT: usize = 45;
+const GRAVITY_SLOT: usize = 35;
+/// Wild Shape: Giant Spider (4), Return to Form (5), and the beast's first
+/// attack (Shift+1).
+const SPIDER: u8 = 3;
+const RETURN: u8 = 4;
+const BITE: u8 = 12;
+
+/// Casts the spell on slot `index`.
+fn cast(runtime: &mut WorldRuntime, index: usize) -> Result<(), String> {
+    runtime.zone_intent(Intent::GroveSlot(index as u8))
+}
+
+/// The slot `spell` sits on now.
+fn slot(runtime: &WorldRuntime, spell: Spell) -> usize {
+    let g = grove(runtime);
+    slots::slot_of(spell, g.form(), g.land()).unwrap_or_else(|| panic!("{spell:?} is on no slot"))
+}
+
+/// Casts `spell` from its slot, failing the test on a refusal.
+fn cast_spell(runtime: &mut WorldRuntime, spell: Spell) {
+    let index = slot(runtime, spell);
+    cast(runtime, index).unwrap_or_else(|e| panic!("{spell:?}: {e}"));
+}
+
+/// Makes dummy `i` fail its next saving throws.
+fn fail_saves(runtime: &mut WorldRuntime, i: usize) {
+    for _ in 0..4 {
+        grove_mut(runtime).dice.force_save(i as u64, 1).unwrap();
+    }
+}
 
 #[test]
 fn the_field_stands_at_the_demo_distances() {
@@ -90,19 +122,23 @@ fn the_grove_opens_with_its_hotbar_and_no_cooldowns() {
     assert!(runtime.everglade_hotbar().is_none());
     let bar = runtime.grove_bar().expect("the Grove's bar");
     assert!(bar.slots.iter().all(|s| s.cooldown == 0.0));
-    assert_eq!(bar.spells, hotbar::ROW);
-    assert_eq!(hotbar::key('1'), Some(Intent::GroveSlot(0)));
-    assert_eq!(hotbar::key('='), Some(Intent::GroveSlot(11)));
+    // Four rows of twelve: 46 abilities and two empty slots.
+    assert_eq!(bar.spells.iter().flatten().count(), 46);
+    assert_eq!(super::hotbar::key('1', 0), Some(Intent::GroveSlot(0)));
+    assert_eq!(super::hotbar::key('=', 3), Some(Intent::GroveSlot(47)));
     assert_eq!(
-        grove(&runtime).resolve(Intent::GroveSlot(0)),
+        grove(&runtime).resolve(Intent::GroveSlot(17)),
         Some(Spell::Thunderwave)
     );
     assert_eq!(
         grove(&runtime).resolve(Intent::GroveSlot(11)),
         Some(Spell::LongRest)
     );
+    // The default land is Arid.
+    assert_eq!(bar.spells[40], Some(Spell::FireBolt));
+    assert_eq!(bar.spells[45], Some(Spell::WallOfStone));
     for spell in Spell::ALL {
-        let sprite = hotbar::info(spell).0;
+        let sprite = slots::info(spell).0;
         assert!(crate::imported::icons::icon(sprite).is_some(), "{sprite}");
     }
     assert!(runtime.zone_snapshot(1.0).caption.starts_with("Grove"));
@@ -170,7 +206,7 @@ fn wall_of_stone_rises_at_the_target_and_shoves_it_past_the_wall() {
     let after = grove(&runtime).dummies[STRAW].pos;
     assert!(after.z > before.z + 0.5, "{before} to {after}");
     // It slides behind the wall, so walking on reaches the stone first.
-    assert!(runtime.grove_bar().unwrap().slots[3].active);
+    assert!(runtime.grove_bar().unwrap().slots[STONE_SLOT].active);
 }
 
 #[test]
@@ -290,7 +326,7 @@ fn long_rest_ends_the_spells_and_stands_the_dummies_back_up() {
     runtime.zone_intent(Intent::ReverseGravity).unwrap();
     idle(&mut runtime, 0.5);
     runtime.zone_intent(Intent::LongRest).unwrap();
-    assert!(!runtime.grove_bar().unwrap().slots[4].active);
+    assert!(!runtime.grove_bar().unwrap().slots[GRAVITY_SLOT].active);
     let grove = grove(&runtime);
     assert!(
         grove
@@ -307,17 +343,25 @@ fn every_press_casts_at_once_with_no_cooldown_or_mana_in_the_way() {
     face(&mut runtime, STRAW, 8.0);
     // Mashed within one frame: every press of every spell casts.
     for _ in 0..12 {
-        for (index, spell) in hotbar::ROW.into_iter().enumerate() {
-            if !spell.spell() {
+        for index in 0..slots::COUNT {
+            let Some(spell) = grove(&runtime).slot_spell(index) else {
+                continue;
+            };
+            // Melee reaches only 3.5 m; the rest cast from 8 m.
+            let melee = spell.def().area == Area::Single && spell.def().range < 6.0;
+            if !spell.repeats() || spell.beast() || melee {
                 continue;
             }
+            // Pushes and lifts don't carry the target out of reach.
+            grove_mut(&mut runtime)
+                .dummies
+                .iter_mut()
+                .for_each(Dummy::reset);
             runtime
                 .zone_intent(Intent::GroveSlot(index as u8))
                 .unwrap_or_else(|e| panic!("{spell:?}: {e}"));
             // Misty Step moved the druid; stand back for the next round.
-            if spell == Spell::MistyStep {
-                face(&mut runtime, STRAW, 8.0);
-            }
+            face(&mut runtime, STRAW, 8.0);
         }
         // A few milliseconds apart, with the dummies stood back up so
         // each round has its target.
@@ -334,7 +378,8 @@ fn every_press_casts_at_once_with_no_cooldown_or_mana_in_the_way() {
             .filter(|e| matches!(e, Effect::Wave { .. }))
             .count()
     };
-    assert!(waves(&runtime) >= 6);
+    // The newest blasts survive the field's cap on live effects.
+    assert!(waves(&runtime) >= 1);
     // Twenty Thunderwaves in a row, each pressed the same instant.
     let mut runtime = entered();
     face(&mut runtime, STRAW, 2.5);
@@ -353,10 +398,10 @@ fn every_press_casts_at_once_with_no_cooldown_or_mana_in_the_way() {
     // A concentration spell recasts at once, replacing the live one.
     for _ in 0..5 {
         runtime.zone_intent(Intent::WallOfStone).unwrap();
-        assert!(runtime.grove_bar().unwrap().slots[3].active);
+        assert!(runtime.grove_bar().unwrap().slots[STONE_SLOT].active);
         runtime.zone_intent(Intent::ReverseGravity).unwrap();
-        assert!(runtime.grove_bar().unwrap().slots[4].active);
-        assert!(!runtime.grove_bar().unwrap().slots[3].active);
+        assert!(runtime.grove_bar().unwrap().slots[GRAVITY_SLOT].active);
+        assert!(!runtime.grove_bar().unwrap().slots[STONE_SLOT].active);
     }
 }
 
@@ -443,23 +488,26 @@ fn wild_shape_becomes_the_giant_spider_with_its_bite_and_web() {
     let size = figure(&runtime).vertices.len();
     // The beast's attacks refuse in the druid's own shape.
     assert_eq!(
-        grove(&runtime).resolve(Intent::GroveSlot(0)),
-        Some(Spell::Thunderwave)
+        grove(&runtime).resolve(Intent::GroveSlot(BITE)),
+        Some(Spell::ProduceFlame)
     );
     assert!(
-        runtime.zone_intent(Intent::GroveSlot(10)).is_err(),
+        runtime.zone_intent(Intent::GroveSlot(RETURN)).is_err(),
         "no shape to drop"
     );
-    runtime.zone_intent(Intent::GroveSlot(9)).unwrap();
+    runtime.zone_intent(Intent::GroveSlot(SPIDER)).unwrap();
     assert_eq!(
         grove(&runtime).form(),
         Some(super::shape::Form::GiantSpider)
     );
     assert_eq!(runtime.player.pace(), 1.25);
     let bar = runtime.grove_bar().unwrap();
-    assert_eq!(bar.spells[0], Spell::Bite);
-    assert_eq!(bar.spells[1], Spell::SpiderWeb);
-    assert!(bar.slots[9].active, "the shape's slot is lit");
+    assert_eq!(bar.spells[usize::from(BITE)], Some(Spell::SpiderBite));
+    assert_eq!(bar.spells[usize::from(BITE) + 1], Some(Spell::SpiderWeb));
+    assert!(
+        bar.slots[usize::from(SPIDER)].active,
+        "the shape's slot is lit"
+    );
     // The spider draws where the druid stood: its vertices are in the
     // figure and near the player, and the druid's are folded away.
     idle(&mut runtime, 0.1);
@@ -475,7 +523,7 @@ fn wild_shape_becomes_the_giant_spider_with_its_bite_and_web() {
     let mut poisoned = false;
     for _ in 0..20 {
         // The straw dummy falls before twenty bites; past that they refuse.
-        let _ = runtime.zone_intent(Intent::GroveSlot(0));
+        let _ = runtime.zone_intent(Intent::GroveSlot(BITE));
         poisoned |= grove(&runtime).log.iter().any(|l| l.contains("poison"));
         idle(&mut runtime, 0.05);
     }
@@ -489,7 +537,7 @@ fn wild_shape_becomes_the_giant_spider_with_its_bite_and_web() {
         .for_each(Dummy::reset);
     face(&mut runtime, STRAW, 12.0);
     for _ in 0..10 {
-        let _ = runtime.zone_intent(Intent::GroveSlot(1));
+        let _ = runtime.zone_intent(Intent::GroveSlot(BITE + 1));
     }
     let now = grove(&runtime).time;
     assert!(
@@ -508,15 +556,18 @@ fn wild_shape_becomes_the_giant_spider_with_its_bite_and_web() {
     let speed = runtime.player.pos.distance(start) / (25.0 * DT);
     assert!(speed > crate::controller::RUN_SPEED * 1.15, "{speed}");
     // Return to Form brings the druid back at the druid's own pace.
-    runtime.zone_intent(Intent::GroveSlot(10)).unwrap();
+    runtime.zone_intent(Intent::GroveSlot(RETURN)).unwrap();
     assert_eq!(grove(&runtime).form(), None);
     assert_eq!(runtime.player.pace(), 1.0);
-    assert_eq!(runtime.grove_bar().unwrap().spells[0], Spell::Thunderwave);
+    assert_eq!(
+        runtime.grove_bar().unwrap().spells[usize::from(BITE)],
+        Some(Spell::ProduceFlame)
+    );
     // Long Rest and leaving the Grove end the shape too.
-    runtime.zone_intent(Intent::GroveSlot(9)).unwrap();
+    runtime.zone_intent(Intent::GroveSlot(SPIDER)).unwrap();
     runtime.zone_intent(Intent::LongRest).unwrap();
     assert_eq!(grove(&runtime).form(), None);
-    runtime.zone_intent(Intent::GroveSlot(9)).unwrap();
+    runtime.zone_intent(Intent::GroveSlot(SPIDER)).unwrap();
     runtime.zone_intent(Intent::Return).unwrap();
     assert_eq!(runtime.player.pace(), 1.0);
 }
@@ -536,4 +587,284 @@ fn spells_outside_the_grove_are_refused_and_return_leaves_it() {
 fn zone_names_include_the_grove() {
     assert_eq!(ZoneId::from_name("grove"), Some(ZoneId::Grove));
     assert_eq!(ZoneId::from_name("verse-grove"), Some(ZoneId::Grove));
+}
+
+#[test]
+fn choose_land_swaps_row_four_through_the_four_lands() {
+    let mut runtime = entered();
+    let choose = slot(&runtime, Spell::ChooseLand);
+    for (land, first) in [
+        (Land::Polar, Spell::RayOfFrost),
+        (Land::Temperate, Spell::ShockingGrasp),
+        (Land::Tropical, Spell::AcidSplash),
+        (Land::Arid, Spell::FireBolt),
+    ] {
+        cast(&mut runtime, choose).unwrap();
+        assert_eq!(grove(&runtime).land(), land);
+        let bar = runtime.grove_bar().unwrap();
+        assert_eq!(bar.spells[40], Some(first));
+        assert_eq!(&bar.spells[40..46], &land.spells().map(Some)[..]);
+        assert!(
+            grove(&runtime)
+                .log
+                .last()
+                .unwrap()
+                .starts_with("Choose Land")
+        );
+    }
+    // A named intent follows its spell to wherever its land puts it.
+    cast(&mut runtime, choose).unwrap();
+    assert_eq!(grove(&runtime).slot_of(Intent::Firebolt), None);
+}
+
+/// Casts `spell` at the straw dummy from `back` m until `landed` holds,
+/// the dummy failing its saves; returns the attempts it took.
+fn lands(spell: Spell, back: f32, landed: impl Fn(&Grove) -> bool) -> usize {
+    let mut runtime = entered();
+    for attempt in 1..=12 {
+        grove_mut(&mut runtime)
+            .dummies
+            .iter_mut()
+            .for_each(Dummy::reset);
+        face(&mut runtime, STRAW, back);
+        fail_saves(&mut runtime, STRAW);
+        cast_spell(&mut runtime, spell);
+        idle(&mut runtime, 1.3);
+        if landed(grove(&runtime)) {
+            return attempt;
+        }
+    }
+    panic!("{spell:?} never landed: {:?}", grove(&runtime).log);
+}
+
+fn hurt(g: &Grove) -> bool {
+    g.dummies[STRAW].hp < g.dummies[STRAW].kind.max_hp()
+}
+
+fn has(g: &Grove, condition: Condition) -> bool {
+    g.dummies[STRAW].has(condition, g.time)
+}
+
+#[test]
+fn the_demo_spells_land_with_their_damage_and_conditions() {
+    lands(Spell::ProduceFlame, 8.0, hurt);
+    lands(Spell::StarryWisp, 8.0, |g| {
+        hurt(g) && has(g, Condition::Starlit)
+    });
+    lands(Spell::PoisonSpray, 6.0, hurt);
+    lands(Spell::Entangle, 8.0, |g| has(g, Condition::Restrained));
+    lands(Spell::FaerieFire, 8.0, |g| has(g, Condition::Outlined));
+    lands(Spell::IceKnife, 8.0, |g| {
+        hurt(g) && g.log.iter().any(|l| l.contains("cold"))
+    });
+    lands(Spell::Moonbeam, 8.0, |g| hurt(g) && !g.auras().is_empty());
+    lands(Spell::CallLightning, 8.0, |g| {
+        hurt(g) && g.log.iter().any(|l| l.contains("lightning"))
+    });
+    lands(Spell::IceStorm, 8.0, |g| {
+        hurt(g) && g.log.iter().any(|l| l.contains("bludgeoning and"))
+    });
+    lands(Spell::WallOfFire, 8.0, hurt);
+    lands(Spell::Sunbeam, 8.0, |g| {
+        hurt(g) && has(g, Condition::Blinded)
+    });
+    lands(Spell::Sunburst, 8.0, |g| {
+        hurt(g) && has(g, Condition::Blinded)
+    });
+}
+
+#[test]
+fn healing_word_restores_a_hurt_dummy() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 8.0);
+    grove_mut(&mut runtime).dummies[STRAW].damage(50.0, super::kit::Damage::Fire, 0.0);
+    let before = grove(&runtime).dummies[STRAW].hp;
+    cast_spell(&mut runtime, Spell::HealingWord);
+    let after = grove(&runtime).dummies[STRAW].hp;
+    // 2d4 + 5 is 7 to 13.
+    assert!(
+        (7.0..=13.0).contains(&(after - before)),
+        "{before} to {after}"
+    );
+}
+
+#[test]
+fn spike_growth_cuts_a_dummy_pushed_through_it() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 8.0);
+    cast_spell(&mut runtime, Spell::SpikeGrowth);
+    idle(&mut runtime, 0.2);
+    assert_eq!(
+        grove(&runtime).dummies[STRAW].hp,
+        100.0,
+        "thorns wait for movement"
+    );
+    fail_saves(&mut runtime, STRAW);
+    cast_spell(&mut runtime, Spell::GustOfWind);
+    idle(&mut runtime, 0.6);
+    let dummy = &grove(&runtime).dummies[STRAW];
+    assert!(
+        dummy.hp < dummy.kind.max_hp(),
+        "pushed 4.5 m through thorns"
+    );
+    assert!(
+        grove(&runtime)
+            .log
+            .iter()
+            .any(|l| l.starts_with("Spike Growth"))
+    );
+}
+
+#[test]
+fn concentration_keeps_one_maintained_area_and_recasting_moves_it() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 8.0);
+    cast_spell(&mut runtime, Spell::Moonbeam);
+    cast_spell(&mut runtime, Spell::Moonbeam);
+    assert_eq!(grove(&runtime).auras().len(), 1);
+    cast_spell(&mut runtime, Spell::WallOfFire);
+    let auras = grove(&runtime).auras();
+    assert_eq!(auras.len(), 1);
+    assert_eq!(auras[0].spell, Spell::WallOfFire);
+    // Entangle isn't maintained, so it stands beside the wall.
+    cast_spell(&mut runtime, Spell::Entangle);
+    assert_eq!(grove(&runtime).auras().len(), 2);
+    // Each ends when its time is up.
+    idle(&mut runtime, 10.5);
+    assert!(grove(&runtime).auras().is_empty());
+}
+
+#[test]
+fn conditions_tick_diminish_and_amplify_damage() {
+    let mut dummy = Dummy::new(Kind::Straw, [0.0, 0.0]);
+    assert_eq!(dummy.afflict(Condition::Paralyzed, 6.0, 0.0), 6.0);
+    assert_eq!(dummy.afflict(Condition::Asleep, 6.0, 1.0), 3.0);
+    assert_eq!(
+        dummy.afflict(Condition::Prone, 1.5, 2.0),
+        0.0,
+        "the third is immune"
+    );
+    // Soft conditions don't diminish.
+    assert_eq!(dummy.afflict(Condition::Blinded, 2.0, 2.0), 2.0);
+    let tags: Vec<_> = dummy.conditions(2.5).into_iter().map(|(c, _)| c).collect();
+    assert_eq!(
+        tags,
+        [Condition::Paralyzed, Condition::Asleep, Condition::Blinded]
+    );
+    // Damage wakes a sleeper; Faerie Fire's outline adds a fifth.
+    dummy.afflict(Condition::Outlined, 10.0, 3.0);
+    assert_eq!(dummy.damage(10.0, super::kit::Damage::Fire, 3.0), 12);
+    assert!(!dummy.has(Condition::Asleep, 3.0));
+    // The armored dummy resists piercing.
+    let mut armored = Dummy::new(Kind::Armored, [0.0, 0.0]);
+    assert_eq!(armored.damage(10.0, super::kit::Damage::Piercing, 0.0), 5);
+    // Poison bites each second in the Grove.
+    let mut runtime = entered();
+    grove_mut(&mut runtime).dummies[STRAW].afflict(Condition::Poisoned, 3.5, 0.0);
+    idle(&mut runtime, 3.2);
+    let hp = grove(&runtime).dummies[STRAW].hp;
+    assert!((88.0..=94.0).contains(&hp), "{hp}");
+}
+
+#[test]
+fn the_bear_wolf_and_eagle_take_their_shapes_and_attacks() {
+    use super::shape::Form;
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 2.5);
+    for (form, pace, first) in [
+        (Form::BrownBear, 0.85, Spell::BearBite),
+        (Form::DireWolf, 1.5, Spell::WolfBite),
+        (Form::GiantEagle, 1.4, Spell::EagleTalons),
+    ] {
+        cast_spell(&mut runtime, form.spell());
+        idle(&mut runtime, 0.05);
+        assert_eq!(grove(&runtime).form(), Some(form));
+        assert_eq!(runtime.player.pace(), pace);
+        let bar = runtime.grove_bar().unwrap();
+        assert_eq!(bar.spells[usize::from(BITE)], Some(first));
+        let figure = runtime.dynamic_mesh().figure.expect("a figure");
+        figure.validate().unwrap();
+    }
+    // The eagle flies: it starts aloft, and Jump climbs.
+    assert!(runtime.everglade_levitating());
+    let low = runtime.player.pos.y;
+    let climb = InputState {
+        jump: true,
+        ..InputState::default()
+    };
+    for _ in 0..50 {
+        runtime.tick(&climb, DT);
+    }
+    assert!(
+        runtime.player.pos.y > low + 1.0,
+        "{low} to {}",
+        runtime.player.pos.y
+    );
+    // Back on the ground in the druid's shape.
+    cast(&mut runtime, usize::from(RETURN)).unwrap();
+    assert!(!runtime.everglade_levitating());
+    // The wolf's bite knocks a dummy down.
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 2.5);
+    cast_spell(&mut runtime, Spell::WildShapeWolf);
+    let mut down = false;
+    for _ in 0..12 {
+        let _ = cast(&mut runtime, usize::from(BITE));
+        down |= has(grove(&runtime), Condition::Prone);
+    }
+    assert!(down, "{:?}", grove(&runtime).log);
+}
+
+#[test]
+fn placeholders_and_controls_say_what_they_do() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 8.0);
+    cast_spell(&mut runtime, Spell::Shapechange);
+    assert!(
+        grove(&runtime)
+            .log
+            .last()
+            .unwrap()
+            .contains("labeled burst")
+    );
+    cast_spell(&mut runtime, Spell::SpeakWithAnimals);
+    assert!(
+        grove(&runtime)
+            .log
+            .last()
+            .unwrap()
+            .starts_with("A sparrow says")
+    );
+    let (status, lines) = runtime.grove_log().unwrap();
+    assert_eq!(status, "Land: Arid · Form: Druid");
+    assert_eq!(lines.len(), 2);
+}
+
+#[test]
+fn spamming_every_spell_keeps_everything_bounded() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 8.0);
+    let repeated: Vec<usize> = (0..slots::COUNT)
+        .filter(|&i| {
+            grove(&runtime)
+                .slot_spell(i)
+                .is_some_and(|s| s.repeats() && !s.beast())
+        })
+        .collect();
+    for round in 0..60 {
+        for &index in &repeated {
+            let _ = cast(&mut runtime, index);
+            face(&mut runtime, STRAW, 8.0);
+        }
+        runtime.tick(&InputState::default(), 0.05);
+        let g = grove(&runtime);
+        assert!(g.effects().len() <= MAX_EFFECTS, "round {round}");
+        assert!(g.floaters.len() <= MAX_FLOATERS);
+        assert!(g.auras().len() <= super::aura::MAX_AURAS);
+        assert!(g.particles() <= crate::fx::system::MAX_PARTICLES);
+        assert!(g.log.len() <= super::LOG);
+    }
+    let mesh = runtime.dynamic_mesh();
+    assert!(mesh.lines.len() < 80_000, "{}", mesh.lines.len());
+    assert!(mesh.sprites.len() <= crate::fx::system::MAX_PARTICLES);
 }

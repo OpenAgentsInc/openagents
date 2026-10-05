@@ -1,0 +1,62 @@
+# Acid Splash on a target. Every emitter fires once.
+description = "Green-yellow acid splashing out, with a little smoke."
+
+[[emitter]]
+name = "splash"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 30.0
+burst = 28
+life = [0.5, 0.9]
+spread = 70.0
+speed = [2.0, 4.5]
+gravity = -9.0
+drag = 0.8
+bounce = 0.2
+size = [0.04, 0.07]
+stretch = 0.05
+stretch_max = 0.5
+rotate = false
+color = [[0.9, 1.0, 0.5], [0.65, 0.95, 0.2], [0.45, 0.75, 0.1]]
+alpha = [1.0, 1.0, 0.0]
+priority = 4
+
+[[emitter]]
+name = "drops"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 15.0
+burst = 8
+life = [0.4, 0.7]
+shape = "sphere"
+radius = 0.3
+spread = 180.0
+speed = [0.5, 1.5]
+drag = 1.5
+size = [0.08, 0.12]
+color = [0.7, 1.0, 0.3]
+alpha = [1.0, 0.8, 0.0]
+priority = 3
+
+[[emitter]]
+name = "smoke"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+delay = 0.1
+burst = 4
+life = [1.0, 1.5]
+shape = "sphere"
+radius = 0.3
+spread = 40.0
+speed = [0.3, 0.7]
+gravity = 0.3
+drag = 1.0
+size = [0.3, 0.45]
+scale = [0.6, 1.3, 1.8]
+color = [0.6, 0.66, 0.35]
+alpha = [[0.0, 0.0], [0.15, 0.5], [1.0, 0.0]]
+spin = [-0.5, 0.5]
+priority = 2

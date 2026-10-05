@@ -1,0 +1,53 @@
+# Starry Wisp landing on a target. Every emitter fires once.
+description = "A radiant white-gold burst of sparkles."
+
+[[emitter]]
+name = "flash"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 60.0
+burst = 1
+life = [0.3, 0.3]
+size = [0.8, 0.8]
+scale = [0.6, 1.3, 1.5]
+color = [1.0, 0.95, 0.8]
+alpha = [1.0, 0.5, 0.0]
+priority = 5
+
+[[emitter]]
+name = "sparkles"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 70.0
+burst = 28
+life = [0.4, 0.8]
+spread = 180.0
+speed = [2.5, 4.5]
+drag = 2.5
+size = [0.03, 0.05]
+stretch = 0.04
+stretch_max = 0.3
+rotate = false
+color = [[1.0, 1.0, 0.95], [1.0, 0.9, 0.6], [1.0, 0.75, 0.35]]
+alpha = [1.0, 1.0, 0.0]
+priority = 4
+
+[[emitter]]
+name = "motes"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 35.0
+burst = 12
+life = [0.6, 1.0]
+shape = "sphere"
+radius = 0.3
+spread = 180.0
+speed = [0.3, 0.9]
+gravity = 0.5
+drag = 1.0
+size = [0.07, 0.12]
+color = [1.0, 0.92, 0.7]
+alpha = [[0.0, 1.0], [0.3, 0.4], [0.6, 1.0], [1.0, 0.0]]
+priority = 3

@@ -1,0 +1,25 @@
+# Insect Plague's swarm. Runs until the spell ends.
+description = "Dark specks buzzing over a 5 m disc."
+
+[[emitter]]
+name = "insects"
+sheet = "sparks"
+frames = [0, 0]
+animate = "random"
+blend = "alpha"
+light = "lit"
+rate = 36.0
+life = [0.5, 0.9]
+shape = "disc"
+radius = 5.0
+spread = 90.0
+speed = [1.5, 3.0]
+gravity = -1.0
+drag = 1.5
+size = [0.05, 0.07]
+stretch = 0.03
+stretch_max = 0.15
+rotate = false
+color = [0.06, 0.05, 0.04]
+alpha = [[0.0, 0.0], [0.15, 1.0], [0.85, 1.0], [1.0, 0.0]]
+priority = 2

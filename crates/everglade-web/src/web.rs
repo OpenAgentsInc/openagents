@@ -203,6 +203,11 @@ struct Page {
     slot_touch: Option<(i32, usize, zones::Intent, f64)>,
     /// The latest frame's `performance.now()`, in milliseconds.
     now: f64,
+    /// Each held Grove key's code and the slot it pressed, so letting go
+    /// releases that slot whatever modifiers are held then.
+    grove_keys: Vec<(String, zones::Intent)>,
+    /// The row a compact Grove bar shows.
+    grove_row: usize,
 }
 
 async fn run() -> Result<(), String> {
@@ -337,6 +342,8 @@ async fn run() -> Result<(), String> {
         slot_tip: verse::tooltip::Dwell::default(),
         slot_touch: None,
         now: 0.0,
+        grove_keys: Vec::new(),
+        grove_row: 0,
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -389,6 +396,8 @@ async fn run_grid(
         slot_tip: verse::tooltip::Dwell::default(),
         slot_touch: None,
         now: 0.0,
+        grove_keys: Vec::new(),
+        grove_row: 0,
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -568,10 +577,15 @@ impl Page {
                 );
             }
         }
-        if let (Some(layout), Some(bar)) = (&self.layout, self.runtime.grove_bar()) {
-            zones::grove::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &bar);
+        if let (Some(atlas), Some(bar)) = (&self.layout, self.runtime.grove_bar()) {
+            let size = self.css_size();
+            let layout = self.grove_layout();
+            zones::grove::hotbar::draw(&mut ui, atlas, size, 0.0, layout, &bar);
+            if let Some((status, lines)) = self.runtime.grove_log() {
+                zones::grove::hotbar::draw_log(&mut ui, atlas, size, 0.0, layout, &status, &lines);
+            }
             if let Some(index) = tip {
-                zones::grove::hotbar::draw_tip(&mut ui, layout, self.css_size(), 0.0, &bar, index);
+                zones::grove::hotbar::draw_tip(&mut ui, atlas, size, 0.0, layout, &bar, index);
             }
         }
         for vertex in &mut ui.vertices {
@@ -598,6 +612,11 @@ impl Page {
         }
     }
 
+    /// How the Grove's bar lays out on this canvas.
+    fn grove_layout(&self) -> zones::grove::hotbar::Layout {
+        zones::grove::hotbar::Layout::for_screen(self.css_size(), self.grove_row)
+    }
+
     /// The canvas's size in CSS pixels.
     fn css_size(&self) -> [f32; 2] {
         let size = self.renderer.size();
@@ -612,7 +631,7 @@ impl Page {
             let index = yard::slot_under(at, size, 0.0)?;
             Some((index, yard::SLOTS.get(index)?.0))
         } else if self.runtime.grove_bar().is_some() {
-            let index = zones::grove::hotbar::slot_under(at, size, 0.0)?;
+            let index = zones::grove::hotbar::slot_under(at, size, 0.0, self.grove_layout())?;
             Some((index, zones::grove::hotbar::intent(index)?))
         } else if self.runtime.everglade_hotbar().is_some() {
             let index = zones::everglade::hotbar::slot_under(at, size, 0.0)?;
@@ -638,6 +657,14 @@ impl Page {
     /// Levitate acts when it lifts, so a long press can show the card
     /// instead; Levitate rises while held.
     fn press_hotbar(&mut self, at: [f32; 2], pointer: Option<i32>, touch: bool, now: f64) -> bool {
+        // A compact Grove bar's switcher shows the next row.
+        if self.runtime.grove_bar().is_some()
+            && zones::grove::hotbar::hit(at, self.css_size(), 0.0, self.grove_layout())
+                == Some(zones::grove::hotbar::Hit::Switch)
+        {
+            self.grove_row = (self.grove_row + 1) % zones::grove::slots::ROWS;
+            return true;
+        }
         let Some((index, intent)) = self.slot_at(at) else {
             return false;
         };
@@ -695,10 +722,23 @@ impl Page {
     }
 
     /// The hotbar's keys: 1 to 5 are its slots, 1 and L hold Levitate, and
-    /// while levitating X holds a descent. Returns whether it used the key.
-    fn hotbar_key(&mut self, code: &str, down: bool) -> bool {
-        // The Grove's bar: 1 to 9, 0, -, and = cast what their slots hold.
+    /// while levitating X holds a descent. In the Grove, 1 to 9, 0, -, and
+    /// = cast row 1's slots, and with Shift, Ctrl, or Alt (`modifiers`, in
+    /// that order) rows 2, 3, and 4. Returns whether it used the key.
+    fn hotbar_key(&mut self, code: &str, down: bool, modifiers: [bool; 3]) -> bool {
         if self.runtime.grove_bar().is_some() {
+            // As the Giant Eagle, X holds a descent.
+            if code == "KeyX" {
+                if down && self.runtime.everglade_levitating() {
+                    self.climb = Some((None, -1.0));
+                    return true;
+                }
+                if !down && self.climb.is_some() {
+                    self.release_climb(None, Some(-1.0));
+                    return true;
+                }
+                return false;
+            }
             let key = match code {
                 "Minus" => Some('-'),
                 "Equal" => Some('='),
@@ -707,7 +747,22 @@ impl Page {
                     .and_then(|d| d.chars().next())
                     .filter(|_| code.len() == 6),
             };
-            let Some(intent) = key.and_then(zones::grove::hotbar::key) else {
+            let intent = if down {
+                let [shift, ctrl, alt] = modifiers;
+                let row = zones::grove::hotbar::row_of(shift, ctrl, alt);
+                let intent = key.and_then(|k| zones::grove::hotbar::key(k, row));
+                if let Some(intent) = intent {
+                    self.grove_keys.retain(|(c, _)| c != code);
+                    self.grove_keys.push((code.to_owned(), intent));
+                }
+                intent
+            } else {
+                self.grove_keys
+                    .iter()
+                    .position(|(c, _)| c == code)
+                    .map(|i| self.grove_keys.remove(i).1)
+            };
+            let Some(intent) = intent else {
                 return false;
             };
             // Every press casts, and a held key recasts until it is let go.
@@ -792,10 +847,14 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
     let key = |down: bool| {
         let page = page.clone();
         move |event: KeyboardEvent| {
-            if event.ctrl_key() || event.meta_key() || event.alt_key() {
+            let mut page = page.borrow_mut();
+            // The Grove's rows 3 and 4 take Ctrl and Alt; elsewhere they
+            // stay the browser's.
+            let grove = page.runtime.grove_bar().is_some();
+            let chord = event.ctrl_key() || event.alt_key();
+            if event.meta_key() || (chord && !grove) {
                 return;
             }
-            let mut page = page.borrow_mut();
             if event.repeat() {
                 event.prevent_default();
                 return;
@@ -821,8 +880,9 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 event.prevent_default();
                 return;
             }
-            let used = page.hotbar_key(&event.code(), down);
-            if used || page.input.key(&event.code(), down) {
+            let modifiers = [event.shift_key(), event.ctrl_key(), event.alt_key()];
+            let used = page.hotbar_key(&event.code(), down, modifiers);
+            if used || (!chord && page.input.key(&event.code(), down)) {
                 event.prevent_default();
             }
         }

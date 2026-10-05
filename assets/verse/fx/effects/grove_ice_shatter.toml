@@ -1,0 +1,57 @@
+# Ice Knife shattering on a target. Every emitter fires once.
+description = "Pale blue ice shards bursting out, and a puff of frost mist."
+
+[[emitter]]
+name = "flash"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 40.0
+burst = 1
+life = [0.2, 0.2]
+size = [0.7, 0.7]
+scale = [0.6, 1.2, 1.4]
+color = [0.8, 0.9, 1.0]
+alpha = [1.0, 0.5, 0.0]
+priority = 5
+
+[[emitter]]
+name = "shards"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 40.0
+burst = 26
+life = [0.5, 0.9]
+spread = 180.0
+speed = [3.5, 6.0]
+gravity = -6.0
+drag = 3.0
+bounce = 0.3
+size = [0.04, 0.07]
+stretch = 0.06
+stretch_max = 0.4
+rotate = false
+color = [[0.95, 0.98, 1.0], [0.7, 0.85, 1.0], [0.55, 0.7, 1.0]]
+alpha = [1.0, 1.0, 0.0]
+priority = 4
+
+[[emitter]]
+name = "mist"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+burst = 5
+life = [0.9, 1.4]
+shape = "sphere"
+radius = 0.3
+spread = 180.0
+radial = [0.5, 1.2]
+speed = [0.1, 0.4]
+drag = 1.5
+size = [0.35, 0.5]
+scale = [0.6, 1.4, 2.0]
+color = [0.85, 0.92, 1.0]
+alpha = [[0.0, 0.0], [0.1, 0.6], [1.0, 0.0]]
+spin = [-0.5, 0.5]
+priority = 2

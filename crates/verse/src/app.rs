@@ -588,6 +588,14 @@ struct App {
     everglade_pending: Option<zones::ZoneId>,
     /// A held descent (-1, the X key) while levitating in Everglade, or 0.
     climb: f32,
+    /// Whether Ctrl and Alt are held, for the Grove's rows 3 and 4.
+    grove_ctrl: bool,
+    grove_alt: bool,
+    /// Each held Grove key and the slot it pressed, so letting go releases
+    /// that slot whatever modifiers are held then.
+    grove_keys: Vec<(KeyCode, ZoneIntent)>,
+    /// The row a compact Grove bar shows.
+    grove_row: usize,
     /// Whether the mouse holds Everglade's Levitate slot down.
     levitate_held: bool,
     /// The hotbar slot the pointer rests on, for its card's hover delay.
@@ -862,6 +870,10 @@ impl App {
             everglade_pending: None,
             swing_press: None,
             climb: 0.0,
+            grove_ctrl: false,
+            grove_alt: false,
+            grove_keys: Vec::new(),
+            grove_row: 0,
             levitate_held: false,
             slot_tip: crate::tooltip::Dwell::default(),
             #[cfg(feature = "remote-chamber")]
@@ -2034,10 +2046,16 @@ impl App {
             && self.runtime.zone_load_state() == zones::LoadState::Idle
     }
 
-    /// The Grove's hotbar slot under `at`, in logical units.
-    fn grove_hotbar_at(&self, at: [f32; 2]) -> Option<ZoneIntent> {
+    /// How the Grove's bar lays out on a screen of `size` logical points.
+    fn grove_layout(&self, size: [f32; 2]) -> zones::grove::hotbar::Layout {
+        zones::grove::hotbar::Layout::for_screen(size, self.grove_row)
+    }
+
+    /// What the Grove's bar has under `at`, in logical units.
+    fn grove_hotbar_at(&self, at: [f32; 2]) -> Option<zones::grove::hotbar::Hit> {
         let (size, _) = self.viewport()?;
-        zones::grove::hotbar::hit(at, size.map(|v| v / self.scale), HOTBAR_BOTTOM)
+        let size = size.map(|v| v / self.scale);
+        zones::grove::hotbar::hit(at, size, HOTBAR_BOTTOM, self.grove_layout(size))
     }
 
     /// The hotbar slot whose card shows this frame on a screen of `size`
@@ -2053,7 +2071,7 @@ impl App {
         } else if self.in_bare_everglade() && self.runtime.everglade_hotbar().is_some() {
             zones::everglade::hotbar::slot_under(at, size, HOTBAR_BOTTOM)
         } else if self.in_bare_grove() && self.runtime.grove_bar().is_some() {
-            zones::grove::hotbar::slot_under(at, size, HOTBAR_BOTTOM)
+            zones::grove::hotbar::slot_under(at, size, HOTBAR_BOTTOM, self.grove_layout(size))
         } else {
             None
         };
@@ -2205,7 +2223,7 @@ impl App {
             KeyCode::KeyX => -1.0,
             _ => 0.0,
         };
-        if climb != 0.0 && self.in_bare_everglade() && !self.chat.open {
+        if climb != 0.0 && (self.in_bare_everglade() || self.in_bare_grove()) && !self.chat.open {
             if pressed && self.runtime.everglade_levitating() {
                 self.climb = climb;
                 return;
@@ -2219,6 +2237,11 @@ impl App {
         // hold. Every press casts, and a held key recasts until it is let
         // go.
         if self.in_bare_grove() && (!pressed || (!self.chat.open && !self.map.expanded)) {
+            match code {
+                KeyCode::ControlLeft | KeyCode::ControlRight => self.grove_ctrl = pressed,
+                KeyCode::AltLeft | KeyCode::AltRight => self.grove_alt = pressed,
+                _ => {}
+            }
             let key = match code {
                 KeyCode::Digit0 => Some('0'),
                 KeyCode::Digit1 => Some('1'),
@@ -2234,7 +2257,24 @@ impl App {
                 KeyCode::Equal => Some('='),
                 _ => None,
             };
-            if let Some(intent) = key.and_then(zones::grove::hotbar::key) {
+            // Shift, Ctrl, and Alt choose the row when the key goes down;
+            // letting go releases the slot it pressed.
+            let intent = if pressed {
+                let row =
+                    zones::grove::hotbar::row_of(self.keys.shift, self.grove_ctrl, self.grove_alt);
+                let intent = key.and_then(|k| zones::grove::hotbar::key(k, row));
+                if let Some(intent) = intent {
+                    self.grove_keys.retain(|(c, _)| *c != code);
+                    self.grove_keys.push((code, intent));
+                }
+                intent
+            } else {
+                self.grove_keys
+                    .iter()
+                    .position(|(c, _)| *c == code)
+                    .map(|i| self.grove_keys.remove(i).1)
+            };
+            if let Some(intent) = intent {
                 let _ = self.runtime.grove_key(intent, pressed);
                 return;
             }
@@ -2642,9 +2682,18 @@ impl App {
             && !self.keys.left_button
             && !self.keys.right_button
             && self.in_bare_grove()
-            && let Some(intent) = self.grove_hotbar_at(self.cursor.map(|v| v / self.scale))
+            && let Some(hit) = self.grove_hotbar_at(self.cursor.map(|v| v / self.scale))
         {
-            self.zone_action(intent);
+            match hit {
+                zones::grove::hotbar::Hit::Slot(index) => {
+                    if let Some(intent) = zones::grove::hotbar::intent(index) {
+                        self.zone_action(intent);
+                    }
+                }
+                zones::grove::hotbar::Hit::Switch => {
+                    self.grove_row = (self.grove_row + 1) % zones::grove::slots::ROWS;
+                }
+            }
             return;
         }
         // Aiming Meteor Swarm in the demolition yard: a click casts it at
@@ -2949,7 +2998,9 @@ impl App {
             self.runtime
                 .tick_with_mode(&input, dt, self.keys.left_button, self.replay.is_none());
         if self.climb != 0.0 {
-            if self.in_bare_everglade() && self.runtime.everglade_levitating() {
+            if (self.in_bare_everglade() || self.in_bare_grove())
+                && self.runtime.everglade_levitating()
+            {
                 self.runtime.everglade_climb(self.climb, dt);
             } else {
                 self.climb = 0.0;
@@ -3342,19 +3393,34 @@ impl App {
                     && let (Some(atlas), Some(slots)) = (&self.map_atlas, self.runtime.grove_bar())
                 {
                     let mut bar = crate::ui::UiBatch::default();
+                    let logical = size.map(|v| v / self.scale);
+                    let layout = self.grove_layout(logical);
                     zones::grove::hotbar::draw(
                         &mut bar,
                         atlas,
-                        size.map(|v| v / self.scale),
+                        logical,
                         HOTBAR_BOTTOM,
+                        layout,
                         &slots,
                     );
+                    if let Some((status, lines)) = self.runtime.grove_log() {
+                        zones::grove::hotbar::draw_log(
+                            &mut bar,
+                            atlas,
+                            logical,
+                            HOTBAR_BOTTOM,
+                            layout,
+                            &status,
+                            &lines,
+                        );
+                    }
                     if let Some(index) = tip {
                         zones::grove::hotbar::draw_tip(
                             &mut bar,
                             atlas,
-                            size.map(|v| v / self.scale),
+                            logical,
                             HOTBAR_BOTTOM,
+                            layout,
                             &slots,
                             index,
                         );

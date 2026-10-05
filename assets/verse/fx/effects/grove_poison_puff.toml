@@ -1,0 +1,43 @@
+# Poison Spray on a target. Every emitter fires once.
+description = "A sickly green puff of gas with a few glowing motes."
+
+[[emitter]]
+name = "gas"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+burst = 6
+life = [1.0, 1.5]
+shape = "sphere"
+radius = 0.3
+spread = 180.0
+speed = [0.2, 0.6]
+radial = [0.3, 0.8]
+gravity = 0.2
+drag = 1.2
+size = [0.4, 0.55]
+scale = [[0.0, 0.5], [0.3, 1.2], [1.0, 1.7]]
+color = [0.5, 0.68, 0.22]
+alpha = [[0.0, 0.0], [0.1, 0.75], [0.6, 0.5], [1.0, 0.0]]
+spin = [-0.6, 0.6]
+priority = 3
+
+[[emitter]]
+name = "motes"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 20.0
+burst = 10
+life = [0.6, 1.1]
+shape = "sphere"
+radius = 0.5
+spread = 180.0
+speed = [0.2, 0.6]
+gravity = 0.3
+drag = 1.0
+size = [0.06, 0.1]
+color = [0.55, 1.0, 0.3]
+alpha = [0.0, 1.0, 0.0]
+priority = 2

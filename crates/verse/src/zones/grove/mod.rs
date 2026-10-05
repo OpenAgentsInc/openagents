@@ -4,29 +4,35 @@
 //! A meadow about 60 m across, ringed by the nature kit's trees, bushes,
 //! rocks, and flowers ([`layout`]), under Everglade's sky, haze, and light.
 //! Seven training dummies stand in it ([`dummies`]). The player walks as
-//! Everglade's character with Everglade's controls, and casts the druid's
-//! spells from an icon hotbar ([`hotbar`]): Thunderwave, Gust of Wind,
-//! Wind Wall, Wall of Stone, Reverse Gravity, Fire Bolt, Fireball, Misty
-//! Step, and Web, with Long Rest to stand the field back up ([`kit`]).
-//! Nothing gates a cast, so the player can spam: every press casts, and a
-//! held key recasts six times a second. The live effects are capped, oldest
-//! first, so spam stays bounded in memory and frame time.
+//! Everglade's character with Everglade's controls, and casts from the
+//! Archdruid's four-row bar ([`slots`], [`hotbar`]): Wild Shape and the
+//! druid's features, the cantrips and spells of levels 1 to 9, and the
+//! chosen land's six spells, with Choose Land to swap lands and Long Rest
+//! to stand the field back up ([`kit`]). Nothing gates a cast, so the
+//! player can spam: every press casts, and a held key recasts six times a
+//! second. The live effects, lasting areas, particles, and floating
+//! numbers are capped, oldest first, so spam stays bounded in memory and
+//! frame time.
 //!
 //! The runtime keeps an [`Everglade`] for the Grove too, built from these
 //! placements: it moves the player over the heightfield and owns Wind
-//! Wall, Wall of Stone, and Reverse Gravity, whose rules come from
-//! `verse_world`. This module adds what acts on the dummies. Each spell's
-//! dice, attack roll, and saving throw are rolled behind the scenes with
-//! `verse_world`'s seeded dice, as the combat model says
-//! (`docs/verse/combat-model.md`), and the dummies show the outcome:
-//! floating numbers, "Miss", and "Resisted".
+//! Wall, Wall of Stone, Reverse Gravity, and the eagle's flight, whose
+//! rules come from `verse_world`. This module adds what acts on the
+//! dummies ([`cast`], [`aura`]). Each spell's dice, attack roll, and saving
+//! throw are rolled behind the scenes with `verse_world`'s seeded dice, as
+//! the combat model says (`docs/verse/combat-model.md`), and the dummies
+//! show the outcome: floating numbers, "Miss", "Resisted", and timed
+//! conditions over their health bars, with each line in the combat log.
 
+pub(crate) mod aura;
+mod cast;
 pub(crate) mod draw;
 pub mod dummies;
 pub mod hotbar;
 pub mod kit;
 pub mod layout;
 pub mod shape;
+pub mod slots;
 #[cfg(test)]
 mod tests;
 pub(crate) mod thunder;
@@ -35,12 +41,13 @@ use super::Intent;
 use super::everglade::{self, Everglade, layout::Placement, player::Beast};
 use super::everglade_pack::ZonePack;
 use crate::controller::PlayerController;
+use crate::fx::{Particles, Spawn};
 use crate::mesh::Mesh;
 use crate::pbr::textured::Figure;
 use crate::world::World;
-use dummies::Dummy;
-use glam::{DVec3, Vec3};
-use kit::{Delivery, Spell};
+use dummies::{Condition, Dummy};
+use glam::Vec3;
+use kit::{Damage, Def, Delivery, Land, Spell};
 use shape::{Form, Shape};
 use std::sync::Arc;
 use verse_world::spells::Dice;
@@ -54,26 +61,15 @@ pub const RETURN_PORTAL: Vec3 = Vec3::new(0.0, 0.0, -31.0);
 pub const MEADOW_RADIUS: f32 = 30.0;
 /// Half the angle of the cone a spell finds its target in, radians.
 const CONE: f32 = 0.7;
-/// How long a web holds, s (two rounds).
-const WEB_ROOT: f32 = 12.0;
-/// How long the Giant Spider's spat web holds, s (one round).
-const SPIT_ROOT: f32 = 6.0;
-/// Bolt speeds, m/s.
-const BOLT_SPEED: f32 = 32.0;
-const FIREBALL_SPEED: f32 = 24.0;
-/// Gust of Wind's and Thunderwave's pushes, m.
-const GUST_PUSH: f32 = 15.0 * 0.3048;
-/// Wind Wall's lift on a dummy that fails its save, m/s.
-const WIND_LIFT: f32 = 8.0;
-/// How far Wall of Stone shoves a dummy past its face, m.
-const SHOVE_CLEARANCE: f64 = 0.5;
 /// Lines the combat log keeps.
-const LOG: usize = 4;
+pub const LOG: usize = 8;
 /// Live effects of every kind together, oldest dropped first; each kind
 /// also has its own cap ([`draw::Effect::cap`]).
 pub const MAX_EFFECTS: usize = 64;
 /// Floating numbers at once, oldest dropped first.
 pub const MAX_FLOATERS: usize = 48;
+/// Poison's damage each second on a poisoned dummy.
+const POISON_TICK: f32 = 3.0;
 
 /// The Grove's placements as one list, for the static scene and the solids.
 #[must_use]
@@ -117,7 +113,7 @@ pub(crate) struct Grove {
     dice: Dice,
     time: f32,
     /// When each held hotbar slot next recasts.
-    held: [Option<f32>; hotbar::COUNT],
+    held: [Option<f32>; slots::COUNT],
     effects: Vec<draw::Effect>,
     floaters: Vec<draw::Floater>,
     /// The newest combat lines, oldest first.
@@ -127,6 +123,16 @@ pub(crate) struct Grove {
     beasts: Vec<Option<Beast>>,
     /// The beast's shape the druid wears, if any.
     shape: Option<Shape>,
+    /// The Circle of the Land's chosen land.
+    land: Land,
+    /// The lasting areas: Moonbeam, the walls, the storms, and the clouds.
+    auras: Vec<aura::Aura>,
+    /// The spells' particles.
+    fx: Particles,
+    /// The outlined dummies' faerie light, by dummy.
+    glows: Vec<(usize, crate::fx::Handle)>,
+    /// When poison next bites, s.
+    next_poison: f32,
 }
 
 /// What one roll did to one dummy.
@@ -138,12 +144,12 @@ pub enum Outcome {
     Resisted,
     /// It landed: the damage dealt, whether it was a critical hit, and
     /// whether a save halved it. Only a landing that no save halved
-    /// pushes, lifts, or roots.
+    /// pushes, lifts, roots, or leaves a condition.
     Hit { dealt: i32, crit: bool, saved: bool },
 }
 
 impl Outcome {
-    /// Whether the spell's push, lift, or root takes hold.
+    /// Whether the spell's push, lift, root, or condition takes hold.
     #[must_use]
     pub const fn takes_hold(self) -> bool {
         matches!(self, Self::Hit { saved: false, .. })
@@ -168,13 +174,18 @@ impl Grove {
             dummies,
             dice: Dice::new(kit::DICE_SEED),
             time: 0.0,
-            held: [None; hotbar::COUNT],
+            held: [None; slots::COUNT],
             effects: Vec::new(),
             floaters: Vec::new(),
             log: Vec::new(),
             model,
             beasts,
             shape: None,
+            land: Land::Arid,
+            auras: Vec::new(),
+            fx: Particles::new(0x6720_F00D),
+            glows: Vec::new(),
+            next_poison: 0.0,
         })
     }
 
@@ -184,24 +195,27 @@ impl Grove {
         self.shape.map(|s| s.form)
     }
 
+    /// The chosen land.
+    #[must_use]
+    pub fn land(&self) -> Land {
+        self.land
+    }
+
     /// What hotbar slot `index` casts now.
     #[must_use]
     pub fn slot_spell(&self, index: usize) -> Option<Spell> {
-        hotbar::spell(index, self.form())
+        slots::spell(index, self.form(), self.land)
     }
 
     /// The hotbar slot `intent` presses: a slot itself, or the slot a
-    /// named spell's intent sits on.
+    /// named spell's intent sits on now.
     #[must_use]
     pub fn slot_of(&self, intent: Intent) -> Option<usize> {
         match intent {
             Intent::GroveSlot(index) => {
-                (usize::from(index) < hotbar::COUNT).then_some(usize::from(index))
+                (usize::from(index) < slots::COUNT).then_some(usize::from(index))
             }
-            _ => {
-                let spell = Spell::of(intent)?;
-                (0..hotbar::COUNT).find(|&i| self.slot_spell(i) == Some(spell))
-            }
+            _ => slots::slot_of(Spell::of(intent)?, self.form(), self.land),
         }
     }
 
@@ -238,269 +252,31 @@ impl Grove {
             .map(|(i, _)| i)
     }
 
-    /// Casts `spell` for `player`, who turns to face its target, through
-    /// `glade` for the glade's spells.
-    ///
-    /// # Errors
-    ///
-    /// Returns why the cast was refused: no target, or a glade spell's own
-    /// rule. No mana or cooldown ever refuses one.
-    pub fn cast(
-        &mut self,
-        spell: Spell,
-        player: &mut PlayerController,
-        glade: &mut Everglade,
-    ) -> Result<(), String> {
-        let now = self.time;
-        if spell == Spell::LongRest {
-            self.long_rest(player, glade);
-            return Ok(());
-        }
-        if let Some(form) = Form::of(spell) {
-            return self.take_shape(form, player);
-        }
-        if spell == Spell::ReturnToForm {
-            let shape = self.shape.ok_or("You already stand in your own shape")?;
-            self.end_shape(player);
-            self.add(draw::Effect::Shift {
-                at: player.pos,
-                start: now,
-            });
-            self.say(format!("You drop the {}'s shape", shape.form.name()));
-            return Ok(());
-        }
-        if spell.beast() {
-            let shape = self.shape.ok_or("Wild Shape into a Giant Spider first")?;
-            if !shape.form.attacks().contains(&spell) {
-                return Err(format!(
-                    "A {} can't {}",
-                    shape.form.name(),
-                    spell.def().label
-                ));
-            }
-        }
-        // Pressing a live concentration spell's slot casts it again: the
-        // old one ends and the new one rises where the druid faces now.
-        if let Some(glade_spell) = spell.glade()
-            && glade.spell_active(glade_spell)
-        {
-            glade.cast_spell(glade_spell, player)?;
-        }
-        let def = spell.def();
-        // A bite reaches only as far as the fangs.
-        let reach = if spell == Spell::Bite {
-            def.range
-        } else {
-            def.range.max(6.0)
-        };
-        let target = self.target(player, reach);
-        if spell.needs_target() && target.is_none() {
-            return Err(format!(
-                "{} needs a dummy in front within {:.0} m",
-                def.label, def.range
-            ));
-        }
-        if let Some(i) = target {
-            let to = self.dummies[i].pos - player.pos;
-            player.yaw = to.x.atan2(to.z);
-        }
-        let feet = player.pos;
-        let forward = player.forward();
-        let hand = feet + Vec3::Y * 1.4 + forward * 0.3;
-        match spell {
-            Spell::FireBolt | Spell::Fireball => {
-                let i = target.ok_or("no target")?;
-                let fireball = spell == Spell::Fireball;
-                let distance = hand.distance(self.dummies[i].center());
-                let speed = if fireball { FIREBALL_SPEED } else { BOLT_SPEED };
-                self.add(draw::Effect::Bolt {
-                    from: hand,
-                    target: i,
-                    start: now,
-                    flight: distance / speed,
-                    fireball,
-                });
-            }
-            Spell::Thunderwave => {
-                let cube = verse_world::spells::thunderwave::Cube::new(
-                    feet.as_dvec3(),
-                    forward.as_dvec3(),
-                );
-                for i in 0..self.dummies.len() {
-                    let d = &self.dummies[i];
-                    let probe = d.pos.as_dvec3() + DVec3::Y * 0.9;
-                    if d.down() || !cube.contains(probe) {
-                        continue;
-                    }
-                    let away = cube.away(probe).as_vec3();
-                    if self.strike(spell, i).takes_hold() {
-                        let push = verse_world::spells::thunderwave::PUSH as f32;
-                        self.dummies[i].push(away, push, now);
-                    }
-                }
-                self.add(draw::Effect::Wave {
-                    origin: cube.origin.as_vec3(),
-                    forward: cube.forward.as_vec3(),
-                    start: now,
-                });
-            }
-            Spell::GustOfWind => {
-                let line = verse_world::gust::Line::new(feet.as_dvec3(), forward.as_dvec3())
-                    .ok_or("Gust of Wind needs a direction")?;
-                for i in 0..self.dummies.len() {
-                    let d = &self.dummies[i];
-                    let radius = f64::from(0.35 * d.kind.scale());
-                    if d.down() || !line.touches_sphere(d.center().as_dvec3(), radius) {
-                        continue;
-                    }
-                    if self.strike(spell, i).takes_hold() {
-                        self.dummies[i].push(forward, GUST_PUSH, now);
-                    }
-                }
-                self.add(draw::Effect::Gust {
-                    origin: feet,
-                    forward,
-                    start: now,
-                });
-            }
-            Spell::WindWall | Spell::WallOfStone => {
-                let ahead = target.map_or(f64::from(everglade::spells::AHEAD), |i| {
-                    let to = self.dummies[i].pos - feet;
-                    f64::from(to.x.hypot(to.z))
-                });
-                let glade_spell = spell.glade().ok_or("not a glade spell")?;
-                glade.cast_spell_ahead(glade_spell, player, ahead)?;
-                if spell == Spell::WindWall {
-                    self.wind_wall(glade);
-                } else {
-                    self.shove(glade, feet);
-                }
-            }
-            Spell::ReverseGravity => {
-                glade.cast_spell(everglade::spells::Spell::ReverseGravity, player)?;
-                self.say("Reverse Gravity: everything nearby falls upward".into());
-            }
-            Spell::MistyStep => {
-                let reach = def.range;
-                let step = target.map_or(reach, |i| {
-                    let to = self.dummies[i].pos - feet;
-                    (to.x.hypot(to.z) - 2.0).clamp(0.0, reach)
-                });
-                let mut to = feet + forward * step;
-                let r = to.x.hypot(to.z);
-                if r > MEADOW_RADIUS {
-                    to.x *= MEADOW_RADIUS / r;
-                    to.z *= MEADOW_RADIUS / r;
-                }
-                to.y = everglade::height(to.x, to.z);
-                self.add(draw::Effect::Mist {
-                    at: feet,
-                    start: now,
-                });
-                self.add(draw::Effect::Mist { at: to, start: now });
-                player.pos = to;
-                player.set_surface_height(to.y);
-                player.set_vertical_speed(0.0);
-            }
-            Spell::Web => {
-                let i = target.ok_or("no target")?;
-                let at = self.dummies[i].pos;
-                // A 20-foot cube centered on the target.
-                let half = 10.0 * 0.3048;
-                for j in 0..self.dummies.len() {
-                    let d = &self.dummies[j];
-                    let off = d.pos - at;
-                    if d.down() || off.x.abs() > half || off.z.abs() > half || off.y.abs() > half {
-                        continue;
-                    }
-                    if self.strike(spell, j).takes_hold() {
-                        let held = self.dummies[j].root(WEB_ROOT, now);
-                        let name = self.dummies[j].kind.name();
-                        if held > 0.0 {
-                            self.say(format!("Web roots {name} for {held:.0} s"));
-                        } else {
-                            self.float(j, "Immune".into(), [0.8, 0.7, 1.0]);
-                            self.say(format!("{name} is immune to Web for now"));
-                        }
-                    }
-                }
-                self.add(draw::Effect::Web {
-                    at,
-                    start: now,
-                    until: now + WEB_ROOT,
-                });
-            }
-            Spell::Bite => {
-                let i = target.ok_or("no target")?;
-                self.attack();
-                self.strike(spell, i);
-            }
-            Spell::SpiderWeb => {
-                let i = target.ok_or("no target")?;
-                self.attack();
-                let at = self.dummies[i].pos;
-                if self.strike(spell, i).takes_hold() {
-                    let held = self.dummies[i].root(SPIT_ROOT, now);
-                    let name = self.dummies[i].kind.name();
-                    if held > 0.0 {
-                        self.say(format!("The web roots {name} for {held:.0} s"));
-                        self.add(draw::Effect::Web {
-                            at,
-                            start: now,
-                            until: now + held,
-                        });
-                    } else {
-                        self.float(i, "Immune".into(), [0.8, 0.7, 1.0]);
-                        self.say(format!("{name} is immune to webs for now"));
-                    }
-                }
-            }
-            Spell::WildShapeSpider | Spell::ReturnToForm | Spell::LongRest => {}
-        }
-        Ok(())
-    }
-
-    /// Takes `form`'s shape: the player's character gives way to the
-    /// beast, at its pace. Taking the shape the druid already wears takes
-    /// it afresh.
-    fn take_shape(&mut self, form: Form, player: &mut PlayerController) -> Result<(), String> {
-        if self.beasts.get(form.index()).is_none_or(Option::is_none) {
-            return Err(format!("The pack has no {}", form.name()));
-        }
-        self.shape = Some(Shape {
-            form,
-            since: self.time,
-            attack: None,
-        });
-        player.set_pace(form.pace());
-        self.add(draw::Effect::Shift {
-            at: player.pos,
-            start: self.time,
-        });
-        self.say(format!("Wild Shape: you become a {}", form.name()));
-        Ok(())
-    }
-
-    /// Ends the beast's shape, if any, and the pace it set.
-    fn end_shape(&mut self, player: &mut PlayerController) {
-        self.shape = None;
-        player.set_pace(1.0);
-    }
-
-    /// Starts the beast's attack clip.
-    fn attack(&mut self) {
-        if let Some(shape) = &mut self.shape {
-            shape.attack = Some(self.time);
-        }
-    }
-
-    /// Rolls `spell` against dummy `i` behind the scenes, deals its damage,
-    /// and shows the outcome over the dummy and in the log.
+    /// Rolls `spell` against dummy `i` behind the scenes, deals its damage
+    /// or healing, puts its condition on a landing no save halved, and
+    /// shows the outcome over the dummy and in the log.
     fn strike(&mut self, spell: Spell, i: usize) -> Outcome {
-        let def = spell.def();
+        self.strike_def(&spell.def(), i)
+    }
+
+    /// As [`Self::strike`], with the numbers in `def`, such as one round
+    /// of Storm of Vengeance.
+    fn strike_def(&mut self, def: &Def, i: usize) -> Outcome {
         let now = self.time;
         let kind = self.dummies[i].kind;
         let (count, sides) = def.dice;
+        if def.kind == Damage::Healing {
+            let amount = (self.dice.sum(count, sides) as i32 + def.bonus).max(0) as f32;
+            let healed = self.dummies[i].heal(amount, now);
+            self.float(i, format!("+{healed}"), Damage::Healing.color());
+            let name = kind.name();
+            self.say(format!("{} heals {name} for {healed}", def.label));
+            return Outcome::Hit {
+                dealt: healed,
+                crit: false,
+                saved: false,
+            };
+        }
         // The dice of the spell's damage and of its second damage, doubled
         // on a crit, with the flat bonus on the first.
         let roll_damage = |dice: &mut Dice, crit: bool| -> (f32, f32) {
@@ -602,75 +378,104 @@ impl Grove {
                         }
                         None => String::new(),
                     };
+                    let resisted = kind.multiplier(def.kind) < 1.0;
+                    let resist = if resisted { ", resisted" } else { "" };
                     self.say(format!(
-                        "{} hits {name}: {dealt} {}{also}{how}",
+                        "{} hits {name}: {dealt} {}{also}{how}{resist}",
                         def.label,
                         def.kind.word()
                     ));
+                }
+                if !saved && let Some((condition, seconds)) = def.rider {
+                    self.afflict(i, condition, seconds, def.label);
                 }
             }
         }
         outcome
     }
 
-    /// Wind Wall's damage and lift on every dummy the new wall stands in.
-    fn wind_wall(&mut self, glade: &Everglade) {
-        let Some(wall) = glade.spells().wind_wall().cloned() else {
-            return;
-        };
-        for i in 0..self.dummies.len() {
-            let d = &self.dummies[i];
-            let scale = f64::from(d.kind.scale());
-            if d.down() || !wall.in_area(d.pos.as_dvec3(), 0.35 * scale, 1.8 * scale) {
-                continue;
-            }
-            if self.strike(Spell::WindWall, i).takes_hold() {
-                self.dummies[i].lift(WIND_LIFT, self.time);
-            }
-        }
-    }
-
-    /// Wall of Stone's shove: a dummy where a panel rose moves out past
-    /// the panel's far face, away from the caster at `from`.
-    fn shove(&mut self, glade: &Everglade, from: Vec3) {
-        let Some(panels) = glade.spells().stone_panels().map(<[_]>::to_vec) else {
-            return;
-        };
+    /// Puts `condition` on dummy `i` for `seconds`, as `source` does, and
+    /// logs it, or that diminishing returns made it immune.
+    fn afflict(&mut self, i: usize, condition: Condition, seconds: f32, source: &str) {
         let now = self.time;
-        for i in 0..self.dummies.len() {
-            let d = &self.dummies[i];
-            let radius = 0.35 * f64::from(d.kind.scale());
-            let center = d.pos.as_dvec3();
-            let Some((normal, depth)) = panels.iter().find_map(|panel| {
-                let half = panel.half();
-                let local = panel.orientation.inverse() * (center - panel.center);
-                (local.x.abs() <= half.x + radius && local.z.abs() <= half.z + radius).then(|| {
-                    let normal = panel.normal();
-                    let side = (center - from.as_dvec3()).dot(normal).signum();
-                    let side = if side == 0.0 { 1.0 } else { side };
-                    let past = half.z + radius + SHOVE_CLEARANCE - local.z * side;
-                    (normal * side, past)
-                })
-            }) else {
-                continue;
-            };
-            if self.dummies[i].push(normal.as_vec3(), depth as f32, now) {
-                let name = self.dummies[i].kind.name();
-                self.say(format!("Wall of Stone shoves {name} aside"));
+        let applied = self.dummies[i].afflict(condition, seconds, now);
+        let name = self.dummies[i].kind.name();
+        if applied > 0.0 {
+            // Short repeats (a cloud's each second) don't fill the log.
+            if seconds >= 1.5 {
+                self.say(format!(
+                    "{source}: {name} is {} for {applied:.1} s",
+                    condition.name()
+                ));
             }
+        } else {
+            self.float(i, "Immune".into(), [0.8, 0.7, 1.0]);
+            self.say(format!(
+                "{name} is immune to being {} for now",
+                condition.name()
+            ));
         }
     }
 
-    /// Stands the field back up and ends the glade's spells and the
-    /// beast's shape.
+    /// Takes `form`'s shape: the player's character gives way to the
+    /// beast, at its pace. The eagle takes to the air. Taking a shape ends
+    /// any other.
+    fn take_shape(
+        &mut self,
+        form: Form,
+        player: &mut PlayerController,
+        glade: &mut Everglade,
+    ) -> Result<(), String> {
+        if self.beasts.get(form.index()).is_none_or(Option::is_none) {
+            return Err(format!("The pack has no {}", form.name()));
+        }
+        self.end_shape(player, glade);
+        self.shape = Some(Shape { form, attack: None });
+        player.set_pace(form.pace());
+        if form.flies() && !glade.levitating {
+            glade.toggle_levitate(player);
+            glade.altitude = player.pos.y + 3.0;
+        }
+        self.add(draw::Effect::Shift {
+            at: player.pos,
+            start: self.time,
+        });
+        self.say(format!("Wild Shape: you become a {}", form.name()));
+        Ok(())
+    }
+
+    /// Ends the beast's shape, if any, the pace it set, and the eagle's
+    /// flight.
+    fn end_shape(&mut self, player: &mut PlayerController, glade: &mut Everglade) {
+        if let Some(shape) = self.shape.take()
+            && shape.form.flies()
+            && glade.levitating
+        {
+            glade.toggle_levitate(player);
+        }
+        player.set_pace(1.0);
+    }
+
+    /// Starts the beast's attack clip.
+    fn attack(&mut self) {
+        if let Some(shape) = &mut self.shape {
+            shape.attack = Some(self.time);
+        }
+    }
+
+    /// Stands the field back up and ends the glade's spells, the lasting
+    /// areas, and the beast's shape.
     fn long_rest(&mut self, player: &mut PlayerController, glade: &mut Everglade) {
         glade.long_rest();
-        self.end_shape(player);
+        self.end_shape(player, glade);
         for dummy in &mut self.dummies {
             dummy.reset();
         }
         self.effects.clear();
         self.floaters.clear();
+        self.end_auras(|_| true);
+        self.fx.clear();
+        self.glows.clear();
         self.add(draw::Effect::Rest {
             at: player.pos,
             start: self.time,
@@ -679,7 +484,8 @@ impl Grove {
     }
 
     /// Adds `effect`, first dropping the oldest of its kind past the kind's
-    /// cap and the oldest of all past [`MAX_EFFECTS`].
+    /// cap and the oldest of all past [`MAX_EFFECTS`]. A dropped bolt's
+    /// trail stops.
     fn add(&mut self, effect: draw::Effect) {
         let kind = std::mem::discriminant(&effect);
         let same = self
@@ -693,12 +499,28 @@ impl Grove {
                 .iter()
                 .position(|e| std::mem::discriminant(e) == kind)
         {
-            self.effects.remove(oldest);
+            let dropped = self.effects.remove(oldest);
+            self.stop_trail(&dropped);
         }
         if self.effects.len() >= MAX_EFFECTS {
-            self.effects.remove(0);
+            let dropped = self.effects.remove(0);
+            self.stop_trail(&dropped);
         }
         self.effects.push(effect);
+    }
+
+    fn stop_trail(&mut self, effect: &draw::Effect) {
+        if let draw::Effect::Bolt {
+            trail: Some(trail), ..
+        } = effect
+        {
+            self.fx.stop(*trail);
+        }
+    }
+
+    /// Starts the particle effect `name` at `at`; a full system skips it.
+    fn burst(&mut self, name: &str, at: Vec3) {
+        let _ = self.fx.start(name, Spawn::at(at));
     }
 
     /// The live effects, oldest first.
@@ -708,12 +530,25 @@ impl Grove {
         &self.effects
     }
 
+    /// The lasting areas, oldest first.
+    #[cfg(test)]
+    #[must_use]
+    pub fn auras(&self) -> &[aura::Aura] {
+        &self.auras
+    }
+
+    /// Particles alive now.
+    #[cfg(test)]
+    #[must_use]
+    pub fn particles(&self) -> usize {
+        self.fx.len()
+    }
+
     /// Holds or lets go of hotbar slot `index`. While held, the slot
     /// recasts what it holds every [`kit::REPEAT`] seconds after the
     /// press's own cast; a demo control or a change of shape never repeats.
     pub fn hold(&mut self, index: usize, down: bool) {
-        let repeats = self.slot_spell(index).is_some_and(Spell::spell)
-            || self.slot_spell(index).is_some_and(Spell::beast);
+        let repeats = self.slot_spell(index).is_some_and(Spell::repeats);
         if let Some(held) = self.held.get_mut(index) {
             *held = (down && repeats).then_some(self.time + kit::REPEAT);
         }
@@ -721,7 +556,7 @@ impl Grove {
 
     /// Lets go of every held key, as when the window loses focus.
     pub fn release(&mut self) {
-        self.held = [None; hotbar::COUNT];
+        self.held = [None; slots::COUNT];
     }
 
     /// The held slots due to recast now, each at most once a frame; a long
@@ -774,9 +609,10 @@ impl Grove {
         }
     }
 
-    /// Advances the field `dt` seconds: bolts land, dummies move and reset,
-    /// the dummies block walking where they stand, and the beast the druid
-    /// wears poses where `player` stands.
+    /// Advances the field `dt` seconds: bolts land, the lasting areas act,
+    /// poison bites, dummies move and reset, the dummies block walking
+    /// where they stand, the particles move, and the beast the druid wears
+    /// poses where `player` stands.
     pub fn tick(&mut self, dt: f32, glade: &mut Everglade, player: &PlayerController) {
         self.time += dt.max(0.0);
         let now = self.time;
@@ -793,52 +629,60 @@ impl Grove {
             }
             beast.advance(player, shape.form.scale(), attack, dt);
         }
-        let landed: Vec<(usize, bool)> = self
-            .effects
-            .iter()
-            .filter_map(|effect| match *effect {
-                draw::Effect::Bolt {
-                    target,
-                    start,
-                    flight,
-                    fireball,
-                    ..
-                } if now - start >= flight => Some((target, fireball)),
-                _ => None,
-            })
-            .collect();
-        self.effects.retain(|e| !e.done(now));
-        for (target, fireball) in landed {
-            if target >= self.dummies.len() {
-                continue;
-            }
-            if fireball {
-                let at = self.dummies[target].center();
-                let radius = 20.0 * 0.3048;
-                for i in 0..self.dummies.len() {
-                    if self.dummies[i].center().distance(at) <= radius + 0.35 {
-                        self.strike(Spell::Fireball, i);
-                    }
-                }
-                self.add(draw::Effect::Burst {
-                    at,
-                    radius,
-                    start: now,
-                });
-            } else {
-                self.strike(Spell::FireBolt, target);
-            }
-        }
+        self.land_bolts();
         let gravity = glade.spells().reverse_gravity().cloned();
         for dummy in &mut self.dummies {
             dummy.tick(dt, now, gravity.as_ref());
         }
+        self.tick_auras();
+        if now >= self.next_poison {
+            self.next_poison = now + 1.0;
+            for i in 0..self.dummies.len() {
+                if self.dummies[i].has(Condition::Poisoned, now) && !self.dummies[i].down() {
+                    let dealt = self.dummies[i].damage(POISON_TICK, Damage::Poison, now);
+                    self.float(i, dealt.to_string(), Damage::Poison.color());
+                }
+            }
+        }
+        self.tick_glows();
+        self.fx.tick(dt, everglade::height);
         self.floaters.retain(|f| now - f.start < draw::FLOAT);
         glade.set_extra_blocks(self.dummies.iter().map(Dummy::block).collect());
     }
 
-    /// The player's character and the dummies, posed for this frame and lit
-    /// by `glade`'s probes.
+    /// Keeps faerie light on each outlined dummy and puts it out when the
+    /// outline ends.
+    fn tick_glows(&mut self) {
+        let now = self.time;
+        let mut glows = std::mem::take(&mut self.glows);
+        glows.retain(|&(i, handle)| {
+            let lit = self
+                .dummies
+                .get(i)
+                .is_some_and(|d| d.has(Condition::Outlined, now) && !d.down());
+            if lit {
+                let at = self.dummies[i].center();
+                self.fx.place(handle, at, Vec3::ZERO);
+            } else {
+                self.fx.stop(handle);
+            }
+            lit
+        });
+        for i in 0..self.dummies.len() {
+            if self.dummies[i].has(Condition::Outlined, now)
+                && !glows.iter().any(|(g, _)| *g == i)
+                && let Some(handle) = self
+                    .fx
+                    .start("grove_faerie", Spawn::at(self.dummies[i].center()))
+            {
+                glows.push((i, handle));
+            }
+        }
+        self.glows = glows;
+    }
+
+    /// The player's character, or the beast the druid wears, and the
+    /// dummies, posed for this frame and lit by `glade`'s probes.
     #[must_use]
     pub fn figure(&self, glade: &Everglade) -> Figure {
         // In a beast's shape the beast draws and the druid doesn't.
@@ -855,8 +699,8 @@ impl Grove {
         figure
     }
 
-    /// The bars, numbers, post, target ring, and effects, seen from `eye`
-    /// by `player`.
+    /// The bars, conditions, numbers, post, target ring, lasting areas,
+    /// effects, and particles, seen from `eye` by `player`.
     #[must_use]
     pub fn mesh(&self, eye: Vec3, player: &PlayerController) -> Mesh {
         let now = self.time;
@@ -870,10 +714,16 @@ impl Grove {
             if rooted {
                 painter.strands(dummy, now);
             }
-            painter.bar(dummy, rooted, target == Some(i));
+            if dummy.has(Condition::Outlined, now) {
+                painter.outline(dummy, now);
+            }
+            painter.bar(dummy, &dummy.conditions(now), target == Some(i));
         }
         if let Some(i) = target {
             painter.target(&self.dummies[i], now);
+        }
+        for aura in &self.auras {
+            painter.aura(aura, now);
         }
         // Newest first, so a renderer that runs out of glow quads under spam
         // drops the oldest blasts.
@@ -887,27 +737,33 @@ impl Grove {
         for floater in &self.floaters {
             painter.floater(floater, now);
         }
-        painter.mesh
+        let mut mesh = painter.mesh;
+        self.fx.draw(&mut mesh.sprites);
+        mesh
     }
 
-    /// The hotbar: each slot, lit when it has what it needs to cast. No
-    /// slot ever cools down.
+    /// The hotbar: each slot's ability, lit when it has what it needs to
+    /// cast. No slot ever cools down.
     #[must_use]
     pub fn bar(&self, player: &PlayerController, glade: &Everglade) -> hotbar::Bar {
         let form = self.form();
-        let spells: [Spell; hotbar::COUNT] =
-            std::array::from_fn(|i| hotbar::spell(i, form).unwrap_or(Spell::LongRest));
+        let spells: [Option<Spell>; slots::COUNT] =
+            std::array::from_fn(|i| slots::spell(i, form, self.land));
         let slots = spells.map(|spell| {
+            let Some(spell) = spell else {
+                return everglade::hotbar::Slot::default();
+            };
             let active = spell.glade().is_some_and(|g| glade.spell_active(g))
-                || Form::of(spell).is_some_and(|f| Some(f) == form);
+                || Form::of(spell).is_some_and(|f| Some(f) == form)
+                || self.auras.iter().any(|a| a.spell == spell);
             let targeted =
                 !spell.needs_target() || self.target(player, spell.def().range).is_some();
-            let shaped = match spell {
+            let ready = match spell {
                 Spell::ReturnToForm => form.is_some(),
                 _ => true,
             };
             everglade::hotbar::Slot {
-                enabled: (active || targeted) && shaped,
+                enabled: (active || targeted) && ready,
                 active,
                 cooldown: 0.0,
             }
@@ -915,7 +771,14 @@ impl Grove {
         hotbar::Bar { spells, slots }
     }
 
-    /// The zone caption: the soft target and the newest combat lines.
+    /// The combat log's heading: the land, and the shape the druid wears.
+    #[must_use]
+    pub fn status(&self) -> String {
+        let form = self.form().map_or("Druid", Form::name);
+        format!("Land: {} · Form: {form}", self.land.name())
+    }
+
+    /// The zone caption: the soft target and the newest combat line.
     #[must_use]
     pub fn caption(&self, player: &PlayerController) -> String {
         let mut caption = String::from("Grove");

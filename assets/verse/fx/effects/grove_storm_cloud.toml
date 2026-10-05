@@ -1,0 +1,38 @@
+# The storm over Call Lightning and Storm of Vengeance, started about
+# 10 m above the ground. Runs until the spell ends.
+description = "A dark gray-blue cloud over a 6 m disc, lit by faint flickers."
+
+[[emitter]]
+name = "cloud"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+rate = 8.0
+life = [4.0, 5.5]
+shape = "disc"
+radius = 6.0
+spread = 180.0
+speed = [0.05, 0.25]
+drag = 0.5
+size = [1.8, 2.6]
+scale = [[0.0, 0.6], [0.3, 1.1], [1.0, 1.4]]
+color = [0.26, 0.28, 0.34]
+alpha = [[0.0, 0.0], [0.2, 0.8], [0.8, 0.7], [1.0, 0.0]]
+spin = [-0.2, 0.2]
+priority = 3
+
+[[emitter]]
+name = "flicker"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 12.0
+rate = 1.5
+life = [0.12, 0.2]
+shape = "disc"
+radius = 5.0
+size = [2.5, 3.5]
+color = [0.7, 0.8, 1.0]
+alpha = [1.0, 0.6, 0.0]
+priority = 2

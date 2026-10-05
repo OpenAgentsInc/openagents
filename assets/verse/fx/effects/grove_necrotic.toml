@@ -1,0 +1,60 @@
+# Necrotic harm on a target: Blight and Land's Aid. Every emitter fires
+# once.
+description = "Dark purple-black smoke and violet sparks."
+
+[[emitter]]
+name = "glow"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 15.0
+burst = 1
+life = [0.4, 0.4]
+size = [0.9, 0.9]
+scale = [0.6, 1.2, 1.4]
+color = [0.6, 0.3, 0.9]
+alpha = [1.0, 0.5, 0.0]
+priority = 4
+
+[[emitter]]
+name = "smoke"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+burst = 7
+life = [1.0, 1.6]
+shape = "sphere"
+radius = 0.4
+spread = 180.0
+speed = [0.2, 0.6]
+radial = [0.4, 1.0]
+gravity = 0.3
+drag = 1.2
+size = [0.45, 0.6]
+scale = [[0.0, 0.5], [0.3, 1.2], [1.0, 1.7]]
+color = [0.14, 0.07, 0.16]
+alpha = [[0.0, 0.0], [0.1, 0.85], [0.6, 0.6], [1.0, 0.0]]
+spin = [-0.6, 0.6]
+priority = 3
+
+[[emitter]]
+name = "sparks"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 40.0
+burst = 24
+life = [0.5, 0.9]
+shape = "sphere"
+radius = 0.2
+spread = 180.0
+speed = [2.0, 4.0]
+gravity = 1.0
+drag = 2.0
+size = [0.03, 0.05]
+stretch = 0.05
+stretch_max = 0.4
+rotate = false
+color = [[0.85, 0.6, 1.0], [0.6, 0.3, 0.95], [0.35, 0.1, 0.6]]
+alpha = [1.0, 1.0, 0.0]
+priority = 3

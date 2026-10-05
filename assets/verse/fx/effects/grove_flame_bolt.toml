@@ -1,0 +1,56 @@
+# Produce Flame's thrown bolt. Moved with the projectile every frame; its
+# axis points back along the flight, so embers fall behind it.
+description = "A small bright fire flare with a short trail of embers."
+
+[[emitter]]
+name = "core"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 70.0
+rate = 12.0
+life = [0.12, 0.14]
+inherit = 1.0
+size = [0.32, 0.36]
+scale = [0.9, 1.0, 1.1]
+color = [1.0, 0.75, 0.4]
+alpha = [1.0, 0.8, 0.0]
+priority = 5
+
+[[emitter]]
+name = "fire"
+sheet = "fireball"
+frames = [0, 9]
+animate = "life"
+luminance = 22.0
+rate = 10.0
+life = [0.18, 0.26]
+inherit = 0.8
+spread = 60.0
+speed = [0.4, 1.0]
+size = [0.2, 0.28]
+scale = [0.8, 1.1, 1.2]
+color = [[1.0, 0.85, 0.6], [1.0, 0.5, 0.18], [0.9, 0.3, 0.08]]
+alpha = [1.0, 0.8, 0.0]
+spin = [-3.0, 3.0]
+priority = 4
+
+[[emitter]]
+name = "embers"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 70.0
+rate = 16.0
+life = [0.25, 0.45]
+inherit = 0.1
+spread = 50.0
+speed = [0.8, 2.0]
+gravity = -2.0
+drag = 1.2
+size = [0.03, 0.05]
+stretch = 0.05
+stretch_max = 0.3
+rotate = false
+color = [[1.0, 0.85, 0.5], [1.0, 0.5, 0.12], [0.85, 0.2, 0.04]]
+alpha = [1.0, 1.0, 0.0]
+priority = 3

@@ -1,0 +1,22 @@
+# Fog Cloud. Runs until the spell ends.
+description = "Pale white-gray fog drifting slowly over a 5 m disc."
+
+[[emitter]]
+name = "fog"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+rate = 6.0
+life = [5.0, 7.0]
+shape = "disc"
+radius = 5.0
+spread = 60.0
+speed = [0.1, 0.3]
+drag = 0.3
+size = [1.8, 2.6]
+scale = [[0.0, 0.6], [0.3, 1.2], [1.0, 1.5]]
+color = [0.86, 0.87, 0.89]
+alpha = [[0.0, 0.0], [0.2, 0.6], [0.8, 0.5], [1.0, 0.0]]
+spin = [-0.15, 0.15]
+priority = 2

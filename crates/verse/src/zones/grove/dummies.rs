@@ -6,8 +6,10 @@
 //! 15 m, a fire-warded one at 25 m, a big one among them, and a flying
 //! target 15 m up on a post. Armor class answers spell attack rolls, save
 //! modifiers answer saving throws, and a resistance halves its damage
-//! type, as in the SRD. A dummy that nothing touches for ten seconds
-//! stands back up at full health where it started.
+//! type, as in the SRD. Spells leave timed conditions on a dummy
+//! ([`Condition`]), and repeated hard control within fifteen seconds
+//! diminishes, as the combat model says. A dummy that nothing touches for
+//! ten seconds stands back up at full health where it started.
 
 use super::kit::{Ability, Damage};
 use crate::zones::everglade::height;
@@ -104,17 +106,119 @@ impl Kind {
     }
 
     /// The multiplier damage of `kind` takes: one half for a resistance.
-    /// The armored dummy resists piercing and slashing, which no Grove
-    /// spell deals yet; the warded one resists fire.
+    /// The armored dummy resists piercing and slashing; the warded one
+    /// resists fire.
     #[must_use]
     pub fn multiplier(self, kind: Damage) -> f32 {
-        if self == Self::Warded && kind == Damage::Fire {
-            0.5
-        } else {
-            1.0
+        match (self, kind) {
+            (Self::Warded, Damage::Fire) | (Self::Armored, Damage::Piercing | Damage::Slashing) => {
+                0.5
+            }
+            _ => 1.0,
         }
     }
 }
+
+/// A timed condition on a dummy: the combat model's debuffs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Condition {
+    /// Rooted in place: pushes and lifts don't move it.
+    Restrained,
+    /// Knocked down.
+    Prone,
+    Blinded,
+    /// Takes poison damage each second.
+    Poisoned,
+    /// Faerie Fire's outline: it takes a fifth more damage.
+    Outlined,
+    /// A harmless beast, drawn small.
+    Polymorphed,
+    Paralyzed,
+    /// Ends when it takes damage.
+    Asleep,
+    Slowed,
+    /// Starry Wisp's light: it can't hide.
+    Starlit,
+}
+
+impl Condition {
+    /// Every condition, in the order its tag shows.
+    pub const ALL: [Self; 10] = [
+        Self::Restrained,
+        Self::Prone,
+        Self::Paralyzed,
+        Self::Asleep,
+        Self::Polymorphed,
+        Self::Blinded,
+        Self::Poisoned,
+        Self::Outlined,
+        Self::Slowed,
+        Self::Starlit,
+    ];
+
+    /// Its name in a combat line.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Restrained => "rooted",
+            Self::Prone => "knocked down",
+            Self::Blinded => "blinded",
+            Self::Poisoned => "poisoned",
+            Self::Outlined => "outlined",
+            Self::Polymorphed => "polymorphed",
+            Self::Paralyzed => "paralyzed",
+            Self::Asleep => "asleep",
+            Self::Slowed => "slowed",
+            Self::Starlit => "starlit",
+        }
+    }
+
+    /// The short tag over the health bar.
+    #[must_use]
+    pub const fn tag(self) -> &'static str {
+        match self {
+            Self::Restrained => "ROOT",
+            Self::Prone => "DOWN",
+            Self::Blinded => "BLIND",
+            Self::Poisoned => "POISON",
+            Self::Outlined => "FAERIE",
+            Self::Polymorphed => "POLY",
+            Self::Paralyzed => "HELD",
+            Self::Asleep => "SLEEP",
+            Self::Slowed => "SLOW",
+            Self::Starlit => "STAR",
+        }
+    }
+
+    /// The tag's color, linear RGB.
+    #[must_use]
+    pub const fn color(self) -> [f32; 3] {
+        match self {
+            Self::Restrained => [0.7, 0.45, 1.0],
+            Self::Prone => [0.95, 0.75, 0.4],
+            Self::Blinded => [1.0, 0.95, 0.6],
+            Self::Poisoned => [0.55, 1.0, 0.3],
+            Self::Outlined => [0.85, 0.55, 1.0],
+            Self::Polymorphed => [0.6, 1.0, 0.8],
+            Self::Paralyzed => [1.0, 0.5, 0.5],
+            Self::Asleep => [0.6, 0.7, 1.0],
+            Self::Slowed => [0.6, 0.9, 1.0],
+            Self::Starlit => [1.0, 0.95, 0.75],
+        }
+    }
+
+    /// Whether it is hard control, which diminishes when repeated.
+    #[must_use]
+    pub const fn hard(self) -> bool {
+        matches!(
+            self,
+            Self::Restrained | Self::Prone | Self::Paralyzed | Self::Asleep | Self::Polymorphed
+        )
+    }
+}
+
+/// How much more damage an outlined dummy takes.
+pub const OUTLINED: f32 = 1.2;
 
 /// The field's dummies: kind and where each stands, x and z, m. The spawn
 /// is at (0, -15) facing +z.
@@ -153,6 +257,9 @@ pub struct Dummy {
     rooted_until: f32,
     /// When control last took hold, for diminishing returns, s.
     controls: Vec<f32>,
+    /// Each condition on it but Restrained (`rooted_until`), and when it
+    /// ends, s.
+    conditions: Vec<(Condition, f32)>,
     /// When anything last touched it, s.
     touched: f32,
     /// When it was last hit, for the wobble, s.
@@ -176,6 +283,7 @@ impl Dummy {
             slide: None,
             rooted_until: f32::NEG_INFINITY,
             controls: Vec::new(),
+            conditions: Vec::new(),
             touched: f32::NEG_INFINITY,
             hit_at: f32::NEG_INFINITY,
         }
@@ -226,14 +334,104 @@ impl Dummy {
         (self.hp / self.kind.max_hp()).clamp(0.0, 1.0)
     }
 
-    /// Deals `amount` of `kind` damage at `now` after resistance, and
-    /// returns what landed, rounded down.
+    /// Deals `amount` of `kind` damage at `now` after resistance and
+    /// Faerie Fire's outline, and returns what landed, rounded down. Damage
+    /// wakes a sleeping dummy.
     pub fn damage(&mut self, amount: f32, kind: Damage, now: f32) -> i32 {
-        let dealt = (amount * self.kind.multiplier(kind)).floor().max(0.0);
+        let outlined = if self.has(Condition::Outlined, now) {
+            OUTLINED
+        } else {
+            1.0
+        };
+        let dealt = (amount * self.kind.multiplier(kind) * outlined)
+            .floor()
+            .max(0.0);
         self.hp = (self.hp - dealt).max(0.0);
         self.touched = now;
         self.hit_at = now;
+        if dealt > 0.0 {
+            self.conditions.retain(|(c, _)| *c != Condition::Asleep);
+        }
         dealt as i32
+    }
+
+    /// Restores `amount` hit points at `now`, up to full, and returns how
+    /// many it restored.
+    pub fn heal(&mut self, amount: f32, now: f32) -> i32 {
+        let before = self.hp;
+        self.hp = (self.hp + amount.max(0.0).floor()).min(self.kind.max_hp());
+        self.touched = now;
+        (self.hp - before) as i32
+    }
+
+    /// Whether `condition` holds it at `now`.
+    #[must_use]
+    pub fn has(&self, condition: Condition, now: f32) -> bool {
+        match condition {
+            Condition::Restrained => self.rooted(now),
+            _ => self
+                .conditions
+                .iter()
+                .any(|(c, until)| *c == condition && now < *until),
+        }
+    }
+
+    /// Each condition on it at `now` and the seconds it has left, in
+    /// [`Condition::ALL`] order.
+    #[must_use]
+    pub fn conditions(&self, now: f32) -> Vec<(Condition, f32)> {
+        Condition::ALL
+            .into_iter()
+            .filter_map(|c| {
+                let until = match c {
+                    Condition::Restrained => self.rooted_until,
+                    _ => self
+                        .conditions
+                        .iter()
+                        .filter(|(k, _)| *k == c)
+                        .map(|(_, u)| *u)
+                        .fold(f32::NEG_INFINITY, f32::max),
+                };
+                (now < until).then_some((c, until - now))
+            })
+            .collect()
+    }
+
+    /// Puts `condition` on it for `seconds` at `now`. Hard control is
+    /// halved for each hard control in the last fifteen seconds, and the
+    /// third within them does nothing. Returns the duration applied.
+    pub fn afflict(&mut self, condition: Condition, seconds: f32, now: f32) -> f32 {
+        if condition == Condition::Restrained {
+            return self.root(seconds, now);
+        }
+        self.touched = now;
+        let duration = if condition.hard() {
+            self.diminished(seconds, now)
+        } else {
+            seconds
+        };
+        if duration > 0.0 {
+            match self.conditions.iter_mut().find(|(c, _)| *c == condition) {
+                Some((_, until)) => *until = until.max(now + duration),
+                None => self.conditions.push((condition, now + duration)),
+            }
+        }
+        duration
+    }
+
+    /// `seconds` after diminishing returns at `now`, recording the control
+    /// when it takes hold.
+    fn diminished(&mut self, seconds: f32, now: f32) -> f32 {
+        self.controls.retain(|&at| now - at < DIMINISH);
+        let duration = match self.controls.len() {
+            0 => seconds,
+            1 => seconds * 0.5,
+            _ => 0.0,
+        };
+        if duration > 0.0 {
+            self.controls.push(now);
+        }
+        duration
     }
 
     /// Pushes it `distance` m along the horizontal `direction`, unless a
@@ -274,14 +472,8 @@ impl Dummy {
     /// duration applied.
     pub fn root(&mut self, seconds: f32, now: f32) -> f32 {
         self.touched = now;
-        self.controls.retain(|&at| now - at < DIMINISH);
-        let duration = match self.controls.len() {
-            0 => seconds,
-            1 => seconds * 0.5,
-            _ => 0.0,
-        };
+        let duration = self.diminished(seconds, now);
         if duration > 0.0 {
-            self.controls.push(now);
             self.rooted_until = self.rooted_until.max(now + duration);
             self.slide = None;
         }
@@ -310,6 +502,7 @@ impl Dummy {
     /// falls, or falls upward inside `gravity`'s cylinder, as the player
     /// does. Untouched for [`RESET_AFTER`], it resets.
     pub fn tick(&mut self, dt: f32, now: f32, gravity: Option<&reverse::Gravity>) {
+        self.conditions.retain(|(_, until)| now < *until);
         let rooted = self.rooted(now);
         if let Some(slide) = &mut self.slide {
             slide.t += dt;
@@ -369,7 +562,8 @@ impl Dummy {
         }
         let moved = self.pos.distance(self.home) > 0.01;
         let hurt = self.hp < self.kind.max_hp();
-        if (moved || hurt || rooted) && now - self.touched >= RESET_AFTER {
+        let held = rooted || !self.conditions.is_empty();
+        if (moved || hurt || held) && now - self.touched >= RESET_AFTER {
             self.reset();
         }
     }

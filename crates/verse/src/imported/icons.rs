@@ -52,6 +52,167 @@ const METEOR: [f32; 3] = [1.0, 0.42, 0.18];
 const REST: [f32; 3] = [0.45, 1.0, 0.5];
 const BEAST: [f32; 3] = [0.78, 0.92, 0.5];
 const VENOM: [f32; 3] = [0.6, 1.0, 0.35];
+const GROWTH: [f32; 3] = [0.45, 0.95, 0.4];
+const FEY: [f32; 3] = [0.9, 0.6, 1.0];
+const ICE: [f32; 3] = [0.65, 0.92, 1.0];
+const MOON: [f32; 3] = [0.88, 0.9, 1.0];
+const THORN: [f32; 3] = [0.75, 0.82, 0.45];
+const NECROTIC: [f32; 3] = [0.7, 0.5, 0.95];
+const ACID: [f32; 3] = [0.8, 1.0, 0.3];
+
+/// The Grove's druid kit (`zones::grove::slots`): Wild Shape, the druid's
+/// features, and the spells of the Archdruid's four rows and four lands.
+const DRUID: &[Icon] = &[
+    icon!(
+        "wild-shape-bear-icon",
+        "delapouite/bear-head.svg",
+        "Delapouite",
+        BEAST
+    ),
+    icon!("wild-shape-wolf-icon", "lorc/wolf-head.svg", "Lorc", BEAST),
+    icon!(
+        "wild-shape-eagle-icon",
+        "lorc/eagle-emblem.svg",
+        "Lorc",
+        BEAST
+    ),
+    icon!("wild-companion-icon", "lorc/owl.svg", "Lorc", FEY),
+    icon!("lands-aid-icon", "lorc/flower-twirl.svg", "Lorc", GROWTH),
+    icon!(
+        "natures-sanctuary-icon",
+        "delapouite/forest.svg",
+        "Delapouite",
+        GROWTH
+    ),
+    icon!("choose-land-icon", "lorc/compass.svg", "Lorc", PARCHMENT),
+    icon!(
+        "nature-magician-icon",
+        "lorc/magic-palm.svg",
+        "Lorc",
+        ARCANE
+    ),
+    icon!("wild-resurgence-icon", "lorc/cycle.svg", "Lorc", BEAST),
+    icon!(
+        "produce-flame-icon",
+        "carl-olsen/flame.svg",
+        "Carl Olsen",
+        FIRE
+    ),
+    icon!("starry-wisp-icon", "lorc/star-swirl.svg", "Lorc", SUNLIGHT),
+    icon!("shillelagh-icon", "lorc/wizard-staff.svg", "Lorc", GROWTH),
+    icon!("poison-spray-icon", "lorc/poison-gas.svg", "Lorc", VENOM),
+    icon!("elementalism-icon", "lorc/tornado-discs.svg", "Lorc", WIND),
+    icon!(
+        "entangle-icon",
+        "delapouite/vines.svg",
+        "Delapouite",
+        GROWTH
+    ),
+    icon!(
+        "faerie-fire-icon",
+        "delapouite/fairy.svg",
+        "Delapouite",
+        FEY
+    ),
+    icon!("ice-knife-icon", "lorc/ice-spear.svg", "Lorc", ICE),
+    icon!(
+        "healing-word-icon",
+        "zeromancer/heart-plus.svg",
+        "Zeromancer",
+        REST
+    ),
+    icon!(
+        "moonbeam-icon",
+        "delapouite/moon-orbit.svg",
+        "Delapouite",
+        MOON
+    ),
+    icon!("spike-growth-icon", "lorc/thorny-vine.svg", "Lorc", THORN),
+    icon!(
+        "call-lightning-icon",
+        "lorc/lightning-storm.svg",
+        "Lorc",
+        STORM
+    ),
+    icon!("conjure-animals-icon", "lorc/wolf-howl.svg", "Lorc", FEY),
+    icon!("ice-storm-icon", "lorc/frozen-orb.svg", "Lorc", ICE),
+    icon!("wall-of-fire-icon", "lorc/fire-ring.svg", "Lorc", FIRE),
+    icon!(
+        "polymorph-icon",
+        "delapouite/frog-prince.svg",
+        "Delapouite",
+        TRANSMUTATION
+    ),
+    icon!(
+        "mass-cure-wounds-icon",
+        "delapouite/healing.svg",
+        "Delapouite",
+        REST
+    ),
+    icon!("sunbeam-icon", "lorc/sunbeams.svg", "Lorc", SUNLIGHT),
+    icon!("wall-of-thorns-icon", "lorc/thorn-helix.svg", "Lorc", THORN),
+    icon!("fire-storm-icon", "lorc/burning-embers.svg", "Lorc", METEOR),
+    icon!("sunburst-icon", "lorc/sun-radiations.svg", "Lorc", SUNLIGHT),
+    icon!(
+        "storm-of-vengeance-icon",
+        "lorc/lightning-tree.svg",
+        "Lorc",
+        STORM
+    ),
+    icon!(
+        "shapechange-icon",
+        "lorc/dragon-breath.svg",
+        "Lorc",
+        TRANSMUTATION
+    ),
+    icon!(
+        "speak-with-animals-icon",
+        "lorc/parrot-head.svg",
+        "Lorc",
+        PARCHMENT
+    ),
+    icon!("burning-hands-icon", "lorc/fire-breath.svg", "Lorc", FIRE),
+    icon!("blur-icon", "lorc/shield-reflect.svg", "Lorc", MIST),
+    icon!("blight-icon", "lorc/dead-wood.svg", "Lorc", NECROTIC),
+    icon!("ray-of-frost-icon", "lorc/ice-bolt.svg", "Lorc", ICE),
+    icon!("fog-cloud-icon", "delapouite/fog.svg", "Delapouite", MIST),
+    icon!(
+        "hold-person-icon",
+        "delapouite/frozen-body.svg",
+        "Delapouite",
+        ARCANE
+    ),
+    icon!("sleet-storm-icon", "lorc/snowflake-2.svg", "Lorc", ICE),
+    icon!("cone-of-cold-icon", "lorc/icicles-aura.svg", "Lorc", ICE),
+    icon!(
+        "shocking-grasp-icon",
+        "lorc/lightning-arc.svg",
+        "Lorc",
+        STORM
+    ),
+    icon!("sleep-icon", "lorc/sleepy.svg", "Lorc", ARCANE),
+    icon!(
+        "lightning-bolt-icon",
+        "lorc/lightning-frequency.svg",
+        "Lorc",
+        STORM
+    ),
+    icon!("freedom-of-movement-icon", "lorc/sprint.svg", "Lorc", WIND),
+    icon!(
+        "tree-stride-icon",
+        "delapouite/tree-growth.svg",
+        "Delapouite",
+        GROWTH
+    ),
+    icon!("acid-splash-icon", "lorc/acid-blob.svg", "Lorc", ACID),
+    icon!("ray-of-sickness-icon", "lorc/vomiting.svg", "Lorc", VENOM),
+    icon!("stinking-cloud-icon", "lorc/dust-cloud.svg", "Lorc", ACID),
+    icon!("insect-plague-icon", "lorc/wasp-sting.svg", "Lorc", THORN),
+    icon!("bear-bite-icon", "skoll/fangs.svg", "Skoll", BEAST),
+    icon!("bear-claw-icon", "lorc/claw-slashes.svg", "Lorc", BEAST),
+    icon!("wolf-bite-icon", "skoll/fangs.svg", "Skoll", MOON),
+    icon!("eagle-talons-icon", "lorc/bird-claw.svg", "Lorc", SUNLIGHT),
+];
 
 /// Every hotbar icon: the original ten abilities, then the SRD spell slots.
 pub const ICONS: &[Icon] = &[
@@ -171,7 +332,12 @@ const BACKGROUND: [f32; 3] = [18. / 255., 21. / 255., 29. / 255.];
 const PADDING: f32 = 0.12;
 
 pub fn icon(key: &str) -> Option<&'static Icon> {
-    ICONS.iter().find(|i| i.key == key)
+    all().find(|i| i.key == key)
+}
+
+/// Every hotbar icon: [`ICONS`], then the Grove's druid kit.
+pub fn all() -> impl Iterator<Item = &'static Icon> {
+    ICONS.iter().chain(DRUID)
 }
 
 /// The vendored license and credits, for the asset inventory.
@@ -225,16 +391,17 @@ mod tests {
         for spell in verse_world::spells::CATALOG {
             assert!(icon(spell.icon).is_some(), "{} has no icon", spell.icon);
         }
-        let mut keys: Vec<_> = ICONS.iter().map(|i| i.key).collect();
+        let mut keys: Vec<_> = all().map(|i| i.key).collect();
+        let count = keys.len();
         keys.sort_unstable();
         keys.dedup();
-        assert_eq!(keys.len(), ICONS.len(), "duplicate icon keys");
+        assert_eq!(keys.len(), count, "duplicate icon keys");
     }
 
     #[test]
     fn every_icon_is_credited() {
         let credits = std::str::from_utf8(CREDITS).unwrap();
-        for icon in ICONS {
+        for icon in all() {
             assert!(credits.contains(icon.file), "{} is not credited", icon.file);
             assert!(
                 credits.contains(&format!("Icons made by {}", icon.author)),
@@ -248,7 +415,7 @@ mod tests {
 
     #[test]
     fn icons_rasterize_deterministically_with_visible_artwork() {
-        for icon in ICONS {
+        for icon in all() {
             let first = rasterize(icon).unwrap();
             assert_eq!(first.len(), (SIZE * SIZE * 4) as usize);
             assert_eq!(first, rasterize(icon).unwrap(), "{}", icon.key);
@@ -282,9 +449,9 @@ mod tests {
     #[ignore = "writes review evidence; run with VERSE_ICON_SHEET=path"]
     fn write_icon_sheet() {
         let path = std::env::var("VERSE_ICON_SHEET").expect("VERSE_ICON_SHEET");
-        let (count, size) = (ICONS.len(), SIZE as usize);
+        let (count, size) = (all().count(), SIZE as usize);
         let mut sheet = vec![0u8; count * size * size * 4];
-        for (i, icon) in ICONS.iter().enumerate() {
+        for (i, icon) in all().enumerate() {
             let pixels = rasterize(icon).unwrap();
             for y in 0..size {
                 let row = &pixels[y * size * 4..(y + 1) * size * 4];

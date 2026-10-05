@@ -234,7 +234,7 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
         font_hash,
         font_bytes,
     )?);
-    let mut icons: Vec<&[u8]> = super::icons::ICONS.iter().map(|i| i.svg).collect();
+    let mut icons: Vec<&[u8]> = super::icons::all().map(|i| i.svg).collect();
     icons.extend([super::icons::LICENSE, super::icons::CREDITS]);
     let (icons_hash, icons_bytes) = bundle(&icons);
     assets.push(source(

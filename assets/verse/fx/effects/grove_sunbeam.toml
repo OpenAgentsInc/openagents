@@ -1,0 +1,35 @@
+# Sunbeam's line of radiance. Started at the caster with its axis along
+# the beam (`Spawn::along`); every emitter ends by itself.
+description = "A golden beam of fast sparks shooting about 18 m, with a bright flare at its origin."
+
+[[emitter]]
+name = "flare"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 90.0
+burst = 1
+life = [0.5, 0.5]
+size = [1.2, 1.2]
+scale = [[0.0, 0.6], [0.2, 1.2], [1.0, 1.4]]
+color = [1.0, 0.9, 0.6]
+alpha = [[0.0, 1.0], [0.4, 0.7], [1.0, 0.0]]
+priority = 6
+
+[[emitter]]
+name = "beam"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 90.0
+rate = 90.0
+duration = 0.4
+life = [0.4, 0.44]
+spread = 1.5
+speed = [40.0, 44.0]
+size = [0.12, 0.16]
+stretch = 0.08
+stretch_max = 4.0
+rotate = false
+color = [[1.0, 0.98, 0.85], [1.0, 0.88, 0.5], [1.0, 0.75, 0.3]]
+alpha = [1.0, 1.0, 0.0]
+priority = 5

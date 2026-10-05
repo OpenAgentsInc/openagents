@@ -1,0 +1,60 @@
+# Entangle's grasping growth. Runs until the spell ends.
+description = "Green and brown leafy dust and motes low over a 3 m disc."
+
+[[emitter]]
+name = "leaves"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+blend = "alpha"
+light = "lit"
+rate = 12.0
+life = [1.0, 1.6]
+shape = "disc"
+radius = 3.0
+speed = [0.1, 0.4]
+drag = 1.0
+size = [0.35, 0.55]
+scale = [0.6, 1.2, 1.5]
+color = [0.32, 0.5, 0.16]
+alpha = [[0.0, 0.0], [0.2, 0.9], [1.0, 0.0]]
+spin = [-1.0, 1.0]
+priority = 2
+
+[[emitter]]
+name = "dirt"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+blend = "alpha"
+light = "lit"
+rate = 6.0
+life = [1.0, 1.6]
+shape = "disc"
+radius = 3.0
+speed = [0.1, 0.3]
+drag = 1.0
+size = [0.3, 0.45]
+scale = [0.6, 1.2, 1.5]
+color = [0.42, 0.32, 0.18]
+alpha = [[0.0, 0.0], [0.2, 0.8], [1.0, 0.0]]
+spin = [-1.0, 1.0]
+priority = 1
+
+[[emitter]]
+name = "motes"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 18.0
+rate = 10.0
+life = [0.8, 1.4]
+shape = "disc"
+radius = 3.0
+spread = 30.0
+speed = [0.3, 0.7]
+drag = 0.8
+size = [0.06, 0.1]
+color = [0.5, 0.9, 0.3]
+alpha = [0.0, 1.0, 0.0]
+priority = 2

@@ -3,7 +3,9 @@
 //! dummy's name and colored health bar facing the camera, floating damage
 //! numbers, the soft target's ring, and the spells' effects.
 
-use super::dummies::{Dummy, HEIGHT};
+use super::aura::Aura;
+use super::dummies::{Condition, Dummy, HEIGHT};
+use super::kit::Spell;
 use crate::mesh::{Mesh, Vertex};
 use crate::pbr::textured::{Figure, TexturedMesh, TexturedScene, TexturedVertex};
 use crate::zones::everglade::scene::{Copied, copy_material};
@@ -212,11 +214,21 @@ fn pose(dummy: &Dummy, now: f32) -> Mat4 {
     } else {
         0.0
     };
-    let tilt = if dummy.down() { -1.35 } else { wobble };
+    let tilt = if dummy.down() || dummy.has(Condition::Prone, now) {
+        -1.35
+    } else {
+        wobble
+    };
+    // Polymorph leaves a small, harmless thing where the dummy stood.
+    let shrink = if dummy.has(Condition::Polymorphed, now) {
+        0.4
+    } else {
+        1.0
+    };
     Mat4::from_translation(dummy.pos)
         * Mat4::from_rotation_y(dummy.yaw)
         * Mat4::from_rotation_x(tilt)
-        * Mat4::from_scale(Vec3::splat(dummy.kind.scale()))
+        * Mat4::from_scale(Vec3::splat(dummy.kind.scale() * shrink))
 }
 
 /// A number floating up from a hit.
@@ -238,7 +250,35 @@ pub enum Effect {
         target: usize,
         start: f32,
         flight: f32,
-        fireball: bool,
+        /// Fire Bolt, Fireball, or another bolt spell.
+        spell: Spell,
+        /// The particles trailing it.
+        trail: Option<crate::fx::Handle>,
+    },
+    /// A ring spreading over the ground: a burst's area.
+    Ring {
+        at: Vec3,
+        radius: f32,
+        start: f32,
+        color: [f32; 3],
+    },
+    /// A jagged lightning stroke from `from` to `to`.
+    Strike { from: Vec3, to: Vec3, start: f32 },
+    /// A straight beam: Sunbeam's light or Lightning Bolt's stroke.
+    Beam {
+        from: Vec3,
+        to: Vec3,
+        start: f32,
+        color: [f32; 3],
+        lightning: bool,
+    },
+    /// A cone's outline on the ground, `length` m along `forward`.
+    Cone {
+        origin: Vec3,
+        forward: Vec3,
+        length: f32,
+        start: f32,
+        color: [f32; 3],
     },
     /// An expanding sphere of fire.
     Burst { at: Vec3, radius: f32, start: f32 },
@@ -278,6 +318,9 @@ impl Effect {
             Self::Web { until, .. } => return now >= *until,
             Self::Rest { start, .. } => (*start, 1.2),
             Self::Shift { start, .. } => (*start, SHIFT),
+            Self::Ring { start, .. } | Self::Cone { start, .. } => (*start, 0.8),
+            Self::Strike { start, .. } => (*start, 0.35),
+            Self::Beam { start, .. } => (*start, 0.5),
         };
         now - start >= length
     }
@@ -291,6 +334,8 @@ impl Effect {
             Self::Wave { .. } => 6,
             Self::Gust { .. } | Self::Web { .. } => 6,
             Self::Rest { .. } | Self::Shift { .. } => 1,
+            Self::Ring { .. } | Self::Strike { .. } => 12,
+            Self::Beam { .. } | Self::Cone { .. } => 6,
         }
     }
 }
@@ -395,9 +440,10 @@ impl Painter {
         );
     }
 
-    /// A dummy's name and its health bar: green when healthy, through
-    /// amber, to red; a violet tag while a web roots it.
-    pub fn bar(&mut self, dummy: &Dummy, rooted: bool, targeted: bool) {
+    /// A dummy's name, its health bar (green when healthy, through amber,
+    /// to red), and a tag for each of its `conditions` with the seconds it
+    /// has left.
+    pub fn bar(&mut self, dummy: &Dummy, conditions: &[(Condition, f32)], targeted: bool) {
         let scale = dummy.kind.scale().max(1.0);
         let at = dummy.pos + Vec3::Y * (HEIGHT * dummy.kind.scale() + 0.35);
         let [w, h] = [BAR[0] * scale.sqrt(), BAR[1]];
@@ -419,8 +465,24 @@ impl Painter {
         if k > 0.0 {
             self.panel(at, [-w / 2.0, 0.0], [w * k, h], 0.02, health_color(k));
         }
-        if rooted {
-            self.panel(at, [w / 2.0 + 0.08, 0.0], [h, h], 0.02, [0.7, 0.45, 1.0]);
+        // Conditions in a row over the name, each a colored chip and its
+        // tag.
+        let row = at + Vec3::Y * (h + NAME + 0.2);
+        let count = conditions.len().min(4);
+        for (k, (condition, left)) in conditions.iter().take(4).enumerate() {
+            let x = (k as f32 - (count as f32 - 1.0) / 2.0) * TAG;
+            let color = condition.color();
+            self.panel(
+                row,
+                [x - TAG / 2.0 + 0.03, 0.0],
+                [TAG - 0.06, 0.2],
+                0.0,
+                color.map(|c| c * 0.35),
+            );
+            let label = format!("{} {}", condition.tag(), left.ceil() as i32);
+            let m = self.facing(row);
+            let center = m.transform_point3(Vec3::new(-x, 0.04, -0.02));
+            self.text(center, &label, 0.13, color);
         }
         let name = if dummy.down() {
             format!("{} down", dummy.kind.name())
@@ -456,6 +518,110 @@ impl Painter {
         ring(self, base, r, 24, spin, [1.0, 0.8, 0.25]);
     }
 
+    /// Faerie Fire's violet outline around a dummy.
+    pub fn outline(&mut self, dummy: &Dummy, now: f32) {
+        let scale = dummy.kind.scale();
+        let color = [0.85, 0.55, 1.0].map(|c| c * (0.75 + 0.25 * (now * 6.0).sin()));
+        let r = 0.45 * scale;
+        let top = HEIGHT * scale;
+        for i in 0..6 {
+            let a = i as f32 / 6.0 * TAU + now * 0.8;
+            let b = a + TAU / 6.0;
+            let p = |a: f32, y: f32| dummy.pos + Vec3::new(a.cos() * r, y, a.sin() * r);
+            self.line(p(a, 0.1), p(a, top), color);
+            self.line(p(a, top), p(b, top), color);
+            self.line(p(a, 0.1), p(b, 0.1), color);
+        }
+    }
+
+    /// A lasting area at `now`: its edge on the ground, and its column,
+    /// wall, cloud, or vines.
+    pub fn aura(&mut self, aura: &Aura, now: f32) {
+        let fade =
+            ((aura.until - now) / 0.6).clamp(0.0, 1.0) * ((now - aura.start) / 0.3).clamp(0.0, 1.0);
+        let color = aura_color(aura.spell).map(|c| c * fade);
+        let ground =
+            |p: Vec3| Vec3::new(p.x, crate::zones::everglade::height(p.x, p.z) + 0.06, p.z);
+        if aura.wall {
+            let n = (aura.reach * 2.0 / 0.6).ceil() as usize;
+            let tall = if aura.spell == Spell::WallOfFire {
+                2.4
+            } else {
+                1.6
+            };
+            for k in 0..=n {
+                let s = -aura.reach + k as f32 * 0.6;
+                let foot = ground(aura.center + aura.across * s);
+                let sway = 0.15 * (now * 7.0 + k as f32 * 1.7).sin();
+                let top = foot
+                    + Vec3::Y * (tall * (0.7 + 0.3 * (k as f32 * 2.3).sin().abs()))
+                    + aura.across * sway;
+                self.line(foot, top, color);
+                if k > 0 {
+                    let prev = ground(aura.center + aura.across * (s - 0.6));
+                    self.line(prev, foot, color);
+                }
+            }
+            return;
+        }
+        let center = ground(aura.center);
+        ring(self, center, aura.reach, 40, now * 0.2, color);
+        match aura.spell {
+            Spell::Moonbeam => {
+                ring(
+                    self,
+                    center + Vec3::Y * 8.0,
+                    aura.reach,
+                    20,
+                    -now * 0.4,
+                    color,
+                );
+                for i in 0..10 {
+                    let a = i as f32 / 10.0 * TAU + now * 0.5;
+                    let p = Vec3::new(a.cos(), 0.0, a.sin()) * aura.reach;
+                    self.line(
+                        center + p,
+                        center + p + Vec3::Y * 8.0,
+                        color.map(|c| c * 0.6),
+                    );
+                }
+            }
+            Spell::CallLightning | Spell::StormOfVengeance => {
+                let sky = center + Vec3::Y * 10.0;
+                for k in 1..=3 {
+                    ring(
+                        self,
+                        sky,
+                        aura.reach * k as f32 / 3.0,
+                        32,
+                        now * 0.1 * k as f32,
+                        [0.35, 0.38, 0.5].map(|c| c * fade),
+                    );
+                }
+            }
+            Spell::Entangle | Spell::SpikeGrowth => {
+                let n = if aura.spell == Spell::Entangle {
+                    18
+                } else {
+                    36
+                };
+                for i in 0..n {
+                    let a = i as f32 * 2.399;
+                    let r = aura.reach * ((i as f32 + 0.5) / n as f32).sqrt();
+                    let foot = center + Vec3::new(a.cos() * r, 0.0, a.sin() * r);
+                    let lean = Vec3::new((a * 3.1).cos(), 0.0, (a * 3.1).sin()) * 0.25;
+                    let tall = if aura.spell == Spell::Entangle {
+                        0.6 + 0.3 * (now * 3.0 + i as f32).sin()
+                    } else {
+                        0.35
+                    };
+                    self.line(foot, foot + Vec3::Y * tall + lean, color);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Web strands from the ground to a rooted dummy.
     pub fn strands(&mut self, dummy: &Dummy, now: f32) {
         let ground = crate::zones::everglade::height(dummy.pos.x, dummy.pos.z);
@@ -479,21 +645,104 @@ impl Painter {
                 from,
                 start,
                 flight,
-                fireball,
+                spell,
+                trail,
                 ..
             } => {
                 let Some(to) = target else { return };
                 let k = ((now - start) / flight.max(1e-3)).clamp(0.0, 1.0);
                 let at = from.lerp(to, k);
                 let back = from.lerp(to, (k - 0.08).max(0.0));
-                let size = if fireball { 0.35 } else { 0.18 };
-                boxed(
-                    &mut self.mesh,
-                    at - Vec3::Y * size,
-                    [size, size * 2.0, size],
-                    [1.0, 0.62, 0.18],
+                let color = spell.def().kind.color();
+                // A bolt with particles is drawn by them; the line keeps a
+                // streak for when the particle budget runs out.
+                if trail.is_none() {
+                    let size = if spell == Spell::Fireball { 0.35 } else { 0.18 };
+                    boxed(
+                        &mut self.mesh,
+                        at - Vec3::Y * size,
+                        [size, size * 2.0, size],
+                        [1.0, 0.62, 0.18],
+                    );
+                }
+                self.line(back, at, color);
+            }
+            Effect::Ring {
+                at,
+                radius,
+                start,
+                color,
+            } => {
+                let k = ((now - start) / 0.8).clamp(0.0, 1.0);
+                let ground = Vec3::new(
+                    at.x,
+                    crate::zones::everglade::height(at.x, at.z) + 0.06,
+                    at.z,
                 );
-                self.line(back, at, [1.0, 0.4, 0.08]);
+                let fade = color.map(|c| c * (1.0 - k));
+                ring(self, ground, radius * (0.4 + 0.6 * k), 40, k, fade);
+                ring(self, ground, radius, 40, -k, fade.map(|c| c * 0.6));
+            }
+            Effect::Strike { from, to, start } => {
+                let k = ((now - start) / 0.35).clamp(0.0, 1.0);
+                let color = [0.8, 0.88, 1.0].map(|c| c * (1.0 - k * k));
+                let seed = (start * 1000.0) as u32;
+                let mut last = from;
+                for s in 1..=8 {
+                    let t = s as f32 / 8.0;
+                    let jitter = if s == 8 {
+                        Vec3::ZERO
+                    } else {
+                        let h = |n: u32| {
+                            ((seed.wrapping_mul(2_654_435_761).wrapping_add(n * 97)) % 1000) as f32
+                                / 500.0
+                                - 1.0
+                        };
+                        Vec3::new(h(s), 0.0, h(s + 50)) * 0.6
+                    };
+                    let p = from.lerp(to, t) + jitter;
+                    self.line(last, p, color);
+                    last = p;
+                }
+            }
+            Effect::Beam {
+                from,
+                to,
+                start,
+                color,
+                lightning,
+            } => {
+                let k = ((now - start) / 0.5).clamp(0.0, 1.0);
+                let fade = color.map(|c| c * (1.0 - k));
+                let side = (to - from).cross(Vec3::Y).normalize_or_zero() * 0.12;
+                for o in [-1.0f32, 0.0, 1.0] {
+                    let wobble = if lightning {
+                        Vec3::Y * 0.1 * (now * 60.0 + o).sin()
+                    } else {
+                        Vec3::ZERO
+                    };
+                    self.line(from + side * o + wobble, to + side * o - wobble, fade);
+                }
+            }
+            Effect::Cone {
+                origin,
+                forward,
+                length,
+                start,
+                color,
+            } => {
+                let k = ((now - start) / 0.8).clamp(0.0, 1.0);
+                let fade = color.map(|c| c * (1.0 - k));
+                let side = Vec3::new(-forward.z, 0.0, forward.x);
+                let lift =
+                    |p: Vec3| Vec3::new(p.x, crate::zones::everglade::height(p.x, p.z) + 0.06, p.z);
+                let reach = length * (0.3 + 0.7 * k);
+                let left = lift(origin + forward * reach + side * reach * 0.5);
+                let right = lift(origin + forward * reach - side * reach * 0.5);
+                let tip = lift(origin);
+                self.line(tip, left, fade);
+                self.line(tip, right, fade);
+                self.line(left, right, fade);
             }
             Effect::Burst { at, radius, start } => {
                 let k = ((now - start) / 0.7).clamp(0.0, 1.0);
@@ -595,6 +844,25 @@ impl Painter {
                 }
             }
         }
+    }
+}
+
+/// Width of a condition tag over a health bar, m.
+const TAG: f32 = 0.62;
+
+/// An aura's line color.
+fn aura_color(spell: Spell) -> [f32; 3] {
+    match spell {
+        Spell::Moonbeam => [0.85, 0.9, 1.0],
+        Spell::SpikeGrowth | Spell::WallOfThorns => [0.55, 0.7, 0.3],
+        Spell::Entangle => [0.35, 0.85, 0.3],
+        Spell::WallOfFire => [1.0, 0.5, 0.15],
+        Spell::CallLightning | Spell::StormOfVengeance => [0.6, 0.75, 1.0],
+        Spell::FogCloud => [0.8, 0.82, 0.85],
+        Spell::SleetStorm => [0.7, 0.85, 1.0],
+        Spell::StinkingCloud => [0.75, 0.85, 0.3],
+        Spell::InsectPlague => [0.5, 0.45, 0.3],
+        _ => [0.9, 0.9, 0.9],
     }
 }
 

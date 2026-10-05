@@ -1,0 +1,23 @@
+# Stinking Cloud. Runs until the spell ends.
+description = "Yellow-green gas billowing about 3 m tall over a 5 m disc."
+
+[[emitter]]
+name = "gas"
+sheet = "smoke"
+animate = "life"
+blend = "alpha"
+light = "lit"
+rate = 10.0
+life = [3.0, 4.5]
+shape = "disc"
+radius = 5.0
+spread = 30.0
+speed = [0.3, 0.7]
+gravity = 0.15
+drag = 0.6
+size = [1.2, 1.7]
+scale = [[0.0, 0.5], [0.3, 1.2], [1.0, 1.6]]
+color = [0.62, 0.66, 0.26]
+alpha = [[0.0, 0.0], [0.2, 0.65], [0.7, 0.5], [1.0, 0.0]]
+spin = [-0.3, 0.3]
+priority = 3

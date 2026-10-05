@@ -261,12 +261,26 @@ impl Atlas {
             return Err("Invalid UI sprite".into());
         }
         let old = self.height;
-        let start = self
-            .sprites
-            .values()
-            .map(|(_, end)| (end[1] * old as f32).round() as u32)
-            .max()
-            .unwrap_or((self.pixels.len() / self.width as usize) as u32);
+        let row_of = |v: f32| (v * old as f32).round() as u32;
+        let column_of = |u: f32| (u * self.width as f32).round() as u32;
+        // Sprites pack in shelves: a sprite as tall as the last shelf goes
+        // to the right of its sprites while the row has room, and any other
+        // starts a shelf below.
+        let bottom = self.sprites.values().map(|(_, end)| row_of(end[1])).max();
+        let shelf = bottom.and_then(|bottom| {
+            let on: Vec<_> = self
+                .sprites
+                .values()
+                .filter(|(_, end)| row_of(end[1]) == bottom)
+                .collect();
+            let tall = on.iter().all(|(top, _)| bottom - row_of(top[1]) == height);
+            let right = on.iter().map(|(_, end)| column_of(end[0])).max()?;
+            (tall && right + width <= self.width).then(|| (right, bottom - height))
+        });
+        let (left, start) = shelf.unwrap_or((
+            0,
+            bottom.unwrap_or((self.pixels.len() / self.width as usize) as u32),
+        ));
         let new = old.max((start + height).next_power_of_two());
         if new > 8192 {
             return Err("UI sprite atlas exceeds 8192 rows".into());
@@ -279,7 +293,7 @@ impl Atlas {
         });
         rgba.resize((self.width * new * 4) as usize, 0);
         for row in 0..height as usize {
-            let dst = (start as usize + row) * self.width as usize * 4;
+            let dst = ((start as usize + row) * self.width as usize + left as usize) * 4;
             rgba[dst..dst + width as usize * 4]
                 .copy_from_slice(&pixels[row * width as usize * 4..(row + 1) * width as usize * 4]);
         }
@@ -304,9 +318,9 @@ impl Atlas {
         self.sprites.insert(
             name.into(),
             (
-                [0.0, start as f32 / new as f32],
+                [left as f32 / self.width as f32, start as f32 / new as f32],
                 [
-                    width as f32 / self.width as f32,
+                    (left + width) as f32 / self.width as f32,
                     (start + height) as f32 / new as f32,
                 ],
             ),
