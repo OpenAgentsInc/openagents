@@ -2101,7 +2101,11 @@ impl WorldRuntime {
                 ..crate::mesh::Mesh::default()
             });
             mesh.extend(&glade.spell_mesh(&self.player));
-            mesh.extend(&grove.mesh(self.view(1.0).eye, &self.player));
+            let eye = self.view(1.0).eye;
+            mesh.extend(&grove.mesh(eye, &self.player));
+            // The dusk stage, lit by the fires and the spells.
+            let lights = grove.lights(glade, &self.player, eye);
+            mesh.neon = Some(grove.lit_stage(&lights, glade.elapsed()));
         } else if let Some(everglade) = &self.zone_state.everglade {
             // Carries the lit stage the textured glade draws on.
             mesh.extend(everglade.dynamic());

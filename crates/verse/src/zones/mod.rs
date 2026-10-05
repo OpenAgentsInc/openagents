@@ -209,7 +209,9 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             fog_end: 90.0,
             height_fog: None,
         },
-        ZoneId::Everglade | ZoneId::Grove => everglade::ATMOSPHERE,
+        ZoneId::Everglade => everglade::ATMOSPHERE,
+        // The Grove's dusk haze, glowing toward the low Sun.
+        ZoneId::Grove => grove::light::ATMOSPHERE,
         // The candlelit hall's near-black air and low fog.
         ZoneId::Crypt => Atmosphere {
             color: crypt::FIELD,

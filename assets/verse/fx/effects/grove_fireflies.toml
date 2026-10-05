@@ -1,0 +1,24 @@
+# Fireflies over the Grove's meadow at dusk: a few slow specks of green-gold
+# light wandering a little over the grass, each glowing and fading in turn.
+# Runs until stopped.
+description = "Fireflies drifting and blinking over the grass at dusk."
+
+[[emitter]]
+name = "flies"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 14.0
+rate = 2.2
+life = [4.0, 7.0]
+shape = "sphere"
+radius = 3.2
+spread = 180.0
+speed = [0.05, 0.2]
+gravity = 0.0
+drag = 0.8
+wander = 0.6
+size = [0.03, 0.045]
+color = [0.75, 1.0, 0.35]
+alpha = [[0.0, 0.0], [0.15, 1.0], [0.3, 0.1], [0.5, 0.0], [0.65, 1.0], [0.8, 0.2], [1.0, 0.0]]
+priority = 1

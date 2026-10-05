@@ -1,0 +1,20 @@
+{
+  "model": "grove_rune_stone.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z front, origin at the base center",
+  "triangles": 236,
+  "boxes": [
+    {
+      "name": "stone",
+      "center": [
+        0.0,
+        0.7,
+        0.0
+      ],
+      "half_extents": [
+        0.44,
+        0.7,
+        0.23
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# Motes of green light rising from a rune stone's carved runes, slowly, as
+# if the stone breathed them out. Runs until stopped.
+description = "Green motes rising slowly from a rune stone."
+
+[[emitter]]
+name = "motes"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 16.0
+rate = 3.0
+life = [2.0, 3.5]
+shape = "disc"
+radius = 0.4
+spread = 25.0
+speed = [0.15, 0.35]
+gravity = 0.0
+drag = 0.6
+wander = 0.3
+size = [0.02, 0.035]
+color = [0.4, 1.0, 0.65]
+alpha = [[0.0, 0.0], [0.2, 1.0], [0.7, 0.6], [1.0, 0.0]]
+priority = 1

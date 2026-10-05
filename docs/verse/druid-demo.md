@@ -229,7 +229,27 @@ A new zone, `ZoneId::Grove`, built on the Everglade pack so no new asset
 download stands between the demo and tomorrow:
 
 - A meadow cleared from Everglade's nature placements: a ring of trees, rocks,
-  and flowers around a 60-meter field, under Everglade's sky and lighting.
+  and flowers around a 60-meter field.
+- A druid's sacred grove around the field (`grove::layout`), from models
+  built in Blender (`scripts/blender/grove_props.py`, Reference mode): a
+  circle of standing and rune stones, a great oak with lanterns in its crown
+  over a mossy altar, a campfire with a cauldron, braziers along the path from
+  the arch, torches on posts, archery butts, a sparring ring, a stone path,
+  and mushroom rings and wildflowers. Stones, trunks, and fires block walking;
+  flowers and the ring's rails don't.
+- Its own dusk (`grove::light`), apart from Everglade's afternoon: a low Sun
+  in the west-north-west with long raking shadows, warm sunlight against a
+  blue-violet sky and cool fill, a glowing horizon with crepuscular rays,
+  haze toward the Sun, and a contrasty grade with cool shadows, warm
+  highlights, and a vignette. The fires burn as flickering point lights with
+  emissive flames and runes, smoke, sparks, and fireflies. The big spells
+  light the field: Meteor Swarm's meteors and explosions, the Thunderbolt's
+  and Call Lightning's flashes (which brighten the sky), Fire Breath along
+  its cone, bolts in flight, fiery landings, Wall of Fire, Moonbeam,
+  Sunbeam, and Shapechange's flash. A stage carries at most 32 lamps, spells
+  first; the low tier shades 8 and the medium tier 16.
+  `cargo run --release -p verse --example grove_light --features capture --
+  OUT_DIR` writes the views and prints frame times.
 - Training dummies (`props/Dummy`), each with a plaque and a floating health
   bar:
 

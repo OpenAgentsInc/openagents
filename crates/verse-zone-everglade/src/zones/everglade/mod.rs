@@ -143,6 +143,10 @@ pub struct Everglade {
     smoke: Option<crate::fx::Particles>,
     /// The town's ambient creatures ([`wildlife`]).
     wildlife: Option<Box<wildlife::Wildlife>>,
+    /// Another zone's light on these placements, such as the Grove's dusk:
+    /// its stage at a time, whose key also lights the bake. Everglade's
+    /// own afternoon without it.
+    look: Option<fn(f32) -> Neon>,
 }
 
 impl Everglade {
@@ -218,7 +222,10 @@ impl Everglade {
             hold: None,
             solids,
             spells: spells::Spells::default(),
-            rendered: Self::stage(0.0),
+            rendered: Mesh {
+                neon: Some(Self::glade_stage(0.0)),
+                ..Mesh::default()
+            },
             cast: player::Cast::new(pack, at)?,
             bake: None,
             probes: None,
@@ -227,6 +234,7 @@ impl Everglade {
             town: None,
             figure_scene: None,
             smoke: None,
+            look: None,
             wildlife: None,
         })
     }
@@ -464,9 +472,23 @@ impl Everglade {
         Ok(())
     }
 
+    /// Lights these placements with `look`'s stage instead of Everglade's
+    /// afternoon, before the light is baked.
+    pub fn set_look(&mut self, look: fn(f32) -> Neon) {
+        self.look = Some(look);
+        self.rendered = self.stage(self.elapsed);
+    }
+
+    /// The key light the stage casts shadows with and the bake reads.
+    fn key(&self) -> Key {
+        self.look
+            .and_then(|look| look(0.0).key)
+            .unwrap_or_else(Self::afternoon)
+    }
+
     /// The afternoon light: a warm sun from behind the approach that casts
     /// shadows over the clearing, a cool rim, and sky and ground fill.
-    fn key() -> Key {
+    fn afternoon() -> Key {
         Key {
             dir: Vec3::new(-0.42, 0.6, -0.56).normalize(),
             illuminance: 4_000.0,
@@ -498,7 +520,7 @@ impl Everglade {
         if cfg!(test) {
             return;
         }
-        let light = BakeLight::from_key(&Self::key());
+        let light = BakeLight::from_key(&self.key());
         let settings = BakeSettings::new(
             Vec3::new(-HALF_EXTENT, 0.0, -HALF_EXTENT),
             Vec3::new(HALF_EXTENT, MAX_HEIGHT + PROBE_HEADROOM, HALF_EXTENT),
@@ -519,33 +541,41 @@ impl Everglade {
     /// casts shadows over the clearing and stands in the sky where the
     /// shadows say it is, and the sky's own light as fill, with low height
     /// fog. Textured meshes draw only on a lit stage.
-    fn stage(time: f32) -> Mesh {
-        let air = ATMOSPHERE;
+    fn stage(&self, time: f32) -> Mesh {
         Mesh {
-            neon: Some(Neon {
-                field: air.color,
-                fog_start: air.fog_start,
-                fog_end: air.fog_end,
-                line_gain: 1.0,
-                line_width: 1.4,
-                bloom: 0.04,
-                vignette: 0.15,
-                time,
-                key: Some(Self::key()),
-                daylight: Some(Daylight {
-                    zenith: [0.10, 0.30, 0.73],
-                    horizon: air.color,
-                    sun: [1.0, 0.8, 0.54],
-                    clouds: 0.38,
-                    // Grass and leaf litter: under the key and the sky it
-                    // returns about the irradiance the key's ground fill
-                    // gave surfaces facing down.
-                    ground: [0.10, 0.11, 0.07],
-                }),
-                height_fog: air.height_fog,
-                ..Neon::plaza(time)
-            }),
+            neon: Some(
+                self.look
+                    .map_or_else(|| Self::glade_stage(time), |look| look(time)),
+            ),
             ..Mesh::default()
+        }
+    }
+
+    fn glade_stage(time: f32) -> Neon {
+        let air = ATMOSPHERE;
+        Neon {
+            field: air.color,
+            fog_start: air.fog_start,
+            fog_end: air.fog_end,
+            line_gain: 1.0,
+            line_width: 1.4,
+            bloom: 0.04,
+            vignette: 0.15,
+            time,
+            key: Some(Self::afternoon()),
+            daylight: Some(Daylight {
+                zenith: [0.10, 0.30, 0.73],
+                horizon: air.color,
+                sun: [1.0, 0.8, 0.54],
+                clouds: 0.38,
+                // Grass and leaf litter: under the key and the sky it
+                // returns about the irradiance the key's ground fill
+                // gave surfaces facing down.
+                ground: [0.10, 0.11, 0.07],
+                glow: 0.0,
+            }),
+            height_fog: air.height_fog,
+            ..Neon::plaza(time)
         }
     }
 
@@ -878,7 +908,7 @@ impl Everglade {
     /// `at`, and poses each of the studio's `seats`.
     pub fn tick(&mut self, dt: f32, at: &PlayerController, seats: &[studio::SeatFigure]) {
         self.elapsed = (self.elapsed + dt) % 1000.0;
-        self.rendered = Self::stage(self.elapsed);
+        self.rendered = self.stage(self.elapsed);
         if let Some(smoke) = &mut self.smoke {
             smoke.tick(dt, height);
         }
@@ -954,6 +984,12 @@ impl Everglade {
     #[must_use]
     pub fn has_characters(&self) -> bool {
         self.cast.is_some()
+    }
+
+    /// The zone's clock, s, which its stage animates by.
+    #[must_use]
+    pub fn elapsed(&self) -> f32 {
+        self.elapsed
     }
 
     pub fn dynamic(&self) -> &Mesh {

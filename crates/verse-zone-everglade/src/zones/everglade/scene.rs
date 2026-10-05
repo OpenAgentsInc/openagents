@@ -67,8 +67,8 @@ pub struct Copied<'a> {
     images: BTreeMap<u16, usize>,
     materials: BTreeMap<(u16, [u32; 6]), usize>,
     /// White materials that a placed model's colors fold into, by image,
-    /// alpha mode and cutoff, and face culling.
-    folded: BTreeMap<(Option<usize>, u8, u32, bool), usize>,
+    /// alpha mode and cutoff, face culling, and emission.
+    folded: BTreeMap<(Option<usize>, u8, u32, bool, u32), usize>,
     #[allow(clippy::type_complexity)]
     meshes: BTreeMap<(&'a str, [u32; 6], Option<[u32; 6]>), (usize, ([f32; 3], [f32; 3]))>,
 }
@@ -81,6 +81,22 @@ struct Look {
     base_color: [f32; 4],
     alpha: everglade_pack::AlphaMode,
     double_sided: bool,
+    /// Emitted luminance, cd/m², times the base color.
+    emissive: f32,
+}
+
+/// What a material named `Emit…` emits, cd/m² times its color: the pack
+/// carries no emission, so generated flames, embers, runes, and lantern
+/// glass mark themselves by name (`scripts/blender/grove_props.py`). At a
+/// dusk exposure it reads a few times brighter than a sunlit wall, so the
+/// flames bloom.
+pub(crate) const EMIT_LUMINANCE: f32 = 6_000.0;
+
+/// Whether pack material `name` (`set/source-name`) glows.
+fn emits(name: &str) -> bool {
+    name.rsplit('/')
+        .next()
+        .is_some_and(|n| n.starts_with("Emit"))
 }
 
 /// The textured scene of `placements` and the blockers their collision
@@ -201,7 +217,13 @@ fn copy_model(
             everglade_pack::AlphaMode::Mask { cutoff } => (1, cutoff.to_bits()),
             everglade_pack::AlphaMode::Blend => (2, 0),
         };
-        let key = (look.image, key.0, key.1, look.double_sided);
+        let key = (
+            look.image,
+            key.0,
+            key.1,
+            look.double_sided,
+            look.emissive.to_bits(),
+        );
         let material = match copied.folded.get(&key) {
             Some(&material) => material,
             None => {
@@ -344,6 +366,11 @@ fn look(
         base_color,
         alpha: source.alpha,
         double_sided: source.double_sided,
+        emissive: if emits(&source.name) {
+            EMIT_LUMINANCE
+        } else {
+            0.0
+        },
     })
 }
 
@@ -361,7 +388,7 @@ fn add_material(scene: &mut TexturedScene, look: &Look) -> usize {
         roughness,
         alpha,
         double_sided: look.double_sided,
-        emissive: 0.0,
+        emissive: look.emissive,
     })
 }
 

@@ -1,0 +1,45 @@
+# A torch's flame in its iron cage: a small bright flame that leans and
+# licks, and the odd spark. Runs until stopped.
+description = "A torch's flame and sparks."
+
+[[emitter]]
+name = "flames"
+sheet = "fireball"
+frames = [1, 12]
+animate = "life"
+luminance = 20.0
+rate = 26.0
+life = [0.25, 0.4]
+shape = "disc"
+radius = 0.07
+spread = 10.0
+speed = [0.5, 0.8]
+gravity = 1.0
+drag = 0.6
+size = [0.06, 0.1]
+scale = [[0.0, 0.7], [0.35, 1.1], [1.0, 0.6]]
+color = [[1.0, 0.85, 0.55], [1.0, 0.5, 0.15], [0.5, 0.2, 0.08]]
+alpha = [[0.0, 1.0], [0.7, 0.8], [1.0, 0.0]]
+additive = [1.0, 0.9, 0.5]
+spin = [-1.5, 1.5]
+priority = 4
+
+[[emitter]]
+name = "sparks"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 50.0
+rate = 2.5
+life = [0.6, 1.2]
+shape = "disc"
+radius = 0.06
+spread = 20.0
+speed = [0.6, 1.2]
+gravity = 0.3
+drag = 0.4
+wander = 1.2
+size = [0.007, 0.012]
+stretch = 0.02
+color = [1.0, 0.55, 0.18]
+alpha = [1.0, 0.8, 0.0]
+priority = 2

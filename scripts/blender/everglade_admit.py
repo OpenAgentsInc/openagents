@@ -147,6 +147,20 @@ MODELS = [
         "fruit_tree_bloom",
         "cafe_umbrella",
     ]
+] + [
+    (f"grove/{name}.glb", name)
+    for name in [
+        "grove_standing_stone",
+        "grove_rune_stone",
+        "grove_altar",
+        "grove_oak",
+        "grove_brazier",
+        "grove_torch",
+        "grove_campfire",
+        "grove_archery_butt",
+        "grove_training_ring",
+        "grove_hanging_lantern",
+    ]
 ]
 
 # Derived village images: file name, kit source, edge, and how it is made.

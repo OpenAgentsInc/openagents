@@ -1,0 +1,85 @@
+{
+  "model": "grove_training_ring.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z front, origin at the base center",
+  "triangles": 308,
+  "boxes": [
+    {
+      "name": "post0",
+      "center": [
+        -2.877,
+        0.5,
+        -0.735
+      ],
+      "half_extents": [
+        0.12,
+        0.5,
+        0.12
+      ]
+    },
+    {
+      "name": "post1",
+      "center": [
+        -1.484,
+        0.5,
+        -0.187
+      ],
+      "half_extents": [
+        0.12,
+        0.5,
+        0.12
+      ]
+    },
+    {
+      "name": "post2",
+      "center": [
+        0.0,
+        0.5,
+        -0.0
+      ],
+      "half_extents": [
+        0.12,
+        0.5,
+        0.12
+      ]
+    },
+    {
+      "name": "post3",
+      "center": [
+        1.484,
+        0.5,
+        -0.187
+      ],
+      "half_extents": [
+        0.12,
+        0.5,
+        0.12
+      ]
+    },
+    {
+      "name": "post4",
+      "center": [
+        2.877,
+        0.5,
+        -0.735
+      ],
+      "half_extents": [
+        0.12,
+        0.5,
+        0.12
+      ]
+    },
+    {
+      "name": "rails",
+      "center": [
+        0.0,
+        0.5,
+        -0.093
+      ],
+      "half_extents": [
+        1.5,
+        0.5,
+        0.12
+      ]
+    }
+  ]
+}

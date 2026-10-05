@@ -1,0 +1,20 @@
+{
+  "model": "grove_altar.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z front, origin at the base center",
+  "triangles": 764,
+  "boxes": [
+    {
+      "name": "altar",
+      "center": [
+        0.0,
+        0.5,
+        0.0
+      ],
+      "half_extents": [
+        1.0,
+        0.5,
+        0.5
+      ]
+    }
+  ]
+}

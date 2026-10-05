@@ -35,6 +35,7 @@ pub mod dummies;
 pub mod hotbar;
 pub mod kit;
 pub mod layout;
+pub mod light;
 pub mod shape;
 pub mod slots;
 #[cfg(test)]
@@ -131,6 +132,7 @@ pub fn glade(pack: &ZonePack, at: &PlayerController) -> Result<Everglade, String
     let solids = everglade::solids::build_with(pack, &placements(), &[])?;
     let mut glade = Everglade::with_solids(pack, at, solids)?;
     glade.set_free_casting();
+    glade.set_look(light::stage);
     Ok(glade)
 }
 
@@ -180,6 +182,13 @@ pub struct Grove {
     chips: Vec<Chip>,
     /// Each dummy a Meteor Swarm cast hurt, and when.
     swarmed: Vec<(usize, f32)>,
+    /// The spells' brief lights where they landed or burst.
+    flashes: Vec<light::Flash>,
+    /// The fires and glows among the placements.
+    fires: Vec<layout::Fire>,
+    /// Their flames, smoke, and sparks, and the fireflies over the field,
+    /// apart from the spells' particles so spam never puts them out.
+    ambience: Particles,
 }
 
 /// What one roll did to one dummy.
@@ -243,7 +252,36 @@ impl Grove {
             feet: SPAWN,
             chips: Vec::new(),
             swarmed: Vec::new(),
+            flashes: Vec::new(),
+            fires: light::fires(),
+            ambience: Self::ambience(),
         })
+    }
+
+    /// The fires' flames and the glows among the placements, and fireflies
+    /// over the field, already burning.
+    fn ambience() -> Particles {
+        let mut fx = Particles::new(0x6E0F_1AE5);
+        for fire in layout::fires() {
+            let (name, lift) = match fire.kind {
+                layout::FireKind::Campfire => ("grove_campfire", -0.35),
+                layout::FireKind::Brazier => ("grove_brazier", -0.2),
+                layout::FireKind::Torch => ("grove_torch", -0.25),
+                layout::FireKind::Lantern | layout::FireKind::Candles => {
+                    ("grove_lantern_glow", 0.0)
+                }
+                layout::FireKind::Runes => ("grove_rune_glow", -0.4),
+            };
+            let _ = fx.start(name, Spawn::at(fire.at + Vec3::Y * lift));
+        }
+        for &[x, z] in &layout::FIREFLIES {
+            let at = Vec3::new(x, everglade::height(x, z) + 0.9, z);
+            let _ = fx.start("grove_fireflies", Spawn::at(at));
+        }
+        for _ in 0..24 {
+            fx.tick(0.25, everglade::height);
+        }
+        fx
     }
 
     /// The beast the druid is now, if any.
@@ -581,9 +619,11 @@ impl Grove {
         }
     }
 
-    /// Starts the particle effect `name` at `at`; a full system skips it.
+    /// Starts the particle effect `name` at `at`, with its light; a full
+    /// system skips the particles.
     fn burst(&mut self, name: &str, at: Vec3) {
         let _ = self.fx.start(name, Spawn::at(at));
+        self.flash(name, at);
     }
 
     /// The live effects, oldest first.
@@ -719,6 +759,8 @@ impl Grove {
         self.last_y = player.pos.y;
         self.feet = player.pos;
         self.fx.tick(dt, everglade::height);
+        self.ambience.tick(dt, everglade::height);
+        self.tick_flashes();
         self.floaters.retain(|f| now - f.start < draw::FLOAT);
         glade.set_extra_blocks(self.dummies.iter().map(Dummy::block).collect());
     }
@@ -761,6 +803,7 @@ impl Grove {
                 everglade::demolition::meteor::Strike::Meteors => Spell::MeteorSwarm,
                 everglade::demolition::meteor::Strike::Lightning => Spell::Thunderbolt,
             };
+            self.impact_flash(impact.at, impact.normal, spell == Spell::Thunderbolt);
             for i in self.within(impact.at, impact.radius) {
                 if spell == Spell::MeteorSwarm {
                     if self.swarmed.iter().any(|&(d, _)| d == i) {
@@ -870,6 +913,12 @@ impl Grove {
         }
         let mut mesh = painter.mesh;
         self.fx.draw(&mut mesh.sprites);
+        // The fires and fireflies take what the spells leave of one
+        // system's particles, so spam never draws more than that.
+        let mut ambience = Vec::new();
+        self.ambience.draw(&mut ambience);
+        ambience.truncate(crate::fx::system::MAX_PARTICLES.saturating_sub(mesh.sprites.len()));
+        mesh.sprites.extend(ambience);
         mesh
     }
 

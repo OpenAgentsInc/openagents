@@ -25,7 +25,7 @@ macro_rules! effect {
 
 /// The effect files, by name. A new effect is a new TOML file and a line
 /// here.
-pub const SOURCES: [(&str, &str); 55] = [
+pub const SOURCES: [(&str, &str); 61] = [
     effect!("meteor_head"),
     effect!("meteor_trail"),
     effect!("meteor_explosion"),
@@ -78,6 +78,12 @@ pub const SOURCES: [(&str, &str); 55] = [
     effect!("grove_wing_buffet"),
     effect!("grove_burning"),
     effect!("grove_area_ring"),
+    effect!("grove_fireflies"),
+    effect!("grove_campfire"),
+    effect!("grove_torch"),
+    effect!("grove_brazier"),
+    effect!("grove_lantern_glow"),
+    effect!("grove_rune_glow"),
     effect!("grove_thorn_wall"),
     effect!("thunderbolt_strike"),
     effect!("tower_crash"),

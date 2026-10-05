@@ -1,0 +1,20 @@
+{
+  "model": "grove_archery_butt.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z front, origin at the base center",
+  "triangles": 476,
+  "boxes": [
+    {
+      "name": "butt",
+      "center": [
+        0.0,
+        0.8,
+        0.0
+      ],
+      "half_extents": [
+        0.6,
+        0.8,
+        0.45
+      ]
+    }
+  ]
+}

@@ -240,6 +240,10 @@ name = "grove_capture"
 required-features = ["capture"]
 
 [[example]]
+name = "grove_light"
+required-features = ["capture"]
+
+[[example]]
 name = "bare_capture"
 required-features = ["capture"]
 

@@ -1,0 +1,20 @@
+{
+  "model": "grove_oak.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z front, origin at the base center",
+  "triangles": 1588,
+  "boxes": [
+    {
+      "name": "trunk",
+      "center": [
+        0.0,
+        2.3,
+        0.0
+      ],
+      "half_extents": [
+        1.1,
+        2.3,
+        1.1
+      ]
+    }
+  ]
+}

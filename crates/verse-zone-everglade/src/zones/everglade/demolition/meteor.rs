@@ -1554,6 +1554,58 @@ impl Swarm {
     }
 }
 
+/// Something of a strike that gives off light now, for a zone that lights
+/// its stage with it (the Grove).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Glow {
+    /// The fire or charge gathering over the aim while the cast runs, from
+    /// 0 to 1 of the cast.
+    Gathering {
+        at: Vec3,
+        strike: Strike,
+        progress: f32,
+    },
+    /// A meteor's burning head.
+    Meteor { at: Vec3 },
+    /// A thunderbolt, `age` s after it left the clouds at `sky` for `at`.
+    Bolt { at: Vec3, sky: Vec3, age: f32 },
+}
+
+impl Swarm {
+    /// What gives off light now: the gathering cast, the falling meteors,
+    /// and the bolts.
+    #[must_use]
+    pub fn glows(&self) -> Vec<Glow> {
+        let mut out = Vec::new();
+        if let Some(casting) = &self.casting {
+            out.push(Glow::Gathering {
+                at: casting.aim.at + casting.aim.normal * 1.5,
+                strike: casting.strike,
+                progress: (casting.elapsed / casting.strike.cast()).clamp(0.0, 1.0),
+            });
+        }
+        for meteor in self.meteors.iter().filter(|m| (0.0..FALL).contains(&m.t)) {
+            out.push(Glow::Meteor {
+                at: meteor.at(meteor.t),
+            });
+        }
+        for bolt in &self.bolts {
+            out.push(Glow::Bolt {
+                at: bolt.aim.at + bolt.aim.normal * 0.5,
+                sky: bolt.sky,
+                age: bolt.age,
+            });
+        }
+        out
+    }
+
+    /// How long a bolt stays lit, s.
+    #[must_use]
+    pub const fn bolt_life() -> f32 {
+        BOLT_LIFE
+    }
+}
+
 #[cfg(test)]
 impl Swarm {
     /// Seconds of cooldown left.

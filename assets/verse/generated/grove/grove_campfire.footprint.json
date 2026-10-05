@@ -1,0 +1,20 @@
+{
+  "model": "grove_campfire.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z front, origin at the base center",
+  "triangles": 642,
+  "boxes": [
+    {
+      "name": "fire",
+      "center": [
+        0.0,
+        0.2,
+        0.0
+      ],
+      "half_extents": [
+        0.75,
+        0.2,
+        0.75
+      ]
+    }
+  ]
+}

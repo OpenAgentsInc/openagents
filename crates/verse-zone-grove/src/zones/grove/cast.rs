@@ -533,6 +533,15 @@ impl Grove {
                         }
                     }
                     let _ = self.fx.start("grove_flame_hit", Spawn::at(at).scaled(2.2));
+                    self.add_flash(super::light::Flash {
+                        at: at + Vec3::Y * 0.8,
+                        start: self.time,
+                        life: 0.8,
+                        color: [1.0, 0.5, 0.16],
+                        peak: 650_000.0,
+                        range: 22.0,
+                        crackle: false,
+                    });
                     self.decal(at, radius);
                 }
                 Spell::FireBolt => {
