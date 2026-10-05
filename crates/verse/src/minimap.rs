@@ -212,19 +212,7 @@ impl MapHud {
         zone: crate::zones::ZoneId,
     ) -> Snapshot {
         let landmarks = match zone {
-            crate::zones::ZoneId::Plaza => {
-                let mut landmarks = LANDMARKS.to_vec();
-                if crate::zones::crypt::EMBEDDED {
-                    let arch = crate::zones::CRYPT_ARCH;
-                    landmarks.push(Landmark {
-                        id: "crypt",
-                        label: "Crypt portal",
-                        x: arch.x,
-                        z: arch.z + 3.0,
-                    });
-                }
-                landmarks
-            }
+            crate::zones::ZoneId::Plaza => LANDMARKS.to_vec(),
             crate::zones::ZoneId::Crypt => vec![
                 Landmark {
                     id: "return",
