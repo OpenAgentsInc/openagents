@@ -27,6 +27,7 @@ const LEGACY_V1_SCHEMA: &str = "openagents.coder.task-store.v1";
 pub const TASK_FILE_SCHEMA: &str = "openagents.coder.task-file.v1";
 
 pub mod adapter;
+pub mod agent;
 pub mod archive;
 pub mod artifact;
 pub mod autostart;

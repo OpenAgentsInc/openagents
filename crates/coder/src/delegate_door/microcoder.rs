@@ -716,6 +716,48 @@ pub async fn answer(turn: Turn, on: Rc<dyn Fn(Update)>) -> Delegated {
     }
 }
 
+/// One structured model call for a caller that runs the commands itself,
+/// such as the workshop agent (`crate::task::agent`): the loop's step on the
+/// first connected provider in `providers` with capacity, failing over to
+/// the next when one refuses for a usage or rate limit, with the refusal
+/// recorded in the capacity book in `book`. Returns the action and the
+/// model that answered.
+///
+/// # Errors
+/// When no provider is left, or the one that answered gave no usable action.
+pub async fn next_action(
+    system: &str,
+    prompt: &str,
+    providers: &[ProviderState],
+    book: &std::path::Path,
+    now: fn() -> u64,
+) -> Result<(NextAction, String), String> {
+    let session = format!("coder-agent-{}-{}", std::process::id(), atif::now_ms());
+    let lanes: Vec<(Route, Provided)> = providers
+        .iter()
+        .filter(|state| state.connection.is_connected())
+        .filter_map(|state| {
+            let lane = provided(state, &session, None).ok()?;
+            Some((
+                Route {
+                    provider: state.provider,
+                    model: state.model.clone(),
+                },
+                lane,
+            ))
+        })
+        .collect();
+    let steps = Steps::default();
+    let generator = Failover::new(&steps, book.to_path_buf(), lanes, now);
+    if generator.route().is_none() {
+        return Err(none_left(providers));
+    }
+    generator.record_start();
+    let generated = generator.generate(system, prompt).await;
+    let model = generated.model.clone();
+    generated.action.map(|action| (action, model))
+}
+
 /// The providers as they stand after a turn: the book read again, and the
 /// turn's own refusals in case the book could not be written.
 fn refreshed(
