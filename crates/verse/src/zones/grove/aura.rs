@@ -137,22 +137,19 @@ impl Grove {
         let across = Vec3::new(-flat.z, 0.0, flat.x);
         let mut fx = Vec::new();
         if wall {
-            let name = if spell == Spell::WallOfFire {
-                "grove_fire_wall"
+            // Fire burns from the ground; the brambles stand about the
+            // height of a dummy's chest.
+            let (name, lift) = if spell == Spell::WallOfFire {
+                ("grove_fire_wall", 0.0)
             } else {
-                "grove_vines"
+                ("grove_thorn_wall", 0.9)
             };
             let steps = (reach * 2.0 / WALL_STEP).round() as i32;
             for k in 0..=steps {
                 let s = -reach + k as f32 * WALL_STEP;
                 let mut at = point + across * s;
-                at.y = everglade::height(at.x, at.z);
-                let scale = if spell == Spell::WallOfFire {
-                    1.0
-                } else {
-                    0.35
-                };
-                fx.extend(self.fx.start(name, Spawn::at(at).scaled(scale)));
+                at.y = everglade::height(at.x, at.z) + lift;
+                fx.extend(self.fx.start(name, Spawn::at(at)));
             }
         } else {
             for &(name, height) in looks(spell) {
@@ -182,12 +179,7 @@ impl Grove {
                 for i in inside {
                     self.strike(spell, i);
                 }
-                self.add(draw::Effect::Ring {
-                    at: point,
-                    radius: reach,
-                    start: now,
-                    color: Damage::Thunder.color(),
-                });
+                self.decal(point, reach);
                 self.say("Storm of Vengeance: thunder rolls over the field".into());
             }
             // Walls rise through what stands in them; zones that act each

@@ -54,8 +54,16 @@ impl Grove {
                 self.long_rest(player, glade);
                 return Ok(());
             }
+            Spell::Shapechange => return self.shapechange(player),
             Spell::ReturnToForm => {
+                if self.morph.is_some() {
+                    return Err("Your shape is already changing".into());
+                }
                 let shape = self.shape.ok_or("You already stand in your own shape")?;
+                if shape.form == Form::Dragon {
+                    self.morph_back(player);
+                    return Ok(());
+                }
                 self.end_shape(player, glade);
                 self.add(draw::Effect::Shift {
                     at: player.pos,
@@ -100,12 +108,18 @@ impl Grove {
                 ));
             }
         }
+        if Form::Dragon.attacks().contains(&spell) {
+            return self.dragon_act(spell, player);
+        }
         // Pressing a live concentration spell's slot casts it again: the
         // old one ends and the new one rises where the druid faces now.
+        // Reverse Gravity only ends, so what it lifted falls back down.
+        let mut ended = false;
         if let Some(glade_spell) = spell.glade()
             && glade.spell_active(glade_spell)
         {
             glade.cast_spell(glade_spell, player)?;
+            ended = true;
         }
         let def = spell.def();
         // A melee strike reaches only as far as the fangs or the staff.
@@ -127,7 +141,12 @@ impl Grove {
         }
         let feet = player.pos;
         let forward = player.forward();
-        let hand = feet + Vec3::Y * 1.4 + forward * 0.3;
+        // A dragon's spells leave its jaws.
+        let hand = if self.form() == Some(Form::Dragon) {
+            self.mouth(player)
+        } else {
+            feet + Vec3::Y * 1.4 + forward * 0.3
+        };
         // Where an area lands: the target, or ahead with none.
         let point = target.map_or_else(
             || {
@@ -190,6 +209,9 @@ impl Grove {
                 } else {
                     self.shove(glade, feet);
                 }
+            }
+            Spell::ReverseGravity if ended => {
+                self.say("Reverse Gravity ends: everything comes back down".into());
             }
             Spell::ReverseGravity => {
                 glade.cast_spell(everglade::spells::Spell::ReverseGravity, player)?;
@@ -260,12 +282,7 @@ impl Grove {
             }
             _ if spell.placeholder() => {
                 self.burst("grove_cast_burst", point + Vec3::Y * 1.0);
-                self.add(draw::Effect::Ring {
-                    at: point,
-                    radius: 2.0,
-                    start: now,
-                    color: [1.0, 0.9, 0.6],
-                });
+                self.decal(point, 2.0);
                 self.say(format!(
                     "{}: not built in the Grove yet, so a labeled burst",
                     def.label
@@ -301,12 +318,7 @@ impl Grove {
                 Area::Burst(radius) => {
                     let center = point + Vec3::Y * 0.9;
                     self.burst(hit_look(spell), point + Vec3::Y * burst_height(spell));
-                    self.add(draw::Effect::Ring {
-                        at: point,
-                        radius,
-                        start: now,
-                        color: def.kind.color(),
-                    });
+                    self.decal(point, radius);
                     for i in self.within(center, radius) {
                         self.strike(spell, i);
                     }
@@ -315,13 +327,6 @@ impl Grove {
                     let _ = self
                         .fx
                         .start(hit_look(spell), Spawn::at(hand).along(forward));
-                    self.add(draw::Effect::Cone {
-                        origin: feet,
-                        forward,
-                        length,
-                        start: now,
-                        color: def.kind.color(),
-                    });
                     // A cone as wide as it is long at its end.
                     let half = 0.5f32.atan();
                     for i in 0..self.dummies.len() {
@@ -340,13 +345,6 @@ impl Grove {
                     let _ = self
                         .fx
                         .start(hit_look(spell), Spawn::at(hand).along(forward));
-                    self.add(draw::Effect::Beam {
-                        from: hand,
-                        to: hand + forward * length,
-                        start: now,
-                        color: def.kind.color(),
-                        lightning: def.kind == Damage::Lightning,
-                    });
                     for i in 0..self.dummies.len() {
                         let d = &self.dummies[i];
                         let to = d.center() - feet;
@@ -370,6 +368,15 @@ impl Grove {
             },
         }
         Ok(())
+    }
+
+    /// A burst's area on the ground: a faint ring of light spreading out to
+    /// `radius` m around `at`, drawn by particles rather than lines.
+    pub(super) fn decal(&mut self, at: Vec3, radius: f32) {
+        let ground = Vec3::new(at.x, everglade::height(at.x, at.z) + 0.05, at.z);
+        let _ = self
+            .fx
+            .start("grove_area_ring", Spawn::at(ground).scaled(radius.max(0.5)));
     }
 
     /// The standing dummies whose bodies reach within `radius` of `center`.
@@ -509,11 +516,8 @@ impl Grove {
                             self.strike(Spell::Fireball, i);
                         }
                     }
-                    self.add(draw::Effect::Burst {
-                        at,
-                        radius,
-                        start: now,
-                    });
+                    let _ = self.fx.start("grove_flame_hit", Spawn::at(at).scaled(2.2));
+                    self.decal(at, radius);
                 }
                 Spell::FireBolt => {
                     self.strike(Spell::FireBolt, target);

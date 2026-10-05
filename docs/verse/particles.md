@@ -57,6 +57,7 @@ is low, which a straight-alpha PNG can't store.
 | `smoke` | 4 × 4 of 128 px | 0–15 | A pale puff billowing out and thinning, lit by a sun from above and a soft sky. Particles tint it (soot, dust, steam). |
 | `sparks` | 2 × 2 of 256 px | 0 spark, 1 flare, 2 ring, 3 dust | A white-hot dot with a horizontal streak for velocity-stretched sparks; a soft glow with six faint rays; a shockwave ring broken by noise; a lit, wispy dust puff. |
 | `butterfly` | 4 × 4 of 128 px | 0–7 orange, 8–15 lemon | Two butterflies' wingbeats, from wings spread flat up to nearly closed and down, seen from above and a little behind: lit wing surfaces with dark rims. |
+| `arcane` | 2 × 2 of 256 px | 0 rune circle, 1 oak leaf, 2 glint, 3 serrated leaf | A druid's rune circle seen from above (rings, twelve glyphs, and a seven-pointed star) in white emission for a ground-laid particle; two pale leaves lit from above, which a particle's color tints; a four-pointed sparkle. |
 
 ### Describe effects
 
@@ -86,6 +87,8 @@ Colors work the same way with `[r, g, b]` values, and keyed colors are
 | `direction`, `spread` | `[0, 1, 0]`, 0 | Launch direction in the effect's frame and the widest angle from it, in degrees. |
 | `inherit` | 0 | How much of the effect's velocity particles keep. |
 | `gravity`, `drag` | 0 | Upward acceleration (m/s², negative falls) and speed lost per second. |
+| `swirl` | 0 | Turning speed of each particle's place about the effect's axis through where it was born, radians a second, counterclockwise seen from the axis's tip: particles born on a ring whirl around it. |
+| `pull` | 0 | The share of its distance from the effect's axis a particle loses each second; with `swirl`, a vortex closing on its center. |
 | `wander` | 0 | A random push each moment, m/s², in a direction drawn afresh every step, so particles flutter about; pair it with `drag`. |
 | `scale`, `color`, `alpha` | 1, white, 1 | Curves over life. |
 | `rotate` | `true` | Start each particle at a random angle. |
@@ -219,3 +222,12 @@ or converted; every sprite here is our own Blender render.
 | `candle_glow` | Every candle flame in the crypt lab | A small warm halo that swells and gutters |
 | `crypt_dust` | The crypt lab's moonbeam | Dust motes drifting slowly in the light |
 | `crypt_fog` | The crypt lab's floor | Faint fog sheets creeping low, and wisps lifting off them |
+| `grove_shapechange_rune` | Shapechange and its return, on the ground under the druid | Two counter-turning rune circles and a green glow |
+| `grove_shapechange_vortex` | Shapechange and its return | Green and gold leaves and arcane motes swirling up and closing on the druid (`swirl`, `pull`), streams of light, a glowing column |
+| `grove_shapechange_flash` | The moment the new shape bursts out | Flash, ground shockwave, leaves and motes thrown out |
+| `grove_dragon_breath` | The dragon's Fire Breath, moved with its jaws | Hot core, a stretched torrent of fire about 18 m long, embers, smoke |
+| `grove_dragon_roar` | The dragon's roar | Three rings of force racing out, dust thrown up |
+| `grove_tail_sweep`, `grove_wing_buffet` | The dragon's Tail Sweep and Wing Buffet | A ring of dust and torn turf; a gust driving dust and leaves ahead |
+| `grove_burning` | Each burning dummy, while it burns | Licking flames, a thread of smoke |
+| `grove_area_ring` | A Grove burst's area, scaled to its radius | A faint ring of light spreading over the ground, in place of a drawn outline |
+| `grove_thorn_wall` | Each 2 m stretch of Wall of Thorns | A bramble hedge of dark leaves over a little dust |

@@ -1,0 +1,39 @@
+# A burning dummy: started at its middle and moved with it while it
+# burns, then stopped. Small licking flames and a thread of smoke.
+description = "Flames licking up a burning dummy, with a little smoke."
+
+[[emitter]]
+name = "flames"
+sheet = "fireball"
+frames = [2, 12]
+animate = "life"
+luminance = 18.0
+rate = 22.0
+life = [0.4, 0.6]
+shape = "sphere"
+radius = 0.35
+speed = [1.2, 2.2]
+spread = 15.0
+size = [0.18, 0.28]
+scale = [[0.0, 0.6], [0.4, 1.0], [1.0, 0.4]]
+color = [[0.0, [1.0, 0.8, 0.45]], [1.0, [1.0, 0.35, 0.08]]]
+alpha = [[0.0, 0.0], [0.15, 1.0], [1.0, 0.0]]
+spin = [-2.0, 2.0]
+priority = 3
+
+[[emitter]]
+name = "smoke"
+sheet = "smoke"
+frames = [4, 15]
+light = "lit"
+blend = "alpha"
+rate = 4.0
+life = [1.0, 1.4]
+shape = "sphere"
+radius = 0.2
+speed = [1.0, 1.6]
+size = [0.25, 0.35]
+scale = [0.8, 1.5, 2.0]
+color = [0.25, 0.23, 0.22]
+alpha = [[0.0, 0.0], [0.3, 0.35], [1.0, 0.0]]
+priority = 1

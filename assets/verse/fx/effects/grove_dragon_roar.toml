@@ -1,0 +1,72 @@
+# The dragon's roar: started on the ground under its jaws. Rings of force
+# race out over the meadow and kick up dust; every emitter fires once.
+description = "Three rings of force racing about 12 m out, and dust thrown up."
+
+[[emitter]]
+name = "rings"
+sheet = "sparks"
+frames = [2, 2]
+animate = "random"
+orient = "ground"
+luminance = 22.0
+burst = 1
+life = [0.9, 0.9]
+size = [1.0, 1.0]
+scale = [[0.0, 1.0], [1.0, 12.0]]
+color = [1.0, 0.75, 0.45]
+alpha = [[0.0, 0.9], [0.6, 0.4], [1.0, 0.0]]
+priority = 5
+
+[[emitter]]
+name = "rings 2"
+sheet = "sparks"
+frames = [2, 2]
+animate = "random"
+orient = "ground"
+luminance = 18.0
+delay = 0.25
+burst = 1
+life = [0.9, 0.9]
+size = [1.0, 1.0]
+scale = [[0.0, 1.0], [1.0, 12.0]]
+color = [1.0, 0.65, 0.4]
+alpha = [[0.0, 0.8], [0.6, 0.35], [1.0, 0.0]]
+priority = 5
+
+[[emitter]]
+name = "rings 3"
+sheet = "sparks"
+frames = [2, 2]
+animate = "random"
+orient = "ground"
+luminance = 14.0
+delay = 0.5
+burst = 1
+life = [0.9, 0.9]
+size = [1.0, 1.0]
+scale = [[0.0, 1.0], [1.0, 12.0]]
+color = [1.0, 0.6, 0.35]
+alpha = [[0.0, 0.7], [0.6, 0.3], [1.0, 0.0]]
+priority = 5
+
+[[emitter]]
+name = "dust"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+light = "lit"
+blend = "alpha"
+burst = 36
+life = [1.0, 1.6]
+shape = "ring"
+radius = 2.5
+speed = [0.5, 1.5]
+radial = [5.0, 9.0]
+drag = 2.0
+gravity = 0.5
+size = [0.5, 0.8]
+scale = [0.6, 1.4, 1.9]
+color = [0.62, 0.55, 0.42]
+alpha = [[0.0, 0.0], [0.15, 0.55], [1.0, 0.0]]
+spin = [-1.0, 1.0]
+priority = 2

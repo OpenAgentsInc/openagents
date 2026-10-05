@@ -8,9 +8,14 @@
 //! allows at level 18. The eagle flies, with Everglade's levitation. Return
 //! to Form and Long Rest end it.
 //!
+//! Shapechange takes the dragon's shape the same way, through a
+//! transformation ([`super::Morph`]), and the dragon flies faster than the
+//! eagle and plays its own clips for each attack.
+//!
 //! The spider is Quaternius's, from the Easy Animated Enemy Pack; the bear,
 //! wolf, and eagle are the stylized animals `scripts/blender/animals.py`
-//! builds, until a CC0 pack has them.
+//! builds, until a CC0 pack has them; the dragon is
+//! `scripts/blender/dragon.py`'s.
 
 use super::kit::Spell;
 use crate::zones::everglade::player::Beast;
@@ -23,15 +28,18 @@ pub enum Form {
     DireWolf,
     GiantEagle,
     GiantSpider,
+    /// Shapechange's young red dragon.
+    Dragon,
 }
 
 impl Form {
     /// Every form, in figure order.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::BrownBear,
         Self::DireWolf,
         Self::GiantEagle,
         Self::GiantSpider,
+        Self::Dragon,
     ];
 
     /// The form's name in the pack.
@@ -42,6 +50,7 @@ impl Form {
             Self::DireWolf => "beasts/wolf",
             Self::GiantEagle => "beasts/eagle",
             Self::GiantSpider => "beasts/giant_spider",
+            Self::Dragon => "beasts/dragon",
         }
     }
 
@@ -53,16 +62,19 @@ impl Form {
             Self::DireWolf => "Dire Wolf",
             Self::GiantEagle => "Giant Eagle",
             Self::GiantSpider => "Giant Spider",
+            Self::Dragon => "Dragon",
         }
     }
 
     /// How many times its modeled size it stands. Each is Large, filling a
     /// 10-foot (3 m) square: the pack's bear is 2.1 m long, its wolf
     /// 1.6 m, its eagle 1.1 m across the wings, and its spider 2 m across
-    /// the legs.
+    /// the legs. The dragon is modeled at its size, about 5 m to the top
+    /// of its head, three times the druid's height.
     #[must_use]
     pub const fn scale(self) -> f32 {
         match self {
+            Self::Dragon => 1.0,
             Self::BrownBear => 1.3,
             Self::DireWolf => 1.6,
             Self::GiantEagle => 2.6,
@@ -80,13 +92,50 @@ impl Form {
             Self::DireWolf => 1.5,
             Self::GiantEagle => 1.4,
             Self::GiantSpider => 1.25,
+            Self::Dragon => 1.5,
+        }
+    }
+
+    /// The multiplier on the player's movement speeds in the air: the
+    /// dragon flies nearly twice as fast as the eagle.
+    #[must_use]
+    pub const fn air_pace(self) -> f32 {
+        match self {
+            Self::Dragon => 2.6,
+            other => other.pace(),
+        }
+    }
+
+    /// How many times levitation's climb rate it climbs and dives at, and
+    /// how many times its ceiling it reaches.
+    #[must_use]
+    pub const fn lift(self) -> f32 {
+        match self {
+            Self::Dragon => 2.0,
+            _ => 1.0,
         }
     }
 
     /// Whether it flies.
     #[must_use]
     pub const fn flies(self) -> bool {
+        matches!(self, Self::GiantEagle | Self::Dragon)
+    }
+
+    /// Whether it takes to the air as it takes shape; the dragon lands
+    /// first and takes off with Jump.
+    #[must_use]
+    pub const fn starts_aloft(self) -> bool {
         matches!(self, Self::GiantEagle)
+    }
+
+    /// How many times the usual distance the camera stands back to fit it.
+    #[must_use]
+    pub const fn camera(self) -> f32 {
+        match self {
+            Self::Dragon => 2.4,
+            _ => 1.0,
+        }
     }
 
     /// The spell that takes this form.
@@ -97,6 +146,7 @@ impl Form {
             Self::DireWolf => Spell::WildShapeWolf,
             Self::GiantEagle => Spell::WildShapeEagle,
             Self::GiantSpider => Spell::WildShapeSpider,
+            Self::Dragon => Spell::Shapechange,
         }
     }
 
@@ -114,6 +164,13 @@ impl Form {
             Self::DireWolf => &[Spell::WolfBite],
             Self::GiantEagle => &[Spell::EagleTalons],
             Self::GiantSpider => &[Spell::SpiderBite, Spell::SpiderWeb],
+            Self::Dragon => &[
+                Spell::DragonBite,
+                Spell::FireBreath,
+                Spell::TailSweep,
+                Spell::WingBuffet,
+                Spell::Roar,
+            ],
         }
     }
 
@@ -145,4 +202,6 @@ pub struct Shape {
     pub form: Form,
     /// When its latest attack began, for the attack clip.
     pub attack: Option<f32>,
+    /// The clip a dragon's action plays by name, and when it began.
+    pub clip: Option<(&'static str, f32)>,
 }

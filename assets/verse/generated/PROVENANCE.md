@@ -12,8 +12,8 @@ admitted into the
 Everglade pack's `generated` set by `scripts/blender/everglade_admit.py`
 ([`assets/verse/everglade/generated/`](../everglade/generated/README.md)),
 following [the pipeline](../../../docs/verse/blender-pipeline.md). The
-giant spider, the bear, the wolf, and the eagle are admitted as the pack's
-Wild Shape forms by `scripts/blender/beasts_admit.py`
+giant spider, the bear, the wolf, the eagle, and Shapechange's dragon are
+admitted as the pack's forms by `scripts/blender/beasts_admit.py`
 ([`assets/verse/everglade/beasts/`](../everglade/beasts/README.md)). The
 training dummies and the sledgehammer are not admitted. Everglade's ambient
 wildlife (`wildlife/`) is admitted as forms the same way.
@@ -60,6 +60,17 @@ The observatory and the bandshell sample the village kit's
 | `bear.glb` | `animals.py` | 1,254 | idle, walk |
 | `wolf.glb` | `animals.py` | 1,242 | idle, walk |
 | `eagle.glb` | `animals.py` | 854 | idle, flap |
+| `dragon.glb` | `dragon.py` | 1,924 | idle, walk, fly, glide, bite, breath, roar, sweep |
+
+The dragon is a Reference model: built from primitives in the style of the
+Quaternius kits the pack carries (chunky low-poly solids, flat-shaded facets
+for scales, a few flat colors), with nothing taken from any kit. Its body,
+neck, and tail are one lofted tube skinned smoothly along the spine; its
+head, legs, horns, spikes, and wings are weighted to one bone each. It
+stands about 5 m to the top of its head and spans about 11 m across its
+wings, at the size the Grove draws it. Rebuild it with
+`Blender -b --factory-startup --python scripts/blender/dragon.py`, and add
+`-- OUT_DIR --preview DIR` to render each clip for review.
 
 The sledgehammer's origin is the handle's butt, with the handle along +Y, so
 a hand can hold it. The fountain's water is the separate `Fountain_Water`

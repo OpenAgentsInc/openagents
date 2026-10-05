@@ -23,7 +23,7 @@ pub struct Sheet {
 pub const SIZE: u32 = 512;
 
 /// The sheets, in texture-array layer order.
-pub static SHEETS: [Sheet; 4] = [
+pub static SHEETS: [Sheet; 5] = [
     Sheet {
         name: "fireball",
         columns: 4,
@@ -51,6 +51,13 @@ pub static SHEETS: [Sheet; 4] = [
         rows: 4,
         frames: 16,
         png: include_bytes!("../../../../assets/verse/fx/butterfly.png"),
+    },
+    Sheet {
+        name: "arcane",
+        columns: 2,
+        rows: 2,
+        frames: 4,
+        png: include_bytes!("../../../../assets/verse/fx/arcane.png"),
     },
 ];
 

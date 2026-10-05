@@ -37,11 +37,14 @@ impl WorldRuntime {
                 .as_ref()
                 .and_then(super::grove::Grove::form)
                 .is_some_and(super::grove::shape::Form::flies);
-            if flying && input.jump && everglade.levitating {
-                use super::everglade::{CLIMB_RATE, LEVITATE_CEILING};
+            if flying && input.jump {
+                // The dragon lands as it takes shape; Jump takes off.
+                if !everglade.levitating {
+                    everglade.toggle_levitate(&self.player);
+                }
                 let ground = super::everglade::height(self.player.pos.x, self.player.pos.z);
-                everglade.altitude =
-                    (everglade.altitude + CLIMB_RATE * dt).clamp(ground, ground + LEVITATE_CEILING);
+                everglade.altitude = (everglade.altitude + everglade.climb_rate() * dt)
+                    .clamp(ground, ground + everglade.ceiling());
             }
             everglade.move_controlled(&mut self.player, input, &self.world.blockers, dt);
         } else {
@@ -933,6 +936,15 @@ impl WorldRuntime {
         result.map(|()| true)
     }
 
+    /// How many times its usual distance the camera stands back in the
+    /// Grove, to fit the dragon; one elsewhere.
+    pub(crate) fn grove_camera(&self) -> f32 {
+        self.zone_state
+            .grove
+            .as_ref()
+            .map_or(1.0, super::grove::Grove::camera)
+    }
+
     /// The camera's jolt from the Grove's newest Thunderwave, m.
     pub(crate) fn grove_shake(&self) -> Vec3 {
         self.zone_state
@@ -979,14 +991,14 @@ impl WorldRuntime {
     /// While levitating in Everglade, climbs (`direction` 1) or descends
     /// (-1) for `dt` seconds of a held key, such as X to descend.
     pub fn everglade_climb(&mut self, direction: f32, dt: f32) {
-        use super::everglade::{CLIMB_RATE, LEVITATE_CEILING};
         let (x, z) = (self.player.pos.x, self.player.pos.z);
         if let Some(glade) = self.zone_state.everglade.as_mut()
             && glade.levitating
         {
             let ground = super::everglade::height(x, z);
-            glade.altitude = (glade.altitude + direction.clamp(-1.0, 1.0) * CLIMB_RATE * dt)
-                .clamp(ground, ground + LEVITATE_CEILING);
+            glade.altitude = (glade.altitude
+                + direction.clamp(-1.0, 1.0) * glade.climb_rate() * dt)
+                .clamp(ground, ground + glade.ceiling());
             self.cancel_navigation();
         }
     }
@@ -1823,7 +1835,7 @@ impl WorldRuntime {
             glade.tick(dt, &self.player, &[]);
             grove.tick(dt, glade, &self.player);
             // The shape's pace holds however the player is placed.
-            self.player.set_pace(grove.form().map_or(1.0, |f| f.pace()));
+            self.player.set_pace(grove.pace(glade, &self.player));
             // Held hotbar keys recast at their fixed rate, each casting
             // what its slot holds now.
             for slot in grove.due() {

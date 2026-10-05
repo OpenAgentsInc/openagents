@@ -1,0 +1,84 @@
+# The dragon's Fire Breath: started at its jaws with its axis along the
+# breath (`Spawn::along`), moved with the head, and stopped when the
+# breath ends. A torrent of fire about 18 m long that widens as it goes,
+# embers, and smoke rolling off its end.
+description = "A torrent of dragon fire about 18 m long, in a 25-degree cone."
+
+[[emitter]]
+name = "core"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 90.0
+rate = 90.0
+life = [0.15, 0.25]
+spread = 3.0
+speed = [14.0, 20.0]
+size = [0.5, 0.8]
+color = [1.0, 0.85, 0.55]
+alpha = [1.0, 0.8, 0.0]
+priority = 7
+
+[[emitter]]
+name = "fire"
+sheet = "fireball"
+frames = [0, 13]
+animate = "life"
+luminance = 26.0
+rate = 240.0
+life = [0.75, 0.95]
+spread = 9.0
+speed = [30.0, 36.0]
+inherit = 0.3
+drag = 1.2
+gravity = -1.5
+size = [0.3, 0.42]
+scale = [[0.0, 0.35], [0.3, 1.6], [1.0, 3.4]]
+stretch = 0.025
+stretch_max = 1.6
+color = [[0.0, [1.0, 0.9, 0.65]], [0.4, [1.0, 0.5, 0.14]], [1.0, [0.45, 0.18, 0.08]]]
+alpha = [[0.0, 1.0], [0.7, 0.85], [1.0, 0.0]]
+additive = [1.0, 0.9, 0.35]
+spin = [-2.5, 2.5]
+priority = 6
+
+[[emitter]]
+name = "embers"
+sheet = "sparks"
+frames = [0, 0]
+luminance = 80.0
+rate = 90.0
+life = [0.6, 1.0]
+spread = 18.0
+speed = [18.0, 28.0]
+gravity = -2.0
+drag = 1.2
+wander = 6.0
+size = [0.04, 0.07]
+stretch = 0.04
+stretch_max = 0.6
+rotate = false
+color = [[1.0, 0.9, 0.55], [1.0, 0.5, 0.12], [0.85, 0.2, 0.04]]
+alpha = [1.0, 1.0, 0.0]
+priority = 4
+
+[[emitter]]
+name = "smoke"
+sheet = "smoke"
+frames = [2, 15]
+animate = "life"
+light = "lit"
+blend = "alpha"
+delay = 0.25
+rate = 22.0
+life = [1.2, 1.8]
+spread = 16.0
+speed = [12.0, 16.0]
+drag = 1.6
+gravity = 1.4
+size = [0.8, 1.2]
+scale = [0.8, 1.8, 2.6]
+color = [0.22, 0.2, 0.2]
+alpha = [[0.0, 0.0], [0.35, 0.45], [1.0, 0.0]]
+spin = [-0.5, 0.5]
+priority = 1

@@ -5,8 +5,8 @@
 //! Row 1 holds Wild Shape and the druid's features, row 2 the cantrips and
 //! levels 1 and 2, row 3 levels 2 to 7, and row 4 levels 8 and 9, Speak
 //! with Animals, and the chosen land's six spells on keys 5 to 0. In a
-//! beast's shape its attacks take row 2's first slots, and the other rows
-//! still cast, as Beast Spells allows. The tooltip sentences are our own
+//! beast's shape, or Shapechange's dragon, its attacks take row 2's first
+//! slots, and the other rows still cast, as Beast Spells allows. The tooltip sentences are our own
 //! summaries of SRD 5.2.1; the numbers on a card come from [`Spell::def`].
 
 use super::kit::{Land, Spell};
@@ -278,7 +278,7 @@ pub const fn info(spell: Spell) -> (&'static str, &'static str) {
         ),
         S::Shapechange => (
             "shapechange-icon",
-            "Take any form, such as a dragon's, and keep your spells; for now a labeled burst.",
+            "Become a dragon three times your height in a whirl of leaves and light: fly with Jump and X, and breathe fire, bite, sweep, buffet, and roar while your spells still cast.",
         ),
         S::SpeakWithAnimals => (
             "speak-with-animals-icon",
@@ -395,6 +395,26 @@ pub const fn info(spell: Spell) -> (&'static str, &'static str) {
         S::SpiderWeb => (
             "spider-web-icon",
             "Spit a web at a dummy up to 60 feet away: a +5 attack that roots it for 6 seconds.",
+        ),
+        S::DragonBite => (
+            "dragon-bite-icon",
+            "Snap your jaws on the dummy ahead: a +14 attack for 2d10 + 8 piercing and 2d6 fire.",
+        ),
+        S::FireBreath => (
+            "fire-breath-icon",
+            "Breathe a 60-foot cone of fire: 18d6 fire, half on a Dexterity save, and a failed save leaves a dummy burning.",
+        ),
+        S::TailSweep => (
+            "tail-sweep-icon",
+            "Swing your tail around you: 2d8 + 8 bludgeoning within 25 feet, half on a Dexterity save, and a failure knocks a dummy down.",
+        ),
+        S::WingBuffet => (
+            "wing-buffet-icon",
+            "Beat your wings down: 2d6 + 8 bludgeoning within 20 feet, half on a Dexterity save, and a failure throws a dummy back.",
+        ),
+        S::Roar => (
+            "dragon-roar-icon",
+            "Roar: each dummy within 60 feet that fails a Wisdom save cowers, frightened, for 4 seconds.",
         ),
     }
 }

@@ -20,6 +20,12 @@ pub const REPEAT: f32 = 1.0 / 6.0;
 pub const ATTACK_BONUS: i32 = 11;
 /// The beasts' attack bonus, which a druid in their shape uses.
 pub const BEAST_ATTACK_BONUS: i32 = 5;
+/// The dragon's attack bonus, an adult red dragon's from the SRD, which
+/// the druid uses in Shapechange's shape.
+pub const DRAGON_ATTACK_BONUS: i32 = 14;
+/// How far the dragon's bite reaches from where it stands, m: its neck
+/// carries its jaws about 5 m ahead.
+pub const DRAGON_REACH: f32 = 7.5;
 /// The druid's spell save DC: 8, proficiency 6, and Wisdom 5.
 pub const SAVE_DC: i32 = 19;
 /// Wisdom's modifier, which Potent Spellcasting adds to cantrip damage.
@@ -107,6 +113,12 @@ pub enum Spell {
     EagleTalons,
     SpiderBite,
     SpiderWeb,
+    // The dragon's, which take row 2's first slots in Shapechange's shape.
+    DragonBite,
+    FireBreath,
+    TailSweep,
+    WingBuffet,
+    Roar,
 }
 
 /// A damage type, for resistances and the numbers' colors.
@@ -325,7 +337,7 @@ impl Land {
 impl Spell {
     /// Every ability, in bar order, then the land spells and the beasts'
     /// attacks.
-    pub const ALL: [Self; 68] = {
+    pub const ALL: [Self; 73] = {
         use Spell as S;
         [
             S::WildShapeBear,
@@ -396,6 +408,11 @@ impl Spell {
             S::EagleTalons,
             S::SpiderBite,
             S::SpiderWeb,
+            S::DragonBite,
+            S::FireBreath,
+            S::TailSweep,
+            S::WingBuffet,
+            S::Roar,
         ]
     };
 
@@ -418,6 +435,9 @@ impl Spell {
             bonus: BEAST_ATTACK_BONUS,
         };
         const AUTO: Delivery = Delivery::Automatic;
+        const DRAGON: Delivery = Delivery::Attack {
+            bonus: DRAGON_ATTACK_BONUS,
+        };
         let mut def = Def {
             label: "",
             level: 0,
@@ -1018,6 +1038,80 @@ impl Spell {
                 def.rider = Some((C::Restrained, 6.0));
                 ("Web", 0, 60.0 * FT, (0, 0), D::Force, BEAST, Single)
             }
+            // The dragon's numbers are an adult red dragon's from the SRD.
+            // Its bite: +14 to hit, 2d10 + 8 piercing and 2d6 fire, at the
+            // reach of its long neck.
+            S::DragonBite => {
+                def.bonus = 8;
+                def.extra = Some((2, 6, D::Fire));
+                (
+                    "Dragon Bite",
+                    0,
+                    DRAGON_REACH,
+                    (2, 10),
+                    D::Piercing,
+                    DRAGON,
+                    Single,
+                )
+            }
+            // A 60-foot cone: 18d6 fire, half on a Dexterity save; a failed
+            // save leaves the dummy burning.
+            S::FireBreath => {
+                def.rider = Some((C::Burning, 6.0));
+                (
+                    "Fire Breath",
+                    0,
+                    60.0 * FT,
+                    (18, 6),
+                    D::Fire,
+                    save(Dex, true),
+                    Cone(60.0 * FT),
+                )
+            }
+            // The tail swung around: 2d8 + 8 bludgeoning to every dummy
+            // within 25 feet, half on a Dexterity save; a failure knocks it
+            // down.
+            S::TailSweep => {
+                def.bonus = 8;
+                def.rider = Some((C::Prone, 2.0));
+                (
+                    "Tail Sweep",
+                    0,
+                    0.0,
+                    (2, 8),
+                    D::Bludgeoning,
+                    save(Dex, true),
+                    Burst(25.0 * FT),
+                )
+            }
+            // The wings beat down: 2d6 + 8 bludgeoning within 20 feet, half
+            // on a Dexterity save; a failure is thrown back 20 feet.
+            S::WingBuffet => {
+                def.bonus = 8;
+                (
+                    "Wing Buffet",
+                    0,
+                    0.0,
+                    (2, 6),
+                    D::Bludgeoning,
+                    save(Dex, true),
+                    Burst(20.0 * FT),
+                )
+            }
+            // Frightful Presence: each dummy within 60 feet that fails a
+            // Wisdom save is frightened for 4 s.
+            S::Roar => {
+                def.rider = Some((C::Frightened, 4.0));
+                (
+                    "Roar",
+                    0,
+                    0.0,
+                    (0, 0),
+                    D::Thunder,
+                    save(Wis, false),
+                    Burst(60.0 * FT),
+                )
+            }
         };
         def.label = label;
         def.level = level;
@@ -1085,6 +1179,11 @@ impl Spell {
                 | Self::EagleTalons
                 | Self::SpiderBite
                 | Self::SpiderWeb
+                | Self::DragonBite
+                | Self::FireBreath
+                | Self::TailSweep
+                | Self::WingBuffet
+                | Self::Roar
         )
     }
 
@@ -1097,6 +1196,7 @@ impl Spell {
                 | Self::WildShapeWolf
                 | Self::WildShapeEagle
                 | Self::WildShapeSpider
+                | Self::Shapechange
                 | Self::ReturnToForm
         )
     }
@@ -1123,7 +1223,6 @@ impl Spell {
                 | Self::NaturesSanctuary
                 | Self::NatureMagician
                 | Self::WildResurgence
-                | Self::Shapechange
                 | Self::Blur
                 | Self::FreedomOfMovement
         )

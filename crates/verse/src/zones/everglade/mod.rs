@@ -90,6 +90,9 @@ pub(crate) struct Everglade {
     pub levitating: bool,
     pub sprinting: bool,
     pub altitude: f32,
+    /// How many times levitation's climb rate and ceiling the flier has:
+    /// one, or more for the Grove's dragon.
+    lift: f32,
     pub jump: bool,
     landing: bool,
     /// The held Levitate press, if any.
@@ -176,6 +179,7 @@ impl Everglade {
             levitating: false,
             sprinting: false,
             altitude: 0.0,
+            lift: 1.0,
             jump: false,
             landing: false,
             hold: None,
@@ -526,7 +530,7 @@ impl Everglade {
             if hold.held >= TAP && self.levitating {
                 let ground = height(player.pos.x, player.pos.z);
                 self.altitude =
-                    (self.altitude + CLIMB_RATE * dt).clamp(ground, ground + LEVITATE_CEILING);
+                    (self.altitude + self.climb_rate() * dt).clamp(ground, ground + self.ceiling());
             }
         }
         if self.levitating || self.landing {
@@ -539,7 +543,10 @@ impl Everglade {
                 self.landing = self.altitude > floor + 0.001;
             }
             self.altitude = self.altitude.max(floor);
-            player.hold_altitude(before + (self.altitude - before).clamp(-2.0 * dt, 3.0 * dt));
+            let lift = self.lift;
+            player.hold_altitude(
+                before + (self.altitude - before).clamp(-2.0 * lift * dt, 3.0 * lift * dt),
+            );
         } else {
             let (feet, speed) = (player.pos.y, player.vertical_speed());
             self.move_on_solids(player, &input, dt);
@@ -722,6 +729,28 @@ impl Everglade {
         {
             self.toggle_levitate(player);
         }
+    }
+
+    /// Sets how many times levitation's climb rate and ceiling the flier
+    /// has, such as the Grove's dragon's two.
+    pub fn set_lift(&mut self, lift: f32) {
+        self.lift = if lift.is_finite() {
+            lift.clamp(0.5, 4.0)
+        } else {
+            1.0
+        };
+    }
+
+    /// How fast a held climb or descent changes the altitude, m/s.
+    #[must_use]
+    pub fn climb_rate(&self) -> f32 {
+        CLIMB_RATE * self.lift
+    }
+
+    /// How high levitation reaches over the ground, m.
+    #[must_use]
+    pub fn ceiling(&self) -> f32 {
+        LEVITATE_CEILING * self.lift
     }
 
     /// Levitate, or stop: the character then falls under gravity, as from

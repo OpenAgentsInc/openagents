@@ -3,7 +3,6 @@
 //! dummy's name and colored health bar facing the camera, floating damage
 //! numbers, the soft target's ring, and the spells' effects.
 
-use super::aura::Aura;
 use super::dummies::{Condition, Dummy, HEIGHT};
 use super::kit::Spell;
 use crate::mesh::{Mesh, Vertex};
@@ -146,6 +145,13 @@ impl Model {
         })
     }
 
+    /// How many vertices the player's character contributes, first in the
+    /// figure.
+    #[must_use]
+    pub fn cast_count(&self) -> usize {
+        self.cast.as_ref().map_or(0, |c| c.1)
+    }
+
     /// This frame's figure: `cast` posed, or, while the druid wears a
     /// beast's shape, `worn` (the form's index and its posed vertices) in
     /// its place; then each of `dummies` standing where it is, wobbling
@@ -255,33 +261,8 @@ pub enum Effect {
         /// The particles trailing it.
         trail: Option<crate::fx::Handle>,
     },
-    /// A ring spreading over the ground: a burst's area.
-    Ring {
-        at: Vec3,
-        radius: f32,
-        start: f32,
-        color: [f32; 3],
-    },
     /// A jagged lightning stroke from `from` to `to`.
     Strike { from: Vec3, to: Vec3, start: f32 },
-    /// A straight beam: Sunbeam's light or Lightning Bolt's stroke.
-    Beam {
-        from: Vec3,
-        to: Vec3,
-        start: f32,
-        color: [f32; 3],
-        lightning: bool,
-    },
-    /// A cone's outline on the ground, `length` m along `forward`.
-    Cone {
-        origin: Vec3,
-        forward: Vec3,
-        length: f32,
-        start: f32,
-        color: [f32; 3],
-    },
-    /// An expanding sphere of fire.
-    Burst { at: Vec3, radius: f32, start: f32 },
     /// Thunderwave's blast erupting from the caster through its cube
     /// ([`super::thunder`]); `origin` is the cube's origin.
     Wave {
@@ -311,16 +292,13 @@ impl Effect {
     pub fn done(&self, now: f32) -> bool {
         let (start, length) = match self {
             Self::Bolt { start, flight, .. } => (*start, *flight),
-            Self::Burst { start, .. } => (*start, 0.7),
             Self::Wave { start, .. } => (*start, super::thunder::LENGTH),
             Self::Gust { start, .. } => (*start, 1.4),
             Self::Mist { start, .. } => (*start, 0.8),
             Self::Web { until, .. } => return now >= *until,
             Self::Rest { start, .. } => (*start, 1.2),
             Self::Shift { start, .. } => (*start, SHIFT),
-            Self::Ring { start, .. } | Self::Cone { start, .. } => (*start, 0.8),
             Self::Strike { start, .. } => (*start, 0.35),
-            Self::Beam { start, .. } => (*start, 0.5),
         };
         now - start >= length
     }
@@ -330,12 +308,11 @@ impl Effect {
     pub const fn cap(&self) -> usize {
         match self {
             Self::Bolt { .. } => 24,
-            Self::Burst { .. } | Self::Mist { .. } => 8,
+            Self::Mist { .. } => 8,
             Self::Wave { .. } => 6,
             Self::Gust { .. } | Self::Web { .. } => 6,
             Self::Rest { .. } | Self::Shift { .. } => 1,
-            Self::Ring { .. } | Self::Strike { .. } => 12,
-            Self::Beam { .. } | Self::Cone { .. } => 6,
+            Self::Strike { .. } => 12,
         }
     }
 }
@@ -421,21 +398,40 @@ impl Painter {
         }));
     }
 
-    /// The flying target's post: a wooden pole with a small platform.
+    /// The flying target's post: a stone footing, a stout pole braced at
+    /// its foot, and a platform under the target. It stands from the
+    /// ground to the target's home, which a post never leaves.
     pub fn post(&mut self, dummy: &Dummy) {
-        let ground = crate::zones::everglade::height(dummy.home.x, dummy.home.z);
+        let (x, z) = (dummy.home.x, dummy.home.z);
+        let ground = crate::zones::everglade::height(x, z);
         let top = dummy.home.y;
         let wood = [0.32, 0.2, 0.1];
+        let stone = [0.46, 0.44, 0.4];
         boxed(
             &mut self.mesh,
-            Vec3::new(dummy.home.x, ground, dummy.home.z),
-            [0.12, top - ground, 0.12],
-            wood,
+            Vec3::new(x, ground - 0.05, z),
+            [0.55, 0.35, 0.55],
+            stone,
         );
         boxed(
             &mut self.mesh,
-            Vec3::new(dummy.home.x, top - 0.12, dummy.home.z),
-            [0.6, 0.12, 0.6],
+            Vec3::new(x, ground + 0.3, z),
+            [0.22, top - ground - 0.3, 0.22],
+            wood,
+        );
+        // Four short braces from the footing up the pole.
+        for (dx, dz) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
+            boxed(
+                &mut self.mesh,
+                Vec3::new(x + dx * 0.32, ground + 0.3, z + dz * 0.32),
+                [0.07 + 0.05 * dz.abs(), 0.6, 0.07 + 0.05 * dx.abs()],
+                [0.27, 0.17, 0.09],
+            );
+        }
+        boxed(
+            &mut self.mesh,
+            Vec3::new(x, top - 0.16, z),
+            [0.65, 0.16, 0.65],
             [0.42, 0.28, 0.14],
         );
     }
@@ -534,94 +530,6 @@ impl Painter {
         }
     }
 
-    /// A lasting area at `now`: its edge on the ground, and its column,
-    /// wall, cloud, or vines.
-    pub fn aura(&mut self, aura: &Aura, now: f32) {
-        let fade =
-            ((aura.until - now) / 0.6).clamp(0.0, 1.0) * ((now - aura.start) / 0.3).clamp(0.0, 1.0);
-        let color = aura_color(aura.spell).map(|c| c * fade);
-        let ground =
-            |p: Vec3| Vec3::new(p.x, crate::zones::everglade::height(p.x, p.z) + 0.06, p.z);
-        if aura.wall {
-            let n = (aura.reach * 2.0 / 0.6).ceil() as usize;
-            let tall = if aura.spell == Spell::WallOfFire {
-                2.4
-            } else {
-                1.6
-            };
-            for k in 0..=n {
-                let s = -aura.reach + k as f32 * 0.6;
-                let foot = ground(aura.center + aura.across * s);
-                let sway = 0.15 * (now * 7.0 + k as f32 * 1.7).sin();
-                let top = foot
-                    + Vec3::Y * (tall * (0.7 + 0.3 * (k as f32 * 2.3).sin().abs()))
-                    + aura.across * sway;
-                self.line(foot, top, color);
-                if k > 0 {
-                    let prev = ground(aura.center + aura.across * (s - 0.6));
-                    self.line(prev, foot, color);
-                }
-            }
-            return;
-        }
-        let center = ground(aura.center);
-        ring(self, center, aura.reach, 40, now * 0.2, color);
-        match aura.spell {
-            Spell::Moonbeam => {
-                ring(
-                    self,
-                    center + Vec3::Y * 8.0,
-                    aura.reach,
-                    20,
-                    -now * 0.4,
-                    color,
-                );
-                for i in 0..10 {
-                    let a = i as f32 / 10.0 * TAU + now * 0.5;
-                    let p = Vec3::new(a.cos(), 0.0, a.sin()) * aura.reach;
-                    self.line(
-                        center + p,
-                        center + p + Vec3::Y * 8.0,
-                        color.map(|c| c * 0.6),
-                    );
-                }
-            }
-            Spell::CallLightning | Spell::StormOfVengeance => {
-                let sky = center + Vec3::Y * 10.0;
-                for k in 1..=3 {
-                    ring(
-                        self,
-                        sky,
-                        aura.reach * k as f32 / 3.0,
-                        32,
-                        now * 0.1 * k as f32,
-                        [0.35, 0.38, 0.5].map(|c| c * fade),
-                    );
-                }
-            }
-            Spell::Entangle | Spell::SpikeGrowth => {
-                let n = if aura.spell == Spell::Entangle {
-                    18
-                } else {
-                    36
-                };
-                for i in 0..n {
-                    let a = i as f32 * 2.399;
-                    let r = aura.reach * ((i as f32 + 0.5) / n as f32).sqrt();
-                    let foot = center + Vec3::new(a.cos() * r, 0.0, a.sin() * r);
-                    let lean = Vec3::new((a * 3.1).cos(), 0.0, (a * 3.1).sin()) * 0.25;
-                    let tall = if aura.spell == Spell::Entangle {
-                        0.6 + 0.3 * (now * 3.0 + i as f32).sin()
-                    } else {
-                        0.35
-                    };
-                    self.line(foot, foot + Vec3::Y * tall + lean, color);
-                }
-            }
-            _ => {}
-        }
-    }
-
     /// Web strands from the ground to a rooted dummy.
     pub fn strands(&mut self, dummy: &Dummy, now: f32) {
         let ground = crate::zones::everglade::height(dummy.pos.x, dummy.pos.z);
@@ -667,22 +575,6 @@ impl Painter {
                 }
                 self.line(back, at, color);
             }
-            Effect::Ring {
-                at,
-                radius,
-                start,
-                color,
-            } => {
-                let k = ((now - start) / 0.8).clamp(0.0, 1.0);
-                let ground = Vec3::new(
-                    at.x,
-                    crate::zones::everglade::height(at.x, at.z) + 0.06,
-                    at.z,
-                );
-                let fade = color.map(|c| c * (1.0 - k));
-                ring(self, ground, radius * (0.4 + 0.6 * k), 40, k, fade);
-                ring(self, ground, radius, 40, -k, fade.map(|c| c * 0.6));
-            }
             Effect::Strike { from, to, start } => {
                 let k = ((now - start) / 0.35).clamp(0.0, 1.0);
                 let color = [0.8, 0.88, 1.0].map(|c| c * (1.0 - k * k));
@@ -703,54 +595,6 @@ impl Painter {
                     let p = from.lerp(to, t) + jitter;
                     self.line(last, p, color);
                     last = p;
-                }
-            }
-            Effect::Beam {
-                from,
-                to,
-                start,
-                color,
-                lightning,
-            } => {
-                let k = ((now - start) / 0.5).clamp(0.0, 1.0);
-                let fade = color.map(|c| c * (1.0 - k));
-                let side = (to - from).cross(Vec3::Y).normalize_or_zero() * 0.12;
-                for o in [-1.0f32, 0.0, 1.0] {
-                    let wobble = if lightning {
-                        Vec3::Y * 0.1 * (now * 60.0 + o).sin()
-                    } else {
-                        Vec3::ZERO
-                    };
-                    self.line(from + side * o + wobble, to + side * o - wobble, fade);
-                }
-            }
-            Effect::Cone {
-                origin,
-                forward,
-                length,
-                start,
-                color,
-            } => {
-                let k = ((now - start) / 0.8).clamp(0.0, 1.0);
-                let fade = color.map(|c| c * (1.0 - k));
-                let side = Vec3::new(-forward.z, 0.0, forward.x);
-                let lift =
-                    |p: Vec3| Vec3::new(p.x, crate::zones::everglade::height(p.x, p.z) + 0.06, p.z);
-                let reach = length * (0.3 + 0.7 * k);
-                let left = lift(origin + forward * reach + side * reach * 0.5);
-                let right = lift(origin + forward * reach - side * reach * 0.5);
-                let tip = lift(origin);
-                self.line(tip, left, fade);
-                self.line(tip, right, fade);
-                self.line(left, right, fade);
-            }
-            Effect::Burst { at, radius, start } => {
-                let k = ((now - start) / 0.7).clamp(0.0, 1.0);
-                let r = radius * (0.3 + 0.7 * k);
-                let color = [1.0, 0.5 - 0.3 * k, 0.1].map(|c| c * (1.0 - k * 0.7));
-                for ring_i in 0..3 {
-                    let tilt = ring_i as f32 * 1.05;
-                    sphere_ring(self, at, r, tilt, color);
                 }
             }
             Effect::Wave {
@@ -850,22 +694,6 @@ impl Painter {
 /// Width of a condition tag over a health bar, m.
 const TAG: f32 = 0.62;
 
-/// An aura's line color.
-fn aura_color(spell: Spell) -> [f32; 3] {
-    match spell {
-        Spell::Moonbeam => [0.85, 0.9, 1.0],
-        Spell::SpikeGrowth | Spell::WallOfThorns => [0.55, 0.7, 0.3],
-        Spell::Entangle => [0.35, 0.85, 0.3],
-        Spell::WallOfFire => [1.0, 0.5, 0.15],
-        Spell::CallLightning | Spell::StormOfVengeance => [0.6, 0.75, 1.0],
-        Spell::FogCloud => [0.8, 0.82, 0.85],
-        Spell::SleetStorm => [0.7, 0.85, 1.0],
-        Spell::StinkingCloud => [0.75, 0.85, 0.3],
-        Spell::InsectPlague => [0.5, 0.45, 0.3],
-        _ => [0.9, 0.9, 0.9],
-    }
-}
-
 /// The color of a health bar `k` full: green, amber at half, red low.
 #[must_use]
 pub fn health_color(k: f32) -> [f32; 3] {
@@ -890,20 +718,6 @@ fn ring(p: &mut Painter, center: Vec3, r: f32, segments: usize, phase: f32, colo
         p.line(
             center + Vec3::new(a.cos() * r, 0.0, a.sin() * r),
             center + Vec3::new(b.cos() * r, 0.0, b.sin() * r),
-            color,
-        );
-    }
-}
-
-/// A great circle of a sphere at `center`, tilted `tilt` about x.
-fn sphere_ring(p: &mut Painter, center: Vec3, r: f32, tilt: f32, color: [f32; 3]) {
-    let turn = Quat::from_rotation_x(tilt);
-    for i in 0..20 {
-        let a = i as f32 / 20.0 * TAU;
-        let b = (i + 1) as f32 / 20.0 * TAU;
-        p.line(
-            center + turn * Vec3::new(a.cos() * r, a.sin() * r, 0.0),
-            center + turn * Vec3::new(b.cos() * r, b.sin() * r, 0.0),
             color,
         );
     }

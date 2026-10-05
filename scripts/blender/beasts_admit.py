@@ -5,7 +5,8 @@ Run from the repository root with Python 3:
     python3 scripts/blender/beasts_admit.py
 
 The pack compiler reads glTF with separate `.bin` buffers. The beasts are
-binary glTF under `assets/verse/generated/`: the Giant Spider converted from
+binary glTF under `assets/verse/generated/`: the Shapechange dragon built by
+`dragon.py`, the Giant Spider converted from
 Quaternius's Easy Animated Enemy Pack by `enemy_pack.py`, and the stylized
 bear, wolf, and eagle built by `animals.py`. Each is skinned, with its clips,
 and carries flat base colors and no images. This script splits each one into
@@ -34,6 +35,9 @@ scripts/blender/enemy_pack.py.
 
 bear, wolf, eagle: generated from primitives by scripts/blender/animals.py.
 
+dragon: Shapechange's dragon, generated from primitives by
+scripts/blender/dragon.py.
+
 songbird, duck, cat: Everglade's ambient wildlife, generated from
 primitives by scripts/blender/wildlife.py.
 
@@ -53,6 +57,7 @@ MODELS = [
     ("bear.glb", "bear"),
     ("wolf.glb", "wolf"),
     ("eagle.glb", "eagle"),
+    ("dragon.glb", "dragon"),
 ] + [
     (f"wildlife/{name}.glb", name)
     for name in ["songbird", "duck", "cat", "rat", "frog", "snake", "wasp"]

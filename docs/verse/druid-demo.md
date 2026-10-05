@@ -153,7 +153,7 @@ says where each ability stands today:
 | --- | --- | --- | --- | --- |
 | 1 | Sunburst | 8 | New | An 18 m burst: 42 radiant and a 3 s blind. |
 | 2 | Storm of Vengeance | 9 | New | A spreading storm with a new effect each round: thunder, acid rain, lightning, hail. |
-| 3 | Shapechange | 9 | New | Take any form, here a dragon silhouette, while keeping druid spellcasting. |
+| 3 | Shapechange | 9 | Done | Become a dragon through a vortex of leaves and light, keeping druid spellcasting ([Shapechange](#shapechange)). |
 | 4 | Speak with Animals | 1 | New | Druidic's always-prepared spell; the familiar answers in the log. |
 | 5 to = | Land spells | 0 to 5 | Varies | The current land's six spells, below. |
 
@@ -239,7 +239,7 @@ download stands between the demo and tomorrow:
 | Armored | 1 | 15 m | 18 | 200 | Resists piercing and slashing. |
 | Warded | 1 | 25 m | 13 | 150 | Resists fire; shows the land choice paying off. |
 | Big | 1 | Clustered with the others | 15 | 300 | Large; for area spells. |
-| Flying target | 1 | 15 m up, on a post | 12 | 60 | Wild Shape: Giant Eagle reaches it. |
+| Flying target | 1 | 5.5 m up, on a braced post | 12 | 60 | Wild Shape: Giant Eagle and Shapechange's dragon reach it. |
 
 - Dummies regenerate after 10 seconds untouched, and **Long Rest** resets
   them.
@@ -366,7 +366,7 @@ second.
   a dummy is pushed through it. A maintained spell ends the druid's other
   maintained area.
 - **Placeholders:** Wild Companion, Nature's Sanctuary, Nature Magician,
-  Wild Resurgence, Shapechange, Blur, and Freedom of Movement cast a labeled
+  Wild Resurgence, Blur, and Freedom of Movement cast a labeled
   burst and say so in the log. Speak with Animals answers in the log.
 - **Choose Land** cycles Arid, Polar, Temperate, and Tropical and swaps row
   4's six land slots.
@@ -388,6 +388,13 @@ second.
   beams, lightning strokes, columns, walls, and vines. Live effects, areas,
   particles, and floating numbers each have a cap, oldest first, so spam
   stays bounded.
+
+- **No guide lines:** the lasting areas and walls draw only their
+  particles; a burst's area spreads a faint ring of particle light over the
+  ground (`grove_area_ring`), and Wall of Thorns stands as a bramble hedge
+  of leaf particles (`grove_thorn_wall`). A second press on Reverse Gravity
+  ends it, so the dummies it lifted fall back, and a rooted dummy falls
+  rather than hanging in the air.
 
 Not built yet: the Spellbook panel, the resource bar (the playable Grove
 has no mana or charges to show), Wild Shape's temporary hit points, and the
@@ -420,6 +427,39 @@ Long Rest, and leaving the Grove end it. Climbing isn't implemented. The
 stylized bear (key `1`, slow, with a bite and a claw that knocks down),
 wolf (`2`, fast, with a bite that knocks down), and eagle (`3`, flying, with
 its talons) work the same way.
+
+## Shapechange
+
+Shapechange (`Alt+3`) turns the druid into a dragon, a model generated in
+Blender by `scripts/blender/dragon.py` and admitted with the beasts as a
+pack form (`beasts/dragon`). The Grove's code is `zones/grove/dragon.rs`.
+
+- **The transformation:** a rune circle flares on the ground and a vortex of
+  green and gold leaves and arcane motes rises and closes on the druid,
+  who spins, shrinks, and dissolves into it. After one second a flash and a
+  shockwave burst out, and the dragon grows out of the light, overshooting
+  to its full size, about 5 m to the top of its head (three times the
+  druid's height), and roars. The camera eases back to about 2.4 times its
+  distance to fit it. Return to Form (`5`) runs the transformation the
+  other way; Long Rest ends it at once.
+- **Flight:** the dragon lands as it takes shape. Jump takes off and
+  climbs, and X dives, at twice levitation's rate, up to twice its
+  ceiling. In the air it moves at 2.6 times the druid's pace, against the
+  eagle's 1.4, beating its wings to climb and hover and gliding when it
+  races level. On the ground it walks at 1.5 times the druid's pace.
+- **Actions on row 2** (`Shift+1` to `Shift+5`), with an adult red dragon's
+  SRD numbers rolled behind the scenes, each with its own clip:
+
+  | Key | Action | Rolls | Effect |
+  | --- | --- | --- | --- |
+  | `Shift+1` | Dragon Bite | +14, 2d10 + 8 piercing and 2d6 fire, 7.5 m reach | Flame at the jaws |
+  | `Shift+2` | Fire Breath | 18d6 fire in an 18 m cone, half on a Dexterity save | A failed save burns for 6 s, 1d4 fire a second, with flames on the dummy |
+  | `Shift+3` | Tail Sweep | 2d8 + 8 bludgeoning within 7.5 m, half on a Dexterity save | A failed save knocks the dummy down for 2 s |
+  | `Shift+4` | Wing Buffet | 2d6 + 8 bludgeoning within 6 m, half on a Dexterity save | A failed save throws the dummy back 6 m |
+  | `Shift+5` | Roar | A Wisdom save for each dummy within 18 m | A failed save leaves it frightened for 4 s, cowering; the camera shakes |
+
+- **Spellcasting:** every other row still casts, and the dragon's spells
+  leave its jaws.
 
 The Circle of the Land is the only SRD druid subclass; the Circle of the Moon
 isn't in the SRD and stays out.

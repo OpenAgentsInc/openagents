@@ -23,9 +23,13 @@
 //! the combat model says (`docs/verse/combat-model.md`), and the dummies
 //! show the outcome: floating numbers, "Miss", "Resisted", and timed
 //! conditions over their health bars, with each line in the combat log.
+//!
+//! Wild Shape turns the druid into a beast ([`shape`]), and Shapechange
+//! into a dragon through a transformation of leaves and light ([`dragon`]).
 
 pub(crate) mod aura;
 mod cast;
+pub mod dragon;
 pub(crate) mod draw;
 pub mod dummies;
 pub mod hotbar;
@@ -133,6 +137,22 @@ pub(crate) struct Grove {
     glows: Vec<(usize, crate::fx::Handle)>,
     /// When poison next bites, s.
     next_poison: f32,
+    /// A change of shape under way: Shapechange or its return.
+    morph: Option<dragon::Morph>,
+    /// The dragon's breath of fire under way.
+    breath: Option<dragon::Breath>,
+    /// The burning dummies' flames, by dummy.
+    burns: Vec<(usize, crate::fx::Handle)>,
+    /// When burning next bites, s.
+    next_burn: f32,
+    /// How many times its usual distance the camera stands back.
+    pull: f32,
+    /// When the dragon last roared, for the camera's jolt, s.
+    roared: f32,
+    /// The player's height a frame ago, to tell a climb, m.
+    last_y: f32,
+    /// Where the player stood at the last tick.
+    feet: Vec3,
 }
 
 /// What one roll did to one dummy.
@@ -186,6 +206,14 @@ impl Grove {
             fx: Particles::new(0x6720_F00D),
             glows: Vec::new(),
             next_poison: 0.0,
+            morph: None,
+            breath: None,
+            burns: Vec::new(),
+            next_burn: 0.0,
+            pull: 1.0,
+            roared: f32::NEG_INFINITY,
+            last_y: 0.0,
+            feet: SPAWN,
         })
     }
 
@@ -430,12 +458,8 @@ impl Grove {
             return Err(format!("The pack has no {}", form.name()));
         }
         self.end_shape(player, glade);
-        self.shape = Some(Shape { form, attack: None });
+        self.wear(Some(form), player, glade);
         player.set_pace(form.pace());
-        if form.flies() && !glade.levitating {
-            glade.toggle_levitate(player);
-            glade.altitude = player.pos.y + 3.0;
-        }
         self.add(draw::Effect::Shift {
             at: player.pos,
             start: self.time,
@@ -447,12 +471,15 @@ impl Grove {
     /// Ends the beast's shape, if any, the pace it set, and the eagle's
     /// flight.
     fn end_shape(&mut self, player: &mut PlayerController, glade: &mut Everglade) {
+        self.morph = None;
+        self.stop_breath();
         if let Some(shape) = self.shape.take()
             && shape.form.flies()
             && glade.levitating
         {
             glade.toggle_levitate(player);
         }
+        glade.set_lift(1.0);
         player.set_pace(1.0);
     }
 
@@ -476,6 +503,7 @@ impl Grove {
         self.end_auras(|_| true);
         self.fx.clear();
         self.glows.clear();
+        self.burns.clear();
         self.add(draw::Effect::Rest {
             at: player.pos,
             start: self.time,
@@ -587,6 +615,7 @@ impl Grove {
                 _ => None,
             })
             .unwrap_or(Vec3::ZERO)
+            + self.roar_shake()
     }
 
     fn float(&mut self, i: usize, text: String, color: [f32; 3]) {
@@ -616,7 +645,10 @@ impl Grove {
     pub fn tick(&mut self, dt: f32, glade: &mut Everglade, player: &PlayerController) {
         self.time += dt.max(0.0);
         let now = self.time;
-        if let Some(shape) = &mut self.shape
+        self.tick_morph(glade, player);
+        let special = self.pose_special(dt, glade, player);
+        if !special
+            && let Some(shape) = &mut self.shape
             && let Some(Some(beast)) = self.beasts.get_mut(shape.form.index())
         {
             let length = beast.attack_length().unwrap_or(0.0);
@@ -648,6 +680,11 @@ impl Grove {
             }
         }
         self.tick_glows();
+        self.tick_breath(player);
+        self.tick_burning();
+        self.tick_camera(dt);
+        self.last_y = player.pos.y;
+        self.feet = player.pos;
         self.fx.tick(dt, everglade::height);
         self.floaters.retain(|f| now - f.start < draw::FLOAT);
         glade.set_extra_blocks(self.dummies.iter().map(Dummy::block).collect());
@@ -697,6 +734,10 @@ impl Grove {
             self.model
                 .figure(glade.cast_figure().as_ref(), worn, &self.dummies, self.time);
         let mut vertices = figure.vertices.as_ref().clone();
+        // The druid dissolving into Shapechange's vortex, or forming again.
+        if let Some((k, spin)) = self.druid_morph() {
+            Self::dissolve(&mut vertices, self.model.cast_count(), self.feet, k, spin);
+        }
         glade.shade(&mut vertices);
         figure.vertices = Arc::new(vertices);
         figure
@@ -724,9 +765,6 @@ impl Grove {
         }
         if let Some(i) = target {
             painter.target(&self.dummies[i], now);
-        }
-        for aura in &self.auras {
-            painter.aura(aura, now);
         }
         // Newest first, so a renderer that runs out of glow quads under spam
         // drops the oldest blasts.

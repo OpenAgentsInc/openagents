@@ -29,7 +29,7 @@ if [ "${GALLERY_ONLY:-0}" != 1 ]; then
   else
     echo "skipping the enemy pack: $pack not found" >&2
   fi
-  for script in sledgehammer fountain observatory bandshell market_stall training_dummy animals; do
+  for script in sledgehammer fountain observatory bandshell market_stall training_dummy animals dragon; do
     run "$script" "$out"
   done
   "$blender" -b --factory-startup --python "$here/buildings.py" -- "$out/buildings" 2>&1 | grep -E '^BUILT|Error|Traceback' || true

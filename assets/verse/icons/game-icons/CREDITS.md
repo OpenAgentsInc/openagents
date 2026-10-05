@@ -41,7 +41,7 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
   (Wall of Fire), `lorc/sunbeams.svg` (Sunbeam), `lorc/thorn-helix.svg`
   (Wall of Thorns), `lorc/burning-embers.svg` (Fire Storm),
   `lorc/sun-radiations.svg` (Sunburst), `lorc/lightning-tree.svg` (Storm of
-  Vengeance), `lorc/dragon-breath.svg` (Shapechange), `lorc/parrot-head.svg`
+  Vengeance), `lorc/dragon-spiral.svg` (Shapechange), `lorc/parrot-head.svg`
   (Speak with Animals), `lorc/fire-breath.svg` (Burning Hands),
   `lorc/shield-reflect.svg` (Blur), `lorc/dead-wood.svg` (Blight),
   `lorc/ice-bolt.svg` (Ray of Frost), `lorc/snowflake-2.svg` (Sleet Storm),
@@ -52,6 +52,10 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
   `lorc/dust-cloud.svg` (Stinking Cloud), `lorc/wasp-sting.svg` (Insect
   Plague), `lorc/claw-slashes.svg` (Claw, the Brown Bear's), and
   `lorc/bird-claw.svg` (Talons, the Giant Eagle's)
+- Shapechange's dragon: `lorc/dragon-head.svg` (Dragon Bite),
+  `lorc/dragon-breath.svg` (Fire Breath), `lorc/spiked-tail.svg` (Tail
+  Sweep), `lorc/bat-wing.svg` (Wing Buffet), and `lorc/sonic-shout.svg`
+  (Roar)
 
 Icons made by Delapouite (<https://delapouite.com>):
 

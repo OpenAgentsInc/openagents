@@ -1,0 +1,48 @@
+# The dragon's Tail Sweep: started on the ground at the dragon's middle.
+# A ring of dust and torn turf thrown out where the tail swung.
+description = "Dust and torn turf thrown out in a ring about 9 m across."
+
+[[emitter]]
+name = "dust"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+light = "lit"
+blend = "alpha"
+burst = 40
+life = [0.9, 1.5]
+shape = "ring"
+radius = 4.5
+speed = [1.0, 2.5]
+radial = [3.0, 6.0]
+drag = 2.0
+gravity = 0.4
+size = [0.5, 0.8]
+scale = [0.6, 1.3, 1.8]
+color = [0.6, 0.53, 0.4]
+alpha = [[0.0, 0.0], [0.15, 0.6], [1.0, 0.0]]
+spin = [-1.5, 1.5]
+priority = 2
+
+[[emitter]]
+name = "turf"
+sheet = "arcane"
+frames = [3, 3]
+animate = "random"
+light = "lit"
+blend = "alpha"
+burst = 40
+life = [0.8, 1.3]
+shape = "ring"
+radius = 4.5
+spread = 50.0
+speed = [3.0, 6.0]
+radial = [2.0, 5.0]
+gravity = -9.0
+drag = 0.6
+size = [0.08, 0.13]
+spin = [-9.0, 9.0]
+color = [[0.0, [0.4, 0.6, 0.22]], [1.0, [0.45, 0.4, 0.22]]]
+alpha = [[0.0, 1.0], [0.85, 1.0], [1.0, 0.0]]
+bounce = 0.2
+priority = 3

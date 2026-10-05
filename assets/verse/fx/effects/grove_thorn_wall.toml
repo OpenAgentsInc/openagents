@@ -1,0 +1,66 @@
+# One 2 m stretch of Wall of Thorns: started on the ground at each step
+# along the wall, and runs until the spell ends. A tangle of dark leaves
+# and brambles about 2 m high, stirring, over a little dust.
+description = "A 2 m stretch of bramble hedge about 2 m high, its leaves stirring."
+
+[[emitter]]
+name = "brambles"
+sheet = "arcane"
+frames = [3, 3]
+animate = "random"
+light = "lit"
+blend = "alpha"
+burst = 30
+rate = 22.0
+life = [1.6, 2.4]
+shape = "sphere"
+radius = 1.1
+speed = [0.05, 0.25]
+wander = 0.6
+drag = 1.5
+size = [0.2, 0.3]
+spin = [-0.8, 0.8]
+scale = [[0.0, 0.4], [0.2, 1.0], [1.0, 0.9]]
+color = [[0.0, [0.22, 0.4, 0.14]], [1.0, [0.3, 0.32, 0.12]]]
+alpha = [[0.0, 0.0], [0.15, 1.0], [0.85, 1.0], [1.0, 0.0]]
+priority = 3
+
+[[emitter]]
+name = "leaves"
+sheet = "arcane"
+frames = [1, 1]
+animate = "random"
+light = "lit"
+blend = "alpha"
+burst = 14
+rate = 10.0
+life = [1.6, 2.4]
+shape = "sphere"
+radius = 1.0
+speed = [0.05, 0.2]
+wander = 0.5
+drag = 1.5
+size = [0.18, 0.26]
+spin = [-0.6, 0.6]
+scale = [[0.0, 0.4], [0.2, 1.0], [1.0, 0.9]]
+color = [0.35, 0.5, 0.18]
+alpha = [[0.0, 0.0], [0.15, 1.0], [0.85, 1.0], [1.0, 0.0]]
+priority = 2
+
+[[emitter]]
+name = "dust"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+light = "lit"
+blend = "alpha"
+rate = 3.0
+life = [1.2, 1.8]
+shape = "disc"
+radius = 1.0
+speed = [0.1, 0.3]
+size = [0.35, 0.5]
+scale = [0.6, 1.2, 1.5]
+color = [0.42, 0.34, 0.2]
+alpha = [[0.0, 0.0], [0.2, 0.5], [1.0, 0.0]]
+priority = 1

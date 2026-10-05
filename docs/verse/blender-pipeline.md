@@ -106,6 +106,7 @@ and its CC0 license.
 | Market stalls, red and blue | `market_stall.py` | |
 | Training dummies: straw, armored, warded | `training_dummy.py` | |
 | Bear, wolf, eagle | `animals.py` | `idle` and `walk`; the eagle has `idle` and `flap` |
+| Dragon, for Shapechange | `dragon.py` | `idle`, `walk`, `fly`, `glide`, `bite`, `breath`, `roar`, and `sweep` |
 
 The scripts share `scripts/blender/kit.py` for solids, materials, rigs, and
 export. To rebuild every model and render the gallery, run:

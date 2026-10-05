@@ -525,6 +525,13 @@ impl WorldRuntime {
                 .max(verse_ruins::scene::Terrain::bundled().height(eye.x, eye.z) + 0.4);
         } else if self.zone == crate::zones::ZoneId::Grove {
             eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
+            // A dragon's shape pulls the camera back along its view and
+            // up to its body, so the whole beast fits.
+            let pull = self.grove_camera();
+            if pull > 1.0 && self.camera.blend() <= 0.0 {
+                let focus = self.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT;
+                eye = focus + (eye - focus) * pull + Vec3::Y * (pull - 1.0);
+            }
             eye.y = eye
                 .y
                 .max(crate::zones::everglade::height(eye.x, eye.z) + 0.4);

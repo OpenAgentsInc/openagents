@@ -17,6 +17,7 @@ compare rebuilds by eye, not by bytes.
 | `fireball.png` | `scripts/blender/fx/fireball.py` | 4 × 4 of 128 px | 16 | 64, denoised |
 | `smoke.png` | `scripts/blender/fx/smoke.py` | 4 × 4 of 128 px | 16 | 64, denoised |
 | `sparks.png` | `scripts/blender/fx/sparks.py` | 2 × 2 of 256 px | 4: spark, flare, ring, dust | 16 for the glows, 64 and denoised for the dust |
+| `arcane.png` | `scripts/blender/fx/arcane.py` | 2 × 2 of 256 px | 4: rune circle, oak leaf, glint, serrated leaf | 16 for the glows, 24 for the lit leaves |
 
 The effects that use them are under `effects/`, one TOML file each.
 

@@ -181,6 +181,10 @@ pub(crate) struct Rig {
     /// The demolition yard's swing, when the pack has it.
     swing: Option<Loop>,
     hands: Option<Hands>,
+    /// A form's every clip by its pack name, such as a dragon's `fly` or
+    /// `breath`, for [`Beast::pose_clip`]; empty for the player's
+    /// character.
+    named: Vec<(String, Loop)>,
 }
 
 /// The pack's name for the demolition yard's two-handed swing, and the
@@ -189,6 +193,10 @@ const SWING: &str = "swing";
 const SWING_ID: u16 = 60;
 /// A form's attack clip, which plays where the player's swing would.
 const ATTACK: &str = "attack";
+/// The engine ID of a form's first clip by name; the rest follow, clear
+/// of the motion, posture, and swing IDs (a pack's character has at most
+/// eight clips).
+const NAMED_ID: u16 = 70;
 /// The sledgehammer: how far the handle runs past the lower hand to its
 /// butt, and from that hand to the head's center, m.
 pub const BUTT: f32 = 0.16;
@@ -511,6 +519,35 @@ impl Rig {
                 distance: 0.0,
             }
         });
+        // A form's every clip by name, which [`Beast::pose_clip`] plays.
+        let mut named = Vec::new();
+        if form {
+            for (index, clip) in character.clips.iter().enumerate() {
+                let id = NAMED_ID + index as u16;
+                clips.push(Clip {
+                    id,
+                    duration: clip.duration,
+                    bones: clip
+                        .tracks
+                        .iter()
+                        .map(|t| BoneKeys {
+                            bone: usize::from(t.joint),
+                            translation: t.translation.clone(),
+                            rotation: t.rotation.clone(),
+                            scale: t.scale.clone(),
+                        })
+                        .collect(),
+                });
+                named.push((
+                    clip.name.clone(),
+                    Loop {
+                        id,
+                        duration: clip.duration,
+                        distance: clip.distance,
+                    },
+                ));
+            }
+        }
         // The seats' postures, authored from idle on the skeleton's shape.
         // A skeleton that is not a humanoid's plays idle for each.
         let skeleton = Skeleton::find(&character.joints);
@@ -650,6 +687,7 @@ impl Rig {
             head,
             swing,
             hands,
+            named,
         };
         rig.scene(1).validate()?;
         Ok(rig)
@@ -1131,6 +1169,92 @@ impl Beast {
         );
         self.vertices.clear();
         self.rig.skin(&joints, root, None, &mut self.vertices);
+    }
+
+    /// Poses the form where `at` stands but facing `yaw`, `scale` times its
+    /// modeled size, playing its gait for `at`'s speed after `dt` seconds;
+    /// a jump stands idle.
+    pub fn pose_walking(&mut self, at: &PlayerController, yaw: f32, scale: f32, dt: f32) {
+        let scale = if scale.is_finite() && scale > 0.0 {
+            scale
+        } else {
+            1.0
+        };
+        let motion = match Motion::of_player(at) {
+            Motion::Jump => Motion::Idle,
+            motion => motion,
+        };
+        let joints = self
+            .actor
+            .advance(&self.rig, Play::Motion(motion), at.speed / scale, dt)
+            .unwrap_or_default();
+        let root = Mat4::from_scale_rotation_translation(
+            Vec3::splat(scale),
+            Quat::from_rotation_y(yaw),
+            at.pos,
+        );
+        self.vertices.clear();
+        self.rig.skin(&joints, root, None, &mut self.vertices);
+    }
+
+    /// How long the form's clip `name` lasts, s, when it has one.
+    #[must_use]
+    pub fn clip_length(&self, name: &str) -> Option<f32> {
+        self.rig
+            .named
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, clip)| clip.duration)
+    }
+
+    /// Poses the form at `at` facing `yaw`, `scale` times its modeled
+    /// size, `time` seconds into its clip `name`, after `dt` seconds of the
+    /// clock, so a change of clip blends. A looping clip wraps; one that
+    /// doesn't holds its last frame. Returns false, posing nothing, when
+    /// the form has no such clip.
+    #[allow(clippy::too_many_arguments)]
+    pub fn pose_clip(
+        &mut self,
+        at: Vec3,
+        yaw: f32,
+        scale: f32,
+        name: &str,
+        time: f32,
+        looping: bool,
+        dt: f32,
+    ) -> bool {
+        let Some(clip) = self
+            .rig
+            .named
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, clip)| *clip)
+        else {
+            return false;
+        };
+        let length = clip.duration.max(1e-3);
+        let time = match (time.is_finite(), looping) {
+            (false, _) => 0.0,
+            (true, true) => time.rem_euclid(length),
+            (true, false) => time.clamp(0.0, length - 1e-3),
+        };
+        let joints = self
+            .actor
+            .hold_at(&self.rig, clip, time, dt)
+            .unwrap_or_default();
+        let scale = if scale.is_finite() && scale > 0.0 {
+            scale
+        } else {
+            1.0
+        };
+        let root = Mat4::from_scale_rotation_translation(
+            Vec3::splat(scale),
+            Quat::from_rotation_y(yaw),
+            at,
+        );
+        self.vertices.clear();
+        self.rig.skin(&joints, root, None, &mut self.vertices);
+        true
     }
 
     /// The posed vertices, in [`Self::figure`]'s order.

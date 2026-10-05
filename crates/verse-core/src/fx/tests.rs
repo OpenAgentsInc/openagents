@@ -313,3 +313,41 @@ fn a_style_draws_external_particles_with_an_effects_look() {
     );
     assert!(Style::named("no such effect").is_none());
 }
+
+#[test]
+fn swirl_turns_particles_about_the_axis_and_pull_draws_them_in() {
+    let run = |pull: f32| {
+        let text = format!(
+            "description = \"A ring that turns.\"\n[[emitter]]\nname = \"a\"\nsheet = \"sparks\"\nburst = 8\nlife = [5.0, 5.0]\nsize = [0.1, 0.1]\nshape = \"ring\"\nradius = 2.0\nswirl = 3.14159265\npull = {pull}\n"
+        );
+        let library = Library::parse([("ring", text.as_str())]).unwrap();
+        let mut fx = Particles::with_library(std::sync::Arc::new(library), u64::MAX, 3);
+        let center = Vec3::new(1.0, 2.0, 3.0);
+        fx.start("ring", Spawn::at(center)).unwrap();
+        fx.tick(1e-4, flat);
+        let mut before = Vec::new();
+        fx.draw(&mut before);
+        for _ in 0..50 {
+            fx.tick(0.01, flat);
+        }
+        let mut after = Vec::new();
+        fx.draw(&mut after);
+        (center, before, after)
+    };
+    // Half a second at half a turn a second: each particle a quarter turn
+    // on, at the same radius and height.
+    let (center, before, after) = run(0.0);
+    assert_eq!(before.len(), 8);
+    for (a, b) in before.iter().zip(&after) {
+        let (a, b) = (a.at - center, b.at - center);
+        assert!((b.length() - 2.0).abs() < 0.02, "{b}");
+        assert!(b.y.abs() < 1e-4);
+        assert!(a.dot(b).abs() < 0.05, "{a} {b}");
+    }
+    // Pulled in at half its distance a second, it spirals to about 1.5 m.
+    let (center, _, after) = run(0.5);
+    for b in &after {
+        let r = (b.at - center).length();
+        assert!((1.45..1.6).contains(&r), "{r}");
+    }
+}

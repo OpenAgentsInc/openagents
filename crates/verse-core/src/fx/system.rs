@@ -94,6 +94,10 @@ struct Particle {
     /// The frame offset for random and looping frames.
     frame: u32,
     scale: f32,
+    /// Where the effect stood at its birth and its axis, which `swirl` and
+    /// `pull` turn it about.
+    center: Vec3,
+    axis: Vec3,
 }
 
 /// The particles of every running effect.
@@ -288,6 +292,14 @@ impl Particles {
             p.vel.y += e.gravity * p.scale.max(0.05) * dt;
             p.vel *= (1.0 - e.drag * dt).max(0.0);
             p.at += p.vel * dt;
+            if e.swirl != 0.0 || e.pull > 0.0 {
+                let offset = p.at - p.center;
+                let along = p.axis * offset.dot(p.axis);
+                let turn = Quat::from_axis_angle(p.axis, e.swirl * dt);
+                let keep = (1.0 - e.pull * dt).max(0.0);
+                p.at = p.center + along + turn * (offset - along) * keep;
+                p.vel = turn * p.vel;
+            }
             p.angle += p.spin * dt;
             if e.bounce > 0.0 {
                 let floor = ground(p.at.x, p.at.z) + 0.03;
@@ -360,6 +372,8 @@ impl Particles {
             spin,
             frame,
             scale: s,
+            center: spawn.at,
+            axis: spawn.axis,
         });
     }
 
@@ -523,6 +537,8 @@ impl Style {
             spin: 0.0,
             frame: hash % (last - first + 1),
             scale: 1.0,
+            center: at,
+            axis: Vec3::Y,
         };
         let mut s = sprite(e, &p);
         for (c, k) in s.color.iter_mut().zip(tint) {

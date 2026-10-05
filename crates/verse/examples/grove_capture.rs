@@ -23,12 +23,26 @@
 //!   (row × 12 + column) at the straw dummy from `BACK` m (8 by default),
 //!   then any further slots, and renders `AGE` seconds (0.4 by default)
 //!   later.
+//! - `shapechange [AGE] [ORBIT]`: Shapechange's transformation `AGE`
+//!   seconds (0.6 by default) after the cast, from 8 m short of the straw
+//!   dummy, the camera orbited `ORBIT` points (220 by default) to see the
+//!   druid's face.
+//! - `dragon-fly [ORBIT]`: the dragon after taking off and flying across
+//!   the meadow, seen from `ORBIT` points around (300 by default).
+//! - `breath [AGE] [ORBIT]`: the dragon breathing fire on the dummies,
+//!   `AGE` seconds (1.0 by default) after Fire Breath, from 9 m short of
+//!   the straw dummy.
+//! - `dragon SLOT [AGE] [ORBIT]`: the dragon `AGE` seconds after the
+//!   bar's slot `SLOT`, such as Tail Sweep (14) or Roar (16).
 use std::path::{Path, PathBuf};
 use verse::{
     controller::InputState,
     runtime::{Action, WorldRuntime},
     zones::{self, Intent, everglade_pack, grove::hotbar},
 };
+
+/// Shapechange's slot, Alt+3.
+const SHAPECHANGE: u8 = 38;
 
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
@@ -122,9 +136,64 @@ fn main() -> Result<(), String> {
             }
             run(&mut runtime, age);
         }
+        "shapechange" => {
+            let age = number(0, 0.6)?;
+            let orbit = number(1, 220.0)?;
+            runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -13.0), 0.0)?;
+            run(&mut runtime, 0.2);
+            runtime.apply(Action::Orbit { dx: orbit, dy: 0.0 })?;
+            runtime.zone_intent(Intent::GroveSlot(SHAPECHANGE))?;
+            run(&mut runtime, age);
+        }
+        "dragon-fly" => {
+            let orbit = number(0, 300.0)?;
+            runtime.set_spawn(glam::Vec3::new(-8.0, 0.0, -22.0), 0.5)?;
+            runtime.zone_intent(Intent::GroveSlot(SHAPECHANGE))?;
+            run(&mut runtime, 2.0);
+            let up = InputState {
+                jump: true,
+                forward: true,
+                ..InputState::default()
+            };
+            for _ in 0..120 {
+                runtime.tick(&up, 0.01);
+            }
+            let ahead = InputState {
+                forward: true,
+                ..InputState::default()
+            };
+            for _ in 0..70 {
+                runtime.tick(&ahead, 0.01);
+            }
+            runtime.apply(Action::Orbit {
+                dx: orbit,
+                dy: -40.0,
+            })?;
+            runtime.tick(&ahead, 0.01);
+        }
+        "breath" | "dragon" => {
+            let (slot, rest_at) = if view == "breath" {
+                (13, 0)
+            } else {
+                (number(0, 14.0)? as u8, 1)
+            };
+            let age = number(rest_at, 1.0)?;
+            let orbit = number(rest_at + 1, 120.0)?;
+            runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -14.0), 0.0)?;
+            runtime.zone_intent(Intent::GroveSlot(SHAPECHANGE))?;
+            run(&mut runtime, 2.0);
+            runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -14.0), 0.0)?;
+            runtime.apply(Action::Orbit {
+                dx: orbit,
+                dy: -20.0,
+            })?;
+            run(&mut runtime, 0.1);
+            runtime.zone_intent(Intent::GroveSlot(slot))?;
+            run(&mut runtime, age);
+        }
         other => {
             return Err(format!(
-                "unknown view `{other}`; use field, action, tooltip, phone, thunder, spider, spider-walk, or spell"
+                "unknown view `{other}`; use field, action, tooltip, phone, thunder, spider, spider-walk, spell, shapechange, dragon-fly, breath, or dragon"
             ));
         }
     }

@@ -1,0 +1,63 @@
+# The dragon's Wing Buffet: started on the ground ahead of the dragon with
+# its axis along its facing (`Spawn::along`). A blast of wind drives dust
+# and leaves ahead, under a pale gust ring.
+description = "A gust driving dust and leaves about 10 m ahead."
+
+[[emitter]]
+name = "gust"
+sheet = "sparks"
+frames = [2, 2]
+animate = "random"
+orient = "ground"
+luminance = 10.0
+burst = 1
+life = [0.6, 0.6]
+size = [1.0, 1.0]
+scale = [[0.0, 1.0], [1.0, 8.0]]
+color = [0.8, 0.95, 1.0]
+alpha = [[0.0, 0.7], [1.0, 0.0]]
+priority = 4
+
+[[emitter]]
+name = "dust"
+sheet = "sparks"
+frames = [3, 3]
+animate = "random"
+light = "lit"
+blend = "alpha"
+burst = 30
+life = [0.9, 1.4]
+shape = "sphere"
+radius = 2.5
+spread = 25.0
+speed = [7.0, 12.0]
+drag = 1.8
+gravity = 0.3
+size = [0.5, 0.8]
+scale = [0.6, 1.4, 2.0]
+color = [0.62, 0.56, 0.44]
+alpha = [[0.0, 0.0], [0.15, 0.5], [1.0, 0.0]]
+spin = [-1.0, 1.0]
+priority = 2
+
+[[emitter]]
+name = "leaves"
+sheet = "arcane"
+frames = [1, 1]
+animate = "random"
+light = "lit"
+blend = "alpha"
+burst = 30
+life = [1.0, 1.6]
+shape = "sphere"
+radius = 2.5
+spread = 30.0
+speed = [9.0, 15.0]
+drag = 1.4
+gravity = -2.0
+wander = 3.0
+size = [0.12, 0.18]
+spin = [-8.0, 8.0]
+color = [[0.0, [0.45, 0.8, 0.3]], [1.0, [0.8, 0.65, 0.25]]]
+alpha = [[0.0, 1.0], [0.8, 1.0], [1.0, 0.0]]
+priority = 3

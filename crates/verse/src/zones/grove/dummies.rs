@@ -4,7 +4,7 @@
 //! The table is the druid demo's (`docs/verse/druid-demo.md`, World): three
 //! straw dummies at 10, 20, and 30 m from the spawn, an armored one at
 //! 15 m, a fire-warded one at 25 m, a big one among them, and a flying
-//! target 15 m up on a post. Armor class answers spell attack rolls, save
+//! target 5.5 m up on a post. Armor class answers spell attack rolls, save
 //! modifiers answer saving throws, and a resistance halves its damage
 //! type, as in the SRD. Spells leave timed conditions on a dummy
 //! ([`Condition`]), and repeated hard control within fifteen seconds
@@ -30,8 +30,9 @@ const DIMINISH: f32 = 15.0;
 const GRAVITY: f64 = 9.81;
 /// The longest step of a dummy's vertical motion, s.
 const SUBSTEP: f64 = 1.0 / 120.0;
-/// How high the flying target's post holds it, m.
-pub const POST: f32 = 15.0;
+/// How high the flying target's post holds it, m: out of a druid's
+/// reach on foot, in reach of the eagle, the dragon, and ranged spells.
+pub const POST: f32 = 5.5;
 
 /// A kind of dummy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,11 +140,15 @@ pub enum Condition {
     Slowed,
     /// Starry Wisp's light: it can't hide.
     Starlit,
+    /// On fire: it takes fire damage each second.
+    Burning,
+    /// Cowering from the dragon's roar.
+    Frightened,
 }
 
 impl Condition {
     /// Every condition, in the order its tag shows.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::Restrained,
         Self::Prone,
         Self::Paralyzed,
@@ -152,6 +157,8 @@ impl Condition {
         Self::Blinded,
         Self::Poisoned,
         Self::Outlined,
+        Self::Frightened,
+        Self::Burning,
         Self::Slowed,
         Self::Starlit,
     ];
@@ -170,6 +177,8 @@ impl Condition {
             Self::Asleep => "asleep",
             Self::Slowed => "slowed",
             Self::Starlit => "starlit",
+            Self::Burning => "burning",
+            Self::Frightened => "frightened",
         }
     }
 
@@ -187,6 +196,8 @@ impl Condition {
             Self::Asleep => "SLEEP",
             Self::Slowed => "SLOW",
             Self::Starlit => "STAR",
+            Self::Burning => "BURN",
+            Self::Frightened => "FEAR",
         }
     }
 
@@ -204,6 +215,8 @@ impl Condition {
             Self::Asleep => [0.6, 0.7, 1.0],
             Self::Slowed => [0.6, 0.9, 1.0],
             Self::Starlit => [1.0, 0.95, 0.75],
+            Self::Burning => [1.0, 0.5, 0.15],
+            Self::Frightened => [0.95, 0.6, 0.85],
         }
     }
 
@@ -529,13 +542,15 @@ impl Dummy {
                     f64::from(self.pos.z),
                 ))
         });
-        if self.anchored() || rooted {
-            self.pos.y = self.pos.y.max(ground);
-            if rooted && !lifted && self.pos.y > ground {
-                // A web holds a dummy where it hangs.
-                self.vertical_speed = 0.0;
-            }
+        if self.anchored() {
+            // The post holds it at its height, whatever gravity does.
+            self.pos.y = self.home.y;
+            self.vertical_speed = 0.0;
         } else {
+            // A root holds a dummy's feet, not its fall: one rooted in the
+            // air falls under ordinary gravity rather than hanging there,
+            // and Reverse Gravity can't lift it.
+            let gravity = if rooted { None } else { gravity };
             let steps = (f64::from(dt) / SUBSTEP).ceil().max(1.0);
             let h = f64::from(dt) / steps;
             let (mut y, mut v) = (f64::from(self.pos.y), self.vertical_speed);

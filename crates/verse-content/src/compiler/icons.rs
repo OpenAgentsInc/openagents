@@ -161,7 +161,7 @@ const DRUID: &[Icon] = &[
     ),
     icon!(
         "shapechange-icon",
-        "lorc/dragon-breath.svg",
+        "lorc/dragon-spiral.svg",
         "Lorc",
         TRANSMUTATION
     ),
@@ -315,6 +315,17 @@ pub const ICONS: &[Icon] = &[
     ),
     icon!("spider-bite-icon", "skoll/fangs.svg", "Skoll", VENOM),
     icon!("spider-web-icon", "lorc/web-spit.svg", "Lorc", SILK),
+    // Shapechange's dragon: its bite, breath, tail, wings, and roar.
+    icon!("dragon-bite-icon", "lorc/dragon-head.svg", "Lorc", FIRE),
+    icon!("fire-breath-icon", "lorc/dragon-breath.svg", "Lorc", FIRE),
+    icon!("tail-sweep-icon", "lorc/spiked-tail.svg", "Lorc", STONE),
+    icon!("wing-buffet-icon", "lorc/bat-wing.svg", "Lorc", WIND),
+    icon!(
+        "dragon-roar-icon",
+        "lorc/sonic-shout.svg",
+        "Lorc",
+        TRANSMUTATION
+    ),
     icon!(
         "return-to-form-icon",
         "lorc/body-swapping.svg",

@@ -271,6 +271,16 @@ pub struct Emitter {
     /// with drag to keep the wandering slow.
     #[serde(default)]
     pub wander: f32,
+    /// Turning speed of a particle's place about the effect's axis through
+    /// where it was born, radians a second: positive turns counterclockwise
+    /// seen from the axis's tip. Particles born on a ring swirl around it,
+    /// as a vortex does.
+    #[serde(default)]
+    pub swirl: f32,
+    /// How fast a particle closes on the effect's axis, the share of its
+    /// distance from the axis lost per second; with `swirl` it spirals in.
+    #[serde(default)]
+    pub pull: f32,
     /// Half the quad's size at birth, m, at random between the two.
     pub size: [f32; 2],
     /// The size's factor over life.
@@ -412,8 +422,11 @@ impl Emitter {
                 return Err(what(&format!("{name} must be 0 or more")));
             }
         }
-        if !self.gravity.is_finite() || !self.inherit.is_finite() {
-            return Err(what("gravity and inherit must be finite"));
+        if !self.gravity.is_finite() || !self.inherit.is_finite() || !self.swirl.is_finite() {
+            return Err(what("gravity, inherit, and swirl must be finite"));
+        }
+        if !self.pull.is_finite() || self.pull < 0.0 {
+            return Err(what("pull must be 0 or more"));
         }
         if self.spread > 180.0 {
             return Err(what("spread is at most 180 degrees"));

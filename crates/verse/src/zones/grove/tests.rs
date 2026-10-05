@@ -819,7 +819,7 @@ fn the_bear_wolf_and_eagle_take_their_shapes_and_attacks() {
 fn placeholders_and_controls_say_what_they_do() {
     let mut runtime = entered();
     face(&mut runtime, STRAW, 8.0);
-    cast_spell(&mut runtime, Spell::Shapechange);
+    cast_spell(&mut runtime, Spell::WildCompanion);
     assert!(
         grove(&runtime)
             .log
@@ -867,4 +867,331 @@ fn spamming_every_spell_keeps_everything_bounded() {
     let mesh = runtime.dynamic_mesh();
     assert!(mesh.lines.len() < 80_000, "{}", mesh.lines.len());
     assert!(mesh.sprites.len() <= crate::fx::system::MAX_PARTICLES);
+}
+
+/// In the dragon's shape, the transformation over, standing `back` m
+/// short of dummy `i`.
+fn dragon(back: f32, i: usize) -> WorldRuntime {
+    let mut runtime = entered();
+    face(&mut runtime, i, back);
+    cast_spell(&mut runtime, Spell::Shapechange);
+    idle(
+        &mut runtime,
+        super::dragon::SWAP + super::dragon::GROW + 0.1,
+    );
+    face(&mut runtime, i, back);
+    runtime
+}
+
+#[test]
+fn shapechange_becomes_the_dragon_after_its_transformation_and_returns() {
+    use super::shape::Form;
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 8.0);
+    cast_spell(&mut runtime, Spell::Shapechange);
+    // The vortex rises and the druid dissolves into it before the dragon
+    // bursts out.
+    assert_eq!(grove(&runtime).form(), None);
+    assert!(grove(&runtime).particles() == 0 || grove(&runtime).druid_morph().is_some());
+    idle(&mut runtime, 0.6);
+    assert_eq!(grove(&runtime).form(), None);
+    let (k, _) = grove(&runtime).druid_morph().expect("the druid dissolving");
+    assert!(k < 1.0, "{k}");
+    assert!(grove(&runtime).particles() > 50);
+    let shapechange = slot(&runtime, Spell::Shapechange);
+    assert!(
+        cast(&mut runtime, shapechange).is_err(),
+        "a second cast waits for the first"
+    );
+    idle(&mut runtime, 0.5);
+    assert_eq!(grove(&runtime).form(), Some(Form::Dragon));
+    assert!(
+        grove(&runtime)
+            .log
+            .iter()
+            .any(|l| l.contains("shape of a dragon"))
+    );
+    idle(&mut runtime, 1.5);
+    assert!(grove(&runtime).druid_morph().is_none());
+    assert_eq!(runtime.player.pace(), Form::Dragon.pace());
+    // The camera stands back to fit the dragon.
+    assert!(runtime.grove_camera() > 2.0, "{}", runtime.grove_camera());
+    let near = runtime.view(1.6).eye.distance(runtime.player.pos);
+    // The dragon's actions take row 2's first five slots.
+    let bar = runtime.grove_bar().unwrap();
+    assert_eq!(
+        &bar.spells[usize::from(BITE)..usize::from(BITE) + 5],
+        &Form::Dragon
+            .attacks()
+            .iter()
+            .map(|s| Some(*s))
+            .collect::<Vec<_>>()[..]
+    );
+    assert!(bar.slots[slot(&runtime, Spell::Shapechange)].active);
+    let figure = runtime.dynamic_mesh().figure.expect("a figure");
+    figure.validate().unwrap();
+    // The dragon stands about three times the druid's height.
+    let top = figure
+        .vertices
+        .iter()
+        .map(|v| v.pos[1])
+        .filter(|y| *y > -50.0)
+        .fold(f32::MIN, f32::max);
+    assert!(top - runtime.player.pos.y > 4.0, "{top}");
+    // Shapechange keeps spellcasting: the druid's spells still cast.
+    cast_spell(&mut runtime, Spell::FireBolt);
+    assert!(
+        grove(&runtime)
+            .effects()
+            .iter()
+            .any(|e| matches!(e, Effect::Bolt { .. }))
+    );
+    // Return to Form runs the transformation back.
+    cast(&mut runtime, usize::from(RETURN)).unwrap();
+    assert_eq!(grove(&runtime).form(), Some(Form::Dragon));
+    idle(&mut runtime, 1.4);
+    assert_eq!(grove(&runtime).form(), None);
+    assert_eq!(runtime.player.pace(), 1.0);
+    assert!(!runtime.everglade_levitating());
+    idle(&mut runtime, 2.0);
+    assert!(runtime.grove_camera() < 1.2);
+    assert!(runtime.view(1.6).eye.distance(runtime.player.pos) < near);
+    let figure = runtime.dynamic_mesh().figure.expect("a figure");
+    figure.validate().unwrap();
+}
+
+#[test]
+fn fire_breath_burns_the_dummies_in_its_cone() {
+    let mut runtime = dragon(6.0, STRAW);
+    for i in 0..grove(&runtime).dummies.len() {
+        fail_saves(&mut runtime, i);
+    }
+    cast_spell(&mut runtime, Spell::FireBreath);
+    // The breath draws in, then the fire leaves the jaws.
+    assert_eq!(grove(&runtime).dummies[STRAW].hp, 100.0);
+    idle(&mut runtime, 0.7);
+    let g = grove(&runtime);
+    let straw = &g.dummies[STRAW];
+    assert!(straw.hp < 100.0 - 18.0, "{}", straw.hp);
+    assert!(has(g, Condition::Burning));
+    assert!(g.log.iter().any(|l| l.starts_with("Fire Breath hits")));
+    // The far straw dummy, 30 m out, is past the cone's end.
+    assert_eq!(g.dummies[2].hp, g.dummies[2].kind.max_hp());
+    // Burning bites each second.
+    let before = grove(&runtime).dummies[STRAW].hp;
+    idle(&mut runtime, 2.1);
+    let after = grove(&runtime).dummies[STRAW].hp;
+    assert!(after < before, "{before} {after}");
+}
+
+#[test]
+fn the_dragon_bites_sweeps_buffets_and_roars() {
+    // The bite lands at the jaws' reach.
+    let mut runtime = dragon(5.0, STRAW);
+    let mut hit = false;
+    let bite = slot(&runtime, Spell::DragonBite);
+    for _ in 0..8 {
+        let _ = cast(&mut runtime, bite);
+        hit |= grove(&runtime).dummies[STRAW].hp < 100.0;
+    }
+    assert!(hit, "{:?}", grove(&runtime).log);
+    // Tail Sweep knocks down what it hits.
+    let mut runtime = dragon(3.0, STRAW);
+    fail_saves(&mut runtime, STRAW);
+    cast_spell(&mut runtime, Spell::TailSweep);
+    assert!(grove(&runtime).dummies[STRAW].hp < 100.0);
+    assert!(has(grove(&runtime), Condition::Prone));
+    // Wing Buffet throws a dummy back.
+    let mut runtime = dragon(3.0, STRAW);
+    fail_saves(&mut runtime, STRAW);
+    let before = grove(&runtime).dummies[STRAW]
+        .pos
+        .distance(runtime.player.pos);
+    cast_spell(&mut runtime, Spell::WingBuffet);
+    idle(&mut runtime, 0.5);
+    let after = grove(&runtime).dummies[STRAW]
+        .pos
+        .distance(runtime.player.pos);
+    assert!(after > before + 4.0, "{before} to {after}");
+    // Roar frightens every dummy in reach that fails its save.
+    let mut runtime = dragon(6.0, STRAW);
+    fail_saves(&mut runtime, STRAW);
+    cast_spell(&mut runtime, Spell::Roar);
+    assert!(
+        grove(&runtime).dummies[STRAW].has(Condition::Frightened, grove(&runtime).time),
+        "{:?}",
+        grove(&runtime).log
+    );
+    assert!(
+        runtime.grove_shake().length() > 0.0 || {
+            idle(&mut runtime, 0.05);
+            runtime.grove_shake().length() > 0.0
+        }
+    );
+}
+
+#[test]
+fn the_dragon_takes_off_with_jump_and_outflies_the_eagle() {
+    use super::shape::Form;
+    let mut runtime = dragon(8.0, STRAW);
+    // It lands as it takes shape.
+    assert!(!runtime.everglade_levitating());
+    let ground = runtime.player.pos.y;
+    let climb = InputState {
+        jump: true,
+        ..InputState::default()
+    };
+    for _ in 0..50 {
+        runtime.tick(&climb, DT);
+    }
+    assert!(runtime.everglade_levitating());
+    let dragon_climb = runtime.player.pos.y - ground;
+    // The eagle's climb over the same second.
+    let mut eagle = entered();
+    face(&mut eagle, STRAW, 8.0);
+    cast_spell(&mut eagle, Spell::WildShapeEagle);
+    idle(&mut eagle, 0.1);
+    let low = eagle.player.pos.y;
+    for _ in 0..50 {
+        eagle.tick(&climb, DT);
+    }
+    let eagle_climb = eagle.player.pos.y - low;
+    assert!(
+        dragon_climb > eagle_climb * 1.5,
+        "{dragon_climb} vs {eagle_climb}"
+    );
+    // Aloft it flies at its air pace, faster than the eagle's.
+    idle(&mut runtime, 0.05);
+    assert_eq!(runtime.player.pace(), Form::Dragon.air_pace());
+    assert!(Form::Dragon.air_pace() > Form::GiantEagle.air_pace());
+    let start = runtime.player.pos;
+    let ahead = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    for _ in 0..50 {
+        runtime.tick(&ahead, DT);
+    }
+    let flown = (runtime.player.pos - start).with_y(0.0).length();
+    assert!(flown > 10.0, "{flown}");
+    // X dives.
+    let high = runtime.player.pos.y;
+    for _ in 0..50 {
+        runtime.everglade_climb(-1.0, DT);
+        runtime.tick(&InputState::default(), DT);
+    }
+    assert!(runtime.player.pos.y < high - 3.0);
+    let figure = runtime.dynamic_mesh().figure.expect("a figure");
+    figure.validate().unwrap();
+}
+
+#[test]
+fn spamming_shapechange_and_the_dragon_stays_bounded() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 6.0);
+    let dragon_slots: Vec<usize> = (0..5).map(|k| usize::from(BITE) + k).collect();
+    let shapechange = slot(&runtime, Spell::Shapechange);
+    for round in 0..80 {
+        let _ = cast(&mut runtime, shapechange);
+        for &index in &dragon_slots {
+            let _ = cast(&mut runtime, index);
+        }
+        if round % 17 == 16 {
+            let _ = cast(&mut runtime, usize::from(RETURN));
+        }
+        face(&mut runtime, STRAW, 6.0);
+        runtime.tick(&InputState::default(), 0.05);
+        let g = grove(&runtime);
+        assert!(g.effects().len() <= MAX_EFFECTS, "round {round}");
+        assert!(g.floaters.len() <= MAX_FLOATERS);
+        assert!(g.particles() <= crate::fx::system::MAX_PARTICLES);
+        assert!(g.log.len() <= super::LOG);
+    }
+    let mesh = runtime.dynamic_mesh();
+    assert!(mesh.sprites.len() <= crate::fx::system::MAX_PARTICLES);
+    mesh.figure.expect("a figure").validate().unwrap();
+    // Long Rest ends it all.
+    cast_spell(&mut runtime, Spell::LongRest);
+    assert_eq!(grove(&runtime).form(), None);
+    assert!(grove(&runtime).druid_morph().is_none());
+}
+
+#[test]
+fn the_flying_target_sits_low_on_its_post_and_nothing_hangs_after_reverse_gravity() {
+    let mut runtime = entered();
+    let flying = grove(&runtime)
+        .dummies
+        .iter()
+        .position(|d| d.kind == Kind::Flying)
+        .unwrap();
+    let home = grove(&runtime).dummies[flying].home;
+    let ground = crate::zones::everglade::height(home.x, home.z);
+    assert!(
+        (4.0..=6.5).contains(&(home.y - ground)),
+        "{}",
+        home.y - ground
+    );
+    // Reverse Gravity over the field, with a straw dummy rooted in it.
+    face(&mut runtime, STRAW, 2.0);
+    grove_mut(&mut runtime).dummies[STRAW].afflict(Condition::Restrained, 1.0, 0.0);
+    cast(&mut runtime, GRAVITY_SLOT).unwrap();
+    idle(&mut runtime, 0.6);
+    // Others fall upward; the rooted one stays on the ground.
+    let straw = &grove(&runtime).dummies[STRAW];
+    let under = crate::zones::everglade::height(straw.pos.x, straw.pos.z);
+    assert!(straw.pos.y < under + 0.05, "{}", straw.pos.y - under);
+    // The root ends with gravity still reversed; the dummy rises, and a
+    // second press ends the spell, so every dummy comes back down.
+    idle(&mut runtime, 1.5);
+    cast(&mut runtime, GRAVITY_SLOT).unwrap();
+    // What was still rising arcs over and lands.
+    idle(&mut runtime, 8.0);
+    let g = grove(&runtime);
+    for d in &g.dummies {
+        if d.anchored() {
+            assert_eq!(d.pos.y, d.home.y, "the target never leaves its post");
+        } else {
+            let floor = crate::zones::everglade::height(d.pos.x, d.pos.z);
+            assert!(
+                d.pos.y < floor + 0.05,
+                "{:?} at {}",
+                d.kind,
+                d.pos.y - floor
+            );
+        }
+    }
+}
+
+#[test]
+fn walls_and_areas_draw_particles_and_no_guide_lines() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 8.0);
+    idle(&mut runtime, 0.1);
+    let quiet = runtime.dynamic_mesh().lines.len();
+    for spell in [
+        Spell::WallOfFire,
+        Spell::WallOfThorns,
+        Spell::Moonbeam,
+        Spell::SpikeGrowth,
+        Spell::Entangle,
+        Spell::IceStorm,
+        Spell::Sunbeam,
+        Spell::ConeOfCold,
+    ] {
+        // Cone of Cold is a land spell: choose Polar for it.
+        if spell == Spell::ConeOfCold {
+            cast_spell(&mut runtime, Spell::ChooseLand);
+        }
+        let index = slot(&runtime, spell);
+        let _ = cast(&mut runtime, index);
+        face(&mut runtime, STRAW, 8.0);
+        idle(&mut runtime, 0.3);
+        let g = grove(&runtime);
+        assert!(g.particles() > 0, "{spell:?}");
+        // Only the dummies' own marks (the target ring, roots, outlines)
+        // draw lines, as before the spell.
+        let lines = runtime.dynamic_mesh().lines.len();
+        let rooted = g.dummies.iter().any(|d| d.rooted(g.time));
+        assert!(lines <= quiet || rooted, "{spell:?}: {quiet} to {lines}");
+    }
 }

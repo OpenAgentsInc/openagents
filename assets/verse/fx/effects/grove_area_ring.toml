@@ -1,0 +1,19 @@
+# A burst's area on the ground: started where it lands and scaled to its
+# radius in meters (`Spawn::scaled`). A faint ring of light that spreads out
+# to the area's edge and fades, in place of a drawn outline.
+description = "A faint ring of light spreading to a 1 m radius on the ground, scaled to the area."
+
+[[emitter]]
+name = "edge"
+sheet = "sparks"
+frames = [2, 2]
+animate = "random"
+orient = "ground"
+luminance = 9.0
+burst = 1
+life = [0.7, 0.7]
+size = [1.2, 1.2]
+scale = [[0.0, 0.45], [0.35, 1.0], [1.0, 1.05]]
+color = [1.0, 0.92, 0.75]
+alpha = [[0.0, 0.0], [0.15, 0.7], [1.0, 0.0]]
+priority = 2

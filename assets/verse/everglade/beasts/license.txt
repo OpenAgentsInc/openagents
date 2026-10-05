@@ -6,6 +6,9 @@ scripts/blender/enemy_pack.py.
 
 bear, wolf, eagle: generated from primitives by scripts/blender/animals.py.
 
+dragon: Shapechange's dragon, generated from primitives by
+scripts/blender/dragon.py.
+
 songbird, duck, cat: Everglade's ambient wildlife, generated from
 primitives by scripts/blender/wildlife.py.
 

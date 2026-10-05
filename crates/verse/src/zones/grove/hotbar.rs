@@ -13,6 +13,7 @@
 use super::super::Intent;
 use super::dummies::Condition;
 use super::kit::{Area, Damage, Delivery, Spell};
+use super::shape::Form;
 use super::slots::{self, COLUMNS, COUNT, ROWS};
 use crate::tooltip::{self, Card, Tip, palette};
 use crate::ui::{Atlas, UiBatch};
@@ -213,9 +214,11 @@ pub fn card_of(spell: Spell, index: usize) -> Card {
     let mut card = Card::of(Tip::new(def.label, slots::info(spell).1)).detail(key, palette::KEY);
     card = if spell == Spell::LongRest || spell == Spell::ChooseLand {
         card.detail("Demo control", palette::RULE)
+    } else if Form::Dragon.attacks().contains(&spell) {
+        card.detail("Dragon attack", palette::RULE)
     } else if spell.beast() {
         card.detail("Beast attack", palette::RULE)
-    } else if spell.shape() {
+    } else if spell.shape() && spell != Spell::Shapechange {
         card.detail("Wild Shape", palette::RULE)
     } else if def.level == 0 {
         card.detail("Cantrip", palette::RULE)
