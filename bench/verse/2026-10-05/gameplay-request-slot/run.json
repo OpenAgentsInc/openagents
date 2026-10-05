@@ -21,6 +21,27 @@
   "limitations": [
     "Focused checks do not prove crowded performance acceptance.",
     "The synthetic peer checks transmission and queue ordering, not authoritative acceptance of all proposed movement frames.",
-    "Matching native and headless clients are still compiling."
-  ]
+    "The crowded battle is a separate acceptance run."
+  ],
+  "client_build": {
+    "compiled_revisions": {
+      "verse_remote": "cbed11fd6be9cab314410e67b91c52fedeed1a10",
+      "verse_load": "cbed11fd6be9cab314410e67b91c52fedeed1a10"
+    },
+    "wire_version": 27,
+    "sha256": {
+      "verse_remote": "fd1bc513fafe793ade7f78d4617bcc82c91973fadc2ee1388085ea02cc9a40f6",
+      "verse_load": "390e3f8fc3f750be110fcb51c37b76419ce42b0724776e74466e22efe547afe2"
+    },
+    "client_platform": "macOS arm64",
+    "client_features": [
+      "imported-desktop",
+      "remote-chamber"
+    ],
+    "movement_send_steps": 6,
+    "authority_credit_source": "verified snapshots and control acknowledgments",
+    "periodic_reads_reserve_gameplay_slot": true,
+    "status": "complete",
+    "wall_seconds": 434
+  }
 }
