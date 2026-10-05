@@ -322,8 +322,8 @@ pub const STAND_INS: [StandIn; 34] = [
 /// and the gazebo on the commons' east lawn.
 pub const GROUNDS: [Instance; 3] = [
     Instance {
-        scale: 0.85,
-        ..Instance::new("boathouse", &BOATHOUSE, [3.5, 35.4], PI)
+        scale: 0.8,
+        ..Instance::new("boathouse", &BOATHOUSE, [4.5, 34.2], PI)
     },
     Instance::new("glasshouse", &GREENHOUSE, [-52.0, -58.0], PI),
     Instance::new("gazebo", &GAZEBO, [30.0, 26.0], -FRAC_PI_2),
