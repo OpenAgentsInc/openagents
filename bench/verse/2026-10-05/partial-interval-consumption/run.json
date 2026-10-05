@@ -1,0 +1,46 @@
+{
+  "schema": "verse.worker.scheduling.evidence.v1",
+  "acceptance": "focused-only",
+  "tested_base_revision": "62b1515f90d18d9c74256aa7d49ff4c21826aa29",
+  "source_patch_sha256": "fef3d990ca59cf894b886d685592b19dcd92db391900f3e03fc89df948565486",
+  "wire_version": 28,
+  "platform": "Linux x86_64",
+  "checks": {
+    "before_fix": {
+      "tests": 2,
+      "failed": 2,
+      "runtime_seconds": 0.0
+    },
+    "movement_clock": {
+      "passed": 6,
+      "failed": 0,
+      "runtime_seconds": 0.0
+    },
+    "affected_crate": {
+      "command": "cargo test -p verse-world --features service-net --lib -- --quiet",
+      "passed": 524,
+      "failed": 0,
+      "ignored": 2,
+      "runtime_seconds": 70.77,
+      "build_wall_seconds": 28.74
+    },
+    "formatting": {
+      "command": "cargo fmt -p verse-world",
+      "status": "passed"
+    },
+    "whitespace": {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  },
+  "contract": "Consume at most twelve elapsed movement steps per tick, splitting a queued interval when necessary. Preserve its unconsumed suffix, absolute hold expiry, direction changes, and jump edges. Applied sequence advances only when the original interval finishes. Expiry projection uses the same elapsed-time and work limits.",
+  "regressions": [
+    "Recorded clock 72 with queued intervals of four and twelve steps remains valid at world step 112 and consumes twelve steps, retaining four.",
+    "Partial time slices produce exactly the same expanded inputs and jump edges as the original interval.",
+    "Client replay from a four-step confirmation inside a twelve-step interval preserves the predicted character and retires input only at full confirmation."
+  ],
+  "limitations": [
+    "A new persistent delayed 20/40 battle remains required.",
+    "The Mac fail-before build lost incremental artifacts before executing tests; Linux supplies the runtime evidence."
+  ]
+}

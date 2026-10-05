@@ -529,6 +529,44 @@ mod tests {
         }
     }
     #[test]
+    fn partial_interval_confirmation_replays_only_unconsumed_steps() {
+        let (mut local, mut baseline, geometry) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        baseline.world_step = 12;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        local.advance(4. / 120.).unwrap();
+        let partial = local.character.unwrap();
+        local.advance(8. / 120.).unwrap();
+        let predicted = local.character.unwrap();
+        let mut frame = local.movement_frame(0, 12).unwrap();
+        frame.sequence = 1;
+        local.bind_movement_frame(&frame).unwrap();
+        baseline.physics_step = 4;
+        baseline.character = partial;
+        baseline.held.refresh([1., 0.], 0).unwrap();
+        local.observe(baseline, &geometry, 3, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.physics_step(), 12);
+        assert!(local.contains(1));
+        assert_eq!(
+            serde_json::to_vec(&local.character.unwrap()).unwrap(),
+            serde_json::to_vec(&predicted).unwrap()
+        );
+        baseline.physics_step = 12;
+        baseline.applied_sequence = 1;
+        baseline.character = predicted;
+        local.observe(baseline, &geometry, 4, 4).unwrap();
+        local.advance(0.).unwrap();
+        assert!(!local.contains(1));
+        assert_eq!(
+            serde_json::to_vec(&local.character.unwrap()).unwrap(),
+            serde_json::to_vec(&predicted).unwrap()
+        );
+    }
+
+    #[test]
     fn interval_transmission_waits_for_verified_credit_while_prediction_advances() {
         let (mut local, mut baseline, source) = setup();
         baseline.profile = movement::Profile::Frames;

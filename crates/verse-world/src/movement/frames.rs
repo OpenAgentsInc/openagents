@@ -91,6 +91,43 @@ impl Frame {
             .checked_add(u64::from(self.steps))
             .ok_or_else(|| "Movement interval clock exhausted".into())
     }
+    fn split(&self, steps: u32) -> Result<(Self, Option<Self>), String> {
+        self.validate()?;
+        if steps == 0 || steps > self.steps {
+            return Err("Invalid movement interval split".into());
+        }
+        let mut prefix = self.clone();
+        prefix.steps = steps;
+        prefix.segments.retain(|segment| segment.offset < steps);
+        if steps == self.steps {
+            return Ok((prefix, None));
+        }
+        let mut suffix = self.clone();
+        suffix.start = prefix.end()?;
+        suffix.steps -= steps;
+        let mut carried = self
+            .segments
+            .iter()
+            .rfind(|segment| segment.offset <= steps)
+            .unwrap()
+            .clone();
+        carried.jump &= carried.offset == steps;
+        carried.offset = 0;
+        suffix.segments = vec![carried];
+        suffix.segments.extend(
+            self.segments
+                .iter()
+                .filter(|segment| segment.offset > steps)
+                .map(|segment| {
+                    let mut segment = segment.clone();
+                    segment.offset -= steps;
+                    segment
+                }),
+        );
+        prefix.validate()?;
+        suffix.validate()?;
+        Ok((prefix, Some(suffix)))
+    }
     pub fn validate(&self) -> Result<(), String> {
         if self.sequence == 0 {
             return Err("Movement interval requires a bound sequence".into());
@@ -189,19 +226,25 @@ impl Clock {
         self.queue.push_back(frame);
         Ok(())
     }
-    pub fn expired(&self, world_step: u64) -> bool {
+    fn projected_step(&self, world_step: u64) -> Result<u64, String> {
         let mut projected = self.step;
-        let mut work = 0;
+        let mut budget = MAX_STEPS;
         for frame in &self.queue {
-            let Ok(end) = frame.end() else {
-                return true;
-            };
-            if end > world_step || work + frame.steps > MAX_STEPS {
+            frame.end()?;
+            let steps = u64::from(frame.steps.min(budget))
+                .min(world_step.saturating_sub(frame.start)) as u32;
+            projected = frame.start + u64::from(steps);
+            budget -= steps;
+            if steps < frame.steps || budget == 0 {
                 break;
             }
-            projected = end;
-            work += frame.steps;
         }
+        Ok(projected)
+    }
+    pub fn expired(&self, world_step: u64) -> bool {
+        let Ok(projected) = self.projected_step(world_step) else {
+            return true;
+        };
         world_step.saturating_sub(projected)
             > if self.applied_sequence == 0 {
                 BOOTSTRAP_LAG
@@ -217,16 +260,7 @@ impl Clock {
         world_step: u64,
         origin: ExpiryOrigin,
     ) -> ExpirySample {
-        let mut projected_step = self.step;
-        let mut work = 0;
-        for frame in &self.queue {
-            let Ok(end) = frame.end() else { break };
-            if end > world_step || work + frame.steps > MAX_STEPS {
-                break;
-            }
-            projected_step = end;
-            work += frame.steps;
-        }
+        let projected_step = self.projected_step(world_step).unwrap_or(self.step);
         ExpirySample {
             actor,
             epoch,
@@ -249,14 +283,21 @@ impl Clock {
         let mut work = Vec::new();
         let mut steps = 0;
         while let Some(frame) = self.queue.front() {
-            if frame.end()? > world_step || steps + frame.steps > MAX_STEPS {
+            let available = u64::from(frame.steps.min(MAX_STEPS - steps))
+                .min(world_step.saturating_sub(frame.start)) as u32;
+            if available == 0 {
                 break;
             }
-            let frame = self.queue.pop_front().unwrap();
-            steps += frame.steps;
-            self.step = frame.end()?;
-            self.applied_sequence = frame.sequence;
-            work.push(frame);
+            let (prefix, suffix) = frame.split(available)?;
+            self.queue.pop_front();
+            steps += available;
+            self.step = prefix.end()?;
+            if let Some(suffix) = suffix {
+                self.queue.push_front(suffix);
+            } else {
+                self.applied_sequence = prefix.sequence;
+            }
+            work.push(prefix);
         }
         Ok(work)
     }
@@ -348,6 +389,70 @@ mod tests {
         assert_eq!(clock.take(24).unwrap().len(), 1);
         assert_eq!(clock.step, 24);
     }
+    #[test]
+    fn partial_budget_consumes_queued_prefix_before_expiry() {
+        let mut clock = Clock::new(72, 1);
+        clock.admit(frame(72, 4, 2), 104).unwrap();
+        clock.admit(frame(76, 12, 3), 104).unwrap();
+        assert!(!clock.expired(112));
+        assert_eq!(
+            clock
+                .expiry_sample(14, 1, 1, 112, ExpiryOrigin::PrimaryTick)
+                .projected_step,
+            84
+        );
+        let work = clock.take(112).unwrap();
+        assert_eq!(work.iter().map(|f| f.steps).sum::<u32>(), MAX_STEPS);
+        assert_eq!(clock.step, 84);
+        assert_eq!(clock.applied_sequence, 2);
+        clock.validate(112, work[0].life, 1, 3).unwrap();
+        assert_eq!(clock.queue.front().unwrap().start, 84);
+        assert_eq!(clock.queue.front().unwrap().steps, 4);
+        assert_eq!(clock.take(116).unwrap()[0].steps, 4);
+        assert_eq!(clock.step, 88);
+        assert_eq!(clock.applied_sequence, 3);
+    }
+
+    #[test]
+    fn partial_intervals_preserve_elapsed_time_segments_and_jump_edges() {
+        let mut input = frame(4, 12, 1);
+        input.segments[0].jump = true;
+        input.segments.push(Segment {
+            offset: 3,
+            axes: [0., 1.],
+            yaw: 1.,
+            until: 24,
+            jump: true,
+        });
+        input.segments.push(Segment {
+            offset: 8,
+            axes: [-1., 0.],
+            yaw: 2.,
+            until: 24,
+            jump: true,
+        });
+        let expected = expand(&[input.clone()]);
+        let mut clock = Clock::new(4, 0);
+        clock.admit(input, 4).unwrap();
+        let mut actual = Vec::new();
+        for world in [7, 12, 16] {
+            let work = clock.take(world).unwrap();
+            assert!(work.iter().map(|f| f.steps).sum::<u32>() <= MAX_STEPS);
+            assert_eq!(clock.step, world);
+            clock.validate(world, frame(4, 1, 1).life, 1, 1).unwrap();
+            actual.extend(expand(&work));
+        }
+        assert_eq!(clock.applied_sequence, 1);
+        assert!(clock.queue.is_empty());
+        assert_eq!(actual.len(), expected.len());
+        for (a, b) in actual.iter().zip(&expected) {
+            assert_eq!(
+                (a.at, a.held.axes, a.held.until, a.yaw, a.jump),
+                (b.at, b.held.axes, b.held.until, b.yaw, b.jump)
+            );
+        }
+    }
+
     #[test]
     fn refusal_diagnostics_preserve_the_confirmed_clock_and_queue() {
         let mut clock = Clock::new(4, 0);
