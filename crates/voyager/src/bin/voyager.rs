@@ -31,7 +31,6 @@ const USAGE: &str = "usage:
   voyager run --world <manifest-or-name> [--scenario quest|war]
               [--jar PATH] [--bridge PATH]
               [--java PATH] [--runs DIR] [--port N]
-              [--episodes N --parallel N]
   voyager worlds [DIR]
   voyager keys <username>...
   voyager evidence <run-dir>
@@ -90,24 +89,10 @@ fn run(args: &[String]) -> Result<()> {
     let mut java: Option<PathBuf> = None;
     let mut runs: Option<PathBuf> = None;
     let mut port: u16 = 25565;
-    let mut episodes = 1usize;
-    let mut parallel = 1usize;
     let mut scenario: Option<Scenario> = None;
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
-            "--episodes" => {
-                episodes = rest
-                    .next()
-                    .and_then(|v| v.parse().ok())
-                    .ok_or_else(|| Error::episode("--episodes needs a number"))?
-            }
-            "--parallel" => {
-                parallel = rest
-                    .next()
-                    .and_then(|v| v.parse().ok())
-                    .ok_or_else(|| Error::episode("--parallel needs a number"))?
-            }
             "--world" => world_arg = rest.next().cloned(),
             "--jar" => jar = rest.next().map(PathBuf::from),
             "--bridge" => bridge = rest.next().map(PathBuf::from),
@@ -137,23 +122,11 @@ fn run(args: &[String]) -> Result<()> {
         )));
     };
     let world = World::load(world_path(&world_arg)?)?;
-    let jar = if world.wow.is_some() {
-        PathBuf::new()
-    } else {
-        jar.map(Ok).unwrap_or_else(|| server_jar(&world))?
-    };
-    let java = if world.wow.is_some() {
-        PathBuf::new()
-    } else {
-        java.map(Ok).unwrap_or_else(java_path)?
-    };
-    let bridge = bridge.map(Ok).unwrap_or_else(|| {
-        if world.wow.is_some() {
-            voyager::bridge::wow_helper_path()
-        } else {
-            voyager::bridge::helper_path()
-        }
-    })?;
+    let jar = jar.map(Ok).unwrap_or_else(|| server_jar(&world))?;
+    let java = java.map(Ok).unwrap_or_else(java_path)?;
+    let bridge = bridge
+        .map(Ok)
+        .unwrap_or_else(voyager::bridge::helper_path)?;
     let runs = runs.unwrap_or_else(default_runs);
     let plan = Plan {
         jar,
@@ -167,17 +140,6 @@ fn run(args: &[String]) -> Result<()> {
         repo: std::env::current_dir()?,
         scenario,
     };
-    if episodes != 1 || parallel != 1 {
-        let metrics = voyager::wow_pool::run(&world, &plan, episodes, parallel, |line| {
-            eprintln!("voyager: {line}")
-        })?;
-        println!("{metrics}");
-        return if metrics["failed"] == 0 {
-            Ok(())
-        } else {
-            Err(Error::episode("one or more pool episodes failed"))
-        };
-    }
     // A world that enrolls agents runs the guild loop; a world with a
     // single `agent` runs the solo curriculum.
     let report = if world.agents.is_empty() {

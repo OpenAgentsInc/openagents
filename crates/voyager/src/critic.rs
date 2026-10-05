@@ -57,31 +57,6 @@ pub enum Spec {
     /// the goal and the before/after state.
     #[serde(rename = "noul")]
     Noul,
-    /// Minimum server-reported XP earned during this task.
-    #[serde(rename = "xp_gained")]
-    XpGained { at_least: u64 },
-    /// Minimum observed character level.
-    #[serde(rename = "level_at_least")]
-    LevelAtLeast { level: u64 },
-    /// Server quest-log status or confirmed reward event.
-    #[serde(rename = "quest_status")]
-    QuestStatus { quest: u32, status: String },
-    /// Absolute item count by WoW item entry.
-    #[serde(rename = "item_count")]
-    ItemCount { entry: u32, at_least: u64 },
-    /// Attributed kills during this task.
-    #[serde(rename = "killed")]
-    Killed { entry: u32, count: u64 },
-    /// Map and distance from a declared WoW coordinate.
-    #[serde(rename = "at_position")]
-    AtPosition {
-        map: u32,
-        position: [f64; 3],
-        radius: f64,
-    },
-    /// All checks must pass.
-    #[serde(rename = "all")]
-    All { checks: Vec<Spec> },
     /// No check — the program running to completion is the record.
     #[serde(rename = "ran")]
     #[default]
@@ -147,69 +122,6 @@ pub fn check(spec: &Spec, readings: &Readings<'_>) -> Option<Verdict> {
                     "{position:?} holds {} (wanted {expected})",
                     found.unwrap_or("nothing")
                 ),
-            })
-        }
-        Spec::All { checks } => {
-            let verdicts: Option<Vec<_>> = checks.iter().map(|s| check(s, readings)).collect();
-            verdicts.map(|vs| Verdict {
-                ok: !vs.is_empty() && vs.iter().all(|v| v.ok),
-                detail: vs
-                    .iter()
-                    .map(|v| v.detail.as_str())
-                    .collect::<Vec<_>>()
-                    .join("; "),
-            })
-        }
-        Spec::XpGained { at_least } => wow_number(readings, "earned_xp", None, *at_least, true),
-        Spec::LevelAtLeast { level } => wow_number(readings, "level", None, *level, false),
-        Spec::ItemCount { entry, at_least } => wow_number(
-            readings,
-            "inventory",
-            Some(entry.to_string()),
-            *at_least,
-            false,
-        ),
-        Spec::Killed { entry, count } => {
-            wow_number(readings, "killed", Some(entry.to_string()), *count, true)
-        }
-        Spec::QuestStatus { quest, status } => {
-            let w = &readings.after.wow;
-            let q = w["quests"]
-                .as_array()
-                .and_then(|qs| qs.iter().find(|q| q["id"] == *quest));
-            let ok = match status.as_str() {
-                "accepted" => q.is_some(),
-                "complete" => q
-                    .and_then(|q| q["state"].as_u64())
-                    .is_some_and(|s| s & 1 != 0),
-                "turned_in" => w["turned_in"]
-                    .as_array()
-                    .is_some_and(|qs| qs.iter().any(|q| *q == *quest)),
-                _ => false,
-            };
-            Some(Verdict {
-                ok,
-                detail: format!("quest {quest} {status}: {ok}"),
-            })
-        }
-        Spec::AtPosition {
-            map,
-            position,
-            radius,
-        } => {
-            let w = &readings.after.wow;
-            let p = w["position"].as_array().filter(|p| p.len() == 3);
-            let coords: Option<Vec<f64>> = p.and_then(|p| p.iter().map(Value::as_f64).collect());
-            let distance = coords.map(|p| {
-                p.iter()
-                    .zip(position)
-                    .map(|(a, b)| (a - b).powi(2))
-                    .sum::<f64>()
-                    .sqrt()
-            });
-            Some(Verdict {
-                ok: *radius >= 0.0 && w["map"] == *map && distance.is_some_and(|d| d <= *radius),
-                detail: format!("map {map}, distance {distance:?}, radius {radius}"),
             })
         }
         Spec::Noul => None,
@@ -279,7 +191,6 @@ fn count(state: &AgentState, item: &str) -> i64 {
 /// The state summary the `noul` question reads.
 fn describe(state: &AgentState) -> Value {
     serde_json::json!({
-        "wow": state.wow,
         "position": state.position,
         "health": state.health,
         "food": state.food,
@@ -375,132 +286,5 @@ mod tests {
         assert!(check(&Spec::Noul, &readings).is_none());
         let verdict = verify(&Spec::Noul, &readings, "do a thing", None, "test").unwrap();
         assert!(!verdict.ok);
-    }
-}
-
-fn wow_number(
-    r: &Readings<'_>,
-    key: &str,
-    entry: Option<String>,
-    threshold: u64,
-    delta: bool,
-) -> Option<Verdict> {
-    let read = |s: &AgentState| {
-        let v = &s.wow[key];
-        if let Some(e) = &entry {
-            if !v.is_object() {
-                None
-            } else {
-                Some(v[e].as_u64().unwrap_or(0))
-            }
-        } else {
-            v.as_u64()
-        }
-    };
-    let after = read(r.after);
-    let measured = if delta {
-        read(r.before).zip(after).map(|(b, a)| a.saturating_sub(b))
-    } else {
-        after
-    };
-    Some(Verdict {
-        ok: measured.is_some_and(|n| n >= threshold),
-        detail: format!("{key} {entry:?}: {measured:?}, needed {threshold}"),
-    })
-}
-
-#[cfg(test)]
-mod wow_tests {
-    use super::*;
-    use serde_json::json;
-    #[test]
-    fn missing_evidence_never_passes_wow_checks() {
-        let s = AgentState::default();
-        let r = Readings {
-            before: &s,
-            after: &s,
-            blocks: &[],
-        };
-        for spec in [
-            Spec::XpGained { at_least: 0 },
-            Spec::LevelAtLeast { level: 0 },
-            Spec::ItemCount {
-                entry: 117,
-                at_least: 0,
-            },
-            Spec::Killed { entry: 6, count: 0 },
-            Spec::QuestStatus {
-                quest: 783,
-                status: "turned_in".into(),
-            },
-            Spec::AtPosition {
-                map: 0,
-                position: [0.0; 3],
-                radius: 10.0,
-            },
-        ] {
-            assert!(!check(&spec, &r).unwrap().ok);
-        }
-    }
-    #[test]
-    fn server_outcomes_and_task_deltas_grade() {
-        let before = AgentState::from_result(&json!({"map":0,"earned_xp":40,"killed":{"6":1}}));
-        let after = AgentState::from_result(
-            &json!({"map":0,"position":[1.5,2.5,3.5],"level":2,"earned_xp":600,"killed":{"6":11},"inventory":{"117":3},"quests":[{"id":7,"state":1}],"turned_in":[783]}),
-        );
-        let r = Readings {
-            before: &before,
-            after: &after,
-            blocks: &[],
-        };
-        let specs = vec![
-            Spec::XpGained { at_least: 560 },
-            Spec::Killed {
-                entry: 6,
-                count: 10,
-            },
-            Spec::LevelAtLeast { level: 2 },
-            Spec::ItemCount {
-                entry: 117,
-                at_least: 3,
-            },
-            Spec::QuestStatus {
-                quest: 7,
-                status: "complete".into(),
-            },
-            Spec::QuestStatus {
-                quest: 783,
-                status: "turned_in".into(),
-            },
-            Spec::AtPosition {
-                map: 0,
-                position: [1.5, 2.5, 3.5],
-                radius: 0.0,
-            },
-        ];
-        assert!(check(&Spec::All { checks: specs }, &r).unwrap().ok);
-        assert!(
-            !check(
-                &Spec::Killed {
-                    entry: 6,
-                    count: 11
-                },
-                &r
-            )
-            .unwrap()
-            .ok
-        );
-        assert!(
-            !check(
-                &Spec::AtPosition {
-                    map: 1,
-                    position: [1.5, 2.5, 3.5],
-                    radius: 1.0
-                },
-                &r
-            )
-            .unwrap()
-            .ok
-        );
     }
 }

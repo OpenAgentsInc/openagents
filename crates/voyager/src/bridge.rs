@@ -224,17 +224,7 @@ impl Bridge {
     /// Returns [`Error::Bridge`] when the process or its threads will not
     /// spawn.
     pub fn start(path: &Path) -> Result<Self> {
-        Self::start_mode(path, false)
-    }
-
-    /// Starts a trusted helper for manifest setup, outside program authority.
-    pub(crate) fn start_mode(path: &Path, setup: bool) -> Result<Self> {
-        let mut command = Command::new(path);
-        command.env_remove("WOW_BRIDGE_SETUP");
-        if setup {
-            command.env("WOW_BRIDGE_SETUP", "1");
-        }
-        let mut child = command
+        let mut child = Command::new(path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -329,24 +319,10 @@ impl Bridge {
     /// Returns [`Error::Refused`] for the helper's typed failure and
     /// [`Error::Bridge`] for a protocol fault that retires the helper.
     pub fn call(&mut self, op: &str, args: Value, deadline: Duration) -> Result<Value> {
-        self.call_guarded(op, args, deadline, || true)
-    }
-
-    /// Retires an active helper if its episode lease is lost.
-    pub(crate) fn call_guarded(
-        &mut self,
-        op: &str,
-        args: Value,
-        deadline: Duration,
-        mut authority: impl FnMut() -> bool,
-    ) -> Result<Value> {
         if self.retired {
             return Err(Error::bridge(
                 "the helper stopped after an earlier fault; start a new episode",
             ));
-        }
-        if !authority() {
-            return Err(self.retire("episode lease was lost".into()));
         }
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -357,9 +333,6 @@ impl Bridge {
         }
         let end = Instant::now() + deadline;
         loop {
-            if !authority() {
-                return Err(self.retire("episode lease was lost".into()));
-            }
             let left = end.saturating_duration_since(Instant::now());
             if left.is_zero() {
                 return Err(self.retire(format!(
@@ -367,10 +340,7 @@ impl Bridge {
                     deadline.as_millis()
                 )));
             }
-            match self
-                .frames
-                .recv_timeout(left.min(Duration::from_millis(250)))
-            {
+            match self.frames.recv_timeout(left) {
                 Ok(Frame::Response(wire)) if wire.id == id => {
                     if wire.ok {
                         return Ok(wire.result);
@@ -405,7 +375,12 @@ impl Bridge {
                 Ok(Frame::Closed(None)) | Err(RecvTimeoutError::Disconnected) => {
                     return Err(self.retire("the helper exited".to_string()));
                 }
-                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(self.retire(format!(
+                        "the helper did not answer within {} ms",
+                        deadline.as_millis()
+                    )));
+                }
             }
         }
     }
@@ -522,49 +497,4 @@ pub fn helper_path() -> Result<PathBuf> {
     Err(Error::bridge(
         "no mc-bridge binary found; build it with ./scripts/build-mc-bridge.sh".to_string(),
     ))
-}
-
-/// Locates the separately built WoW helper.
-pub fn wow_helper_path() -> Result<PathBuf> {
-    if let Some(path) = std::env::var_os("VOYAGER_WOW_BRIDGE") {
-        let path = PathBuf::from(path);
-        if path.is_file() {
-            return Ok(path);
-        }
-    }
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    let target = std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join("work/openagents-target-agent1"));
-    let path = target.join("release/wow-bridge");
-    if path.is_file() {
-        Ok(path)
-    } else {
-        Err(Error::bridge(
-            "no wow-bridge binary; run ./scripts/build-wow-bridge.sh",
-        ))
-    }
-}
-
-#[cfg(all(test, unix))]
-mod authority_tests {
-    use super::*;
-    #[test]
-    fn a_lost_lease_retires_an_inflight_helper() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let script = dir.path().join("helper");
-        std::fs::write(&script, "#!/bin/sh\nread request\nexec sleep 10\n").unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let mut bridge = Bridge::start(&script).unwrap();
-        let started = Instant::now();
-        let result = bridge.call_guarded("wait", json!({}), Duration::from_secs(10), || {
-            started.elapsed() < Duration::from_millis(200)
-        });
-        assert!(result.is_err());
-        assert!(bridge.is_retired());
-        assert!(started.elapsed() < Duration::from_secs(2));
-    }
 }

@@ -3,7 +3,7 @@ name = "voyager"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Bounded agent episodes in Minecraft and WoW worlds, with supervised JSON-line helpers and ATIF evidence."
+description = "Open-ended agent episodes in a Minecraft world: a supervised local server, a nightly-built azalea helper speaking line-delimited JSON, and an ATIF trace of every step."
 publish.workspace = true
 
 [dependencies]

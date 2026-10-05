@@ -35,8 +35,7 @@ The authored `chamber_spells` module reimplements Misty Step, Thunderwave, Web,
 Grease, and Light from the sibling SRD 5.2.1 guide. It debits the retained mana
 pool and changes the same actor health and positions. It adds deterministic
 local control durations and cooldowns without changing the vendored forest
-schedule. See `docs/wow/episodes.md` for the real-time adaptations and omissions;
-SRD attribution is retained in `NOTICE`.
+schedule. SRD attribution is retained in `NOTICE`.
 
 ## Host boundary
 

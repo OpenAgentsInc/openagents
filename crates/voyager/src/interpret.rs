@@ -390,19 +390,6 @@ fn op_call(name: &str, args: &[Value]) -> Option<(&'static str, Value)> {
     let number = |index: usize| args.get(index).and_then(Value::as_i64);
     let text = |index: usize| args.get(index).and_then(Value::as_str);
     Some(match name {
-        "move_to" => ("goto", args.first()?.as_object().map(|_| args[0].clone())?),
-        "target" | "attack" | "cast" | "loot" | "quest" | "use" | "vendor" => {
-            let op = match name {
-                "target" => "target",
-                "attack" => "attack",
-                "cast" => "cast",
-                "loot" => "loot",
-                "quest" => "quest",
-                "use" => "use",
-                _ => "vendor",
-            };
-            (op, args.first()?.as_object().map(|_| args[0].clone())?)
-        }
         "say" => ("say", json!({"text": text(0)?.to_string()})),
         "walk" => {
             let seconds = 45;
@@ -469,8 +456,7 @@ fn lua_message(message: &str) -> String {
 /// docs. Anything not listed is not reachable — there is no escape
 /// hatch to the filesystem, the network, or the process.
 pub const VOCABULARY: &[&str] = &[
-    "move_to", "target", "attack", "cast", "loot", "quest", "use", "vendor", "say", "walk",
-    "explore", "mine", "mine_at", "players", "state", "block_at", "wait", "feedback",
+    "say", "walk", "explore", "mine", "mine_at", "players", "state", "block_at", "wait", "feedback",
 ];
 
 /// The host behind a live script: every op is a bridge call with its
@@ -650,18 +636,5 @@ mod tests {
         let outcome =
             run(&mut stub, "return #feedback()", &Limits::default()).expect("the script runs");
         assert_eq!(outcome.returned, json!(1));
-    }
-}
-
-#[cfg(test)]
-mod wow_tests {
-    use super::*;
-    #[test]
-    fn wow_actions_are_typed_and_gm_is_unreachable() {
-        assert!(op_call("move_to", &[json!({"x":-8933.54,"y":-136.5,"z":83.4})]).is_some());
-        assert!(op_call("quest", &[json!({"action":"accept","quest":783})]).is_some());
-        assert!(op_call("quest", &[json!(".quest add 783")]).is_none());
-        assert!(op_call("gm", &[json!({"command":".die"})]).is_none());
-        assert!(!VOCABULARY.contains(&"gm"));
     }
 }

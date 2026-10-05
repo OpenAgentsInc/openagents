@@ -15,8 +15,6 @@ use serde_json::Value;
 pub struct AgentState {
     /// Where the bot stands, `x`/`y`/`z`.
     pub position: [f64; 3],
-    /// Complete WoW observation for deterministic critics and programs.
-    pub wow: Value,
     /// Half-hearts, as vanilla reports: 20 is full.
     pub health: f64,
     /// Hunger points, 20 is full.
@@ -36,26 +34,11 @@ impl AgentState {
     #[must_use]
     pub fn from_result(result: &Value) -> Self {
         let mut state = AgentState::default();
-        if result.get("map").is_some() {
-            state.wow = result.clone();
-        }
         if let Some(position) = result.get("position") {
             state.position = [
-                position
-                    .get("x")
-                    .or_else(|| position.get(0))
-                    .and_then(Value::as_f64)
-                    .unwrap_or(0.0),
-                position
-                    .get("y")
-                    .or_else(|| position.get(1))
-                    .and_then(Value::as_f64)
-                    .unwrap_or(0.0),
-                position
-                    .get("z")
-                    .or_else(|| position.get(2))
-                    .and_then(Value::as_f64)
-                    .unwrap_or(0.0),
+                position.get("x").and_then(Value::as_f64).unwrap_or(0.0),
+                position.get("y").and_then(Value::as_f64).unwrap_or(0.0),
+                position.get("z").and_then(Value::as_f64).unwrap_or(0.0),
             ];
         }
         state.health = result.get("health").and_then(Value::as_f64).unwrap_or(0.0);
@@ -116,9 +99,6 @@ impl AgentState {
     /// A one-line summary for chat and traces.
     #[must_use]
     pub fn describe(&self) -> String {
-        if !self.wow.is_null() {
-            return self.wow.to_string();
-        }
         let mut parts = Vec::new();
         parts.push(format!(
             "at ({:.0}, {:.0}, {:.0})",

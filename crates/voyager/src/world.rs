@@ -29,8 +29,6 @@ pub struct World {
     pub name: String,
     /// How the server is configured.
     pub minecraft: Minecraft,
-    /// A private WoW realm attachment. No server is started for this world.
-    pub wow: Option<Wow>,
     /// Who the bot joins as. Single-agent worlds use this; multi-agent
     /// worlds list `agents` instead.
     pub agent: Agent,
@@ -425,9 +423,7 @@ fn default_kill_xp() -> u64 {
 struct Manifest {
     kind: String,
     name: String,
-    minecraft: Option<Minecraft>,
-    #[serde(default)]
-    wow: Option<Wow>,
+    minecraft: Minecraft,
     #[serde(default)]
     agent: Agent,
     #[serde(default)]
@@ -493,16 +489,12 @@ impl World {
         if manifest.name.trim().is_empty() {
             return Err(Error::world(format!("{}: name is empty", path.display())));
         }
-        if manifest.minecraft.is_some() == manifest.wow.is_some() {
-            return Err(Error::world("declare exactly one of minecraft or wow"));
-        }
         let digest = format!("sha256:{:x}", Sha256::digest(&bytes));
         let world = World {
             path: path.to_path_buf(),
             digest,
             name: manifest.name,
-            minecraft: manifest.minecraft.unwrap_or_default(),
-            wow: manifest.wow,
+            minecraft: manifest.minecraft,
             agent: manifest.agent,
             agents: manifest.agents,
             admins: manifest.admins,
@@ -531,46 +523,6 @@ impl World {
     /// The enrollment and deposit rules a manifest must keep, checked
     /// once at load so a run never discovers them mid-episode.
     fn check(&self) -> Result<()> {
-        if let Some(wow) = &self.wow {
-            if !self.agents.is_empty()
-                || wow.auth.is_empty()
-                || wow.accounts.is_empty()
-                || wow
-                    .accounts
-                    .iter()
-                    .any(|a| a.eq_ignore_ascii_case("GYMSETUP"))
-                || wow.max_parallel == 0
-                || wow.max_parallel > 2
-                || wow.lease_host.is_empty()
-                || wow.setup_commands.len() > 32
-                || wow
-                    .accounts
-                    .iter()
-                    .any(|a| a.is_empty() || !a.bytes().all(|b| b.is_ascii_alphanumeric()))
-                || wow.character.len() < 2
-                || wow.character.len() > 12
-                || !wow.character.bytes().all(|b| b.is_ascii_alphabetic())
-                || !wow.start.radius.is_finite()
-                || wow.start.radius < 0.0
-                || !wow.start.position.iter().all(|n| n.is_finite())
-                || wow.start.level == 0
-                || wow.start.level > 60
-                || !(1..=8).contains(&wow.race)
-                || !(1..=9).contains(&wow.class)
-                || self.episode.max_seconds == 0
-                || self.episode.max_seconds > 3600
-            {
-                return Err(Error::world("invalid solo WoW world or episode bounds"));
-            }
-        }
-        if let Some(wow) = &self.wow {
-            let mut accounts = std::collections::HashSet::new();
-            for account in &wow.accounts {
-                if !accounts.insert(account.to_uppercase()) {
-                    return Err(Error::world("duplicate WoW account"));
-                }
-            }
-        }
         let mut usernames = std::collections::HashSet::new();
         for member in &self.agents {
             if !usernames.insert(member.username.as_str()) {
@@ -800,83 +752,4 @@ mod tests {
         .unwrap();
         assert!(matches!(World::load(&path), Err(Error::World(_))));
     }
-}
-
-/// A realm and character template; credentials stay outside the manifest.
-#[derive(Clone, Debug, Deserialize)]
-pub struct Wow {
-    /// Authentication endpoint, reachable from the helper host.
-    pub auth: String,
-    /// SSH coordinator holding the shared realm lock directory.
-    #[serde(default = "default_lease_host")]
-    pub lease_host: String,
-    /// Measured concurrency cap, at most two in the initial deployment.
-    #[serde(default = "default_parallel")]
-    pub max_parallel: usize,
-    /// Ordinary accounts available to episodes.
-    pub accounts: Vec<String>,
-    /// Character recreated before each episode.
-    pub character: String,
-    /// Vanilla race ID.
-    pub race: u8,
-    /// Vanilla class ID.
-    pub class: u8,
-    /// Expected starting map and coordinate after trusted setup.
-    pub start: WowStart,
-    /// Setup commands with `{character}` replaced by the episode name.
-    #[serde(default)]
-    pub setup_commands: Vec<String>,
-}
-
-impl Default for Minecraft {
-    fn default() -> Self {
-        Self {
-            version: String::new(),
-            seed: String::new(),
-            level_type: default_level_type(),
-            difficulty: default_difficulty(),
-            gamemode: default_gamemode(),
-            generator_settings: None,
-            gamerules: Default::default(),
-            setup_commands: Vec::new(),
-            view_distance: default_view_distance(),
-        }
-    }
-}
-
-/// The observed start must match before programs receive control.
-#[derive(Clone, Debug, Deserialize)]
-pub struct WowStart {
-    pub map: u32,
-    pub position: [f64; 3],
-    pub radius: f64,
-    pub level: u64,
-}
-
-#[cfg(test)]
-mod wow_tests {
-    use super::*;
-    #[test]
-    fn northshire_loads_and_world_kinds_are_exclusive() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../worlds/northshire.json");
-        let world = World::load(&path).unwrap();
-        assert!(world.wow.is_some());
-        let mut json: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
-        json["minecraft"] = serde_json::json!({"version":"1.21.11"});
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(tmp.path(), json.to_string()).unwrap();
-        assert!(World::load(tmp.path()).is_err());
-        json.as_object_mut().unwrap().remove("minecraft");
-        json["wow"]["accounts"] = serde_json::json!(["GYMSETUP"]);
-        std::fs::write(tmp.path(), json.to_string()).unwrap();
-        assert!(World::load(tmp.path()).is_err());
-    }
-}
-
-fn default_lease_host() -> String {
-    "coderos-4080".into()
-}
-fn default_parallel() -> usize {
-    2
 }

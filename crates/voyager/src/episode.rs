@@ -65,7 +65,6 @@ const LOG_KINDS: [&str; 8] = [
 ];
 
 /// Everything an episode needs that is not in the world manifest.
-#[derive(Clone)]
 pub struct Plan {
     /// The Minecraft server jar, fetched by `scripts/fetch-mc-server.sh`.
     pub jar: PathBuf,
@@ -142,9 +141,8 @@ impl Report {
 /// check.
 struct Runner<'a> {
     world: &'a World,
-    lease: Option<crate::wow_pool::AccountLease>,
     plan: &'a Plan,
-    server: Option<Server>,
+    server: Server,
     bridge: Bridge,
     log: atif::log::Log,
     run_dir: PathBuf,
@@ -193,18 +191,6 @@ struct Runner<'a> {
 /// Returns the first [`Error`] the episode hits; the run directory and
 /// trace are complete up to that point.
 pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report> {
-    let lease = if world.wow.is_some() {
-        Some(crate::wow_pool::AccountLease::acquire(world)?)
-    } else {
-        None
-    };
-    let mut effective = world.clone();
-    if let Some(lease) = &lease {
-        let wow = effective.wow.as_mut().unwrap();
-        wow.accounts = vec![lease.account.clone()];
-        wow.character = lease.character.clone();
-    }
-    let world = &effective;
     let run_dir = plan.runs.join(format!(
         "{}-{}",
         atif::log::session_id(atif::document::now_ms()),
@@ -220,22 +206,8 @@ pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report
         world.digest,
         run_dir.display()
     ));
-    progress(if world.wow.is_some() {
-        "attaching to the private WoW realm"
-    } else {
-        "starting the minecraft server"
-    });
-    let server = if world.wow.is_some() {
-        None
-    } else {
-        Some(Server::start(
-            world,
-            &plan.jar,
-            &plan.java,
-            &server_dir,
-            plan.port,
-        )?)
-    };
+    progress("starting the minecraft server");
+    let server = Server::start(world, &plan.jar, &plan.java, &server_dir, plan.port)?;
 
     let section = world.curriculum.as_ref();
     let curriculum = match section {
@@ -250,15 +222,7 @@ pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report
         .and_then(|section| section.decisions.as_ref())
         .map(|section| decision_door(section, run_dir.join("decisions")))
         .transpose()?;
-    let skill_dir = if let Some(wow) = &world.wow {
-        SkillStore::default_dir()
-            .join("wow")
-            .join(world.digest.trim_start_matches("sha256:"))
-            .join(&wow.accounts[0])
-    } else {
-        SkillStore::default_dir()
-    };
-    let store = SkillStore::open(skill_dir)?;
+    let store = SkillStore::open(SkillStore::default_dir())?;
 
     let session = Session::opening(
         &run_dir
@@ -266,18 +230,13 @@ pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report
             .expect("a run dir has a name")
             .to_string_lossy(),
         concat!("voyager/", env!("CARGO_PKG_VERSION")),
-        if world.wow.is_some() {
-            "wow-local"
-        } else {
-            "minecraft-local"
-        },
+        "minecraft-local",
         &world.digest,
         env!("CARGO_PKG_VERSION"),
     );
     let log = atif::log::Log::create_at(&trace, &session)?;
     let mut runner = Runner {
         world,
-        lease,
         plan,
         server,
         bridge: Bridge::start(&plan.bridge)?,
@@ -301,49 +260,12 @@ pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report
         progress: &progress,
     };
     runner.note(Source::System, "server ready", json!({"port": plan.port}));
-    if let Some(lease) = &runner.lease {
-        let detail = json!({"account":lease.account,"character":lease.character});
-        runner.note(Source::System, "realm lease acquired", detail);
-    }
 
-    let mut result = runner.episode();
+    let result = runner.episode();
     // The shutdown is part of the record too.
     runner.note(Source::System, "episode over", json!({}));
-    if world.wow.is_some() && runner.lease.as_mut().is_none_or(|l| l.alive()) {
-        let lease = &mut runner.lease;
-        let cleanup =
-            runner
-                .bridge
-                .call_guarded("cleanup", json!({}), Duration::from_secs(60), || {
-                    lease.as_mut().is_none_or(|l| l.alive())
-                });
-        let _ = runner.log.append(&Step::called(Call {
-            id: "cleanup".into(),
-            name: "wow-bridge:cleanup".into(),
-            arguments: json!({}),
-            output: match &cleanup {
-                Ok(v) => v.to_string(),
-                Err(e) => e.to_string(),
-            },
-            outcome: if cleanup.is_ok() {
-                Outcome::Completed
-            } else {
-                Outcome::Failed
-            },
-            milliseconds: 0,
-            purpose: Some("remove episode character".into()),
-            extra: Map::new(),
-        }));
-        if let Err(e) = cleanup {
-            if result.is_ok() {
-                result = Err(e);
-            }
-        }
-    }
     let _ = runner.bridge.shutdown();
-    if let Some(server) = &mut runner.server {
-        let _ = server.stop();
-    }
+    let _ = runner.server.stop();
     let _ = runner.log.finish(if result.is_ok() {
         "ended"
     } else {
@@ -375,99 +297,12 @@ impl Runner<'_> {
         // Join.
         (self.progress)("joining the world");
         let address = format!("127.0.0.1:{}", self.plan.port);
-        let args = if let Some(wow) = &self.world.wow {
-            json!({"auth":wow.auth,"account":wow.accounts[0],"character":wow.character,"reset":true,"create":{"race":wow.race,"class":wow.class}})
-        } else {
-            json!({"address": address,"username":self.world.agent.username})
-        };
-        let joined = self.call("join", args, Duration::from_secs(75), "join the world")?;
-        if self.world.wow.is_some() {
-            let state = self.state("verify fresh character")?;
-            if !state.wow["quests"].as_array().is_some_and(Vec::is_empty)
-                || state.wow["earned_xp"] != 0
-                || state.wow["xp"] != 0
-            {
-                return Err(Error::episode(
-                    "fresh character inherited quest or XP progress",
-                ));
-            }
-        }
-        if let Some(wow) = &self.world.wow
-            && !wow.setup_commands.is_empty()
-        {
-            let end = Instant::now() + Duration::from_secs(75);
-            let mut setup_lease = loop {
-                self.bounded()?;
-                if let Some(guard) =
-                    crate::wow_pool::Lease::try_acquire("account-GYMSETUP", &wow.lease_host)?
-                {
-                    break guard;
-                }
-                if Instant::now() >= end {
-                    return Err(Error::episode("trusted setup account is busy"));
-                }
-                std::thread::sleep(Duration::from_millis(250));
-            };
-            let mut setup = Bridge::start_mode(&self.plan.bridge, true)?;
-            self.setup_call(&mut setup, &mut setup_lease,"join",json!({"auth":wow.auth,"account":"GYMSETUP","character":"Gymsetup","create":{"race":1,"class":1}}),Duration::from_secs(75))?;
-            self.setup_call(
-                &mut setup,
-                &mut setup_lease,
-                "gm",
-                json!({"command":format!(".goname {}",wow.character)}),
-                Duration::from_secs(10),
-            )?;
-            self.setup_call(
-                &mut setup,
-                &mut setup_lease,
-                "target",
-                json!({"guid":joined["guid"]}),
-                Duration::from_secs(10),
-            )?;
-            for command in &wow.setup_commands {
-                let command = command.replace("{character}", &wow.character);
-                let output = self.setup_call(
-                    &mut setup,
-                    &mut setup_lease,
-                    "gm",
-                    json!({"command":command}),
-                    Duration::from_secs(10),
-                )?;
-                self.note(
-                    Source::System,
-                    "trusted WoW setup",
-                    json!({"command":command,"output":output}),
-                );
-            }
-            setup.shutdown()?;
-        }
-        if let Some(wow) = &self.world.wow {
-            let state = self.state("verify character template")?;
-            let readings = Readings {
-                before: &state,
-                after: &state,
-                blocks: &[],
-            };
-            let spec = critic::Spec::All {
-                checks: vec![
-                    critic::Spec::AtPosition {
-                        map: wow.start.map,
-                        position: wow.start.position,
-                        radius: wow.start.radius,
-                    },
-                    critic::Spec::LevelAtLeast {
-                        level: wow.start.level,
-                    },
-                ],
-            };
-            if !critic::check(&spec, &readings).is_some_and(|v| v.ok)
-                || state.wow["level"].as_u64() != Some(wow.start.level)
-            {
-                return Err(Error::episode(
-                    "character reset or start template verification failed",
-                ));
-            }
-        }
+        self.call(
+            "join",
+            json!({"address": address, "username": self.world.agent.username}),
+            Duration::from_secs(75),
+            "join the world",
+        )?;
         let name = self.world.agent.username.clone();
         self.say(&format!("{name} reporting."))?;
         self.bounded()?;
@@ -517,20 +352,6 @@ impl Runner<'_> {
                 "distance": self.distance,
             }),
         );
-        if self.world.wow.is_some() {
-            let completed = state.wow["turned_in"].as_array().map(Vec::len).unwrap_or(0);
-            let seconds = self.started.elapsed().as_secs_f64();
-            let metrics = json!({"schema":"voyager.wow.metrics/v1","quests_completed":completed,
-                "quests_per_hour":completed as f64*3600.0/seconds.max(0.001),"seconds":seconds,
-                "deaths":state.wow["deaths"],"earned_xp":state.wow["earned_xp"],"actions":self.actions,
-                "xp_per_action":state.wow["earned_xp"].as_u64().unwrap_or(0) as f64 / self.actions.max(1) as f64,
-                "cost_per_completed_quest": if completed>0 && self.writer.is_none() && self.door.is_none() && self.world.curriculum.as_ref().is_none_or(|c|c.generate.is_none()) {json!(0)} else {Value::Null},
-                "cost_scope":"model calls only; excludes host infrastructure"});
-            std::fs::write(
-                self.run_dir.join("wow-metrics.json"),
-                serde_json::to_vec_pretty(&metrics)?,
-            )?;
-        }
         let _ = self.bridge.disconnect();
 
         Ok(self.report(tasks))
@@ -597,20 +418,6 @@ impl Runner<'_> {
                 detail: format!("the program never ran: {last_error}"),
             }
         };
-        self.log.append(&Step::called(Call {
-            id: format!("verify-{}", self.attempts),
-            name: format!("voyager:verify:{}", task.id),
-            arguments: json!({"before":before.wow,"after":after.wow}),
-            output: verdict.detail.clone(),
-            outcome: if verdict.ok {
-                Outcome::Completed
-            } else {
-                Outcome::Failed
-            },
-            milliseconds: 0,
-            purpose: Some(task.goal.clone()),
-            extra: Map::new(),
-        }))?;
         self.note(
             Source::System,
             &format!(
@@ -685,7 +492,6 @@ impl Runner<'_> {
         let input = json!({
             "goal": task.goal,
             "state": {
-                "wow": before.wow,
                 "position": before.position,
                 "health": before.health,
                 "food": before.food,
@@ -743,65 +549,18 @@ impl Runner<'_> {
         source: &str,
         blocks: &mut Vec<([i32; 3], String)>,
     ) -> std::result::Result<interpret::Outcome, ScriptError> {
-        let mut limits = Limits::default();
-        if self.world.wow.is_some() {
-            limits.operations = 4_000_000;
-            limits.wall = Duration::from_secs(self.world.episode.max_seconds)
-                .saturating_sub(self.started.elapsed());
-        }
         let mut host = TaskHost {
             runner: self,
             task,
             blocks,
         };
-        let outcome = interpret::run(&mut host, source, &limits)?;
+        let outcome = interpret::run(&mut host, source, &Limits::default())?;
         self.note(
             Source::System,
             &format!("program ran: {} host calls", outcome.calls),
             json!({"task": task, "returned": outcome.returned}),
         );
         Ok(outcome)
-    }
-
-    /// Setup exchanges stay outside the agent vocabulary and share episode bounds.
-    fn setup_call(
-        &mut self,
-        setup: &mut Bridge,
-        setup_lease: &mut crate::wow_pool::Lease,
-        op: &str,
-        args: Value,
-        deadline: Duration,
-    ) -> Result<Value> {
-        self.bounded()?;
-        let left = Duration::from_secs(self.world.episode.max_seconds)
-            .saturating_sub(self.started.elapsed());
-        let started = Instant::now();
-        let lease = &mut self.lease;
-        let result = setup.call_guarded(op, args.clone(), deadline.min(left), || {
-            setup_lease.alive() && lease.as_mut().is_none_or(|l| l.alive())
-        });
-        self.actions += 1;
-        self.log.append(&Step::called(Call {
-            id: format!("a{}", self.actions),
-            name: format!("wow-setup:{op}"),
-            arguments: args,
-            output: match &result {
-                Ok(v) => v.to_string(),
-                Err(e) => e.to_string(),
-            },
-            outcome: if result.is_ok() {
-                Outcome::Completed
-            } else {
-                Outcome::Failed
-            },
-            milliseconds: started.elapsed().as_millis() as u64,
-            purpose: Some("trusted world setup".into()),
-            extra: Map::new(),
-        }))?;
-        for event in setup.drain_events() {
-            self.record_event(&event)?;
-        }
-        result
     }
 
     /// One `state` call, decoded.
@@ -834,14 +593,7 @@ impl Runner<'_> {
     fn call(&mut self, op: &str, args: Value, deadline: Duration, task: &str) -> Result<Value> {
         self.bounded()?;
         let started = Instant::now();
-        let remaining = Duration::from_secs(self.world.episode.max_seconds)
-            .saturating_sub(self.started.elapsed());
-        let lease = &mut self.lease;
-        let outcome = self
-            .bridge
-            .call_guarded(op, args.clone(), deadline.min(remaining), || {
-                lease.as_mut().is_none_or(|l| l.alive())
-            });
+        let outcome = self.bridge.call(op, args.clone(), deadline);
         let milliseconds = started.elapsed().as_millis() as u64;
         self.actions += 1;
         let (output, outcome_result) = match &outcome {
@@ -851,14 +603,7 @@ impl Runner<'_> {
         self.log.append(
             &Step::called(Call {
                 id: format!("a{}", self.actions),
-                name: format!(
-                    "{}:{op}",
-                    if self.world.wow.is_some() {
-                        "wow-bridge"
-                    } else {
-                        "mc-bridge"
-                    }
-                ),
+                name: format!("mc-bridge:{op}"),
                 arguments: args,
                 output,
                 outcome: outcome_result,
@@ -866,15 +611,7 @@ impl Runner<'_> {
                 purpose: Some(task.to_string()),
                 extra: Map::new(),
             })
-            .by(&format!(
-                "{}/{}",
-                if self.world.wow.is_some() {
-                    "wow-bridge"
-                } else {
-                    "mc-bridge"
-                },
-                env!("CARGO_PKG_VERSION")
-            )),
+            .by(concat!("mc-bridge/", env!("CARGO_PKG_VERSION"))),
         )?;
         for event in self.bridge.drain_events() {
             if let Some(text) = event.text("text") {
@@ -908,9 +645,6 @@ impl Runner<'_> {
     /// The episode bounds: actions and wall time. Checked before every
     /// exchange so a run can never outrun its manifest.
     fn bounded(&mut self) -> Result<()> {
-        if self.lease.as_mut().is_some_and(|l| !l.alive()) {
-            return Err(Error::episode("realm lease was lost"));
-        }
         if self.actions >= self.world.episode.max_actions as usize {
             return Err(Error::episode(format!(
                 "the episode reached its limit of {} actions",
@@ -958,29 +692,15 @@ struct TaskHost<'a, 'b> {
 
 impl Host for TaskHost<'_, '_> {
     fn op(&mut self, op: &str, args: &Value) -> Result<Value> {
-        let seconds = if self.runner.world.wow.is_some() {
-            if ![
-                "state", "say", "goto", "wait", "target", "attack", "cast", "loot", "quest", "use",
-                "vendor",
-            ]
-            .contains(&op)
-            {
+        let seconds = match op {
+            "state" | "say" | "block_at" | "players" => 30,
+            "goto" | "explore" => 75,
+            "mine" => 90,
+            "wait" => 45,
+            other => {
                 return Err(Error::episode(format!(
-                    "operation {op:?} is unavailable in WoW"
+                    "unknown bridge operation {other:?}"
                 )));
-            }
-            args["seconds"].as_u64().unwrap_or(30).min(120) + 5
-        } else {
-            match op {
-                "state" | "say" | "block_at" | "players" => 30,
-                "goto" | "explore" => 75,
-                "mine" => 90,
-                "wait" => 45,
-                other => {
-                    return Err(Error::episode(format!(
-                        "unknown bridge operation {other:?}"
-                    )));
-                }
             }
         };
         let result = self
@@ -997,12 +717,8 @@ impl Host for TaskHost<'_, '_> {
             "goto" | "explore" => {
                 let from = vec3(&result, "from");
                 let to = vec3(&result, "to");
-                if self.runner.world.wow.is_some() {
-                    self.runner.distance += result["distance"].as_f64().unwrap_or(0.0);
-                } else {
-                    self.runner.distance +=
-                        ((to[0] - from[0]).powi(2) + (to[2] - from[2]).powi(2)).sqrt();
-                }
+                self.runner.distance +=
+                    ((to[0] - from[0]).powi(2) + (to[2] - from[2]).powi(2)).sqrt();
             }
             "block_at" => {
                 let position = args
@@ -1034,9 +750,8 @@ impl Host for TaskHost<'_, '_> {
 /// is and what a reply may contain. Programs are the only output —
 /// prose around them is stripped before the interpreter sees it.
 const PROGRAM_INSTRUCTIONS: &str = concat!(
-    "You are a game agent. Write a program that ",
+    "You are the action agent of an open-ended Minecraft bot. Write a program that ",
     "accomplishes the stated goal. The language is Lua with these host functions:\n",
-    "For WoW observations (map, quests, nearby), use move_to({x=...,y=...,z=...,seconds=60}), target({entry=...}), attack({seconds=30}), cast({spell=...,target=\"current\"}), loot({all=true}), quest({entry=...,quest=...,action=\"accept\"}), use({bag=255,slot=...}). Quest actions are accept, complete, reward. GM is unavailable.\n",
     "  say(text)              — speak in world chat\n",
     "  walk(x, z)             — path to a position (y optional: walk(x, y, z))\n",
     "  explore(dir, distance) — walk a compass direction\n",

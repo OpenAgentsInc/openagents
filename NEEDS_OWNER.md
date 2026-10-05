@@ -118,16 +118,6 @@ final usage is non-running and below $0.01. The check detects cost overruns;
 it does not impose a provider-side spending limit. Do not use an unrestricted
 key or publish the credential in logs.
 
-
-## WoW gym Boat placement (2026-10-03)
-
-To run WoW episodes in Boat, enroll an ephemeral sandbox into the private
-tailnet and authorize scoped SSH access to `coderos-4080` for realm leases.
-Provide only its assigned ordinary gym credentials at runtime. Verify TCP 3724
-and 8085 and the coordinator route before starting Voyager. CoderOS and Mac
-pool execution are implemented and checked; no public realm or Boat tailnet
-credential was created. See [the parallel runbook](docs/wow/parallel.md).
-
 ## Everglade studio on phones (#10476, #10485, #10486)
 
 Build the Coder iOS app from current `main` and run it in a simulator, then on
