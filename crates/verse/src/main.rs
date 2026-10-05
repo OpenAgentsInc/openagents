@@ -31,6 +31,7 @@
 //! window is not in front; `V` mutes them, and `--studio-mute` starts muted.
 //! the podium, and merge decisions from the merge station.
 //! `--grove` opens straight into the Grove, the druid training field.
+//! `--frame-times` prints one JSON line of frame times per second.
 //! `--everglade` opens straight into Everglade instead of the plaza, and
 //! `--studio-notice <text>` leads Everglade's caption with a notice;
 //! `openagents studio up` passes both.
@@ -211,6 +212,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
                 options.everglade = true;
                 options.demolition = true;
             }
+            "--frame-times" => options.frame_times = true,
             "--studio-notice" => options.studio_notice = Some(value()?),
             "--ritual" => options.ritual = Some(value()?.into()),
             "--no-ritual" => options.ritual = None,

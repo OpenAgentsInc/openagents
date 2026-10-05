@@ -42,6 +42,10 @@ pub const ARCH_LAGRANGE: &str = "grid/arch-lagrange-1";
 pub const ARCH_RITUAL: &str = "grid/arch-ritual";
 /// The line-figure avatar, feet at the origin facing +Z.
 pub const FIGURE: &str = "grid/figure";
+/// The Gym's RESULTS, EVALS, and board lettering at the Grid site.
+pub const BOARDS: &str = "grid/boards";
+/// A companion agent's spade, at the origin facing +Z.
+pub const SPADE: &str = "grid/spade";
 
 /// The figure's walk clip is one leg-swing cycle, which the legacy gait
 /// advances by distance: this many meters of travel play the clip once.
@@ -147,7 +151,23 @@ pub fn compile(dir: &Path) -> Result<Pack, String> {
             .insert(name.into(), mesh_model(name, &arch, white, 5.2));
     }
     pack.models.insert(FIGURE.into(), figure(white));
-    for model in [FLOOR, GYM] {
+    let mut boards = crate::world::gym_display(crate::world::GymSite::GRID, None);
+    boards.extend(&crate::world::results_display(
+        crate::world::GymSite::GRID,
+        None,
+    ));
+    boards.extend(&crate::world::evals_display(
+        crate::world::GymSite::GRID,
+        None,
+    ));
+    boards.neutralize();
+    pack.models
+        .insert(BOARDS.into(), mesh_model(BOARDS, &boards, white, 7.0));
+    let mut spade = crate::agent::spade(Mat4::IDENTITY, Intensity::Full);
+    spade.neutralize();
+    pack.models
+        .insert(SPADE.into(), mesh_model(SPADE, &spade, white, 2.0));
+    for model in [FLOOR, GYM, BOARDS] {
         pack.placements.push(Placement {
             model: model.into(),
             position: [0.0; 3],
@@ -224,6 +244,7 @@ fn admit(pack: &mut Pack, dir: &Path) -> Result<(), String> {
         include_bytes!("grid_pack.rs"),
         include_bytes!("world.rs"),
         include_bytes!("avatar.rs"),
+        include_bytes!("agent.rs"),
         include_bytes!("mesh.rs"),
         include_bytes!("palette.rs"),
         include_bytes!("zones/mod.rs"),
@@ -583,10 +604,12 @@ mod tests {
             ARCH_LAGRANGE,
             ARCH_RITUAL,
             FIGURE,
+            BOARDS,
+            SPADE,
         ] {
             assert!(pack.models.contains_key(name), "{name}");
         }
-        assert_eq!(pack.placements.len(), 2);
+        assert_eq!(pack.placements.len(), 3);
         verse_engine::loading::Prepared::load(pack, &pinned_dir(), Default::default()).unwrap();
     }
 
@@ -663,12 +686,8 @@ mod tests {
 /// The engine frame of the Grid and its comparison with the legacy pass.
 #[cfg(feature = "capture")]
 pub mod capture {
-    use glam::{Mat4, Quat, Vec3};
-    use verse_engine::lighting::HeightFog;
-    use verse_engine::motion::{Selection, State};
-    use verse_engine::presentation::Instance;
-
-    use crate::imported::{Renderer, lighting::Lighting};
+    use crate::grid_frame;
+    use crate::imported::Renderer;
     use crate::runtime::WorldRuntime;
 
     /// Channel difference, 0 to 255, below which two pixels match.
@@ -683,7 +702,7 @@ pub mod capture {
 
     impl Comparison {
         /// Renders the bare world's current frame from the pinned pack with
-        /// the legacy camera and fog.
+        /// the legacy camera and fog, assembled as the desktop app does.
         pub fn render(
             runtime: &WorldRuntime,
             width: u32,
@@ -691,45 +710,12 @@ pub mod capture {
             atlas: &crate::ui::Atlas,
         ) -> Result<Self, String> {
             let pack = super::load_pinned()?;
-            let statics: Vec<Instance> = super::placements(&pack)
-                .into_iter()
-                .chain(super::gates(runtime))
-                .collect();
+            let statics = grid_frame::statics(&pack);
             let mut renderer =
                 Renderer::new(pack, &super::pinned_dir(), width, height, atlas, &statics)?;
             let aspect = width as f32 / height as f32;
-            let atmosphere = runtime.atmosphere();
-            let lighting = Lighting {
-                ambient: Vec3::ZERO,
-                fog: Vec3::from_array(atmosphere.color),
-                density: 0.0,
-                shadowed: 0,
-                height_fog: Some(HeightFog {
-                    // Half the legacy ramp's opacity at its midpoint.
-                    density: std::f32::consts::LN_2
-                        / ((atmosphere.fog_end - atmosphere.fog_start) / 2.0),
-                    base: 0.0,
-                    falloff: 0.0,
-                    start: atmosphere.fog_start,
-                    max_opacity: 1.0,
-                    sun_strength: 0.0,
-                    sun_exponent: 1.0,
-                }),
-                ..Default::default()
-            };
-            let mut dynamic = Vec::new();
-            if !runtime.first_person() && !runtime.is_unoccupied() {
-                let mut figure = instance(
-                    super::FIGURE,
-                    Mat4::from_rotation_translation(
-                        Quat::from_rotation_y(runtime.player.yaw),
-                        runtime.player.pos,
-                    ),
-                );
-                figure.animation = Selection::Named(State::Walk);
-                figure.time = runtime.gait.cycle();
-                dynamic.push(figure);
-            }
+            let lighting = grid_frame::lighting(&runtime.atmosphere());
+            let dynamic = grid_frame::dynamic(runtime, &[], &[]);
             let pixels = renderer.draw(
                 runtime.view(aspect),
                 &dynamic,
@@ -754,18 +740,6 @@ pub mod capture {
                 .map_err(|e| e.to_string())?
                 .write_image_data(&self.pixels)
                 .map_err(|e| e.to_string())
-        }
-    }
-
-    fn instance(model: &str, transform: Mat4) -> Instance {
-        Instance {
-            mount: None,
-            actor: None,
-            model: model.into(),
-            transform,
-            animation: 0.into(),
-            time: 0.,
-            emission: Vec3::ZERO,
         }
     }
 

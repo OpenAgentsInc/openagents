@@ -26,6 +26,9 @@ pub mod doors;
 pub mod edr;
 pub mod feed;
 pub(crate) mod gles;
+#[cfg(feature = "imported-desktop")]
+pub mod grid_engine;
+pub mod grid_frame;
 pub mod grid_pack;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod gym;
