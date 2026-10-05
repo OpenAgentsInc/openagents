@@ -1,0 +1,120 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "compiled_revision": "4a4a128cf8bd78fdfa014c88d6049e91686058f0",
+  "client_compiled_revision": "4a4a128cf8bd78fdfa014c88d6049e91686058f0",
+  "host_binary_sha256": "f47bee229d8ddeb56cf8bc6b3c80c4b3e83bd2f38a70dfdaee5042e02bd9de9f",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "wire_version": 28,
+  "movement_send_steps": 6,
+  "timings": {
+    "frame_interval_ms": {
+      "samples": 3630,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 9.0655,
+      "p95": 25.654584,
+      "p99": 32.835375,
+      "maximum": 48.660209
+    },
+    "gpu_total_ms": {
+      "samples": 3525,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 2.494375,
+      "p95": 12.334875,
+      "p99": 14.458875,
+      "maximum": 21.632417
+    },
+    "command_turnaround_ms": {
+      "samples": 835,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 151.044333,
+      "p95": 181.591333,
+      "p99": 220.229542,
+      "maximum": 302.697583
+    },
+    "sdk_verified_snapshot_age_ms": {
+      "samples": 3630,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 77.339375,
+      "p95": 155.226583,
+      "p99": 205.743833,
+      "maximum": 318.287125
+    }
+  },
+  "movement_expiry": {
+    "total": 69,
+    "admission": 0,
+    "primary_tick": 3,
+    "additional_tick": 66,
+    "bootstrap": 1,
+    "omitted": 37
+  },
+  "native_reset_reasons": {
+    "control_epoch": 5
+  },
+  "validation": [
+    "516 owning-crate and 12 native-consumer checks pass; two owning-crate and one consumer checks are ignored.",
+    "Matching version-28 host and clients build successfully.",
+    "Native, headless load, and host exit zero.",
+    "All 19 headless rows observe 20 players and at least 40 live hostiles throughout their battle samples.",
+    "Delayed route retains failed movement and frame-time acceptance."
+  ],
+  "limitations": [
+    "Shared machine load prevents causal attribution across successive runs.",
+    "Repeatability, impaired-network, input-to-display, and soak acceptance remain unproven.",
+    "One completed baseline does not establish full roadmap acceptance.",
+    "Proxy delay applies to ordered TCP chunks and does not simulate packet loss.",
+    "Updated clients include unrelated upstream graphics and terminal changes; successive runs are not an isolated causal comparison.",
+    "Five proxy errors remain unclassified.",
+    "One proxy error remains unclassified.",
+    "Independent checkpoint credit fixes a timing contract; successive shared-load runs do not isolate its performance effect."
+  ],
+  "movement_inputs": 23220,
+  "producer_pressure": 0,
+  "delay_ms": 40,
+  "jitter_ms": 20,
+  "delay_mode": "scheduled",
+  "harness_revision": "14e19e6e1f82651a03032533e1fb7d416f937a10",
+  "request_window": {
+    "samples": 1389,
+    "omitted": 0,
+    "invalid": 0,
+    "p50": 4.0,
+    "p95": 6.0,
+    "p99": 6.0,
+    "maximum": 7.0
+  },
+  "queued_inputs": {
+    "samples": 1389,
+    "omitted": 0,
+    "invalid": 0,
+    "p50": 0.0,
+    "p95": 0.0,
+    "p99": 1.0,
+    "maximum": 5.0
+  },
+  "proxy_error_classification": "unresolved",
+  "load_compiled_revision": "4a4a128cf8bd78fdfa014c88d6049e91686058f0",
+  "prediction_correction_meters": {
+    "samples": 268,
+    "omitted": 0,
+    "median": 0.0,
+    "p95": 0.0,
+    "max": 0.6196238398551941
+  },
+  "control_discontinuity_meters": {
+    "samples": 5,
+    "omitted": 0,
+    "median": 0.0,
+    "p95": 0.0,
+    "max": 0.0
+  },
+  "proxy_error_count": 1,
+  "proxy_queue_peak": 6
+}
