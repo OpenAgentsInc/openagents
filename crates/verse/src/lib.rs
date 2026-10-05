@@ -71,6 +71,8 @@ pub mod shared;
 pub mod spectator;
 #[cfg(not(target_arch = "wasm32"))]
 pub use verse_pbr::streaming;
+#[cfg(all(feature = "terminal", not(target_arch = "wasm32")))]
+pub mod terminal;
 pub mod tooltip;
 pub use verse_gfx::ui;
 pub mod world;

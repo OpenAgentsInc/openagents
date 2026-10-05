@@ -406,7 +406,7 @@ Beyond following and emoting, the agent only plays [run replays](#run-replays). 
 | Mouse wheel | Zoom between 2.5 m and 40 m. |
 | `Enter` or click the input line | Open the chat line; `Enter` again sends. See [chat](chat.md). |
 | `Tab` or click a pill | Change the chat channel: ALL, ADS, ZONE, NEAR, HERE, rooms, PM, AGENT. |
-| `T` | Talk to your agent, privately. Its reply appears over the spade. |
+| `T` | Open or hide the [terminal overlay](in-world-terminal.md#the-desktop-demo). `` Ctrl+` `` opens it with focus or gives focus back to the world. To talk to your agent, press `Tab` to the AGENT channel. |
 | `N` | Switch the world chat window between WORLD and live NOSTR notes. |
 | `B` | Open or close the quest board. |
 | `R` | Open or close the [run replay](#run-replays) list. `1`, `2`, and `3` set a replay's speed, `P` pauses it, and `Home` restarts it. |

@@ -158,7 +158,8 @@ and `wss://relay.primal.net`, read-only.
   `42/150`.
 - Typing `/` or `!` lists the shortcuts with what each does.
 - Empty windows say what will appear in them.
-- `T` talks to your agent and `N` switches the world window to NOSTR.
+- The AGENT channel talks to your agent, and `N` switches the world window to
+  NOSTR. `T` opens the [terminal overlay](in-world-terminal.md).
 - `/` opens the line with a shortcut already typed:
   - `/a`, `/$`, `/z`, `/n`, and `/h` send to a channel.
   - `/r <room> <text>` sends to a room.

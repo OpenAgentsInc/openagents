@@ -15,6 +15,32 @@ performance, and security design, lists what exists and what is missing with
 effort estimates, and orders the work from a one-terminal demo to shared
 terminals on in-world screens.
 
+**Correction, October 5, 2026.** The owner's starting point is OpenAgents
+Terminal (`crates/openagents-terminal`, launched as `openagents terminal`),
+not the Coder terminal app, and the look is the white ladder of
+`coder_ui::theme::Intensity` on the near-black field, not amber. Where this
+page says Coder terminal or amber, read OpenAgents Terminal and the white
+ladder. Like `coder`, OpenAgents Terminal is a Ratatui program, so it runs in
+a pane on a PTY and draws through `coder-vt` unchanged.
+
+## The desktop demo
+
+Implemented on October 5, 2026, in `crates/verse/src/terminal` (desktop
+`terminal` feature; never in the web build). `T` opens the overlay over any
+zone. The first pane runs `openagents terminal` when an `openagents` binary
+with that command is found (the workspace build beside `verse`, `PATH`, then
+`~/.openagents/bin`), else the login shell with a one-line note. While the
+overlay has focus every key goes to the focused pane, `Esc` included, so
+`vim` works; `` Ctrl+` ``, `Cmd+T`, or `Ctrl+B` then `Esc` gives focus back to
+the world, and a click on a pane focuses it. `Ctrl+B` is a tmux-style
+prefix: `%` and `"` split, the arrow keys move focus, `x` closes, `z` zooms,
+`c`, `n`, and `p` open and switch tabs, and `o` opens a pane running
+OpenAgents Terminal. The mouse wheel or `Shift+PageUp` scrolls back. Panes
+run on PTYs of this computer through an in-process `coder-pty` host instead
+of the resident host and NIP-TERM, which is the next phase. Hiding the
+overlay keeps the sessions; quitting Verse ends their process groups.
+`cargo run -p verse --example terminal_capture -- out.png` renders it.
+
 ## Summary
 
 - The Coder terminal app (`crates/coder`, drawn with `crates/coder-terminal`)

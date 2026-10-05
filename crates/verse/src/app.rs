@@ -572,6 +572,10 @@ struct App {
     /// Whether Shift is held while the panel has focus, for Shift+Enter
     /// and Shift+Tab.
     panel_shift: bool,
+    /// The terminal overlay (T), its panes, and their sessions.
+    terminal: crate::terminal::Overlay,
+    /// Whether the terminal overlay took the left button's last press.
+    terminal_press: bool,
     /// What the studio console keeps while its panel is closed: the
     /// history and the unsent draft.
     studio_recall: crate::panels::studio::Recall,
@@ -915,6 +919,8 @@ impl App {
             studio_panel: None,
             studio_target: None,
             panel_shift: false,
+            terminal: crate::terminal::Overlay::new(),
+            terminal_press: false,
             studio_recall: crate::panels::studio::Recall::default(),
             studio_muted: options.studio_muted,
             studio_badge: None,
@@ -1164,6 +1170,34 @@ impl App {
         let (size, aspect) = self.viewport()?;
         self.runtime
             .studio_pick(aspect, self.cursor[0] / size[0], self.cursor[1] / size[1])
+    }
+
+    /// Opens the terminal overlay with focus, or hides it. Hidden, its
+    /// sessions keep running until Verse exits.
+    fn toggle_terminal(&mut self) {
+        self.terminal.toggle();
+        if self.terminal.focused {
+            self.take_keys_for_terminal();
+        }
+    }
+
+    /// Stops the character and frees the cursor while the terminal types.
+    fn take_keys_for_terminal(&mut self) {
+        self.keys = Keys::default();
+        self.climb = 0.0;
+        self.capture(false);
+    }
+
+    /// Hands a key to the terminal overlay while it has focus: every key
+    /// is its then, so none moves the character. Returns false when the
+    /// world should handle the key.
+    fn terminal_key(&mut self, key: &crate::terminal::KeyIn) -> bool {
+        let was = self.terminal.focused;
+        let taken = self.terminal.key(key);
+        if !was && self.terminal.focused {
+            self.take_keys_for_terminal();
+        }
+        taken
     }
 
     /// Hands a key to the panel while it has focus. Every key is consumed
@@ -1793,6 +1827,7 @@ impl App {
 
     /// Records the player as offline on the relay before quitting.
     fn quit(&mut self, event_loop: &ActiveEventLoop) {
+        self.terminal.shutdown();
         self.runtime.zone_cancel_loading();
         self.sync_zone_services(false);
         self.update_gym(false);
@@ -2500,10 +2535,7 @@ impl App {
                 }
             }
             KeyCode::KeyC if pressed => self.toggle_panel(),
-            KeyCode::KeyT if pressed => {
-                self.method = Channel::Agent;
-                self.open_chat("");
-            }
+            KeyCode::KeyT if pressed => self.toggle_terminal(),
             KeyCode::KeyN if pressed && self.plaza_interactive() => {
                 self.left_tab = match self.left_tab {
                     hud::LeftTab::World => hud::LeftTab::Nostr,
@@ -2672,6 +2704,17 @@ impl App {
     }
 
     fn button(&mut self, button: MouseButton, pressed: bool) {
+        if button == MouseButton::Left {
+            if pressed {
+                self.terminal_press = self.terminal.press(self.cursor);
+                if self.terminal_press {
+                    self.keys = Keys::default();
+                    return;
+                }
+            } else if std::mem::take(&mut self.terminal_press) {
+                return;
+            }
+        }
         if button == MouseButton::Left && self.panel_button(pressed) {
             return;
         }
@@ -3214,7 +3257,7 @@ impl App {
         ));
         let overheads = self.overheads(now);
         let tip = self.hotbar_tip(size.map(|v| v / self.scale));
-        let ui = match &self.atlas {
+        let mut ui = match &self.atlas {
             Some(atlas) => {
                 let (log, name_of): (&chat::Log, NameOf<'_>) = match &self.session {
                     Some(s) => (&s.log, Box::new(|p: &str| s.name_of(p))),
@@ -3491,6 +3534,11 @@ impl App {
             }
             None => crate::ui::UiBatch::default(),
         };
+        // The terminal overlay draws over every other HUD element.
+        match &self.atlas {
+            Some(atlas) => self.terminal.draw(&mut ui, atlas, size),
+            None => self.terminal.tick(),
+        }
         dynamic.extend(&entities);
         // A studio panel keeps the rows the studio filled it with.
         let rows = (self.panel.is_some() && self.studio_panel.is_none()).then(|| self.panel_rows());
@@ -3836,6 +3884,16 @@ impl ApplicationHandler for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key
+                    && self.terminal_key(&crate::terminal::KeyIn {
+                        code,
+                        logical: event.logical_key.clone(),
+                        text: event.text.as_ref().map(ToString::to_string),
+                        pressed: event.state == ElementState::Pressed,
+                    })
+                {
+                    return;
+                }
+                if let PhysicalKey::Code(code) = event.physical_key
                     && self.panel_key(
                         code,
                         event.state == ElementState::Pressed,
@@ -3871,6 +3929,9 @@ impl ApplicationHandler for App {
                     panel.moved(self.cursor.map(|v| v / self.scale));
                 }
             }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.terminal.modifiers(modifiers.state());
+            }
             WindowEvent::MouseInput { state, button, .. } => {
                 self.button(button, state == ElementState::Pressed);
             }
@@ -3882,6 +3943,9 @@ impl ApplicationHandler for App {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
                 };
+                if self.terminal.wheel(self.cursor, panel_lines) {
+                    return;
+                }
                 let at = self.cursor.map(|v| v / self.scale);
                 if self
                     .panel
@@ -4077,6 +4141,39 @@ mod tests {
         assert!(!app.panel_button(false));
         app.toggle_panel();
         assert!(app.panel.is_none());
+    }
+
+    #[test]
+    fn a_focused_terminal_takes_movement_keys_from_the_character() {
+        use winit::keyboard::{Key, SmolStr};
+        let mut app = offline_app();
+        let key = |code, c: &str| crate::terminal::KeyIn {
+            code,
+            logical: Key::Character(SmolStr::new(c)),
+            text: Some(c.to_owned()),
+            pressed: true,
+        };
+        // Closed, the world has every key.
+        assert!(!app.terminal_key(&key(KeyCode::KeyW, "w")));
+        app.keys.w = true;
+        app.toggle_terminal();
+        assert!(app.terminal.open && app.terminal.focused);
+        assert!(!app.keys.w);
+        for (code, c) in [
+            (KeyCode::KeyW, "w"),
+            (KeyCode::KeyA, "a"),
+            (KeyCode::KeyS, "s"),
+            (KeyCode::KeyD, "d"),
+            (KeyCode::KeyT, "t"),
+        ] {
+            assert!(app.terminal_key(&key(code, c)));
+        }
+        assert!(!app.keys.input().forward && !app.keys.input().left);
+        assert!(!app.chat.open);
+        // Hidden, the world has keys again; sessions would keep running.
+        app.toggle_terminal();
+        assert!(!app.terminal.open);
+        assert!(!app.terminal_key(&key(KeyCode::KeyW, "w")));
     }
 
     fn ruins_pack() -> std::path::PathBuf {
