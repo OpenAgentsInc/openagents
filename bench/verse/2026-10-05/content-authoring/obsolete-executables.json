@@ -1,0 +1,28 @@
+{
+  "recorded_at_utc": "2026-10-05T22:40:53.921691+00:00",
+  "proof": "V19 accepted executable hashes; each file has one link; no visible process runs a candidate",
+  "inaccessible_processes": 400,
+  "removed": [
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9",
+      "bytes": 271155608,
+      "sha256": "ccf7dbf25c8036733823ed07c7fd76c65d3ffdc3f42e5fc8dd1c78eb1d5ea4ec"
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-e597c9790b65f206",
+      "bytes": 176041312,
+      "sha256": "d856629a8455e504cacd86031cc6ecb2281ad8fc398e0ea014fbcdbef470922f"
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-af6c778f53370144",
+      "bytes": 7140944,
+      "sha256": "4547af29c7d219a25132b3fa91f6fa7b60cf5869f23e47065df070c3e23cd500"
+    },
+    {
+      "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-6c121bd16d39647b",
+      "bytes": 291353392,
+      "sha256": "4a51c191b7cdb36b3ae2a0b51b3fe0c599121e83856e9596e53b7128085e8a64"
+    }
+  ],
+  "bytes_released": 745691256
+}

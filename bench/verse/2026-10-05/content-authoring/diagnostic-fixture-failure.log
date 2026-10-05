@@ -1,0 +1,32 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+warning: `verse-world` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 09s
+     Running tests/author.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/author-cd93c9a288fe70ec)
+
+running 1 test
+
+thread 'author_a_second_playable_zone_without_renderer_changes' (4125434) panicked at crates/verse-content/tests/author.rs:85:5:
+assertion failed: String::from_utf8_lossy(&refused.stderr).contains("progression.quests[id=1].giver")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test author_a_second_playable_zone_without_renderer_changes ... FAILED
+
+failures:
+
+failures:
+    author_a_second_playable_zone_without_renderer_changes
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.11s
+
+error: test failed, to rerun pass `-p verse-content --test author`

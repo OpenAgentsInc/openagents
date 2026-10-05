@@ -1,0 +1,23 @@
+[
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-aeaf4b0b014ea212",
+    "sha256": "d87e30569a58a3e556d446791f0d57baff6094ecb72367a06771a9c00176860f",
+    "bytes": 169642376,
+    "proof": "Completed passing V20 host checks; one link; no visible process uses it",
+    "log_sha256": "8f7bddc820bace69eb51b48bf10e5afd025c2e9ec597f9036f99f89e25e2d7c2"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-fc8c3a71db7889f3",
+    "sha256": "a7c770d3819aafccc5e5478df3c286843c4fdab57cae754d7e9c35e4823bfbc8",
+    "bytes": 7140944,
+    "proof": "Completed passing V20 host checks; one link; no visible process uses it",
+    "log_sha256": "8f7bddc820bace69eb51b48bf10e5afd025c2e9ec597f9036f99f89e25e2d7c2"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-c70ec3f77caa2c34",
+    "sha256": "bc097cb4ee2c70fc94b58cf48c11ff140fff9442504e01b1f0853788786dd140",
+    "bytes": 326330152,
+    "proof": "Completed passing V20 host checks; one link; no visible process uses it",
+    "log_sha256": "8f7bddc820bace69eb51b48bf10e5afd025c2e9ec597f9036f99f89e25e2d7c2"
+  }
+]

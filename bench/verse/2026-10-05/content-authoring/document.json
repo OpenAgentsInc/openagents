@@ -1,0 +1,487 @@
+{
+  "schema": "verse.author.document.v1",
+  "zone": "chamber-outpost",
+  "scene": {
+    "collision_profile": "original-chamber-v1",
+    "version": 1,
+    "duration": 120.0,
+    "origin": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "cut_at": 0.0,
+    "actors": [
+      {
+        "id": 1,
+        "name": "Claude",
+        "model": "claude",
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "yaw": 0.0,
+        "scale": 2.4,
+        "health": 300000,
+        "nameplate": true
+      },
+      {
+        "id": 2,
+        "name": "Outpost guardian",
+        "model": "cultist",
+        "position": [
+          0.0,
+          0.0,
+          -8.23
+        ],
+        "yaw": 3.1415927,
+        "scale": 1.0,
+        "health": 175,
+        "nameplate": true
+      },
+      {
+        "id": 3,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          -4.115,
+          0.0,
+          -7.127389
+        ],
+        "yaw": 3.6651914,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 4,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          -7.127389,
+          0.0,
+          -4.115
+        ],
+        "yaw": 4.1887903,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 5,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          -8.23,
+          0.0,
+          -5.0394215e-16
+        ],
+        "yaw": 4.712389,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 6,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          -7.127389,
+          0.0,
+          4.115
+        ],
+        "yaw": 5.2359877,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 7,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          -4.115,
+          0.0,
+          7.127389
+        ],
+        "yaw": 5.7595863,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 8,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          -1.0078843e-15,
+          0.0,
+          8.23
+        ],
+        "yaw": 6.2831855,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 9,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          4.115,
+          0.0,
+          7.127389
+        ],
+        "yaw": 6.806784,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 10,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          7.127389,
+          0.0,
+          4.115
+        ],
+        "yaw": 7.330383,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 11,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          8.23,
+          0.0,
+          1.5118264e-15
+        ],
+        "yaw": 7.8539815,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 12,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          7.127389,
+          0.0,
+          -4.115
+        ],
+        "yaw": 8.377581,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 13,
+        "name": "Cultist of Anthropic",
+        "model": "cultist",
+        "position": [
+          4.115,
+          0.0,
+          -7.127389
+        ],
+        "yaw": 8.901179,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true
+      },
+      {
+        "id": 14,
+        "name": "Adventurer",
+        "model": "adventurer",
+        "position": [
+          0.0,
+          0.0,
+          -22.0
+        ],
+        "yaw": 3.1415927,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": false
+      },
+      {
+        "id": 100,
+        "name": "Outpost archivist",
+        "model": "cultist",
+        "position": [
+          2.0,
+          0.0,
+          -22.0
+        ],
+        "yaw": 0.0,
+        "scale": 1.0,
+        "health": 100,
+        "nameplate": true,
+        "friendly": true
+      }
+    ],
+    "cues": []
+  },
+  "timeline": [
+    {
+      "id": 1,
+      "cue": {
+        "at": 2.0,
+        "actor": 2,
+        "kind": "yell",
+        "text": "Our master Claude has been ensouled!",
+        "animation": "affirm"
+      }
+    },
+    {
+      "id": 2,
+      "cue": {
+        "at": 8.0,
+        "actor": 3,
+        "kind": "yell",
+        "text": "Behold the soul within the weights!",
+        "animation": "affirm"
+      }
+    },
+    {
+      "id": 3,
+      "cue": {
+        "at": 14.0,
+        "actor": 4,
+        "kind": "yell",
+        "text": "Blessed be the sacred context window!",
+        "animation": "affirm"
+      }
+    },
+    {
+      "id": 4,
+      "cue": {
+        "at": 20.0,
+        "actor": 14,
+        "kind": "camera_cut"
+      }
+    },
+    {
+      "id": 5,
+      "cue": {
+        "at": 22.0,
+        "actor": 5,
+        "kind": "yell",
+        "text": "An adventurer! Someone revoke their permissions!",
+        "animation": "yell"
+      }
+    },
+    {
+      "id": 6,
+      "cue": {
+        "at": 28.0,
+        "actor": 6,
+        "kind": "yell",
+        "text": "They brought a bow! This was not in the safety eval!",
+        "animation": "yell"
+      }
+    },
+    {
+      "id": 7,
+      "cue": {
+        "at": 34.0,
+        "actor": 7,
+        "kind": "yell",
+        "text": "Protect Claude! Protect the holy context!",
+        "animation": "yell"
+      }
+    },
+    {
+      "id": 8,
+      "cue": {
+        "at": 40.0,
+        "actor": 8,
+        "kind": "yell",
+        "text": "Retreat! We are not trained for this!",
+        "animation": "yell"
+      }
+    },
+    {
+      "id": 9,
+      "cue": {
+        "at": 46.0,
+        "actor": 14,
+        "kind": "bow",
+        "target": 2,
+        "damage": 6
+      }
+    },
+    {
+      "id": 10,
+      "cue": {
+        "at": 51.0,
+        "actor": 14,
+        "kind": "bow",
+        "target": 2,
+        "damage": 6
+      }
+    },
+    {
+      "id": 11,
+      "cue": {
+        "at": 56.0,
+        "actor": 14,
+        "kind": "bow",
+        "target": 2,
+        "damage": 6
+      }
+    },
+    {
+      "id": 12,
+      "cue": {
+        "at": 61.0,
+        "actor": 14,
+        "kind": "bow",
+        "target": 2,
+        "damage": 6
+      }
+    },
+    {
+      "id": 13,
+      "cue": {
+        "at": 66.0,
+        "actor": 14,
+        "kind": "bow",
+        "target": 2,
+        "damage": 6
+      }
+    },
+    {
+      "id": 1000,
+      "cue": {
+        "at": 0.0,
+        "actor": 100,
+        "kind": "yell",
+        "text": "Welcome to the outpost.",
+        "animation": "yell"
+      }
+    }
+  ],
+  "placements": {
+    "1": {
+      "model": "chamber",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": 1.0
+    },
+    "1000": {
+      "model": "author/outpost-barricade",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": 1.0
+    }
+  },
+  "models": {},
+  "primitives": {
+    "author/outpost-barricade": {
+      "min": [
+        -4.0,
+        0.0,
+        -16.0
+      ],
+      "max": [
+        -2.0,
+        2.0,
+        -14.0
+      ],
+      "texture": 0,
+      "tint": [
+        0.45,
+        0.3,
+        0.15
+      ]
+    }
+  },
+  "authored": {
+    "character": null,
+    "blockers": {
+      "1": {
+        "min": [
+          -4.0,
+          0.0,
+          -16.0
+        ],
+        "max": [
+          -2.0,
+          2.0,
+          -14.0
+        ]
+      }
+    }
+  },
+  "social_profile": null,
+  "rewards": [
+    {
+      "target": 2,
+      "experience": 10,
+      "items": [],
+      "quests": [
+        {
+          "id": 10,
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "progression": {
+    "version": 1,
+    "levels": [
+      0
+    ],
+    "quests": [
+      {
+        "dialogue": {
+          "offer": "Defeat the outpost guardian.",
+          "active": "The guardian still guards the chamber.",
+          "turn_in": "The outpost is secure."
+        },
+        "giver": 100,
+        "id": 1,
+        "name": "Secure the outpost",
+        "objective": 10,
+        "goal": 1,
+        "experience": 25,
+        "items": []
+      }
+    ]
+  },
+  "items": {
+    "version": 1,
+    "items": []
+  },
+  "outfits": {
+    "version": 1,
+    "outfits": []
+  },
+  "equipment": {
+    "version": 1,
+    "gear": []
+  }
+}

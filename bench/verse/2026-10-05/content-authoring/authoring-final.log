@@ -1,0 +1,42 @@
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+warning: variable does not need to be mutable
+   --> crates/verse-content/src/authoring/tests.rs:652:9
+    |
+652 |     let mut work = Workspace::open(&root.path().join("work")).unwrap();
+    |         ----^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-content` (lib test) generated 1 warning (run `cargo fix --lib -p verse-content --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 35s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-cf21e83b63d31373)
+
+running 10 tests
+test authoring::tests::authored_geometry_has_world_scale_outward_faces_and_stable_identity ... ok
+test authoring::tests::numeric_keys_survive_tagged_commands_and_noncanonical_keys_are_refused ... ok
+test authoring::tests::field_diagnostics_preserve_journal_and_running_generation ... ok
+test authoring::tests::symlinks_and_interrupted_builds_are_refused ... ok
+test authoring::tests::generic_encounter_ids_and_timeline_survive_restart_and_restore ... ok
+test authoring::tests::quest_references_catalog_tuning_and_collision_use_runtime_contracts ... ok
+test authoring::tests::atomic_transactions_persist_undo_redo_and_exclusive_ownership ... ok
+test authoring::tests::authored_mips_survive_snapshot_and_new_material_variants_reuse_them ... ok
+test authoring::tests::immutable_build_reuse_and_tamper_refusal_keep_current_generation ... ok
+test authoring::tests::bounded_history_and_session_errors_leave_the_editor_usable ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.55s
+

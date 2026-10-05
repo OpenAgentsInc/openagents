@@ -1,0 +1,157 @@
+{
+  "schema": "verse.author.verification.v1",
+  "recorded_at_utc": "2026-10-05T23:19:06.718160+00:00",
+  "checks": [
+    {
+      "log": "engine.log",
+      "results": [
+        "test result: ok. 141 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ],
+      "finished": [
+        "Finished `test` profile [unoptimized + debuginfo] target(s) in 20.03s"
+      ]
+    },
+    {
+      "log": "world.log",
+      "results": [
+        "test result: FAILED. 572 passed; 1 failed; 3 ignored; 0 measured; 0 filtered out; finished in 73.98s"
+      ],
+      "finished": [
+        "Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 57s"
+      ]
+    },
+    {
+      "log": "world-resume-isolated.log",
+      "results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 575 filtered out; finished in 10.49s"
+      ],
+      "finished": [
+        "Finished `test` profile [unoptimized + debuginfo] target(s) in 0.26s"
+      ]
+    },
+    {
+      "log": "content-full.log",
+      "results": [
+        "test result: ok. 23 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 40.06s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.83s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ],
+      "finished": [
+        "Finished `test` profile [unoptimized + debuginfo] target(s) in 29.65s"
+      ]
+    },
+    {
+      "log": "authoring-final.log",
+      "results": [
+        "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.55s"
+      ],
+      "finished": [
+        "Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 35s"
+      ]
+    },
+    {
+      "log": "cli-final.log",
+      "results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.00s"
+      ],
+      "finished": [
+        "Finished `test` profile [unoptimized + debuginfo] target(s) in 26.37s"
+      ]
+    },
+    {
+      "log": "host.log",
+      "results": [
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.12s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ],
+      "finished": [
+        "Finished `test` profile [unoptimized + debuginfo] target(s) in 1.72s"
+      ]
+    },
+    {
+      "log": "renderer.log",
+      "results": [
+        "test result: ok. 78 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.62s"
+      ],
+      "finished": [
+        "Finished `test` profile [unoptimized + debuginfo] target(s) in 21.93s"
+      ]
+    },
+    {
+      "log": "renderer-mips.log",
+      "results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 83 filtered out; finished in 0.54s"
+      ],
+      "finished": [
+        "Finished `test` profile [unoptimized + debuginfo] target(s) in 0.27s"
+      ]
+    },
+    {
+      "log": "compiler-only.log",
+      "results": [],
+      "finished": [
+        "Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.80s"
+      ]
+    }
+  ],
+  "executables_sha256": {
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-5d96ac9ba06d7f76": "5c90ad9e7a2b199bf614524ead9a83bfd69ee41d1ba4d92f7aea9f428f8e7a2a",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-cf21e83b63d31373": "5bf7dbaab27b0782c69aa293ee27d32f0a4aaf5acaf8270b4a8896d1bc451f31",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/author-cd93c9a288fe70ec": "b676d0fc3e0bd153631fdae3364805dcc5ff1104c648984794558f4e7da5e27e",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/verse-content": "c959636282864c7c987ca20279c46f19ec716eaea497f9fa0b37c344d55f8cbb",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-57d6466e22e4ecd7": "c959636282864c7c987ca20279c46f19ec716eaea497f9fa0b37c344d55f8cbb",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/verse-host": "785e2f4a3f3db55d4ea22feeb595cb861fe1143b0fa1da9cb6878b381e5b6312",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-802d68f5e650d2ca": "785e2f4a3f3db55d4ea22feeb595cb861fe1143b0fa1da9cb6878b381e5b6312",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-0dfba4dc924d9bac": "93cdb5fc78aa34e489ef5f6082c33d0e364bf34e848019a3a9b3dd881da49690",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-aeaf4b0b014ea212": "d87e30569a58a3e556d446791f0d57baff6094ecb72367a06771a9c00176860f",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-fc8c3a71db7889f3": "a7c770d3819aafccc5e5478df3c286843c4fdab57cae754d7e9c35e4823bfbc8",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/worlds-c70ec3f77caa2c34": "bc097cb4ee2c70fc94b58cf48c11ff140fff9442504e01b1f0853788786dd140",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9": "62d50d189496f4a8184555a3adadf5eb5c65417cf4dda0b9cb964d7a3ef94f74"
+  },
+  "artifacts_sha256": {
+    "README.md": "8cc904b5c44fb5e7890e3eb5e949e5b2627e9f3c7663fe9270ec452dc6571918",
+    "acceptance.json": "a1c33eb1443eb52ad3101860d5f0af8f7a6d8b3dafad92859c80edd2c11cd501",
+    "authoring-disk-failure.log": "0f76bfa6aa237e4740cf44fdae3e2e8e4716101a01a0fbdcccf94fbaeb688eee",
+    "authoring-disk-retry-failure.log": "0f76bfa6aa237e4740cf44fdae3e2e8e4716101a01a0fbdcccf94fbaeb688eee",
+    "authoring-final.log": "28fc11d0a282db3261f5c88e2048617510049a72d76a2a35d045eff4f52efdf5",
+    "authoring-initial-failure.log": "ce77f9d973c50ffaf59844e04b7c1b40589d3729a484417676cc7a98c5b528d3",
+    "cli-final.log": "76eecfae0ebdeeffba5b7c0e0c6662ac60f8a7dad7ff2ff22b59061669f16bd0",
+    "compiler-only.log": "23cf04be2f897426416c25445774b2582aba1e6a121a8d06fc9a77c3d5ad0b35",
+    "completed-command-executables.json": "5aea05e82d02ac225c07bc5e1277b0818649864613ec3398a7fef93104d49c98",
+    "content-full.log": "a855ebe2134080fb6ee9016b196c6f7883df45108bd4c51b99384f76fc61fa6f",
+    "diagnostic-fixture-failure.log": "445286bf20a5395fab7eabe3e6a1d6bed1923750bd7cbbcd4384c78ce08a09c0",
+    "document.json": "efc96796f4aa2433aa362d1858b02d8fed303fc81a99f422646d62280c29de32",
+    "earlier-test-executables.json": "2fcf62c37a09a9c82eb0466e534200c0f7ebd49025a709fc12bed21e25cca954",
+    "engine.log": "f1a91c3b4d48e8ab1dbd560aae27dd7c00bfa6585f7aff410215c18de28e69e3",
+    "failed-archive-executable.json": "d4ac98edc583d23e734e7b209315f882c51056ae0e412d8d8a6501b01c7363a7",
+    "failed-host-executable.json": "931660af2b2db212af504b121d2c53778e01534e77c393d97de3ae7763759cbe",
+    "finished-executables.json": "3c41502e852272425cfa60a619c272a35c77c2477d6b5af4c998d8aab18734ca",
+    "generation.json": "fc1d24e09946314d5c02e1a8132188aab901d63d5af31cbc8830567e4f31eb49",
+    "host-archive-fixture-failure.log": "48a6a3071f011611ae56d3dd679dbb00e3b88ca33c3a9ede5428afd55e7eff41",
+    "host-disk-failure.log": "31824d6b4256e8986d74b58257a29205a9f02c6e8241320adb1a4d14496d7e37",
+    "host-fence-fixture-failure.log": "48f18e333a79c907a4d6aa2d0349aad15617fc55de7004e4f964eda9c3da7fff",
+    "host.log": "8f7bddc820bace69eb51b48bf10e5afd025c2e9ec597f9036f99f89e25e2d7c2",
+    "integer-key-failure.log": "f4176d78fc5f3bbc481d5b564d9863537d12697c3a0df638ec2559bb5a76c59c",
+    "mips.json": "cfdf17d1451fc69ac5307ed7793165612154cfafa5406ab51e3a392aade13f10",
+    "mips.rgba": "b550087bcf0b74042124c895993656ba6dc9dc169a8631d03370200768af708c",
+    "obsolete-executables.json": "14432fff2e29121fb25041b18257c3ecb4160e0f6c61b9397d59eb3907034744",
+    "old-content-executable.json": "aaa06e9eb3ff4ea7df031fa7286bbbd7c3fc003e06fd6851efcc90175f3b5ae1",
+    "old-v19-executables.ndjson": "8e8e613a8dda3c65adb0af87010df75e56f48038bb0039b003309e64b51ee633",
+    "outpost.svg": "90b9382e23d4c123b86c89c6a6946a77225576c459fd04bced29a014561bc5c6",
+    "passed-content-executables.json": "19e228f9e517d56c8f5af4fa2822c8dba25999e4011c3f6bb6dc809b5e6bde42",
+    "passed-host-executables.json": "cb3e8cead44daea1a934198248e48b4712acc981644309c92654e049cf8a935a",
+    "renderer-disk-failure.log": "27ea469f03c1899d0ab2954a5315912f31ddd1e9843a464e7e278099ae3aedb4",
+    "renderer-disk-retry-failure.log": "566a0629e540b16cb61b69c4bc5b07a7bcc7a9b45a4abd174cc8df4c6fa9c762",
+    "renderer-mips.log": "76a438c9794e450b82dac20924b7d33e2aa3e354147aff7366d917e50ad8c168",
+    "renderer.log": "a42710a55df0ac0f07c528751cc545b80018e3de67dc01c5e148006e8c835662",
+    "replaced-content-executables.json": "67d477446fe7383b3fc0104d1228666e6a46cce453b784bafd31a492ee5dc032",
+    "source.json": "7101b6103d4af9c70ab8a0d4a253019b8470cde3317fa6331d90fbf6ca93eb05",
+    "source.patch.gz": "15bceb7aea17dfb3c005daa09ab2b5229c17a4bafe16ff4a49b135b7513e4cd8",
+    "world-disk-failure.log": "7958212de2b6e9b6de426f8b9cdadf62512b56457ad0e89f192b64ee6ee72736",
+    "world-resume-isolated.log": "813b58d293763bbc988c5b40f93eeada23181f1dea306f9e0bdbd215a43a0d14",
+    "world.log": "b63e486a5768cacd5bac0a8570f20f7b85bcb01c20b356097518256dc0636928"
+  }
+}

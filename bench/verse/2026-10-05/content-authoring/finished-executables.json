@@ -1,0 +1,19 @@
+[
+  {
+    "paths": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-b780e2e678f658c9"
+    ],
+    "bytes": 273913256,
+    "sha256": "62d50d189496f4a8184555a3adadf5eb5c65417cf4dda0b9cb964d7a3ef94f74",
+    "proof": "Completed V20 world checks, including isolated passing resume test; all inode links accounted for; no visible process uses candidate"
+  },
+  {
+    "paths": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-57d6466e22e4ecd7",
+      "/home/christopherdavid/work/openagents-target-agent1/debug/verse-content"
+    ],
+    "bytes": 258478264,
+    "sha256": "a0200dbccce5593ef3afdb54af14d8a4fab386cb70799b87817ae9a42648842e",
+    "proof": "Earlier V20 CLI source has since changed; CLI is rebuilt by the final acceptance run; all inode links accounted for; no visible process uses candidate"
+  }
+]

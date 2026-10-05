@@ -1,0 +1,19 @@
+[
+  {
+    "paths": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/verse-host",
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-802d68f5e650d2ca"
+    ],
+    "bytes": 290850608,
+    "sha256": "785e2f4a3f3db55d4ea22feeb595cb861fe1143b0fa1da9cb6878b381e5b6312",
+    "proof": "Completed V20 host command check; all inode links accounted for; no visible process uses candidate"
+  },
+  {
+    "paths": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-0dfba4dc924d9bac"
+    ],
+    "bytes": 52418024,
+    "sha256": "93cdb5fc78aa34e489ef5f6082c33d0e364bf34e848019a3a9b3dd881da49690",
+    "proof": "Completed passing V20 engine checks; one link; no visible process uses it"
+  }
+]

@@ -1042,7 +1042,8 @@ odd image sizes, thin stems, effective-cutoff variants, malformed inputs, and
 variant resource accounting. Native consumer and browser compilation checks pass.
 
 **Limits:** This is a CPU cooker used during upload, with a portable API for
-content tools. Persisted compressed or authored mip chains remain V20. Coverage
+content tools. V20 adds persisted, source-bound authored RGBA8 mip chains and direct upload.
+Compressed GPU formats remain unsupported. Coverage
 is approximate: one coarse texel cannot represent a fraction, so a nonempty mask
 retains one visible texel; contrast calibration cannot guarantee every cutoff,
 view angle, anisotropic filter, trilinear transition, or vertex-alpha multiplier.
@@ -1485,25 +1486,65 @@ backup custody, and deployment/storage-specific drills need their own operating
 profile. Native reference rendering and battle receipts remain scoped to V18;
 this issue does not establish production MMORPG availability.
 
-### V20: Artists need tools over the runtime's own contracts
+### V20: Validated content authoring workbench
 
-[`original`](../../crates/verse-imported/src/imported/original.rs),
-[`characters`](../../crates/verse-imported/src/imported/characters.rs), and the
-[`Everglade compiler`](../../crates/verse-zone-everglade/src/zones/everglade_pack/compile.rs)
-are useful Rust content pipelines. Scenes and catalogs can be authored as data,
-and validated reload exists. Geometry, collision profiles, layout, clip mapping,
-icons, and many gameplay definitions still require Rust changes. No integrated
-scene/property/timeline editor with transactions and undo/redo exists in the
-reviewed path.
+**Implemented:** [#10736](https://github.com/OpenAgentsInc/openagents/issues/10736)
+adds the Rust [`authoring` workbench](../../crates/verse-content/src/authoring/mod.rs)
+and [`command workflow`](../../crates/verse-content/README.md). An inspector
+reports source identities, model keys, materials, clips, states, sockets, texture
+slots, and journal history. Transactions edit scene properties, actors,
+placements, stable-ID timeline cues, parametric box geometry, material and clip
+mappings, existing ability tuning, collision, and gameplay catalogs. All edits
+pass the runtime validators before journal admission. Source/field diagnostics
+identify invalid quest givers, animation references, ability costs, and malformed
+records. Canonical numeric keys reject aliases and duplicates.
 
-**Improve:** Build a Rust pack inspector and content CLI first, then scene
-placement, collision/nav visualization, timeline editing, ability/quest
-validation, and undoable transactions. Use runtime validators and stable IDs.
-Add incremental builds and diagnostics that point to source assets/fields.
+Undo and redo persist across restarts, use expected revisions, and retain up to
+32 documents in a bounded journal. An OS lock excludes concurrent writers.
+Previews own an isolated authority and validate the actual render projection;
+SVG output shows placements, collision, compiled capsule-clearance navigation,
+and cue timing. A rejected edit or candidate preview preserves the active world.
+Authored combat retains its own duration, hostile IDs, and cue sequence.
+Collision, regional navigation, and character tuning survive reset and durable
+recovery through the existing host.
 
-**Acceptance:** An author creates a second playable zone, adds a quest giver,
-changes an encounter, and previews the result without editing renderer code.
-Bad content reports actionable errors and cannot replace the running generation.
+Builds reuse snapshotted assets and publish immutable, sealed generations.
+Content identity binds scene, geometry, textures, gameplay catalogs, and retained
+mip bytes. Only an admitted, synced generation updates the atomic current
+pointer. Reuse checks all sealed files; corruption and unsealed files refuse
+admission. Interrupted build directories remain unadmitted for inspection.
+The generated host template uses the same runtime admission and durable
+content fence as the preview.
+
+Persisted RGBA8 mip archives complete the authored-chain gap assigned here by
+V14. Source hashes, material roles, variant coverage, contiguous full-resolution
+chains, and payload hashes are checked before loading or GPU upload. Matching
+authored variants survive material edits; new variants use the shared runtime
+recipes. Portable byte loading and device recreation retain the same chains.
+Source pixels and archive storage share the loader's memory budget.
+
+**Acceptance and evidence:** The retained
+[content authoring evidence](../../bench/verse/2026-10-05/content-authoring/README.md)
+runs the actual CLI against the original licensed ritual assets. The
+[sample transaction](../../assets/verse/authoring/chamber-outpost.transaction.json)
+creates a second outpost zone, adds quest giver 100, changes guardian 2's health
+to 175, adds matching barricade geometry and collision, and edits dialogue.
+The authority preview reports the giver as interactable and produces a navigation
+visualization. Undo/redo reproduces the same generation; an invalid giver reports
+its quest field and leaves the current pointer unchanged. A dedicated-host test
+accepts the quest, advances the authority, commits, recovers the same checkpoint after the expected controller fence,
+and refuses changed quest rules against the retained state. Targeted engine,
+world, content, host, and renderer checks and native archive upload readbacks are
+recorded with source, executable, and artifact hashes.
+
+**Remaining limits:** This is a command editor with standalone SVG diagnostics.
+It is not a windowed 3D editor. Geometry tools create static boxes and reuse
+existing imported models; clip mappings reuse existing clips. New ability
+algorithms, rig importers, and shaders still need engine work. Archives use
+RGBA8; compressed GPU cook targets are not implemented. The fixture proves
+content admission and recovery, not art quality, author productivity, device
+frame time, or production-scale asset builds. V21 owns locomotion and character
+authoring; V22–V28 retain their respective readiness scope.
 
 ### V21: Animation foundations need a production character workflow
 

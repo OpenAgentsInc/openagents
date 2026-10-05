@@ -1,0 +1,14 @@
+[
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-2b30ade2e1ff7ecc",
+    "bytes": 169594488,
+    "sha256": "6e2608fc4d00d745fcff097d86f7ffff1001acee3c94131c415e3ae876b6a36b",
+    "proof": "V17 receipt binary hash; one link; no visible process uses it"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-cf21e83b63d31373",
+    "bytes": 280558408,
+    "sha256": "338281554d3a733082a15b758830352a7cfd66078f00b3a0636a0145a81f2d5c",
+    "proof": "Previous V20 content library test; source has since changed; rebuilding next; one link; no visible process uses it"
+  }
+]

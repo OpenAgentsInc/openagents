@@ -1,0 +1,30 @@
+[
+  {
+    "paths": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-cf21e83b63d31373"
+    ],
+    "bytes": 279809816,
+    "sha256": "5bf7dbaab27b0782c69aa293ee27d32f0a4aaf5acaf8270b4a8896d1bc451f31",
+    "proof": "Completed passing final V20 authoring or CLI check; all inode links accounted for; no visible process uses candidate",
+    "log_sha256": "28fc11d0a282db3261f5c88e2048617510049a72d76a2a35d045eff4f52efdf5"
+  },
+  {
+    "paths": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/author-cd93c9a288fe70ec"
+    ],
+    "bytes": 13537600,
+    "sha256": "b676d0fc3e0bd153631fdae3364805dcc5ff1104c648984794558f4e7da5e27e",
+    "proof": "Completed passing final V20 authoring or CLI check; all inode links accounted for; no visible process uses candidate",
+    "log_sha256": "76eecfae0ebdeeffba5b7c0e0c6662ac60f8a7dad7ff2ff22b59061669f16bd0"
+  },
+  {
+    "paths": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/verse-content",
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-57d6466e22e4ecd7"
+    ],
+    "bytes": 257579160,
+    "sha256": "c959636282864c7c987ca20279c46f19ec716eaea497f9fa0b37c344d55f8cbb",
+    "proof": "Completed passing final V20 authoring or CLI check; all inode links accounted for; no visible process uses candidate",
+    "log_sha256": "76eecfae0ebdeeffba5b7c0e0c6662ac60f8a7dad7ff2ff22b59061669f16bd0"
+  }
+]

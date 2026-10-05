@@ -1,0 +1,82 @@
+[
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-40bd99f4de09812e",
+    "bytes": 53557632,
+    "sha256": "381068532afc9004a7e7f993ac22a2ed6c5a22a295f52ff288ff97f781b5d9fd",
+    "proof": "Earlier own Verse audit test executable identified in retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/engine-boundaries/tests.log",
+    "log_sha256": "7ae5c6668dbf7082fe2f994b25398dfdd9b91b9c7d88ef9809fbfd8cd3a4ee16"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_gfx-d463889999d8df73",
+    "bytes": 73202144,
+    "sha256": "63f64ec2474efdedf1adc37f07aca20f1b01fa4a0a87ccb2ad527968a10be8ad",
+    "proof": "Earlier own Verse audit test executable identified in retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/engine-boundaries/tests.log",
+    "log_sha256": "7ae5c6668dbf7082fe2f994b25398dfdd9b91b9c7d88ef9809fbfd8cd3a4ee16"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-2c73093d7986add8",
+    "bytes": 10591640,
+    "sha256": "c130a4d03bbc4709a08daf1e490c1ceb2196dd656e472e567d14d51cc1e47354",
+    "proof": "Earlier own Verse audit test executable identified in retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/engine-boundaries/tests.log",
+    "log_sha256": "7ae5c6668dbf7082fe2f994b25398dfdd9b91b9c7d88ef9809fbfd8cd3a4ee16"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/physics-a0f32606478f67d1",
+    "bytes": 37898712,
+    "sha256": "1d76f30f7606a067b53e900df3e1bbdef82b61b7eed0eaca33db5fbb48578ab0",
+    "proof": "Earlier own Verse audit test executable identified in retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/battle-scale/main-integration-physics-tests.log",
+    "log_sha256": "24b12307573f16cc00bd80163aa6bbec4033793f4d485a79a77d837ed30253e1"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/examples/battle_scale-7d3f90b8b4d41f7e",
+    "bytes": 153719048,
+    "sha256": "1e85c88e0c4315f009325b7fd27732727dc0d247203811b9e4210a4e79751cc0",
+    "proof": "Earlier own Verse audit test executable identified in retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/battle-scale/fence-credit-gate-tests.log",
+    "log_sha256": "bbdda2e1216696bce0b40af7bf2d37a3d3517ff38b9a82df0187ea3cab443732"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_imported-9eb3297721b8341b",
+    "bytes": 516757872,
+    "sha256": "b65c0147747c3f71cc1f91f6856d011e5ce81cf7d65a32e14742e713890d67e0",
+    "proof": "Earlier own Verse audit test executable identified in retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/battle-scale/final-main-native-tests.log",
+    "log_sha256": "b0009e047c5b3e05f06d3482974956a4d7da595645756896d9dfdbb094c6dcda"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-f57d3ad69100fb15",
+    "bytes": 173514024,
+    "sha256": "ff47b9c61b26d51a9c39b26b80243e119a69f62beeafd8d1a5d5b041e06c476b",
+    "proof": "Earlier own Verse audit test executable identified in retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/battle-scale/timed-history-main-host-tests.log",
+    "log_sha256": "4ceeea8f5d8c83f581a8adc1c342bbbb671d5c2b151a45f07674238031847a1a"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-12ec5da542d691b6",
+    "bytes": 7140936,
+    "sha256": "23d866ee579edf0fdd4aa9ed2b49e06a53e163134d0edf59c374c39ab8d0e039",
+    "proof": "Earlier own Verse audit test executable identified in retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/battle-scale/timed-history-main-host-tests.log",
+    "log_sha256": "4ceeea8f5d8c83f581a8adc1c342bbbb671d5c2b151a45f07674238031847a1a"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-e997d7858058f2aa",
+    "bytes": 40617544,
+    "sha256": "c4905dd1fd94ba2ea8e8726f3ee489791e92e4e7d038b370eaf804dce1180bb2",
+    "proof": "Earlier own Verse audit test executable identified in retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/battle-scale/animation-phase-engine-tests.log",
+    "log_sha256": "a7be6a720efb9f9c7750b5c83762755b0dfd73577132dff499bbd069b5a6968b"
+  },
+  {
+    "path": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-7ff26dc159bd256f",
+    "bytes": 351904752,
+    "sha256": "29612430770e61c009a3aed0e4077234001bbe9a7d77b36b5ab4f1f39baad62f",
+    "proof": "Earlier own Verse audit test executable identified in retained log; one link; no visible process uses it",
+    "log": "bench/verse/2026-10-05/battle-scale/wall-phase-main-pbr-tests.log",
+    "log_sha256": "c539d520ec16095fb7e44a97878664a7d47ac9b8eaa11695cc3e7395880cf407"
+  }
+]
