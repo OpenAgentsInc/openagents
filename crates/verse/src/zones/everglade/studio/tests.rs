@@ -892,3 +892,95 @@ mod simulated {
         }
     }
 }
+
+/// A host connection's source holding every studio right.
+struct Granted;
+
+impl Source for Granted {
+    fn poll(&mut self, _: f32) -> Option<Snapshot> {
+        Some(snapshot(1, vec![seat("ada", 1, Activity::Waiting)]))
+    }
+    fn review(&mut self, _: &str) -> Option<TaskReview> {
+        None
+    }
+    fn rights(&self) -> &[Right] {
+        &[Right::Observe, Right::Operate, Right::Review]
+    }
+    fn send(&mut self, _: Operation) -> Result<u64, AccessError> {
+        Ok(1)
+    }
+}
+
+#[test]
+fn a_viewer_with_only_the_world_right_opens_no_studio_panel() {
+    let mut runtime = super::super::tests::entered();
+    runtime.set_studio_source(Box::new(Granted));
+    runtime.update_studio(true, 0.1);
+    let podium = STATIONS.iter().find(|s| s.id == "podium").unwrap();
+    runtime.set_spawn(podium.position(), podium.facing).unwrap();
+    let pause = || Operation::PauseSeat { seat: "ada".into() };
+
+    // A lone viewer reads and acts under its source's rights, as before.
+    assert_eq!(runtime.studio_panel_here(), Some(PanelKind::Decisions));
+    assert!(runtime.studio().access().act);
+
+    // In a hosted instance the world grant admits walking only.
+    runtime.set_studio_grant(Some(vec![Right::World]));
+    assert_eq!(runtime.studio_panel_here(), None);
+    assert_eq!(runtime.studio().access(), PanelAccess::default());
+    assert!(runtime.studio().rights().is_empty());
+    let refused = runtime.studio_send(pause()).unwrap_err();
+    assert_eq!(refused.missing, Some(Right::Observe));
+    // The seats still stand in the world.
+    assert!(runtime.studio().seat_position("ada").is_some());
+
+    // `observe` opens the panel without its actions; `operate` acts.
+    runtime.set_studio_grant(Some(vec![Right::World, Right::Observe]));
+    assert_eq!(runtime.studio_panel_here(), Some(PanelKind::Decisions));
+    let access = runtime.studio().access();
+    assert!(access.read && !access.act && !access.merge);
+    let refused = runtime.studio_send(pause()).unwrap_err();
+    assert_eq!(refused.missing, Some(Right::Operate));
+    runtime.set_studio_grant(Some(vec![Right::World, Right::Observe, Right::Operate]));
+    assert_eq!(runtime.studio_send(pause()), Ok(1));
+}
+
+#[test]
+fn viewers_of_a_hosted_instance_draw_the_authoritys_seats() {
+    use verse_world::social::seats::Seats;
+    use verse_world::social::studio::plans;
+
+    // A seat waits at the podium; the authority walks it to the one player
+    // near it, and publishes where it stands.
+    let mut waiting = seat("ada", 1, Activity::Waiting);
+    waiting.station = At::Podium;
+    let snap = snapshot(1, vec![waiting]);
+    let podium = STATIONS.iter().find(|s| s.id == "podium").unwrap();
+    let near = podium.position() + Vec3::new(2.0, 0.0, -2.0);
+    let mut authority = Seats::new(Vec::new());
+    authority.apply(&plans(&snap.view));
+
+    // Two viewers stand in different places: walking locally, one would
+    // send the seat to itself and the other would keep it home.
+    let mut a = Studio::default();
+    let mut b = Studio::default();
+    for (studio, player) in [(&mut a, near), (&mut b, ground([20.0, -20.0]))] {
+        studio.set_active(true);
+        studio.apply(snap.clone(), &[]);
+        studio.set_player(Some(player));
+    }
+    for _ in 0..30 {
+        authority.tick(0.1, &[near]);
+        let poses = authority.poses();
+        for studio in [&mut a, &mut b] {
+            studio.follow_authority(Some(poses.clone()));
+            studio.tick(0.1);
+        }
+        let at = Vec3::from_array(poses[0].pos);
+        assert_eq!(a.seat_position("ada"), Some(at));
+        assert_eq!(b.seat_position("ada"), Some(at));
+    }
+    // The seat went to meet the player near the podium.
+    let home = ground(standing(At::Podium, 1, 0, 1).0);
+    assert!(a.seat_position("ada").unwrap().distance(home) > 1.0);
+}

@@ -10,6 +10,9 @@ description = "Portable command admission and owned world authority for Verse"
 service-net = ["service-auth", "dep:tokio", "dep:rustls", "dep:tokio-rustls"]
 service-auth = ["dep:secp256k1", "dep:getrandom"]
 service-reach = ["service-net", "dep:coder-reach"]
+# The Agent Studio in a hosted social instance: seat placement from a
+# NIP-HOST studio snapshot, and the studio rights a panel needs.
+studio = ["dep:coder-access"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "sync", "time"], optional = true }
@@ -24,6 +27,7 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 glam = { version = "0.30.10", features = ["serde"] }
 physics = { path = "../physics" }
 coder-reach = { path = "../coder-reach", optional = true }
+coder-access = { path = "../coder-access", default-features = false, optional = true }
 
 [dev-dependencies]
 tempfile = "3"

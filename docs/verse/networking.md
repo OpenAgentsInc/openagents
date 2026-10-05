@@ -200,7 +200,16 @@ execution".
    serves TLS only, and NIP-MV `33300` world events remain.
 3. **Shared Everglade.** A social rules profile in `verse-world`; the shared
    content digest; authority-owned seat actors fed by the studio snapshot;
-   panel access checked against studio rights.
+   panel access checked against studio rights. Implemented in rules
+   (#10553): `verse_world::social` holds the shared controller, navigation,
+   heightfield, and solids, and `social::world` hosts a zone with no combat
+   requirement; `Everglade::social_profile` carries the pinned pack digest
+   (`everglade_pack::content_digest`) as the instance's content identity;
+   `social::studio::StudioHost` walks seats from a snapshot source and
+   publishes `SeatPose`s, which `Studio::follow_authority` draws; `world`
+   alone opens no panel, and panels need `observe`, `operate`, and
+   `review`. The chamber wire does not yet carry a social instance or seat
+   poses, and the host binaries do not yet start one.
 4. **Mirrors.** WORK, COORD, CTX, KB, RUN, and POL records beside host state;
    the Block-lane group mirror.
 5. **Later.** Seat keys (AP, OA, GS), seats on the plaza, studio XP.

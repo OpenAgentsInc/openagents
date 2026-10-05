@@ -1035,3 +1035,41 @@ fn landing_over_the_hall_comes_down_on_its_roof() {
         runtime.player.pos.y
     );
 }
+
+#[test]
+fn a_hosted_instance_walks_the_pinned_packs_content_under_the_social_rules() {
+    use verse_world::social::world::World;
+    use verse_world::{Command, Controller, Intent};
+
+    // One content digest: the loader's pin is the instance's identity.
+    let mut profile = Everglade::social_profile(pack()).unwrap();
+    let digest = everglade_pack::content_digest().unwrap();
+    assert_eq!(profile.content, digest);
+    let spelled: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(spelled, everglade_pack::PACK_SHA256);
+    assert_eq!(everglade_pack::pinned().sha256, spelled);
+
+    // A session joins without an adventurer or a hostile, and the hall's
+    // south wall stops it where it stops a local player.
+    profile.spawn = Vec3::new(-5.0, 0.0, -1.0);
+    let mut world = World::new(profile, 1);
+    let who = Controller(9);
+    let life = world.join(who).unwrap();
+    for _ in 0..120 {
+        let admission = world.admission(life).unwrap().clone();
+        let command: Command<()> = admission
+            .command(
+                world.tick(),
+                Intent::Move {
+                    axes: [0.0, 1.0],
+                    yaw: 0.0,
+                },
+            )
+            .unwrap();
+        world.command(who, &command).unwrap();
+        world.step();
+    }
+    let at = world.avatar(life).unwrap().pos;
+    assert!(at.z < HALL.0[1] - HALL.1[1], "{at}");
+    assert!(at.z > 0.0, "{at}");
+}

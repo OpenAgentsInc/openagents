@@ -48,6 +48,18 @@ const EVERGLADE_PACK_HISTORY: &[&str] = &[
     "b57e33f733865ff639c87e6c0314f7e8f55c59d6ef313271880459ffb64bc49c",
 ];
 
+/// The pack's content digest: the 32 bytes [`PACK_SHA256`] spells. The zone
+/// loader verifies the pack against this pin, and a hosted Everglade
+/// instance's login challenge carries the same digest, so a client and the
+/// host agree on the content before a session starts.
+///
+/// # Errors
+///
+/// Returns a message when the pin is not 64 hexadecimal digits.
+pub fn content_digest() -> Result<[u8; 32], String> {
+    verse_world::social::world::content_digest(PACK_SHA256)
+}
+
 /// The reviewed pack and its source.
 pub fn pinned() -> PinnedFile {
     PinnedFile {

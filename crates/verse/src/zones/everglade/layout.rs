@@ -18,6 +18,7 @@ use super::{HALL, PATH_HALF_WIDTH, RETURN_PORTAL, STATIONS, STRONGROOM, YARD, he
 use crate::controller::Footprint;
 use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
+use verse_world::social::everglade::DESK_SEATS;
 
 /// How a placement blocks walking.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -159,11 +160,11 @@ pub struct Desk {
 /// Where the row of workbenches stands, z, m.
 const DESK_Z: f32 = 7.0;
 
-const fn desk(x: f32) -> Desk {
+const fn desk(seat: [f32; 2]) -> Desk {
     Desk {
-        seat: [x, 5.8],
+        seat,
         monitor: Board {
-            center: Vec3::new(x, 1.3, 7.3),
+            center: Vec3::new(seat[0], 1.3, 7.3),
             facing: PI,
             size: [0.84, 0.5],
         },
@@ -171,8 +172,13 @@ const fn desk(x: f32) -> Desk {
 }
 
 /// One workbench per seat, in a row across the hall behind the desks
-/// station.
-pub const DESKS: [Desk; 4] = [desk(-3.3), desk(-1.1), desk(1.1), desk(3.3)];
+/// station, at the shared standing points a hosted instance walks seats to.
+pub const DESKS: [Desk; 4] = [
+    desk(DESK_SEATS[0]),
+    desk(DESK_SEATS[1]),
+    desk(DESK_SEATS[2]),
+    desk(DESK_SEATS[3]),
+];
 
 /// The Task Wall: the yard's notice board, facing the task wall station.
 pub const TASK_WALL: Board = Board {

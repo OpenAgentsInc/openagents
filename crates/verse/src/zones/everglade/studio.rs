@@ -41,8 +41,10 @@
 //! is inside: leaving stops the source and drops every seat, card, and log
 //! line it drew.
 
+#[cfg(test)]
+use super::{STATIONS, height};
 use super::{
-    HALF_EXTENT, HALL, STATIONS, Station as Place, boards, height,
+    boards,
     layout::{DESKS, Desk},
 };
 use crate::{
@@ -64,20 +66,12 @@ pub mod live;
 #[cfg(test)]
 mod tests;
 
-/// How fast a seat walks between stations, m/s.
-pub const WALK_SPEED: f32 = 2.4;
-/// How fast a seat runs a long way, m/s: past the character's run gait.
-pub const RUN_SPEED: f32 = 5.5;
-/// A route longer than this is run rather than walked, m.
-pub const RUN_DISTANCE: f32 = 10.0;
-/// A waiting seat walks over to a player this near its station, m.
-pub const APPROACH: f32 = 6.0;
-/// A waiting seat goes back to its station once the player is this far, m.
-const DEPART: f32 = 9.0;
-/// How far from the player a waiting seat stops, m.
-const APPROACH_GAP: f32 = 1.4;
-/// How far the player moves before a waiting seat follows again, m.
-const FOLLOW_AGAIN: f32 = 1.5;
+use verse_world::social::seats::Walker;
+pub use verse_world::social::seats::{
+    APPROACH, APPROACH_GAP, DEPART, MAX_WALK, RUN_DISTANCE, RUN_SPEED, SeatPose, WALK_SPEED,
+};
+pub use verse_world::social::studio::PanelAccess;
+pub use verse_world::social::studio::{DESK_ASIDE, SLOT, place_id, sharing, standing};
 /// How long a speech bubble shows, s.
 pub const SPEECH_SECONDS: f32 = 7.0;
 /// The most characters a speech bubble's line shows.
@@ -88,21 +82,9 @@ const SPEECH_LINES: usize = 3;
 const NOTICE: f32 = 3.5;
 /// How many particles a seat's state shows at once.
 const PARTICLES: usize = 7;
-/// The longest walk a seat takes, s. A station farther than this skips
-/// ahead, so a seat never shows an activity long after it changed.
-pub const MAX_WALK: f32 = 12.0;
 /// How far from a desk's standing point the player stands to use that
 /// seat's desk, m.
 pub const DESK_RANGE: f32 = 1.4;
-/// How far a seat at its desk works beside the desk's standing point,
-/// toward the middle of the hall, m. The player uses a desk from its
-/// standing point with the camera behind them, so the seat stands beside
-/// the player, out of the camera's path, rather than in the player's place.
-pub const DESK_ASIDE: f32 = 0.7;
-/// Space between seats sharing one station, m.
-const SLOT: f32 = 0.9;
-/// Within this distance of a waypoint, a seat takes the next, m.
-const ARRIVED: f32 = 0.05;
 /// Gap between the top of a seat's nameplate and its lamp, m. The lamp
 /// hangs over the plate, which moves with the eye, so they never overlap.
 const LAMP_GAP: f32 = 0.12;
@@ -284,61 +266,14 @@ impl PanelKind {
     }
 }
 
-/// The layout ID of the place a snapshot station is drawn at. A seat's
-/// desk is its own desk, not the desks station.
-#[must_use]
-pub fn place_id(station: wire::Station) -> &'static str {
-    match station {
-        wire::Station::Desk => "desks",
-        wire::Station::Library => "library",
-        wire::Station::Workbench => "workbench",
-        wire::Station::ProvingGround => "proving",
-        wire::Station::Oracle => "oracle",
-        wire::Station::Podium => "podium",
-        wire::Station::Lounge => "lounge",
-        wire::Station::TaskWall => "task_wall",
-    }
-}
-
-fn place(id: &str) -> &'static Place {
-    STATIONS
-        .iter()
-        .find(|station| station.id == id)
-        .unwrap_or(&STATIONS[2])
-}
-
-/// Where a seat stands for `station`: beside its own desk ([`at_desk`])
-/// for the desk, else the station's point moved sideways to `slot` of
-/// `count` seats there. Returns the point on the ground and the heading to
-/// face.
-#[must_use]
-pub fn standing(station: wire::Station, desk: u32, slot: usize, count: usize) -> ([f32; 2], f32) {
-    if station == wire::Station::Desk
-        && let Some(desk) = usize::try_from(desk).ok().and_then(|i| DESKS.get(i))
-    {
-        return (at_desk(desk), 0.0);
-    }
-    let place = place(place_id(station));
-    // Sideways to the heading: forward is (sin, cos), so right is
-    // (cos, -sin).
-    let shift = (slot as f32 - (count.max(1) - 1) as f32 / 2.0) * SLOT;
-    let (sin, cos) = place.facing.sin_cos();
-    (
-        [place.at[0] + cos * shift, place.at[1] - sin * shift],
-        place.facing,
-    )
-}
-
 /// Where a seat works at `desk`: [`DESK_ASIDE`] from the desk's standing
 /// point toward the middle of the hall, at the same depth, facing the
 /// bench.
 #[must_use]
 pub fn at_desk(desk: &Desk) -> [f32; 2] {
-    let [x, z] = desk.seat;
-    [x - DESK_ASIDE * (x - HALL.0[0]).signum(), z]
+    verse_world::social::studio::at_desk(desk.seat)
 }
 
-/// Height of the bottom of a seat's nameplate over its feet for `eye`, m.
 fn plate_lift(feet: Vec3, eye: Vec3) -> f32 {
     // An eye level with the plate looks at its lower rows.
     (eye.y - feet.y - PLATE_TALL / 4.0).clamp(PLATE_LOW, PLATE)
@@ -681,23 +616,9 @@ pub struct SeatFigure {
 /// One seat as the glade draws it.
 struct SeatAgent {
     name: String,
-    pos: Vec3,
-    yaw: f32,
-    /// Where it is going and the heading it takes there.
-    target: [f32; 2],
-    facing: f32,
-    /// Its station's standing point and heading, which a waiting seat
-    /// leaves to meet the player.
-    home: [f32; 2],
-    home_facing: f32,
-    /// Waypoints still to walk, the last being `target`.
-    route: Vec<[f32; 2]>,
-    /// The speed of the walk under way, m/s.
-    pace: f32,
-    /// How fast it moved over the last tick, m/s.
-    speed: f32,
-    /// A waiting seat walking to, or standing with, the player.
-    following: bool,
+    /// Where it stands and how it walks: its own walk for a lone viewer,
+    /// or the world authority's pose in a hosted instance.
+    walk: Walker,
     gait: Gait,
     activity: Activity,
     station: wire::Station,
@@ -713,16 +634,7 @@ struct SeatAgent {
 
 impl SeatAgent {
     fn walking(&self) -> bool {
-        !self.route.is_empty()
-    }
-
-    /// Stand at `target` at once, facing `facing`.
-    fn skip_to(&mut self, target: [f32; 2], facing: f32) {
-        self.target = target;
-        self.facing = facing;
-        self.route.clear();
-        self.pos = Vec3::new(target[0], height(target[0], target[1]), target[1]);
-        self.yaw = facing;
+        self.walk.walking()
     }
 }
 
@@ -756,6 +668,12 @@ pub struct Studio {
     bubbles: Vec<Bubble>,
     /// The seat that owns the oldest decision ([`marked`]).
     marked: Option<String>,
+    /// In a hosted instance, the seats as the world authority last placed
+    /// them; a lone viewer walks its own seats.
+    authority: Option<Vec<SeatPose>>,
+    /// In a hosted instance, the NIP-HOST rights the viewer's grant holds,
+    /// which its panels need; a lone viewer's panels follow its source.
+    grant: Option<Vec<Right>>,
 }
 
 impl Default for Studio {
@@ -776,6 +694,8 @@ impl Default for Studio {
             clock: 0.0,
             bubbles: Vec::new(),
             marked: None,
+            authority: None,
+            grant: None,
         }
     }
 }
@@ -863,13 +783,48 @@ impl Studio {
         }
     }
 
-    /// The rights the source's host connection holds, while active.
+    /// The rights the studio's panels act under, while active: in a hosted
+    /// instance, those both the viewer's grant and the source hold; for a
+    /// lone viewer, the source's.
     #[must_use]
     pub fn rights(&self) -> Vec<Right> {
-        match &self.source {
+        let held = match &self.source {
             Some(source) if self.active => source.rights().to_vec(),
             _ => Vec::new(),
+        };
+        match &self.grant {
+            Some(grant) => held.into_iter().filter(|r| grant.contains(r)).collect(),
+            None => held,
         }
+    }
+
+    /// Joins a hosted instance whose viewer's grant holds `rights`, or
+    /// leaves it with `None`. In an instance the `world` right admits
+    /// walking only: panels open with `observe`, act with `operate`, and
+    /// decide merges with `review` ([`Studio::access`]).
+    pub fn set_grant(&mut self, rights: Option<Vec<Right>>) {
+        self.grant = rights;
+        self.revision += 1;
+    }
+
+    /// What the viewer may do with the studio's panels. A lone viewer reads
+    /// whatever its source shows; in a hosted instance reading needs the
+    /// grant's `observe`.
+    #[must_use]
+    pub fn access(&self) -> PanelAccess {
+        let mut access = PanelAccess::of(&self.rights());
+        access.read = match &self.grant {
+            Some(grant) => grant.contains(&Right::Observe),
+            None => true,
+        };
+        access
+    }
+
+    /// Draws the seats where the world authority places them, in a hosted
+    /// instance, instead of walking them here: every viewer then sees the
+    /// same seat at the same place. `None` returns to the local walk.
+    pub fn follow_authority(&mut self, poses: Option<Vec<SeatPose>>) {
+        self.authority = poses;
     }
 
     /// Sends `operation`, a studio intent, through the source. The host's
@@ -881,6 +836,9 @@ impl Studio {
     /// the source's own refusal.
     pub fn send(&mut self, operation: Operation) -> Result<u64, AccessError> {
         let rights = self.rights();
+        if self.active && !self.access().read {
+            return Err(verse_world::social::studio::missing(Right::Observe));
+        }
         let source = match self.source.as_mut() {
             Some(source) if self.active => source,
             _ => {
@@ -931,30 +889,13 @@ impl Studio {
                 .map(|at| self.seats.swap_remove(at));
             let mut agent = match existing {
                 Some(mut agent) => {
-                    if agent.home != target {
-                        agent.home = target;
-                        agent.home_facing = facing;
-                        agent.following = false;
-                        retarget(&mut agent, target, facing, blockers);
-                    } else if !agent.walking() && !agent.following {
-                        agent.facing = facing;
-                        agent.yaw = facing;
-                    }
+                    agent.walk.plan(target, facing, blockers);
                     agent
                 }
                 None => {
-                    let mut agent = SeatAgent {
+                    let agent = SeatAgent {
                         name: seat.seat.clone(),
-                        pos: Vec3::ZERO,
-                        yaw: facing,
-                        target,
-                        facing,
-                        home: target,
-                        home_facing: facing,
-                        route: Vec::new(),
-                        pace: WALK_SPEED,
-                        speed: 0.0,
-                        following: false,
+                        walk: Walker::standing(target, facing),
                         gait: Gait::default(),
                         activity: seat.activity,
                         station: seat.station,
@@ -964,7 +905,6 @@ impl Studio {
                         plate_text: Default::default(),
                         plate: Mesh::default(),
                     };
-                    agent.skip_to(target, facing);
                     agent
                 }
             };
@@ -1059,35 +999,20 @@ impl Studio {
         self.bubbles.retain(|b| b.left > 0.0);
         let player = self.player;
         for seat in &mut self.seats {
-            follow(seat, player, &self.blockers);
-            let mut left = seat.pace * dt;
-            let mut moved = 0.0;
-            while left > 0.0
-                && let Some(&next) = seat.route.first()
-            {
-                let to = Vec3::new(next[0], 0.0, next[1]) - Vec3::new(seat.pos.x, 0.0, seat.pos.z);
-                let distance = to.length();
-                if distance <= left.max(ARRIVED) {
-                    seat.pos.x = next[0];
-                    seat.pos.z = next[1];
-                    seat.route.remove(0);
-                    left -= distance;
-                    moved += distance;
-                } else {
-                    let step = to / distance * left;
-                    seat.pos.x += step.x;
-                    seat.pos.z += step.z;
-                    seat.yaw = step.x.atan2(step.z);
-                    moved += left;
-                    left = 0.0;
+            match &self.authority {
+                Some(poses) => {
+                    if let Some(pose) = poses.iter().find(|pose| pose.name == seat.name) {
+                        seat.walk.take_pose(pose);
+                    }
+                }
+                None => {
+                    let waits =
+                        seat.activity == Activity::Waiting && seat.station == wire::Station::Podium;
+                    seat.walk.follow(waits, player, &self.blockers);
+                    seat.walk.advance(dt);
                 }
             }
-            seat.pos.y = height(seat.pos.x, seat.pos.z);
-            if seat.route.is_empty() {
-                seat.yaw = seat.facing;
-            }
-            seat.speed = moved / dt;
-            seat.gait.advance(seat.speed, false, dt);
+            seat.gait.advance(seat.walk.speed(), false, dt);
         }
     }
 
@@ -1115,7 +1040,7 @@ impl Studio {
         self.seats
             .iter()
             .find(|seat| seat.name == name)
-            .map(|seat| seat.pos)
+            .map(|seat| seat.walk.pos())
     }
 
     /// Whether the seat named `name` is still walking.
@@ -1128,7 +1053,9 @@ impl Studio {
 
     /// Every seat's name and where it stands, in key order.
     pub fn seats(&self) -> impl Iterator<Item = (&str, Vec3)> {
-        self.seats.iter().map(|seat| (seat.name.as_str(), seat.pos))
+        self.seats
+            .iter()
+            .map(|seat| (seat.name.as_str(), seat.walk.pos()))
     }
 
     /// The middle of each Task Wall card, in the glade, with its task.
@@ -1163,15 +1090,15 @@ impl Studio {
                     Posture::of(
                         seat.activity,
                         seat.station,
-                        seat.own_desk && !seat.following,
+                        seat.own_desk && !seat.walk.following(),
                         speaking.is_some(),
                     )
                 };
                 SeatFigure {
                     name: seat.name.clone(),
-                    pos: seat.pos,
-                    yaw: seat.yaw,
-                    speed: seat.speed,
+                    pos: seat.walk.pos(),
+                    yaw: seat.walk.yaw(),
+                    speed: seat.walk.speed(),
                     posture,
                     look: self.look(seat, speaking),
                     tint: seat.tint,
@@ -1187,7 +1114,7 @@ impl Studio {
         let head = |p: Vec3| p + Vec3::Y * 1.6;
         let player = self
             .player
-            .map(|p| (p, (p.x - seat.pos.x).hypot(p.z - seat.pos.z)));
+            .map(|p| (p, (p.x - seat.walk.pos().x).hypot(p.z - seat.walk.pos().z)));
         if let Some(speech) = speaking {
             match &speech.to {
                 Addressee::Seat(to) => {
@@ -1212,7 +1139,7 @@ impl Studio {
         }
         if seat.own_desk
             && !seat.walking()
-            && !seat.following
+            && !seat.walk.following()
             && let Some(desk) = usize::try_from(seat.desk).ok().and_then(|i| DESKS.get(i))
         {
             return Some(desk.monitor.center);
@@ -1284,8 +1211,8 @@ impl Studio {
         for (index, seat) in self.seats.iter().enumerate() {
             if boxes {
                 let mut figure = avatar::figure(
-                    seat.pos,
-                    Quat::from_rotation_y(seat.yaw),
+                    seat.walk.pos(),
+                    Quat::from_rotation_y(seat.walk.yaw()),
                     &seat.gait,
                     Intensity::Full,
                 );
@@ -1298,12 +1225,12 @@ impl Studio {
                 mesh.extend(&figure);
             }
             let attention = Attention::of(seat.activity);
-            let lamp_at = lamp_height(seat.pos, eye);
+            let lamp_at = lamp_height(seat.walk.pos(), eye);
             if let Some(color) = attention.lamp() {
-                lamp(&mut mesh, seat.pos + Vec3::Y * lamp_at, color);
+                lamp(&mut mesh, seat.walk.pos() + Vec3::Y * lamp_at, color);
                 if attention == Attention::AwaitingInput {
-                    let foot = seat.pos + Vec3::Y * (lamp_at + 0.15);
-                    let top = seat.pos + Vec3::Y * BEACON;
+                    let foot = seat.walk.pos() + Vec3::Y * (lamp_at + 0.15);
+                    let top = seat.walk.pos() + Vec3::Y * BEACON;
                     for p in [foot, top] {
                         mesh.lines.push(Vertex {
                             pos: p.to_array(),
@@ -1316,13 +1243,13 @@ impl Studio {
             // The "!" and the bubble stack over the lamp.
             let mut top = lamp_at + LAMP_GAP;
             if self.marked.as_deref() == Some(seat.name.as_str()) {
-                if let Some(transform) = billboard(seat.pos, top, eye) {
+                if let Some(transform) = billboard(seat.walk.pos(), top, eye) {
                     mark(&mut mesh, transform, self.clock);
                 }
                 top += MARK_TALL + LAMP_GAP;
             }
             if let Some(bubble) = self.showing().find(|b| b.speech.speaker == seat.name)
-                && let Some(transform) = billboard(seat.pos, top, eye)
+                && let Some(transform) = billboard(seat.walk.pos(), top, eye)
             {
                 mesh.faces.extend(bubble.mesh.faces.iter().map(|v| Vertex {
                     pos: transform.transform_point3(Vec3::from(v.pos)).to_array(),
@@ -1330,9 +1257,17 @@ impl Studio {
                 }));
             }
             if let Some(kind) = Particles::of(seat.activity) {
-                particles(&mut mesh, kind, seat.pos, seat.yaw, index, self.clock, eye);
+                particles(
+                    &mut mesh,
+                    kind,
+                    seat.walk.pos(),
+                    seat.walk.yaw(),
+                    index,
+                    self.clock,
+                    eye,
+                );
             }
-            let Some(transform) = plate_transform(seat.pos, eye) else {
+            let Some(transform) = plate_transform(seat.walk.pos(), eye) else {
                 continue;
             };
             mesh.faces.extend(seat.plate.faces.iter().map(|v| Vertex {
@@ -1341,119 +1276,6 @@ impl Studio {
             }));
         }
         mesh
-    }
-}
-
-/// Which of the seats at the same place as seat `index` it is, and how many
-/// stand there. Each desk holds only its own seat.
-fn sharing(view: &View, index: usize) -> (usize, usize) {
-    let seat = &view.seats[index];
-    let at_own_desk =
-        |s: &wire::Seat| s.station == wire::Station::Desk && (s.desk as usize) < DESKS.len();
-    if at_own_desk(seat) {
-        return (0, 1);
-    }
-    let same = |s: &wire::Seat| !at_own_desk(s) && place_id(s.station) == place_id(seat.station);
-    let slot = view.seats[..index].iter().filter(|s| same(s)).count();
-    let count = view.seats.iter().filter(|s| same(s)).count();
-    (slot, count)
-}
-
-/// How fast a seat covers a route `length` m long: a run when long.
-fn pace(length: f32) -> f32 {
-    if length > RUN_DISTANCE {
-        RUN_SPEED
-    } else {
-        WALK_SPEED
-    }
-}
-
-/// The length of a walk from `start` along `route`, m.
-fn route_length(start: [f32; 2], route: &[[f32; 2]]) -> f32 {
-    let mut length = 0.0;
-    let mut from = start;
-    for point in route {
-        length += (point[0] - from[0]).hypot(point[1] - from[1]);
-        from = *point;
-    }
-    length
-}
-
-/// Sends `seat` toward `target`: along a route around `blockers`, or at
-/// once when it is still walking to an earlier station or the walk would
-/// take longer than [`MAX_WALK`].
-fn retarget(seat: &mut SeatAgent, target: [f32; 2], facing: f32, blockers: &[Footprint]) {
-    if seat.walking() {
-        seat.skip_to(target, facing);
-        return;
-    }
-    let start = [seat.pos.x, seat.pos.z];
-    let route = crate::nav::plan(start, target, blockers, HALF_EXTENT)
-        .map(|route| route.waypoints)
-        .unwrap_or_else(|_| vec![target]);
-    let length = route_length(start, &route);
-    if length / WALK_SPEED > MAX_WALK {
-        seat.skip_to(target, facing);
-        return;
-    }
-    seat.target = target;
-    seat.facing = facing;
-    seat.route = route;
-    seat.pace = pace(length);
-}
-
-/// Sends `seat` from where it stands toward `target` around `blockers`,
-/// even mid-walk. Leaves it as it was, and returns false, when no route
-/// reaches the target or the walk would take longer than [`MAX_WALK`].
-fn walk_to(seat: &mut SeatAgent, target: [f32; 2], facing: f32, blockers: &[Footprint]) -> bool {
-    let start = [seat.pos.x, seat.pos.z];
-    let Ok(route) = crate::nav::plan(start, target, blockers, HALF_EXTENT) else {
-        return false;
-    };
-    let length = route_length(start, &route.waypoints);
-    if length / WALK_SPEED > MAX_WALK {
-        return false;
-    }
-    seat.target = target;
-    seat.facing = facing;
-    seat.route = route.waypoints;
-    seat.pace = pace(length);
-    true
-}
-
-/// A seat waiting at the podium walks over to a `player` within
-/// [`APPROACH`] of its station, stands [`APPROACH_GAP`] from them facing
-/// them, follows when they move, and goes back once they are [`DEPART`]
-/// away.
-fn follow(seat: &mut SeatAgent, player: Option<Vec3>, blockers: &[Footprint]) {
-    let waiting = seat.activity == Activity::Waiting && seat.station == wire::Station::Podium;
-    let reach = if seat.following { DEPART } else { APPROACH };
-    let near = player.filter(|p| (p.x - seat.home[0]).hypot(p.z - seat.home[1]) <= reach);
-    match near {
-        Some(p) if waiting => {
-            let player = glam::Vec2::new(p.x, p.z);
-            let away = (glam::Vec2::new(seat.pos.x, seat.pos.z) - player)
-                .try_normalize()
-                .or_else(|| (glam::Vec2::from(seat.home) - player).try_normalize())
-                .unwrap_or(glam::Vec2::Y);
-            let spot = player + away * APPROACH_GAP;
-            let facing = (p.x - spot.x).atan2(p.z - spot.y);
-            let moved = (spot - glam::Vec2::from(seat.target)).length() > FOLLOW_AGAIN;
-            if (!seat.following || moved) && walk_to(seat, spot.to_array(), facing, blockers) {
-                seat.following = true;
-            } else if seat.following && !seat.walking() {
-                // Keep facing the player while standing with them.
-                seat.facing = (p.x - seat.pos.x).atan2(p.z - seat.pos.z);
-            }
-        }
-        _ if seat.following => {
-            seat.following = false;
-            let (home, facing) = (seat.home, seat.home_facing);
-            if !walk_to(seat, home, facing, blockers) {
-                seat.skip_to(home, facing);
-            }
-        }
-        _ => {}
     }
 }
 

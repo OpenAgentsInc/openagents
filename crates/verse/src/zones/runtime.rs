@@ -1150,6 +1150,22 @@ impl WorldRuntime {
             .filter(|text| !text.is_empty());
     }
 
+    /// Joins a hosted Everglade instance whose viewer's NIP-HOST grant holds
+    /// `rights`, or leaves it with `None`. The `world` right admits walking
+    /// only; the studio's panels need its studio rights ([`Studio::access`]).
+    pub fn set_studio_grant(&mut self, rights: Option<Vec<coder_access::Right>>) {
+        self.zone_state.studio.set_grant(rights);
+    }
+
+    /// Draws the studio's seats where a hosted instance's authority places
+    /// them, or walks them here again with `None`.
+    pub fn follow_studio_authority(
+        &mut self,
+        poses: Option<Vec<crate::zones::everglade::studio::SeatPose>>,
+    ) {
+        self.zone_state.studio.follow_authority(poses);
+    }
+
     /// Where Everglade's Agent Studio comes from. Nothing is read until the
     /// player is in Everglade and [`Self::update_studio`] is called active.
     pub fn set_studio_source(&mut self, source: Box<dyn Source>) {
@@ -1222,7 +1238,12 @@ impl WorldRuntime {
     /// Everglade.
     #[must_use]
     pub fn studio_panel_here(&self) -> Option<PanelKind> {
-        if self.zone_state.everglade.is_none() || self.zone_loading() {
+        // In a hosted instance the `world` right admits walking only; a
+        // panel opens under the grant's `observe`.
+        if self.zone_state.everglade.is_none()
+            || self.zone_loading()
+            || !self.zone_state.studio.access().read
+        {
             return None;
         }
         Studio::panel_at(self.player.pos)
@@ -1242,6 +1263,7 @@ impl WorldRuntime {
         const REACH: f32 = 40.0;
         if self.zone_state.everglade.is_none()
             || self.zone_loading()
+            || !self.zone_state.studio.access().read
             || !aspect.is_finite()
             || aspect <= 0.0
         {
