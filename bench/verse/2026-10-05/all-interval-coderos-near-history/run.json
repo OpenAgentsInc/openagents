@@ -1,0 +1,41 @@
+{
+  "schema": "verse.battle.performance.evidence.v1",
+  "acceptance": "failed",
+  "host_revision": "dc0acabd49ed7f803495730dbee2412b868426ae",
+  "client_revision": "a1b731c9e3f7d5848800ee24684955cbdd9aee73",
+  "host_binary_sha256": "07407161c5994d8bb3361a3b21274a86553e8963748c9fcc91546bcceb7ba65c",
+  "players": 20,
+  "live_hostile_npcs": 40,
+  "native_seconds": 45,
+  "movement_send_steps": 6,
+  "wire_version": 26,
+  "timings": {
+    "frame_p95_ms": 15.752334,
+    "gpu_p95_ms": 11.358458,
+    "verified_snapshot_age_p95_ms": 192.98637499999998,
+    "command_turnaround_p95_ms": 255.597167
+  },
+  "movement_expiries": 595,
+  "native_reset_reasons": {
+    "control_epoch": 25,
+    "teleport": 1
+  },
+  "server": {
+    "deferred_read_projection_observations": 12768,
+    "deferred_read_projection_total_seconds": 10.964014,
+    "deferred_read_projection_max_ms": 3.065,
+    "journal_sync_max_ms": 300.545,
+    "storage_paused_seconds": 1.125938
+  },
+  "validation": [
+    "Both clients and host exited zero.",
+    "All 19 headless workers observed 20 players and at least 40 live hostile NPCs.",
+    "13696 movement inputs with zero producer pressure.",
+    "13 focused replication tests passed, including exact packet comparisons across distance transitions and acknowledgment loss."
+  ],
+  "limits": [
+    "Shared machine, disk, trajectories, and request counts vary; these runs do not isolate causality.",
+    "Frame p95 meets the initial target in this sample, but movement continuity and network turnaround fail battle acceptance.",
+    "No impaired-network, input-to-display, or soak acceptance."
+  ]
+}
