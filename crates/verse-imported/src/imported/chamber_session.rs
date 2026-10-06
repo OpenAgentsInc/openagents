@@ -1089,9 +1089,15 @@ impl Session {
         // Keep local prediction immediate while amortizing durable ordered requests.
         // The complete history retains direction changes, lease expiries, and jump edges.
         // Flush a credit-limited remainder; local-only time still waits for a full batch.
+        // While a request is outstanding, amortize queued movement into a full
+        // bounded interval. Local prediction and every input edge remain immediate.
+        let minimum = if self.pending.is_empty() {
+            verse_world::movement::frames::SEND_STEPS
+        } else {
+            verse_world::movement::frames::MAX_STEPS
+        };
         if steps == 0
-            || (steps < verse_world::movement::frames::SEND_STEPS
-                && end == self.prediction.physics_step())
+            || (steps < minimum && end == self.prediction.physics_step())
             || self.input.capacity() == 0
             || self.pending.len() >= PENDING_LIMIT
         {
