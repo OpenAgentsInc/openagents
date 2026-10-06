@@ -558,7 +558,7 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
     );
     assert!(session.take_notes().iter().any(
         |n| matches!(n, Note::Correction { detail, discontinuity:false, .. }
-        if detail["stage"] == "applied_movement_confirmation")
+        if serde_json::to_value(detail).unwrap()["stage"] == "applied_movement_confirmation")
     ));
     updates.try_send(Update::Snapshot(older)).unwrap();
     session.consume(&scene).unwrap();

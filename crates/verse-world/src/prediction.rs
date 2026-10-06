@@ -2,7 +2,7 @@
 #[cfg(test)]
 mod latency;
 mod local;
-pub use local::{Local, Pose};
+pub use local::{Local, Pose, Timing};
 
 use crate::movement::{self, Baseline};
 use glam::DVec3;

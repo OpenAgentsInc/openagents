@@ -78,6 +78,31 @@ pub enum Stopped {
     Failed(String),
 }
 
+/// Captured correction context, serialized only when a recorder retains its detail.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CorrectionDetail {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stage: Option<&'static str>,
+    tick: u64,
+    request_id: u64,
+    life: LifeId,
+    epoch: u64,
+    before: Vec3,
+    after: Vec3,
+    pending: usize,
+    baseline: Option<verse_world::movement::Baseline>,
+    timing_before: Option<verse_world::prediction::Timing>,
+    timing_after: verse_world::prediction::Timing,
+    #[serde(flatten)]
+    snapshot: Option<SnapshotCorrection>,
+}
+#[derive(Debug, Clone, serde::Serialize)]
+struct SnapshotCorrection {
+    previous_life: LifeId,
+    previous_epoch: u64,
+    reset_reason: Option<&'static str>,
+}
+
 /// What prediction and transport did, for a recorder that profiles them.
 /// A session collects notes only after [`Session::observe`].
 #[derive(Debug, Clone)]
@@ -88,7 +113,7 @@ pub enum Note {
     Correction {
         distance: f64,
         discontinuity: bool,
-        detail: serde_json::Value,
+        detail: Box<CorrectionDetail>,
     },
     /// A retired input moved the predicted pose by `distance` metres.
     Retirement {
@@ -858,10 +883,20 @@ impl Session {
         if self.notes.is_some() {
             self.prediction.advance(0.)?;
             if let (Some(before), Some(after)) = (before, self.prediction.pose()) {
-                let detail = serde_json::json!({"stage":"applied_movement_confirmation",
-                    "tick":r.tick,"request_id":r.request_id,"life":after.life,"epoch":after.epoch,
-                    "before":before.position,"after":after.position,"pending":self.prediction.pending(),
-                    "baseline":baseline,"timing_before":timing,"timing_after":self.prediction.timing()});
+                let detail = Box::new(CorrectionDetail {
+                    stage: Some("applied_movement_confirmation"),
+                    tick: r.tick,
+                    request_id: r.request_id,
+                    life: after.life,
+                    epoch: after.epoch,
+                    before: before.position,
+                    after: after.position,
+                    pending: self.prediction.pending(),
+                    baseline: Some(baseline),
+                    timing_before: timing,
+                    timing_after: self.prediction.timing(),
+                    snapshot: None,
+                });
                 self.note(Note::Correction {
                     distance: f64::from(before.position.distance(after.position)),
                     discontinuity: false,
@@ -976,12 +1011,28 @@ impl Session {
         if self.notes.is_some() {
             self.prediction.advance(0.)?;
             if let (Some(before), Some(after)) = (previous_pose, self.prediction.pose()) {
-                let detail = serde_json::json!({"tick":r.tick,"request_id":r.request_id,
-                    "life":after.life,"epoch":after.epoch,"previous_life":before.life,"previous_epoch":before.epoch,
-                    "reset_reason":if discontinuity {Some(reset_reason)} else {None},
-                    "before":before.position,"after":after.position,
-                    "pending":self.prediction.pending(),"baseline":movement,
-                    "timing_before":previous_timing,"timing_after":self.prediction.timing()});
+                let detail = Box::new(CorrectionDetail {
+                    stage: None,
+                    tick: r.tick,
+                    request_id: r.request_id,
+                    life: after.life,
+                    epoch: after.epoch,
+                    before: before.position,
+                    after: after.position,
+                    pending: self.prediction.pending(),
+                    baseline: movement,
+                    timing_before: previous_timing,
+                    timing_after: self.prediction.timing(),
+                    snapshot: Some(SnapshotCorrection {
+                        previous_life: before.life,
+                        previous_epoch: before.epoch,
+                        reset_reason: if discontinuity {
+                            Some(reset_reason)
+                        } else {
+                            None
+                        },
+                    }),
+                });
                 self.note(Note::Correction {
                     distance: f64::from(before.position.distance(after.position)),
                     discontinuity,

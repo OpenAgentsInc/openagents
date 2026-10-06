@@ -23,7 +23,7 @@ pub struct Pose {
     pub motion_time: f32,
 }
 /// Read-only timing evidence in 120 Hz physics steps; input count is bounded by history.
-#[derive(serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Timing {
     recovery_blocks: u64,
     embedding_deferrals: u64,
@@ -41,7 +41,7 @@ pub struct Timing {
     baseline_step: Option<u64>,
     inputs: Vec<TimedInput>,
 }
-#[derive(serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 struct TimedInput {
     token: u64,
     sequence: Option<u64>,
@@ -56,7 +56,7 @@ struct Input {
     step: u64,
     intent: Intent<Ability>,
 }
-#[derive(Clone, Copy, serde::Serialize)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 struct Estimate {
     character: physics::character::Character,
     held: movement::Held,
@@ -64,7 +64,7 @@ struct Estimate {
     policy: movement::Policy,
 }
 /// One reconciliation decision, retained without growing the input history.
-#[derive(Clone, Copy, serde::Serialize)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 struct Reconciliation {
     previous_baseline: Option<Baseline>,
     completed_estimate: Option<Estimate>,

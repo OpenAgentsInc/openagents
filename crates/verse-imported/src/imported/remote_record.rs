@@ -177,7 +177,7 @@ impl Profile {
             }
         }
     }
-    pub fn correction(&mut self, distance: f64, reset: bool, context: serde_json::Value) {
+    pub fn correction(&mut self, distance: f64, reset: bool, context: impl serde::Serialize) {
         if !distance.is_finite() || distance < 0. {
             return;
         }
@@ -516,6 +516,32 @@ mod tests {
         assert_eq!(summary["omitted_retirements"], 44);
         assert_eq!(summary["prediction_correction_meters"]["samples"], 0);
     }
+    #[test]
+    fn correction_context_is_serialized_only_for_retained_trace_entries() {
+        use std::cell::Cell;
+        struct Context<'a>(&'a Cell<usize>);
+        impl serde::Serialize for Context<'_> {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                self.0.set(self.0.get() + 1);
+                serializer.serialize_unit()
+            }
+        }
+        let serializations = Cell::new(0);
+        let mut profile = Profile::default();
+        for _ in 0..100 {
+            profile.correction(0., false, Context(&serializations));
+        }
+        assert_eq!(serializations.get(), 0);
+        for _ in 0..300 {
+            profile.correction(0.2, false, Context(&serializations));
+        }
+        assert_eq!(serializations.get(), 256);
+        let summary = profile.summary();
+        assert_eq!(summary["prediction_correction_meters"]["samples"], 400);
+        assert_eq!(summary["correction_trace"].as_array().unwrap().len(), 256);
+        assert_eq!(summary["omitted_corrections"], 44);
+    }
+
     #[test]
     fn discontinuities_do_not_pollute_reconciliation_and_traces_are_bounded() {
         let mut profile = Profile::default();
