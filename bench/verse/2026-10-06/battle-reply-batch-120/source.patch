@@ -1,0 +1,873 @@
+diff --git a/crates/verse-world/src/prediction/local.rs b/crates/verse-world/src/prediction/local.rs
+index 27f311088a..40aa4d6cc4 100644
+--- a/crates/verse-world/src/prediction/local.rs
++++ b/crates/verse-world/src/prediction/local.rs
+@@ -363,12 +363,14 @@ impl Local {
+             dirty_before: self.dirty,
+             path: "replay",
+         };
++        // An unchanged authority motor cannot rewrite processed input when a
++        // corpse or another fixed blocker appears. New geometry applies to the
++        // next integration; a changed motor still reconciles confirmed travel.
+         let same_travel = baseline.profile == movement::Profile::Frames
+             && self.baseline.is_some_and(|mut previous| {
+                 previous.world_step = baseline.world_step;
+                 previous == baseline
+-            })
+-            && blocking_geometry_matches;
++            });
+         // Compare completed travel at its own physics step. Capsule poses from
+         // another observation cannot retroactively replace a pending path that
+         // this estimate already processed. Other motor state still requires replay.
+@@ -1949,6 +1951,73 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn unchanged_confirmation_applies_new_fixed_blockers_only_to_future_travel() {
++        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot};
++        let (mut local, mut baseline, mut geometry) = setup();
++        movement::advance(
++            &mut baseline.character,
++            local.collision.scene(),
++            Filter::blocking(7),
++            glam::DVec3::ZERO,
++            false,
++            1,
++            1. / 120.,
++        )
++        .unwrap();
++        baseline.profile = movement::Profile::Frames;
++        baseline.epoch += 1;
++        local.observe(baseline, &geometry, 2, 2).unwrap();
++        local.queue(1, movement()).unwrap();
++        local.advance(0.1).unwrap();
++        local.advance(0.1).unwrap();
++        let before = local.character.unwrap();
++        let step = local.physics_step();
++        // A corpse appears across the path already processed. Another new
++        // blocker lies ahead, so retaining history must still update collision.
++        for (entity, min_x, max_x) in [
++            (216, 0.4, before.feet.x - 0.45),
++            (217, before.feet.x + 0.45, before.feet.x + 1.0),
++        ] {
++            geometry.colliders.push(ShapeSnapshot {
++                key: ColliderKey {
++                    life: Life {
++                        instance: 7,
++                        entity,
++                        generation: 0,
++                    },
++                    shape: 0,
++                },
++                layers: 1,
++                usage: Usage::Blocking,
++                pose: Pose::default(),
++                geometry: GeometrySnapshot::Box {
++                    min: glam::DVec3::new(min_x, 0., -0.5),
++                    max: glam::DVec3::new(max_x, 2., 0.5),
++                },
++            });
++        }
++        baseline.world_step = step;
++        local.observe(baseline, &geometry, 3, 3).unwrap();
++        local.advance(0.).unwrap();
++        assert_eq!(
++            local.character.unwrap(),
++            before,
++            "Unchanged confirmation cannot replay historical travel through a new blocker"
++        );
++        assert_eq!(local.physics_step(), step);
++        assert_eq!(local.pending(), 1);
++        local.advance(4. / 120.).unwrap();
++        let after = local.character.unwrap();
++        assert!(after.feet.x > before.feet.x + 0.05);
++        assert!(
++            after.feet.x < before.feet.x + 0.11,
++            "Future travel must stop at the new blocker: {:?}",
++            after.feet
++        );
++        assert_eq!(local.physics_step(), step + 4);
++    }
++
+     #[test]
+     fn fresh_interval_input_cannot_replay_processed_travel_against_a_later_crowd_pose() {
+         use physics::queries::{GeometrySnapshot, Pose, ShapeSnapshot};
+diff --git a/crates/verse-world/src/service/client.rs b/crates/verse-world/src/service/client.rs
+index e7a98c0840..09b15eca28 100644
+--- a/crates/verse-world/src/service/client.rs
++++ b/crates/verse-world/src/service/client.rs
+@@ -14,7 +14,7 @@ use tokio::net::TcpStream;
+ use tokio_rustls::TlsConnector;
+ 
+ use super::{
+-    transport::{Transport, read_frame, write_frame},
++    transport::{Transport, read_frame, write_frame, write_frame_batch},
+     wire::{
+         Body, Control, EventPage, Hello, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Reply, Request,
+         Response, State, VERSION,
+@@ -918,10 +918,19 @@ impl Client {
+         let errors = incoming.clone();
+         let write = client_runtime::spawn(async move {
+             while let Some(bytes) = outgoing.recv().await {
+-                let result = timeout(
+-                    DEADLINE,
+-                    write_frame(&mut writer, &bytes, MAX_REQUEST_BYTES),
+-                )
++                let result = timeout(DEADLINE, async {
++                    // One millisecond lets a same-wake input and its reads share
++                    // a write. The existing deadline includes this collection.
++                    client_runtime::sleep(Duration::from_millis(1)).await;
++                    let mut frames = vec![bytes];
++                    while frames.len() < PIPELINE_CAPACITY {
++                        match outgoing.try_recv() {
++                            Ok(bytes) => frames.push(bytes),
++                            Err(_) => break,
++                        }
++                    }
++                    write_frame_batch(&mut writer, &frames, MAX_REQUEST_BYTES).await
++                })
+                 .await
+                 .map_err(|_| "Chamber write timed out".to_string())
+                 .and_then(|r| r);
+diff --git a/crates/verse-world/src/service/net/session_pipeline.rs b/crates/verse-world/src/service/net/session_pipeline.rs
+index 0c1e20a059..0e15dbf55e 100644
+--- a/crates/verse-world/src/service/net/session_pipeline.rs
++++ b/crates/verse-world/src/service/net/session_pipeline.rs
+@@ -1,11 +1,12 @@
+ //! Ordered admission proceeds independently of ordered durable reply delivery.
+ use super::*;
++use crate::service::transport::write_frame_batch;
+ use std::{collections::VecDeque, future::Future, pin::Pin};
+ 
+ const CAPACITY: usize = 8;
+ type WriteFlight<S> = Pin<
+     Box<
+-        dyn Future<Output = Result<(tokio::io::WriteHalf<S>, usize, Response, bool), String>>
++        dyn Future<Output = Result<(tokio::io::WriteHalf<S>, Vec<(usize, Response, bool)>), String>>
+             + Send,
+     >,
+ >;
+@@ -42,6 +43,47 @@ enum Delivery {
+     RateLimited(u64),
+ }
+ impl Delivery {
++    // Collect only successful replies already available. An unready or failed
++    // reply stays at the ordered boundary until earlier writes finish.
++    fn take_ready(&mut self, last: &Response) -> Option<(Vec<u8>, bool)> {
++        match self {
++            Self::Host(receive) => match receive.try_recv() {
++                Ok(Ok(reply)) => Some(reply),
++                Ok(Err(error)) => {
++                    *self = Self::Ready(Some(Err(error)));
++                    None
++                }
++                Err(oneshot::error::TryRecvError::Empty) => None,
++                Err(oneshot::error::TryRecvError::Closed) => {
++                    *self = Self::Ready(Some(Err("Chamber host stopped".into())));
++                    None
++                }
++            },
++            Self::Ready(result) => {
++                if result.as_ref().is_some_and(Result::is_ok) {
++                    result.take().and_then(Result::ok)
++                } else {
++                    None
++                }
++            }
++            Self::RateLimited(request_id) => {
++                let mut response = last.clone();
++                response.request_id = *request_id;
++                response.body = Reply::Refused {
++                    code: "rate_limited".into(),
++                    message: "Chamber request work budget exceeded; no operation was admitted"
++                        .into(),
++                };
++                match response.encode() {
++                    Ok(bytes) => Some((bytes, true)),
++                    Err(error) => {
++                        *self = Self::Ready(Some(Err(error)));
++                        None
++                    }
++                }
++            }
++        }
++    }
+     async fn receive(&mut self, last: &Response) -> DispatchReply {
+         match self {
+             Self::Host(receive) => receive.await.map_err(|_| "Chamber host stopped")?,
+@@ -119,6 +161,7 @@ pub(super) async fn run<S: Transport + 'static>(
+     let (read, write) = tokio::io::split(stream);
+     let mut writer = Some(write);
+     let mut writing: Option<WriteFlight<S>> = None;
++    let mut writing_count = 0usize;
+     // Partial frame reads are owned by this task and are never cancelled by reply polling.
+     let mut reader = Reader::new(read);
+     let mut pending = VecDeque::<Delivery>::new();
+@@ -138,12 +181,15 @@ pub(super) async fn run<S: Transport + 'static>(
+             biased;
+             _ = slot.cancelled() => return Err("Chamber connection was superseded".into()),
+             completed = async { writing.as_mut().unwrap().await }, if writing.is_some() => {
+-                let (write, bytes, delivered, authenticated) = completed?;
++                let (write, delivered) = completed?;
+                 writing = None;
++                writing_count = 0;
+                 writer = Some(write);
+-                slot.delivered(bytes, Some(delivered.tick));
+-                last = delivered;
+-                if !authenticated { return Err("Chamber connection is not authenticated".into()); }
++                for (bytes, response, authenticated) in delivered {
++                    slot.delivered(bytes, Some(response.tick));
++                    last = response;
++                    if !authenticated { return Err("Chamber connection is not authenticated".into()); }
++                }
+             }
+             progress = async { (&mut gate.as_mut().unwrap().progress).await }, if gate.is_some() => {
+                 let current = gate.take().unwrap();
+@@ -178,24 +224,43 @@ pub(super) async fn run<S: Transport + 'static>(
+                 gate = Some(submit(send, id, bytes, wait, deadline).await?);
+             }
+             result = async { pending.front_mut().unwrap().receive(&last).await }, if !pending.is_empty() && writing.is_none() => {
+-                let (bytes, authenticated) = result?;
++                let (bytes, mut authenticated) = result?;
+                 pending.pop_front();
+                 let bytes = refusal_prefix(bytes, &last)?;
+                 let response: ResponseHeader = serde_json::from_slice(&bytes).map_err(|_| "Invalid chamber response")?;
+                 if !authenticated {
+                     terminal = Some("Chamber connection is not authenticated".into());
+                 }
++                let mut prefix = response.refusal_template();
++                let mut frames = vec![bytes];
++                let mut delivered = vec![(frames[0].len(), prefix.clone(), authenticated)];
++                // A durable fence can release several replies together. Preserve
++                // every correlated frame while flushing their ready prefix once.
++                while authenticated && frames.len() < CAPACITY {
++                    let Some((bytes, next_authenticated)) = pending.front_mut()
++                        .and_then(|reply| reply.take_ready(&prefix)) else { break; };
++                    pending.pop_front();
++                    let bytes = refusal_prefix(bytes, &prefix)?;
++                    let response: ResponseHeader = serde_json::from_slice(&bytes)
++                        .map_err(|_| "Invalid chamber response")?;
++                    prefix = response.refusal_template();
++                    authenticated = next_authenticated;
++                    if !authenticated { terminal = Some("Chamber connection is not authenticated".into()); }
++                    delivered.push((bytes.len(), prefix.clone(), authenticated));
++                    frames.push(bytes);
++                }
++                writing_count = frames.len();
+                 let mut write = writer.take().expect("Idle chamber reply writer");
+                 // Keep the partial write future alive across admission polls. A
+                 // slow reader cannot stall inbound movement or duplicate a frame.
+                 writing = Some(Box::pin(async move {
+-                    timeout(WRITE, write_frame(&mut write, &bytes, MAX_RESPONSE_BYTES))
++                    timeout(WRITE, write_frame_batch(&mut write, &frames, MAX_RESPONSE_BYTES))
+                         .await.map_err(|_| "Chamber write timed out")??;
+-                    Ok((write, bytes.len(), response.refusal_template(), authenticated))
++                    Ok((write, delivered))
+                 }));
+             }
+             incoming = reader.receive.recv(), if terminal.is_none() && gate.is_none()
+-                && retry.is_none() && pending.len() + usize::from(writing.is_some()) < CAPACITY => {
++                && retry.is_none() && pending.len() + writing_count < CAPACITY => {
+                 let bytes = match incoming {
+                     Some(Ok(bytes)) => bytes,
+                     Some(Err(error)) => { terminal = Some(error); continue; }
+@@ -260,6 +325,31 @@ mod tests {
+         }
+     }
+ 
++    #[tokio::test]
++    async fn ready_reply_collection_preserves_unready_and_failed_boundaries() {
++        let last = response(8, 12, 7);
++        let (send, receive) = oneshot::channel();
++        let mut reply = Delivery::Host(receive);
++        assert!(reply.take_ready(&last).is_none());
++        send.send(Err("Durability failed".into())).unwrap();
++        assert!(reply.take_ready(&last).is_none());
++        assert_eq!(reply.receive(&last).await.unwrap_err(), "Durability failed");
++        let (send, receive) = oneshot::channel();
++        let mut reply = Delivery::Host(receive);
++        drop(send);
++        assert!(reply.take_ready(&last).is_none());
++        assert_eq!(
++            reply.receive(&last).await.unwrap_err(),
++            "Chamber host stopped"
++        );
++        let mut reply = Delivery::RateLimited(9);
++        let (bytes, authenticated) = reply.take_ready(&last).unwrap();
++        let decoded: Response = serde_json::from_slice(&bytes).unwrap();
++        assert!(authenticated);
++        assert_eq!((decoded.request_id, decoded.tick), (9, 12));
++        assert_eq!(decoded.control.unwrap().accepted_sequence, 7);
++    }
++
+     #[tokio::test]
+     async fn admission_is_bounded_and_replies_wait_for_ordered_durability() {
+         let (server, mut client) = tokio::io::duplex(65536);
+@@ -439,7 +529,7 @@ mod tests {
+         reply.send(Ok((large.clone(), true))).unwrap();
+         // No response bytes are consumed while the server's bounded socket fills.
+         tokio::time::sleep(Duration::from_millis(40)).await;
+-        for request_id in 2..=9 {
++        for request_id in 2..=10 {
+             let frame = crate::movement::frames::Frame {
+                 life: verse_engine::core::LifeId {
+                     instance: 1,
+@@ -512,7 +602,37 @@ mod tests {
+             read_frame(&mut read, MAX_RESPONSE_BYTES).await.unwrap(),
+             large
+         );
+-        for request_id in 2..=8 {
++        // Seven ready replies now share a blocked write. Only its one free
++        // request slot can admit more work, regardless of the number of flushes.
++        let Event::Request {
++            bytes,
++            reply,
++            progress,
++            ..
++        } = timeout(Duration::from_secs(1), events.recv())
++            .await
++            .unwrap()
++            .unwrap()
++        else {
++            panic!("Missing single free request slot");
++        };
++        assert_eq!(Request::decode(&bytes).unwrap().request_id, 9);
++        progress
++            .unwrap()
++            .send(RequestProgress::Queued {
++                authenticated: true,
++            })
++            .unwrap_or_else(|_| panic!("Admission receiver stopped"));
++        reply
++            .send(Ok((response(9, 1, 9).encode().unwrap(), true)))
++            .unwrap();
++        assert!(
++            timeout(Duration::from_millis(30), events.recv())
++                .await
++                .is_err(),
++            "A blocked reply batch bypassed the eight-request bound"
++        );
++        for request_id in 2..=9 {
+             let bytes = timeout(
+                 Duration::from_secs(1),
+                 read_frame(&mut read, MAX_RESPONSE_BYTES),
+@@ -534,7 +654,7 @@ mod tests {
+         else {
+             panic!("Missing released admission")
+         };
+-        assert_eq!(Request::decode(&bytes).unwrap().request_id, 9);
++        assert_eq!(Request::decode(&bytes).unwrap().request_id, 10);
+         task.abort();
+         let _ = task.await;
+     }
+diff --git a/crates/verse-world/src/service/transport.rs b/crates/verse-world/src/service/transport.rs
+index 4b094bbe23..d88691cd97 100644
+--- a/crates/verse-world/src/service/transport.rs
++++ b/crates/verse-world/src/service/transport.rs
+@@ -51,3 +51,78 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
+         .map_err(|_| "Cannot flush chamber frame")?;
+     Ok(())
+ }
++
++/// Writes a bounded group without changing individual framing or request order.
++pub(super) async fn write_frame_batch<W: AsyncWrite + Unpin>(
++    writer: &mut W,
++    frames: &[Vec<u8>],
++    max: usize,
++) -> Result<(), String> {
++    if frames.is_empty() || frames.len() > super::client::PIPELINE_CAPACITY {
++        return Err("Chamber frame batch exceeds request budget".into());
++    }
++    let mut size = 0usize;
++    for bytes in frames {
++        if bytes.is_empty() || bytes.len() > max || u32::try_from(bytes.len()).is_err() {
++            return Err("Chamber frame exceeds byte budget".into());
++        }
++        size = size
++            .checked_add(bytes.len())
++            .and_then(|size| size.checked_add(4))
++            .ok_or("Chamber frame batch length overflow")?;
++    }
++    let mut batch = Vec::with_capacity(size);
++    for bytes in frames {
++        batch.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
++        batch.extend_from_slice(bytes);
++    }
++    writer
++        .write_all(&batch)
++        .await
++        .map_err(|_| "Cannot write chamber frame batch")?;
++    writer
++        .flush()
++        .await
++        .map_err(|_| "Cannot flush chamber frame batch")?;
++    Ok(())
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[tokio::test]
++    async fn batched_frames_preserve_boundaries_through_partial_writes() {
++        let (mut writer, mut reader) = tokio::io::duplex(7);
++        let frames = vec![vec![1; 13], vec![2; 3], vec![3; 19]];
++        let (sent, received) = tokio::join!(write_frame_batch(&mut writer, &frames, 19), async {
++            let mut received = Vec::new();
++            for _ in 0..3 {
++                received.push(read_frame(&mut reader, 19).await.unwrap());
++            }
++            received
++        });
++        sent.unwrap();
++        assert_eq!(received, frames);
++    }
++
++    #[tokio::test]
++    async fn invalid_batch_sends_no_prefix_and_cannot_exceed_pipeline_capacity() {
++        for frames in [
++            vec![vec![1], vec![2; 9]],
++            vec![vec![1], Vec::new()],
++            vec![vec![1]; super::super::client::PIPELINE_CAPACITY + 1],
++            Vec::new(),
++        ] {
++            let (mut writer, mut reader) = tokio::io::duplex(64);
++            assert!(write_frame_batch(&mut writer, &frames, 8).await.is_err());
++            drop(writer);
++            let mut received = Vec::new();
++            reader.read_to_end(&mut received).await.unwrap();
++            assert!(
++                received.is_empty(),
++                "An invalid batch cannot send an earlier valid request"
++            );
++        }
++    }
++}
+diff --git a/crates/verse-world/src/service/worker.rs b/crates/verse-world/src/service/worker.rs
+index c543bd29af..a28b23496c 100644
+--- a/crates/verse-world/src/service/worker.rs
++++ b/crates/verse-world/src/service/worker.rs
+@@ -493,7 +493,9 @@ async fn run_impl(
+                                 .control()
+                                 .ok_or("Client has no admitted adventurer")?
+                                 .clone();
+-                            next_inventory = client_runtime::Instant::now();
++                            if !matches!(action, Input::BeginMovementFrames { .. }) {
++                                next_inventory = client_runtime::Instant::now();
++                            }
+                             match action {
+                                 Input::Respawn => Body::Respawn { life: control.life },
+                                 Input::BeginMovementFrames { life, epoch } => {
+@@ -599,6 +601,13 @@ async fn run_impl(
+                     let (body,response) = response?;
+                     last_response = Some(Instant::now());
+                     let entry = matches!(&body,Body::BeginMovementFrames{..}).then(||response.clone());
++                    if entry.as_ref().is_some_and(|response| matches!(response.body, Reply::Snapshot { .. })) {
++                        // Entry already delivers the movement baseline. Leave one cadence
++                        // for its first input batch before asking for another projection.
++                        let now = client_runtime::Instant::now();
++                        last_snapshot_sent = Some(now);
++                        snapshot_resume = now + cadence;
++                    }
+                     if let Some(observer) = &observer {
+                         let kind = match &body {
+                             Body::Replicate { .. } | Body::Snapshot {} => "snapshot",
+@@ -1660,6 +1669,104 @@ mod tests {
+         host.await.unwrap();
+     }
+     #[tokio::test]
++    async fn interval_entry_snapshot_defers_the_next_scene_read() {
++        use crate::service::net::{
++            read_frame,
++            tests::{gateway, tls},
++            write_frame,
++        };
++        use crate::service::wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request};
++        use tokio::net::TcpListener;
++        use tokio_rustls::TlsAcceptor;
++        let keys = [key(231), key(232), key(233)];
++        let mut gateway = gateway(&keys);
++        gateway.tick(0.05).unwrap();
++        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let address = listener.local_addr().unwrap();
++        let (server_tls, connector) = tls();
++        let (reads, mut observed) = mpsc::channel(16);
++        let (peer_stop, peer_stopping) = oneshot::channel();
++        let peer = tokio::spawn(async move {
++            let (socket, _) = listener.accept().await.unwrap();
++            let mut socket = TlsAcceptor::from(server_tls).accept(socket).await.unwrap();
++            let (id, hello) = gateway.open_json(0).unwrap();
++            write_frame(&mut socket, &hello, MAX_RESPONSE_BYTES)
++                .await
++                .unwrap();
++            let mut entered = false;
++            tokio::pin!(peer_stopping);
++            loop {
++                tokio::select! {
++                    _ = &mut peer_stopping => break,
++                    bytes = read_frame(&mut socket, MAX_REQUEST_BYTES) => {
++                        let Ok(bytes) = bytes else { break };
++                        let request = Request::decode(&bytes).unwrap();
++                        if entered && matches!(request.body, Body::Snapshot {} | Body::Replicate { .. }) {
++                            reads.send(()).await.unwrap();
++                        }
++                        entered |= matches!(request.body, Body::BeginMovementFrames { .. });
++                        let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
++                        write_frame(&mut socket, &response, MAX_RESPONSE_BYTES).await.unwrap();
++                    }
++                }
++            }
++        });
++        let client = Client::connect(
++            address,
++            ServerName::try_from("localhost").unwrap(),
++            connector.config().clone(),
++            120,
++            &keys[0],
++        )
++        .await
++        .unwrap();
++        let control = client.control().unwrap().clone();
++        let (input, inputs, updates, mut output) = channels();
++        input
++            .send(Input::BeginMovementFrames {
++                life: control.life.into(),
++                epoch: control.epoch,
++            })
++            .await
++            .unwrap();
++        let (stop, stopping) = oneshot::channel();
++        let task = tokio::spawn(run(
++            client,
++            Cursor::new(120),
++            Duration::from_millis(200),
++            inputs,
++            updates,
++            stopping,
++        ));
++        let entry = async {
++            while let Some(update) = output.recv().await {
++                if let Update::Snapshot(response) = update {
++                    if matches!(response.body, Reply::Snapshot { ref state }
++                        if state.movement.is_some_and(|b| b.profile == crate::movement::Profile::Frames))
++                    {
++                        return;
++                    }
++                }
++            }
++            panic!("Worker stopped before interval entry");
++        };
++        timeout(Duration::from_secs(3), entry).await.unwrap();
++        // Keep consuming other read classes while checking the scene deadline.
++        let check = async {
++            loop {
++                tokio::select! {
++                    read = observed.recv() => { assert!(read.is_none(), "Entry triggered a duplicate scene read"); return; }
++                    update = output.recv() => { assert!(update.is_some()); }
++                }
++            }
++        };
++        assert!(timeout(Duration::from_millis(100), check).await.is_err());
++        let _ = stop.send(());
++        task.await.unwrap().unwrap();
++        let _ = peer_stop.send(());
++        peer.await.unwrap();
++    }
++    #[tokio::test]
+     async fn periodic_reads_leave_a_gameplay_slot_when_replies_are_withheld() {
+         withheld_reply_slots(false).await;
+     }
+diff --git a/crates/verse/examples/battle_scale.rs b/crates/verse/examples/battle_scale.rs
+index 12adf9ff22..ebe3f7d360 100644
+--- a/crates/verse/examples/battle_scale.rs
++++ b/crates/verse/examples/battle_scale.rs
+@@ -6,8 +6,6 @@
+ mod battle_acceptance;
+ #[path = "common/battle_native_player.rs"]
+ mod battle_native_player;
+-#[path = "common/battle_player.rs"]
+-mod battle_player;
+ use glam::Vec3;
+ use rustls::{
+     ClientConfig, RootCertStore, ServerConfig,
+@@ -678,7 +676,7 @@ async fn run(
+         let tls = client_tls.clone();
+         let segment_directory = segment_directory.clone();
+         let scene = scene.clone();
+-        let pack = pack.clone();
++        let pack = (index == 0).then(|| pack.clone());
+         let tap = if index == 0 { Some(tap.clone()) } else { None };
+         let atlas = if index == 0 {
+             Some(atlas.clone())
+@@ -698,20 +696,16 @@ async fn run(
+                         break;
+                     }
+                 };
+-                let segment = if index == 0 {
+-                    battle_native_player::player(
+-                        client,
+-                        index,
+-                        deadline,
+-                        scene.clone(),
+-                        pack.clone(),
+-                        tap.clone(),
+-                        atlas.clone(),
+-                    )
+-                    .await?
+-                } else {
+-                    battle_player::player(client, index, deadline, true, true).await?
+-                };
++                let segment = battle_native_player::player(
++                    client,
++                    index,
++                    deadline,
++                    scene.clone(),
++                    pack.clone(),
++                    tap.clone(),
++                    atlas.clone(),
++                )
++                .await?;
+                 let path = segment_directory
+                     .join(format!("player-{index}-segment-{}.json", segments.len()));
+                 match SegmentRecord::write(path, segment) {
+@@ -874,7 +868,7 @@ fn main() -> Result<(), String> {
+     {
+         return Err("Invalid capacity mode or duration".into());
+     }
+-    let mut report = serde_json::json!({"schema":"verse.battle.capacity.v1","mode":args[0],"seconds":seconds,"players":PLAYERS,"native_sessions":1,"headless_workers":19,"hostile_npcs":HOSTILES,"cultist_health":20000,"frontline_player":19,"frontline_initial_position":[-6.,0.,-8.],"frontline_initial_life_recipe":"approach the nearest hostile and cast only Fire Bolt; defer inventory, healing, crowd control, Shield, and Misty Step until the first actual respawn","delay_profile":"pipeline","delay_ms_per_chunk":40,"jitter_ms_per_chunk":20,"wire_version":verse_world::service::wire::VERSION,"debug_assertions":cfg!(debug_assertions),"status":"running","budgets":{"movement_expiries":0,"simulation_p99_upper_bound_ms":1000./30.,"render_cpu_p95_ms":1000./60.,"render_gpu_p95_ms":1000./60.,"snapshot_age_p95_ms":400.,"minimum_live_hostiles":HOSTILES,"minimum_authority_tick_fraction":0.98,"battle_framed_snapshot_fraction":0.8,"prediction_correction_p95_meters":0.25,"prediction_correction_maximum_meters":1.,"checkpoint_bytes":1048576,"request_queue_peak":128,"writer_queue_peak":2,"held_reply_bytes_peak":33554432,"steady_rss_growth_bytes":67108864},"limits":["Scratch authority and clients share this process and machine.","Offscreen rendering has no display surface, capture, or physical input-to-display measurement.","Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.","GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."]});
++    let mut report = serde_json::json!({"schema":"verse.battle.capacity.v1","mode":args[0],"seconds":seconds,"players":PLAYERS,"native_sessions":if args[0]=="authority" {0} else {PLAYERS},"headless_workers":0,"unrendered_native_sessions":if args[0]=="authority" {0} else if args[0]=="combined" {PLAYERS-1} else {PLAYERS},"rendered_native_sessions":usize::from(args[0]=="combined"),"hostile_npcs":HOSTILES,"cultist_health":20000,"frontline_player":19,"frontline_initial_position":[-6.,0.,-8.],"frontline_initial_life_recipe":"approach the nearest hostile and cast only Fire Bolt; defer inventory, healing, crowd control, Shield, and Misty Step until the first actual respawn","delay_profile":"pipeline","delay_ms_per_chunk":40,"jitter_ms_per_chunk":20,"wire_version":verse_world::service::wire::VERSION,"debug_assertions":cfg!(debug_assertions),"status":"running","budgets":{"movement_expiries":0,"simulation_p99_upper_bound_ms":1000./30.,"render_cpu_p95_ms":1000./60.,"render_gpu_p95_ms":1000./60.,"snapshot_age_p95_ms":400.,"minimum_live_hostiles":HOSTILES,"minimum_authority_tick_fraction":0.98,"battle_framed_snapshot_fraction":0.8,"prediction_correction_p95_meters":0.25,"prediction_correction_maximum_meters":1.,"checkpoint_bytes":1048576,"request_queue_peak":128,"writer_queue_peak":2,"held_reply_bytes_peak":33554432,"steady_rss_growth_bytes":67108864},"limits":["Scratch authority and clients share this process and machine.","Offscreen rendering has no display surface, capture, or physical input-to-display measurement.","Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.","GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."]});
+     let resolution = resolution()?;
+     report["render_resolution"] = serde_json::json!({"width":resolution.0,"height":resolution.1});
+     use sha2::{Digest, Sha256};
+@@ -883,7 +877,6 @@ fn main() -> Result<(), String> {
+         "executable_sha256":executable_digest()?,
+         "harness_sha256":format!("{:x}",Sha256::digest(include_bytes!("battle_scale.rs"))),
+         "native_driver_sha256":format!("{:x}",Sha256::digest(include_bytes!("common/battle_native_player.rs"))),
+-        "headless_driver_sha256":format!("{:x}",Sha256::digest(include_bytes!("common/battle_player.rs"))),
+         "acceptance_sha256":format!("{:x}",Sha256::digest(include_bytes!("common/battle_acceptance.rs"))),
+         "world_net_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/service/net.rs"))),
+         "worker_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/service/worker.rs"))),
+diff --git a/crates/verse/examples/common/battle_acceptance.rs b/crates/verse/examples/common/battle_acceptance.rs
+index 2d439088c6..302177e9cc 100644
+--- a/crates/verse/examples/common/battle_acceptance.rs
++++ b/crates/verse/examples/common/battle_acceptance.rs
+@@ -108,7 +108,25 @@ pub fn failures(report: &Value) -> Vec<String> {
+             if samples == 0 || framed as f64 / (samples as f64) < 0.8 {
+                 failures.push(format!("Player {} did not sustain interval movement for eighty percent of battle snapshots",player["player"]));
+             }
+-            if player["player"] == 0 {
++            if report["native_sessions"].as_u64() == Some(20)
++                && segment["movement_profile"] != "native_session_intervals"
++            {
++                failures.push(format!(
++                    "Player {} did not use the declared native session",
++                    player["player"]
++                ));
++            }
++            if segment["movement_profile"] == "native_session_intervals" {
++                for field in ["prediction_failures", "prediction_horizon_pauses"] {
++                    if segment[field].as_u64() != Some(0) {
++                        failures.push(format!(
++                            "Player {} {field} is nonzero or unavailable",
++                            player["player"]
++                        ));
++                    }
++                }
++            }
++            if player["player"] == 0 || segment["movement_profile"] == "native_session_intervals" {
+                 for (field, maximum) in [("p95", 0.25), ("maximum", 1.)] {
+                     let value = segment["measurements"]["steady"]["prediction_correction_meters"]
+                         [field]
+@@ -118,7 +136,7 @@ pub fn failures(report: &Value) -> Vec<String> {
+                     }
+                 }
+             }
+-            if player["player"] == 0 {
++            if player["player"] == 0 || segment["movement_profile"] == "native_session_intervals" {
+                 for window in segment["windows"]
+                     .as_array()
+                     .into_iter()
+@@ -130,7 +148,7 @@ pub fn failures(report: &Value) -> Vec<String> {
+                             window["measurements"]["steady"]["prediction_correction_meters"][field]
+                                 .as_f64();
+                         if value.is_none_or(|v| !v.is_finite() || v > maximum) {
+-                            failures.push(format!("Player 0 late prediction {field} {value:?} exceeds {maximum} meters or is unavailable"));
++                            failures.push(format!("Player {} late prediction {field} {value:?} exceeds {maximum} meters or is unavailable",player["player"]));
+                         }
+                     }
+                 }
+@@ -267,6 +285,34 @@ mod tests {
+         let segment = serde_json::json!({"status":"complete","maximum_players":20,"battle_occupancy":{"samples":100,"minimum_live_hostiles":40},"observed_frame_snapshots":100,"battle_framed_snapshots":100,"movement_inputs":100,"bound_frames":30,"confirmed_interval_steps":360,"accepted_operations":{"equipment":1,"quest_claim":1,"item_use":1,"respawn":1},"accepted_casts":{"Fireball":1,"Web":1,"Thunderwave":1},"measurements":{"steady":{"prediction_correction_meters":{"p95":0.01,"maximum":0.1}}}});
+         let mut report = serde_json::json!({"status":"complete","mode":"network","seconds":60,"server":{"movement_expiry":{"total":0},"ticks":1800,"workload_ticks":1800,"request_queue_peak":20,"writer_queue_peak":2,"held_reply_bytes_peak":1000000,"failure":null,"simulation":{"steady":{"p99_upper_bound_ms":16.}},"admission":{"active_peak":20}},"render":{"measurements":{"steady":{"applied_snapshot_age_ms":{"p95":100.}}}},"recovery":{"active_receipts":32,"retained_events":512,"characters_checked":20,"live_hostiles":40,"checkpoint_bytes":300000},"route":{"connections":40,"refused_connections":0,"omitted_error_details":0,"error_details":[]},"disconnect_windows_seconds":[30.,60.],"players":(0..20).map(|player|serde_json::json!({"player":player,"segments":[segment.clone(),segment.clone()]})).collect::<Vec<_>>()});
+         assert!(failures(&report).is_empty());
++        report["players"][7]["segments"][0]["prediction_failures"] = serde_json::json!(0);
++        report["players"][7]["segments"][0]["prediction_horizon_pauses"] = serde_json::json!(0);
++        report["players"][7]["segments"][0]["movement_profile"] =
++            serde_json::json!("native_session_intervals");
++        report["players"][7]["segments"][0]["measurements"]["steady"]["prediction_correction_meters"]
++            ["p95"] = serde_json::json!(0.3);
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|f| f.contains("Player 7 prediction p95"))
++        );
++        report["players"][7]["segments"][0]["measurements"]["steady"]["prediction_correction_meters"]
++            ["p95"] = serde_json::json!(0.01);
++        assert!(failures(&report).is_empty());
++        report["players"][7]["segments"][0]["prediction_failures"] = serde_json::json!(1);
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|f| f.contains("Player 7 prediction_failures"))
++        );
++        report["players"][7]["segments"][0]["prediction_failures"] = serde_json::json!(0);
++        report["native_sessions"] = serde_json::json!(20);
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|f| f.contains("declared native session"))
++        );
++        report.as_object_mut().unwrap().remove("native_sessions");
+         report["server"]["movement_expiry"]["total"] = serde_json::json!(13);
+         assert!(
+             failures(&report)
+diff --git a/crates/verse/examples/common/battle_native_player.rs b/crates/verse/examples/common/battle_native_player.rs
+index 1f56ecc312..3f0ef56be5 100644
+--- a/crates/verse/examples/common/battle_native_player.rs
++++ b/crates/verse/examples/common/battle_native_player.rs
+@@ -1,6 +1,6 @@
+ //! Exercises the shared native session without a window or owner state.
+ use std::{
+-    collections::BTreeMap,
++    collections::{BTreeMap, VecDeque},
+     time::{Duration, Instant},
+ };
+ use tokio::sync::{mpsc, oneshot};
+@@ -20,6 +20,28 @@ use verse_world::{
+     },
+ };
+ 
++#[derive(Clone, serde::Serialize)]
++struct FrameTrace {
++    elapsed_ms: u128,
++    phase: &'static str,
++    actor: u64,
++    epoch: u64,
++    sequence: u64,
++    start: u64,
++    end: u64,
++    authority_tick: u64,
++    control_epoch: Option<u64>,
++    credit_step: Option<u64>,
++    pending_requests: usize,
++    queued_inputs: usize,
++}
++#[derive(serde::Serialize)]
++struct ControlTransition {
++    tick: u64,
++    before: verse_world::movement::Baseline,
++    after: verse_world::movement::Baseline,
++    frames: VecDeque<FrameTrace>,
++}
+ pub struct Tap {
+     pub frame: Frame,
+     pub applied_at: Instant,
+@@ -30,7 +52,7 @@ pub async fn player(
+     index: usize,
+     end: tokio::time::Instant,
+     scene: Scene,
+-    pack: Pack,
++    pack: Option<Pack>,
+     tap: Option<mpsc::Sender<Tap>>,
+     atlas: Option<std::sync::Arc<verse::ui::Atlas>>,
+ ) -> Result<serde_json::Value, String> {
+@@ -82,6 +104,12 @@ pub async fn player(
+         began + Duration::from_secs(2) + Duration::from_millis(index as u64 * 75);
+     let mut cast = 0usize;
+     let mut responses = 0u64;
++    let mut frontline_yaw = None;
++    let mut frame_trace = VecDeque::new();
++    let mut control_transitions = Vec::new();
++    let mut previous_movement: Option<verse_world::movement::Baseline> = None;
++    let mut omitted_frame_trace = 0u64;
++    let mut omitted_control_transitions = 0u64;
+     let result=async {
+       let mut clock=tokio::time::interval(Duration::from_secs_f64(1./60.));clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+       while tokio::time::Instant::now()<end {
+@@ -90,6 +118,20 @@ pub async fn player(
+         while let Ok(update)=output.try_recv() {
+           match &update {
+             Update::Snapshot(response)=>if let Reply::Snapshot {state}=&response.body {
++              if let Some(after)=state.movement {
++                if let Some(before)=previous_movement.filter(|b|b.profile==verse_world::movement::Profile::Frames && (b.life,b.epoch)!=(after.life,after.epoch)) {
++                  if control_transitions.len()<8 {control_transitions.push(ControlTransition {tick:response.tick,before,after,frames:frame_trace.clone()});}
++                  else {omitted_control_transitions+=1;}
++                }
++                previous_movement=Some(after);
++              }
++              if index==19 {
++                frontline_yaw=state.hud.as_ref().filter(|h|h.life.generation==0).and_then(|h| {
++                  let owned=state.presentation.actors.iter().find(|a|verse_engine::core::LifeId::from(a.life)==h.life)?.actor.position;
++                  let target=state.presentation.actors.iter().filter(|a|a.health>0 && a.visible && !a.actor.friendly && a.actor.nameplate && a.actor.model!="adventurer").min_by(|a,b|a.actor.position.distance_squared(owned).total_cmp(&b.actor.position.distance_squared(owned)))?;
++                  let direction=target.actor.position-owned;Some((-direction.x).atan2(-direction.z))
++                });
++              }
+               max_players=max_players.max(state.presentation.actors.iter().filter(|p|p.actor.model=="adventurer").count());
+               if state.presentation.time>=20. {occupancy+=1;min_hostiles=min_hostiles.min(state.presentation.actors.iter().filter(|p|p.health>0 && !p.actor.friendly && p.actor.model!="adventurer").count());}
+               if let Some(baseline)=state.movement.filter(|b|b.profile==verse_world::movement::Profile::Frames) {
+@@ -115,19 +157,21 @@ pub async fn player(
+         let now=Instant::now();let dt=now.duration_since(last).as_secs_f64().min(0.1);last=now;
+         if let Some(hud)=session.hud() {min_hp=min_hp.min(hud.resources.hp);}
+         if session.dead() {session.respawn();}
++        let frontline_initial_life=index==19 && session.hud().is_some_and(|h|h.life.generation==0);
+         if session.controlled(&scene) && session.movement_frames() && bound_frames>=10 {
+-          if now>=next_operation && session.idle() {
++          if !frontline_initial_life && now>=next_operation && session.idle() {
+             let input=match operation {0=>Input::EquipGear(verse_world::service::equipment::Slot::Head,501),1=>Input::ClaimQuest(1),_=>Input::UseItem(502)};
+             session.send(input);operation+=1;next_operation=now+Duration::from_secs(6);
+           }
+           if now>=next_cast {
+             let abilities=[Ability::Shield,Ability::Fireball,Ability::Web,Ability::Grease,Ability::Light,Ability::Thunderwave,Ability::MistyStep,Ability::Bow,Ability::FireBolt,Ability::MagicMissile];
+-            session.target_nearest();session.cast(&scene,abilities[cast%abilities.len()]);cast+=1;next_cast=now+Duration::from_secs(2);
++            session.target_nearest();session.cast(&scene,if frontline_initial_life {Ability::FireBolt} else {abilities[cast%abilities.len()]});cast+=1;next_cast=now+Duration::from_secs(2);
+           }
+         }
+         let phase=((began.elapsed().as_secs_f64()+index as f64*0.2).rem_euclid(8.)).floor() as u32;
+         let axes=match phase {0=>[0.,1.],1=>[1.,0.],2=>[0.,-1.],3=>[-1.,0.],_=>[0.,0.]};
+-        session.steer(&scene,axes,dt as f32,session.movement_frames())?;
++        if frontline_initial_life {if let Some(yaw)=frontline_yaw {session.yaw=yaw;}}
++        session.steer(&scene,if frontline_initial_life {[0.,1.]} else {axes},dt as f32,session.movement_frames())?;
+         if session.controlled(&scene) {movements+=1;}
+         let prediction_delay=session.prediction_delay_steps() as f64 * 1000. / 120.;
+         measurements.record(frame,"input_to_prediction_clock_delay_ms",prediction_delay);
+@@ -145,14 +189,19 @@ pub async fn player(
+           _=>{}
+         }}
+         let observations=observer.drain();omitted_observer+=observations.omitted;
++        omitted_frame_trace+=observations.omitted_frames;
++        for frame in observations.frames {
++          if frame_trace.len()==128 {frame_trace.pop_front();}
++          frame_trace.push_back(FrameTrace {elapsed_ms:frame.at.saturating_duration_since(began).as_millis(),phase:frame.phase,actor:frame.actor,epoch:frame.epoch,sequence:frame.sequence,start:frame.start,end:frame.end,authority_tick:frame.authority_tick,control_epoch:frame.control_epoch,credit_step:frame.credit_step,pending_requests:frame.pending_requests,queued_inputs:frame.queued_inputs});
++        }
+         for sample in observations.samples {
+           measurements.record(frame,"request_turnaround_ms",sample.turnaround_ms);window.record(frame,"request_turnaround_ms",sample.turnaround_ms);
+           measurements.record(frame,"pending_requests",sample.pending_requests as f64);window.record(frame,"pending_requests",sample.pending_requests as f64);
+           measurements.record(frame,"queued_inputs",sample.queued_inputs as f64);window.record(frame,"queued_inputs",sample.queued_inputs as f64);
+         }
+         if let Some(at)=observations.snapshot_verified_at {measurements.record(frame,"snapshot_verified_age_ms",at.elapsed().as_secs_f64()*1000.);}
+-        if let (Some(tap),Some(atlas))=(&tap,&atlas) {
+-          let started=Instant::now();let drawn=session.frame(&pack,atlas,&scene,[1280,720])?;
++        if let (Some(tap),Some(atlas),Some(pack))=(&tap,&atlas,&pack) {
++          let started=Instant::now();let drawn=session.frame(pack,atlas,&scene,[1280,720])?;
+           measurements.record(frame,"frame_projection_cpu_ms",started.elapsed().as_secs_f64()*1000.);
+           if let Some(age)=session.snapshot_age() {
+             if tap.try_send(Tap {frame:drawn,applied_at:Instant::now()-age,projection_ms:started.elapsed().as_secs_f64()*1000.}).is_err() {omitted_taps+=1;}
+@@ -178,6 +227,6 @@ pub async fn player(
+     }
+     operations.insert("respawn".into(), session.life_changes);
+     Ok(
+-        serde_json::json!({"player":index,"status":if error.is_none(){"complete"}else{"failed"},"error":error,"worker_error":worker_error,"snapshots":session.snapshots,"maximum_players":max_players,"battle_occupancy":{"samples":occupancy,"minimum_live_hostiles":(occupancy>0).then_some(min_hostiles)},"movement_profile":"native_session_intervals","observed_frame_snapshots":framed,"movement_inputs":movements,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"bound_frames":bound_frames,"accepted_outcomes":accepted_frames,"outcomes":responses,"accepted_casts":session.accepted_casts,"accepted_operations":operations,"damage_events":session.damage_events,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"prediction_horizon_pauses":session.prediction_horizon_pauses(),"prediction_failures":session.prediction_failures(),"last_prediction_failure":session.last_prediction_failure(),"prediction_embedding_deferrals":session.prediction_embedding_deferrals(),"prediction_separating_steps":session.prediction_separating_steps(),"last_prediction_embedding":session.prediction_embedding_diagnostic(),"unacknowledged_bound_operations":session.pending(),"refusals":refusals,"refusal_trace":trace,"correction_trace":correction_trace,"maximum_correction_detail":maximum_correction_detail,"omitted_correction_details":omitted_corrections,"omitted_observer_samples":omitted_observer,"omitted_render_frames":omitted_taps,"windows":windows,"measurements":measurements.summary()}),
++        serde_json::json!({"player":index,"status":if error.is_none(){"complete"}else{"failed"},"error":error,"worker_error":worker_error,"snapshots":session.snapshots,"maximum_players":max_players,"battle_occupancy":{"samples":occupancy,"minimum_live_hostiles":(occupancy>0).then_some(min_hostiles)},"movement_profile":"native_session_intervals","frame_timing":{"recent":frame_trace,"window_capacity":128,"omitted":omitted_frame_trace},"control_transitions":control_transitions,"control_transition_capacity":8,"omitted_control_transitions":omitted_control_transitions,"observed_frame_snapshots":framed,"movement_inputs":movements,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"bound_frames":bound_frames,"accepted_outcomes":accepted_frames,"outcomes":responses,"accepted_casts":session.accepted_casts,"accepted_operations":operations,"damage_events":session.damage_events,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"prediction_horizon_pauses":session.prediction_horizon_pauses(),"prediction_failures":session.prediction_failures(),"last_prediction_failure":session.last_prediction_failure(),"prediction_embedding_deferrals":session.prediction_embedding_deferrals(),"prediction_separating_steps":session.prediction_separating_steps(),"last_prediction_embedding":session.prediction_embedding_diagnostic(),"unacknowledged_bound_operations":session.pending(),"refusals":refusals,"refusal_trace":trace,"correction_trace":correction_trace,"maximum_correction_detail":maximum_correction_detail,"omitted_correction_details":omitted_corrections,"omitted_observer_samples":omitted_observer,"omitted_render_frames":omitted_taps,"windows":windows,"measurements":measurements.summary()}),
+     )
+ }

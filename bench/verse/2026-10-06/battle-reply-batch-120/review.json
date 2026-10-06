@@ -1,0 +1,12 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "e2036f3892cdedd7bcd5c9eb6cb927e5fe308a5c6e79574123c0b1e1fa21a772",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(1.0) exceeds 0, or is unavailable"
+  ],
+  "limits_changed": false,
+  "checks": "Eleven pipeline checks and 25 worker tests passed. Ready server replies retain individual framing, order, and capacity accounting.",
+  "conclusion": "All prediction, CPU, GPU, and remaining acceptance gates pass. One startup movement expiry still prevents acceptance."
+}

@@ -359,9 +359,18 @@ async fn run_impl(
         let mut refreshed = false;
         let mut barrier = false;
         let mut teleport_barrier = false;
+        let mut entry_quiet: Option<((super::wire::Life, u64), client_runtime::Instant)> = None;
         let mut input_closed = false;
         let mut read_backoff = ReadBackoff::new(client_runtime::Instant::now());
         loop {
+            if entry_quiet.is_some_and(|(context, deadline)| {
+                client
+                    .control()
+                    .is_none_or(|control| (control.life, control.epoch) != context)
+                    || client_runtime::Instant::now() >= deadline
+            }) {
+                entry_quiet = None;
+            }
             if !client.available() && client.pending() == 0 {
                 return Err("Chamber pipeline is disconnected".into());
             }
@@ -590,7 +599,7 @@ async fn run_impl(
                 .max(snapshot_resume);
             tokio::select! {
                 _ = client_runtime::sleep_until(snapshot_due), if !input_closed && !barrier
-                    && staged.is_none() && client.available() && !snapshot_pending
+                    && staged.is_none() && entry_quiet.is_none() && client.available() && !snapshot_pending
                     && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some(), false)
                     && last_snapshot_sent.is_some() && read_backoff.ready(0, client_runtime::Instant::now()) => {
                     client.send_snapshot()?;
@@ -607,6 +616,11 @@ async fn run_impl(
                         let now = client_runtime::Instant::now();
                         last_snapshot_sent = Some(now);
                         snapshot_resume = now + cadence;
+                        // Let the first interval reach authority before periodic
+                        // reads consume the fresh clock's transport prefix. This
+                        // affects reads only and expires if no producer sends frames.
+                        entry_quiet = response.control.as_ref().map(|control|
+                            ((control.life, control.epoch), now + Duration::from_millis(200)));
                     }
                     if let Some(observer) = &observer {
                         let kind = match &body {
@@ -653,6 +667,9 @@ async fn run_impl(
                             Update::Inventory(response)
                         }
                         Body::MovementFrame { frame } => {
+                            if entry_quiet.is_some_and(|(context, _)| context == (frame.life.into(), frame.epoch)) {
+                                entry_quiet = None;
+                            }
                             if let Some(observer) = &observer {
                                 observer.frame(FrameObservation {
                                     at: Instant::now(), phase: "acknowledged", actor: frame.life.actor,
@@ -688,7 +705,7 @@ async fn run_impl(
                 _ = interval.tick() => {
                     // One outstanding request per read class bounds stale work and event cursors.
                     // A staged lifecycle action drains previous IO before changing its context.
-                    if input_closed || barrier || staged.is_some() { continue; }
+                    if input_closed || barrier || staged.is_some() || entry_quiet.is_some() { continue; }
                     if last_snapshot_sent.is_none() && client.available() && !snapshot_pending
                         && read_backoff.ready(0, client_runtime::Instant::now()) {
                         client.send_snapshot()?;
@@ -1701,7 +1718,7 @@ mod tests {
                     bytes = read_frame(&mut socket, MAX_REQUEST_BYTES) => {
                         let Ok(bytes) = bytes else { break };
                         let request = Request::decode(&bytes).unwrap();
-                        if entered && matches!(request.body, Body::Snapshot {} | Body::Replicate { .. }) {
+                        if entered && matches!(request.body, Body::Snapshot {} | Body::Replicate { .. } | Body::Events { .. } | Body::Inventory {}) {
                             reads.send(()).await.unwrap();
                         }
                         entered |= matches!(request.body, Body::BeginMovementFrames { .. });
@@ -1733,7 +1750,7 @@ mod tests {
         let task = tokio::spawn(run(
             client,
             Cursor::new(120),
-            Duration::from_millis(200),
+            NATIVE_CADENCE,
             inputs,
             updates,
             stopping,
@@ -1744,13 +1761,16 @@ mod tests {
                     if matches!(response.body, Reply::Snapshot { ref state }
                         if state.movement.is_some_and(|b| b.profile == crate::movement::Profile::Frames))
                     {
-                        return;
+                        let Reply::Snapshot { state } = response.body else {
+                            unreachable!()
+                        };
+                        return state.movement.unwrap();
                     }
                 }
             }
             panic!("Worker stopped before interval entry");
         };
-        timeout(Duration::from_secs(3), entry).await.unwrap();
+        let baseline = timeout(Duration::from_secs(3), entry).await.unwrap();
         // Keep consuming other read classes while checking the scene deadline.
         let check = async {
             loop {
@@ -1761,6 +1781,34 @@ mod tests {
             }
         };
         assert!(timeout(Duration::from_millis(100), check).await.is_err());
+        input
+            .send(Input::MovementFrame {
+                token: 1,
+                frame: crate::movement::frames::Frame {
+                    life: baseline.life,
+                    epoch: baseline.epoch,
+                    sequence: 0,
+                    tick: 0,
+                    start: baseline.physics_step,
+                    steps: 4,
+                    segments: vec![crate::movement::frames::Segment {
+                        offset: 0,
+                        axes: [0.; 2],
+                        yaw: 0.,
+                        until: baseline.physics_step + crate::movement::HELD_STEPS,
+                        jump: false,
+                    }],
+                },
+            })
+            .await
+            .unwrap();
+        assert!(
+            timeout(Duration::from_millis(50), observed.recv())
+                .await
+                .unwrap()
+                .is_some(),
+            "The first frame reply must release periodic reads before the startup timeout"
+        );
         let _ = stop.send(());
         task.await.unwrap().unwrap();
         let _ = peer_stop.send(());
