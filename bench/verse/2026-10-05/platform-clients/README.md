@@ -58,3 +58,10 @@ No owner browser profile, resident service, or physical device is used.
 The existing warm target was removed during verification. `v24-warm-recovery.json`
 records the surviving temporary caches restored with file hash checks. Source,
 logs, and runtime images remain retained independently of mutable build caches.
+
+`integration-current/checks.json` retains the final integration of the renderer's
+budget degradation, procedural character updates, and bounded movement tracing.
+Its source patch, seven session tests, browser link, scratch-host build, formatting,
+and browser receipt identify that candidate independently of the earlier phases.
+The authority moves 5.28 meters with a stable epoch and zero stopped-input drift
+at the same 1000-by-800 CSS viewport and 237-by-190 backing canvas.

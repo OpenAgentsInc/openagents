@@ -1,0 +1,44 @@
+warning: profile package spec `naga` in profile `dev` did not match any packages
+
+help: a package with a similar name exists: `idna`
+warning: profile package spec `objc2` in profile `dev` did not match any packages
+warning: profile package spec `objc2-encode` in profile `dev` did not match any packages
+warning: profile package spec `verse` in profile `dev` did not match any packages
+
+help: a package with a similar name exists: `serde`
+warning: profile package spec `verse-core` in profile `dev` did not match any packages
+
+help: a package with a similar name exists: `serde_core`
+warning: profile package spec `verse-gfx` in profile `dev` did not match any packages
+warning: profile package spec `verse-gym` in profile `dev` did not match any packages
+warning: profile package spec `verse-host` in profile `dev` did not match any packages
+warning: profile package spec `verse-imported` in profile `dev` did not match any packages
+warning: profile package spec `verse-net` in profile `dev` did not match any packages
+warning: profile package spec `verse-pbr` in profile `dev` did not match any packages
+warning: profile package spec `verse-zone-everglade` in profile `dev` did not match any packages
+warning: profile package spec `verse-zone-grove` in profile `dev` did not match any packages
+warning: profile package spec `verse-zone-lab` in profile `dev` did not match any packages
+warning: profile package spec `verse-zone-lagrange` in profile `dev` did not match any packages
+warning: profile package spec `wgpu` in profile `dev` did not match any packages
+
+help: a package with a similar name exists: `rgb`
+warning: profile package spec `wgpu-core` in profile `dev` did not match any packages
+warning: profile package spec `wgpu-hal` in profile `dev` did not match any packages
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling coder-reach v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-reach)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> /home/christopherdavid/work/openagents-verse-audit/crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+   Compiling verse-platform-smoke v0.0.0 (/run/verse-audit-build-agent1/browser-smoke/host)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3m 53s

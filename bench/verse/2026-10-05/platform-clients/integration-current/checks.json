@@ -1,0 +1,100 @@
+{
+  "source_base": "1726d56f8d8e4defc488468169561b19ff7a2e6f",
+  "source_commit": "f9a31a3a1947d909aedcc56a08f4c93957b828b8",
+  "checks": [
+    {
+      "name": "session-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-p",
+        "verse-imported",
+        "--features",
+        "remote-chamber",
+        "--lib",
+        "chamber_session"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 304.3146367073059
+    },
+    {
+      "name": "wasm-final",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--offline",
+        "-p",
+        "everglade-web",
+        "--target",
+        "wasm32-unknown-unknown"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 189.2792615890503
+    },
+    {
+      "name": "browser-host-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "/run/verse-audit-build-agent1/browser-smoke/host/Cargo.toml"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 233.43121457099915
+    },
+    {
+      "name": "format-final",
+      "command": [
+        "cargo",
+        "fmt",
+        "--check",
+        "-p",
+        "verse-world",
+        "-p",
+        "coder-reach",
+        "-p",
+        "verse-imported",
+        "-p",
+        "verse-content",
+        "-p",
+        "verse-engine",
+        "-p",
+        "coder-mobile",
+        "-p",
+        "verse",
+        "-p",
+        "everglade-web"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.5223753452301025
+    },
+    {
+      "name": "diff-final",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.013151884078979492
+    }
+  ],
+  "files": {
+    "diff-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "format-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source.patch": "e252bd9fcd15b03c2658df62d2815facf41639606578a2141ae92f2b59c0c998",
+    "browser-smoke.json": "9061a4b0d08395934ffa248d9789490029eb7ebb1807631ab707a6abab3c66f8",
+    "host-result.json": "5b2f1eafe495671b1f633ac46ed5fd7a3bf7b2fdbc88322b9ff15aff83b3a172",
+    "browser-smoke.py": "dc9393f3c6582a8b84a337413f4cd5a684e831b0b86a3f14c8008099720884a8",
+    "browser-host-build.log": "990c6c3215ae8047b9e3b624afa760cc51cf672605396398a5059f45d1bff028",
+    "browser-narrow.png": "4c29c6a02aa93ad2f68f5dac599462ffdc003b54e0d3a8fbb00addeb9484a592",
+    "session-final.log": "10b906f2216f8d96963385e151b326166e67aea05a54e6c8b918cfbda56feb16",
+    "browser-joined.png": "0ecfed1ebb85970586bfca0ba4f2ab44639d88234b001aaca89681f0541063d0",
+    "wasm-final.log": "fa3b818f8235dd44363d2201be8191cd510fe8a1a2631f827f006c794cbc5e28"
+  }
+}

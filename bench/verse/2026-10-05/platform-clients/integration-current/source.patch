@@ -1,0 +1,3710 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 73dd3e7c2b..13994c94d9 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3130,6 +3130,12 @@ dependencies = [
+ name = "coder-reach"
+ version = "0.1.0"
+ dependencies = [
++ "getrandom 0.3.4",
++ "gloo-timers",
++ "wasm-bindgen",
++ "wasm-bindgen-futures",
++ "js-sys",
++ "web-sys",
+  "base64 0.22.1",
+  "futures-util",
+  "nostr",
+@@ -4788,6 +4794,12 @@ dependencies = [
+ name = "everglade-web"
+ version = "0.1.0"
+ dependencies = [
++ "coder-reach",
++ "serde",
++ "secp256k1 0.31.1",
++ "verse-engine",
++ "verse-world",
++ "verse-content",
+  "console_error_panic_hook",
+  "glam",
+  "js-sys",
+@@ -15125,6 +15137,7 @@ dependencies = [
+ name = "verse-imported"
+ version = "0.1.0"
+ dependencies = [
++ "web-time",
+  "glam",
+  "physics",
+  "png",
+@@ -15211,7 +15224,9 @@ version = "0.1.0"
+ dependencies = [
+  "coder-access",
+  "coder-reach",
++ "futures-util",
+  "getrandom 0.3.4",
++ "gloo-timers",
+  "glam",
+  "physics",
+  "rcgen",
+@@ -15224,6 +15239,8 @@ dependencies = [
+  "tokio",
+  "tokio-rustls",
+  "verse-engine",
++ "wasm-bindgen-futures",
++ "web-time",
+ ]
+ 
+ [[package]]
+diff --git a/crates/coder-mobile/src/chamber.rs b/crates/coder-mobile/src/chamber.rs
+index a774d03373..3755f13e35 100644
+--- a/crates/coder-mobile/src/chamber.rs
++++ b/crates/coder-mobile/src/chamber.rs
+@@ -43,6 +43,9 @@ pub(crate) struct Play {
+     pub timing: Timing,
+     /// Where the timing is written, beside the configuration.
+     receipt: Option<PathBuf>,
++    input: verse_world::controls::InputMap,
++    audio: Option<verse_engine::audio_bank::Scene>,
++    damage: u64,
+ }
+ 
+ /// Frames the phone drew while joined: their intervals and how many actors
+@@ -133,12 +136,21 @@ impl Play {
+             content_revision: 0,
+             timing: Timing::default(),
+             receipt: None,
++            input: Default::default(),
++            audio: verse_engine::audio_bank::Bank::original()
++                .and_then(|bank| verse_engine::audio_bank::Scene::new(Arc::new(bank), "en"))
++                .ok(),
++            damage: 0,
+         };
+         play.connect();
+         play
+     }
+ 
+     fn connect(&mut self) {
++        self.input.clear();
++        if let Some(audio) = &mut self.audio {
++            audio.suspended = false;
++        }
+         let connector = self.connector.clone();
+         self.stage = match std::thread::Builder::new()
+             .name("chamber-connect".into())
+@@ -185,6 +197,11 @@ impl Play {
+ 
+     /// The surface goes inactive: stop the worker, keep the content.
+     pub fn suspend(&mut self) {
++        self.input.clear();
++        if let Some(audio) = &mut self.audio {
++            audio.clear_captions();
++            audio.suspended = true;
++        }
+         self.timing.pause();
+         self.record();
+         match std::mem::replace(&mut self.stage, Stage::Suspended) {
+@@ -213,6 +230,30 @@ impl Play {
+     /// # Errors
+     /// The joined session's connection stopped; the stage becomes `Failed`.
+     pub fn step(&mut self, held: Held) -> bool {
++        for (control, down) in [
++            ("TouchForward", held.forward),
++            ("TouchBackward", held.backward),
++            ("TouchLeft", held.strafe_left),
++            ("TouchRight", held.strafe_right),
++            ("TouchTurnLeft", held.turn_left),
++            ("TouchTurnRight", held.turn_right),
++        ] {
++            if let Some(action) = self.input.change(control, down)
++                && let (Stage::Joined(session), Some(content)) = (&mut self.stage, &self.content)
++            {
++                match action {
++                    verse_world::controls::Action::Jump => session.jump(&content.scene),
++                    verse_world::controls::Action::Cast(slot) => {
++                        if let Some(ability) = verse_world::play::Ability::ALL.get(slot as usize) {
++                            session.cast(&content.scene, *ability);
++                        }
++                    }
++                    verse_world::controls::Action::Target => session.target_nearest(),
++                    verse_world::controls::Action::Respawn => session.respawn(),
++                    _ => {}
++                }
++            }
++        }
+         if let Stage::Connecting(handle) = &self.stage {
+             if !handle.is_finished() {
+                 return false;
+@@ -233,6 +274,8 @@ impl Play {
+                             });
+                             self.content_revision += 1;
+                             self.stage = Stage::Joined(session);
++                            self.input.clear();
++                            self.damage = 0;
+                         }
+                         Err(message) => self.stage = Stage::Failed(message),
+                     }
+@@ -258,10 +301,20 @@ impl Play {
+             });
+             return false;
+         }
+-        if let Err(message) = session.step(&content.scene, held) {
++        if let Err(message) = session.step(&content.scene, self.input.held()) {
+             self.stage = Stage::Failed(message);
+             return false;
+         }
++        if session.damage_events > self.damage {
++            if let Some(audio) = &mut self.audio {
++                let _ = audio.caption(
++                    "impact",
++                    session.owned_life(),
++                    self.started.elapsed().as_secs_f64(),
++                );
++            }
++            self.damage = session.damage_events;
++        }
+         self.timing.frame(session);
+         if self.timing.frames % 600 == 0 {
+             self.record();
+@@ -269,14 +322,46 @@ impl Play {
+         true
+     }
+ 
++    /// Replaces the visit's Rust-owned mapping after validation and releases movement.
++    pub fn remap(&mut self, bindings: Vec<verse_world::controls::Binding>) -> Result<(), String> {
++        self.input.rebind(bindings)?;
++        if let (Stage::Joined(session), Some(content)) = (&mut self.stage, &self.content) {
++            session.release(&content.scene);
++        }
++        Ok(())
++    }
++
+     /// Assembles the joined session's frame for a viewport of `size`.
+     pub fn frame(&self, size: [u32; 2]) -> Result<Option<chamber_session::Frame>, String> {
++        self.frame_in(size, size.map(|value| value.max(1) as f32))
++    }
++    pub fn frame_in(
++        &self,
++        size: [u32; 2],
++        overlay: [f32; 2],
++    ) -> Result<Option<chamber_session::Frame>, String> {
+         let (Stage::Joined(session), Some(content)) = (&self.stage, &self.content) else {
+             return Ok(None);
+         };
+-        session
+-            .frame(&content.pack, &content.atlas, &content.scene, size)
+-            .map(Some)
++        let mut frame =
++            session.frame_in(&content.pack, &content.atlas, &content.scene, size, overlay)?;
++        if let Some(audio) = &self.audio {
++            for (row, caption) in audio
++                .captions(self.started.elapsed().as_secs_f64())
++                .take(4)
++                .enumerate()
++            {
++                frame.ui.text(
++                    &content.atlas,
++                    16.,
++                    overlay[1] * 0.65 + row as f32 * 20.,
++                    &caption.text,
++                    [1.; 4],
++                );
++            }
++        }
++        frame.scale_overlay(size.map(|value| value.max(1) as f32))?;
++        Ok(Some(frame))
+     }
+ }
+ 
+@@ -386,6 +471,33 @@ mod tests {
+         assert!(!play.step(Held::default()));
+     }
+ 
++    #[test]
++    fn touch_mapping_survives_resume_and_rejects_invalid_changes() {
++        let (_host, _dir, mut play) = loopback(false);
++        assert!(joined(&mut play));
++        let binding = verse_world::controls::Binding {
++            control: "TouchForward".into(),
++            action: verse_world::controls::Action::StrafeRight,
++        };
++        play.remap(vec![binding.clone()]).unwrap();
++        play.step(Held {
++            forward: true,
++            ..Held::default()
++        });
++        assert!(play.input.held().strafe_right && !play.input.held().forward);
++        assert!(play.remap(vec![binding.clone(), binding]).is_err());
++        assert!(play.input.held().strafe_right);
++        play.suspend();
++        play.resume();
++        assert!(joined(&mut play));
++        play.step(Held {
++            forward: true,
++            ..Held::default()
++        });
++        assert!(play.input.held().strafe_right);
++        let frame = play.frame_in([640, 480], [320., 240.]).unwrap().unwrap();
++        assert_eq!(frame.overlay, [640., 480.]);
++    }
+     #[test]
+     fn a_dead_player_respawns_from_the_phone() {
+         let (_host, _dir, mut play) = loopback(true);
+diff --git a/crates/coder-mobile/src/verse_app.rs b/crates/coder-mobile/src/verse_app.rs
+index 83e7eedc2a..e6e5b6a9e4 100644
+--- a/crates/coder-mobile/src/verse_app.rs
++++ b/crates/coder-mobile/src/verse_app.rs
+@@ -113,6 +113,10 @@ pub(crate) enum Request {
+     RecenterCamera,
+     /// Leave the shared chamber and return to the Grid at the RITUAL arch.
+     LeaveChamber,
++    /// Validated Rust-owned physical control bindings for the current visit.
++    ChamberBindings {
++        bindings: Vec<verse_world::controls::Binding>,
++    },
+     /// Cast the chamber hotbar's slot (0-based) at the selected target.
+     ChamberCast {
+         slot: usize,
+@@ -2469,6 +2473,11 @@ impl Scene {
+             }
+             Request::EnterEverglade => self.world.enter_everglade(),
+             Request::LeaveChamber => self.leave_chamber(),
++            Request::ChamberBindings { bindings } => self
++                .chamber
++                .as_mut()
++                .ok_or("No chamber visit is active")?
++                .remap(bindings),
+             Request::ChamberCast { slot } => {
+                 self.chamber_cast(slot);
+                 Ok(())
+@@ -3143,7 +3152,7 @@ impl Scene {
+         size: [u32; 2],
+     ) -> Result<Option<verse::imported::chamber_session::Frame>, String> {
+         match &self.chamber {
+-            Some(play) => play.frame(size),
++            Some(play) => play.frame_in(size, self.lifecycle.viewport().logical_size()),
+             None => Ok(None),
+         }
+     }
+diff --git a/crates/coder-reach/Cargo.toml b/crates/coder-reach/Cargo.toml
+index be8bf2dd87..be0273d1bd 100644
+--- a/crates/coder-reach/Cargo.toml
++++ b/crates/coder-reach/Cargo.toml
+@@ -15,9 +15,19 @@ serde = { version = "1", features = ["derive"] }
+ serde_json = "1"
+ sha2 = "0.11.0"
+ tokio = { version = "1", features = ["io-util", "time"] }
+-tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+ url = "2"
+ 
++[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
++tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
++
++[target.'cfg(target_arch = "wasm32")'.dependencies]
++gloo-timers = { version = "0.3", features = ["futures"] }
++wasm-bindgen = "0.2.128"
++wasm-bindgen-futures = "0.4"
++js-sys = "0.3"
++web-sys = { version = "0.3", features = ["WebSocket", "BinaryType", "MessageEvent", "Event"] }
++getrandom = { version = "0.3", features = ["wasm_js"] }
++
+ [dev-dependencies]
+ futures-util = "0.3"
+ tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "time"] }
+diff --git a/crates/coder-reach/src/browser.rs b/crates/coder-reach/src/browser.rs
+new file mode 100644
+index 0000000000..7ceb9190b0
+--- /dev/null
++++ b/crates/coder-reach/src/browser.rs
+@@ -0,0 +1,242 @@
++//! Browser binary WebSocket carriage of the existing NIP-REACH channel.
++//! The DOM owns network allocation before an event is delivered. This adapter
++//! bounds retained messages and outbound bytes; it cannot bound that DOM allocation.
++use crate::websocket_frame::{MAX_MESSAGE_BYTES, check_message};
++use std::{
++    cell::{Cell, RefCell},
++    collections::VecDeque,
++    io,
++    pin::Pin,
++    rc::Rc,
++    task::{Context, Poll, Waker},
++};
++use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
++use wasm_bindgen::{JsCast, closure::Closure};
++use web_sys::{BinaryType, Event, MessageEvent, WebSocket};
++const BUFFER: usize = MAX_MESSAGE_BYTES * 4;
++struct Inbox {
++    messages: VecDeque<Vec<u8>>,
++    offset: usize,
++    bytes: usize,
++    ended: bool,
++    failed: bool,
++    read: Option<Waker>,
++    write: Option<Waker>,
++}
++impl Inbox {
++    fn wake(&mut self) {
++        if let Some(w) = self.read.take() {
++            w.wake();
++        }
++        if let Some(w) = self.write.take() {
++            w.wake();
++        }
++    }
++}
++pub struct Socket {
++    socket: WebSocket,
++    inbox: Rc<RefCell<Inbox>>,
++    outgoing: Vec<u8>,
++    waiting: Rc<Cell<bool>>,
++    _message: Closure<dyn FnMut(MessageEvent)>,
++    _open: Closure<dyn FnMut(Event)>,
++    _close: Closure<dyn FnMut(Event)>,
++    _error: Closure<dyn FnMut(Event)>,
++}
++fn error() -> io::Error {
++    io::Error::other("Browser direct channel unavailable or malformed")
++}
++impl Socket {
++    /// Opens the exact supplied route. Host identity is proved by `channel::connect`.
++    pub async fn open(url: &str) -> io::Result<Self> {
++        let parsed = url::Url::parse(url).map_err(|_| error())?;
++        if !matches!(parsed.scheme(), "ws" | "wss")
++            || !parsed.username().is_empty()
++            || parsed.password().is_some()
++            || parsed.fragment().is_some()
++        {
++            return Err(error());
++        }
++        let socket = WebSocket::new(url).map_err(|_| error())?;
++        socket.set_binary_type(BinaryType::Arraybuffer);
++        let inbox = Rc::new(RefCell::new(Inbox {
++            messages: VecDeque::new(),
++            offset: 0,
++            bytes: 0,
++            ended: false,
++            failed: false,
++            read: None,
++            write: None,
++        }));
++        let state = inbox.clone();
++        let ws = socket.clone();
++        let message = Closure::wrap(Box::new(move |event: MessageEvent| {
++            let mut state = state.borrow_mut();
++            if state.ended {
++                return;
++            }
++            if let Ok(buffer) = event.data().dyn_into::<js_sys::ArrayBuffer>() {
++                let bytes = js_sys::Uint8Array::new(&buffer);
++                let n = bytes.length() as usize;
++                if n <= MAX_MESSAGE_BYTES && state.bytes + n <= BUFFER {
++                    let data = bytes.to_vec();
++                    if check_message(&data).is_ok() {
++                        state.bytes += n;
++                        state.messages.push_back(data);
++                        state.wake();
++                        return;
++                    }
++                }
++            }
++            state.failed = true;
++            state.ended = true;
++            state.messages.clear();
++            state.bytes = 0;
++            let _ = ws.close();
++            state.wake();
++        }) as Box<dyn FnMut(MessageEvent)>);
++        let state = inbox.clone();
++        let open = Closure::wrap(
++            Box::new(move |_: Event| state.borrow_mut().wake()) as Box<dyn FnMut(Event)>
++        );
++        let state = inbox.clone();
++        let close = Closure::wrap(Box::new(move |_: Event| {
++            let mut s = state.borrow_mut();
++            s.ended = true;
++            s.wake();
++        }) as Box<dyn FnMut(Event)>);
++        let state = inbox.clone();
++        let failure = Closure::wrap(Box::new(move |_: Event| {
++            let mut s = state.borrow_mut();
++            s.ended = true;
++            s.failed = true;
++            s.wake();
++        }) as Box<dyn FnMut(Event)>);
++        socket.set_onmessage(Some(message.as_ref().unchecked_ref()));
++        socket.set_onopen(Some(open.as_ref().unchecked_ref()));
++        socket.set_onclose(Some(close.as_ref().unchecked_ref()));
++        socket.set_onerror(Some(failure.as_ref().unchecked_ref()));
++        let result = Self {
++            socket,
++            inbox,
++            outgoing: Vec::new(),
++            waiting: Rc::new(Cell::new(false)),
++            _message: message,
++            _open: open,
++            _close: close,
++            _error: failure,
++        };
++        futures_util::future::poll_fn(|cx| {
++            let mut state = result.inbox.borrow_mut();
++            if state.ended {
++                Poll::Ready(Err(error()))
++            } else if result.socket.ready_state() == WebSocket::OPEN {
++                Poll::Ready(Ok(()))
++            } else {
++                state.write = Some(cx.waker().clone());
++                Poll::Pending
++            }
++        })
++        .await?;
++        Ok(result)
++    }
++    fn send(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
++        if self.inbox.borrow().ended || self.socket.ready_state() != WebSocket::OPEN {
++            return Poll::Ready(Err(error()));
++        }
++        while self.outgoing.len() >= 4 {
++            let len = u32::from_be_bytes(self.outgoing[..4].try_into().unwrap()) as usize;
++            if !(9..=MAX_MESSAGE_BYTES - 4).contains(&len) {
++                return Poll::Ready(Err(error()));
++            }
++            if self.outgoing.len() < len + 4 {
++                break;
++            }
++            if self.socket.buffered_amount() as usize > BUFFER - MAX_MESSAGE_BYTES {
++                self.inbox.borrow_mut().write = Some(cx.waker().clone());
++                if !self.waiting.replace(true) {
++                    let state = self.inbox.clone();
++                    let waiting = self.waiting.clone();
++                    wasm_bindgen_futures::spawn_local(async move {
++                        gloo_timers::future::TimeoutFuture::new(10).await;
++                        waiting.set(false);
++                        state.borrow_mut().wake();
++                    });
++                }
++                return Poll::Pending;
++            }
++            self.waiting.set(false);
++            self.socket
++                .send_with_u8_array(&self.outgoing[..len + 4])
++                .map_err(|_| error())?;
++            self.outgoing.drain(..len + 4);
++        }
++        Poll::Ready(Ok(()))
++    }
++}
++impl AsyncRead for Socket {
++    fn poll_read(
++        self: Pin<&mut Self>,
++        cx: &mut Context<'_>,
++        buf: &mut ReadBuf<'_>,
++    ) -> Poll<io::Result<()>> {
++        let mut s = self.inbox.borrow_mut();
++        if s.failed {
++            return Poll::Ready(Err(error()));
++        }
++        if let Some(data) = s.messages.front() {
++            let n = buf.remaining().min(data.len() - s.offset);
++            buf.put_slice(&data[s.offset..s.offset + n]);
++            s.offset += n;
++            s.bytes -= n;
++            if s.offset == s.messages.front().unwrap().len() {
++                s.messages.pop_front();
++                s.offset = 0;
++            }
++            return Poll::Ready(Ok(()));
++        }
++        if s.ended {
++            Poll::Ready(Ok(()))
++        } else {
++            s.read = Some(cx.waker().clone());
++            Poll::Pending
++        }
++    }
++}
++impl AsyncWrite for Socket {
++    fn poll_write(
++        self: Pin<&mut Self>,
++        cx: &mut Context<'_>,
++        buf: &[u8],
++    ) -> Poll<io::Result<usize>> {
++        let this = self.get_mut();
++        std::task::ready!(this.send(cx))?;
++        let n = buf.len().min(MAX_MESSAGE_BYTES - this.outgoing.len());
++        if n == 0 {
++            return Poll::Ready(Err(error()));
++        }
++        this.outgoing.extend_from_slice(&buf[..n]);
++        Poll::Ready(Ok(n))
++    }
++    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
++        self.get_mut().send(cx)
++    }
++    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
++        let this = self.get_mut();
++        std::task::ready!(this.send(cx))?;
++        if !this.outgoing.is_empty() {
++            return Poll::Ready(Err(error()));
++        }
++        this.socket.close().map_err(|_| error())?;
++        Poll::Ready(Ok(()))
++    }
++}
++impl Drop for Socket {
++    fn drop(&mut self) {
++        self.socket.set_onmessage(None);
++        self.socket.set_onopen(None);
++        self.socket.set_onclose(None);
++        self.socket.set_onerror(None);
++        let _ = self.socket.close();
++    }
++}
+diff --git a/crates/coder-reach/src/channel.rs b/crates/coder-reach/src/channel.rs
+index 1b573218bd..3b2357d2b1 100644
+--- a/crates/coder-reach/src/channel.rs
++++ b/crates/coder-reach/src/channel.rs
+@@ -578,9 +578,24 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin>(
+     config: &ClientConfig,
+     now: u64,
+ ) -> Result<Channel<S>> {
+-    tokio::time::timeout(config.timeout, client_handshake(stream, config, now))
++    #[cfg(not(target_arch = "wasm32"))]
++    return tokio::time::timeout(config.timeout, client_handshake(stream, config, now))
+         .await
+-        .map_err(|_| Error::new(Refusal::Unavailable, "handshake timed out"))?
++        .map_err(|_| Error::new(Refusal::Unavailable, "handshake timed out"))?;
++    #[cfg(target_arch = "wasm32")]
++    {
++        use futures_util::future::{Either, select};
++        let millis = config.timeout.as_millis().min(u32::MAX as u128).max(1) as u32;
++        match select(
++            Box::pin(client_handshake(stream, config, now)),
++            Box::pin(gloo_timers::future::TimeoutFuture::new(millis)),
++        )
++        .await
++        {
++            Either::Left((result, _)) => result,
++            Either::Right(_) => Err(Error::new(Refusal::Unavailable, "handshake timed out")),
++        }
++    }
+ }
+ 
+ async fn client_handshake<S: AsyncRead + AsyncWrite + Unpin>(
+diff --git a/crates/coder-reach/src/lib.rs b/crates/coder-reach/src/lib.rs
+index 0ae24d0438..75d339960e 100644
+--- a/crates/coder-reach/src/lib.rs
++++ b/crates/coder-reach/src/lib.rs
+@@ -10,13 +10,17 @@
+ //! the handshake transcript.
+ 
+ pub mod artifact;
++#[cfg(target_arch = "wasm32")]
++pub mod browser;
+ pub mod channel;
+ pub mod directory;
+ pub mod hints;
+ pub mod placement;
+ pub mod presence;
+ pub mod split;
++#[cfg(not(target_arch = "wasm32"))]
+ pub mod websocket;
++pub mod websocket_frame;
+ 
+ use std::fmt;
+ use std::str::FromStr;
+diff --git a/crates/coder-reach/src/websocket.rs b/crates/coder-reach/src/websocket.rs
+index ee1e1da170..603a754145 100644
+--- a/crates/coder-reach/src/websocket.rs
++++ b/crates/coder-reach/src/websocket.rs
+@@ -27,11 +27,11 @@ use tokio_tungstenite::WebSocketStream;
+ use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+ use tokio_tungstenite::tungstenite::{self, Bytes, Message};
+ 
+-use crate::channel::{HEADER_BYTES, MAX_FRAME_BYTES};
+-use crate::{Error, Refusal, Result, fail};
++use crate::channel::MAX_FRAME_BYTES;
++use crate::{Error, Refusal, Result};
+ 
+ /// Largest binary message: one frame and its four-byte length prefix.
+-pub const MAX_MESSAGE_BYTES: usize = 4 + MAX_FRAME_BYTES;
++pub use crate::websocket_frame::{MAX_MESSAGE_BYTES, check_message};
+ 
+ /// The WebSocket limits a direct channel runs with: no message or frame
+ /// larger than [`MAX_MESSAGE_BYTES`].
+@@ -202,32 +202,6 @@ fn complete_frame(buffer: &[u8]) -> io::Result<Option<usize>> {
+     Ok((buffer.len() >= 4 + len).then_some(4 + len))
+ }
+ 
+-/// Check that a received binary message is exactly one bounded frame.
+-///
+-/// # Errors
+-/// Refuses a message over [`MAX_MESSAGE_BYTES`] or whose prefix claims more
+-/// than [`MAX_FRAME_BYTES`] as `limit_exceeded`, and a message shorter than a
+-/// frame header or whose prefix disagrees with its size as `malformed`.
+-pub fn check_message(message: &[u8]) -> Result<()> {
+-    if message.len() > MAX_MESSAGE_BYTES {
+-        return fail(Refusal::LimitExceeded, "message exceeds the frame bound");
+-    }
+-    let Some(prefix) = message.first_chunk::<4>() else {
+-        return fail(Refusal::Malformed, "message shorter than a frame");
+-    };
+-    let len = u32::from_be_bytes(*prefix) as usize;
+-    if len > MAX_FRAME_BYTES {
+-        return fail(Refusal::LimitExceeded, "frame exceeds the maximum size");
+-    }
+-    if len < HEADER_BYTES {
+-        return fail(Refusal::Malformed, "frame shorter than its header");
+-    }
+-    if message.len() != 4 + len {
+-        return fail(Refusal::Malformed, "a message must carry exactly one frame");
+-    }
+-    Ok(())
+-}
+-
+ fn into_io(error: Error) -> io::Error {
+     io::Error::new(io::ErrorKind::InvalidData, error)
+ }
+diff --git a/crates/coder-reach/src/websocket_frame.rs b/crates/coder-reach/src/websocket_frame.rs
+new file mode 100644
+index 0000000000..60024fd60f
+--- /dev/null
++++ b/crates/coder-reach/src/websocket_frame.rs
+@@ -0,0 +1,29 @@
++//! The binary-message bound shared by native and browser channel carriage.
++use crate::channel::{HEADER_BYTES, MAX_FRAME_BYTES};
++use crate::{Refusal, Result, fail};
++pub const MAX_MESSAGE_BYTES: usize = 4 + MAX_FRAME_BYTES;
++/// Check that a received binary message is exactly one bounded frame.
++///
++/// # Errors
++/// Refuses a message over [`MAX_MESSAGE_BYTES`] or whose prefix claims more
++/// than [`MAX_FRAME_BYTES`] as `limit_exceeded`, and a message shorter than a
++/// frame header or whose prefix disagrees with its size as `malformed`.
++pub fn check_message(message: &[u8]) -> Result<()> {
++    if message.len() > MAX_MESSAGE_BYTES {
++        return fail(Refusal::LimitExceeded, "message exceeds the frame bound");
++    }
++    let Some(prefix) = message.first_chunk::<4>() else {
++        return fail(Refusal::Malformed, "message shorter than a frame");
++    };
++    let len = u32::from_be_bytes(*prefix) as usize;
++    if len > MAX_FRAME_BYTES {
++        return fail(Refusal::LimitExceeded, "frame exceeds the maximum size");
++    }
++    if len < HEADER_BYTES {
++        return fail(Refusal::Malformed, "frame shorter than its header");
++    }
++    if message.len() != 4 + len {
++        return fail(Refusal::Malformed, "a message must carry exactly one frame");
++    }
++    Ok(())
++}
+diff --git a/crates/everglade-web/Cargo.toml b/crates/everglade-web/Cargo.toml
+index 6491c1232f..0f63ac8930 100644
+--- a/crates/everglade-web/Cargo.toml
++++ b/crates/everglade-web/Cargo.toml
+@@ -11,9 +11,15 @@ crate-type = ["cdylib", "rlib"]
+ 
+ # Everything is browser-only; a native build of this crate is empty.
+ [target.'cfg(target_arch = "wasm32")'.dependencies]
+-verse = { path = "../verse", default-features = false, features = ["web"] }
++verse = { path = "../verse", default-features = false, features = ["browser-chamber"] }
+ wgpu = "29.0.4"
+ # The Grid's presence: positions, the console's frame lines, and the clock.
++verse-engine = { path = "../verse-engine" }
++verse-world = { path = "../verse-world", features = ["reach-client"] }
++verse-content = { path = "../verse-content" }
++coder-reach = { path = "../coder-reach" }
++serde = { version = "1", features = ["derive"] }
++secp256k1 = "0.31.1"
+ glam = "0.30.10"
+ serde_json = "1"
+ web-time = "1.1.0"
+@@ -30,11 +36,17 @@ console_error_panic_hook = "0.1.7"
+ log = "0.4"
+ web-sys = { version = "0.3", features = [
+     "AddEventListenerOptions",
++    "AbortController",
++    "AbortSignal",
+     "CssStyleDeclaration",
+     "Document",
+     "Element",
+     "Event",
+     "EventTarget",
++    "HtmlButtonElement",
++    "Gamepad",
++    "GamepadButton",
++    "Navigator",
+     "HtmlCanvasElement",
+     "HtmlElement",
+     "KeyboardEvent",
+@@ -45,7 +57,9 @@ web-sys = { version = "0.3", features = [
+     "PointerEvent",
+     "ReadableStream",
+     "ReadableStreamDefaultReader",
++    "Request",
+     "RequestCredentials",
++    "RequestCache",
+     "RequestInit",
+     "RequestRedirect",
+     "Response",
+diff --git a/crates/everglade-web/README.md b/crates/everglade-web/README.md
+index 27e0a2b923..c83a98b919 100644
+--- a/crates/everglade-web/README.md
++++ b/crates/everglade-web/README.md
+@@ -120,3 +120,11 @@ In the Grove, keys `1` to `9` cast the druid's spells on the hotbar
+ (Thunderwave, Gust of Wind, Wind Wall, Wall of Stone, Reverse Gravity, Fire
+ Bolt, Fireball, Misty Step, and Web), `0` is Long Rest, and a click or tap
+ on a slot casts it. Spells aim at the dummy nearest the character's facing.
++
++## Authoritative chamber mode
++
++Open `?zone=chamber` to mount the shared authoritative chamber session over
++authenticated REACH WebSocket. See [configuration and the platform feature
++matrix](../../docs/verse/platform-clients.md). This mode requires explicit host
++enrollment and admitted content; the offline glade and Grid presence remain
++separate modes. Wasm compilation does not establish browser device acceptance.
+diff --git a/crates/everglade-web/src/chamber.rs b/crates/everglade-web/src/chamber.rs
+new file mode 100644
+index 0000000000..5f8385aa91
+--- /dev/null
++++ b/crates/everglade-web/src/chamber.rs
+@@ -0,0 +1,923 @@
++//! Browser chamber mount over the shared authoritative client and presentation.
++use serde::Deserialize;
++use std::{cell::RefCell, rc::Rc, sync::Arc};
++use verse::grid_engine::{Content as RenderContent, GridEngine, Kind};
++use verse::imported::{Gpu, chamber, chamber_session::Session};
++use verse::ui::Atlas;
++use verse_engine::{
++    assets::Pack,
++    director::Scene,
++    loading::{Budget, Prepared},
++};
++use verse_world::{
++    controls::{Action, Binding, InputMap},
++    service::client_runtime,
++};
++use wasm_bindgen::{JsCast, prelude::*};
++use web_sys::{
++    Document, Event, HtmlCanvasElement, HtmlElement, KeyboardEvent, PointerEvent, Window,
++};
++
++#[derive(Clone, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct Config {
++    websocket: String,
++    host: String,
++    grant: String,
++    epoch: u64,
++    generation: u64,
++    instance: u64,
++    content: String,
++    pack: String,
++    scene: String,
++    assets: String,
++    #[serde(default)]
++    bindings: Vec<Binding>,
++    #[serde(default)]
++    mips: bool,
++}
++struct Source {
++    pack: Pack,
++    scene: Scene,
++    files: Vec<(String, Vec<u8>)>,
++    content: [u8; 32],
++}
++impl Source {
++    fn prepared(&self) -> Result<Prepared, String> {
++        let files: Vec<_> = self
++            .files
++            .iter()
++            .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
++            .collect();
++        Prepared::from_bytes(
++            self.pack.clone(),
++            &files,
++            Budget {
++                encoded_total_bytes: 64 * 1024 * 1024,
++                rgba_total_bytes: 128 * 1024 * 1024,
++                ..Budget::default()
++            },
++        )
++    }
++}
++struct Page {
++    window: Window,
++    canvas: HtmlCanvasElement,
++    source: Rc<Source>,
++    config: Config,
++    secret: secp256k1::SecretKey,
++    atlas: Atlas,
++    engine: Option<GridEngine>,
++    session: Option<Session>,
++    connecting: Option<client_runtime::Task>,
++    epoch: u64,
++    active: bool,
++    input: InputMap,
++    notice: HtmlElement,
++    captions: HtmlElement,
++    audio: verse_engine::audio_bank::Scene,
++    damage: u64,
++    look: Option<(i32, [i32; 2])>,
++    last: f64,
++    render_scale: f64,
++    slow_frames: u8,
++    fast_frames: u16,
++}
++fn path(value: &str) -> Result<(), String> {
++    if value.is_empty()
++        || value.len() > 512
++        || !value.is_ascii()
++        || value.starts_with('/')
++        || value.split('/').any(|p| {
++            p.is_empty()
++                || p == "."
++                || p == ".."
++                || p.chars()
++                    .any(|c| !(c.is_ascii_alphanumeric() || "-_.".contains(c)))
++        })
++    {
++        return Err("Chamber asset path must be relative to this page".into());
++    }
++    Ok(())
++}
++async fn fetch(window: &Window, path_value: &str, max: usize) -> Result<Vec<u8>, String> {
++    client_runtime::timeout(
++        std::time::Duration::from_secs(30),
++        fetch_inner(window, path_value, max),
++    )
++    .await
++    .map_err(|_| "Chamber content download timed out")?
++}
++async fn fetch_inner(window: &Window, path_value: &str, max: usize) -> Result<Vec<u8>, String> {
++    struct Abort(web_sys::AbortController);
++    impl Drop for Abort {
++        fn drop(&mut self) {
++            self.0.abort();
++        }
++    }
++    let abort =
++        Abort(web_sys::AbortController::new().map_err(|_| "Cannot cancel chamber download")?);
++    path(path_value)?;
++    let init = web_sys::RequestInit::new();
++    init.set_signal(Some(&abort.0.signal()));
++    init.set_credentials(web_sys::RequestCredentials::Omit);
++    if path_value == "chamber.json" {
++        init.set_cache(web_sys::RequestCache::NoStore);
++    }
++    init.set_redirect(web_sys::RequestRedirect::Error);
++    let request = web_sys::Request::new_with_str_and_init(path_value, &init)
++        .map_err(|_| "Cannot request chamber content")?;
++    let response: web_sys::Response =
++        wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
++            .await
++            .map_err(|_| "Chamber content unavailable")?
++            .dyn_into()
++            .map_err(|_| "Invalid chamber response")?;
++    if !response.ok() {
++        return Err("Chamber content unavailable".into());
++    }
++    let body = response.body().ok_or("Chamber content has no body")?;
++    let reader: web_sys::ReadableStreamDefaultReader = body
++        .get_reader()
++        .dyn_into()
++        .map_err(|_| "Cannot read chamber content")?;
++    let mut bytes = vec![];
++    loop {
++        let chunk = wasm_bindgen_futures::JsFuture::from(reader.read())
++            .await
++            .map_err(|_| "Chamber content interrupted")?;
++        if js_sys::Reflect::get(&chunk, &JsValue::from_str("done"))
++            .ok()
++            .and_then(|x| x.as_bool())
++            .unwrap_or(true)
++        {
++            break;
++        }
++        let array: js_sys::Uint8Array = js_sys::Reflect::get(&chunk, &JsValue::from_str("value"))
++            .map_err(|_| "Invalid chamber chunk")?
++            .dyn_into()
++            .map_err(|_| "Invalid chamber chunk")?;
++        let end = bytes
++            .len()
++            .checked_add(array.length() as usize)
++            .ok_or("Chamber content exceeds budget")?;
++        if end > max {
++            let _ = reader.cancel();
++            return Err("Chamber content exceeds budget".into());
++        }
++        let start = bytes.len();
++        bytes.resize(end, 0);
++        array.copy_to(&mut bytes[start..]);
++    }
++    Ok(bytes)
++}
++fn digest(text: &str) -> Result<[u8; 32], String> {
++    if text.len() != 64
++        || !text
++            .bytes()
++            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
++    {
++        return Err("Chamber content digest is malformed".into());
++    }
++    let mut bytes = [0; 32];
++    for (i, b) in bytes.iter_mut().enumerate() {
++        *b = u8::from_str_radix(&text[i * 2..i * 2 + 2], 16)
++            .map_err(|_| "Chamber content digest is malformed")?;
++    }
++    Ok(bytes)
++}
++fn size(window: &Window, canvas: &HtmlCanvasElement) -> [u32; 2] {
++    let scale = window.device_pixel_ratio().clamp(1., 3.);
++    [
++        (canvas.client_width() as f64 * scale)
++            .round()
++            .clamp(1., 4096.) as u32,
++        (canvas.client_height() as f64 * scale)
++            .round()
++            .clamp(1., 4096.) as u32,
++    ]
++}
++async fn engine(
++    window: &Window,
++    canvas: &HtmlCanvasElement,
++    source: &Source,
++    atlas: &Atlas,
++) -> Result<GridEngine, String> {
++    let [width, height] = size(window, canvas);
++    canvas.set_width(width);
++    canvas.set_height(height);
++    let mut descriptor =
++        wgpu::InstanceDescriptor::new_with_display_handle(Box::new(crate::web::WebDisplay));
++    let force_gl = window
++        .location()
++        .search()
++        .is_ok_and(|query| query.split(['?', '&']).any(|part| part == "gl"));
++    descriptor.backends = if force_gl {
++        wgpu::Backends::GL
++    } else {
++        wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL
++    };
++    let instance = wgpu::util::new_instance_with_webgpu_detection(descriptor).await;
++    let surface = instance
++        .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
++        .map_err(|_| "Cannot open chamber surface")?;
++    let gpu = Gpu::open_async(instance, &surface).await?;
++    let prepared = source.prepared()?;
++    let statics = chamber::static_instances(
++        &source.pack,
++        verse_engine::source_position(source.scene.origin),
++    );
++    GridEngine::on_surface_with(
++        gpu,
++        surface,
++        RenderContent {
++            prepared,
++            statics,
++            kind: Kind::Chamber,
++        },
++        atlas,
++        width,
++        height,
++    )
++}
++fn pause(page: &Rc<RefCell<Page>>) {
++    let mut p = page.borrow_mut();
++    p.active = false;
++    p.epoch = p.epoch.saturating_add(1);
++    p.input.clear();
++    p.look = None;
++    if let Some(task) = p.connecting.take() {
++        task.abort();
++    }
++    p.session.take();
++    p.engine.take();
++    p.audio.clear_captions();
++    p.audio.suspended = true;
++    p.notice
++        .set_text_content(Some("Chamber paused. Select Reconnect to resume."));
++}
++fn reconnect(page: &Rc<RefCell<Page>>) {
++    let mut p = page.borrow_mut();
++    if p.window.document().is_some_and(|d| d.hidden()) {
++        return;
++    }
++    if let Some(task) = p.connecting.take() {
++        task.abort();
++    }
++    p.session.take();
++    p.input.clear();
++    p.look = None;
++    p.epoch = p.epoch.saturating_add(1);
++    p.active = true;
++    p.audio.suspended = false;
++    p.notice.set_text_content(Some("Connecting to chamber…"));
++    let (epoch, config, secret, source, window, canvas, atlas) = (
++        p.epoch,
++        p.config.clone(),
++        p.secret,
++        p.source.clone(),
++        p.window.clone(),
++        p.canvas.clone(),
++        p.atlas.clone(),
++    );
++    let page = page.clone();
++    p.connecting = Some(client_runtime::spawn(async move {
++        let result = async {
++            let fresh: Config =
++                serde_json::from_slice(&fetch(&window, "chamber.json", 64 * 1024).await?)
++                    .map_err(|_| "Invalid chamber configuration")?;
++            if fresh.instance != config.instance || digest(&fresh.content)? != source.content {
++                return Err("Chamber content or destination changed. Reload this page.".into());
++            }
++            let config = fresh;
++            let opened = client_runtime::timeout(
++                std::time::Duration::from_secs(10),
++                coder_reach::browser::Socket::open(&config.websocket),
++            )
++            .await
++            .map_err(|_| "Chamber WebSocket timed out")?
++            .map_err(|_| "Chamber WebSocket unavailable")?;
++            let reach = coder_reach::channel::ClientConfig {
++                device: secret,
++                host: config.host,
++                grant: config.grant,
++                epoch: config.epoch,
++                generation: config.generation,
++                timeout: std::time::Duration::from_secs(10),
++            };
++            let now = (js_sys::Date::now() / 1000.).max(0.) as u64;
++            let channel = coder_reach::channel::connect(opened, &reach, now)
++                .await
++                .map_err(|e| format!("Chamber channel refused: {e}"))?;
++            let client = verse_world::service::reach_client::join(
++                channel,
++                &secret,
++                config.instance,
++                Some(source.content),
++            )
++            .await?;
++            let session = Session::start_browser(client, &source.scene)?;
++            let gpu = engine(&window, &canvas, &source, &atlas).await?;
++            Ok::<_, String>((session, gpu))
++        }
++        .await;
++        let mut p = page.borrow_mut();
++        if p.epoch != epoch || !p.active {
++            return;
++        }
++        p.connecting = None;
++        match result {
++            Ok((session, engine)) => {
++                p.session = Some(session);
++                p.engine = Some(engine);
++                p.damage = 0;
++                p.notice.set_text_content(Some("Chamber connected"));
++            }
++            Err(error) => p.notice.set_text_content(Some(&error)),
++        }
++    }));
++}
++fn act(p: &mut Page, action: Action) {
++    let Some(session) = &mut p.session else {
++        return;
++    };
++    match action {
++        Action::Jump => session.jump(&p.source.scene),
++        Action::Cast(slot) => {
++            if let Some(ability) = verse_world::play::Ability::ALL.get(slot as usize) {
++                if session.view().target().is_none() {
++                    session.target_nearest();
++                }
++                session.cast(&p.source.scene, *ability);
++            }
++        }
++        Action::Target => session.target_nearest(),
++        Action::Respawn => session.respawn(),
++        _ => {}
++    }
++}
++fn control(p: &mut Page, name: &str, down: bool) {
++    if let Some(action) = p.input.change(name, down) {
++        act(p, action);
++    }
++}
++fn listen<E: JsCast + 'static>(
++    target: &web_sys::EventTarget,
++    event: &str,
++    mut callback: impl FnMut(E) + 'static,
++) -> Result<(), String> {
++    let closure = Closure::wrap(Box::new(move |event: Event| {
++        if let Ok(event) = event.dyn_into::<E>() {
++            callback(event);
++        }
++    }) as Box<dyn FnMut(Event)>);
++    target
++        .add_event_listener_with_callback(event, closure.as_ref().unchecked_ref())
++        .map_err(|_| "Cannot register chamber controls")?;
++    closure.forget();
++    Ok(())
++}
++fn button(document: &Document, panel: &HtmlElement, label: &str) -> Result<HtmlElement, String> {
++    let element: HtmlElement = document
++        .create_element("button")
++        .map_err(|_| "Cannot create chamber button")?
++        .dyn_into()
++        .map_err(|_| "Cannot create chamber button")?;
++    element.set_text_content(Some(label));
++    element
++        .set_attribute("aria-label", label)
++        .map_err(|_| "Cannot label chamber button")?;
++    let _ = element.style().set_property("min-height", "44px");
++    let _ = element.style().set_property("min-width", "44px");
++    panel
++        .append_child(&element)
++        .map_err(|_| "Cannot mount chamber button")?;
++    Ok(element)
++}
++pub async fn run(
++    window: Window,
++    document: Document,
++    canvas: HtmlCanvasElement,
++) -> Result<(), String> {
++    let config: Config = serde_json::from_slice(&fetch(&window, "chamber.json", 64 * 1024).await?)
++        .map_err(|_| "Invalid chamber configuration")?;
++    let pack: Pack = serde_json::from_slice(&fetch(&window, &config.pack, 32 * 1024 * 1024).await?)
++        .map_err(|_| "Invalid chamber pack")?;
++    pack.validate()?;
++    let scene = Scene::from_json(&fetch(&window, &config.scene, 1024 * 1024).await?)?;
++    path(&config.assets)?;
++    let mut files = vec![];
++    let mut total = 0;
++    for texture in &pack.textures {
++        path(&texture.file)?;
++        let file = fetch(
++            &window,
++            &format!("{}/{}", config.assets, texture.file),
++            16 * 1024 * 1024,
++        )
++        .await?;
++        total += file.len();
++        if total > 64 * 1024 * 1024 {
++            return Err("Chamber textures exceed browser budget".into());
++        }
++        files.push((texture.file.clone(), file));
++    }
++    if config.mips {
++        for (name, max) in [
++            (verse_engine::mips::archive::MANIFEST, 1024 * 1024),
++            (verse_engine::mips::archive::PAYLOAD, 64 * 1024 * 1024),
++        ] {
++            let file = fetch(&window, &format!("{}/{}", config.assets, name), max).await?;
++            total += file.len();
++            if total > 64 * 1024 * 1024 {
++                return Err("Chamber source closure exceeds browser budget".into());
++            }
++            files.push((name.into(), file));
++        }
++    }
++    let source = Rc::new(Source {
++        pack,
++        scene,
++        files,
++        content: digest(&config.content)?,
++    });
++    let admitted = source.prepared()?;
++    if verse_content::remote_content::identity_prepared(&admitted, &source.scene)? != source.content
++    {
++        return Err("Browser chamber content differs from pinned identity".into());
++    }
++    drop(admitted);
++    let storage = window
++        .local_storage()
++        .map_err(|_| "Browser identity storage unavailable")?
++        .ok_or("Browser identity storage unavailable")?;
++    let identity = match storage
++        .get_item("openagents.grid.secret")
++        .map_err(|_| "Browser identity storage unavailable")?
++    {
++        Some(secret) => verse::identity::Identity::from_secret_hex("Grid", &secret)?,
++        None => {
++            let identity =
++                verse::identity::Identity::from_secret("Grid", verse::identity::random_secret())?;
++            storage
++                .set_item("openagents.grid.secret", &identity.secret_hex())
++                .map_err(|_| "Cannot retain browser world identity")?;
++            identity
++        }
++    };
++    let panel: HtmlElement = document
++        .create_element("div")
++        .map_err(|_| "Cannot create chamber controls")?
++        .dyn_into()
++        .map_err(|_| "Cannot create chamber controls")?;
++    panel
++        .set_attribute("aria-label", "Chamber controls")
++        .map_err(|_| "Cannot label chamber controls")?;
++    panel
++        .set_attribute("id", "chamber-controls")
++        .map_err(|_| "Cannot identify chamber controls")?;
++    for (property, value) in [
++        ("position", "fixed"),
++        ("inset", "auto 0 0 auto"),
++        ("max-width", "min(28rem, 100vw)"),
++        ("max-height", "45vh"),
++        ("overflow", "auto"),
++        ("overflow-wrap", "anywhere"),
++        ("z-index", "1"),
++        ("padding", "0.5rem"),
++        ("box-sizing", "border-box"),
++        ("background", "rgba(14, 20, 12, 0.94)"),
++        ("color", "white"),
++        ("font-size", "1.125rem"),
++    ] {
++        panel
++            .style()
++            .set_property(property, value)
++            .map_err(|_| "Cannot lay out chamber controls")?;
++    }
++    document
++        .body()
++        .ok_or("No page body")?
++        .append_child(&panel)
++        .map_err(|_| "Cannot mount chamber controls")?;
++    let identity_label: HtmlElement = document
++        .create_element("p")
++        .map_err(|_| "Cannot display browser identity")?
++        .dyn_into()
++        .map_err(|_| "Cannot display browser identity")?;
++    let public_key = identity
++        .secret
++        .x_only_public_key(&secp256k1::Secp256k1::new())
++        .0
++        .to_string();
++    identity_label.set_text_content(Some(&format!("World identity: {public_key}")));
++    panel
++        .append_child(&identity_label)
++        .map_err(|_| "Cannot display browser identity")?;
++    let notice: HtmlElement = document
++        .create_element("p")
++        .map_err(|_| "Cannot create chamber status")?
++        .dyn_into()
++        .map_err(|_| "Cannot create chamber status")?;
++    notice
++        .set_attribute("role", "status")
++        .map_err(|_| "Cannot label chamber status")?;
++    notice
++        .set_attribute("aria-live", "polite")
++        .map_err(|_| "Cannot label chamber status")?;
++    panel
++        .append_child(&notice)
++        .map_err(|_| "Cannot mount chamber status")?;
++    let captions: HtmlElement = document
++        .create_element("p")
++        .map_err(|_| "Cannot create chamber captions")?
++        .dyn_into()
++        .map_err(|_| "Cannot create chamber captions")?;
++    captions
++        .set_attribute("aria-label", "Combat captions")
++        .map_err(|_| "Cannot label captions")?;
++    panel
++        .append_child(&captions)
++        .map_err(|_| "Cannot mount captions")?;
++    canvas
++        .set_attribute("aria-label", "Chamber world")
++        .map_err(|_| "Cannot label chamber canvas")?;
++    canvas
++        .set_attribute("tabindex", "0")
++        .map_err(|_| "Cannot focus chamber canvas")?;
++    let _ = canvas.style().set_property("touch-action", "none");
++    let input = if config.bindings.is_empty() {
++        InputMap::default()
++    } else {
++        InputMap::new(config.bindings.clone())?
++    };
++    let page = Rc::new(RefCell::new(Page {
++        window: window.clone(),
++        canvas,
++        source,
++        config,
++        secret: identity.secret,
++        atlas: verse::imported::original::atlas()?,
++        engine: None,
++        session: None,
++        connecting: None,
++        epoch: 0,
++        active: false,
++        input,
++        notice,
++        captions,
++        audio: verse_engine::audio_bank::Scene::new(
++            Arc::new(verse_engine::audio_bank::Bank::original()?),
++            "en",
++        )?,
++        damage: 0,
++        look: None,
++        last: 0.,
++        render_scale: 1.,
++        slow_frames: 0,
++        fast_frames: 0,
++    }));
++    for (label, name) in [
++        ("Forward", "TouchForward"),
++        ("Backward", "TouchBackward"),
++        ("Strafe left", "TouchLeft"),
++        ("Strafe right", "TouchRight"),
++    ] {
++        let b = button(&document, &panel, label)?;
++        let p = page.clone();
++        listen::<PointerEvent>(b.as_ref(), "pointerdown", move |e| {
++            e.prevent_default();
++            if let Some(target) = e
++                .current_target()
++                .and_then(|t| t.dyn_into::<HtmlElement>().ok())
++            {
++                let _ = target.set_pointer_capture(e.pointer_id());
++            }
++            control(&mut p.borrow_mut(), name, true);
++        })?;
++        for event in ["pointerup", "pointercancel", "lostpointercapture"] {
++            let p = page.clone();
++            listen::<PointerEvent>(b.as_ref(), event, move |_| {
++                control(&mut p.borrow_mut(), name, false)
++            })?;
++        }
++    }
++    for (i, ability) in verse_world::play::Ability::ALL.into_iter().enumerate() {
++        let b = button(&document, &panel, ability.label())?;
++        let p = page.clone();
++        listen::<Event>(b.as_ref(), "click", move |_| {
++            act(&mut p.borrow_mut(), Action::Cast(i as u8))
++        })?;
++    }
++    for (label, action) in [
++        ("Jump", Action::Jump),
++        ("Target nearest", Action::Target),
++        ("Respawn", Action::Respawn),
++    ] {
++        let b = button(&document, &panel, label)?;
++        let p = page.clone();
++        listen::<Event>(b.as_ref(), "click", move |_| {
++            act(&mut p.borrow_mut(), action)
++        })?;
++    }
++    let resume = button(&document, &panel, "Reconnect")?;
++    let p = page.clone();
++    listen::<Event>(resume.as_ref(), "click", move |_| reconnect(&p))?;
++    for (event, down) in [("keydown", true), ("keyup", false)] {
++        let p = page.clone();
++        listen::<KeyboardEvent>(window.as_ref(), event, move |e| {
++            if e.code() == "Tab" {
++                return;
++            }
++            if e.target().is_some_and(|t| {
++                t.dyn_into::<HtmlElement>()
++                    .is_ok_and(|e| matches!(e.tag_name().as_str(), "INPUT" | "TEXTAREA" | "BUTTON"))
++            }) {
++                if !down {
++                    control(&mut p.borrow_mut(), &e.code(), false);
++                }
++                return;
++            }
++            if e.ctrl_key() || e.meta_key() || e.alt_key() {
++                if !down {
++                    control(&mut p.borrow_mut(), &e.code(), false);
++                }
++                return;
++            }
++            let mapped = if p.borrow().config.bindings.is_empty() {
++                e.code() == "Space"
++            } else {
++                p.borrow()
++                    .config
++                    .bindings
++                    .iter()
++                    .any(|b| b.control == e.code())
++            };
++            if mapped {
++                e.prevent_default();
++            }
++            control(&mut p.borrow_mut(), &e.code(), down);
++        })?;
++    }
++    let p = page.clone();
++    listen::<Event>(window.as_ref(), "blur", move |_| pause(&p))?;
++    let p = page.clone();
++    listen::<Event>(document.as_ref(), "visibilitychange", move |_| {
++        if p.borrow().window.document().is_some_and(|d| d.hidden()) {
++            pause(&p);
++        } else {
++            reconnect(&p);
++        }
++    })?;
++    let p = page.clone();
++    listen::<Event>(window.as_ref(), "focus", move |_| {
++        if !p.borrow().active {
++            reconnect(&p);
++        }
++    })?;
++    let canvas = page.borrow().canvas.clone();
++    let p = page.clone();
++    listen::<PointerEvent>(canvas.as_ref(), "pointerdown", move |e| {
++        e.prevent_default();
++        if let Some(canvas) = e
++            .current_target()
++            .and_then(|t| t.dyn_into::<HtmlCanvasElement>().ok())
++        {
++            let _ = canvas.set_pointer_capture(e.pointer_id());
++        }
++        let mut p = p.borrow_mut();
++        p.look = Some((e.pointer_id(), [e.client_x(), e.client_y()]));
++        if let Some(session) = &mut p.session {
++            let camera = session.camera;
++            session
++                .controls
++                .button(true, true, &mut session.yaw, &camera);
++        }
++    })?;
++    let p = page.clone();
++    listen::<PointerEvent>(canvas.as_ref(), "pointermove", move |e| {
++        let mut p = p.borrow_mut();
++        let Some((id, previous)) = p.look else {
++            return;
++        };
++        if id != e.pointer_id() {
++            return;
++        }
++        let at = [e.client_x(), e.client_y()];
++        p.look = Some((id, at));
++        if let Some(session) = &mut p.session {
++            session.controls.motion(
++                [(at[0] - previous[0]) as f64, (at[1] - previous[1]) as f64],
++                &mut session.yaw,
++                &mut session.camera,
++            );
++        }
++    })?;
++    for event in ["pointerup", "pointercancel", "lostpointercapture"] {
++        let p = page.clone();
++        listen::<PointerEvent>(canvas.as_ref(), event, move |e| {
++            let mut p = p.borrow_mut();
++            if p.look.is_some_and(|(id, _)| id == e.pointer_id()) {
++                p.look = None;
++                if let Some(session) = &mut p.session {
++                    let camera = session.camera;
++                    session
++                        .controls
++                        .button(true, false, &mut session.yaw, &camera);
++                }
++            }
++        })?;
++    }
++    reconnect(&page);
++    animate(window, page);
++    Ok(())
++}
++fn animate(window: Window, page: Rc<RefCell<Page>>) {
++    let callback = Rc::new(RefCell::new(None::<Closure<dyn FnMut(f64)>>));
++    let next = callback.clone();
++    let scheduler = window.clone();
++    *callback.borrow_mut() = Some(Closure::wrap(Box::new(move |now: f64| {
++        let mut p = page.borrow_mut();
++        let elapsed = now - p.last;
++        let dt = (elapsed / 1000.).clamp(0., 0.1) as f32;
++        if p.active && p.engine.is_some() && p.last > 0. && elapsed < 1000. {
++            // Keep graphics work within the shared thread's input and transport budget.
++            if elapsed > 40. {
++                p.slow_frames += 1;
++                p.fast_frames = 0;
++                if p.slow_frames >= 2 {
++                    p.render_scale = (p.render_scale * 0.75).max(1. / 16.);
++                    p.slow_frames = 0;
++                }
++            } else {
++                p.slow_frames = 0;
++                if elapsed < 20. {
++                    p.fast_frames += 1;
++                    if p.fast_frames >= 300 {
++                        p.render_scale = (p.render_scale * 1.1).min(1.);
++                        p.fast_frames = 0;
++                    }
++                } else {
++                    p.fast_frames = 0;
++                }
++            }
++        }
++        p.last = now;
++        if p.active {
++            if let Ok(pads) = p.window.navigator().get_gamepads() {
++                if let Some(pad) = pads
++                    .iter()
++                    .find_map(|v| v.dyn_into::<web_sys::Gamepad>().ok())
++                {
++                    let axes = pad.axes();
++                    let axis = |i| {
++                        axes.get(i)
++                            .as_f64()
++                            .filter(|n| n.is_finite())
++                            .unwrap_or(0.)
++                            .clamp(-1., 1.)
++                    };
++                    for (name, down) in [
++                        ("PadLeft", axis(0) < -0.2),
++                        ("PadRight", axis(0) > 0.2),
++                        ("PadForward", axis(1) < -0.2),
++                        ("PadBackward", axis(1) > 0.2),
++                    ] {
++                        control(&mut p, name, down);
++                    }
++                    let look = [axis(2) as f32, axis(3) as f32];
++                    if p.look.is_none()
++                        && let Some(session) = &mut p.session
++                    {
++                        session.camera.yaw = (session.camera.yaw - look[0] * 1.9 * dt)
++                            .rem_euclid(std::f32::consts::TAU);
++                        session.camera.pitch =
++                            (session.camera.pitch + look[1] * 1.15 * dt).clamp(-1.2, 1.2);
++                        if look[0].abs() > 0.2 {
++                            session.yaw = session.camera.yaw;
++                        }
++                    }
++                    for i in 0..2 {
++                        let down = pad
++                            .buttons()
++                            .get(i)
++                            .dyn_into::<web_sys::GamepadButton>()
++                            .is_ok_and(|b| b.pressed());
++                        control(&mut p, &format!("Pad{i}"), down);
++                    }
++                } else {
++                    for name in [
++                        "PadLeft",
++                        "PadRight",
++                        "PadForward",
++                        "PadBackward",
++                        "Pad0",
++                        "Pad1",
++                    ] {
++                        control(&mut p, name, false);
++                    }
++                }
++            }
++            let held = p.input.held();
++            let source = p.source.clone();
++            let result = if let Some(session) = &mut p.session {
++                session.step(&source.scene, held).map(|_| ())
++            } else {
++                Ok(())
++            };
++            if let Err(error) = result {
++                p.session.take();
++                p.notice
++                    .set_text_content(Some(&format!("{error}. Reconnect to recover.")));
++            }
++            let physical = size(&p.window, &p.canvas)
++                .map(|value| (f64::from(value) * p.render_scale).round().max(1.) as u32);
++            let _ = p
++                .canvas
++                .set_attribute("data-render-scale", &p.render_scale.to_string());
++            let session_frame = p.session.as_ref().and_then(|s| {
++                s.frame_in(
++                    &source.pack,
++                    &p.atlas,
++                    &source.scene,
++                    physical,
++                    [
++                        p.canvas.client_width().max(1) as f32,
++                        p.canvas.client_height().max(1) as f32,
++                    ],
++                )
++                .ok()
++            });
++            if let Some(mut frame) = session_frame {
++                let _ = frame.scale_overlay(physical.map(|value| value as f32));
++                let [w, h] = physical;
++                if p.canvas.width() != w {
++                    p.canvas.set_width(w);
++                }
++                if p.canvas.height() != h {
++                    p.canvas.set_height(h);
++                }
++                if let Some(engine) = &mut p.engine {
++                    let result = engine.resize(w, h).and_then(|_| {
++                        engine.draw(frame.view, &frame.instances, &frame.ui, &frame.lighting)
++                    });
++                    if let Err(error) = result {
++                        p.engine.take();
++                        p.session.take();
++                        p.input.clear();
++                        p.look = None;
++                        p.notice.set_text_content(Some(&format!(
++                            "{error}. Reconnect to reopen graphics."
++                        )));
++                    }
++                }
++            }
++            if p.engine.is_some()
++                && let Some(session) = &p.session
++            {
++                let damage = session.damage_events;
++                let life = session.owned_life();
++                let resources = session.hud().map(|h| {
++                    format!(
++                        "Health {}/{}; mana {}/{}{}",
++                        h.resources.hp,
++                        h.resources.max_hp,
++                        h.resources.mana,
++                        h.resources.max_mana,
++                        if p.render_scale < 0.99 {
++                            "; graphics quality reduced"
++                        } else {
++                            ""
++                        }
++                    )
++                });
++                if damage > p.damage {
++                    let _ = p.audio.caption("impact", life, now / 1000.);
++                    p.damage = damage;
++                }
++                if let Some(resources) = resources {
++                    if p.notice.text_content().as_deref() != Some(&resources) {
++                        p.notice.set_text_content(Some(&resources));
++                    }
++                }
++            }
++            let text = p
++                .audio
++                .captions(now / 1000.)
++                .take(4)
++                .map(|c| c.text.as_str())
++                .collect::<Vec<_>>()
++                .join("; ");
++            if p.captions.text_content().as_deref() != Some(&text) {
++                p.captions.set_text_content(Some(&text));
++            }
++        }
++        drop(p);
++        if let Some(callback) = next.borrow().as_ref() {
++            let _ = scheduler.request_animation_frame(callback.as_ref().unchecked_ref());
++        }
++    }) as Box<dyn FnMut(f64)>));
++    if let Some(callback) = callback.borrow().as_ref() {
++        let _ = window.request_animation_frame(callback.as_ref().unchecked_ref());
++    }
++}
+diff --git a/crates/everglade-web/src/lib.rs b/crates/everglade-web/src/lib.rs
+index ce224f7064..43f1d6c22d 100644
+--- a/crates/everglade-web/src/lib.rs
++++ b/crates/everglade-web/src/lib.rs
+@@ -12,6 +12,8 @@
+ //!
+ //! A native build of this crate holds only the plain data its tests cover.
+ 
++#[cfg(target_arch = "wasm32")]
++mod chamber;
+ #[cfg(target_arch = "wasm32")]
+ mod grid;
+ #[cfg(target_arch = "wasm32")]
+diff --git a/crates/everglade-web/src/web.rs b/crates/everglade-web/src/web.rs
+index 7ff7f4a624..0288c50e3b 100644
+--- a/crates/everglade-web/src/web.rs
++++ b/crates/everglade-web/src/web.rs
+@@ -156,7 +156,7 @@ impl Draw {
+ 
+ /// The browser's display, for wgpu's WebGL2 backend.
+ #[derive(Debug)]
+-struct WebDisplay;
++pub(crate) struct WebDisplay;
+ 
+ impl raw_window_handle::HasDisplayHandle for WebDisplay {
+     fn display_handle(
+@@ -285,6 +285,9 @@ async fn run() -> Result<(), String> {
+         .ok_or_else(|| format!("the page has no #{CANVAS_ID}"))?
+         .dyn_into()
+         .map_err(|_| format!("#{CANVAS_ID} is not a canvas"))?;
++    if query_value(&window, "zone").as_deref() == Some("chamber") {
++        return crate::chamber::run(window, document, canvas).await;
++    }
+     // The canvas takes drags and pinches instead of the page scrolling.
+     let _ = canvas.style().set_property("touch-action", "none");
+ 
+diff --git a/crates/verse-content/src/remote_content.rs b/crates/verse-content/src/remote_content.rs
+index 073b03d7ed..fc556cd26f 100644
+--- a/crates/verse-content/src/remote_content.rs
++++ b/crates/verse-content/src/remote_content.rs
+@@ -192,3 +192,50 @@ pub fn bind_mips(content: [u8; 32], mips: [u8; 32]) -> Result<[u8; 32], String>
+     digest.update(mips);
+     Ok(digest.finalize().into())
+ }
++
++/// Computes the host's content identity from bytes already admitted by the loader.
++/// This performs no filesystem reads and includes any admitted mip archive.
++pub fn identity_prepared(
++    prepared: &verse_engine::loading::Prepared,
++    scene: &Scene,
++) -> Result<[u8; 32], String> {
++    let pack = prepared.pack();
++    pack.validate()?;
++    scene.validate()?;
++    let mut digest = Sha256::new();
++    digest.update(b"verse.remote.content.v1\0");
++    for bytes in [
++        serde_json::to_vec(scene).map_err(|_| "Cannot encode scene content")?,
++        serde_json::to_vec(pack).map_err(|_| "Cannot encode compiled asset content")?,
++    ] {
++        if bytes.len() > 128 * 1024 * 1024 {
++            return Err("Remote content manifest exceeds its byte budget".into());
++        }
++        digest.update((bytes.len() as u64).to_be_bytes());
++        digest.update(bytes);
++    }
++    if prepared.receipt().textures.len() != pack.textures.len() {
++        return Err("Admitted texture closure differs from pack".into());
++    }
++    for (texture, receipt) in pack.textures.iter().zip(&prepared.receipt().textures) {
++        if texture.file != receipt.file || texture.sha256 != receipt.sha256 {
++            return Err("Admitted texture differs from pack".into());
++        }
++        let mut hash = [0; 32];
++        if receipt.sha256.len() != 64 || !receipt.sha256.is_ascii() {
++            return Err("Admitted texture digest is malformed".into());
++        }
++        for (i, out) in hash.iter_mut().enumerate() {
++            *out = u8::from_str_radix(&receipt.sha256[i * 2..i * 2 + 2], 16)
++                .map_err(|_| "Admitted texture digest is malformed")?;
++        }
++        digest.update((texture.file.len() as u64).to_be_bytes());
++        digest.update(texture.file.as_bytes());
++        digest.update(hash);
++    }
++    let content = digest.finalize().into();
++    match prepared.mips() {
++        Some(mips) => bind_mips(content, mips.identity()?),
++        None => Ok(content),
++    }
++}
+diff --git a/crates/verse-engine/src/audio_bank.rs b/crates/verse-engine/src/audio_bank.rs
+index ab15a5eb6d..9cdd30490e 100644
+--- a/crates/verse-engine/src/audio_bank.rs
++++ b/crates/verse-engine/src/audio_bank.rs
+@@ -404,6 +404,8 @@ impl Scene {
+                     expires: now + 3.0,
+                     priority,
+                 });
++                self.captions
++                    .sort_by_key(|caption| std::cmp::Reverse(caption.priority));
+             }
+         }
+         Ok(())
+@@ -580,6 +582,33 @@ mod tests {
+         );
+     }
+     #[test]
++    fn a_small_hud_shows_critical_captions_before_crowded_footsteps() {
++        let mut scene = Scene::new(Arc::new(Bank::original().unwrap()), "en").unwrap();
++        for actor in 1..=32 {
++            scene
++                .caption(
++                    "footstep",
++                    Some(LifeId {
++                        instance: 1,
++                        actor,
++                        generation: 1,
++                    }),
++                    1.,
++                )
++                .unwrap();
++        }
++        scene.caption("impact", None, 2.).unwrap();
++        let visible: Vec<_> = scene
++            .captions(2.)
++            .take(4)
++            .map(|caption| caption.text.as_str())
++            .collect();
++        assert_eq!(visible[0], "Impact");
++        assert_eq!(visible.len(), 4);
++        assert_eq!(scene.captions(2.).count(), 32);
++        assert_eq!(scene.captions(4.5).count(), 1);
++    }
++    #[test]
+     fn silent_output_keeps_captions_volumes_and_music_restore_position() {
+         let mut scene = Scene::new(Arc::new(Bank::original().unwrap()), "en").unwrap();
+         scene.volume(0.0).unwrap();
+diff --git a/crates/verse-imported/Cargo.toml b/crates/verse-imported/Cargo.toml
+index f193b7e4ca..7648fd12d3 100644
+--- a/crates/verse-imported/Cargo.toml
++++ b/crates/verse-imported/Cargo.toml
+@@ -9,7 +9,8 @@ description = "Verse's imported content and remote chamber: chamber play, combat
+ [features]
+ # A chamber reached over TLS or a REACH channel, with its session, panels,
+ # and recorder.
+-remote-chamber = ["verse-world/service-auth", "verse-world/service-reach", "dep:tokio", "tokio/signal"]
++chamber-client = ["verse-world/service-client", "dep:tokio"]
++remote-chamber = ["chamber-client", "tokio/net", "verse-world/service-reach", "dep:tokio", "tokio/signal"]
+ # An in-process chamber host over memory streams, for other crates' tests.
+ chamber-loopback = ["remote-chamber", "tokio/io-util"]
+ imported-desktop = ["dep:winit", "verse-pbr/imported-desktop"]
+@@ -34,11 +35,12 @@ verse-net = { path = "../verse-net" }
+ verse-pbr = { path = "../verse-pbr" }
+ verse-world = { path = "../verse-world", features = ["studio"] }
+ verse-zone-crypt = { path = "../verse-zone-crypt", optional = true }
++web-time = "1.1.0"
++tokio = { version = "1", features = ["rt", "time", "sync", "macros", "io-util"], optional = true }
+ wgpu = "29.0.4"
+ winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
+ 
+ [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+-tokio = { version = "1", features = ["rt", "time", "net", "sync", "macros"], optional = true }
+ rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+ 
+ [dev-dependencies]
+diff --git a/crates/verse-imported/src/imported/chamber.rs b/crates/verse-imported/src/imported/chamber.rs
+index 50fff97fb3..efde7a1913 100644
+--- a/crates/verse-imported/src/imported/chamber.rs
++++ b/crates/verse-imported/src/imported/chamber.rs
+@@ -4,13 +4,13 @@ use crate::ui::Atlas;
+ use glam::{Mat4, Quat, Vec3};
+ use verse_engine::{assets::Pack, source_position};
+ /// Assembles admitted remote actors and effects without a local simulation.
+-#[cfg(feature = "remote-chamber")]
++#[cfg(feature = "chamber-client")]
+ pub struct RemoteScene {
+     pub frame: verse_engine::director::Frame,
+     pub instances: Vec<Instance>,
+     pub lighting: super::lighting::Lighting,
+ }
+-#[cfg(feature = "remote-chamber")]
++#[cfg(feature = "chamber-client")]
+ pub fn remote_scene(
+     pack: &Pack,
+     view: &verse_world::service::view::View,
+@@ -22,7 +22,7 @@ pub fn remote_scene(
+ ) -> Result<Option<RemoteScene>, String> {
+     remote_scene_predicted(pack, view, alpha, camera, origin, playground, focus, None)
+ }
+-#[cfg(feature = "remote-chamber")]
++#[cfg(feature = "chamber-client")]
+ pub fn remote_scene_predicted(
+     pack: &Pack,
+     view: &verse_world::service::view::View,
+@@ -41,7 +41,7 @@ pub fn remote_scene_predicted(
+     };
+     render_remote_sample(pack, sample, origin, playground, focus).map(Some)
+ }
+-#[cfg(feature = "remote-chamber")]
++#[cfg(feature = "chamber-client")]
+ fn render_remote_sample(
+     pack: &Pack,
+     sample: verse_world::service::view::SceneSample,
+@@ -89,7 +89,7 @@ fn render_remote_sample(
+     })
+ }
+ 
+-#[cfg(feature = "remote-chamber")]
++#[cfg(feature = "chamber-client")]
+ fn append_equipment(
+     pack: &Pack,
+     frame: &verse_engine::director::Frame,
+@@ -975,7 +975,7 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    #[cfg(feature = "remote-chamber")]
++    #[cfg(feature = "chamber-client")]
+     #[test]
+     fn assembled_remote_sample_matches_local_native_world_consumers() {
+         let scene = verse_engine::director::Scene::from_json(include_bytes!(
+@@ -1025,7 +1025,7 @@ mod tests {
+             assert_eq!(a.color, b.color);
+         }
+     }
+-    #[cfg(feature = "remote-chamber")]
++    #[cfg(feature = "chamber-client")]
+     #[test]
+     fn remote_scene_waits_for_admission_and_rejects_invalid_view_inputs() {
+         let dir = tempfile::tempdir().unwrap();
+@@ -1057,7 +1057,7 @@ mod tests {
+         let invalid = verse_world::service::view::Camera { fov: 0., ..camera };
+         assert!(remote_scene(&pack, &view, 0.5, invalid, Vec3::ZERO, false, Vec3::ZERO).is_err());
+     }
+-    #[cfg(feature = "remote-chamber")]
++    #[cfg(feature = "chamber-client")]
+     #[test]
+     #[ignore = "Explicit animated outfit GPU acceptance"]
+     fn capture_owned_outfit_models() {
+diff --git a/crates/verse-imported/src/imported/chamber_session.rs b/crates/verse-imported/src/imported/chamber_session.rs
+index 2799029525..34b02a2de9 100644
+--- a/crates/verse-imported/src/imported/chamber_session.rs
++++ b/crates/verse-imported/src/imported/chamber_session.rs
+@@ -1,4 +1,4 @@
+-//! A chamber player without a window: the client worker on its own thread,
++//! A chamber player without a window: the client worker on its executor,
+ //! the replica and prediction it feeds, the inputs a stick or a keyboard
+ //! sends it, and the frame the engine renderer draws from it. The desktop
+ //! window and the phone's surface both mount this; neither owns the
+@@ -8,7 +8,7 @@ use crate::{render, ui::Atlas};
+ use glam::Vec3;
+ use std::{
+     collections::{BTreeMap, VecDeque},
+-    time::{Duration, Instant},
++    time::Duration,
+ };
+ use tokio::sync::{mpsc, oneshot};
+ use verse_engine::{assets::Pack, core::LifeId, director::Scene};
+@@ -23,6 +23,7 @@ use verse_world::{
+         worker::{self, Input, Update},
+     },
+ };
++use web_time::Instant;
+ 
+ /// Time between movement commands while the player is controlled.
+ const MOVE_INTERVAL: Duration = Duration::from_millis(33);
+@@ -47,6 +48,27 @@ pub struct Frame {
+     pub time: f32,
+ }
+ 
++impl Frame {
++    /// Converts logical overlay coordinates to the renderer's physical pixels.
++    pub fn scale_overlay(&mut self, target: [f32; 2]) -> Result<(), String> {
++        if self
++            .overlay
++            .iter()
++            .chain(&target)
++            .any(|v| !v.is_finite() || *v <= 0. || *v > 8192.)
++        {
++            return Err("Invalid chamber overlay dimensions".into());
++        }
++        let scale = [target[0] / self.overlay[0], target[1] / self.overlay[1]];
++        for vertex in &mut self.ui.vertices {
++            vertex.pos[0] *= scale[0];
++            vertex.pos[1] *= scale[1];
++        }
++        self.overlay = target;
++        Ok(())
++    }
++}
++
+ /// Why a session ended, for the caller that leaves the chamber.
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum Stopped {
+@@ -89,6 +111,8 @@ pub struct Session {
+     output: mpsc::Receiver<Update>,
+     stop: Option<oneshot::Sender<()>>,
+     thread: Option<std::thread::JoinHandle<Result<(), String>>>,
++    #[cfg(target_arch = "wasm32")]
++    task: Option<verse_world::service::client_runtime::Task>,
+     pub controls: controls::ClassicControls,
+     pub camera: controls::Camera,
+     pub yaw: f32,
+@@ -122,11 +146,12 @@ pub struct Session {
+ }
+ 
+ impl Session {
+-    /// Starts the client worker on its own thread over `runtime`, which must
++    /// Starts the client worker on its executor over `runtime`, which must
+     /// own the client's transport, and the local replica it fills.
+     ///
+     /// # Errors
+     /// The scene is invalid or the replica cannot be made.
++    #[cfg(feature = "remote-chamber")]
+     pub fn start(
+         client: Client,
+         runtime: tokio::runtime::Runtime,
+@@ -140,6 +165,7 @@ impl Session {
+     ///
+     /// # Errors
+     /// The scene is invalid or the replica cannot be made.
++    #[cfg(feature = "remote-chamber")]
+     pub fn start_observed(
+         client: Client,
+         runtime: tokio::runtime::Runtime,
+@@ -190,6 +216,32 @@ impl Session {
+         Ok(session)
+     }
+ 
++    /// Starts the same worker on the browser's local executor.
++    #[cfg(target_arch = "wasm32")]
++    pub fn start_browser(client: Client, scene: &Scene) -> Result<Self, String> {
++        scene.validate()?;
++        let instance = client.instance();
++        let view = View::new(instance, 10., 0)?;
++        let cursor = Cursor::new(instance);
++        let (input, inputs, updates, output) = worker::channels();
++        let (stop, stopping) = oneshot::channel();
++        let task = verse_world::service::client_runtime::spawn(async move {
++            let _ = worker::run(
++                client,
++                cursor,
++                worker::NATIVE_CADENCE,
++                inputs,
++                updates,
++                stopping,
++            )
++            .await;
++        });
++        let mut session = Self::attached(view, input, output);
++        session.stop = Some(stop);
++        session.task = Some(task);
++        Ok(session)
++    }
++
+     /// A session over channels a worker the caller runs already serves.
+     #[must_use]
+     pub fn attached(
+@@ -205,6 +257,8 @@ impl Session {
+             output,
+             stop: None,
+             thread: None,
++            #[cfg(target_arch = "wasm32")]
++            task: None,
+             controls: controls::ClassicControls::default(),
+             camera: controls::Camera::default(),
+             yaw: std::f32::consts::PI,
+@@ -295,6 +349,10 @@ impl Session {
+         if let Some(stop) = self.stop.take() {
+             let _ = stop.send(());
+         }
++        #[cfg(target_arch = "wasm32")]
++        if let Some(task) = self.task.take() {
++            task.abort();
++        }
+         match self.thread.take().map(std::thread::JoinHandle::join) {
+             None | Some(Ok(Ok(()))) => Stopped::Closed,
+             Some(Ok(Err(error))) => Stopped::Failed(error),
+@@ -305,7 +363,9 @@ impl Session {
+     /// Whether the worker thread is still running.
+     #[must_use]
+     pub fn alive(&self) -> bool {
+-        self.thread.as_ref().is_some_and(|t| !t.is_finished())
++        self.thread
++            .as_ref()
++            .map_or_else(|| !self.output.is_closed(), |t| !t.is_finished())
+     }
+ 
+     #[must_use]
+@@ -805,6 +865,11 @@ impl Session {
+     ) -> Result<(), String> {
+         let previous_pose = self.prediction.pose();
+         let previous_timing = self.notes.as_ref().map(|_| self.prediction.timing());
++        let previous_control = self
++            .view
++            .replica()
++            .control()
++            .map(|c| (LifeId::from(c.life), c.epoch));
+         self.view.push_snapshot(r)?;
+         self.snapshots += 1;
+         self.received_at = Instant::now();
+@@ -814,6 +879,10 @@ impl Session {
+             .replica()
+             .control()
+             .map(|c| (c.life.into(), c.epoch));
++        if previous_control != context {
++            // A verified handoff retires messages about the previous control.
++            self.status.clear();
++        }
+         let teleport = context.and_then(|(life, _)| {
+             state
+                 .presentation
+diff --git a/crates/verse-imported/src/imported/chamber_session_tests.rs b/crates/verse-imported/src/imported/chamber_session_tests.rs
+index b85d08df26..68c4fc434f 100644
+--- a/crates/verse-imported/src/imported/chamber_session_tests.rs
++++ b/crates/verse-imported/src/imported/chamber_session_tests.rs
+@@ -50,6 +50,50 @@ fn a_session_plays_the_loopback_chamber_and_stops_cleanly() {
+     assert_eq!(session.stop(), Stopped::Closed);
+ }
+ 
++#[test]
++fn held_movement_reaches_the_authority_without_retiring_control() {
++    let host = Loopback::start(false).unwrap();
++    let scene = Loopback::scene().unwrap();
++    let mut session = joined(&host, &scene);
++    session.observe();
++    assert!(until(&mut session, &scene, |s| {
++        s.prediction.movement_profile() == Some(verse_world::movement::Profile::Frames)
++    }));
++    let (start, epoch) = host.with(|g| {
++        let a = g.game().player_admission(14).unwrap();
++        (g.game().actor_position(14).unwrap(), a.epoch())
++    });
++    let deadline = Instant::now() + Duration::from_secs(1);
++    while Instant::now() < deadline {
++        session
++            .step(
++                &scene,
++                Held {
++                    strafe_left: true,
++                    ..Held::default()
++                },
++            )
++            .unwrap();
++        std::thread::sleep(Duration::from_millis(16));
++    }
++    let (end, final_epoch, sequence) = host.with(|g| {
++        let a = g.game().player_admission(14).unwrap();
++        (
++            g.game().actor_position(14).unwrap(),
++            a.epoch(),
++            a.accepted_sequence(),
++        )
++    });
++    assert!(
++        end.distance(start) > 0.1,
++        "{start:?} -> {end:?}; {:?}",
++        session.take_notes()
++    );
++    assert_eq!(epoch, final_epoch);
++    assert!(sequence > 0);
++    assert!(session.status.is_empty(), "{}", session.status);
++}
++
+ #[test]
+ fn a_host_that_goes_away_fails_the_session() {
+     let host = Loopback::start(false).unwrap();
+diff --git a/crates/verse-imported/src/imported/mod.rs b/crates/verse-imported/src/imported/mod.rs
+index ede4b206bd..e2a0f9af20 100644
+--- a/crates/verse-imported/src/imported/mod.rs
++++ b/crates/verse-imported/src/imported/mod.rs
+@@ -3,9 +3,9 @@ pub use verse_pbr::imported::*;
+ pub mod chamber;
+ #[cfg(all(feature = "remote-chamber", any(test, feature = "chamber-loopback")))]
+ pub mod chamber_loopback;
+-#[cfg(feature = "remote-chamber")]
++#[cfg(feature = "chamber-client")]
+ pub mod chamber_session;
+-#[cfg(feature = "remote-chamber")]
++#[cfg(feature = "chamber-client")]
+ pub mod character_panel;
+ pub mod characters;
+ pub mod combat;
+@@ -20,7 +20,7 @@ pub mod original;
+ pub mod overlay;
+ pub mod play;
+ pub mod props;
+-#[cfg(feature = "remote-chamber")]
++#[cfg(feature = "chamber-client")]
+ pub mod remote_content;
+ #[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
+ pub mod remote_record;
+diff --git a/crates/verse-imported/src/imported/remote_content.rs b/crates/verse-imported/src/imported/remote_content.rs
+index 1c6c8ea183..4eee2573fa 100644
+--- a/crates/verse-imported/src/imported/remote_content.rs
++++ b/crates/verse-imported/src/imported/remote_content.rs
+@@ -82,6 +82,19 @@ mod tests {
+         ))
+         .unwrap();
+         let original = identity(&pack, &scene, dir.path()).unwrap();
++        let prepared =
++            verse_engine::loading::Prepared::load(pack.clone(), dir.path(), Default::default())
++                .unwrap();
++        assert_eq!(
++            original,
++            verse_content::remote_content::identity_prepared(&prepared, &scene).unwrap()
++        );
++        let mut changed = scene.clone();
++        changed.actors[0].position.x += 1.;
++        assert_ne!(
++            original,
++            verse_content::remote_content::identity_prepared(&prepared, &changed).unwrap()
++        );
+         assert_eq!(original, identity(&pack, &scene, dir.path()).unwrap());
+         let relocated = tempfile::tempdir().unwrap();
+         for texture in &pack.textures {
+diff --git a/crates/verse-imported/src/ritual.rs b/crates/verse-imported/src/ritual.rs
+index 7976ad7d78..35cd84fa10 100644
+--- a/crates/verse-imported/src/ritual.rs
++++ b/crates/verse-imported/src/ritual.rs
+@@ -20,8 +20,9 @@ pub struct Config {
+     /// The host's `HOST:PORT`.
+     pub address: std::net::SocketAddr,
+     pub instance: u64,
+-    /// The DER certificate the host serves.
+-    pub trust_der: PathBuf,
++    /// DER trust certificate, required for TLS and `wss` routes.
++    #[serde(default)]
++    pub trust_der: Option<PathBuf>,
+     /// The name the certificate carries; `localhost` by default.
+     #[serde(default)]
+     pub server_name: Option<String>,
+@@ -34,8 +35,22 @@ pub struct Config {
+     /// A signing key file in place of the profile's key.
+     #[serde(default)]
+     pub key_file: Option<PathBuf>,
++    /// Explicit host grant for the authenticated reachable channel.
++    #[serde(default)]
++    pub reach: Option<Reach>,
+ }
+ 
++/// Host enrollment values for a direct chamber channel; these grant no role by themselves.
++#[derive(Clone, Debug, Deserialize, PartialEq)]
++#[serde(deny_unknown_fields)]
++pub struct Reach {
++    pub host: String,
++    pub grant: String,
++    pub epoch: u64,
++    pub generation: u64,
++    /// When present, upgrade the configured address to this exact WebSocket URL.
++    pub websocket: Option<String>,
++}
+ impl Config {
+     /// Reads and validates a configuration file.
+     ///
+@@ -46,11 +61,33 @@ impl Config {
+         let bytes = bounded(path, 64 * 1024)?;
+         let config: Self = serde_json::from_slice(&bytes)
+             .map_err(|e| format!("{}: invalid ritual configuration: {e}", path.display()))?;
+-        for (name, file) in [
+-            ("trust_der", &config.trust_der),
+-            ("pack", &config.pack),
+-            ("scene", &config.scene),
+-        ] {
++        if let Some(reach) = &config.reach {
++            if reach.host.len() != 64
++                || reach.grant.len() != 64
++                || !reach
++                    .host
++                    .bytes()
++                    .chain(reach.grant.bytes())
++                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
++            {
++                return Err("Malformed chamber reach host or grant identity".into());
++            }
++            if reach.websocket.as_ref().is_some_and(|url| {
++                url.len() > 512 || !(url.starts_with("ws://") || url.starts_with("wss://"))
++            }) {
++                return Err("Chamber reach WebSocket URL must use ws:// or wss://".into());
++            }
++        }
++        let needs_tls = config.reach.as_ref().is_none_or(|reach| {
++            reach
++                .websocket
++                .as_deref()
++                .is_some_and(|url| url.starts_with("wss://"))
++        });
++        if needs_tls && config.trust_der.as_ref().is_none_or(|file| !file.is_file()) {
++            return Err("The chamber trust_der certificate is missing".into());
++        }
++        for (name, file) in [("pack", &config.pack), ("scene", &config.scene)] {
+             if !file.is_file() {
+                 return Err(format!(
+                     "{}: {name} {} is missing",
+@@ -153,12 +190,14 @@ fn connect_signed(
+         .build()
+         .map_err(|e| e.to_string())?;
+     let mut roots = rustls::RootCertStore::empty();
+-    roots
+-        .add(rustls::pki_types::CertificateDer::from(bounded(
+-            &config.trust_der,
+-            1024 * 1024,
+-        )?))
+-        .map_err(|_| "Invalid DER trust certificate")?;
++    if let Some(trust_der) = &config.trust_der {
++        roots
++            .add(rustls::pki_types::CertificateDer::from(bounded(
++                trust_der,
++                1024 * 1024,
++            )?))
++            .map_err(|_| "Invalid DER trust certificate")?;
++    }
+     let tls = Arc::new(
+         rustls::ClientConfig::builder_with_provider(Arc::new(
+             rustls::crypto::ring::default_provider(),
+@@ -186,14 +225,76 @@ fn connect_signed(
+         None => identity()?,
+     };
+     let key = secp256k1::Keypair::from_secret_key(&secp256k1::Secp256k1::new(), &secret);
+-    let client = runtime.block_on(verse_world::service::client::Client::connect_with_content(
+-        config.address,
+-        server_name,
+-        tls,
+-        config.instance,
+-        Some(content),
+-        &key,
+-    ))?;
++    let client = match &config.reach {
++        None => runtime.block_on(verse_world::service::client::Client::connect_with_content(
++            config.address,
++            server_name,
++            tls,
++            config.instance,
++            Some(content),
++            &key,
++        ))?,
++        Some(reach) => runtime.block_on(async {
++            tokio::time::timeout(std::time::Duration::from_secs(30), async {
++                use tokio::net::TcpStream;
++                use verse_world::service::{
++                    reach::{self, ClientConfig},
++                    transport::Transport,
++                };
++                let socket = tokio::time::timeout(
++                    std::time::Duration::from_secs(10),
++                    TcpStream::connect(config.address),
++                )
++                .await
++                .map_err(|_| "Chamber connection timed out")?
++                .map_err(|_| "Cannot connect to chamber")?;
++                socket
++                    .set_nodelay(true)
++                    .map_err(|_| "Cannot configure chamber socket")?;
++                let stream: Box<dyn Transport> = match reach.websocket.as_deref() {
++                    Some(url) if url.starts_with("wss://") => {
++                        let stream = tokio::time::timeout(
++                            std::time::Duration::from_secs(10),
++                            verse_world::service::client::connect_tls_stream(
++                                socket,
++                                tls,
++                                server_name,
++                            ),
++                        )
++                        .await
++                        .map_err(|_| "Chamber TLS timed out")??;
++                        Box::new(
++                            reach::websocket::client(url, stream)
++                                .await
++                                .map_err(|e| format!("Chamber WebSocket refused: {e}"))?,
++                        )
++                    }
++                    Some(url) => Box::new(
++                        reach::websocket::client(url, socket)
++                            .await
++                            .map_err(|e| format!("Chamber WebSocket refused: {e}"))?,
++                    ),
++                    None => Box::new(socket),
++                };
++                reach::join(
++                    stream,
++                    &ClientConfig {
++                        device: secret,
++                        host: reach.host.clone(),
++                        grant: reach.grant.clone(),
++                        epoch: reach.epoch,
++                        generation: reach.generation,
++                        timeout: std::time::Duration::from_secs(10),
++                    },
++                    config.instance,
++                    Some(content),
++                )
++                .await
++            })
++            .await
++            .map_err(|_| "Chamber reachable connection timed out")?
++        })?,
++    };
+     Ok(Opened {
+         client,
+         runtime,
+diff --git a/crates/verse-world/Cargo.toml b/crates/verse-world/Cargo.toml
+index ddbc78de5d..ece3685bf1 100644
+--- a/crates/verse-world/Cargo.toml
++++ b/crates/verse-world/Cargo.toml
+@@ -7,7 +7,9 @@ publish.workspace = true
+ description = "Portable command admission and owned world authority for Verse"
+ 
+ [features]
+-service-net = ["service-auth", "dep:tokio", "dep:rustls", "dep:tokio-rustls"]
++service-client = ["service-auth", "dep:tokio", "dep:futures-util"]
++reach-client = ["service-client", "dep:coder-reach"]
++service-net = ["service-client", "tokio/net", "dep:rustls", "dep:tokio-rustls"]
+ service-auth = ["dep:secp256k1", "dep:getrandom"]
+ service-reach = ["service-net", "dep:coder-reach"]
+ # The Agent Studio in a hosted social instance: seat placement from a
+@@ -15,7 +17,7 @@ service-reach = ["service-net", "dep:coder-reach"]
+ studio = ["dep:coder-access"]
+ 
+ [dependencies]
+-tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "sync", "time"], optional = true }
++tokio = { version = "1", features = ["rt", "macros", "io-util", "sync", "time"], optional = true }
+ rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+ tokio-rustls = { version = "0.26", default-features = false, optional = true }
+ secp256k1 = { version = "0.31.1", optional = true }
+@@ -29,6 +31,14 @@ physics = { path = "../physics" }
+ coder-reach = { path = "../coder-reach", optional = true }
+ coder-access = { path = "../coder-access", default-features = false, optional = true }
+ 
++web-time = "1.1.0"
++futures-util = { version = "0.3", optional = true }
++
++[target.'cfg(target_arch = "wasm32")'.dependencies]
++gloo-timers = { version = "0.3", features = ["futures"] }
++wasm-bindgen-futures = "0.4"
++getrandom = { version = "0.3", features = ["wasm_js"] }
++
+ [dev-dependencies]
+ tokio = { version = "1", features = ["rt-multi-thread"] }
+ tempfile = "3"
+diff --git a/crates/verse-world/src/controls.rs b/crates/verse-world/src/controls.rs
+index 18a5f4eaaa..ae25fcd66a 100644
+--- a/crates/verse-world/src/controls.rs
++++ b/crates/verse-world/src/controls.rs
+@@ -332,3 +332,217 @@ mod tests {
+         assert!(!c.autorun);
+     }
+ }
++
++/// A platform control's meaning; mappings carry no world authority.
++#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Action {
++    Forward,
++    Backward,
++    TurnLeft,
++    TurnRight,
++    StrafeLeft,
++    StrafeRight,
++    Jump,
++    Cast(u8),
++    Target,
++    Respawn,
++}
++#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Binding {
++    pub control: String,
++    pub action: Action,
++}
++/// Bounded mappings and held physical controls, shared by platform adapters.
++/// A focus clear fences held controls until their release; repeating a down
++/// event cannot cast twice or restart movement after focus recovery.
++pub struct InputMap {
++    bindings: std::collections::BTreeMap<String, Action>,
++    pressed: std::collections::BTreeSet<String>,
++    blocked: std::collections::BTreeSet<String>,
++}
++impl InputMap {
++    pub fn new(bindings: Vec<Binding>) -> Result<Self, String> {
++        if bindings.len() > 64 {
++            return Err("Input mapping exceeds 64 controls".into());
++        }
++        let mut map = std::collections::BTreeMap::new();
++        for binding in bindings {
++            if binding.control.is_empty()
++                || binding.control.len() > 32
++                || !binding.control.is_ascii()
++                || binding.control.chars().any(char::is_control)
++                || matches!(binding.action, Action::Cast(slot) if slot >= 10)
++                || map.insert(binding.control, binding.action).is_some()
++            {
++                return Err("Input mapping has an invalid or duplicate control".into());
++            }
++        }
++        Ok(Self {
++            bindings: map,
++            pressed: Default::default(),
++            blocked: Default::default(),
++        })
++    }
++    /// Changes bindings atomically and fences controls already held until release.
++    pub fn rebind(&mut self, bindings: Vec<Binding>) -> Result<(), String> {
++        let mut next = Self::new(bindings)?;
++        for control in self.pressed.iter().chain(&self.blocked) {
++            if next.bindings.contains_key(control) {
++                next.blocked.insert(control.clone());
++            }
++        }
++        *self = next;
++        Ok(())
++    }
++    /// Returns a discrete action only on a fresh press. Movement is read by `held`.
++    pub fn change(&mut self, control: &str, down: bool) -> Option<Action> {
++        let action = *self.bindings.get(control)?;
++        if !down {
++            self.pressed.remove(control);
++            self.blocked.remove(control);
++            return None;
++        }
++        if self.blocked.contains(control) || !self.pressed.insert(control.into()) {
++            return None;
++        }
++        matches!(
++            action,
++            Action::Jump | Action::Cast(_) | Action::Target | Action::Respawn
++        )
++        .then_some(action)
++    }
++    pub fn held(&self) -> Held {
++        let active = |action| {
++            self.pressed
++                .iter()
++                .any(|control| self.bindings[control] == action)
++        };
++        Held {
++            forward: active(Action::Forward),
++            backward: active(Action::Backward),
++            turn_left: active(Action::TurnLeft),
++            turn_right: active(Action::TurnRight),
++            strafe_left: active(Action::StrafeLeft),
++            strafe_right: active(Action::StrafeRight),
++        }
++    }
++    pub fn clear(&mut self) {
++        self.blocked.append(&mut self.pressed);
++    }
++}
++impl Default for InputMap {
++    fn default() -> Self {
++        let mut bindings = vec![];
++        for (control, action) in [
++            ("KeyW", Action::Forward),
++            ("KeyS", Action::Backward),
++            ("KeyA", Action::TurnLeft),
++            ("KeyD", Action::TurnRight),
++            ("KeyQ", Action::StrafeLeft),
++            ("KeyE", Action::StrafeRight),
++            ("Space", Action::Jump),
++            ("Tab", Action::Target),
++            ("KeyR", Action::Respawn),
++            ("TouchForward", Action::Forward),
++            ("TouchBackward", Action::Backward),
++            ("TouchLeft", Action::StrafeLeft),
++            ("TouchRight", Action::StrafeRight),
++            ("TouchTurnLeft", Action::TurnLeft),
++            ("TouchTurnRight", Action::TurnRight),
++            ("PadForward", Action::Forward),
++            ("PadBackward", Action::Backward),
++            ("PadLeft", Action::StrafeLeft),
++            ("PadRight", Action::StrafeRight),
++            ("Pad0", Action::Cast(0)),
++            ("Pad1", Action::Jump),
++        ] {
++            bindings.push(Binding {
++                control: control.into(),
++                action,
++            });
++        }
++        for slot in 0..10 {
++            bindings.push(Binding {
++                control: format!("Digit{}", (slot + 1) % 10),
++                action: Action::Cast(slot),
++            });
++        }
++        Self::new(bindings).unwrap()
++    }
++}
++#[cfg(test)]
++mod platform_input_tests {
++    use super::*;
++    #[test]
++    fn remapping_fences_repeats_and_focus_and_keeps_independent_touches() {
++        let mut input = InputMap::new(vec![
++            Binding {
++                control: "TouchLeft".into(),
++                action: Action::Forward,
++            },
++            Binding {
++                control: "TouchRight".into(),
++                action: Action::Forward,
++            },
++            Binding {
++                control: "Pad0".into(),
++                action: Action::Cast(2),
++            },
++        ])
++        .unwrap();
++        assert_eq!(input.change("Pad0", true), Some(Action::Cast(2)));
++        assert_eq!(input.change("Pad0", true), None);
++        input.change("TouchLeft", true);
++        input.change("TouchRight", true);
++        input.change("TouchLeft", false);
++        assert!(input.held().forward);
++        input.clear();
++        assert!(!input.held().forward);
++        input.change("TouchRight", true);
++        assert!(!input.held().forward);
++        assert_eq!(input.change("Pad0", true), None);
++        input.change("Pad0", false);
++        assert_eq!(input.change("Pad0", true), Some(Action::Cast(2)));
++        input.change("TouchRight", false);
++        input.change("TouchRight", true);
++        assert!(input.held().forward);
++    }
++    #[test]
++    fn remapping_a_held_control_requires_release_before_its_new_action() {
++        let mut input = InputMap::default();
++        input.change("TouchForward", true);
++        input
++            .rebind(vec![Binding {
++                control: "TouchForward".into(),
++                action: Action::Cast(1),
++            }])
++            .unwrap();
++        assert_eq!(input.change("TouchForward", true), None);
++        input.change("TouchForward", false);
++        assert_eq!(input.change("TouchForward", true), Some(Action::Cast(1)));
++    }
++    #[test]
++    fn rejects_duplicate_controls_and_foreign_spell_slots() {
++        let b = Binding {
++            control: "Pad0".into(),
++            action: Action::Jump,
++        };
++        assert!(InputMap::new(vec![b.clone(), b]).is_err());
++        assert!(
++            InputMap::new(vec![Binding {
++                control: "Pad0".into(),
++                action: Action::Cast(10)
++            }])
++            .is_err()
++        );
++        assert!(
++            InputMap::new(vec![Binding {
++                control: "\n".into(),
++                action: Action::Jump
++            }])
++            .is_err()
++        );
++    }
++}
+diff --git a/crates/verse-world/src/service.rs b/crates/verse-world/src/service.rs
+index 16d652f106..1153066a40 100644
+--- a/crates/verse-world/src/service.rs
++++ b/crates/verse-world/src/service.rs
+@@ -6,8 +6,10 @@
+ pub mod accounts;
+ #[cfg(feature = "service-auth")]
+ pub mod auth;
+-#[cfg(feature = "service-net")]
++#[cfg(feature = "service-client")]
+ pub mod client;
++#[cfg(feature = "service-client")]
++pub mod client_runtime;
+ pub mod equipment;
+ #[cfg(feature = "service-auth")]
+ pub mod event_cursor;
+@@ -26,6 +28,8 @@ pub mod presentation;
+ pub mod progression;
+ #[cfg(feature = "service-reach")]
+ pub mod reach;
++#[cfg(feature = "reach-client")]
++pub mod reach_client;
+ #[cfg(feature = "service-net")]
+ pub mod realm;
+ #[cfg(feature = "service-auth")]
+@@ -35,11 +39,13 @@ pub mod replication;
+ pub mod rewards;
+ #[cfg(feature = "service-auth")]
+ pub mod save;
++#[cfg(feature = "service-client")]
++pub mod transport;
+ #[cfg(feature = "service-auth")]
+ pub mod view;
+ #[cfg(feature = "service-auth")]
+ pub mod wire;
+-#[cfg(feature = "service-net")]
++#[cfg(feature = "service-client")]
+ pub mod worker;
+ 
+ use std::collections::BTreeMap;
+diff --git a/crates/verse-world/src/service/client.rs b/crates/verse-world/src/service/client.rs
+index 1946e7fa9d..f06046c581 100644
+--- a/crates/verse-world/src/service/client.rs
++++ b/crates/verse-world/src/service/client.rs
+@@ -1,13 +1,20 @@
+ //! Sequential chamber client with committed control and no uncertain command replay.
+-use std::{net::SocketAddr, sync::Arc, time::Duration};
++use std::time::Duration;
++#[cfg(feature = "service-net")]
++use std::{net::SocketAddr, sync::Arc};
+ 
++use super::client_runtime::{self, timeout};
++#[cfg(feature = "service-net")]
+ use rustls::{ClientConfig, pki_types::ServerName};
+ use secp256k1::{Keypair, Secp256k1};
+-use tokio::{io::AsyncWriteExt, net::TcpStream, time::timeout};
++use tokio::io::AsyncWriteExt;
++#[cfg(feature = "service-net")]
++use tokio::net::TcpStream;
++#[cfg(feature = "service-net")]
+ use tokio_rustls::TlsConnector;
+ 
+ use super::{
+-    net::{Transport, read_frame, write_frame},
++    transport::{Transport, read_frame, write_frame},
+     wire::{
+         Body, Control, EventPage, Hello, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Reply, Request,
+         Response, State, VERSION,
+@@ -32,10 +39,11 @@ pub struct Client {
+     logged_in: bool,
+     player: bool,
+     inventory_revision: u64,
+-    verified_at: Option<std::time::Instant>,
++    verified_at: Option<web_time::Instant>,
+     replication: super::replication::Receiver,
+ }
+ impl Client {
++    #[cfg(feature = "service-net")]
+     pub async fn connect(
+         address: SocketAddr,
+         server_name: ServerName<'static>,
+@@ -46,6 +54,7 @@ impl Client {
+         Self::connect_with_content(address, server_name, tls, instance, None, key).await
+     }
+     /// Refuses differing configured content before producing an authentication signature.
++    #[cfg(feature = "service-net")]
+     pub async fn connect_with_content(
+         address: SocketAddr,
+         server_name: ServerName<'static>,
+@@ -164,7 +173,7 @@ impl Client {
+         self.reconstruct(&body, &mut response)?;
+         self.validate(request_id, &body, &response)?;
+         self.tick = response.tick;
+-        self.verified_at = Some(std::time::Instant::now());
++        self.verified_at = Some(web_time::Instant::now());
+         if let Reply::Inventory { inventory } = &response.body {
+             self.inventory_revision = inventory.revision;
+         }
+@@ -187,7 +196,7 @@ impl Client {
+                 if !matches!(&response.body, Reply::Refused {code, ..} if code == "storage_busy") {
+                     return Ok(response);
+                 }
+-                tokio::time::sleep(Duration::from_millis(33)).await;
++                client_runtime::sleep(Duration::from_millis(33)).await;
+             }
+         })
+         .await
+@@ -716,19 +725,19 @@ pub const PIPELINE_CAPACITY: usize = 8;
+ struct Pending {
+     id: u64,
+     body: Body,
+-    sent: tokio::time::Instant,
++    sent: client_runtime::Instant,
+ }
+ 
+ /// Bounded duplex transport. Dropping it closes uncertain IO without replay.
+ /// Frame tasks own partial reads and writes independently of caller polling.
+ pub struct Pipeline {
+     last_turnaround: Option<Duration>,
+-    last_request_started: Option<std::time::Instant>,
++    last_request_started: Option<web_time::Instant>,
+     client: Client,
+     writes: tokio::sync::mpsc::Sender<Vec<u8>>,
+     responses: tokio::sync::mpsc::Receiver<Result<Response, String>>,
+     pending: std::collections::VecDeque<Pending>,
+-    tasks: Vec<tokio::task::JoinHandle<()>>,
++    tasks: Vec<client_runtime::Task>,
+     sequence: Option<(super::wire::Life, u64, u64)>,
+     failed: bool,
+ }
+@@ -747,7 +756,7 @@ impl Client {
+         let (writes, mut outgoing) = tokio::sync::mpsc::channel::<Vec<u8>>(PIPELINE_CAPACITY);
+         let (incoming, responses) = tokio::sync::mpsc::channel(PIPELINE_CAPACITY);
+         let errors = incoming.clone();
+-        let write = tokio::spawn(async move {
++        let write = client_runtime::spawn(async move {
+             while let Some(bytes) = outgoing.recv().await {
+                 let result = timeout(
+                     DEADLINE,
+@@ -762,7 +771,7 @@ impl Client {
+                 }
+             }
+         });
+-        let read = tokio::spawn(async move {
++        let read = client_runtime::spawn(async move {
+             loop {
+                 let result = match read_frame(&mut reader, MAX_RESPONSE_BYTES).await {
+                     Ok(bytes) => serde_json::from_slice::<Response>(&bytes)
+@@ -805,7 +814,7 @@ impl Pipeline {
+     pub fn last_turnaround(&self) -> Option<Duration> {
+         self.last_turnaround
+     }
+-    pub fn last_request_started(&self) -> Option<std::time::Instant> {
++    pub fn last_request_started(&self) -> Option<web_time::Instant> {
+         self.last_request_started
+     }
+ 
+@@ -823,7 +832,7 @@ impl Pipeline {
+         self.client.instance
+     }
+ 
+-    pub(crate) fn verified_at(&self) -> Option<std::time::Instant> {
++    pub(crate) fn verified_at(&self) -> Option<web_time::Instant> {
+         self.client.verified_at
+     }
+ 
+@@ -896,7 +905,7 @@ impl Pipeline {
+         self.pending.push_back(Pending {
+             id,
+             body,
+-            sent: tokio::time::Instant::now(),
++            sent: client_runtime::Instant::now(),
+         });
+         Ok(id)
+     }
+@@ -917,7 +926,7 @@ impl Pipeline {
+             .ok_or("Chamber pipeline has no pending request")?
+             .sent
+             + DEADLINE;
+-        let received = tokio::time::timeout_at(deadline, self.responses.recv()).await;
++        let received = client_runtime::timeout_at(deadline, self.responses.recv()).await;
+         let result = match received {
+             Ok(Some(result)) => result,
+             Ok(None) => Err("Chamber response reader closed".into()),
+@@ -943,9 +952,13 @@ impl Pipeline {
+         }
+         let pending = self.pending.pop_front().expect("Verified response context");
+         self.last_turnaround = Some(pending.sent.elapsed());
+-        self.last_request_started = Some(pending.sent.into_std());
++        #[cfg(not(target_arch = "wasm32"))]
++        let started = pending.sent.into_std();
++        #[cfg(target_arch = "wasm32")]
++        let started = pending.sent;
++        self.last_request_started = Some(started);
+         self.client.tick = response.tick;
+-        self.client.verified_at = Some(std::time::Instant::now());
++        self.client.verified_at = Some(web_time::Instant::now());
+         if let Reply::Inventory { inventory } = &response.body {
+             self.client.inventory_revision = inventory.revision;
+         }
+@@ -962,7 +975,7 @@ impl Pipeline {
+     }
+ }
+ 
+-#[cfg(test)]
++#[cfg(all(test, feature = "service-net"))]
+ mod tests {
+     use super::*;
+     use crate::service::{
+@@ -970,6 +983,7 @@ mod tests {
+         wire::{Action, Input, Life},
+     };
+     use tokio::{net::TcpListener, sync::oneshot};
++    #[cfg(feature = "service-net")]
+     use tokio_rustls::TlsAcceptor;
+     fn name() -> ServerName<'static> {
+         ServerName::try_from("localhost").unwrap()
+@@ -983,7 +997,7 @@ mod tests {
+         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+         let address = listener.local_addr().unwrap();
+         let (server, connector) = tls();
+-        let peer = tokio::spawn(async move {
++        let peer = client_runtime::spawn(async move {
+             let (socket, _) = listener.accept().await.unwrap();
+             let mut socket = TlsAcceptor::from(server).accept(socket).await.unwrap();
+             let (id, hello) = g.open_json(0).unwrap();
+@@ -1081,7 +1095,7 @@ mod tests {
+         let (server, connector) = tls();
+         let (partial, partial_received) = oneshot::channel();
+         let (release, released) = oneshot::channel();
+-        let peer = tokio::spawn(async move {
++        let peer = client_runtime::spawn(async move {
+             let (socket, _) = listener.accept().await.unwrap();
+             let mut socket = TlsAcceptor::from(server).accept(socket).await.unwrap();
+             let (id, hello) = gateway.open_json(0).unwrap();
+@@ -1246,7 +1260,7 @@ mod tests {
+         assert!(before.quest_log[0].interactable);
+         std::fs::create_dir(root.join("next.json")).unwrap();
+         assert!(a.accept_quest(1, giver).await.is_err());
+-        let exit = tokio::time::timeout(Duration::from_secs(5), server)
++        let exit = client_runtime::timeout(Duration::from_secs(5), server)
+             .await
+             .unwrap()
+             .unwrap();
+@@ -1518,13 +1532,13 @@ mod tests {
+             .body,
+             Reply::Accepted
+         ));
+-        let left = tokio::time::timeout(Duration::from_secs(4), async {
++        let left = client_runtime::timeout(Duration::from_secs(4), async {
+             loop {
+                 let inv = a.inventory().await.unwrap();
+                 if inv.experience == 45 {
+                     break inv;
+                 }
+-                tokio::time::sleep(Duration::from_millis(33)).await;
++                client_runtime::sleep(Duration::from_millis(33)).await;
+             }
+         })
+         .await
+@@ -1623,7 +1637,7 @@ mod tests {
+         ));
+         let after = recovered.inventory().await.unwrap();
+         assert_eq!(after, left);
+-        tokio::time::sleep(Duration::from_millis(70)).await;
++        client_runtime::sleep(Duration::from_millis(70)).await;
+         assert_eq!(recovered.inventory().await.unwrap(), after);
+         recovered.close().await.unwrap();
+         stop.send(()).unwrap();
+@@ -1709,7 +1723,7 @@ mod tests {
+         assert!(!before.quest_log[0].claimed);
+         std::fs::create_dir(root.join("next.json")).unwrap();
+         assert!(client.claim_quest(1).await.is_err());
+-        let exit = tokio::time::timeout(std::time::Duration::from_secs(3), server)
++        let exit = client_runtime::timeout(std::time::Duration::from_secs(3), server)
+             .await
+             .unwrap()
+             .unwrap();
+@@ -1822,7 +1836,7 @@ mod tests {
+         assert_eq!(before.catalog.items[0].health, 45);
+         std::fs::create_dir(root.join("next.json")).unwrap();
+         assert!(client.use_item(1, [1; 16]).await.is_err());
+-        let exit = tokio::time::timeout(std::time::Duration::from_secs(3), server)
++        let exit = client_runtime::timeout(std::time::Duration::from_secs(3), server)
+             .await
+             .unwrap()
+             .unwrap();
+@@ -2029,7 +2043,7 @@ mod tests {
+                 .await
+                 .is_err()
+         );
+-        let exit = tokio::time::timeout(std::time::Duration::from_secs(3), server)
++        let exit = client_runtime::timeout(std::time::Duration::from_secs(3), server)
+             .await
+             .unwrap()
+             .unwrap();
+@@ -2301,7 +2315,7 @@ mod tests {
+             .body,
+             Reply::Accepted
+         ));
+-        let exit = tokio::time::timeout(std::time::Duration::from_secs(4), server)
++        let exit = client_runtime::timeout(std::time::Duration::from_secs(4), server)
+             .await
+             .unwrap()
+             .unwrap();
+@@ -2485,7 +2499,7 @@ mod tests {
+         assert!(a.control().is_none());
+         let epoch = b.control().unwrap().epoch;
+         b.close().await.unwrap();
+-        tokio::time::sleep(Duration::from_millis(30)).await;
++        client_runtime::sleep(Duration::from_millis(30)).await;
+         let mut b = Client::connect(address, name(), config, 120, &keys[1])
+             .await
+             .unwrap();
+@@ -2540,7 +2554,7 @@ mod tests {
+         let address = listener.local_addr().unwrap();
+         let (server, connector) = tls();
+         let (sent, received) = oneshot::channel();
+-        let task = tokio::spawn(async move {
++        let task = client_runtime::spawn(async move {
+             let (socket, _) = listener.accept().await.unwrap();
+             socket.set_nodelay(true).unwrap();
+             let mut socket = TlsAcceptor::from(server).accept(socket).await.unwrap();
+@@ -2746,3 +2760,16 @@ mod tests {
+         );
+     }
+ }
++
++/// Verifies an already-open socket's TLS identity before a reachable upgrade.
++#[cfg(feature = "service-net")]
++pub async fn connect_tls_stream(
++    socket: TcpStream,
++    tls: Arc<ClientConfig>,
++    server_name: ServerName<'static>,
++) -> Result<tokio_rustls::client::TlsStream<TcpStream>, String> {
++    TlsConnector::from(tls)
++        .connect(server_name, socket)
++        .await
++        .map_err(|_| "Chamber TLS identity refused".into())
++}
+diff --git a/crates/verse-world/src/service/client_runtime.rs b/crates/verse-world/src/service/client_runtime.rs
+new file mode 100644
+index 0000000000..3a836f5bed
+--- /dev/null
++++ b/crates/verse-world/src/service/client_runtime.rs
+@@ -0,0 +1,78 @@
++//! Executor and monotonic clocks for one authoritative client.
++use std::future::Future;
++#[cfg(target_arch = "wasm32")]
++use std::time::Duration;
++#[cfg(not(target_arch = "wasm32"))]
++pub use tokio::time::{
++    Instant, MissedTickBehavior, interval, sleep, sleep_until, timeout, timeout_at,
++};
++#[cfg(not(target_arch = "wasm32"))]
++pub type Task = tokio::task::JoinHandle<()>;
++#[cfg(not(target_arch = "wasm32"))]
++pub fn spawn(future: impl Future<Output = ()> + Send + 'static) -> Task {
++    tokio::spawn(future)
++}
++#[cfg(target_arch = "wasm32")]
++pub use browser::*;
++#[cfg(target_arch = "wasm32")]
++mod browser {
++    use super::*;
++    use futures_util::future::{AbortHandle, Abortable, Either, select};
++    pub use web_time::Instant;
++    pub type Task = AbortHandle;
++    pub fn spawn(future: impl Future<Output = ()> + 'static) -> Task {
++        let (handle, registration) = AbortHandle::new_pair();
++        wasm_bindgen_futures::spawn_local(async move {
++            let _ = Abortable::new(future, registration).await;
++        });
++        handle
++    }
++    pub async fn sleep(duration: Duration) {
++        // Long waits are split without wrapping the browser's millisecond timer.
++        let mut left = duration;
++        while !left.is_zero() {
++            let part = left.min(Duration::from_secs(86400));
++            let millis = part.as_nanos().div_ceil(1_000_000).max(1) as u32;
++            gloo_timers::future::TimeoutFuture::new(millis).await;
++            left = left.saturating_sub(part);
++        }
++    }
++    pub async fn sleep_until(deadline: Instant) {
++        sleep(deadline.saturating_duration_since(Instant::now())).await;
++    }
++    pub async fn timeout<T>(duration: Duration, future: impl Future<Output = T>) -> Result<T, ()> {
++        match select(Box::pin(future), Box::pin(sleep(duration))).await {
++            Either::Left((value, _)) => Ok(value),
++            Either::Right(_) => Err(()),
++        }
++    }
++    pub async fn timeout_at<T>(
++        deadline: Instant,
++        future: impl Future<Output = T>,
++    ) -> Result<T, ()> {
++        timeout(deadline.saturating_duration_since(Instant::now()), future).await
++    }
++    pub enum MissedTickBehavior {
++        Skip,
++    }
++    pub struct Interval {
++        next: Instant,
++        period: Duration,
++    }
++    pub fn interval(period: Duration) -> Interval {
++        assert!(!period.is_zero());
++        Interval {
++            next: Instant::now(),
++            period,
++        }
++    }
++    impl Interval {
++        pub fn set_missed_tick_behavior(&mut self, _: MissedTickBehavior) {}
++        pub async fn tick(&mut self) -> Instant {
++            sleep_until(self.next).await;
++            let now = Instant::now();
++            self.next = now + self.period;
++            now
++        }
++    }
++}
+diff --git a/crates/verse-world/src/service/net.rs b/crates/verse-world/src/service/net.rs
+index cf7c8c45dc..18f31f5dbd 100644
+--- a/crates/verse-world/src/service/net.rs
++++ b/crates/verse-world/src/service/net.rs
+@@ -8,7 +8,7 @@ use std::{
+ 
+ use rustls::ServerConfig;
+ use tokio::{
+-    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
++    io::AsyncRead,
+     net::{TcpListener, TcpStream},
+     sync::{mpsc, oneshot},
+     task::JoinSet,
+@@ -334,8 +334,7 @@ fn committed_movement(
+ }
+ 
+ /// An ordered, authenticated byte stream that carries chamber frames.
+-pub trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
+-impl<T: AsyncRead + AsyncWrite + Unpin + Send> Transport for T {}
++pub use super::transport::{Transport, read_frame, write_frame};
+ 
+ /// How accepted sockets become authenticated chamber transports.
+ pub(super) enum Listen {
+@@ -393,48 +392,6 @@ pub(super) enum Event {
+     Close(ConnectionId),
+ }
+ 
+-/// Reads a big-endian u32 byte length before allocating its bounded JSON payload.
+-pub async fn read_frame<R: AsyncRead + Unpin>(
+-    reader: &mut R,
+-    max: usize,
+-) -> Result<Vec<u8>, String> {
+-    let size = reader
+-        .read_u32()
+-        .await
+-        .map_err(|_| "Chamber frame header unavailable")? as usize;
+-    if size == 0 || size > max {
+-        return Err("Chamber frame exceeds byte budget".into());
+-    }
+-    let mut bytes = vec![0; size];
+-    reader
+-        .read_exact(&mut bytes)
+-        .await
+-        .map_err(|_| "Chamber frame payload incomplete")?;
+-    Ok(bytes)
+-}
+-pub async fn write_frame<W: AsyncWrite + Unpin>(
+-    writer: &mut W,
+-    bytes: &[u8],
+-    max: usize,
+-) -> Result<(), String> {
+-    if bytes.is_empty() || bytes.len() > max {
+-        return Err("Chamber frame exceeds byte budget".into());
+-    }
+-    let length = u32::try_from(bytes.len()).map_err(|_| "Chamber frame length overflow")?;
+-    let mut frame = Vec::with_capacity(bytes.len() + 4);
+-    frame.extend_from_slice(&length.to_be_bytes());
+-    frame.extend_from_slice(bytes);
+-    writer
+-        .write_all(&frame)
+-        .await
+-        .map_err(|_| "Cannot write chamber frame payload")?;
+-    writer
+-        .flush()
+-        .await
+-        .map_err(|_| "Cannot flush chamber frame")?;
+-    Ok(())
+-}
+-
+ /// Runs an already-bound listener with a configured certificate and private key.
+ ///
+ /// The caller supplies TLS identity and enrolled world rights. This function
+@@ -1204,6 +1161,7 @@ pub(super) mod tests {
+         pki_types::{PrivatePkcs8KeyDer, ServerName},
+     };
+     use secp256k1::{Keypair, Secp256k1, SecretKey};
++    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+     use tokio_rustls::{TlsConnector, client::TlsStream};
+     use verse_engine::director::Scene;
+     type Stream = TlsStream<TcpStream>;
+diff --git a/crates/verse-world/src/service/reach_client.rs b/crates/verse-world/src/service/reach_client.rs
+new file mode 100644
+index 0000000000..7cdceb3466
+--- /dev/null
++++ b/crates/verse-world/src/service/reach_client.rs
+@@ -0,0 +1,113 @@
++//! Client-side adaptation of a proved direct channel to bounded chamber IO.
++use super::{
++    client::Client,
++    client_runtime::{self, Task},
++};
++use coder_reach::channel::{Channel, MAX_DATA_BYTES};
++use secp256k1::{Keypair, Secp256k1};
++use std::{
++    io,
++    pin::Pin,
++    task::{Context, Poll},
++};
++use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream, ReadBuf};
++struct Direct {
++    stream: DuplexStream,
++    tasks: Vec<Task>,
++}
++impl Drop for Direct {
++    fn drop(&mut self) {
++        for task in &self.tasks {
++            task.abort();
++        }
++    }
++}
++impl AsyncRead for Direct {
++    fn poll_read(
++        self: Pin<&mut Self>,
++        cx: &mut Context<'_>,
++        buf: &mut ReadBuf<'_>,
++    ) -> Poll<io::Result<()>> {
++        Pin::new(&mut self.get_mut().stream).poll_read(cx, buf)
++    }
++}
++impl AsyncWrite for Direct {
++    fn poll_write(
++        self: Pin<&mut Self>,
++        cx: &mut Context<'_>,
++        bytes: &[u8],
++    ) -> Poll<io::Result<usize>> {
++        Pin::new(&mut self.get_mut().stream).poll_write(cx, bytes)
++    }
++    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
++        Pin::new(&mut self.get_mut().stream).poll_flush(cx)
++    }
++    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
++        Pin::new(&mut self.get_mut().stream).poll_shutdown(cx)
++    }
++}
++/// The channel has already authenticated the host and checked the device grant.
++/// The same device key signs the chamber challenge. No uncertain command is replayed.
++pub async fn join<S>(
++    channel: Channel<S>,
++    device: &secp256k1::SecretKey,
++    instance: u64,
++    content: Option<[u8; 32]>,
++) -> Result<Client, String>
++where
++    S: super::transport::Transport + 'static,
++{
++    let key = Keypair::from_secret_key(&Secp256k1::new(), device);
++    if channel.binding().client != key.x_only_public_key().0.to_string() {
++        return Err("Chamber identity differs from direct-channel identity".into());
++    }
++    let (mut reader, mut writer) = channel.into_split();
++    let (near, far) = tokio::io::duplex(256 * 1024);
++    let (mut far_read, mut far_write) = tokio::io::split(far);
++    let (done_up, up_done) = tokio::sync::oneshot::channel();
++    let (done_down, down_done) = tokio::sync::oneshot::channel();
++    let up = client_runtime::spawn(async move {
++        // Each partial channel read belongs to this task until completion.
++        while let Ok(Some(bytes)) = reader.recv().await {
++            if far_write.write_all(&bytes).await.is_err() {
++                break;
++            }
++        }
++        let _ = far_write.shutdown().await;
++        let _ = done_up.send(());
++    });
++    let down = client_runtime::spawn(async move {
++        let mut bytes = vec![0; MAX_DATA_BYTES];
++        loop {
++            match far_read.read(&mut bytes).await {
++                Ok(0) | Err(_) => break,
++                Ok(n) => {
++                    if writer.send(&bytes[..n]).await.is_err() {
++                        break;
++                    }
++                }
++            }
++        }
++        let _ = writer.close().await;
++        let _ = done_down.send(());
++    });
++    // Each task is also held by the transport. A cancelled opening closes IO.
++    struct Children(Vec<Task>);
++    impl Drop for Children {
++        fn drop(&mut self) {
++            for task in &self.0 {
++                task.abort();
++            }
++        }
++    }
++    let children = Children(vec![up, down]);
++    let supervisor = client_runtime::spawn(async move {
++        let _children = children;
++        tokio::select! { _ = up_done => {}, _ = down_done => {} }
++    });
++    let direct = Direct {
++        stream: near,
++        tasks: vec![supervisor],
++    };
++    Client::connect_stream(Box::new(direct), instance, content, &key).await
++}
+diff --git a/crates/verse-world/src/service/reach_tests.rs b/crates/verse-world/src/service/reach_tests.rs
+index 5250671393..d3908a145e 100644
+--- a/crates/verse-world/src/service/reach_tests.rs
++++ b/crates/verse-world/src/service/reach_tests.rs
+@@ -329,3 +329,61 @@ fn a_channel_carries_only_its_own_devices_key() {
+         Some(device.x_only_public_key().0.serialize())
+     );
+ }
++
++#[cfg(feature = "reach-client")]
++#[tokio::test]
++async fn portable_client_bridge_preserves_control_reconnect_and_revocation() {
++    let keys = [key(70), key(71), key(72)];
++    let host = key(73);
++    for carrier in [Carrier::Tcp, Carrier::WebSocket] {
++        let grants = Grants::default();
++        grants.set(&keys[0], granted());
++        let (address, stop, task) = start(grants.clone(), &host, carrier, &keys).await;
++        let cfg = config(&keys[0], &host);
++        let open = || async {
++            let socket = TcpStream::connect(address).await.unwrap();
++            let stream: Box<dyn net::Transport> = match carrier {
++                Carrier::Tcp => Box::new(socket),
++                Carrier::WebSocket => Box::new(
++                    websocket::client(&format!("ws://{address}/world"), socket)
++                        .await
++                        .unwrap(),
++                ),
++            };
++            connect(stream, &cfg, unix_now().unwrap()).await.unwrap()
++        };
++        let channel = open().await;
++        // The chamber signer cannot differ from the proved device identity.
++        assert!(
++            crate::service::reach_client::join(channel, &keys[1].secret_key(), 120, None)
++                .await
++                .is_err()
++        );
++        let mut first =
++            crate::service::reach_client::join(open().await, &keys[0].secret_key(), 120, None)
++                .await
++                .unwrap();
++        let life = first.snapshot().await.unwrap().hud.unwrap().life;
++        assert!(first.control().is_some());
++        first.close().await.unwrap();
++        let mut resumed =
++            crate::service::reach_client::join(open().await, &keys[0].secret_key(), 120, None)
++                .await
++                .unwrap();
++        assert_eq!(resumed.snapshot().await.unwrap().hud.unwrap().life, life);
++        grants.update(&keys[0], |grant| grant.revoked = true);
++        assert!(
++            timeout(Duration::from_secs(3), resumed.snapshot())
++                .await
++                .unwrap()
++                .is_err()
++        );
++        assert!(!resumed.connected());
++        let _ = stop.send(());
++        let exit = timeout(Duration::from_secs(4), task)
++            .await
++            .unwrap()
++            .unwrap();
++        assert!(exit.failure.is_none());
++    }
++}
+diff --git a/crates/verse-world/src/service/transport.rs b/crates/verse-world/src/service/transport.rs
+new file mode 100644
+index 0000000000..4b094bbe23
+--- /dev/null
++++ b/crates/verse-world/src/service/transport.rs
+@@ -0,0 +1,53 @@
++//! Bounded chamber framing shared by native and browser clients.
++use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
++
++#[cfg(not(target_arch = "wasm32"))]
++pub trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
++#[cfg(not(target_arch = "wasm32"))]
++impl<T: AsyncRead + AsyncWrite + Unpin + Send> Transport for T {}
++#[cfg(target_arch = "wasm32")]
++pub trait Transport: AsyncRead + AsyncWrite + Unpin {}
++#[cfg(target_arch = "wasm32")]
++impl<T: AsyncRead + AsyncWrite + Unpin> Transport for T {}
++
++/// Reads a big-endian u32 byte length before allocating its bounded JSON payload.
++pub async fn read_frame<R: AsyncRead + Unpin>(
++    reader: &mut R,
++    max: usize,
++) -> Result<Vec<u8>, String> {
++    let size = reader
++        .read_u32()
++        .await
++        .map_err(|_| "Chamber frame header unavailable")? as usize;
++    if size == 0 || size > max {
++        return Err("Chamber frame exceeds byte budget".into());
++    }
++    let mut bytes = vec![0; size];
++    reader
++        .read_exact(&mut bytes)
++        .await
++        .map_err(|_| "Chamber frame payload incomplete")?;
++    Ok(bytes)
++}
++pub async fn write_frame<W: AsyncWrite + Unpin>(
++    writer: &mut W,
++    bytes: &[u8],
++    max: usize,
++) -> Result<(), String> {
++    if bytes.is_empty() || bytes.len() > max {
++        return Err("Chamber frame exceeds byte budget".into());
++    }
++    let length = u32::try_from(bytes.len()).map_err(|_| "Chamber frame length overflow")?;
++    let mut frame = Vec::with_capacity(bytes.len() + 4);
++    frame.extend_from_slice(&length.to_be_bytes());
++    frame.extend_from_slice(bytes);
++    writer
++        .write_all(&frame)
++        .await
++        .map_err(|_| "Cannot write chamber frame payload")?;
++    writer
++        .flush()
++        .await
++        .map_err(|_| "Cannot flush chamber frame")?;
++    Ok(())
++}
+diff --git a/crates/verse-world/src/service/worker.rs b/crates/verse-world/src/service/worker.rs
+index 996bb7d12b..2479edc2b5 100644
+--- a/crates/verse-world/src/service/worker.rs
++++ b/crates/verse-world/src/service/worker.rs
+@@ -1,15 +1,17 @@
+ //! Bounded duplex network worker for remote presentation adapters.
+-#[cfg(test)]
++#[cfg(all(test, feature = "service-net"))]
+ #[path = "worker_delayed.rs"]
+ mod delayed;
++use super::client_runtime;
+ use super::{
+     client::Client,
+     event_cursor::{Cursor, Delivery},
+     wire::{Body, Reply, Response},
+ };
+ use crate::{Command, Intent, play::Ability};
+-use std::time::{Duration, Instant};
++use std::time::Duration;
+ use tokio::sync::{mpsc, oneshot};
++use web_time::Instant;
+ 
+ /// Local measurements contain no principal, command content, or credentials.
+ #[derive(Clone, Copy)]
+@@ -142,24 +144,24 @@ pub enum Update {
+ }
+ 
+ struct ReadBackoff {
+-    until: [tokio::time::Instant; 3],
+-    since: [Option<tokio::time::Instant>; 3],
++    until: [client_runtime::Instant; 3],
++    since: [Option<client_runtime::Instant>; 3],
+ }
+ impl ReadBackoff {
+-    fn new(now: tokio::time::Instant) -> Self {
++    fn new(now: client_runtime::Instant) -> Self {
+         Self {
+             until: [now; 3],
+             since: [None; 3],
+         }
+     }
+-    fn ready(&self, class: usize, now: tokio::time::Instant) -> bool {
++    fn ready(&self, class: usize, now: client_runtime::Instant) -> bool {
+         now >= self.until[class]
+     }
+     fn observe(
+         &mut self,
+         class: usize,
+         reply: &Reply,
+-        now: tokio::time::Instant,
++        now: client_runtime::Instant,
+     ) -> Result<bool, String> {
+         if let Reply::Refused { code, message, .. } = reply {
+             if code != "storage_busy" && code != "rate_limited" {
+@@ -329,10 +331,10 @@ async fn run_impl(
+     }
+     let work = async {
+         let mut client = client.pipeline()?;
+-        let mut interval = tokio::time::interval(cadence);
+-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+-        let mut next_inventory = tokio::time::Instant::now();
+-        let mut next_events = tokio::time::Instant::now();
++        let mut interval = client_runtime::interval(cadence);
++        interval.set_missed_tick_behavior(client_runtime::MissedTickBehavior::Skip);
++        let mut next_inventory = client_runtime::Instant::now();
++        let mut next_events = client_runtime::Instant::now();
+         let mut inventory_life = None;
+         let mut last_token = 0;
+         let mut deferred = None;
+@@ -340,14 +342,14 @@ async fn run_impl(
+         let mut last_response = client.verified_at();
+         let mut snapshot_pending = false;
+         let mut last_snapshot_sent = None;
+-        let mut snapshot_resume = tokio::time::Instant::now();
++        let mut snapshot_resume = client_runtime::Instant::now();
+         let mut events_pending = false;
+         let mut inventory_pending = false;
+         let mut refreshed = false;
+         let mut barrier = false;
+         let mut teleport_barrier = false;
+         let mut input_closed = false;
+-        let mut read_backoff = ReadBackoff::new(tokio::time::Instant::now());
++        let mut read_backoff = ReadBackoff::new(client_runtime::Instant::now());
+         loop {
+             if !client.available() && client.pending() == 0 {
+                 return Err("Chamber pipeline is disconnected".into());
+@@ -410,10 +412,10 @@ async fn run_impl(
+                     // that prefix before adding a scene request for staged input.
+                     if client.pending() == 0
+                         && !snapshot_pending
+-                        && read_backoff.ready(0, tokio::time::Instant::now())
++                        && read_backoff.ready(0, client_runtime::Instant::now())
+                     {
+                         client.send_snapshot()?;
+-                        last_snapshot_sent = Some(tokio::time::Instant::now());
++                        last_snapshot_sent = Some(client_runtime::Instant::now());
+                         snapshot_pending = true;
+                     }
+                     staged = Some(input);
+@@ -480,7 +482,7 @@ async fn run_impl(
+                                 .control()
+                                 .ok_or("Client has no admitted adventurer")?
+                                 .clone();
+-                            next_inventory = tokio::time::Instant::now();
++                            next_inventory = client_runtime::Instant::now();
+                             match action {
+                                 Input::Respawn => Body::Respawn { life: control.life },
+                                 Input::BeginMovementFrames { life, epoch } => {
+@@ -560,15 +562,15 @@ async fn run_impl(
+             }
+             // Schedule from the actual send time so quick replies cannot miss a phased polling tick.
+             let snapshot_due = last_snapshot_sent
+-                .map_or_else(tokio::time::Instant::now, |sent| sent + cadence)
++                .map_or_else(client_runtime::Instant::now, |sent| sent + cadence)
+                 .max(snapshot_resume);
+             tokio::select! {
+-                _ = tokio::time::sleep_until(snapshot_due), if !input_closed && !barrier
++                _ = client_runtime::sleep_until(snapshot_due), if !input_closed && !barrier
+                     && staged.is_none() && client.available() && !snapshot_pending
+                     && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
+-                    && last_snapshot_sent.is_some() && read_backoff.ready(0, tokio::time::Instant::now()) => {
++                    && last_snapshot_sent.is_some() && read_backoff.ready(0, client_runtime::Instant::now()) => {
+                     client.send_snapshot()?;
+-                    last_snapshot_sent = Some(tokio::time::Instant::now());
++                    last_snapshot_sent = Some(client_runtime::Instant::now());
+                     snapshot_pending = true;
+                 }
+                 response = client.receive(), if client.pending() > 0 => {
+@@ -596,9 +598,9 @@ async fn run_impl(
+                             // A slow read yields one cadence to input before requesting another
+                             // projection. Fast routes retain their deadline from the send time.
+                             if client.last_turnaround().is_some_and(|elapsed| elapsed > cadence) {
+-                                snapshot_resume = tokio::time::Instant::now() + cadence;
++                                snapshot_resume = client_runtime::Instant::now() + cadence;
+                             }
+-                            if read_backoff.observe(0, &response.body, tokio::time::Instant::now())? {
++                            if read_backoff.observe(0, &response.body, client_runtime::Instant::now())? {
+                                 refreshed = false;
+                                 continue;
+                             }
+@@ -607,15 +609,15 @@ async fn run_impl(
+                         }
+                         Body::Events { after,limit } => {
+                             events_pending = false;
+-                            if read_backoff.observe(1, &response.body, tokio::time::Instant::now())? { continue; }
++                            if read_backoff.observe(1, &response.body, client_runtime::Instant::now())? { continue; }
+                             let delivery = cursor.admit(&response,after,limit)?;
+                             Update::Events { delivery, checkpoint: cursor.checkpoint()? }
+                         }
+                         Body::Inventory {} => {
+                             inventory_pending = false;
+-                            if read_backoff.observe(2, &response.body, tokio::time::Instant::now())? { continue; }
++                            if read_backoff.observe(2, &response.body, client_runtime::Instant::now())? { continue; }
+                             inventory_life = client.control().map(|c| c.life);
+-                            next_inventory = tokio::time::Instant::now() + Duration::from_secs(1);
++                            next_inventory = client_runtime::Instant::now() + Duration::from_secs(1);
+                             Update::Inventory(response)
+                         }
+                         Body::MovementFrame { frame } => {
+@@ -656,22 +658,22 @@ async fn run_impl(
+                     // A staged lifecycle action drains previous IO before changing its context.
+                     if input_closed || barrier || staged.is_some() { continue; }
+                     if last_snapshot_sent.is_none() && client.available() && !snapshot_pending
+-                        && read_backoff.ready(0, tokio::time::Instant::now()) {
++                        && read_backoff.ready(0, client_runtime::Instant::now()) {
+                         client.send_snapshot()?;
+-                        last_snapshot_sent = Some(tokio::time::Instant::now());
++                        last_snapshot_sent = Some(client_runtime::Instant::now());
+                         snapshot_pending = true;
+                     }
+-                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some()) && tokio::time::Instant::now() >= next_events
+-                        && !events_pending && read_backoff.ready(1, tokio::time::Instant::now()) {
++                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some()) && client_runtime::Instant::now() >= next_events
++                        && !events_pending && read_backoff.ready(1, client_runtime::Instant::now()) {
+                         client.send(Body::Events { after: cursor.after(), limit: 64 })?;
+                         events_pending = true;
+-                        next_events = tokio::time::Instant::now() + cadence.max(Duration::from_millis(200));
++                        next_events = client_runtime::Instant::now() + cadence.max(Duration::from_millis(200));
+                     }
+                     let life = client.control().map(|c| c.life);
+                     if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
+                         && !inventory_pending && life.is_some()
+-                        && read_backoff.ready(2, tokio::time::Instant::now())
+-                        && (life != inventory_life || tokio::time::Instant::now() >= next_inventory) {
++                        && read_backoff.ready(2, client_runtime::Instant::now())
++                        && (life != inventory_life || client_runtime::Instant::now() >= next_inventory) {
+                         client.send(Body::Inventory {})?;
+                         inventory_pending = true;
+                     }
+@@ -705,15 +707,15 @@ pub fn channels() -> (
+     (input, inputs, updates, output)
+ }
+ 
+-#[cfg(test)]
++#[cfg(all(test, feature = "service-net"))]
+ mod tests {
+     use super::*;
+     use crate::service::{
+         net::tests::{key, start},
+         replica::Buffer,
+     };
++    use client_runtime::timeout;
+     use rustls::pki_types::ServerName;
+-    use tokio::time::timeout;
+ 
+     #[tokio::test]
+     async fn explicit_read_backpressure_retries_projections_without_replaying_commands() {
+@@ -823,7 +825,7 @@ mod tests {
+ 
+     #[test]
+     fn read_backoff_separates_classes_and_bounds_explicit_refusal_retries() {
+-        let now = tokio::time::Instant::now();
++        let now = client_runtime::Instant::now();
+         let mut backoff = ReadBackoff::new(now);
+         let busy = Reply::Refused {
+             code: "storage_busy".into(),
+@@ -975,7 +977,7 @@ mod tests {
+                     .unwrap();
+                 if matches!(request.body, Body::Snapshot {} | Body::Replicate { .. }) {
+                     snapshots += 1;
+-                    tokio::time::sleep(Duration::from_millis(100)).await;
++                    client_runtime::sleep(Duration::from_millis(100)).await;
+                 }
+                 if write_frame(&mut peer_socket, &response, MAX_RESPONSE_BYTES)
+                     .await
+@@ -1539,7 +1541,7 @@ mod tests {
+             {
+                 break;
+             }
+-            tokio::time::sleep(Duration::from_millis(10)).await;
++            client_runtime::sleep(Duration::from_millis(10)).await;
+         }
+         assert!(matches!(
+             client.begin_movement_frames().await.unwrap().body,
+@@ -1718,7 +1720,7 @@ mod tests {
+         .await
+         .unwrap();
+         // Polling has time to use the remaining observation slots while replies stay withheld.
+-        tokio::time::sleep(Duration::from_millis(150)).await;
++        client_runtime::sleep(Duration::from_millis(150)).await;
+         input.send(frame_input(6)).await.unwrap();
+         timeout(Duration::from_millis(300), async {
+             while commands < 6 {
+@@ -2258,7 +2260,7 @@ mod tests {
+         })
+         .await
+         .unwrap();
+-        tokio::time::sleep(Duration::from_millis(75)).await;
++        client_runtime::sleep(Duration::from_millis(75)).await;
+         gate.send(Update::CommandBound {
+             token: 0,
+             binding: Err("Test delivery barrier".into()),
+@@ -2275,7 +2277,7 @@ mod tests {
+             },
+         };
+         input.send(movement(1)).await.unwrap();
+-        tokio::time::sleep(Duration::from_millis(20)).await;
++        client_runtime::sleep(Duration::from_millis(20)).await;
+         input.send(movement(2)).await.unwrap();
+         assert!(matches!(
+             output.recv().await.unwrap(),
+@@ -2510,10 +2512,10 @@ mod tests {
+             ));
+             let mut inventories = 0;
+             let mut snapshots = 0;
+-            let deadline = tokio::time::Instant::now() + Duration::from_millis(1250);
++            let deadline = client_runtime::Instant::now() + Duration::from_millis(1250);
+             loop {
+                 tokio::select! {
+-                    _=tokio::time::sleep_until(deadline)=>break,
++                    _=client_runtime::sleep_until(deadline)=>break,
+                     update=output.recv()=>match update.unwrap() {
+                         Update::Snapshot(_)=>snapshots+=1,
+                         Update::Inventory(response)=> {assert!(player);let Reply::Inventory{inventory}=response.body else {panic!("Missing inventory");};assert_eq!(inventory.experience,0);inventories+=1;},
+@@ -2559,8 +2561,8 @@ mod tests {
+             stopped,
+         ));
+         let feeder = tokio::spawn(async move {
+-            let mut clock = tokio::time::interval(Duration::from_millis(33));
+-            clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
++            let mut clock = client_runtime::interval(Duration::from_millis(33));
++            clock.set_missed_tick_behavior(client_runtime::MissedTickBehavior::Skip);
+             for index in 0..90 {
+                 clock.tick().await;
+                 input
+@@ -2698,7 +2700,7 @@ mod tests {
+         }
+         assert!(accepted && shield && events);
+         // Let the bounded output queue fill, then stop without draining it.
+-        tokio::time::sleep(Duration::from_millis(200)).await;
++        client_runtime::sleep(Duration::from_millis(200)).await;
+         stop.send(()).unwrap();
+         timeout(Duration::from_secs(1), worker)
+             .await
+diff --git a/crates/verse/Cargo.toml b/crates/verse/Cargo.toml
+index 36781f67a4..2ed306f4f6 100644
+--- a/crates/verse/Cargo.toml
++++ b/crates/verse/Cargo.toml
+@@ -40,6 +40,7 @@ chamber-loopback = ["remote-chamber", "tokio/io-util", "verse-imported/chamber-l
+ # features: WebGL2 as well as WebGPU. Network, threads, processes, and disk
+ # are native-only by target, so this feature only adds what the web needs.
+ web = ["wgpu/webgl", "imported-surface"]
++browser-chamber = ["web", "verse-imported/chamber-client", "verse-world/reach-client"]
+ 
+ [dependencies]
+ rtrb = { version = "=0.4.0", optional = true }
