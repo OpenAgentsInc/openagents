@@ -14,6 +14,13 @@ use std::{
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Source {
+    /// Canonical stereo little-endian float PCM, verified before publication.
+    Stream {
+        id: String,
+        rate: u32,
+        frames: u64,
+        sha256: String,
+    },
     Synth {
         id: String,
         cue: Cue,
@@ -51,6 +58,7 @@ pub struct Spec {
 pub struct Bank {
     spec: Spec,
     clips: BTreeMap<String, Clip>,
+    streams: BTreeMap<String, (u32, u64, String)>,
     pub digest: String,
 }
 fn identifier(id: &str) -> bool {
@@ -82,10 +90,37 @@ impl Bank {
             return Err("Invalid audio bank header or capacity".into());
         }
         let mut clips = BTreeMap::new();
+        let mut streams = BTreeMap::new();
+        let mut source_ids = BTreeSet::new();
         let mut bytes = 0usize;
         let mut used_decoded = BTreeSet::new();
         for source in &spec.sources {
+            let source_id = match source {
+                Source::Stream { id, .. } | Source::Pcm { id, .. } | Source::Synth { id, .. } => id,
+            };
+            if !identifier(source_id) || !source_ids.insert(source_id.clone()) {
+                return Err("Invalid or duplicate audio source".into());
+            }
             let (id, clip) = match source {
+                Source::Stream {
+                    id,
+                    rate,
+                    frames,
+                    sha256,
+                } => {
+                    if !(8000..=192000).contains(rate)
+                        || *frames == 0
+                        || *frames > u64::from(*rate) * 86400
+                        || sha256.len() != 64
+                        || !sha256
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    {
+                        return Err("Invalid streamed audio source".into());
+                    }
+                    streams.insert(id.clone(), (*rate, *frames, sha256.clone()));
+                    continue;
+                }
                 Source::Synth { id, cue, seed } => (id, synthesize(*cue, 48000, *seed)?),
                 Source::Pcm {
                     id,
@@ -122,7 +157,9 @@ impl Bank {
         for cue in &spec.cues {
             if !identifier(&cue.id)
                 || !cues.insert(cue.id.clone())
-                || !clips.contains_key(&cue.source)
+                || !source_ids.contains(&cue.source)
+                || (streams.contains_key(&cue.source)
+                    && (cue.looping || !matches!(cue.bus, Bus::Music | Bus::Dialogue)))
                 || cue.captions.len() > 16
                 || cue.captions.iter().any(|(locale, text)| {
                     !identifier(locale)
@@ -153,8 +190,73 @@ impl Bank {
         Ok(Self {
             spec,
             clips,
+            streams,
             digest: format!("{:x}", hash.finalize()),
         })
+    }
+    /// Verify an admitted reader on a control or decoding worker. No path is
+    /// selected here. Returns a bounded feeder and its matching prepared voice.
+    pub fn prepare_stream_reader<R: std::io::Read + std::io::Seek>(
+        &self,
+        id: &str,
+        mut reader: R,
+        start: u64,
+        capacity: usize,
+    ) -> Result<(Prepared, crate::audio_stream::Reader<R>), String> {
+        let cue = self.cue(id).ok_or("Unknown audio cue")?;
+        let (rate, frames, expected) = self
+            .streams
+            .get(&cue.source)
+            .ok_or("Cue is not a streamed source")?;
+        if start >= *frames {
+            return Err("Stream restore position is past the source".into());
+        }
+        reader
+            .seek(std::io::SeekFrom::Start(0))
+            .map_err(|e| e.to_string())?;
+        let mut hash = Sha256::new();
+        let mut remaining = *frames;
+        let mut bytes = [0u8; 8192];
+        while remaining > 0 {
+            let count = remaining.min(1024) as usize;
+            let batch = &mut bytes[..count * 8];
+            reader.read_exact(batch).map_err(|e| e.to_string())?;
+            for sample in batch.chunks_exact(4) {
+                let sample = f32::from_le_bytes(sample.try_into().unwrap());
+                if !sample.is_finite() || sample.abs() > 1. {
+                    return Err("Invalid streamed PCM sample".into());
+                }
+            }
+            hash.update(batch);
+            remaining -= count as u64;
+        }
+        if reader.read(&mut bytes[..1]).map_err(|e| e.to_string())? != 0
+            || format!("{:x}", hash.finalize()) != *expected
+        {
+            return Err("Streamed PCM disagrees with its pin or length".into());
+        }
+        reader
+            .seek(std::io::SeekFrom::Start(start * 8))
+            .map_err(|e| e.to_string())?;
+        let (feeder, stream) =
+            crate::audio_stream::channel(*rate, capacity).map_err(|_| "Invalid stream capacity")?;
+        let prepared = Prepared::stream(
+            stream,
+            Emitter {
+                life: None,
+                position: Vec3::ZERO,
+                range: cue.range,
+                gain: cue.gain,
+                pitch: cue.pitch,
+                looping: false,
+            },
+            cue.bus,
+            cue.priority,
+            start,
+        )?;
+        let reader = crate::audio_stream::Reader::new(reader, feeder, *frames - start)
+            .map_err(|_| "Invalid stream length")?;
+        Ok((prepared, reader))
     }
     pub fn original() -> Result<Self, String> {
         Self::admit(
@@ -394,6 +496,44 @@ mod tests {
         let mut spec = original.spec.clone();
         spec.sources = vec![spec.sources[0].clone(); 257];
         assert!(Bank::admit(spec, BTreeMap::new()).is_err());
+    }
+    #[test]
+    fn authored_long_stream_is_verified_before_a_frame_can_play() {
+        let original = Bank::original().unwrap();
+        let mut spec = original.spec.clone();
+        let bytes = [0.25f32, -0.25]
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .cycle()
+            .take(8000)
+            .collect::<Vec<_>>();
+        let hash = format!("{:x}", Sha256::digest(&bytes));
+        spec.sources = vec![Source::Stream {
+            id: "track".into(),
+            rate: 48000,
+            frames: 1000,
+            sha256: hash,
+        }];
+        spec.cues = vec![spec.cues[4].clone()];
+        spec.cues[0].source = "track".into();
+        spec.cues[0].looping = false;
+        let bank = Bank::admit(spec, BTreeMap::new()).unwrap();
+        let mut changed = bytes.clone();
+        changed[0] = 1;
+        assert!(
+            bank.prepare_stream_reader("ritual_ambience", std::io::Cursor::new(changed), 0, 128)
+                .is_err()
+        );
+        let (prepared, mut reader) = bank
+            .prepare_stream_reader("ritual_ambience", std::io::Cursor::new(bytes), 500, 128)
+            .unwrap();
+        assert_eq!(reader.remaining(), 500);
+        let progress = prepared.progress();
+        reader.pump().unwrap();
+        let mut mixer = crate::audio::Mixer::new(48000).unwrap();
+        assert!(mixer.play_rt(prepared).is_ok());
+        mixer.render_rt(&mut [0.; 128]).unwrap();
+        assert_eq!(progress.frame(), 564);
     }
     #[test]
     fn silent_output_keeps_captions_volumes_and_music_restore_position() {

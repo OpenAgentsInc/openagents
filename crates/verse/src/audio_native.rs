@@ -215,6 +215,46 @@ impl Output {
             self.send(Command::Play(prepared), protected)
         }
     }
+    /// Feed a matching admitted PCM reader on a worker; never decode on output.
+    pub fn play_reader<R: std::io::Read + Send + 'static>(
+        &self,
+        prepared: Prepared,
+        mut reader: verse_engine::audio_stream::Reader<R>,
+    ) -> Result<(), String> {
+        if !prepared.is_streaming() {
+            return Err("Reader needs a streaming voice".into());
+        }
+        let mut workers = self
+            .workers
+            .lock()
+            .map_err(|_| "Audio worker lock failed")?;
+        let mut i = 0;
+        while i < workers.len() {
+            if workers[i].is_finished() {
+                let worker = workers.swap_remove(i);
+                let _ = worker.join();
+            } else {
+                i += 1;
+            }
+        }
+        if workers.len() >= 12 {
+            return Err("Audio streaming workers are full".into());
+        }
+        reader.pump()?;
+        let protected = prepared.bus() != Bus::Effects || prepared.priority() >= 128;
+        self.send(Command::Play(prepared), protected)?;
+        let counters = self.counters.clone();
+        workers.push(std::thread::spawn(move || {
+            while !reader.closed() && reader.remaining() > 0 {
+                if reader.pump().is_err() {
+                    counters.refused.fetch_add(1, Ordering::Relaxed);
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }));
+        Ok(())
+    }
     pub fn stop_life(&self, life: LifeId) -> Result<(), String> {
         self.send(Command::StopLife(life), true)
     }

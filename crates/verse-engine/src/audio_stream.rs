@@ -159,6 +159,9 @@ impl<R: std::io::Read> Reader<R> {
         }
         Ok(count)
     }
+    pub fn closed(&self) -> bool {
+        self.feeder.closed()
+    }
     pub fn remaining(&self) -> u64 {
         self.remaining
     }
