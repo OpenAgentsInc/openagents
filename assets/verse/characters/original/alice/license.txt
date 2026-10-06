@@ -1,0 +1,19 @@
+Alice, an original player character for Verse
+
+Made by OpenAgents with scripts/blender/alice.py. Her body, hair, clothing,
+and gear are generated from primitives and procedural shading (Reference
+mode). Her head, eyes, and brows are those of Superhero_Female_FullBody.gltf
+from Quaternius's Universal Base Characters (CC0 1.0, https://quaternius.com),
+reshaped by the script, with that file's skin and eye images retinted in the
+bake (Compose mode). Epic Games' Valley of the Ancient was studied in
+Reference-only mode for general qualities (docs/verse/female-character.md);
+none of its content was opened in Blender, traced, or used.
+
+Her skeleton is the same file's Universal rig, whose joint names, parents,
+and rest transforms are copied verbatim so the Universal Animation Library
+plays on her. See PROVENANCE.md.
+
+License:
+CC0 1.0 Universal (CC0 1.0)
+Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/

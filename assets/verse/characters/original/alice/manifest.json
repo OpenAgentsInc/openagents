@@ -1,0 +1,84 @@
+{
+  "schema": "openagents.verse.character-sources.v1",
+  "creator": "OpenAgents",
+  "license": "CC0-1.0",
+  "package": "Alice (original), on the Universal rig",
+  "files": {
+    "PROVENANCE.md": "1fc0aafe872ab43b4229262136f12276deb795628230475d7ec670003a8140b3",
+    "alice.lod0.bin": "a1cba30a0b27ff230f3418945612ff579d21147c064508a9d9a3168651af03a2",
+    "alice.lod0.glb": "83626782dcfe5c80a2b5a591cd66dd7bb2f3006e1448bf746c9bea8136ef38b2",
+    "alice.lod0.gltf": "74eab18ba80f9a561fb8c8f4a5cce0b210fb8b54dc3d10ecd4265638ee0363f1",
+    "alice.lod0.png": "fe61f00c1299c1b447bf15433ed2a84d7ab050fb7d465b80fee77bda938fdec3",
+    "alice.lod1.bin": "28a6551adc16b0e8f5f1b914634dfae15d74351ddd0acc001d30bf41725de234",
+    "alice.lod1.glb": "1fd00c7521d070a40c3a9ac4763f3067deda46f9bf6f95f278b6da9a737f15e7",
+    "alice.lod1.gltf": "2a8acca4a24a776dd61588b446fdf4f95064015ae76e58c924ab18fe6af1d9c0",
+    "alice.lod1.png": "91e8f606aac37ae62061acc3428bfe0cd8d295aca90a1de6d70f385c6acd806f",
+    "alice.lod2.bin": "fdf16bc3bd59b6d1251fbd291946c54d34754665f10f7a9cab4390551f9e422e",
+    "alice.lod2.glb": "9f864ccbe8357333fe5d7570ec447894d20345d92472ff750811b5970ba67641",
+    "alice.lod2.gltf": "56b91badcdbd8d90c421df6c77fbfe733a1e9d6126e8f1812feff7f353ee1f1d",
+    "alice.lod2.png": "66003995edf96d1095ed756cf3c6b8dee31e45e8f1ec8f22f51ab66ea56e81ab",
+    "alice.lod3.bin": "f9e7ad016ee94fba459ce4b35a41fed3f5b0c02055104982deb3f53785d6f842",
+    "alice.lod3.glb": "98d14c951d5468538b2b3d6813b728aa560f42ac88729fffaed39988d8f2f5ed",
+    "alice.lod3.gltf": "56d398801d44c39b44652193c022698a1e5f6298680c5ff215ae40fd9218a6ef",
+    "alice.lod3.png": "d1b788ebb3d527c73d0503efa0d3cb142d8839763fc28e80e69b15ac8e869ee0",
+    "license.txt": "9ffd3780a4654deb0ea6f9e3b10e8e6921f6a9ad72753494e58776de6842f0b3"
+  },
+  "variants": [
+    {
+      "variant": "lod0",
+      "triangles": 17628,
+      "budget": 24000,
+      "primitives": 1,
+      "image": [
+        1024,
+        1024
+      ],
+      "joint_drift_m": 1.3928724023060113e-06,
+      "rest_rotation_delta": 1.4917539195025142e-06,
+      "source": "alice.lod0.glb",
+      "source_sha256": "83626782dcfe5c80a2b5a591cd66dd7bb2f3006e1448bf746c9bea8136ef38b2"
+    },
+    {
+      "variant": "lod1",
+      "triangles": 14173,
+      "budget": 16000,
+      "primitives": 1,
+      "image": [
+        512,
+        512
+      ],
+      "joint_drift_m": 1.3928724023060113e-06,
+      "rest_rotation_delta": 1.4917539195025142e-06,
+      "source": "alice.lod1.glb",
+      "source_sha256": "1fd00c7521d070a40c3a9ac4763f3067deda46f9bf6f95f278b6da9a737f15e7"
+    },
+    {
+      "variant": "lod2",
+      "triangles": 6390,
+      "budget": 10000,
+      "primitives": 1,
+      "image": [
+        256,
+        256
+      ],
+      "joint_drift_m": 1.3928724023060113e-06,
+      "rest_rotation_delta": 1.4917539195025142e-06,
+      "source": "alice.lod2.glb",
+      "source_sha256": "9f864ccbe8357333fe5d7570ec447894d20345d92472ff750811b5970ba67641"
+    },
+    {
+      "variant": "lod3",
+      "triangles": 2585,
+      "budget": 3000,
+      "primitives": 1,
+      "image": [
+        256,
+        256
+      ],
+      "joint_drift_m": 1.3928724023060113e-06,
+      "rest_rotation_delta": 1.4917539195025142e-06,
+      "source": "alice.lod3.glb",
+      "source_sha256": "98d14c951d5468538b2b3d6813b728aa560f42ac88729fffaed39988d8f2f5ed"
+    }
+  ]
+}

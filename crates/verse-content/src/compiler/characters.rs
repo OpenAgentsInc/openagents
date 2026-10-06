@@ -22,6 +22,20 @@ pub const APPEARANCES: [&str; 6] = [
     "superhero-male",
     "superhero-female",
 ];
+/// Our original characters, beside the Universal appearances: each is a
+/// whole model on the Universal rig rather than an outfit composed with a
+/// base head.
+pub const ORIGINAL_APPEARANCES: [&str; 1] = ["alice"];
+/// Alice's variants and their triangle budgets
+/// (`docs/verse/female-character.md`): `lod0` for the chamber, `lod1` for
+/// the Everglade pack, `lod2` for phones once packs split by tier, and
+/// `lod3` for distant players once skinned levels of detail exist.
+pub const ALICE_VARIANTS: [(&str, usize); 4] = [
+    ("lod0", 24_000),
+    ("lod1", 16_000),
+    ("lod2", 10_000),
+    ("lod3", 3_000),
+];
 /// A position or scale read from a pack.
 fn v3(v: [f32; 3]) -> Vec3 {
     glam::Vec3::from(v).as_dvec3()
@@ -1111,6 +1125,59 @@ pub fn appearance(pack: &mut Pack, dir: &Path, root: &Path, name: &str) -> Resul
     animations(&mut model, &root.join("animations.glb"))?;
     Ok(model)
 }
+/// Imports Alice's `variant` (`alice.<variant>.gltf` under `alice_root`,
+/// built by `scripts/blender/alice.py`) and gives her the runtime clips and
+/// states every Universal appearance has, from the Universal Animation
+/// Library under `universal_root`. Her skeleton is the Universal rig's, so
+/// every clip retargets exactly.
+///
+/// # Errors
+///
+/// Returns a message when the variant is unknown, or its model cannot be
+/// imported or animated.
+pub fn alice(
+    pack: &mut Pack,
+    dir: &Path,
+    universal_root: &Path,
+    alice_root: &Path,
+    variant: &str,
+) -> Result<Model, String> {
+    if !ALICE_VARIANTS.iter().any(|(name, _)| *name == variant) {
+        return Err("Unknown Alice variant".into());
+    }
+    let mut model = import(pack, dir, &alice_root.join(format!("alice.{variant}.gltf")))?;
+    // Her height is her crown's, not the staff's on her back.
+    let head = model
+        .skin
+        .as_ref()
+        .and_then(|skin| skin.names.iter().position(|n| n == "Head"))
+        .ok_or("Alice has no head joint")? as u32;
+    model.height = model
+        .surfaces
+        .iter()
+        .flat_map(|s| s.vertices.iter())
+        .filter(|v| (0..4).any(|k| v.joints[k] == head && v.weights[k] > 0.5))
+        .map(|v| v.position[2])
+        .fold(0., f32::max);
+    animations(&mut model, &universal_root.join("animations.glb"))?;
+    Ok(model)
+}
+/// Installs Alice's chamber variant as `universal-alice`, a character a
+/// scene can place. She is an NPC, never the player's body.
+///
+/// # Errors
+///
+/// Returns a message when her model cannot be built or the pack is invalid.
+pub fn install_alice(
+    pack: &mut Pack,
+    dir: &Path,
+    universal_root: &Path,
+    alice_root: &Path,
+) -> Result<(), String> {
+    let model = alice(pack, dir, universal_root, alice_root, "lod0")?;
+    pack.models.insert("universal-alice".into(), model);
+    pack.validate()
+}
 /// Installs all six Standard appearances and binds the selected player outfit.
 pub fn install(pack: &mut Pack, dir: &Path, root: &Path, appearance: &str) -> Result<(), String> {
     if !APPEARANCES.contains(&appearance) {
@@ -1236,6 +1303,92 @@ mod tests {
         .unwrap();
         assert!(model.clips.iter().any(|c| c.id == 200));
         assert!(retarget_clip(&mut model, &root.join("animations.glb"), 200, "Yes").is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Every Alice variant imports on the Universal rig with its rest
+    /// transforms, keeps its triangle budget and one to four influences a
+    /// vertex, plays every clip the states bind without leaving a person's
+    /// bounds, and closes her gait loops.
+    #[test]
+    fn alice_variants_retarget_within_budget() {
+        let dir = std::env::temp_dir().join(format!("verse-alice-test-{}", std::process::id()));
+        let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/characters");
+        let root = assets.join("quaternius");
+        let alice_root = assets.join("original/alice");
+        super::super::inventory::verify_alice(&alice_root).unwrap();
+        let mut pack = crate::compiler::original::generate(&dir).unwrap();
+        let reference = self::appearance(&mut pack, &dir, &root, "female-ranger").unwrap();
+        let reference = reference.skin.as_ref().unwrap();
+        for (variant, budget) in ALICE_VARIANTS {
+            let model = alice(&mut pack, &dir, &root, &alice_root, variant).unwrap();
+            let skin = model.skin.as_ref().unwrap();
+            // The Universal 65 joints, plus the mesh's and the armature's
+            // own nodes, which the importer keeps as bones too.
+            let joints = skin
+                .names
+                .iter()
+                .filter(|n| !matches!(n.as_str(), "Alice" | "Armature"))
+                .count();
+            assert_eq!(joints, 65);
+            assert_eq!(skin.names.len(), 67);
+            for (i, name) in skin.names.iter().enumerate() {
+                if matches!(name.as_str(), "Alice" | "Armature") {
+                    continue;
+                }
+                let j = reference.names.iter().position(|n| n == name).expect(name);
+                let (a, b) = (skin.rest[i], reference.rest[j]);
+                for k in 0..3 {
+                    assert!((a.translation[k] - b.translation[k]).abs() < 1e-4, "{name}");
+                }
+                for k in 0..4 {
+                    assert!((a.rotation[k] - b.rotation[k]).abs() < 1e-4, "{name}");
+                }
+            }
+            let triangles: usize = model.surfaces.iter().map(|s| s.indices.len() / 3).sum();
+            assert!(triangles <= budget, "{variant}: {triangles} > {budget}");
+            for v in model.surfaces.iter().flat_map(|s| &s.vertices) {
+                let used = v.weights.iter().filter(|w| **w > 0.).count();
+                assert!((1..=4).contains(&used));
+                assert!((v.weights.iter().sum::<f32>() - 1.).abs() < 0.01);
+            }
+            assert!(
+                model.height > 1.7 && model.height < 2.1,
+                "{variant}: {}",
+                model.height
+            );
+            for id in [
+                0, 1, 4, 5, 13, 14, 15, 25, 37, 46, 51, 52, 53, 64, 68, 100, 109,
+            ] {
+                assert!(model.clips.iter().any(|c| c.id == id), "{variant} {id}");
+                let pose = verse_engine::animation::pose(&model, id, 0.4);
+                assert!(pose.iter().all(|m| m.is_finite()));
+                let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+                for s in &model.surfaces {
+                    for i in &s.indices {
+                        let v = &s.vertices[*i as usize];
+                        let p: glam::Vec3 = v.position.into();
+                        let at: glam::Vec3 = (0..4)
+                            .map(|k| pose[v.joints[k] as usize].transform_point3(p) * v.weights[k])
+                            .sum();
+                        let y = crate::basis().transform_point3(at).y;
+                        lo = lo.min(y);
+                        hi = hi.max(y);
+                    }
+                }
+                assert!(lo > -1. && hi < 2.6, "{variant} clip {id}: {lo}..{hi}");
+            }
+            for id in [4, 5, 13, 14, 15] {
+                let duration = model.clips.iter().find(|c| c.id == id).unwrap().duration;
+                let start = verse_engine::animation::pose(&model, id, 0.);
+                let end = verse_engine::animation::pose(&model, id, duration - 0.000001);
+                assert!(start.iter().zip(end).all(|(a, b)| a.abs_diff_eq(b, 0.001)));
+            }
+        }
+        assert!(alice(&mut pack, &dir, &root, &alice_root, "lod9").is_err());
+        install(&mut pack, &dir, &root, "male-ranger").unwrap();
+        install_alice(&mut pack, &dir, &root, &alice_root).unwrap();
+        assert!(pack.models.contains_key("universal-alice"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

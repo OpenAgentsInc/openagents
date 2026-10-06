@@ -10,6 +10,8 @@ use verse_engine::{
 };
 const CHARACTER_MANIFEST: &[u8] =
     include_bytes!("../../../../assets/verse/characters/quaternius/manifest.json");
+const ALICE_MANIFEST: &[u8] =
+    include_bytes!("../../../../assets/verse/characters/original/alice/manifest.json");
 const PROP_MANIFEST: &[u8] =
     include_bytes!("../../../../assets/verse/props/quaternius/manifest.json");
 const PUGLIN: &str = "8d0a87d7165e5da0761418491511d2187e46de359e2f65110538f8b91a48e6af";
@@ -58,6 +60,15 @@ pub fn snapshot_characters(root: &Path, destination: &Path) -> Result<(), String
 }
 fn prepare_characters(root: &Path, destination: Option<&Path>) -> Result<(), String> {
     prepare_sources(root, destination, CHARACTER_MANIFEST)
+}
+/// Verify Alice's sources (`assets/verse/characters/original/alice`), our
+/// own player character, against the compiler's pinned manifest.
+pub fn verify_alice(root: &Path) -> Result<(), String> {
+    prepare_sources(root, None, ALICE_MANIFEST)
+}
+/// Copy Alice's verified sources to `destination`.
+pub fn snapshot_alice(root: &Path, destination: &Path) -> Result<(), String> {
+    prepare_sources(root, Some(destination), ALICE_MANIFEST)
 }
 pub fn snapshot_props(root: &Path, destination: &Path) -> Result<(), String> {
     prepare_sources(root, Some(destination), PROP_MANIFEST)

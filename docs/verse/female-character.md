@@ -5,7 +5,100 @@ Blender by script and played on the Universal rig. It covers the design
 brief, proportions, budgets, skeleton, skinning, face, hair, gear, materials,
 animation, export, selection, tests, and a phased plan.
 
-Status: proposed, October 5, 2026. Nothing is built yet.
+Status: the first build, Alice, exists as a placed character (an NPC), October
+5, 2026. The rest of this page is the original specification; where it says
+"player", read it as the later player character described below.
+
+## Alice, the first build
+
+The owner named her Alice and decided that she is **an NPC, not a playable
+character**: players can't select her, and the owner will specify her role
+later. A female player character is a later, separate build that reuses
+Alice's base body and head with an outfit of its own.
+
+Defaults taken for the owner's open questions, which the owner can change:
+
+| Question | Default |
+| --- | --- |
+| Role | Explorer-druid (option C) |
+| Palette | Forest green, warm brown leather, and cream linen, with copper accents |
+| Hair | Dark auburn, a chin-length layered bob with a side part and a swept fringe |
+| Clips | The Everglade pack's eight (idle, walk, run, jump, backpedal, two strafes, and the swing); raising `MAX_CLIPS` is a later phase |
+
+What was built:
+
+- **Script.** `scripts/blender/alice.py` builds her in three reusable parts:
+  `build_body` (the skin and underlayer that show: hands, legs, and feet,
+  lofted on the Universal rig with scripted weights), the head
+  (`ubc_head` and `build_head`: the reshaped head, eyes, brows, hair, and eye
+  highlights), and `build_outfit` (tunic, open knee-length coat, hood worn
+  down, sash, satchel and strap, bracers, boots, and a staff on her back).
+  It writes `alice.<variant>.glb` to `assets/verse/characters/original/alice/`.
+- **Head.** The CC0 Universal Base Characters female head (Compose mode),
+  cut from `Superhero_Female_FullBody.gltf` and reshaped by `reshape`: a
+  slightly larger head for our stylized proportions, a softer and narrower
+  jaw, a rounder chin, a shorter and slightly upturned nose, fuller lips and
+  cheeks, a softer brow ridge, and ears laid back under the hair. It keeps
+  the base's real structure: edge loops around the eyes and mouth, separate
+  eyeballs with an iris and pupil, eyelids, a nose with nostrils, upper and
+  lower lips, and ears. Script additions: a highlight on each cornea, slimmer
+  auburn brows lifted at their inner ends, her own skin tone over the base's
+  painted face, and baked warmth on the cheeks, nose, and lips.
+- **Weights.** Generated parts take their chain's bones with smoothstep
+  blends around each joint; the head keeps the base's weights. At most four
+  influences a vertex, normalized, rounded to 255ths at admission.
+- **Atlas.** One baked base-color atlas per variant: diffuse color times
+  ambient occlusion and a soft top light, at six bits a channel.
+- **Admission.** `scripts/blender/character_admit.py` writes each variant's
+  `.gltf`, `.bin`, and `.png` with the base rig's own joint nodes and inverse
+  binds, checks the budgets and weights, and writes `manifest.json`
+  (`openagents.verse.character-sources.v1`). `crates/verse-content`'s
+  `characters::alice` imports a variant and gives her every Universal clip.
+- **Placement.** The Everglade pack carries `lod1` as the form `npc/alice`
+  (the format needs no new section). `everglade::npcs` stands her idle west
+  of the approach, at (-4.6, -21.6), turned toward arrivals, in a 0.6 m block
+  of the solids. She has no dialogue or behavior yet.
+
+| Variant | Triangles | Budget | Atlas |
+| --- | ---: | ---: | --- |
+| `lod0` (chamber) | 17,628 | 24,000 | 1024 |
+| `lod1` (Everglade pack) | 14,173 | 16,000 | 512 |
+| `lod2` (phone, once packs split) | 6,390 | 10,000 | 256 |
+| `lod3` (distant, once skinned levels of detail exist) | 2,585 | 3,000 | 256 |
+
+She adds 0.41 MB to the Everglade pack, so its committed budget rose from
+42.0 MB to 42.4 MB (`Limits::EVERGLADE`). To rebuild and review her:
+
+```sh
+B=/Applications/Blender.app/Contents/MacOS/Blender
+for v in lod0 lod1 lod2 lod3; do $B -b --factory-startup --python scripts/blender/alice.py -- $v; done
+python3 scripts/blender/character_admit.py
+$B -b --factory-startup --python scripts/blender/alice_views.py -- assets/verse/characters/original/alice/alice.lod0.glb OUT_DIR
+```
+
+`alice_views.py` renders the turnaround, a turntable, face close-ups,
+silhouettes beside the Ranger, and the Universal clips that stress each
+joint.
+
+### Lessons from Echo's face
+
+The first face, a lofted ellipsoid with painted decals, read as a flat
+mask. Echo's asset names (Valley of the Ancient, studied in Reference mode
+only) show how a game face is assembled, and Alice now follows the same
+construction with none of Echo's likeness:
+
+- separate eyeballs (`M_EyeL`, `M_EyeR`, `FACIAL_L_Eye`) set into sockets
+  under a brow ridge, with lids (`FACIAL_L_EyelidUpper`, `_Lower`) rather
+  than eyes painted on skin;
+- the eye's layers: an occlusion shell (`M_EyeBlend`), a wet tear line
+  (`M_EyeWet`, `M_Lacrimal`), and lashes (`M_EyeLashes`), which at our scale
+  become the baked shadow in the sockets and the lids' dark lash line;
+- a jaw and teeth as their own parts (`FACIAL_C_Jaw`, `M_Teeth`), with lips
+  that close over them in an upper and a lower volume;
+- brows as their own layer (`MI_EchoGroom_eyebrow`);
+- proportions: the eye line at half the head's height, eyes about one eye
+  width apart, a defined nose bridge and tip, a philtrum, and a chin and jaw
+  that are planes, not a cone.
 
 ## Mode and the Echo rule
 
@@ -355,6 +448,10 @@ feel: land, sprint, hit react, and a start and stop lean.
 
 ## Selecting her
 
+Alice herself is not selectable (see [Alice, the first build](#alice-the-first-build)).
+This section applies to the later female player character built from her
+parts.
+
 Today the player model is fixed: the chamber takes `--appearance` (default
 `male-ranger`), and Everglade packs `PLAYER_APPEARANCE`, a constant set to
 `male-ranger`. To make her a choice:
@@ -433,6 +530,10 @@ Phase 8 is engine work that improves every character and can run in
 parallel with phases 2 to 5.
 
 ## Open questions
+
+Alice answered the name (Alice), and took defaults for the role, hair,
+palette, and clips; she is an NPC, so question 4 applies to the later player
+character. Her role in the world is the owner's to specify.
 
 1. Which role: explorer, druid, or the recommended explorer-druid?
 2. What's her name? The working ID is `wayfarer`.
