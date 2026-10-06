@@ -3004,6 +3004,13 @@ fn sharing_requires_confirmation_and_never_sends_ui_text_to_the_shell() {
     assert_eq!(transport.sharing.lock().unwrap().len(), 1);
     key.synthetic = false;
     app.key(&key);
+    assert!(!app.sharing.view.as_ref().unwrap().paused);
+    assert!(
+        app.sharing
+            .lines()
+            .iter()
+            .any(|line| line.contains("No change is confirmed"))
+    );
     assert_eq!(
         transport.sharing.lock().unwrap().as_slice(),
         &[
@@ -3013,4 +3020,20 @@ fn sharing_requires_confirmation_and_never_sends_ui_text_to_the_shell() {
     );
     app.paper_paste("/drive abc 123\n");
     assert!(transport.input.lock().unwrap().is_empty());
+    app.sharing_tick();
+    app.paper.input = format!("/watch {} 123", "b".repeat(64));
+    key.pressed = false;
+    app.key(&key);
+    key.pressed = true;
+    app.key(&key);
+    app.key(&key);
+    assert_eq!(transport.sharing.lock().unwrap().len(), 2);
+    key.pressed = false;
+    app.key(&key);
+    key.pressed = true;
+    app.key(&key);
+    assert!(matches!(
+        transport.sharing.lock().unwrap().last(),
+        Some(crate::sharing::Action::Issue { .. })
+    ));
 }

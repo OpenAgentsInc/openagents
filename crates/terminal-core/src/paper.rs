@@ -1723,7 +1723,6 @@ impl Application {
     /// Follows the shell: new blocks, finished blocks, the command table,
     /// and the git summary; starts a queued question when the last ends.
     pub fn paper_tick(&mut self) {
-        self.sharing_tick();
         let transport = self.studio_transport.clone();
         self.paper.studio.poll(transport.as_ref());
         self.paper_thread_read();
@@ -2403,7 +2402,7 @@ impl Application {
         } else {
             cwd
         };
-        let first = if self.sharing.view.is_some() && self.sharing.pane == self.paper_pane() {
+        let first = if self.sharing.active() && self.sharing.pane == self.paper_pane() {
             self.sharing.marker()
         } else {
             format!("DIR {cwd}{tail}")

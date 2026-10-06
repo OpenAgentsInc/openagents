@@ -481,7 +481,7 @@ impl Overlay {
             if let Some(typist) = &pane.typist {
                 title = format!("{title}  [driven by {typist}; any key takes it back]");
             }
-            if self.core.sharing.pane == Some(id) && self.core.sharing.view.is_some() {
+            if self.core.sharing.pane == Some(id) && self.core.sharing.active() {
                 title = format!("{title}  [{}]", self.core.sharing.marker());
             }
             let mut detail = pane.session.cwd.clone().unwrap_or_default();

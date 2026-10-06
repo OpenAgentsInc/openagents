@@ -564,3 +564,12 @@ terminal was lost. Approving pending proposals from the phone is #10745.
   authorize one fixed invoice, payer, worker destination, fee cap, and spend
   limit; retain central receive/share/payout and both wallet receipts, including
   unknown-outcome recovery. No funded worker scenario has run.
+## Terminal sharing controls (#10681)
+
+On the Mac standalone terminal and the Verse terminal, connect to an enrolled
+resident host and press F17. Issue future-output watch and drive shares to two
+devices, privately deliver the copied sealed authorization, and confirm the
+viewer and typist markers. Pause and confirm both recipient panes blank;
+resume and confirm a gap without paused output; revoke and confirm both detach.
+The scratch host checks the sharing protocol and privacy cuts. Physical native
+presentation, clipboard delivery, and device interaction remain unverified.

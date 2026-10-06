@@ -22,6 +22,30 @@ pub enum Action {
     Revoke(Option<String>),
 }
 
+impl Action {
+    fn confirmation(&self) -> String {
+        match self {
+            Self::Read => "Refresh the private viewer list.".into(),
+            Self::Issue {
+                grantee,
+                mode,
+                expires_at,
+            } => format!(
+                "Share future output with {grantee} in {} mode until {expires_at}.",
+                if *mode == ShareMode::Watch {
+                    "watch"
+                } else {
+                    "drive"
+                }
+            ),
+            Self::Pause(true) => "Pause sharing and blank every recipient pane.".into(),
+            Self::Pause(false) => "Resume sharing with a gap; paused output stays hidden.".into(),
+            Self::Revoke(Some(share)) => format!("Revoke {share} and detach its recipients."),
+            Self::Revoke(None) => "Revoke all shares and detach their recipients.".into(),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Page {
     pub open: bool,
@@ -33,15 +57,28 @@ pub struct Page {
     pub authorization: Option<String>,
     pending: Option<Receiver<Result<Value, String>>>,
     last_read: Option<Instant>,
+    last_seen: Option<Instant>,
+    supported: bool,
+    enter_down: bool,
 }
 
 impl Page {
+    pub fn active(&self) -> bool {
+        self.view.as_ref().is_some_and(|view| {
+            view.paused || !view.shares.is_empty() || view.viewers.len() > 1 || view.agent.is_some()
+        })
+    }
     pub fn marker(&self) -> String {
         match &self.view {
             None => "SHARING unknown (F17)".into(),
             Some(view) => format!(
                 "SHARING {} | {} viewers | {} shares | typist {} (F17)",
-                if view.paused {
+                if self
+                    .last_seen
+                    .is_some_and(|time| time.elapsed() > Duration::from_secs(5))
+                {
+                    "STALE"
+                } else if view.paused {
                     "PAUSED"
                 } else if view.shares.is_empty() {
                     "off"
@@ -50,10 +87,14 @@ impl Page {
                 },
                 view.viewers.len(),
                 view.shares.len(),
-                view.viewers
-                    .iter()
-                    .find(|v| v.typist)
-                    .map(|v| v.device.as_str())
+                view.agent
+                    .as_ref()
+                    .map(|agent| agent.agent.as_str())
+                    .or_else(|| view
+                        .viewers
+                        .iter()
+                        .find(|v| v.typist)
+                        .map(|v| v.device.as_str()))
                     .unwrap_or("none")
             ),
         }
@@ -88,7 +129,10 @@ impl Page {
         if let Some(action) = &self.confirmation {
             lines.insert(
                 2,
-                format!("CONFIRM {:?}. Enter sends once; Escape cancels.", action),
+                format!(
+                    "CONFIRM {} Enter sends once; Escape cancels.",
+                    action.confirmation()
+                ),
             );
         }
         if self.pending.is_some() {
@@ -118,7 +162,10 @@ impl Application {
             .and_then(|id| self.panes.get(&id))
             .and_then(|pane| pane.session.sharing(action));
         match reply {
-            Some(reply) => self.sharing.pending = Some(reply),
+            Some(reply) => {
+                self.sharing.supported = true;
+                self.sharing.pending = Some(reply);
+            }
             None => {
                 self.sharing.notice =
                     Some("This attachment does not support owner sharing controls.".into())
@@ -126,9 +173,22 @@ impl Application {
         }
     }
     pub fn sharing_tick(&mut self) {
+        if !self.sharing.open
+            && self.sharing.pending.is_none()
+            && self.sharing.pane != self.paper_pane()
+        {
+            self.sharing = Page {
+                pane: self.paper_pane(),
+                ..Page::default()
+            };
+            if self.sharing.pane.is_some() {
+                self.sharing_send(Action::Read);
+            }
+        }
         let Some(reply) = &self.sharing.pending else {
             if self.sharing.pane == self.paper_pane()
                 && self.sharing.pane.is_some()
+                && self.sharing.supported
                 && self.sharing.confirmation.is_none()
                 && self
                     .sharing
@@ -150,6 +210,7 @@ impl Application {
         match result {
             Ok(Value::Viewers { viewers }) => {
                 self.sharing.view = Some(viewers);
+                self.sharing.last_seen = Some(Instant::now());
                 self.sharing.notice = None;
             }
             Ok(Value::Shared { authorization, .. }) => {
@@ -182,6 +243,7 @@ impl Application {
                     return true;
                 }
                 self.paper.on = true;
+                self.mouse = crate::mouse::Mouse::default();
                 self.sharing = Page {
                     open: true,
                     pane: self.paper_pane(),
@@ -193,6 +255,16 @@ impl Application {
         }
         if !self.sharing.open {
             return false;
+        }
+        if matches!(key.code, KeyCode::Enter | KeyCode::NumpadEnter) {
+            if !key.pressed {
+                self.sharing.enter_down = false;
+                return true;
+            }
+            if key.repeat || key.synthetic || self.sharing.enter_down {
+                return true;
+            }
+            self.sharing.enter_down = true;
         }
         if !key.pressed || key.repeat || key.synthetic {
             return true;
@@ -216,6 +288,9 @@ impl Application {
             return true;
         }
         if matches!(key.code, KeyCode::Enter | KeyCode::NumpadEnter) {
+            if self.sharing.pending.is_some() {
+                return true;
+            }
             if let Some(action) = self.sharing.confirmation.take() {
                 self.sharing_send(action);
             } else {
@@ -233,7 +308,9 @@ impl Application {
         }
         if let Logical::Character(text) = &key.logical {
             if self.paper.input.is_empty() && text.eq_ignore_ascii_case("c") {
-                self.copied = self.sharing.authorization.clone();
+                if let Some(authorization) = self.sharing.authorization.clone() {
+                    self.set_clipboard(authorization);
+                }
             } else if self.paper.input.is_empty() && text.eq_ignore_ascii_case("p") {
                 if let Some(view) = &self.sharing.view {
                     self.sharing.confirmation = Some(Action::Pause(!view.paused));

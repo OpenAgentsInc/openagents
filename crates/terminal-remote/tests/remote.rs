@@ -145,6 +145,51 @@ done
         }
         reference = session.reference();
         assert!(reference.is_some());
+        if label == "Standalone" {
+            use coder_pty::{share::ShareMode, wire::Value};
+            use terminal_core::sharing::Action;
+            let share = |action| {
+                session
+                    .sharing(action)
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(20))
+                    .unwrap()
+                    .unwrap()
+            };
+            let grantee = pubkey(&SecretKey::new(&mut secp256k1::rand::rng()));
+            let Value::Shared {
+                grant,
+                authorization,
+            } = share(Action::Issue {
+                grantee: grantee.clone(),
+                mode: ShareMode::Watch,
+                expires_at: coder_host::unix_time().unwrap() + 600,
+            })
+            else {
+                panic!("share acknowledgment")
+            };
+            assert_eq!(grant.grantee, grantee);
+            assert!(!authorization.is_null());
+            let Value::Viewers { viewers } = share(Action::Read) else {
+                panic!("viewer page")
+            };
+            assert_eq!(viewers.shares.len(), 1);
+            assert_eq!(viewers.viewers.len(), 1);
+            assert!(!viewers.paused);
+            assert_eq!(share(Action::Pause(true)), Value::Done);
+            let Value::Viewers { viewers } = share(Action::Read) else {
+                panic!("paused viewer page")
+            };
+            assert!(viewers.paused);
+            assert_eq!(share(Action::Pause(false)), Value::Done);
+            assert_eq!(share(Action::Revoke(Some(grant.share))), Value::Done);
+            let Value::Viewers { viewers } = share(Action::Read) else {
+                panic!("reconciled viewer page")
+            };
+            assert!(!viewers.paused);
+            assert!(viewers.shares.is_empty());
+        }
+
         if label == "Verse" {
             let deadline = Instant::now() + Duration::from_secs(5);
             while !session.journal.as_ref().is_some_and(|page| {

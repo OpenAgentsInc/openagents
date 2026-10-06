@@ -137,6 +137,9 @@ impl Overlay {
     /// A mouse button at `point` in pixels. Returns whether it was the
     /// overlay's; when it was, the world must not see it.
     pub fn button(&mut self, button: Button, pressed: bool, point: [f32; 2]) -> bool {
+        if self.sharing.open && self.open && self.bounds().contains(point) {
+            return true;
+        }
         if !pressed {
             return self.lift(button, point);
         }
@@ -287,7 +290,9 @@ impl Overlay {
         if self.paper.on && self.open {
             // The sheet scrolls its transcript, a whole line at a time.
             let step = lines.round() as isize;
-            if self.paper.studio.open {
+            if self.sharing.open {
+                self.sharing.scroll = self.sharing.scroll.saturating_add_signed(-step);
+            } else if self.paper.studio.open {
                 self.paper.studio.scroll = self.paper.studio.scroll.saturating_add_signed(-step);
             } else {
                 self.paper.scroll = self.paper.scroll.saturating_add_signed(step);

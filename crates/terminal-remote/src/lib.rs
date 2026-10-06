@@ -154,6 +154,28 @@ struct RemoteAttachment {
     phase: Option<String>,
 }
 impl Attachment for RemoteAttachment {
+    fn sharing(
+        &self,
+        action: terminal_core::sharing::Action,
+    ) -> Option<mpsc::Receiver<Result<coder_pty::wire::Value, String>>> {
+        use coder_computers::terminal::session::SharingCommand;
+        use terminal_core::sharing::Action;
+        Some(self.session.owner_sharing(match action {
+            Action::Read => SharingCommand::Read,
+            Action::Issue {
+                grantee,
+                mode,
+                expires_at,
+            } => SharingCommand::Issue {
+                grantee,
+                mode,
+                expires_at,
+            },
+            Action::Pause(paused) => SharingCommand::Pause(paused),
+            Action::Revoke(share) => SharingCommand::Revoke(share),
+        }))
+    }
+
     fn host_grid(&self) -> bool {
         true
     }

@@ -447,6 +447,9 @@ impl Attachment for LocalAttachment {
     ) -> Option<std::sync::mpsc::Receiver<Result<Value, String>>> {
         use coder_pty::share::{SharePause, ShareRequest, Unshare, ViewersRead};
         use terminal_core::sharing::Action;
+        if !self.host.features().shares {
+            return None;
+        }
         let result = match action {
             Action::Read => self.host.viewers(
                 PRINCIPAL,

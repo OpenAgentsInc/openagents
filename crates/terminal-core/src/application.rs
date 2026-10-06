@@ -1234,6 +1234,7 @@ impl Application {
             }
         }
         self.smart_tick();
+        self.sharing_tick();
         self.report_focus();
         if self.paper.on {
             // The sheet's transcript region is the program's whole grid.

@@ -70,7 +70,24 @@ const RETRY: Duration = Duration::from_secs(1);
 /// generation before it reports its new terminal lost.
 const GENERATION_TRIES: u32 = 10;
 
+/// One private owner sharing operation. Mutations are never queued for reconnect.
+#[derive(Clone, Debug)]
+pub enum SharingCommand {
+    Read,
+    Issue {
+        grantee: String,
+        mode: coder_host::pty::share::ShareMode,
+        expires_at: u64,
+    },
+    Pause(bool),
+    Revoke(Option<String>),
+}
+
 enum Command {
+    Sharing {
+        action: SharingCommand,
+        answer: std::sync::mpsc::Sender<Result<Value, String>>,
+    },
     LeaveWait(std::sync::mpsc::Sender<()>),
     OwnerProposal {
         action: coder_host::pty::proposal::Action,
@@ -174,6 +191,20 @@ impl Session {
             let _ = self
                 .commands
                 .send(Command::OwnerProposal { action, answer });
+        }
+        receive
+    }
+
+    /// Sends one sharing operation and confirms only the host's exact reply.
+    pub fn owner_sharing(
+        &self,
+        action: SharingCommand,
+    ) -> std::sync::mpsc::Receiver<Result<Value, String>> {
+        let (answer, receive) = std::sync::mpsc::channel();
+        if self.model().phase != Phase::Attached {
+            let _ = answer.send(Err("The terminal is offline. Nothing was sent.".into()));
+        } else {
+            let _ = self.commands.send(Command::Sharing { action, answer });
         }
         receive
     }
@@ -1079,6 +1110,43 @@ async fn handle(
             let _ = answer.send(());
             Some(Next::Stop(Stop::Left))
         }
+        Command::Sharing { action, answer } => {
+            use coder_host::pty::share::{SharePause, ShareRequest, Unshare, ViewersRead};
+            let operation = match action {
+                SharingCommand::Read => {
+                    TermRequest::Viewers(ViewersRead::new(new_id(), reference.clone()))
+                }
+                SharingCommand::Issue {
+                    grantee,
+                    mode,
+                    expires_at,
+                } => TermRequest::Share(ShareRequest::new(
+                    new_id(),
+                    reference.clone(),
+                    grantee,
+                    mode,
+                    expires_at,
+                )),
+                SharingCommand::Pause(paused) => {
+                    TermRequest::SharePause(SharePause::new(new_id(), reference.clone(), paused))
+                }
+                SharingCommand::Revoke(Some(share)) => {
+                    TermRequest::Unshare(Unshare::one(new_id(), reference.clone(), share))
+                }
+                SharingCommand::Revoke(None) => {
+                    TermRequest::Unshare(Unshare::all(new_id(), reference.clone()))
+                }
+            };
+            let result = match request(link, operation).await {
+                Ok(result) if result.status != Status::Refused => result
+                    .value
+                    .ok_or_else(|| "The host's sharing reply had no value.".into()),
+                Ok(result) => Err(format!("The host refused sharing: {:?}.", result.reason)),
+                Err(_) => Err("The sharing change is unknown. Refresh before acting again.".into()),
+            };
+            let _ = answer.send(result);
+            None
+        }
         Command::OwnerProposal { mut action, answer } => {
             use coder_host::pty::proposal::{Action, Request};
             if exited || lock(model).watch {
@@ -1682,5 +1750,36 @@ mod tests {
                 ..
             })
         ));
+    }
+    #[test]
+    fn sharing_mutations_are_refused_offline_and_are_not_replayed() {
+        let mut model = Model::new("a".repeat(64), "Scratch host", 24, 80);
+        model.phase = Phase::Reconnecting;
+        let (commands, mut received) = mpsc::unbounded_channel();
+        let session = Session {
+            model: Arc::new(Mutex::new(model)),
+            commands,
+        };
+        assert!(
+            session
+                .owner_sharing(SharingCommand::Pause(true))
+                .recv()
+                .unwrap()
+                .is_err()
+        );
+        assert!(received.try_recv().is_err());
+        session.model().phase = Phase::Attached;
+        let reply = session.owner_sharing(SharingCommand::Pause(true));
+        let command = received.try_recv().unwrap();
+        assert!(matches!(
+            command,
+            Command::Sharing {
+                action: SharingCommand::Pause(true),
+                ..
+            }
+        ));
+        drop(command);
+        assert!(reply.recv().is_err());
+        assert!(received.try_recv().is_err());
     }
 }
