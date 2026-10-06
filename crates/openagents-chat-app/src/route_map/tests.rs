@@ -381,8 +381,16 @@ fn route_gaps_from_the_sources() {
     assert!(
         matches!(&unanswered.step, NextStep::Command { command, .. } if command.starts_with("microcoder kb add"))
     );
-    // Every route is in the committed per-route record.
-    assert!(!kinds(&map).contains(&GapKind::RouteUnmeasured));
+    // Every route is in the committed per-route record except
+    // `standing.rule` (#10157), which the router gained after the
+    // 2026-10-01 record; the map names it until a new record measures it.
+    let unmeasured: Vec<&str> = map
+        .gaps
+        .iter()
+        .filter(|gap| gap.kind == GapKind::RouteUnmeasured)
+        .map(|gap| map.nodes[gap.node].id.as_str())
+        .collect();
+    assert_eq!(unmeasured, ["route:standing.rule"]);
 
     let mut sources = Sources::committed();
     sources.measurement.routes.insert(
