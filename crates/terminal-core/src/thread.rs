@@ -49,6 +49,28 @@ pub struct Thread {
     pub failure: Option<String>,
     #[serde(default)]
     pub turns: Vec<Turn>,
+    /// The Coder run the thread started, when it started one.
+    #[serde(default)]
+    pub coder: Option<Link>,
+}
+
+/// A thread's Coder run: its task ID and the host it runs on (`local` is
+/// this computer).
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct Link {
+    pub host: String,
+    pub task: String,
+}
+
+impl Page {
+    /// The run the shown thread started, when it started one.
+    #[must_use]
+    pub fn run(&self) -> Option<&Link> {
+        match &self.shown {
+            Some(Ok(thread)) => thread.coder.as_ref(),
+            _ => None,
+        }
+    }
 }
 
 /// Why a thread could not be shown.
@@ -190,6 +212,16 @@ pub fn lines(page: &Page) -> Vec<(String, crate::paper::Tone)> {
         format!("TTY: openagents chat read --thread {}", ascii(id)),
         Tone::Quiet,
     ));
+    if let Some(link) = page.run() {
+        out.push((
+            format!(
+                "RUN {} on {}: F9 shows it",
+                ascii(&link.task),
+                ascii(&link.host)
+            ),
+            Tone::Present,
+        ));
+    }
     out.push((String::new(), Tone::Quiet));
     match &page.shown {
         None => out.push(("Reading the thread...".into(), Tone::Quiet)),

@@ -26,6 +26,15 @@ struct Fake {
     thread: Mutex<Option<Vec<u8>>>,
     /// Every thread read asked for.
     reads: Mutex<Vec<String>>,
+    /// What the task owner answers to viewing a run: stdout and stderr.
+    run: Mutex<Option<(Vec<u8>, Vec<u8>)>>,
+    /// Every run read asked for.
+    run_reads: Mutex<Vec<String>>,
+    /// The task status a command's receipt names; none leaves the outcome
+    /// unknown.
+    receipt: Mutex<Option<String>>,
+    /// Every task command sent: its verb and exact bytes.
+    commands: Mutex<Vec<(String, Vec<u8>)>>,
 }
 struct Pane {
     bridge: bool,
@@ -131,6 +140,40 @@ impl Transport for Fake {
         let (sender, receiver) = mpsc::channel();
         let answer = self.thread.lock().unwrap().clone().unwrap_or_default();
         sender.send(crate::thread::decode(&answer, thread)).unwrap();
+        receiver
+    }
+    fn read_run(&self, task: &str) -> mpsc::Receiver<crate::run::Read> {
+        self.run_reads.lock().unwrap().push(task.to_owned());
+        let (sender, receiver) = mpsc::channel();
+        let (stdout, stderr) = self.run.lock().unwrap().clone().unwrap_or_default();
+        sender
+            .send(crate::run::decode(&stdout, &stderr, task))
+            .unwrap();
+        receiver
+    }
+    fn task_command(&self, verb: &str, bytes: &[u8]) -> mpsc::Receiver<crate::run::Sent> {
+        self.commands
+            .lock()
+            .unwrap()
+            .push((verb.to_owned(), bytes.to_vec()));
+        let command: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+        let (sender, receiver) = mpsc::channel();
+        let answer = match self.receipt.lock().unwrap().clone() {
+            Some(status) => {
+                let receipt = serde_json::json!({
+                    "command_id": command["command_id"],
+                    "task_id": command["task_id"],
+                    "status": status,
+                });
+                crate::run::decode_receipt(
+                    receipt.to_string().as_bytes(),
+                    b"",
+                    command["command_id"].as_str().unwrap(),
+                )
+            }
+            None => crate::run::Sent::Unknown("the task owner did not answer in time".into()),
+        };
+        sender.send(answer).unwrap();
         receiver
     }
     fn open_link(&self, _: &str) -> Result<(), String> {
@@ -1151,4 +1194,307 @@ fn a_thread_read_answers_only_for_the_thread_asked() {
         decode(&vec![b' '; crate::thread::READ_MAX + 1], "t1"),
         Err(Unread::Unavailable(why)) if why.contains("too large")
     ));
+}
+
+/// A run as `openagents --json task view` answers it.
+fn run_view(task: &str, adapter: &str, status: &str, evidence: serde_json::Value) -> Vec<u8> {
+    let ended = !matches!(status, "running" | "queued" | "cancel_requested");
+    serde_json::json!({
+        "schema": "openagents.coder.task-view.v1",
+        "task": {
+            "task_id": task,
+            "revision": 3,
+            "intent": {
+                "title": "Greet the studio",
+                "prompt": "Greet with Hello, studio",
+                "workspace": {"path": "/test/work", "source_revision": null},
+                "configuration": {"adapter": adapter, "model": "gpt-6-luna"},
+            },
+            "intent_digest": "d",
+            "status": status,
+            "execution": if ended { "finished" } else { "running" },
+            "checks": "not_run",
+            "cancellation_reason": null,
+            "run": if ended {
+                serde_json::json!({"epoch": 1, "result": {"ending": "completed", "exit_code": 0,
+                    "stop_requested": false, "group_clear": true, "elapsed_ms": 4200,
+                    "trace_digest": "t", "candidate_snapshot": null, "artifact_file": null,
+                    "artifact_digest": null, "output_incomplete": false, "cost_status": "unknown"}})
+            } else {
+                serde_json::json!({"epoch": 1, "result": null})
+            },
+        },
+        "evidence": evidence,
+        "artifacts": null,
+        "artifact_error": null,
+        "artifact_faults": [],
+        "verification": "not_run",
+        "integration": "not_attempted",
+        "cost_usd": null,
+        "cost_status": "unknown",
+    })
+    .to_string()
+    .into_bytes()
+}
+
+#[test]
+fn the_run_page_shows_recorded_children_and_steers_and_cancels_the_original_task() {
+    use crate::input::{KeyCode, NamedKey};
+    let transport = Arc::new(Fake {
+        bridge: true,
+        ..Fake::default()
+    });
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.paper.on = true;
+    app.toggle();
+    app.ensure_started();
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b]7;file:///test/work\x07\x1b]133;A\x07$ \x1b]133;B\x07".to_vec());
+    app.tick();
+    let sheet = |app: &mut Application| app.paper_sheet(120, 40, "12:00:00", "0.50");
+    let key = |app: &mut Application, named: NamedKey| press(app, KeyCode::Unidentified, named);
+
+    // F9 before any question names no run, and reads nothing.
+    key(&mut app, NamedKey::F9);
+    assert!(!app.paper.run.open);
+    assert!(transport.run_reads.lock().unwrap().is_empty());
+
+    app.paper_ask("greet the studio");
+    app.tick();
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    let thread = transport.requests.lock().unwrap()[0].thread.clone();
+    let linked = |host: &str| {
+        serde_json::json!({
+            "thread": thread, "title": "Greeting", "busy": false, "failure": null,
+            "turns": [{"role": "user", "text": "greet the studio"}],
+            "coder": {"host": host, "task": "task-1"}, "coder_turns": [],
+        })
+        .to_string()
+        .into_bytes()
+    };
+    *transport.thread.lock().unwrap() = Some(linked("local"));
+    let spawning = serde_json::json!({
+        "state": "unsealed", "total_steps": 3, "more_available": false, "faults": [],
+        "steps": [
+            {"at": 1, "source": "user", "message": "Greet with Hello, studio"},
+            {"at": 2, "source": "agent", "message": "Splitting the work.",
+             "call": {"id": "c1", "name": "spawn_agent", "arguments": {"task": "docs"},
+                      "output": "", "outcome": "completed", "milliseconds": 5,
+                      "extra": {"subagent_trajectory_ref": [{"session_id": "child-7"}]}}},
+            {"at": 3, "source": "agent", "message": "**Wrote** `greeting.txt`.",
+             "call": {"id": "c2", "name": "shell", "arguments": {"command": "ls"},
+                      "output": "greeting.txt", "outcome": "completed", "milliseconds": 5}},
+        ],
+    });
+    *transport.run.lock().unwrap() = Some((
+        run_view(
+            "task-1",
+            "microcoder-repository",
+            "running",
+            spawning.clone(),
+        ),
+        Vec::new(),
+    ));
+
+    // F9 reads the conversation for its run first, then shows the run.
+    key(&mut app, NamedKey::F9);
+    assert!(app.paper.thread.open && !app.paper.run.open);
+    app.tick();
+    assert!(
+        sheet(&mut app)
+            .text()
+            .contains("RUN task-1 on local: F9 shows it")
+    );
+    key(&mut app, NamedKey::F9);
+    assert!(app.paper.run.open);
+    app.tick();
+    let page = sheet(&mut app);
+    let text = page.text();
+    for row in 0..40 {
+        let row_text = page.row_text(row);
+        assert_eq!(row_text.len(), 120, "row {row}: {row_text:?}");
+        assert!(
+            row_text.chars().all(|c| (' '..='~').contains(&c)),
+            "row {row}"
+        );
+    }
+    assert!(text.contains("RUN Greet the studio  (task-1, revision 3)"));
+    assert!(text.contains(
+        "STATUS running  EXECUTION running  CHECKS not run  ENGINE microcoder-repository gpt-6-luna"
+    ));
+    assert!(text.contains("CHILD at step 2: session child-7"));
+    assert!(text.contains("TOOL spawn_agent (completed)"));
+    assert!(text.contains("3 AGENT: Wrote greeting.txt."));
+    assert!(text.contains("CONTROLS ENTER steers with the line, F7 cancels the run"));
+    assert!(page.row_text(37).starts_with("| STEER > "));
+    assert!(page.row_text(39).starts_with(crate::paper::RUN_KEYS));
+    assert_eq!(transport.run_reads.lock().unwrap().as_slice(), ["task-1"]);
+
+    // F7 arms the cancel; REJECT drops it and sends nothing.
+    key(&mut app, NamedKey::F7);
+    assert!(
+        sheet(&mut app)
+            .row_text(37)
+            .starts_with("| CONFIRM? cancel run task-1")
+    );
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(app.paper.run.open && app.paper.run.command.is_none());
+    assert!(transport.commands.lock().unwrap().is_empty());
+
+    // CONFIRM sends it once, to the original task at the revision read.
+    *transport.receipt.lock().unwrap() = Some("cancel_requested".into());
+    key(&mut app, NamedKey::F7);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    {
+        let commands = transport.commands.lock().unwrap();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].0, "cancel");
+        let command: serde_json::Value = serde_json::from_slice(&commands[0].1).unwrap();
+        assert_eq!(command["schema"], crate::run::COMMAND_SCHEMA);
+        assert_eq!(command["task_id"], "task-1");
+        assert_eq!(command["expected_revision"], 3);
+        assert_eq!(command["action"]["type"], "cancel");
+    }
+    *transport.run.lock().unwrap() = Some((
+        run_view(
+            "task-1",
+            "microcoder-repository",
+            "cancel_requested",
+            spawning.clone(),
+        ),
+        Vec::new(),
+    ));
+    app.tick();
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("accepted; the task is cancel requested"));
+    assert!(text.contains("CANCEL requested; the run has not acknowledged it yet"));
+
+    // A steer whose outcome is unknown is sent again as the same command.
+    *transport.receipt.lock().unwrap() = None;
+    typing(&mut app, "use the plain greeting");
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert!(
+        sheet(&mut app)
+            .row_text(37)
+            .starts_with("| CONFIRM? steer run task-1")
+    );
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    assert!(sheet(&mut app).text().contains("outcome unknown"));
+    *transport.receipt.lock().unwrap() = Some("running".into());
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    {
+        let commands = transport.commands.lock().unwrap();
+        assert_eq!(commands.len(), 3);
+        assert_eq!(commands[1].0, "correct");
+        assert_eq!(commands[1], commands[2]);
+        let command: serde_json::Value = serde_json::from_slice(&commands[1].1).unwrap();
+        assert_eq!(command["action"]["prompt"], "use the plain greeting");
+    }
+
+    // REJECT returns to the conversation; reopening only reads.
+    app.tick();
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(!app.paper.run.open && app.paper.thread.open);
+    key(&mut app, NamedKey::F9);
+    app.tick();
+    assert_eq!(transport.commands.lock().unwrap().len(), 3);
+    assert_eq!(transport.requests.lock().unwrap().len(), 1);
+
+    // Another adapter's ended run with a missing trace: the linkage is
+    // unknown, and no control is offered.
+    *transport.run.lock().unwrap() = Some((
+        run_view(
+            "task-1",
+            "opencode",
+            "finished",
+            serde_json::json!({"state": "missing", "total_steps": 0, "more_available": false, "steps": []}),
+        ),
+        Vec::new(),
+    ));
+    key(&mut app, NamedKey::F9);
+    key(&mut app, NamedKey::F9);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("ENGINE opencode gpt-6-luna"));
+    assert!(text.contains("CHILDREN unknown: the trace is missing"));
+    assert!(text.contains("ENDED completed  exit 0  4.2 s"));
+    assert!(text.contains("CONTROLS none"));
+    key(&mut app, NamedKey::F7);
+    assert!(
+        app.paper
+            .run
+            .command
+            .as_ref()
+            .is_none_or(|c| c.verb == "correct")
+    );
+    assert!(
+        sheet(&mut app)
+            .text()
+            .contains("LAST This run offers no controls here.")
+    );
+    assert_eq!(transport.commands.lock().unwrap().len(), 3);
+
+    // A run the task store does not keep is missing.
+    *transport.run.lock().unwrap() = Some((
+        Vec::new(),
+        br#"{"error":{"code":"not_found","message":"task not found"}}"#.to_vec(),
+    ));
+    key(&mut app, NamedKey::F9);
+    key(&mut app, NamedKey::F9);
+    app.tick();
+    assert!(sheet(&mut app).text().contains("RUN task-1  [missing]"));
+
+    // A run on another host is neither read nor controlled here.
+    *transport.thread.lock().unwrap() = Some(linked("studio-mac"));
+    let reads = transport.run_reads.lock().unwrap().len();
+    key(&mut app, NamedKey::F9);
+    key(&mut app, NamedKey::F4);
+    key(&mut app, NamedKey::F4);
+    app.tick();
+    key(&mut app, NamedKey::F9);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("RUN task-1 on host studio-mac"));
+    assert!(text.contains("CONTROLS none here"));
+    assert_eq!(transport.run_reads.lock().unwrap().len(), reads);
+}
+
+#[test]
+fn a_run_read_answers_only_for_the_run_asked() {
+    use crate::run::{Sent, Unread, decode, decode_receipt};
+    let evidence = serde_json::json!({"state": "sealed", "total_steps": 0, "steps": []});
+    let view = run_view("task-1", "opencode", "finished", evidence);
+    assert!(decode(&view, b"", "task-1").is_ok());
+    assert!(
+        matches!(decode(&view, b"", "task-2"), Err(Unread::Unavailable(why)) if why.contains("another run"))
+    );
+    assert!(matches!(
+        decode(b"", b"", "task-1"),
+        Err(Unread::Unavailable(_))
+    ));
+    assert_eq!(
+        decode(
+            b"",
+            br#"{"error":{"code":"store_busy","message":"busy"}}"#,
+            "task-1"
+        ),
+        Err(Unread::Unavailable("busy (store_busy)".into()))
+    );
+    assert_eq!(
+        decode_receipt(
+            b"",
+            br#"{"error":{"code":"revision_mismatch","message":"stale"}}"#,
+            "c"
+        ),
+        Sent::Refused("stale (revision_mismatch)".into())
+    );
+    assert_eq!(
+        decode_receipt(br#"{"command_id":"other","status":"cancelled"}"#, b"", "c"),
+        Sent::Unknown("the task owner's answer was not readable".into())
+    );
 }

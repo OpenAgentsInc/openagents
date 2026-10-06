@@ -24,6 +24,7 @@ pub mod paper;
 pub mod paste;
 pub mod pty;
 pub mod resources;
+pub mod run;
 pub mod select;
 pub mod smart;
 pub mod stats;

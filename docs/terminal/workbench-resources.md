@@ -132,6 +132,21 @@ answers only for the thread asked; a thread the client does not keep is
 refreshing only read, and ENTER on the page sends the line once, as the
 sheet's next question to that thread.
 
+The sheet draws a run natively too
+([#10660](https://github.com/OpenAgentsInc/openagents/issues/10660)): F9
+shows the Coder run the thread started (`terminal_core::run`), read from
+the task owner's own view, `openagents --json task view ID`. It shows the
+run's lifecycle, engine, checks, cost, artifacts, steps and tool calls, and
+only the child runs its trace records: a spawn call or a
+`subagent_trajectory_ref`. A trace that is missing or damaged leaves the
+linkage unknown. ENTER steers the run with the line and F7 cancels it, each
+after CONFIRM, through the owner's `task correct` and `task cancel`
+commands on the original task at the revision the page read. A command
+keeps its ID and exact bytes, so sending it again after an unknown outcome
+is a retry the owner deduplicates. A cancel the owner accepted shows as
+requested until the run acknowledges it. A run on another host is neither
+read nor controlled here, and an ended run offers no controls.
+
 ## Consumers
 
 `terminal-core` is the owner of a mount's local panes. The standalone

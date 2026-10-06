@@ -23,8 +23,12 @@ use std::collections::VecDeque;
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
-/// The key strip, always shown on the sheet's last row.
-pub const KEYS: &str = "F1 HELP  F2 CONTEXT  F3 COPY  F4 THREAD  F5 RUN AS SHELL  F6 ASK  F7 FIX  F8 PANES  F10 QUIT  ENTER CONFIRM  ESC REJECT  PGUP PGDN SCROLL";
+/// The key strip, always shown on the sheet's last row. It fits the
+/// sheet's 120 columns; PGUP and PGDN scroll beside the scroll bar.
+/// The key strip on the run page.
+pub const RUN_KEYS: &str = "F1 HELP  F7 CANCEL RUN  F9 RETURN  F10 QUIT  ENTER STEER OR CONFIRM  ESC REJECT OR RETURN  PGUP PGDN SCROLL";
+
+pub const KEYS: &str = "F1 HELP  F2 CONTEXT  F3 COPY  F4 THREAD  F5 SHELL  F6 ASK  F7 FIX  F8 PANES  F9 RUN  F10 QUIT  ENTER CONFIRM  ESC REJECT";
 
 const HELP: &[&str] = &[
     "HELP (F1 or ESC returns to the transcript)",
@@ -43,6 +47,9 @@ const HELP: &[&str] = &[
     "F7   after a command the shell did not find, put the closest command",
     "     on the input line, without running it; again for the next one",
     "F8   switch to panes and tabs; F8 there returns to this sheet",
+    "F9   show the Coder run the conversation started; F9 or ESC returns.",
+    "     There, ENTER steers it with the line and F7 cancels it; ENTER",
+    "     confirms either one and ESC rejects it",
     "F10  quit",
     "",
     "A proposed command waits in the transcript. ENTER on an empty input line",
@@ -171,6 +178,8 @@ pub struct Paper {
     pub warned: Option<String>,
     /// The conversation page (F4), drawn in place of the transcript.
     pub thread: crate::thread::Page,
+    /// The run page (F9), drawn in place of the transcript.
+    pub run: crate::run::Page,
     cache: Option<(u64, usize, usize, Vec<Line>)>,
 }
 
@@ -203,6 +212,7 @@ impl Default for Paper {
             quit: false,
             warned: None,
             thread: crate::thread::Page::default(),
+            run: crate::run::Page::default(),
             cache: None,
         }
     }
@@ -292,6 +302,14 @@ impl Application {
                 self.paper_thread_toggle();
                 return true;
             }
+            Some(NamedKey::F9) => {
+                self.paper_run_toggle();
+                return true;
+            }
+            Some(NamedKey::F7) if self.paper.run.open => {
+                self.paper_run_cancel();
+                return true;
+            }
             Some(NamedKey::F5) => {
                 let line = self.paper.input.trim().to_owned();
                 if !line.is_empty() && !self.paper_running() {
@@ -344,7 +362,9 @@ impl Application {
             }
             Some(NamedKey::PageUp) => {
                 let half = self.paper.grid.0 as usize / 2;
-                let scroll = if self.paper.thread.open {
+                let scroll = if self.paper.run.open {
+                    &mut self.paper.run.scroll
+                } else if self.paper.thread.open {
                     &mut self.paper.thread.scroll
                 } else {
                     &mut self.paper.scroll
@@ -354,7 +374,9 @@ impl Application {
             }
             Some(NamedKey::PageDown) => {
                 let half = self.paper.grid.0 as usize / 2;
-                let scroll = if self.paper.thread.open {
+                let scroll = if self.paper.run.open {
+                    &mut self.paper.run.scroll
+                } else if self.paper.thread.open {
                     &mut self.paper.thread.scroll
                 } else {
                     &mut self.paper.scroll
@@ -399,6 +421,34 @@ impl Application {
                 self.send(&bytes);
             }
             return true;
+        }
+        // On the run page, CONFIRM sends an armed command, and REJECT
+        // drops it or returns.
+        if self.paper.run.open {
+            let armed = self
+                .paper
+                .run
+                .command
+                .as_ref()
+                .is_some_and(|command| command.state == crate::run::Sent::Armed);
+            if key.code == KeyCode::Escape {
+                if armed {
+                    self.paper.run.command = None;
+                } else {
+                    self.paper.run.open = false;
+                }
+                return true;
+            }
+            if enter {
+                let line = self.paper.input.trim().to_owned();
+                if armed || line.is_empty() {
+                    self.paper_run_send();
+                } else {
+                    self.paper_take_line();
+                    self.paper_run_steer(&line);
+                }
+                return true;
+            }
         }
         // REJECT on the thread page returns to the transcript.
         if self.paper.thread.open && key.code == KeyCode::Escape {
@@ -520,6 +570,142 @@ impl Application {
             Some(Route::Ask) => self.paper_ask(&line),
             _ => self.paper_shell(&line),
         }
+    }
+
+    /// F9: shows the Coder run the conversation started, or returns.
+    fn paper_run_toggle(&mut self) {
+        if self.paper.run.open {
+            self.paper.run.open = false;
+            return;
+        }
+        if let Some(link) = self.paper.thread.run().cloned() {
+            self.paper.help = false;
+            self.paper.run.show(&link.task, &link.host);
+            self.paper_run_poll();
+            return;
+        }
+        let thread = self
+            .paper_pane()
+            .and_then(|pane| self.smart.threads.get(&pane).cloned());
+        match thread {
+            // The conversation's run is in the thread; read it first.
+            Some(thread) if !self.paper.thread.open || self.paper.thread.shown.is_none() => {
+                self.paper.help = false;
+                self.paper.thread.show(&thread);
+                self.paper_thread_read();
+                self.notice = Some("Reading the conversation; F9 again shows its run.".into());
+            }
+            Some(_) => {
+                self.notice = Some("This conversation started no Coder run.".into());
+            }
+            None => {
+                self.notice = Some("No conversation yet; ask OpenAgents something first.".into());
+            }
+        }
+    }
+
+    /// F7 on the run page: arms cancelling the run, or sends a command
+    /// whose outcome is unknown again, as the same command.
+    fn paper_run_cancel(&mut self) {
+        let page = &mut self.paper.run;
+        if let Some(command) = &mut page.command
+            && matches!(command.state, crate::run::Sent::Unknown(_))
+        {
+            command.state = crate::run::Sent::Armed;
+            return;
+        }
+        if !page.controls() {
+            self.notice = Some("This run offers no controls here.".into());
+            return;
+        }
+        if let (Some((task, _)), Some(Ok(run))) = (&page.task, &page.shown) {
+            page.command = Some(crate::run::Command::new(task, run.task.revision, None));
+        }
+    }
+
+    /// ENTER with a line on the run page: arms steering the run with it.
+    fn paper_run_steer(&mut self, line: &str) {
+        let page = &mut self.paper.run;
+        if !page.controls() {
+            self.notice = Some("This run offers no controls here.".into());
+            return;
+        }
+        if let (Some((task, _)), Some(Ok(run))) = (&page.task, &page.shown) {
+            page.command = Some(crate::run::Command::new(
+                task,
+                run.task.revision,
+                Some(line),
+            ));
+        }
+    }
+
+    /// CONFIRM on the run page: sends the armed command once, or the same
+    /// command again when its outcome is unknown.
+    fn paper_run_send(&mut self) {
+        let Some(command) = self.paper.run.command.as_mut() else {
+            return;
+        };
+        if !matches!(
+            command.state,
+            crate::run::Sent::Armed | crate::run::Sent::Unknown(_)
+        ) || self.paper.run.sending.is_some()
+        {
+            return;
+        }
+        command.state = crate::run::Sent::Sending;
+        let (verb, bytes) = (command.verb, command.bytes.clone());
+        self.paper.run.sending = Some(self.sessions().0.task_command(verb, &bytes));
+    }
+
+    /// Takes a finished read or command answer for the run page, and reads
+    /// the run again when that is due.
+    fn paper_run_poll(&mut self) {
+        use std::sync::mpsc::TryRecvError;
+        let page = &mut self.paper.run;
+        if let Some(sending) = &page.sending {
+            let answer = match sending.try_recv() {
+                Ok(answer) => Some(answer),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => Some(crate::run::Sent::Unknown(
+                    "the task owner ended without an answer".into(),
+                )),
+            };
+            if let Some(answer) = answer {
+                if let Some(command) = &mut page.command {
+                    command.state = answer;
+                }
+                page.sending = None;
+                page.dirty = true;
+            }
+        }
+        if let Some(reading) = &page.reading {
+            match reading.try_recv() {
+                Ok(read) => {
+                    page.shown = Some(read);
+                    page.reading = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    page.shown = Some(Err(crate::run::Unread::Unavailable(
+                        "the task owner ended without an answer".into(),
+                    )));
+                    page.reading = None;
+                }
+            }
+        }
+        let now = Instant::now();
+        if !self.paper.run.due(now) {
+            return;
+        }
+        let Some((task, _)) = self.paper.run.task.clone() else {
+            return;
+        };
+        let reading = self.sessions().0.read_run(&task);
+        let page = &mut self.paper.run;
+        page.reading = Some(reading);
+        page.dirty = false;
+        page.read_at = Some(now);
+        page.reads += 1;
     }
 
     /// F4: shows the conversation this sheet's questions go to, or returns
@@ -707,6 +893,7 @@ impl Application {
     /// and the git summary; starts a queued question when the last ends.
     pub fn paper_tick(&mut self) {
         self.paper_thread_read();
+        self.paper_run_poll();
         let Some(pane_id) = self.paper_pane() else {
             return;
         };
@@ -894,15 +1081,24 @@ impl Application {
                     tone: Tone::Present,
                 }]);
             }
-        } else if self.paper.thread.open {
+        } else if self.paper.run.open || self.paper.thread.open {
             let mut wrapped = Vec::new();
-            for (text, tone) in crate::thread::lines(&self.paper.thread) {
+            let lines = if self.paper.run.open {
+                crate::run::lines(&self.paper.run)
+            } else {
+                crate::thread::lines(&self.paper.thread)
+            };
+            for (text, tone) in lines {
                 wrap(&line(text, tone), text_width, &mut wrapped);
             }
             let total = wrapped.len();
-            let page = &mut self.paper.thread;
-            page.scroll = page.scroll.min(total.saturating_sub(transcript_rows));
-            let end = total - page.scroll;
+            let scroll = if self.paper.run.open {
+                &mut self.paper.run.scroll
+            } else {
+                &mut self.paper.thread.scroll
+            };
+            *scroll = (*scroll).min(total.saturating_sub(transcript_rows));
+            let end = total - *scroll;
             let start = end.saturating_sub(transcript_rows);
             for line in &wrapped[start..end] {
                 body.push(vec![Span {
@@ -983,7 +1179,10 @@ impl Application {
             text: label.clone(),
             tone: Tone::Quiet,
         }];
-        if self.paper_running() || (self.smart.pending.is_some() && self.paper.input.is_empty()) {
+        if self.paper_running()
+            || (self.smart.pending.is_some() && self.paper.input.is_empty())
+            || (self.paper.run.open && self.paper_run_armed())
+        {
             spans.push(Span {
                 text: fit(&self.paper_input_hint(), inner - label.len()),
                 tone,
@@ -1005,7 +1204,7 @@ impl Application {
         sheet.rows.push(framed(spans));
         sheet.rows.push(border());
         sheet.rows.push(vec![Span {
-            text: fit(KEYS, columns),
+            text: fit(if self.paper.run.open { RUN_KEYS } else { KEYS }, columns),
             tone: Tone::Quiet,
         }]);
         sheet
@@ -1018,6 +1217,13 @@ impl Application {
         if self.smart.pending.is_some() && self.paper.input.is_empty() {
             return ("CONFIRM? ".into(), Tone::Loud);
         }
+        if self.paper.run.open {
+            return if self.paper_run_armed() {
+                ("CONFIRM? ".into(), Tone::Loud)
+            } else {
+                ("STEER > ".into(), Tone::Loud)
+            };
+        }
         if self.paper.thread.open {
             return ("REPLY > ".into(), Tone::Loud);
         }
@@ -1027,7 +1233,31 @@ impl Application {
         }
     }
 
+    fn paper_run_armed(&self) -> bool {
+        self.paper
+            .run
+            .command
+            .as_ref()
+            .is_some_and(|command| command.state == crate::run::Sent::Armed)
+    }
+
     fn paper_input_hint(&self) -> String {
+        if self.paper.run.open
+            && let Some(command) = &self.paper.run.command
+            && command.state == crate::run::Sent::Armed
+        {
+            let task = self
+                .paper
+                .run
+                .task
+                .as_ref()
+                .map_or("", |(task, _)| task.as_str());
+            return if command.verb == "cancel" {
+                format!("cancel run {task}   ENTER confirms, ESC rejects")
+            } else {
+                format!("steer run {task} with your line   ENTER confirms, ESC rejects")
+            };
+        }
         if self.paper_running() {
             let command = self
                 .last_block()

@@ -171,6 +171,127 @@ pub fn read_thread(thread: &str, home: Option<&Path>) -> Receiver<terminal_core:
     receiver
 }
 
+/// Runs `openagents` with `args`, writing `input` to it, and answers its
+/// standard output and error, each bounded to `max` bytes, or why it did
+/// not answer within `deadline`.
+fn helper(
+    args: &[&str],
+    input: Option<Vec<u8>>,
+    home: Option<&Path>,
+    max: usize,
+    deadline: std::time::Duration,
+) -> Result<(Vec<u8>, Vec<u8>), String> {
+    let program = crate::pty::candidates("openagents")
+        .into_iter()
+        .next()
+        .ok_or("the openagents command is not installed")?;
+    let mut command = Command::new(program);
+    if let Some(home) = home {
+        command.env("HOME", home);
+    }
+    let mut child = command
+        .args(args)
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|_| "the openagents command did not start")?;
+    if let (Some(bytes), Some(mut stdin)) = (input, child.stdin.take()) {
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(&bytes);
+        });
+    }
+    let read = |pipe: Option<Box<dyn Read + Send>>| {
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(pipe) = pipe {
+                let _ = pipe.take(max as u64 + 1).read_to_end(&mut bytes);
+            }
+            let _ = sender.send(bytes);
+        });
+        receiver
+    };
+    let stdout = read(
+        child
+            .stdout
+            .take()
+            .map(|pipe| Box::new(pipe) as Box<dyn Read + Send>),
+    );
+    let stderr = read(
+        child
+            .stderr
+            .take()
+            .map(|pipe| Box::new(pipe) as Box<dyn Read + Send>),
+    );
+    let answer = stdout
+        .recv_timeout(deadline)
+        .ok()
+        .zip(stderr.recv_timeout(std::time::Duration::from_secs(1)).ok());
+    let _ = child.kill();
+    let _ = child.wait();
+    answer.ok_or_else(|| "the openagents command did not answer in time".into())
+}
+
+/// Reads Coder run `task` from the task owner's view, which only reads.
+pub fn read_run(task: &str, home: Option<&Path>) -> Receiver<terminal_core::run::Read> {
+    use terminal_core::run::{READ_MAX, STEPS, Unread, decode};
+    let (sender, receiver) = mpsc::channel();
+    let task = task.to_owned();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let limit = STEPS.to_string();
+        let read = match helper(
+            &["--json", "task", "view", &task, "--limit", &limit],
+            None,
+            home.as_deref(),
+            READ_MAX,
+            std::time::Duration::from_secs(20),
+        ) {
+            Ok((stdout, stderr)) => decode(&stdout, &stderr, &task),
+            Err(why) => Err(Unread::Unavailable(why)),
+        };
+        let _ = sender.send(read);
+    });
+    receiver
+}
+
+/// Sends task command `bytes` to the task owner's `verb`. The command
+/// keeps its ID, so an unknown outcome may be retried with the same bytes.
+pub fn task_command(
+    verb: &str,
+    bytes: &[u8],
+    home: Option<&Path>,
+) -> Receiver<terminal_core::run::Sent> {
+    use terminal_core::run::{Sent, decode_receipt};
+    let (sender, receiver) = mpsc::channel();
+    let verb = verb.to_owned();
+    let bytes = bytes.to_vec();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let id = serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .and_then(|value| value["command_id"].as_str().map(str::to_owned))
+            .unwrap_or_default();
+        let sent = match helper(
+            &["--json", "task", &verb, "--file", "-"],
+            Some(bytes),
+            home.as_deref(),
+            64 * 1024,
+            std::time::Duration::from_secs(20),
+        ) {
+            Ok((stdout, stderr)) => decode_receipt(&stdout, &stderr, &id),
+            Err(why) => Sent::Unknown(why),
+        };
+        let _ = sender.send(sent);
+    });
+    receiver
+}
+
 pub fn git_summary(
     pane_id: u64,
     directory: String,

@@ -63,6 +63,26 @@ pub trait Transport: Send + Sync {
         )));
         receiver
     }
+    /// Reads Coder run `task` from the task owner on this computer, only
+    /// reading. A mount without a task owner answers that it cannot.
+    fn read_run(&self, task: &str) -> Receiver<crate::run::Read> {
+        let _ = task;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err(crate::run::Unread::Unavailable(
+            "this mount has no task owner".into(),
+        )));
+        receiver
+    }
+    /// Sends task command `bytes` to the task owner's `verb` (`cancel` or
+    /// `correct`) and answers its receipt or refusal.
+    fn task_command(&self, verb: &str, bytes: &[u8]) -> Receiver<crate::run::Sent> {
+        let _ = (verb, bytes);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(crate::run::Sent::Refused(
+            "this mount has no task owner".into(),
+        ));
+        receiver
+    }
     fn git_summary(&self, pane: u64, directory: String) -> Receiver<(u64, String, String)>;
     fn open_link(&self, target: &str) -> Result<(), String>;
     fn clipboard(&self) -> Option<String>;

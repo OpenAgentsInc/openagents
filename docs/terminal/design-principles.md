@@ -28,12 +28,18 @@ The owner's words, verbatim:
   which before you press ENTER. No prefix or mode key is needed.
 - **Keys.** ENTER is CONFIRM and ESC is REJECT. Function keys do the rest,
   and the key strip names them at all times: F1 help, F2 context, F3 copy,
-  F4 thread, F5 run as shell, F6 ask, F8 panes, and F10 quit.
+  F4 thread, F5 shell (run the line as a shell command), F6 ask, F7 fix,
+  F8 panes, F9 run, and F10 quit.
 - **One conversation page.** F4 draws the conversation the input line's
   questions go to in place of the transcript, as plain text with its state
   (`reading`, `current`, `reply arriving`, `missing`, or `unavailable`).
   The input line becomes `REPLY >`, and F4 or ESC returns. Opening the page
   only reads the thread through the shared chat client; it never sends.
+- **One run page.** F9 draws the Coder run the conversation started: its
+  lifecycle, engine, checks, cost, artifacts, the child runs its trace
+  records, and its steps. The input line becomes `STEER >`; ENTER steers
+  with the line and F7 cancels, each only after CONFIRM, and the key strip
+  names the page's own keys while it is shown.
 - **State is always visible.** The status area shows the directory, the git
   branch and whether it has changes, the last exit status, whether a request
   is running, the queue, pending proposals, where requests go, the load
