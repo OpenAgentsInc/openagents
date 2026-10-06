@@ -2,6 +2,7 @@
 
 pub mod agents;
 pub mod live;
+pub mod plugin_store;
 pub mod plugins;
 pub mod provider;
 pub mod slash;
@@ -62,6 +63,14 @@ struct Chat {
 }
 
 impl App {
+    pub fn load_plugin_settings(&mut self, store: plugin_store::Store) -> Result<(), String> {
+        let result = self.plugins.load_settings(store);
+        if self.screen == Screen::PluginSettings {
+            self.plugins.begin_settings();
+        }
+        result
+    }
+
     pub fn set_mode(&mut self, mode: Mode) {
         if self.mode == mode {
             return;
@@ -327,8 +336,10 @@ impl App {
                 if self.screen == Screen::Plugins {
                     match key.code {
                         KeyCode::Char(' ') => {
-                            self.plugins.enabled = !self.plugins.enabled;
-                            if !self.plugins.enabled && self.mode == Mode::Live {
+                            if self.plugins.toggle_enabled()
+                                && !self.plugins.enabled
+                                && self.mode == Mode::Live
+                            {
                                 self.cancel_request();
                             }
                         }

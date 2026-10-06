@@ -48,6 +48,14 @@ fn main() -> io::Result<()> {
         return io::stdout().write_all(snapshot::svg(&mut app, 110, 36).as_bytes());
     }
 
+    if let Some(root) = model_access::store::openagents_dir() {
+        if let Err(error) = app.load_plugin_settings(coder_new::plugin_store::Store::under(
+            root.join("coder-new"),
+        )) {
+            app.notice = Some(error);
+        }
+    }
+
     let mut terminal = match ratatui::try_init() {
         Ok(terminal) => terminal,
         Err(error) => {

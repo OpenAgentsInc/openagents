@@ -164,6 +164,12 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
         detail("Endpoint", ENDPOINT, area.width),
         detail("Connection", p.connection_label(), area.width),
     ]);
+    if app.mode == Mode::Live {
+        if let Some(error) = &p.storage_error {
+            lines.push(Line::default());
+            lines.push(Line::from(span(error.to_owned(), t::DIFF_DELETE_FG)));
+        }
+    }
     frame.render_widget(
         Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: false }),
         area,
@@ -250,9 +256,15 @@ fn settings(frame: &mut Frame, area: Rect, app: &App) {
     )));
     if app.mode == Mode::Live {
         lines.push(Line::from(span(
-            truncate("The key stays in memory until you quit.", area.width),
+            truncate(p.storage_label(), area.width),
             t::GRAY,
         )));
+        if let Some(error) = &p.storage_error {
+            lines.push(Line::from(span(
+                truncate(error, area.width),
+                t::DIFF_DELETE_FG,
+            )));
+        }
     }
     lines.push(Line::default());
     let save_row = action(

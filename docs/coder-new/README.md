@@ -23,7 +23,8 @@ including line numbers and red and green change backgrounds.
 The [plugin manager](plugins.png) and [OpenRouter settings](plugin-settings.png)
 provide an enabled preference, configuration status, masked API key entry, an
 optional model ID, and a direct OpenRouter endpoint. Live mode checks keys and
-streams chat replies; keys stay in memory until you quit. Open plugins with F2
+streams chat replies. Live plugin settings and keys persist in the private
+`~/.openagents/coder-new/plugins.json` file. Open plugins with F2
 or `/plugins`, or start with `--plugins` or `--plugin-settings`.
 Interactive runs start [live](live.png); `/demo` toggles the local fixtures.
 The [slash picker](slash-commands.png) filters commands above the input as you

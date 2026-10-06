@@ -1,9 +1,12 @@
-//! Plugin preferences and masked credential editing. Keys stay in memory.
+//! Plugin preferences, private persistence, and masked credential editing.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::Draft;
+use crate::{
+    Draft,
+    plugin_store::{SavedPlugin, Store},
+};
 
 pub const ENDPOINT: &str = "https://openrouter.ai/api/v1";
 
@@ -43,6 +46,7 @@ pub struct Plugins {
     model_draft: Draft,
     remove_key: bool,
     pub error: Option<&'static str>,
+    pub storage_error: Option<String>,
     pub connection: Connection,
     pub check_requested: bool,
     pub saved: bool,
@@ -51,6 +55,7 @@ pub struct Plugins {
     live_key: Option<model_access::ApiKey>,
     other_preferences: Preferences,
     saved_connection: Option<Connection>,
+    store: Option<Store>,
 }
 
 #[derive(Default)]
@@ -70,6 +75,67 @@ pub enum Connection {
 }
 
 impl Plugins {
+    pub fn load_settings(&mut self, store: Store) -> Result<(), String> {
+        let loaded = store.load();
+        self.store = Some(store);
+        match loaded {
+            Ok(saved) => {
+                let preferences = Preferences {
+                    enabled: saved.enabled,
+                    key_configured: saved.key.is_some(),
+                    model: saved.model,
+                };
+                self.live_key = saved.key;
+                if self.live {
+                    self.enabled = preferences.enabled;
+                    self.key_configured = preferences.key_configured;
+                    self.model = preferences.model;
+                } else {
+                    self.other_preferences = preferences;
+                }
+                self.connection = Connection::Unchecked;
+                self.storage_error = None;
+                Ok(())
+            }
+            Err(error) => {
+                self.storage_error = Some(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    pub fn storage_label(&self) -> &'static str {
+        if self.store.is_some() {
+            "Settings file: ~/.openagents/coder-new/plugins.json."
+        } else {
+            "The key stays in memory until you quit."
+        }
+    }
+
+    pub fn toggle_enabled(&mut self) -> bool {
+        let enabled = !self.enabled;
+        if self.live && !self.persist(enabled, &self.model.clone(), self.live_key.clone()) {
+            return false;
+        }
+        self.enabled = enabled;
+        true
+    }
+
+    fn persist(&mut self, enabled: bool, model: &str, key: Option<model_access::ApiKey>) -> bool {
+        if let Some(store) = &self.store {
+            if let Err(error) = store.save(&SavedPlugin {
+                enabled,
+                model: model.into(),
+                key,
+            }) {
+                self.storage_error = Some(error);
+                return false;
+            }
+        }
+        self.storage_error = None;
+        true
+    }
+
     pub fn status(&self) -> &'static str {
         match (self.enabled, self.key_configured) {
             (false, _) => "Disabled",
@@ -226,6 +292,17 @@ impl Plugins {
             return false;
         }
         if self.live {
+            let key = if !self.key_draft.text.is_empty() {
+                Some(model_access::ApiKey::new(self.key_draft.text.clone()))
+            } else if self.remove_key {
+                None
+            } else {
+                self.live_key.clone()
+            };
+            let model = self.model_draft.text.trim().to_owned();
+            if !self.persist(self.enabled, &model, key) {
+                return false;
+            }
             if !self.key_draft.text.is_empty() {
                 self.live_key = Some(model_access::ApiKey::new(self.key_draft.text.clone()));
                 self.connection = Connection::Unchecked;

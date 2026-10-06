@@ -39,11 +39,15 @@ on a background worker, with prior live messages included. Esc stops a reply;
 failed requests are not retried automatically.
 
 Removing a key takes effect when you save. Disabling retains configuration.
-Preferences, credentials, and conversations last only until you quit. The
-editable key draft clears on save or cancel; a saved live key stays in a private,
-redacted credential holder in memory. Demo mode retains only mock configuration
-state and makes no requests. Switching modes keeps their preferences, drafts,
-and transcripts separate and cancels pending network work.
+Live plugin preferences and the API key survive restarts in
+`~/.openagents/coder-new/plugins.json`. The directory uses `0700` permissions;
+the file uses `0600`. Saves replace the file atomically, and failed saves keep
+the previous settings and editable draft. Connection verification runs again
+when you test the restored key; verification status is not saved.
+The editable key draft clears on save or cancel. Keys stay redacted in the UI
+and errors. Demo settings and conversations last only until you quit, and demo
+mode makes no requests or settings writes. Switching modes keeps their
+preferences, drafts, and transcripts separate and cancels pending network work.
 OpenRouter's own upstream-provider BYOK settings are separate from
 this plugin's OpenRouter API key. See [OpenRouter authentication](https://openrouter.ai/docs/api_reference/authentication),
 the [API reference](https://openrouter.ai/docs/api_reference/overview), and
