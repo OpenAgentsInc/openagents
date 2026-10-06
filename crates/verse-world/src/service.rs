@@ -6,8 +6,10 @@
 pub mod accounts;
 #[cfg(feature = "service-auth")]
 pub mod auth;
-#[cfg(feature = "service-net")]
+#[cfg(feature = "service-client")]
 pub mod client;
+#[cfg(feature = "service-client")]
+pub mod client_runtime;
 pub mod equipment;
 #[cfg(feature = "service-auth")]
 pub mod event_cursor;
@@ -26,6 +28,8 @@ pub mod presentation;
 pub mod progression;
 #[cfg(feature = "service-reach")]
 pub mod reach;
+#[cfg(feature = "reach-client")]
+pub mod reach_client;
 #[cfg(feature = "service-net")]
 pub mod realm;
 #[cfg(feature = "service-auth")]
@@ -35,11 +39,13 @@ pub mod replication;
 pub mod rewards;
 #[cfg(feature = "service-auth")]
 pub mod save;
+#[cfg(feature = "service-client")]
+pub mod transport;
 #[cfg(feature = "service-auth")]
 pub mod view;
 #[cfg(feature = "service-auth")]
 pub mod wire;
-#[cfg(feature = "service-net")]
+#[cfg(feature = "service-client")]
 pub mod worker;
 
 use std::collections::BTreeMap;

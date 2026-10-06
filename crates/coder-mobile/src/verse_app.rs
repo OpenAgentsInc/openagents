@@ -113,6 +113,10 @@ pub(crate) enum Request {
     RecenterCamera,
     /// Leave the shared chamber and return to the Grid at the RITUAL arch.
     LeaveChamber,
+    /// Validated Rust-owned physical control bindings for the current visit.
+    ChamberBindings {
+        bindings: Vec<verse_world::controls::Binding>,
+    },
     /// Cast the chamber hotbar's slot (0-based) at the selected target.
     ChamberCast {
         slot: usize,
@@ -2469,6 +2473,11 @@ impl Scene {
             }
             Request::EnterEverglade => self.world.enter_everglade(),
             Request::LeaveChamber => self.leave_chamber(),
+            Request::ChamberBindings { bindings } => self
+                .chamber
+                .as_mut()
+                .ok_or("No chamber visit is active")?
+                .remap(bindings),
             Request::ChamberCast { slot } => {
                 self.chamber_cast(slot);
                 Ok(())
@@ -3143,7 +3152,7 @@ impl Scene {
         size: [u32; 2],
     ) -> Result<Option<verse::imported::chamber_session::Frame>, String> {
         match &self.chamber {
-            Some(play) => play.frame(size),
+            Some(play) => play.frame_in(size, self.lifecycle.viewport().logical_size()),
             None => Ok(None),
         }
     }

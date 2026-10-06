@@ -7,7 +7,9 @@ publish.workspace = true
 description = "Portable command admission and owned world authority for Verse"
 
 [features]
-service-net = ["service-auth", "dep:tokio", "dep:rustls", "dep:tokio-rustls"]
+service-client = ["service-auth", "dep:tokio", "dep:futures-util"]
+reach-client = ["service-client", "dep:coder-reach"]
+service-net = ["service-client", "tokio/net", "dep:rustls", "dep:tokio-rustls"]
 service-auth = ["dep:secp256k1", "dep:getrandom"]
 service-reach = ["service-net", "dep:coder-reach"]
 # The Agent Studio in a hosted social instance: seat placement from a
@@ -15,7 +17,7 @@ service-reach = ["service-net", "dep:coder-reach"]
 studio = ["dep:coder-access"]
 
 [dependencies]
-tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "sync", "time"], optional = true }
+tokio = { version = "1", features = ["rt", "macros", "io-util", "sync", "time"], optional = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
 tokio-rustls = { version = "0.26", default-features = false, optional = true }
 secp256k1 = { version = "0.31.1", optional = true }
@@ -28,6 +30,14 @@ glam = { version = "0.30.10", features = ["serde"] }
 physics = { path = "../physics" }
 coder-reach = { path = "../coder-reach", optional = true }
 coder-access = { path = "../coder-access", default-features = false, optional = true }
+
+web-time = "1.1.0"
+futures-util = { version = "0.3", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
+wasm-bindgen-futures = "0.4"
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread"] }

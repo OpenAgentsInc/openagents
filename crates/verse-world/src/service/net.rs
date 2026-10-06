@@ -8,7 +8,7 @@ use std::{
 
 use rustls::ServerConfig;
 use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    io::AsyncRead,
     net::{TcpListener, TcpStream},
     sync::{mpsc, oneshot},
     task::JoinSet,
@@ -334,8 +334,7 @@ fn committed_movement(
 }
 
 /// An ordered, authenticated byte stream that carries chamber frames.
-pub trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
-impl<T: AsyncRead + AsyncWrite + Unpin + Send> Transport for T {}
+pub use super::transport::{Transport, read_frame, write_frame};
 
 /// How accepted sockets become authenticated chamber transports.
 pub(super) enum Listen {
@@ -391,48 +390,6 @@ pub(super) enum Event {
         progress: Option<oneshot::Sender<RequestProgress>>,
     },
     Close(ConnectionId),
-}
-
-/// Reads a big-endian u32 byte length before allocating its bounded JSON payload.
-pub async fn read_frame<R: AsyncRead + Unpin>(
-    reader: &mut R,
-    max: usize,
-) -> Result<Vec<u8>, String> {
-    let size = reader
-        .read_u32()
-        .await
-        .map_err(|_| "Chamber frame header unavailable")? as usize;
-    if size == 0 || size > max {
-        return Err("Chamber frame exceeds byte budget".into());
-    }
-    let mut bytes = vec![0; size];
-    reader
-        .read_exact(&mut bytes)
-        .await
-        .map_err(|_| "Chamber frame payload incomplete")?;
-    Ok(bytes)
-}
-pub async fn write_frame<W: AsyncWrite + Unpin>(
-    writer: &mut W,
-    bytes: &[u8],
-    max: usize,
-) -> Result<(), String> {
-    if bytes.is_empty() || bytes.len() > max {
-        return Err("Chamber frame exceeds byte budget".into());
-    }
-    let length = u32::try_from(bytes.len()).map_err(|_| "Chamber frame length overflow")?;
-    let mut frame = Vec::with_capacity(bytes.len() + 4);
-    frame.extend_from_slice(&length.to_be_bytes());
-    frame.extend_from_slice(bytes);
-    writer
-        .write_all(&frame)
-        .await
-        .map_err(|_| "Cannot write chamber frame payload")?;
-    writer
-        .flush()
-        .await
-        .map_err(|_| "Cannot flush chamber frame")?;
-    Ok(())
 }
 
 /// Runs an already-bound listener with a configured certificate and private key.
@@ -1204,6 +1161,7 @@ pub(super) mod tests {
         pki_types::{PrivatePkcs8KeyDer, ServerName},
     };
     use secp256k1::{Keypair, Secp256k1, SecretKey};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio_rustls::{TlsConnector, client::TlsStream};
     use verse_engine::director::Scene;
     type Stream = TlsStream<TcpStream>;

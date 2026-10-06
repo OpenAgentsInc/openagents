@@ -40,6 +40,7 @@ chamber-loopback = ["remote-chamber", "tokio/io-util", "verse-imported/chamber-l
 # features: WebGL2 as well as WebGPU. Network, threads, processes, and disk
 # are native-only by target, so this feature only adds what the web needs.
 web = ["wgpu/webgl", "imported-surface"]
+browser-chamber = ["web", "verse-imported/chamber-client", "verse-world/reach-client"]
 
 [dependencies]
 rtrb = { version = "=0.4.0", optional = true }

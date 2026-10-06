@@ -1,4 +1,4 @@
-//! A chamber player without a window: the client worker on its own thread,
+//! A chamber player without a window: the client worker on its executor,
 //! the replica and prediction it feeds, the inputs a stick or a keyboard
 //! sends it, and the frame the engine renderer draws from it. The desktop
 //! window and the phone's surface both mount this; neither owns the
@@ -8,7 +8,7 @@ use crate::{render, ui::Atlas};
 use glam::Vec3;
 use std::{
     collections::{BTreeMap, VecDeque},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::sync::{mpsc, oneshot};
 use verse_engine::{assets::Pack, core::LifeId, director::Scene};
@@ -23,6 +23,7 @@ use verse_world::{
         worker::{self, Input, Update},
     },
 };
+use web_time::Instant;
 
 /// Time between movement commands while the player is controlled.
 const MOVE_INTERVAL: Duration = Duration::from_millis(33);
@@ -45,6 +46,27 @@ pub struct Frame {
     pub focus: Vec3,
     /// The presentation time the frame sampled.
     pub time: f32,
+}
+
+impl Frame {
+    /// Converts logical overlay coordinates to the renderer's physical pixels.
+    pub fn scale_overlay(&mut self, target: [f32; 2]) -> Result<(), String> {
+        if self
+            .overlay
+            .iter()
+            .chain(&target)
+            .any(|v| !v.is_finite() || *v <= 0. || *v > 8192.)
+        {
+            return Err("Invalid chamber overlay dimensions".into());
+        }
+        let scale = [target[0] / self.overlay[0], target[1] / self.overlay[1]];
+        for vertex in &mut self.ui.vertices {
+            vertex.pos[0] *= scale[0];
+            vertex.pos[1] *= scale[1];
+        }
+        self.overlay = target;
+        Ok(())
+    }
 }
 
 /// Why a session ended, for the caller that leaves the chamber.
@@ -89,6 +111,8 @@ pub struct Session {
     output: mpsc::Receiver<Update>,
     stop: Option<oneshot::Sender<()>>,
     thread: Option<std::thread::JoinHandle<Result<(), String>>>,
+    #[cfg(target_arch = "wasm32")]
+    task: Option<verse_world::service::client_runtime::Task>,
     pub controls: controls::ClassicControls,
     pub camera: controls::Camera,
     pub yaw: f32,
@@ -122,11 +146,12 @@ pub struct Session {
 }
 
 impl Session {
-    /// Starts the client worker on its own thread over `runtime`, which must
+    /// Starts the client worker on its executor over `runtime`, which must
     /// own the client's transport, and the local replica it fills.
     ///
     /// # Errors
     /// The scene is invalid or the replica cannot be made.
+    #[cfg(feature = "remote-chamber")]
     pub fn start(
         client: Client,
         runtime: tokio::runtime::Runtime,
@@ -140,6 +165,7 @@ impl Session {
     ///
     /// # Errors
     /// The scene is invalid or the replica cannot be made.
+    #[cfg(feature = "remote-chamber")]
     pub fn start_observed(
         client: Client,
         runtime: tokio::runtime::Runtime,
@@ -190,6 +216,32 @@ impl Session {
         Ok(session)
     }
 
+    /// Starts the same worker on the browser's local executor.
+    #[cfg(target_arch = "wasm32")]
+    pub fn start_browser(client: Client, scene: &Scene) -> Result<Self, String> {
+        scene.validate()?;
+        let instance = client.instance();
+        let view = View::new(instance, 10., 0)?;
+        let cursor = Cursor::new(instance);
+        let (input, inputs, updates, output) = worker::channels();
+        let (stop, stopping) = oneshot::channel();
+        let task = verse_world::service::client_runtime::spawn(async move {
+            let _ = worker::run(
+                client,
+                cursor,
+                worker::NATIVE_CADENCE,
+                inputs,
+                updates,
+                stopping,
+            )
+            .await;
+        });
+        let mut session = Self::attached(view, input, output);
+        session.stop = Some(stop);
+        session.task = Some(task);
+        Ok(session)
+    }
+
     /// A session over channels a worker the caller runs already serves.
     #[must_use]
     pub fn attached(
@@ -205,6 +257,8 @@ impl Session {
             output,
             stop: None,
             thread: None,
+            #[cfg(target_arch = "wasm32")]
+            task: None,
             controls: controls::ClassicControls::default(),
             camera: controls::Camera::default(),
             yaw: std::f32::consts::PI,
@@ -295,6 +349,10 @@ impl Session {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }
+        #[cfg(target_arch = "wasm32")]
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
         match self.thread.take().map(std::thread::JoinHandle::join) {
             None | Some(Ok(Ok(()))) => Stopped::Closed,
             Some(Ok(Err(error))) => Stopped::Failed(error),
@@ -305,7 +363,9 @@ impl Session {
     /// Whether the worker thread is still running.
     #[must_use]
     pub fn alive(&self) -> bool {
-        self.thread.as_ref().is_some_and(|t| !t.is_finished())
+        self.thread
+            .as_ref()
+            .map_or_else(|| !self.output.is_closed(), |t| !t.is_finished())
     }
 
     #[must_use]

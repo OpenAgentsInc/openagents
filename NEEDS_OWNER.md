@@ -440,3 +440,17 @@ that captions and master/music controls (F9–F12) still work. The committed V23
 checks use a headless callback and controlled PCM production; they do not open an
 owner device or prove driver scheduling. Browser and phone mounting remains V24.
 Open a new issue for a defect found in this device run.
+
+## Verify authoritative platform clients after V24 (#10742)
+
+Use an isolated scratch chamber, original admitted content, and three enrolled
+world keys. Follow [platform client configuration](docs/verse/platform-clients.md).
+Join desktop, a physical phone, and a supported browser to the same instance.
+Compare damage, death, and respawn; interrupt network and focus, suspend/resume,
+and verify the same character returns without stuck movement or repeated casts.
+Measure declared device frame, memory, and thermal budgets. Check touch targets,
+text at device pixel ratios, keyboard focus, screen reader status, and gamepad
+remapping. Browser and phone have captions but no mounted audio output adapter;
+record that limitation rather than treating silent output as audio parity.
+The V24 receipts cover Rust tests and Wasm linking, not these physical or DOM
+checks. Retain per-device evidence and file a new issue for any defect.

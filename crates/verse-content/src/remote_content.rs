@@ -192,3 +192,50 @@ pub fn bind_mips(content: [u8; 32], mips: [u8; 32]) -> Result<[u8; 32], String> 
     digest.update(mips);
     Ok(digest.finalize().into())
 }
+
+/// Computes the host's content identity from bytes already admitted by the loader.
+/// This performs no filesystem reads and includes any admitted mip archive.
+pub fn identity_prepared(
+    prepared: &verse_engine::loading::Prepared,
+    scene: &Scene,
+) -> Result<[u8; 32], String> {
+    let pack = prepared.pack();
+    pack.validate()?;
+    scene.validate()?;
+    let mut digest = Sha256::new();
+    digest.update(b"verse.remote.content.v1\0");
+    for bytes in [
+        serde_json::to_vec(scene).map_err(|_| "Cannot encode scene content")?,
+        serde_json::to_vec(pack).map_err(|_| "Cannot encode compiled asset content")?,
+    ] {
+        if bytes.len() > 128 * 1024 * 1024 {
+            return Err("Remote content manifest exceeds its byte budget".into());
+        }
+        digest.update((bytes.len() as u64).to_be_bytes());
+        digest.update(bytes);
+    }
+    if prepared.receipt().textures.len() != pack.textures.len() {
+        return Err("Admitted texture closure differs from pack".into());
+    }
+    for (texture, receipt) in pack.textures.iter().zip(&prepared.receipt().textures) {
+        if texture.file != receipt.file || texture.sha256 != receipt.sha256 {
+            return Err("Admitted texture differs from pack".into());
+        }
+        let mut hash = [0; 32];
+        if receipt.sha256.len() != 64 || !receipt.sha256.is_ascii() {
+            return Err("Admitted texture digest is malformed".into());
+        }
+        for (i, out) in hash.iter_mut().enumerate() {
+            *out = u8::from_str_radix(&receipt.sha256[i * 2..i * 2 + 2], 16)
+                .map_err(|_| "Admitted texture digest is malformed")?;
+        }
+        digest.update((texture.file.len() as u64).to_be_bytes());
+        digest.update(texture.file.as_bytes());
+        digest.update(hash);
+    }
+    let content = digest.finalize().into();
+    match prepared.mips() {
+        Some(mips) => bind_mips(content, mips.identity()?),
+        None => Ok(content),
+    }
+}

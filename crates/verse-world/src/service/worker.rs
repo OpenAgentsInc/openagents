@@ -1,15 +1,17 @@
 //! Bounded duplex network worker for remote presentation adapters.
-#[cfg(test)]
+#[cfg(all(test, feature = "service-net"))]
 #[path = "worker_delayed.rs"]
 mod delayed;
+use super::client_runtime;
 use super::{
     client::Client,
     event_cursor::{Cursor, Delivery},
     wire::{Body, Reply, Response},
 };
 use crate::{Command, Intent, play::Ability};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
+use web_time::Instant;
 
 /// Local measurements contain no principal, command content, or credentials.
 #[derive(Clone, Copy)]
@@ -142,24 +144,24 @@ pub enum Update {
 }
 
 struct ReadBackoff {
-    until: [tokio::time::Instant; 3],
-    since: [Option<tokio::time::Instant>; 3],
+    until: [client_runtime::Instant; 3],
+    since: [Option<client_runtime::Instant>; 3],
 }
 impl ReadBackoff {
-    fn new(now: tokio::time::Instant) -> Self {
+    fn new(now: client_runtime::Instant) -> Self {
         Self {
             until: [now; 3],
             since: [None; 3],
         }
     }
-    fn ready(&self, class: usize, now: tokio::time::Instant) -> bool {
+    fn ready(&self, class: usize, now: client_runtime::Instant) -> bool {
         now >= self.until[class]
     }
     fn observe(
         &mut self,
         class: usize,
         reply: &Reply,
-        now: tokio::time::Instant,
+        now: client_runtime::Instant,
     ) -> Result<bool, String> {
         if let Reply::Refused { code, message, .. } = reply {
             if code != "storage_busy" && code != "rate_limited" {
@@ -329,10 +331,10 @@ async fn run_impl(
     }
     let work = async {
         let mut client = client.pipeline()?;
-        let mut interval = tokio::time::interval(cadence);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut next_inventory = tokio::time::Instant::now();
-        let mut next_events = tokio::time::Instant::now();
+        let mut interval = client_runtime::interval(cadence);
+        interval.set_missed_tick_behavior(client_runtime::MissedTickBehavior::Skip);
+        let mut next_inventory = client_runtime::Instant::now();
+        let mut next_events = client_runtime::Instant::now();
         let mut inventory_life = None;
         let mut last_token = 0;
         let mut deferred = None;
@@ -340,14 +342,14 @@ async fn run_impl(
         let mut last_response = client.verified_at();
         let mut snapshot_pending = false;
         let mut last_snapshot_sent = None;
-        let mut snapshot_resume = tokio::time::Instant::now();
+        let mut snapshot_resume = client_runtime::Instant::now();
         let mut events_pending = false;
         let mut inventory_pending = false;
         let mut refreshed = false;
         let mut barrier = false;
         let mut teleport_barrier = false;
         let mut input_closed = false;
-        let mut read_backoff = ReadBackoff::new(tokio::time::Instant::now());
+        let mut read_backoff = ReadBackoff::new(client_runtime::Instant::now());
         loop {
             if !client.available() && client.pending() == 0 {
                 return Err("Chamber pipeline is disconnected".into());
@@ -410,10 +412,10 @@ async fn run_impl(
                     // that prefix before adding a scene request for staged input.
                     if client.pending() == 0
                         && !snapshot_pending
-                        && read_backoff.ready(0, tokio::time::Instant::now())
+                        && read_backoff.ready(0, client_runtime::Instant::now())
                     {
                         client.send_snapshot()?;
-                        last_snapshot_sent = Some(tokio::time::Instant::now());
+                        last_snapshot_sent = Some(client_runtime::Instant::now());
                         snapshot_pending = true;
                     }
                     staged = Some(input);
@@ -480,7 +482,7 @@ async fn run_impl(
                                 .control()
                                 .ok_or("Client has no admitted adventurer")?
                                 .clone();
-                            next_inventory = tokio::time::Instant::now();
+                            next_inventory = client_runtime::Instant::now();
                             match action {
                                 Input::Respawn => Body::Respawn { life: control.life },
                                 Input::BeginMovementFrames { life, epoch } => {
@@ -560,15 +562,15 @@ async fn run_impl(
             }
             // Schedule from the actual send time so quick replies cannot miss a phased polling tick.
             let snapshot_due = last_snapshot_sent
-                .map_or_else(tokio::time::Instant::now, |sent| sent + cadence)
+                .map_or_else(client_runtime::Instant::now, |sent| sent + cadence)
                 .max(snapshot_resume);
             tokio::select! {
-                _ = tokio::time::sleep_until(snapshot_due), if !input_closed && !barrier
+                _ = client_runtime::sleep_until(snapshot_due), if !input_closed && !barrier
                     && staged.is_none() && client.available() && !snapshot_pending
                     && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
-                    && last_snapshot_sent.is_some() && read_backoff.ready(0, tokio::time::Instant::now()) => {
+                    && last_snapshot_sent.is_some() && read_backoff.ready(0, client_runtime::Instant::now()) => {
                     client.send_snapshot()?;
-                    last_snapshot_sent = Some(tokio::time::Instant::now());
+                    last_snapshot_sent = Some(client_runtime::Instant::now());
                     snapshot_pending = true;
                 }
                 response = client.receive(), if client.pending() > 0 => {
@@ -596,9 +598,9 @@ async fn run_impl(
                             // A slow read yields one cadence to input before requesting another
                             // projection. Fast routes retain their deadline from the send time.
                             if client.last_turnaround().is_some_and(|elapsed| elapsed > cadence) {
-                                snapshot_resume = tokio::time::Instant::now() + cadence;
+                                snapshot_resume = client_runtime::Instant::now() + cadence;
                             }
-                            if read_backoff.observe(0, &response.body, tokio::time::Instant::now())? {
+                            if read_backoff.observe(0, &response.body, client_runtime::Instant::now())? {
                                 refreshed = false;
                                 continue;
                             }
@@ -607,15 +609,15 @@ async fn run_impl(
                         }
                         Body::Events { after,limit } => {
                             events_pending = false;
-                            if read_backoff.observe(1, &response.body, tokio::time::Instant::now())? { continue; }
+                            if read_backoff.observe(1, &response.body, client_runtime::Instant::now())? { continue; }
                             let delivery = cursor.admit(&response,after,limit)?;
                             Update::Events { delivery, checkpoint: cursor.checkpoint()? }
                         }
                         Body::Inventory {} => {
                             inventory_pending = false;
-                            if read_backoff.observe(2, &response.body, tokio::time::Instant::now())? { continue; }
+                            if read_backoff.observe(2, &response.body, client_runtime::Instant::now())? { continue; }
                             inventory_life = client.control().map(|c| c.life);
-                            next_inventory = tokio::time::Instant::now() + Duration::from_secs(1);
+                            next_inventory = client_runtime::Instant::now() + Duration::from_secs(1);
                             Update::Inventory(response)
                         }
                         Body::MovementFrame { frame } => {
@@ -656,22 +658,22 @@ async fn run_impl(
                     // A staged lifecycle action drains previous IO before changing its context.
                     if input_closed || barrier || staged.is_some() { continue; }
                     if last_snapshot_sent.is_none() && client.available() && !snapshot_pending
-                        && read_backoff.ready(0, tokio::time::Instant::now()) {
+                        && read_backoff.ready(0, client_runtime::Instant::now()) {
                         client.send_snapshot()?;
-                        last_snapshot_sent = Some(tokio::time::Instant::now());
+                        last_snapshot_sent = Some(client_runtime::Instant::now());
                         snapshot_pending = true;
                     }
-                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some()) && tokio::time::Instant::now() >= next_events
-                        && !events_pending && read_backoff.ready(1, tokio::time::Instant::now()) {
+                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some()) && client_runtime::Instant::now() >= next_events
+                        && !events_pending && read_backoff.ready(1, client_runtime::Instant::now()) {
                         client.send(Body::Events { after: cursor.after(), limit: 64 })?;
                         events_pending = true;
-                        next_events = tokio::time::Instant::now() + cadence.max(Duration::from_millis(200));
+                        next_events = client_runtime::Instant::now() + cadence.max(Duration::from_millis(200));
                     }
                     let life = client.control().map(|c| c.life);
                     if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
                         && !inventory_pending && life.is_some()
-                        && read_backoff.ready(2, tokio::time::Instant::now())
-                        && (life != inventory_life || tokio::time::Instant::now() >= next_inventory) {
+                        && read_backoff.ready(2, client_runtime::Instant::now())
+                        && (life != inventory_life || client_runtime::Instant::now() >= next_inventory) {
                         client.send(Body::Inventory {})?;
                         inventory_pending = true;
                     }
@@ -705,15 +707,15 @@ pub fn channels() -> (
     (input, inputs, updates, output)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "service-net"))]
 mod tests {
     use super::*;
     use crate::service::{
         net::tests::{key, start},
         replica::Buffer,
     };
+    use client_runtime::timeout;
     use rustls::pki_types::ServerName;
-    use tokio::time::timeout;
 
     #[tokio::test]
     async fn explicit_read_backpressure_retries_projections_without_replaying_commands() {
@@ -823,7 +825,7 @@ mod tests {
 
     #[test]
     fn read_backoff_separates_classes_and_bounds_explicit_refusal_retries() {
-        let now = tokio::time::Instant::now();
+        let now = client_runtime::Instant::now();
         let mut backoff = ReadBackoff::new(now);
         let busy = Reply::Refused {
             code: "storage_busy".into(),
@@ -975,7 +977,7 @@ mod tests {
                     .unwrap();
                 if matches!(request.body, Body::Snapshot {} | Body::Replicate { .. }) {
                     snapshots += 1;
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    client_runtime::sleep(Duration::from_millis(100)).await;
                 }
                 if write_frame(&mut peer_socket, &response, MAX_RESPONSE_BYTES)
                     .await
@@ -1539,7 +1541,7 @@ mod tests {
             {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            client_runtime::sleep(Duration::from_millis(10)).await;
         }
         assert!(matches!(
             client.begin_movement_frames().await.unwrap().body,
@@ -1718,7 +1720,7 @@ mod tests {
         .await
         .unwrap();
         // Polling has time to use the remaining observation slots while replies stay withheld.
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        client_runtime::sleep(Duration::from_millis(150)).await;
         input.send(frame_input(6)).await.unwrap();
         timeout(Duration::from_millis(300), async {
             while commands < 6 {
@@ -2258,7 +2260,7 @@ mod tests {
         })
         .await
         .unwrap();
-        tokio::time::sleep(Duration::from_millis(75)).await;
+        client_runtime::sleep(Duration::from_millis(75)).await;
         gate.send(Update::CommandBound {
             token: 0,
             binding: Err("Test delivery barrier".into()),
@@ -2275,7 +2277,7 @@ mod tests {
             },
         };
         input.send(movement(1)).await.unwrap();
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        client_runtime::sleep(Duration::from_millis(20)).await;
         input.send(movement(2)).await.unwrap();
         assert!(matches!(
             output.recv().await.unwrap(),
@@ -2510,10 +2512,10 @@ mod tests {
             ));
             let mut inventories = 0;
             let mut snapshots = 0;
-            let deadline = tokio::time::Instant::now() + Duration::from_millis(1250);
+            let deadline = client_runtime::Instant::now() + Duration::from_millis(1250);
             loop {
                 tokio::select! {
-                    _=tokio::time::sleep_until(deadline)=>break,
+                    _=client_runtime::sleep_until(deadline)=>break,
                     update=output.recv()=>match update.unwrap() {
                         Update::Snapshot(_)=>snapshots+=1,
                         Update::Inventory(response)=> {assert!(player);let Reply::Inventory{inventory}=response.body else {panic!("Missing inventory");};assert_eq!(inventory.experience,0);inventories+=1;},
@@ -2559,8 +2561,8 @@ mod tests {
             stopped,
         ));
         let feeder = tokio::spawn(async move {
-            let mut clock = tokio::time::interval(Duration::from_millis(33));
-            clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut clock = client_runtime::interval(Duration::from_millis(33));
+            clock.set_missed_tick_behavior(client_runtime::MissedTickBehavior::Skip);
             for index in 0..90 {
                 clock.tick().await;
                 input
@@ -2698,7 +2700,7 @@ mod tests {
         }
         assert!(accepted && shield && events);
         // Let the bounded output queue fill, then stop without draining it.
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        client_runtime::sleep(Duration::from_millis(200)).await;
         stop.send(()).unwrap();
         timeout(Duration::from_secs(1), worker)
             .await

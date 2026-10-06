@@ -20,8 +20,9 @@ pub struct Config {
     /// The host's `HOST:PORT`.
     pub address: std::net::SocketAddr,
     pub instance: u64,
-    /// The DER certificate the host serves.
-    pub trust_der: PathBuf,
+    /// DER trust certificate, required for TLS and `wss` routes.
+    #[serde(default)]
+    pub trust_der: Option<PathBuf>,
     /// The name the certificate carries; `localhost` by default.
     #[serde(default)]
     pub server_name: Option<String>,
@@ -34,8 +35,22 @@ pub struct Config {
     /// A signing key file in place of the profile's key.
     #[serde(default)]
     pub key_file: Option<PathBuf>,
+    /// Explicit host grant for the authenticated reachable channel.
+    #[serde(default)]
+    pub reach: Option<Reach>,
 }
 
+/// Host enrollment values for a direct chamber channel; these grant no role by themselves.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Reach {
+    pub host: String,
+    pub grant: String,
+    pub epoch: u64,
+    pub generation: u64,
+    /// When present, upgrade the configured address to this exact WebSocket URL.
+    pub websocket: Option<String>,
+}
 impl Config {
     /// Reads and validates a configuration file.
     ///
@@ -46,11 +61,33 @@ impl Config {
         let bytes = bounded(path, 64 * 1024)?;
         let config: Self = serde_json::from_slice(&bytes)
             .map_err(|e| format!("{}: invalid ritual configuration: {e}", path.display()))?;
-        for (name, file) in [
-            ("trust_der", &config.trust_der),
-            ("pack", &config.pack),
-            ("scene", &config.scene),
-        ] {
+        if let Some(reach) = &config.reach {
+            if reach.host.len() != 64
+                || reach.grant.len() != 64
+                || !reach
+                    .host
+                    .bytes()
+                    .chain(reach.grant.bytes())
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            {
+                return Err("Malformed chamber reach host or grant identity".into());
+            }
+            if reach.websocket.as_ref().is_some_and(|url| {
+                url.len() > 512 || !(url.starts_with("ws://") || url.starts_with("wss://"))
+            }) {
+                return Err("Chamber reach WebSocket URL must use ws:// or wss://".into());
+            }
+        }
+        let needs_tls = config.reach.as_ref().is_none_or(|reach| {
+            reach
+                .websocket
+                .as_deref()
+                .is_some_and(|url| url.starts_with("wss://"))
+        });
+        if needs_tls && config.trust_der.as_ref().is_none_or(|file| !file.is_file()) {
+            return Err("The chamber trust_der certificate is missing".into());
+        }
+        for (name, file) in [("pack", &config.pack), ("scene", &config.scene)] {
             if !file.is_file() {
                 return Err(format!(
                     "{}: {name} {} is missing",
@@ -153,12 +190,14 @@ fn connect_signed(
         .build()
         .map_err(|e| e.to_string())?;
     let mut roots = rustls::RootCertStore::empty();
-    roots
-        .add(rustls::pki_types::CertificateDer::from(bounded(
-            &config.trust_der,
-            1024 * 1024,
-        )?))
-        .map_err(|_| "Invalid DER trust certificate")?;
+    if let Some(trust_der) = &config.trust_der {
+        roots
+            .add(rustls::pki_types::CertificateDer::from(bounded(
+                trust_der,
+                1024 * 1024,
+            )?))
+            .map_err(|_| "Invalid DER trust certificate")?;
+    }
     let tls = Arc::new(
         rustls::ClientConfig::builder_with_provider(Arc::new(
             rustls::crypto::ring::default_provider(),
@@ -186,14 +225,76 @@ fn connect_signed(
         None => identity()?,
     };
     let key = secp256k1::Keypair::from_secret_key(&secp256k1::Secp256k1::new(), &secret);
-    let client = runtime.block_on(verse_world::service::client::Client::connect_with_content(
-        config.address,
-        server_name,
-        tls,
-        config.instance,
-        Some(content),
-        &key,
-    ))?;
+    let client = match &config.reach {
+        None => runtime.block_on(verse_world::service::client::Client::connect_with_content(
+            config.address,
+            server_name,
+            tls,
+            config.instance,
+            Some(content),
+            &key,
+        ))?,
+        Some(reach) => runtime.block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(30), async {
+                use tokio::net::TcpStream;
+                use verse_world::service::{
+                    reach::{self, ClientConfig},
+                    transport::Transport,
+                };
+                let socket = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    TcpStream::connect(config.address),
+                )
+                .await
+                .map_err(|_| "Chamber connection timed out")?
+                .map_err(|_| "Cannot connect to chamber")?;
+                socket
+                    .set_nodelay(true)
+                    .map_err(|_| "Cannot configure chamber socket")?;
+                let stream: Box<dyn Transport> = match reach.websocket.as_deref() {
+                    Some(url) if url.starts_with("wss://") => {
+                        let stream = tokio::time::timeout(
+                            std::time::Duration::from_secs(10),
+                            verse_world::service::client::connect_tls_stream(
+                                socket,
+                                tls,
+                                server_name,
+                            ),
+                        )
+                        .await
+                        .map_err(|_| "Chamber TLS timed out")??;
+                        Box::new(
+                            reach::websocket::client(url, stream)
+                                .await
+                                .map_err(|e| format!("Chamber WebSocket refused: {e}"))?,
+                        )
+                    }
+                    Some(url) => Box::new(
+                        reach::websocket::client(url, socket)
+                            .await
+                            .map_err(|e| format!("Chamber WebSocket refused: {e}"))?,
+                    ),
+                    None => Box::new(socket),
+                };
+                reach::join(
+                    stream,
+                    &ClientConfig {
+                        device: secret,
+                        host: reach.host.clone(),
+                        grant: reach.grant.clone(),
+                        epoch: reach.epoch,
+                        generation: reach.generation,
+                        timeout: std::time::Duration::from_secs(10),
+                    },
+                    config.instance,
+                    Some(content),
+                )
+                .await
+            })
+            .await
+            .map_err(|_| "Chamber reachable connection timed out")?
+        })?,
+    };
     Ok(Opened {
         client,
         runtime,

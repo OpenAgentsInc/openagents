@@ -332,3 +332,217 @@ mod tests {
         assert!(!c.autorun);
     }
 }
+
+/// A platform control's meaning; mappings carry no world authority.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Action {
+    Forward,
+    Backward,
+    TurnLeft,
+    TurnRight,
+    StrafeLeft,
+    StrafeRight,
+    Jump,
+    Cast(u8),
+    Target,
+    Respawn,
+}
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Binding {
+    pub control: String,
+    pub action: Action,
+}
+/// Bounded mappings and held physical controls, shared by platform adapters.
+/// A focus clear fences held controls until their release; repeating a down
+/// event cannot cast twice or restart movement after focus recovery.
+pub struct InputMap {
+    bindings: std::collections::BTreeMap<String, Action>,
+    pressed: std::collections::BTreeSet<String>,
+    blocked: std::collections::BTreeSet<String>,
+}
+impl InputMap {
+    pub fn new(bindings: Vec<Binding>) -> Result<Self, String> {
+        if bindings.len() > 64 {
+            return Err("Input mapping exceeds 64 controls".into());
+        }
+        let mut map = std::collections::BTreeMap::new();
+        for binding in bindings {
+            if binding.control.is_empty()
+                || binding.control.len() > 32
+                || !binding.control.is_ascii()
+                || binding.control.chars().any(char::is_control)
+                || matches!(binding.action, Action::Cast(slot) if slot >= 10)
+                || map.insert(binding.control, binding.action).is_some()
+            {
+                return Err("Input mapping has an invalid or duplicate control".into());
+            }
+        }
+        Ok(Self {
+            bindings: map,
+            pressed: Default::default(),
+            blocked: Default::default(),
+        })
+    }
+    /// Changes bindings atomically and fences controls already held until release.
+    pub fn rebind(&mut self, bindings: Vec<Binding>) -> Result<(), String> {
+        let mut next = Self::new(bindings)?;
+        for control in self.pressed.iter().chain(&self.blocked) {
+            if next.bindings.contains_key(control) {
+                next.blocked.insert(control.clone());
+            }
+        }
+        *self = next;
+        Ok(())
+    }
+    /// Returns a discrete action only on a fresh press. Movement is read by `held`.
+    pub fn change(&mut self, control: &str, down: bool) -> Option<Action> {
+        let action = *self.bindings.get(control)?;
+        if !down {
+            self.pressed.remove(control);
+            self.blocked.remove(control);
+            return None;
+        }
+        if self.blocked.contains(control) || !self.pressed.insert(control.into()) {
+            return None;
+        }
+        matches!(
+            action,
+            Action::Jump | Action::Cast(_) | Action::Target | Action::Respawn
+        )
+        .then_some(action)
+    }
+    pub fn held(&self) -> Held {
+        let active = |action| {
+            self.pressed
+                .iter()
+                .any(|control| self.bindings[control] == action)
+        };
+        Held {
+            forward: active(Action::Forward),
+            backward: active(Action::Backward),
+            turn_left: active(Action::TurnLeft),
+            turn_right: active(Action::TurnRight),
+            strafe_left: active(Action::StrafeLeft),
+            strafe_right: active(Action::StrafeRight),
+        }
+    }
+    pub fn clear(&mut self) {
+        self.blocked.append(&mut self.pressed);
+    }
+}
+impl Default for InputMap {
+    fn default() -> Self {
+        let mut bindings = vec![];
+        for (control, action) in [
+            ("KeyW", Action::Forward),
+            ("KeyS", Action::Backward),
+            ("KeyA", Action::TurnLeft),
+            ("KeyD", Action::TurnRight),
+            ("KeyQ", Action::StrafeLeft),
+            ("KeyE", Action::StrafeRight),
+            ("Space", Action::Jump),
+            ("Tab", Action::Target),
+            ("KeyR", Action::Respawn),
+            ("TouchForward", Action::Forward),
+            ("TouchBackward", Action::Backward),
+            ("TouchLeft", Action::StrafeLeft),
+            ("TouchRight", Action::StrafeRight),
+            ("TouchTurnLeft", Action::TurnLeft),
+            ("TouchTurnRight", Action::TurnRight),
+            ("PadForward", Action::Forward),
+            ("PadBackward", Action::Backward),
+            ("PadLeft", Action::StrafeLeft),
+            ("PadRight", Action::StrafeRight),
+            ("Pad0", Action::Cast(0)),
+            ("Pad1", Action::Jump),
+        ] {
+            bindings.push(Binding {
+                control: control.into(),
+                action,
+            });
+        }
+        for slot in 0..10 {
+            bindings.push(Binding {
+                control: format!("Digit{}", (slot + 1) % 10),
+                action: Action::Cast(slot),
+            });
+        }
+        Self::new(bindings).unwrap()
+    }
+}
+#[cfg(test)]
+mod platform_input_tests {
+    use super::*;
+    #[test]
+    fn remapping_fences_repeats_and_focus_and_keeps_independent_touches() {
+        let mut input = InputMap::new(vec![
+            Binding {
+                control: "TouchLeft".into(),
+                action: Action::Forward,
+            },
+            Binding {
+                control: "TouchRight".into(),
+                action: Action::Forward,
+            },
+            Binding {
+                control: "Pad0".into(),
+                action: Action::Cast(2),
+            },
+        ])
+        .unwrap();
+        assert_eq!(input.change("Pad0", true), Some(Action::Cast(2)));
+        assert_eq!(input.change("Pad0", true), None);
+        input.change("TouchLeft", true);
+        input.change("TouchRight", true);
+        input.change("TouchLeft", false);
+        assert!(input.held().forward);
+        input.clear();
+        assert!(!input.held().forward);
+        input.change("TouchRight", true);
+        assert!(!input.held().forward);
+        assert_eq!(input.change("Pad0", true), None);
+        input.change("Pad0", false);
+        assert_eq!(input.change("Pad0", true), Some(Action::Cast(2)));
+        input.change("TouchRight", false);
+        input.change("TouchRight", true);
+        assert!(input.held().forward);
+    }
+    #[test]
+    fn remapping_a_held_control_requires_release_before_its_new_action() {
+        let mut input = InputMap::default();
+        input.change("TouchForward", true);
+        input
+            .rebind(vec![Binding {
+                control: "TouchForward".into(),
+                action: Action::Cast(1),
+            }])
+            .unwrap();
+        assert_eq!(input.change("TouchForward", true), None);
+        input.change("TouchForward", false);
+        assert_eq!(input.change("TouchForward", true), Some(Action::Cast(1)));
+    }
+    #[test]
+    fn rejects_duplicate_controls_and_foreign_spell_slots() {
+        let b = Binding {
+            control: "Pad0".into(),
+            action: Action::Jump,
+        };
+        assert!(InputMap::new(vec![b.clone(), b]).is_err());
+        assert!(
+            InputMap::new(vec![Binding {
+                control: "Pad0".into(),
+                action: Action::Cast(10)
+            }])
+            .is_err()
+        );
+        assert!(
+            InputMap::new(vec![Binding {
+                control: "\n".into(),
+                action: Action::Jump
+            }])
+            .is_err()
+        );
+    }
+}

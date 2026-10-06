@@ -578,9 +578,24 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin>(
     config: &ClientConfig,
     now: u64,
 ) -> Result<Channel<S>> {
-    tokio::time::timeout(config.timeout, client_handshake(stream, config, now))
+    #[cfg(not(target_arch = "wasm32"))]
+    return tokio::time::timeout(config.timeout, client_handshake(stream, config, now))
         .await
-        .map_err(|_| Error::new(Refusal::Unavailable, "handshake timed out"))?
+        .map_err(|_| Error::new(Refusal::Unavailable, "handshake timed out"))?;
+    #[cfg(target_arch = "wasm32")]
+    {
+        use futures_util::future::{Either, select};
+        let millis = config.timeout.as_millis().min(u32::MAX as u128).max(1) as u32;
+        match select(
+            Box::pin(client_handshake(stream, config, now)),
+            Box::pin(gloo_timers::future::TimeoutFuture::new(millis)),
+        )
+        .await
+        {
+            Either::Left((result, _)) => result,
+            Either::Right(_) => Err(Error::new(Refusal::Unavailable, "handshake timed out")),
+        }
+    }
 }
 
 async fn client_handshake<S: AsyncRead + AsyncWrite + Unpin>(

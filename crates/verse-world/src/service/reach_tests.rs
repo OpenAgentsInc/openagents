@@ -329,3 +329,61 @@ fn a_channel_carries_only_its_own_devices_key() {
         Some(device.x_only_public_key().0.serialize())
     );
 }
+
+#[cfg(feature = "reach-client")]
+#[tokio::test]
+async fn portable_client_bridge_preserves_control_reconnect_and_revocation() {
+    let keys = [key(70), key(71), key(72)];
+    let host = key(73);
+    for carrier in [Carrier::Tcp, Carrier::WebSocket] {
+        let grants = Grants::default();
+        grants.set(&keys[0], granted());
+        let (address, stop, task) = start(grants.clone(), &host, carrier, &keys).await;
+        let cfg = config(&keys[0], &host);
+        let open = || async {
+            let socket = TcpStream::connect(address).await.unwrap();
+            let stream: Box<dyn net::Transport> = match carrier {
+                Carrier::Tcp => Box::new(socket),
+                Carrier::WebSocket => Box::new(
+                    websocket::client(&format!("ws://{address}/world"), socket)
+                        .await
+                        .unwrap(),
+                ),
+            };
+            connect(stream, &cfg, unix_now().unwrap()).await.unwrap()
+        };
+        let channel = open().await;
+        // The chamber signer cannot differ from the proved device identity.
+        assert!(
+            crate::service::reach_client::join(channel, &keys[1].secret_key(), 120, None)
+                .await
+                .is_err()
+        );
+        let mut first =
+            crate::service::reach_client::join(open().await, &keys[0].secret_key(), 120, None)
+                .await
+                .unwrap();
+        let life = first.snapshot().await.unwrap().hud.unwrap().life;
+        assert!(first.control().is_some());
+        first.close().await.unwrap();
+        let mut resumed =
+            crate::service::reach_client::join(open().await, &keys[0].secret_key(), 120, None)
+                .await
+                .unwrap();
+        assert_eq!(resumed.snapshot().await.unwrap().hud.unwrap().life, life);
+        grants.update(&keys[0], |grant| grant.revoked = true);
+        assert!(
+            timeout(Duration::from_secs(3), resumed.snapshot())
+                .await
+                .unwrap()
+                .is_err()
+        );
+        assert!(!resumed.connected());
+        let _ = stop.send(());
+        let exit = timeout(Duration::from_secs(4), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(exit.failure.is_none());
+    }
+}

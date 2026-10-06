@@ -404,6 +404,8 @@ impl Scene {
                     expires: now + 3.0,
                     priority,
                 });
+                self.captions
+                    .sort_by_key(|caption| std::cmp::Reverse(caption.priority));
             }
         }
         Ok(())
@@ -578,6 +580,33 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+    #[test]
+    fn a_small_hud_shows_critical_captions_before_crowded_footsteps() {
+        let mut scene = Scene::new(Arc::new(Bank::original().unwrap()), "en").unwrap();
+        for actor in 1..=32 {
+            scene
+                .caption(
+                    "footstep",
+                    Some(LifeId {
+                        instance: 1,
+                        actor,
+                        generation: 1,
+                    }),
+                    1.,
+                )
+                .unwrap();
+        }
+        scene.caption("impact", None, 2.).unwrap();
+        let visible: Vec<_> = scene
+            .captions(2.)
+            .take(4)
+            .map(|caption| caption.text.as_str())
+            .collect();
+        assert_eq!(visible[0], "Impact");
+        assert_eq!(visible.len(), 4);
+        assert_eq!(scene.captions(2.).count(), 32);
+        assert_eq!(scene.captions(4.5).count(), 1);
     }
     #[test]
     fn silent_output_keeps_captions_volumes_and_music_restore_position() {

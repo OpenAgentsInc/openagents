@@ -3130,6 +3130,12 @@ dependencies = [
 name = "coder-reach"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.3.4",
+ "gloo-timers",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "js-sys",
+ "web-sys",
  "base64 0.22.1",
  "futures-util",
  "nostr",
@@ -4788,6 +4794,12 @@ dependencies = [
 name = "everglade-web"
 version = "0.1.0"
 dependencies = [
+ "coder-reach",
+ "serde",
+ "secp256k1 0.31.1",
+ "verse-engine",
+ "verse-world",
+ "verse-content",
  "console_error_panic_hook",
  "glam",
  "js-sys",
@@ -15125,6 +15137,7 @@ dependencies = [
 name = "verse-imported"
 version = "0.1.0"
 dependencies = [
+ "web-time",
  "glam",
  "physics",
  "png",
@@ -15211,7 +15224,9 @@ version = "0.1.0"
 dependencies = [
  "coder-access",
  "coder-reach",
+ "futures-util",
  "getrandom 0.3.4",
+ "gloo-timers",
  "glam",
  "physics",
  "rcgen",
@@ -15224,6 +15239,8 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "verse-engine",
+ "wasm-bindgen-futures",
+ "web-time",
 ]
 
 [[package]]

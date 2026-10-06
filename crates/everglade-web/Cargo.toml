@@ -11,9 +11,15 @@ crate-type = ["cdylib", "rlib"]
 
 # Everything is browser-only; a native build of this crate is empty.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-verse = { path = "../verse", default-features = false, features = ["web"] }
+verse = { path = "../verse", default-features = false, features = ["browser-chamber"] }
 wgpu = "29.0.4"
 # The Grid's presence: positions, the console's frame lines, and the clock.
+verse-engine = { path = "../verse-engine" }
+verse-world = { path = "../verse-world", features = ["reach-client"] }
+verse-content = { path = "../verse-content" }
+coder-reach = { path = "../coder-reach" }
+serde = { version = "1", features = ["derive"] }
+secp256k1 = "0.31.1"
 glam = "0.30.10"
 serde_json = "1"
 web-time = "1.1.0"
@@ -30,11 +36,17 @@ console_error_panic_hook = "0.1.7"
 log = "0.4"
 web-sys = { version = "0.3", features = [
     "AddEventListenerOptions",
+    "AbortController",
+    "AbortSignal",
     "CssStyleDeclaration",
     "Document",
     "Element",
     "Event",
     "EventTarget",
+    "HtmlButtonElement",
+    "Gamepad",
+    "GamepadButton",
+    "Navigator",
     "HtmlCanvasElement",
     "HtmlElement",
     "KeyboardEvent",
@@ -45,6 +57,7 @@ web-sys = { version = "0.3", features = [
     "PointerEvent",
     "ReadableStream",
     "ReadableStreamDefaultReader",
+    "Request",
     "RequestCredentials",
     "RequestInit",
     "RequestRedirect",

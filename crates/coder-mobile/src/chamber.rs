@@ -43,6 +43,9 @@ pub(crate) struct Play {
     pub timing: Timing,
     /// Where the timing is written, beside the configuration.
     receipt: Option<PathBuf>,
+    input: verse_world::controls::InputMap,
+    audio: Option<verse_engine::audio_bank::Scene>,
+    damage: u64,
 }
 
 /// Frames the phone drew while joined: their intervals and how many actors
@@ -133,12 +136,21 @@ impl Play {
             content_revision: 0,
             timing: Timing::default(),
             receipt: None,
+            input: Default::default(),
+            audio: verse_engine::audio_bank::Bank::original()
+                .and_then(|bank| verse_engine::audio_bank::Scene::new(Arc::new(bank), "en"))
+                .ok(),
+            damage: 0,
         };
         play.connect();
         play
     }
 
     fn connect(&mut self) {
+        self.input.clear();
+        if let Some(audio) = &mut self.audio {
+            audio.suspended = false;
+        }
         let connector = self.connector.clone();
         self.stage = match std::thread::Builder::new()
             .name("chamber-connect".into())
@@ -185,6 +197,11 @@ impl Play {
 
     /// The surface goes inactive: stop the worker, keep the content.
     pub fn suspend(&mut self) {
+        self.input.clear();
+        if let Some(audio) = &mut self.audio {
+            audio.clear_captions();
+            audio.suspended = true;
+        }
         self.timing.pause();
         self.record();
         match std::mem::replace(&mut self.stage, Stage::Suspended) {
@@ -213,6 +230,30 @@ impl Play {
     /// # Errors
     /// The joined session's connection stopped; the stage becomes `Failed`.
     pub fn step(&mut self, held: Held) -> bool {
+        for (control, down) in [
+            ("TouchForward", held.forward),
+            ("TouchBackward", held.backward),
+            ("TouchLeft", held.strafe_left),
+            ("TouchRight", held.strafe_right),
+            ("TouchTurnLeft", held.turn_left),
+            ("TouchTurnRight", held.turn_right),
+        ] {
+            if let Some(action) = self.input.change(control, down)
+                && let (Stage::Joined(session), Some(content)) = (&mut self.stage, &self.content)
+            {
+                match action {
+                    verse_world::controls::Action::Jump => session.jump(&content.scene),
+                    verse_world::controls::Action::Cast(slot) => {
+                        if let Some(ability) = verse_world::play::Ability::ALL.get(slot as usize) {
+                            session.cast(&content.scene, *ability);
+                        }
+                    }
+                    verse_world::controls::Action::Target => session.target_nearest(),
+                    verse_world::controls::Action::Respawn => session.respawn(),
+                    _ => {}
+                }
+            }
+        }
         if let Stage::Connecting(handle) = &self.stage {
             if !handle.is_finished() {
                 return false;
@@ -233,6 +274,8 @@ impl Play {
                             });
                             self.content_revision += 1;
                             self.stage = Stage::Joined(session);
+                            self.input.clear();
+                            self.damage = 0;
                         }
                         Err(message) => self.stage = Stage::Failed(message),
                     }
@@ -258,9 +301,19 @@ impl Play {
             });
             return false;
         }
-        if let Err(message) = session.step(&content.scene, held) {
+        if let Err(message) = session.step(&content.scene, self.input.held()) {
             self.stage = Stage::Failed(message);
             return false;
+        }
+        if session.damage_events > self.damage {
+            if let Some(audio) = &mut self.audio {
+                let _ = audio.caption(
+                    "impact",
+                    session.owned_life(),
+                    self.started.elapsed().as_secs_f64(),
+                );
+            }
+            self.damage = session.damage_events;
         }
         self.timing.frame(session);
         if self.timing.frames % 600 == 0 {
@@ -269,14 +322,46 @@ impl Play {
         true
     }
 
+    /// Replaces the visit's Rust-owned mapping after validation and releases movement.
+    pub fn remap(&mut self, bindings: Vec<verse_world::controls::Binding>) -> Result<(), String> {
+        self.input.rebind(bindings)?;
+        if let (Stage::Joined(session), Some(content)) = (&mut self.stage, &self.content) {
+            session.release(&content.scene);
+        }
+        Ok(())
+    }
+
     /// Assembles the joined session's frame for a viewport of `size`.
     pub fn frame(&self, size: [u32; 2]) -> Result<Option<chamber_session::Frame>, String> {
+        self.frame_in(size, size.map(|value| value.max(1) as f32))
+    }
+    pub fn frame_in(
+        &self,
+        size: [u32; 2],
+        overlay: [f32; 2],
+    ) -> Result<Option<chamber_session::Frame>, String> {
         let (Stage::Joined(session), Some(content)) = (&self.stage, &self.content) else {
             return Ok(None);
         };
-        session
-            .frame(&content.pack, &content.atlas, &content.scene, size)
-            .map(Some)
+        let mut frame =
+            session.frame_in(&content.pack, &content.atlas, &content.scene, size, overlay)?;
+        if let Some(audio) = &self.audio {
+            for (row, caption) in audio
+                .captions(self.started.elapsed().as_secs_f64())
+                .take(4)
+                .enumerate()
+            {
+                frame.ui.text(
+                    &content.atlas,
+                    16.,
+                    overlay[1] * 0.65 + row as f32 * 20.,
+                    &caption.text,
+                    [1.; 4],
+                );
+            }
+        }
+        frame.scale_overlay(size.map(|value| value.max(1) as f32))?;
+        Ok(Some(frame))
     }
 }
 
@@ -386,6 +471,33 @@ mod tests {
         assert!(!play.step(Held::default()));
     }
 
+    #[test]
+    fn touch_mapping_survives_resume_and_rejects_invalid_changes() {
+        let (_host, _dir, mut play) = loopback(false);
+        assert!(joined(&mut play));
+        let binding = verse_world::controls::Binding {
+            control: "TouchForward".into(),
+            action: verse_world::controls::Action::StrafeRight,
+        };
+        play.remap(vec![binding.clone()]).unwrap();
+        play.step(Held {
+            forward: true,
+            ..Held::default()
+        });
+        assert!(play.input.held().strafe_right && !play.input.held().forward);
+        assert!(play.remap(vec![binding.clone(), binding]).is_err());
+        assert!(play.input.held().strafe_right);
+        play.suspend();
+        play.resume();
+        assert!(joined(&mut play));
+        play.step(Held {
+            forward: true,
+            ..Held::default()
+        });
+        assert!(play.input.held().strafe_right);
+        let frame = play.frame_in([640, 480], [320., 240.]).unwrap().unwrap();
+        assert_eq!(frame.overlay, [640., 480.]);
+    }
     #[test]
     fn a_dead_player_respawns_from_the_phone() {
         let (_host, _dir, mut play) = loopback(true);

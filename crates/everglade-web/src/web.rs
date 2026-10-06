@@ -156,7 +156,7 @@ impl Draw {
 
 /// The browser's display, for wgpu's WebGL2 backend.
 #[derive(Debug)]
-struct WebDisplay;
+pub(crate) struct WebDisplay;
 
 impl raw_window_handle::HasDisplayHandle for WebDisplay {
     fn display_handle(
@@ -285,6 +285,9 @@ async fn run() -> Result<(), String> {
         .ok_or_else(|| format!("the page has no #{CANVAS_ID}"))?
         .dyn_into()
         .map_err(|_| format!("#{CANVAS_ID} is not a canvas"))?;
+    if query_value(&window, "zone").as_deref() == Some("chamber") {
+        return crate::chamber::run(window, document, canvas).await;
+    }
     // The canvas takes drags and pinches instead of the page scrolling.
     let _ = canvas.style().set_property("touch-action", "none");
 

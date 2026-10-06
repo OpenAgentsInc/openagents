@@ -120,3 +120,11 @@ In the Grove, keys `1` to `9` cast the druid's spells on the hotbar
 (Thunderwave, Gust of Wind, Wind Wall, Wall of Stone, Reverse Gravity, Fire
 Bolt, Fireball, Misty Step, and Web), `0` is Long Rest, and a click or tap
 on a slot casts it. Spells aim at the dummy nearest the character's facing.
+
+## Authoritative chamber mode
+
+Open `?zone=chamber` to mount the shared authoritative chamber session over
+authenticated REACH WebSocket. See [configuration and the platform feature
+matrix](../../docs/verse/platform-clients.md). This mode requires explicit host
+enrollment and admitted content; the offline glade and Grid presence remain
+separate modes. Wasm compilation does not establish browser device acceptance.

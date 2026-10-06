@@ -4,13 +4,13 @@ use crate::ui::Atlas;
 use glam::{Mat4, Quat, Vec3};
 use verse_engine::{assets::Pack, source_position};
 /// Assembles admitted remote actors and effects without a local simulation.
-#[cfg(feature = "remote-chamber")]
+#[cfg(feature = "chamber-client")]
 pub struct RemoteScene {
     pub frame: verse_engine::director::Frame,
     pub instances: Vec<Instance>,
     pub lighting: super::lighting::Lighting,
 }
-#[cfg(feature = "remote-chamber")]
+#[cfg(feature = "chamber-client")]
 pub fn remote_scene(
     pack: &Pack,
     view: &verse_world::service::view::View,
@@ -22,7 +22,7 @@ pub fn remote_scene(
 ) -> Result<Option<RemoteScene>, String> {
     remote_scene_predicted(pack, view, alpha, camera, origin, playground, focus, None)
 }
-#[cfg(feature = "remote-chamber")]
+#[cfg(feature = "chamber-client")]
 pub fn remote_scene_predicted(
     pack: &Pack,
     view: &verse_world::service::view::View,
@@ -41,7 +41,7 @@ pub fn remote_scene_predicted(
     };
     render_remote_sample(pack, sample, origin, playground, focus).map(Some)
 }
-#[cfg(feature = "remote-chamber")]
+#[cfg(feature = "chamber-client")]
 fn render_remote_sample(
     pack: &Pack,
     sample: verse_world::service::view::SceneSample,
@@ -89,7 +89,7 @@ fn render_remote_sample(
     })
 }
 
-#[cfg(feature = "remote-chamber")]
+#[cfg(feature = "chamber-client")]
 fn append_equipment(
     pack: &Pack,
     frame: &verse_engine::director::Frame,
@@ -975,7 +975,7 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "remote-chamber")]
+    #[cfg(feature = "chamber-client")]
     #[test]
     fn assembled_remote_sample_matches_local_native_world_consumers() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
@@ -1025,7 +1025,7 @@ mod tests {
             assert_eq!(a.color, b.color);
         }
     }
-    #[cfg(feature = "remote-chamber")]
+    #[cfg(feature = "chamber-client")]
     #[test]
     fn remote_scene_waits_for_admission_and_rejects_invalid_view_inputs() {
         let dir = tempfile::tempdir().unwrap();
@@ -1057,7 +1057,7 @@ mod tests {
         let invalid = verse_world::service::view::Camera { fov: 0., ..camera };
         assert!(remote_scene(&pack, &view, 0.5, invalid, Vec3::ZERO, false, Vec3::ZERO).is_err());
     }
-    #[cfg(feature = "remote-chamber")]
+    #[cfg(feature = "chamber-client")]
     #[test]
     #[ignore = "Explicit animated outfit GPU acceptance"]
     fn capture_owned_outfit_models() {

@@ -10,13 +10,17 @@
 //! the handshake transcript.
 
 pub mod artifact;
+#[cfg(target_arch = "wasm32")]
+pub mod browser;
 pub mod channel;
 pub mod directory;
 pub mod hints;
 pub mod placement;
 pub mod presence;
 pub mod split;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod websocket;
+pub mod websocket_frame;
 
 use std::fmt;
 use std::str::FromStr;

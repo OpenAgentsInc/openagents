@@ -776,3 +776,13 @@ owns no second physics, presence, or authority implementation. The mobile
 C ABI and native mounting remain unchanged. Watch continues to use the
 independent read-only spectator. See
 [desktop Play](../../crates/openagents-desktop/README.md#play-the-grid).
+
+## Authoritative chamber client status
+
+The mobile RITUAL visit mounts `coder-mobile::chamber::Play` over the shared
+`verse-imported::chamber_session::Session`, worker, prediction, and combat HUD.
+It supports TLS and explicitly enrolled REACH TCP/WebSocket configurations.
+Rust owns remapping and suspend/reconnect; overlays scale logical text to the
+physical viewport and show priority captions. See the [current platform feature
+matrix](platform-clients.md) for supported features and device verification
+limits. This path is distinct from Grid presence.

@@ -1,13 +1,20 @@
 //! Sequential chamber client with committed control and no uncertain command replay.
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::time::Duration;
+#[cfg(feature = "service-net")]
+use std::{net::SocketAddr, sync::Arc};
 
+use super::client_runtime::{self, timeout};
+#[cfg(feature = "service-net")]
 use rustls::{ClientConfig, pki_types::ServerName};
 use secp256k1::{Keypair, Secp256k1};
-use tokio::{io::AsyncWriteExt, net::TcpStream, time::timeout};
+use tokio::io::AsyncWriteExt;
+#[cfg(feature = "service-net")]
+use tokio::net::TcpStream;
+#[cfg(feature = "service-net")]
 use tokio_rustls::TlsConnector;
 
 use super::{
-    net::{Transport, read_frame, write_frame},
+    transport::{Transport, read_frame, write_frame},
     wire::{
         Body, Control, EventPage, Hello, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Reply, Request,
         Response, State, VERSION,
@@ -32,10 +39,11 @@ pub struct Client {
     logged_in: bool,
     player: bool,
     inventory_revision: u64,
-    verified_at: Option<std::time::Instant>,
+    verified_at: Option<web_time::Instant>,
     replication: super::replication::Receiver,
 }
 impl Client {
+    #[cfg(feature = "service-net")]
     pub async fn connect(
         address: SocketAddr,
         server_name: ServerName<'static>,
@@ -46,6 +54,7 @@ impl Client {
         Self::connect_with_content(address, server_name, tls, instance, None, key).await
     }
     /// Refuses differing configured content before producing an authentication signature.
+    #[cfg(feature = "service-net")]
     pub async fn connect_with_content(
         address: SocketAddr,
         server_name: ServerName<'static>,
@@ -164,7 +173,7 @@ impl Client {
         self.reconstruct(&body, &mut response)?;
         self.validate(request_id, &body, &response)?;
         self.tick = response.tick;
-        self.verified_at = Some(std::time::Instant::now());
+        self.verified_at = Some(web_time::Instant::now());
         if let Reply::Inventory { inventory } = &response.body {
             self.inventory_revision = inventory.revision;
         }
@@ -187,7 +196,7 @@ impl Client {
                 if !matches!(&response.body, Reply::Refused {code, ..} if code == "storage_busy") {
                     return Ok(response);
                 }
-                tokio::time::sleep(Duration::from_millis(33)).await;
+                client_runtime::sleep(Duration::from_millis(33)).await;
             }
         })
         .await
@@ -716,19 +725,19 @@ pub const PIPELINE_CAPACITY: usize = 8;
 struct Pending {
     id: u64,
     body: Body,
-    sent: tokio::time::Instant,
+    sent: client_runtime::Instant,
 }
 
 /// Bounded duplex transport. Dropping it closes uncertain IO without replay.
 /// Frame tasks own partial reads and writes independently of caller polling.
 pub struct Pipeline {
     last_turnaround: Option<Duration>,
-    last_request_started: Option<std::time::Instant>,
+    last_request_started: Option<web_time::Instant>,
     client: Client,
     writes: tokio::sync::mpsc::Sender<Vec<u8>>,
     responses: tokio::sync::mpsc::Receiver<Result<Response, String>>,
     pending: std::collections::VecDeque<Pending>,
-    tasks: Vec<tokio::task::JoinHandle<()>>,
+    tasks: Vec<client_runtime::Task>,
     sequence: Option<(super::wire::Life, u64, u64)>,
     failed: bool,
 }
@@ -747,7 +756,7 @@ impl Client {
         let (writes, mut outgoing) = tokio::sync::mpsc::channel::<Vec<u8>>(PIPELINE_CAPACITY);
         let (incoming, responses) = tokio::sync::mpsc::channel(PIPELINE_CAPACITY);
         let errors = incoming.clone();
-        let write = tokio::spawn(async move {
+        let write = client_runtime::spawn(async move {
             while let Some(bytes) = outgoing.recv().await {
                 let result = timeout(
                     DEADLINE,
@@ -762,7 +771,7 @@ impl Client {
                 }
             }
         });
-        let read = tokio::spawn(async move {
+        let read = client_runtime::spawn(async move {
             loop {
                 let result = match read_frame(&mut reader, MAX_RESPONSE_BYTES).await {
                     Ok(bytes) => serde_json::from_slice::<Response>(&bytes)
@@ -805,7 +814,7 @@ impl Pipeline {
     pub fn last_turnaround(&self) -> Option<Duration> {
         self.last_turnaround
     }
-    pub fn last_request_started(&self) -> Option<std::time::Instant> {
+    pub fn last_request_started(&self) -> Option<web_time::Instant> {
         self.last_request_started
     }
 
@@ -823,7 +832,7 @@ impl Pipeline {
         self.client.instance
     }
 
-    pub(crate) fn verified_at(&self) -> Option<std::time::Instant> {
+    pub(crate) fn verified_at(&self) -> Option<web_time::Instant> {
         self.client.verified_at
     }
 
@@ -896,7 +905,7 @@ impl Pipeline {
         self.pending.push_back(Pending {
             id,
             body,
-            sent: tokio::time::Instant::now(),
+            sent: client_runtime::Instant::now(),
         });
         Ok(id)
     }
@@ -917,7 +926,7 @@ impl Pipeline {
             .ok_or("Chamber pipeline has no pending request")?
             .sent
             + DEADLINE;
-        let received = tokio::time::timeout_at(deadline, self.responses.recv()).await;
+        let received = client_runtime::timeout_at(deadline, self.responses.recv()).await;
         let result = match received {
             Ok(Some(result)) => result,
             Ok(None) => Err("Chamber response reader closed".into()),
@@ -943,9 +952,13 @@ impl Pipeline {
         }
         let pending = self.pending.pop_front().expect("Verified response context");
         self.last_turnaround = Some(pending.sent.elapsed());
-        self.last_request_started = Some(pending.sent.into_std());
+        #[cfg(not(target_arch = "wasm32"))]
+        let started = pending.sent.into_std();
+        #[cfg(target_arch = "wasm32")]
+        let started = pending.sent;
+        self.last_request_started = Some(started);
         self.client.tick = response.tick;
-        self.client.verified_at = Some(std::time::Instant::now());
+        self.client.verified_at = Some(web_time::Instant::now());
         if let Reply::Inventory { inventory } = &response.body {
             self.client.inventory_revision = inventory.revision;
         }
@@ -962,7 +975,7 @@ impl Pipeline {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "service-net"))]
 mod tests {
     use super::*;
     use crate::service::{
@@ -970,6 +983,7 @@ mod tests {
         wire::{Action, Input, Life},
     };
     use tokio::{net::TcpListener, sync::oneshot};
+    #[cfg(feature = "service-net")]
     use tokio_rustls::TlsAcceptor;
     fn name() -> ServerName<'static> {
         ServerName::try_from("localhost").unwrap()
@@ -983,7 +997,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (server, connector) = tls();
-        let peer = tokio::spawn(async move {
+        let peer = client_runtime::spawn(async move {
             let (socket, _) = listener.accept().await.unwrap();
             let mut socket = TlsAcceptor::from(server).accept(socket).await.unwrap();
             let (id, hello) = g.open_json(0).unwrap();
@@ -1081,7 +1095,7 @@ mod tests {
         let (server, connector) = tls();
         let (partial, partial_received) = oneshot::channel();
         let (release, released) = oneshot::channel();
-        let peer = tokio::spawn(async move {
+        let peer = client_runtime::spawn(async move {
             let (socket, _) = listener.accept().await.unwrap();
             let mut socket = TlsAcceptor::from(server).accept(socket).await.unwrap();
             let (id, hello) = gateway.open_json(0).unwrap();
@@ -1246,7 +1260,7 @@ mod tests {
         assert!(before.quest_log[0].interactable);
         std::fs::create_dir(root.join("next.json")).unwrap();
         assert!(a.accept_quest(1, giver).await.is_err());
-        let exit = tokio::time::timeout(Duration::from_secs(5), server)
+        let exit = client_runtime::timeout(Duration::from_secs(5), server)
             .await
             .unwrap()
             .unwrap();
@@ -1518,13 +1532,13 @@ mod tests {
             .body,
             Reply::Accepted
         ));
-        let left = tokio::time::timeout(Duration::from_secs(4), async {
+        let left = client_runtime::timeout(Duration::from_secs(4), async {
             loop {
                 let inv = a.inventory().await.unwrap();
                 if inv.experience == 45 {
                     break inv;
                 }
-                tokio::time::sleep(Duration::from_millis(33)).await;
+                client_runtime::sleep(Duration::from_millis(33)).await;
             }
         })
         .await
@@ -1623,7 +1637,7 @@ mod tests {
         ));
         let after = recovered.inventory().await.unwrap();
         assert_eq!(after, left);
-        tokio::time::sleep(Duration::from_millis(70)).await;
+        client_runtime::sleep(Duration::from_millis(70)).await;
         assert_eq!(recovered.inventory().await.unwrap(), after);
         recovered.close().await.unwrap();
         stop.send(()).unwrap();
@@ -1709,7 +1723,7 @@ mod tests {
         assert!(!before.quest_log[0].claimed);
         std::fs::create_dir(root.join("next.json")).unwrap();
         assert!(client.claim_quest(1).await.is_err());
-        let exit = tokio::time::timeout(std::time::Duration::from_secs(3), server)
+        let exit = client_runtime::timeout(std::time::Duration::from_secs(3), server)
             .await
             .unwrap()
             .unwrap();
@@ -1822,7 +1836,7 @@ mod tests {
         assert_eq!(before.catalog.items[0].health, 45);
         std::fs::create_dir(root.join("next.json")).unwrap();
         assert!(client.use_item(1, [1; 16]).await.is_err());
-        let exit = tokio::time::timeout(std::time::Duration::from_secs(3), server)
+        let exit = client_runtime::timeout(std::time::Duration::from_secs(3), server)
             .await
             .unwrap()
             .unwrap();
@@ -2029,7 +2043,7 @@ mod tests {
                 .await
                 .is_err()
         );
-        let exit = tokio::time::timeout(std::time::Duration::from_secs(3), server)
+        let exit = client_runtime::timeout(std::time::Duration::from_secs(3), server)
             .await
             .unwrap()
             .unwrap();
@@ -2301,7 +2315,7 @@ mod tests {
             .body,
             Reply::Accepted
         ));
-        let exit = tokio::time::timeout(std::time::Duration::from_secs(4), server)
+        let exit = client_runtime::timeout(std::time::Duration::from_secs(4), server)
             .await
             .unwrap()
             .unwrap();
@@ -2485,7 +2499,7 @@ mod tests {
         assert!(a.control().is_none());
         let epoch = b.control().unwrap().epoch;
         b.close().await.unwrap();
-        tokio::time::sleep(Duration::from_millis(30)).await;
+        client_runtime::sleep(Duration::from_millis(30)).await;
         let mut b = Client::connect(address, name(), config, 120, &keys[1])
             .await
             .unwrap();
@@ -2540,7 +2554,7 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let (server, connector) = tls();
         let (sent, received) = oneshot::channel();
-        let task = tokio::spawn(async move {
+        let task = client_runtime::spawn(async move {
             let (socket, _) = listener.accept().await.unwrap();
             socket.set_nodelay(true).unwrap();
             let mut socket = TlsAcceptor::from(server).accept(socket).await.unwrap();
@@ -2745,4 +2759,17 @@ mod tests {
                 .is_ok()
         );
     }
+}
+
+/// Verifies an already-open socket's TLS identity before a reachable upgrade.
+#[cfg(feature = "service-net")]
+pub async fn connect_tls_stream(
+    socket: TcpStream,
+    tls: Arc<ClientConfig>,
+    server_name: ServerName<'static>,
+) -> Result<tokio_rustls::client::TlsStream<TcpStream>, String> {
+    TlsConnector::from(tls)
+        .connect(server_name, socket)
+        .await
+        .map_err(|_| "Chamber TLS identity refused".into())
 }

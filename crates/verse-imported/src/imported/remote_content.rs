@@ -82,6 +82,19 @@ mod tests {
         ))
         .unwrap();
         let original = identity(&pack, &scene, dir.path()).unwrap();
+        let prepared =
+            verse_engine::loading::Prepared::load(pack.clone(), dir.path(), Default::default())
+                .unwrap();
+        assert_eq!(
+            original,
+            verse_content::remote_content::identity_prepared(&prepared, &scene).unwrap()
+        );
+        let mut changed = scene.clone();
+        changed.actors[0].position.x += 1.;
+        assert_ne!(
+            original,
+            verse_content::remote_content::identity_prepared(&prepared, &changed).unwrap()
+        );
         assert_eq!(original, identity(&pack, &scene, dir.path()).unwrap());
         let relocated = tempfile::tempdir().unwrap();
         for texture in &pack.textures {
