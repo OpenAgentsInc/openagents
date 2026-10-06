@@ -121,7 +121,7 @@ All paths are under the repository root.
 | Levels of detail | Automatic in Nanite | `Detail` (always, near, far) against up to 8 switch distances, with 2.5 m hysteresis, in `textured.rs` (commit `9725702a71`). `scripts/blender/everglade_lod.py` generates 53 far levels offline; `crates/verse-zone-everglade/src/zones/everglade/detail.rs` switches them at 60 m. | LODs come from a per-zone Blender script, not from the pack compiler. Two levels only. |
 | Frustum culling | GPU, per cluster | CPU, per cell: `in_frustum` and `drawn()` in `textured.rs`, with a fog-distance cull and a small-size cull. | No hierarchy above cells. |
 | Occlusion culling | Hi-Z, two passes | None. | All of it. Matters most in corridors and crypts. |
-| GPU instancing and indirect draw | GPU-driven | Instancing for skeletal figures only (`imported/instancing.rs` in `crates/verse-pbr`). Static geometry is merged instead, by design. | No indirect or multi-draw. Low payoff while merged cells hold. |
+| GPU instancing and indirect draw | GPU-driven | Skeletal figures (`imported/instancing.rs`) and repeated static models (`pbr/instanced.rs`, in runs per 8 m cell) in `crates/verse-pbr`. Placements a zone edits stay merged. | No indirect or multi-draw. |
 | Dynamic global illumination | Lumen (software and hardware ray tracing, surface cache) | Baked: a CPU ray bake through a BVH stores per-vertex sky visibility and one sun bounce, and an order-one SH probe grid lights characters (`crates/verse-pbr/src/pbr/textured_bake.rs`). The sky is order-two SH with a prefiltered cube (`pbr/environment.rs`). GTAO and contact shadows on the High tier (`pbr/screen.rs`). Up to 32 unshadowed point lights (`Neon::lamps`, commit `2e4f70fc17`). Emissive materials. | No bounce from point lights or emissive surfaces, and no dynamic update when geometry changes. Audit finding V22 says to diagnose readability before adding a general GI system (`docs/audits/2026-10-04-verse-engine-audit.md`). |
 | Shadows | Virtual shadow maps | Cascaded sun shadows, 2 or 3 cascades; cascades after the first cache static casters (`crates/verse-pbr/src/pbr/gpu.rs`, `verse_engine::lighting::fit_cascades`). | Point lights cast no shadows. |
 | Atmosphere | Sky atmosphere, volumetric fog | Height fog (`verse_engine::lighting::HeightFog`, `crates/verse-pbr/src/fog.rs`), an ephemeris sky (`pbr/sky.rs`), sprite particles for dust and smoke (`crates/verse-pbr/src/fx/`). | No volumetric light shafts. |
@@ -218,8 +218,10 @@ Two of the external analysis's items are already done:
 - **Separately chunked terrain.** Terrain is its own mesh in each zone, and
   the 8 m cells chunk everything placed on it.
 
-GPU instancing and indirect drawing stay off the list: merged cells already
-give one draw per cell, and indirect draw needs features WebGL2 lacks.
+Indirect drawing stays off the list, since it needs features WebGL2 lacks.
+GPU instancing landed on 2026-10-06 for memory rather than draw calls:
+merged cells copied every repeated model, and instances upload it once
+([Rendering scale](rendering-scale.md)).
 
 ## The study list
 

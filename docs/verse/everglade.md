@@ -151,10 +151,14 @@ Admission follows the Fantasy Props precedent:
   level of detail from anywhere in the clearing
   (`everglade_pack::PLACED_TRIANGLE_BUDGET`; 1,250,000 before the far
   levels' switch moved from 60 m to 80 m), and a street-level frame may
-  draw at most 600,000 (`everglade_pack::DRAWN_TRIANGLE_BUDGET`); every
-  level together, which the renderer merges and uploads, stays under
-  2,900,000 (`everglade_pack::MERGED_TRIANGLE_BUDGET`, 2,600,000 before the
-  foliage round), about 209 MiB of the renderer's 224 MiB geometry bound.
+  draw at most 600,000 (`everglade_pack::DRAWN_TRIANGLE_BUDGET`). Every
+  level together, each instance counted in full, stays under 4,000,000
+  triangles, the light bake's bound (`everglade_pack::MERGED_TRIANGLE_BUDGET`;
+  2,900,000 while the renderer merged every placement, 2,600,000 before
+  the foliage round), and the city keeps at most 160 MiB on the GPU
+  (`everglade_pack::RESIDENT_BYTES_BUDGET`): about 117 MiB now, 209 MiB
+  before repeated models drew as instances
+  ([Rendering scale](rendering-scale.md)).
 
 ## Rendering
 
@@ -163,7 +167,12 @@ The zone renderer gains textured static meshes:
 - Base-color texture sampling with the material's factor, alpha-mask cutoff,
   double-sided faces, and one blended pass for glass.
 - Static placements merge into cells per material and upload once, as
-  `imported::merge` does for the lair; there is no GPU instancing to depend on.
+  `imported::merge` does for the lair, when the town may hide or carve
+  them: its buildings' pieces. Every other repeated model, the trees,
+  foliage, props, and street furniture, uploads once and draws its copies
+  as GPU instances in runs per cell (`pbr::instanced`), with a 28-byte
+  vertex and the baked light in a texture
+  ([Rendering scale](rendering-scale.md)).
 - The same shaders run on desktop and on phones, within the GLES 3.0 limits
   every backend requests (no storage buffers or compute).
 - Kit-built houses are painted: each takes a plaster and a roof color from
