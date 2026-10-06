@@ -521,6 +521,8 @@ impl Graph {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Authored {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locomotion: Option<crate::locomotion::Definition>,
     pub version: u16,
     pub graph: Graph,
     #[serde(deserialize_with = "read_selectors")]
@@ -602,6 +604,7 @@ impl Authored {
             })
             .collect();
         Self {
+            locomotion: None,
             version: 1,
             graph: Graph {
                 parameters,
@@ -619,7 +622,68 @@ impl Authored {
                 .collect(),
         }
     }
+    /// Extends the semantic graph with a phase-synchronized speed blend.
+    pub fn from_locomotion(
+        model: &Model,
+        mut definition: crate::locomotion::Definition,
+    ) -> Result<Self, String> {
+        let mut authored = Self::from_bindings(model);
+        definition.speed_parameter = authored.graph.parameters.len();
+        authored.graph.parameters.push(Parameter::Scalar {
+            name: "locomotion_speed".into(),
+            min: 0.,
+            max: definition.run_speed,
+            default: 0.,
+        });
+        let mut samples = Vec::new();
+        for (state, speed) in [
+            (State::Idle, 0.),
+            (State::Walk, definition.walk_speed),
+            (State::Run, definition.run_speed),
+        ] {
+            let node = authored
+                .graph
+                .nodes
+                .iter()
+                .position(
+                    |node| matches!(node, Node::Clip { state: selected, .. } if *selected == state),
+                )
+                .ok_or("Locomotion requires idle, walk, and run clips")?;
+            let binding = animation::resolve(model, state.into())?;
+            let duration = model
+                .clips
+                .iter()
+                .find(|clip| clip.id == binding.clip)
+                .unwrap()
+                .duration;
+            authored.graph.nodes[node] = Node::Clip {
+                state,
+                rate: duration,
+            };
+            samples.push(BlendSample { at: speed, node });
+        }
+        let blend = authored.graph.nodes.len();
+        authored.graph.nodes.push(Node::Blend1d {
+            parameter: definition.speed_parameter,
+            samples,
+        });
+        for state in [State::Idle, State::Walk, State::Run] {
+            let selector = authored.selectors[&state];
+            authored.graph.states[selector].node = blend;
+        }
+        authored.locomotion = Some(definition);
+        authored.validate(model)?;
+        Ok(authored)
+    }
     pub fn validate(&self, model: &Model) -> Result<(), String> {
+        if let Some(definition) = &self.locomotion {
+            crate::locomotion::Rig::admit(model, definition)?;
+            if !matches!(self.graph.parameters.get(definition.speed_parameter),
+                Some(Parameter::Scalar { min, max, default, .. }) if *min == 0. && *max >= definition.run_speed && *default == 0.)
+            {
+                return Err("Locomotion needs an admitted speed parameter".into());
+            }
+        }
         if self.version != 1 || self.selectors.is_empty() || self.selectors.len() > State::ALL.len()
         {
             return Err("Invalid semantic animation graph version or selector count".into());
@@ -657,6 +721,7 @@ impl Authored {
 }
 /// Compiled semantic selectors share one immutable motion admission.
 pub struct Semantic {
+    rig: Option<crate::locomotion::Rig>,
     admitted: Admitted,
     defaults: Vec<Value>,
     selectors: std::collections::BTreeMap<State, usize>,
@@ -665,10 +730,56 @@ impl Semantic {
     pub fn new(authored: &Authored, model: &Model) -> Result<Self, String> {
         authored.validate(model)?;
         Ok(Self {
+            rig: authored
+                .locomotion
+                .as_ref()
+                .map(|definition| crate::locomotion::Rig::admit(model, definition))
+                .transpose()?,
             defaults: authored.graph.defaults()?,
             selectors: authored.selectors.clone(),
             admitted: Admitted::new(authored.graph.clone(), model)?,
         })
+    }
+    pub fn rig(&self) -> Option<&crate::locomotion::Rig> {
+        self.rig.as_ref()
+    }
+    pub fn motion_values(
+        &self,
+        state: State,
+        input: crate::locomotion::Inputs,
+    ) -> Result<Vec<Value>, String> {
+        let mut values = self.values(state)?;
+        if let Some(rig) = &self.rig {
+            let speed = if state == State::Idle {
+                0.
+            } else if input.reset {
+                match state {
+                    State::Walk => rig.definition.walk_speed,
+                    State::Run => rig.definition.run_speed,
+                    _ => 0.,
+                }
+            } else {
+                input.speed
+            };
+            values[rig.definition.speed_parameter] =
+                Value::Scalar(speed.clamp(0., rig.definition.run_speed));
+        }
+        Ok(values)
+    }
+    pub fn phase(&self, state: State, seconds: f32) -> Result<f32, String> {
+        if self.rig.is_some() && matches!(state, State::Idle | State::Walk | State::Run) {
+            let binding = animation::resolve(&self.admitted.model, state.into())?;
+            let clip = self
+                .admitted
+                .model
+                .clips
+                .iter()
+                .find(|clip| clip.id == binding.clip)
+                .unwrap();
+            Ok(seconds / clip.duration)
+        } else {
+            Ok(seconds)
+        }
     }
     pub fn admitted(&self) -> &Admitted {
         &self.admitted
@@ -691,6 +802,9 @@ pub struct Admitted {
 }
 static NEXT_GRAPH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 impl Admitted {
+    pub(crate) fn identity(&self) -> u64 {
+        self.id
+    }
     pub fn new(graph: Graph, model: &Model) -> Result<Self, String> {
         graph.validate(model)?;
         let id = NEXT_GRAPH
@@ -781,6 +895,7 @@ impl Admitted {
 }
 #[derive(Clone, Default)]
 pub struct Playback {
+    matrices: std::sync::Arc<[Mat4]>,
     graph: Option<u64>,
     life: Option<crate::core::LifeId>,
     state: usize,
@@ -799,6 +914,7 @@ pub struct Playback {
 }
 #[derive(Debug)]
 pub struct Frame {
+    pub evaluated: bool,
     pub matrices: Vec<Mat4>,
     pub markers: Vec<crate::markers::Event>,
     pub state: usize,
@@ -815,7 +931,7 @@ impl Playback {
         values: &[Value],
         clock: f64,
     ) -> Result<Frame, String> {
-        self.update_time(admitted, life, values, clock, None, None)
+        self.update_time(admitted, life, values, clock, None, None, true)
     }
     /// Uses an admitted presentation phase, such as distance-driven locomotion,
     /// while the independent clock governs transitions. Backward phases seek.
@@ -850,6 +966,31 @@ impl Playback {
             clock,
             Some(sample_time),
             phase_epoch,
+            true,
+        )
+    }
+    /// Advances marker ownership every frame while reusing bounded crowd poses.
+    pub fn update_quality(
+        &mut self,
+        admitted: &Admitted,
+        life: crate::core::LifeId,
+        values: &[Value],
+        sample_time: f64,
+        clock: f64,
+        phase_epoch: Option<u64>,
+        sample_pose: bool,
+    ) -> Result<Frame, String> {
+        if !sample_time.is_finite() || !(0. ..=1_000_000.).contains(&sample_time) {
+            return Err("Invalid animation graph presentation phase".into());
+        }
+        self.update_time(
+            admitted,
+            life,
+            values,
+            clock,
+            Some(sample_time),
+            phase_epoch,
+            sample_pose,
         )
     }
     fn update_time(
@@ -860,6 +1001,7 @@ impl Playback {
         clock: f64,
         sample_time: Option<f64>,
         phase_epoch: Option<u64>,
+        sample_pose: bool,
     ) -> Result<Frame, String> {
         if !clock.is_finite() || !(0. ..=1_000_000.).contains(&clock) {
             return Err("Invalid animation graph playback clock".into());
@@ -892,37 +1034,49 @@ impl Playback {
         }
         let root = admitted.graph.states[next.state].node;
         let time = sample_time.unwrap_or(clock - next.entered);
-        let seeked =
-            !reset && !transitioned && (time < next.sample_time || next.phase_epoch != phase_epoch);
-        let target = admitted
-            .graph
-            .locals(&admitted.model, root, values, time as f32)?;
-        if reset || seeked || next.current.is_empty() {
-            next.current = target.into();
-            next.from = next.current.clone();
-            next.changed = clock;
-            next.duration = 0.;
-        } else {
-            let weight = if next.duration == 0. {
-                1.
-            } else {
-                ((clock - next.changed) / f64::from(next.duration)).clamp(0., 1.) as f32
-            };
-            let weight = weight * weight * (3. - 2. * weight);
-            next.current = if weight == 0. {
-                next.from.clone()
-            } else if weight == 1. {
-                target.into()
-            } else {
-                next.from
-                    .iter()
-                    .zip(target)
-                    .map(|(a, b)| blend(*a, b, weight))
-                    .collect::<Vec<_>>()
-                    .into()
-            };
-        }
+        let seeked = !reset
+            && (next.phase_epoch != phase_epoch || (!transitioned && time < next.sample_time));
         let source = admitted.marker_source(root, values);
+        let evaluated = sample_pose
+            || reset
+            || seeked
+            || transitioned
+            || next.current.is_empty()
+            || next.source != Some(source);
+        let target = if evaluated {
+            admitted
+                .graph
+                .locals(&admitted.model, root, values, time as f32)?
+        } else {
+            Vec::new()
+        };
+        if evaluated {
+            if reset || seeked || next.current.is_empty() {
+                next.current = target.into();
+                next.from = next.current.clone();
+                next.changed = clock;
+                next.duration = 0.;
+            } else {
+                let weight = if next.duration == 0. {
+                    1.
+                } else {
+                    ((clock - next.changed) / f64::from(next.duration)).clamp(0., 1.) as f32
+                };
+                let weight = weight * weight * (3. - 2. * weight);
+                next.current = if weight == 0. {
+                    next.from.clone()
+                } else if weight == 1. {
+                    target.into()
+                } else {
+                    next.from
+                        .iter()
+                        .zip(target)
+                        .map(|(a, b)| blend(*a, b, weight))
+                        .collect::<Vec<_>>()
+                        .into()
+                };
+            }
+        }
         if reset || seeked || transitioned || next.source != Some(source) {
             next.epoch = next
                 .epoch
@@ -952,7 +1106,10 @@ impl Playback {
             next.cursor = crate::markers::Cursor::default();
             Vec::new()
         };
-        let matrices = animation::matrices(&admitted.model, &next.current);
+        if evaluated {
+            next.matrices = animation::matrices(&admitted.model, &next.current).into();
+        }
+        let matrices = next.matrices.to_vec();
         if matrices.iter().any(|matrix| !matrix.is_finite()) {
             return Err("Animation graph playback produced a nonfinite hierarchy".into());
         }
@@ -960,6 +1117,7 @@ impl Playback {
         next.sample_time = time;
         next.phase_epoch = phase_epoch;
         let frame = Frame {
+            evaluated,
             matrices,
             markers,
             state: next.state,

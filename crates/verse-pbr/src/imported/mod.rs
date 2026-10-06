@@ -172,6 +172,10 @@ pub struct FrameTimings {
     pub static_shadow_refreshes: usize,
     pub marker_events: usize,
     pub graph_instances: usize,
+    pub pose_samples: usize,
+    pub pose_reuses: usize,
+    pub sampled_bones: usize,
+    pub foot_probes: usize,
 }
 /// A presentation marker sampled at the actor's current world placement.
 #[derive(Clone, Debug, serde::Serialize)]
@@ -410,8 +414,9 @@ pub struct Renderer {
     graphs: HashMap<String, std::sync::Arc<verse_engine::animation_graph::Semantic>>,
     #[cfg(any(test, feature = "diagnostics"))]
     evaluated_poses: Vec<Pose>,
-    graph_playback:
-        HashMap<(verse_engine::core::LifeId, String), verse_engine::animation_graph::Playback>,
+    animation_controllers:
+        HashMap<(verse_engine::core::LifeId, String), verse_engine::locomotion::Controller>,
+    pub animation_diagnostics: Vec<verse_engine::locomotion::Diagnostic>,
     grounding: HashMap<(Option<verse_engine::core::LifeId>, String), Grounding>,
     bounds: HashMap<String, Option<culling::BoneBounds>>,
     ui_pipeline: wgpu::RenderPipeline,
@@ -1361,7 +1366,8 @@ impl Renderer {
             graphs,
             #[cfg(any(test, feature = "diagnostics"))]
             evaluated_poses: Vec::new(),
-            graph_playback: HashMap::new(),
+            animation_controllers: HashMap::new(),
+            animation_diagnostics: Vec::new(),
             grounding: HashMap::new(),
             bounds,
             adapter_name,
@@ -1551,9 +1557,10 @@ impl Renderer {
                     .insert(name.clone(), graph.clone());
             }
         }
-        let mut graphs = std::mem::take(&mut self.graph_playback);
-        graphs.retain(|(_, model), _| candidate.renderer.graphs.contains_key(model));
-        candidate.renderer.graph_playback = graphs;
+        let mut controllers = std::mem::take(&mut self.animation_controllers);
+        controllers.retain(|(_, model), _| candidate.renderer.graphs.contains_key(model));
+        // Controllers fence new admissions and retain marker epochs for the same life.
+        candidate.renderer.animation_controllers = controllers;
         Ok(std::mem::replace(self, candidate.renderer))
     }
     pub fn draw(
@@ -1584,6 +1591,25 @@ impl Renderer {
         let result = self.draw_live_resolved(view, &resolved, ui, lighting);
         self.last_timings.dropped_effects += dropped;
         result
+    }
+    pub fn draw_live_animation(
+        &mut self,
+        view: View,
+        instances: &[Instance],
+        ui: &UiBatch,
+        lighting: &Lighting,
+        support: &dyn verse_engine::locomotion::Support,
+        controls: &[verse_engine::locomotion::Control],
+    ) -> Result<(), String> {
+        let world = verse_engine::render_world::RenderWorld::extract(
+            &self.catalog,
+            view,
+            instances,
+            &ui.vertices,
+            lighting,
+        )?
+        .with_animation(support, controls)?;
+        self.draw_live_world(&world)
     }
     fn optional_priority(instance: &Instance) -> Option<u8> {
         if instance.actor.is_some() || instance.mount.is_some() {
@@ -1681,6 +1707,7 @@ impl Renderer {
         let started = Instant::now();
         world.validate(&self.catalog)?;
         self.marker_events.clear();
+        self.animation_diagnostics.clear();
         let view = world.view();
         let mut lighting = world.lighting().clone();
         lighting.shadowed = lighting.shadowed.min(if self.admission.local_shadows() {
@@ -1763,10 +1790,10 @@ impl Renderer {
                 .iter()
                 .any(|i| i.actor == Some(*id) && i.model == *model)
         });
-        self.graph_playback.retain(|(id, model), _| {
+        self.animation_controllers.retain(|(id, model), _| {
             instances
                 .iter()
-                .any(|instance| instance.actor == Some(*id) && instance.model == *model)
+                .any(|i| i.actor == Some(*id) && i.model == *model)
         });
         self.grounding.retain(|(id, model), _| {
             instances
@@ -1783,31 +1810,29 @@ impl Renderer {
             if let Some(id) = instance.actor {
                 let (bones, events) = if let Some(graph) = self.graphs.get(&instance.model) {
                     graph_instances += 1;
-                    let verse_engine::motion::Selection::Named(state) = instance.animation else {
+                    let verse_engine::motion::Selection::Named(_) = instance.animation else {
                         return Err("Authored animation graph requires a semantic selection".into());
                     };
-                    let values = graph.values(state)?;
-                    let frame = self
-                        .graph_playback
+                    let animation = world.animation();
+                    let aim = animation
+                        .and_then(|a| a.controls.iter().find(|c| c.life == id))
+                        .map_or(Default::default(), |c| c.aim);
+                    let tier = verse_engine::locomotion::Tier::at_distance(
+                        instance.transform.w_axis.truncate().distance(view.eye),
+                    );
+                    let (frame, diagnostic) = self
+                        .animation_controllers
                         .entry((id, instance.model.clone()))
                         .or_default()
-                        .update_sampled_phase(
-                            graph.admitted(),
-                            id,
-                            &values,
-                            f64::from(instance.time),
+                        .update(
+                            graph,
+                            instance,
                             f64::from(lighting.time),
-                            instance.animation_epoch,
-                        )
-                        .map_err(|error| {
-                            format!(
-                                "Actor {id:?} animation {:?} phase {:?} time {} clock {}: {error}",
-                                instance.animation,
-                                instance.animation_epoch,
-                                instance.time,
-                                lighting.time
-                            )
-                        })?;
+                            aim,
+                            tier,
+                            animation.map(|a| a.support),
+                        )?;
+                    self.animation_diagnostics.push(diagnostic);
                     (frame.matrices, frame.markers)
                 } else {
                     self.playback
@@ -2525,6 +2550,27 @@ impl Renderer {
                 static_shadow_refreshes: refresh.iter().filter(|value| **value).count(),
                 marker_events: self.marker_events.len(),
                 graph_instances,
+                pose_samples: self
+                    .animation_diagnostics
+                    .iter()
+                    .filter(|d| d.evaluated)
+                    .count(),
+                pose_reuses: self
+                    .animation_diagnostics
+                    .iter()
+                    .filter(|d| !d.evaluated)
+                    .count(),
+                sampled_bones: self
+                    .animation_diagnostics
+                    .iter()
+                    .map(|d| d.bones_sampled)
+                    .sum(),
+                foot_probes: self
+                    .animation_diagnostics
+                    .iter()
+                    .filter_map(|d| d.adjustment.as_ref())
+                    .map(|r| r.probes)
+                    .sum(),
                 ..Default::default()
             };
             return Ok(vec![]);
@@ -2590,6 +2636,27 @@ impl Renderer {
             static_shadow_refreshes: refresh.iter().filter(|value| **value).count(),
             marker_events: self.marker_events.len(),
             graph_instances,
+            pose_samples: self
+                .animation_diagnostics
+                .iter()
+                .filter(|d| d.evaluated)
+                .count(),
+            pose_reuses: self
+                .animation_diagnostics
+                .iter()
+                .filter(|d| !d.evaluated)
+                .count(),
+            sampled_bones: self
+                .animation_diagnostics
+                .iter()
+                .map(|d| d.bones_sampled)
+                .sum(),
+            foot_probes: self
+                .animation_diagnostics
+                .iter()
+                .filter_map(|d| d.adjustment.as_ref())
+                .map(|r| r.probes)
+                .sum(),
         };
         Ok(out)
     }
@@ -2766,7 +2833,7 @@ mod tests {
         let lighting = Lighting::default();
         let ui = UiBatch::default();
         renderer.draw_live(view, &source, &ui, &lighting).unwrap();
-        let playback = renderer.playback.len() + renderer.graph_playback.len();
+        let playback = renderer.playback.len() + renderer.animation_controllers.len();
         assert!(playback > 0);
         let frame = renderer.last_timings.frame;
         renderer
@@ -2785,7 +2852,7 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         assert_eq!(
-            renderer.playback.len() + renderer.graph_playback.len(),
+            renderer.playback.len() + renderer.animation_controllers.len(),
             playback
         );
         for instance in &mut source {

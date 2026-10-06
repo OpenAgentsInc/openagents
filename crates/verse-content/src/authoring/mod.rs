@@ -261,6 +261,10 @@ pub fn admit(
             })?;
             surface.material = material.clone();
         }
+        if let Some(graph) = &edit.graph {
+            checked(format!("models.{key}.graph"), graph.validate(model))?;
+            model.graph = Some(graph.clone());
+        }
         checked(format!("models.{key}.states"), model.validate_animation())?;
     }
     // Retain source declarations and stable IDs while sealing changed model bytes.

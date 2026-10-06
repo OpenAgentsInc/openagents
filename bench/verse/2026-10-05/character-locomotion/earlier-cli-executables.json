@@ -1,0 +1,146 @@
+[
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/chat-a44f465a979a1eb9",
+    "sha256": "db50407d17a1be85baf28649c0fb81fdff6dde5d5bf115e0230b8ac55f0e2afb",
+    "bytes": 88703760,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/chat-a44f465a979a1eb9"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/cloud_engine-9a7e7293cb12834e",
+    "sha256": "83f0c2ab0063471eb9a852a233c47438930be20fef0e6227d6d9f6c6b3899d24",
+    "bytes": 11204696,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/cloud_engine-9a7e7293cb12834e"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/completions-76a45fd8c96a994e",
+    "sha256": "ce5ab6d217b6c1310a1cc4db81897e5b7f21841d054a1c9c9d863a838988cc82",
+    "bytes": 11232376,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/completions-76a45fd8c96a994e"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/discover-096d4e04aaa0b767",
+    "sha256": "008f7023c5c378e6e8c973dd19efd208cd5ed6c0b64ffc80568a9e82151bc641",
+    "bytes": 15628192,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/discover-096d4e04aaa0b767"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/eval-d5f82be316f1d5b3",
+    "sha256": "a9e8c993ab9d43a13745b90096b81fcb13674977f99ffd0e6182196340c063b7",
+    "bytes": 15647944,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/eval-d5f82be316f1d5b3"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/ext_eval-c21981ea4020f370",
+    "sha256": "e0ce643dd8c6af303a8ea94bd54a07f1f702fccef07c9c308b9b2d2cef70a755",
+    "bytes": 146872208,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/ext_eval-c21981ea4020f370"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/friendly_errors-de76166bd35c4072",
+    "sha256": "f64166703380e5a4370fcd5045e68b1ca2568db4af7284ac5c96454f14e10419",
+    "bytes": 15418832,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/friendly_errors-de76166bd35c4072"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/help-5e2bbef2b7b46447",
+    "sha256": "fc6c8c172adabbb36304690bf84df372c5c57b05e51842fc30a647df9a95e30a",
+    "bytes": 11452856,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/help-5e2bbef2b7b46447"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/host_first_run-bbda166086fdf443",
+    "sha256": "107bf846502cf8e7adb6a6156d6cb8ba0748eb194d2d39890e40d00d4078a95d",
+    "bytes": 15360912,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/host_first_run-bbda166086fdf443"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/kb_defaults-847095f3f7ba3d95",
+    "sha256": "1ffc208886c5a81766e177b8cfb50a05ce58970fe1077c4f18582e7bb315c783",
+    "bytes": 15397456,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/kb_defaults-847095f3f7ba3d95"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/mcp_serve-8543325c044be3d8",
+    "sha256": "e29bc7a570f1534b86baeafd35860bc785d542c084c932dda0b4c53b0774860b",
+    "bytes": 12037424,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/mcp_serve-8543325c044be3d8"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/provider_key-cfd180e218ba1fe4",
+    "sha256": "e03955916917d34d503239e8451eef95d46d3517c6681167ac52e9621794747e",
+    "bytes": 15552888,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/provider_key-cfd180e218ba1fe4"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/session-aa2349d9728c2826",
+    "sha256": "6ab5ce53b4c11d24c95bb186b24f8adb75ff48955a27209ec91a555b3c726fcb",
+    "bytes": 15768056,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/session-aa2349d9728c2826"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/task_list-be9227c933618df3",
+    "sha256": "5739fe50cf06856f8355033899c2d9b48fdc2a15c537d766d64d234daac75203",
+    "bytes": 15636512,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/task_list-be9227c933618df3"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/terminal-48d508736b853acc",
+    "sha256": "f19ba50386a6394213899d8d00f417c06730c6af6110c55c448fd55b44939097",
+    "bytes": 13301720,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/cli-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/terminal-48d508736b853acc"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-12e9ac8bf4015eae",
+    "sha256": "2f2fde8a198f973f26019260274e2c534ae983649a258b0a6276cf99269a03ec",
+    "bytes": 7140992,
+    "completed_log": "bench/verse/2026-10-05/content-authoring/content-full.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-12e9ac8bf4015eae"
+    ]
+  }
+]

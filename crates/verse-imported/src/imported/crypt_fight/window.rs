@@ -173,11 +173,13 @@ impl App {
             None,
         )?;
         renderer.set_overlay_size(overlay[0], overlay[1]);
-        renderer.draw_live(
+        renderer.draw_live_animation(
             composed.view,
             &composed.instances,
             &composed.ui,
             &composed.lighting,
+            &self.fight.game.animation_support(),
+            &[],
         )?;
         let presenter = self.presenter.as_mut().ok_or("No presenter")?;
         renderer.present_window(presenter, [size.width, size.height])

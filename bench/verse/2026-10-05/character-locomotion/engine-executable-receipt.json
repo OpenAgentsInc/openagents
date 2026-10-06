@@ -1,0 +1,8 @@
+{
+  "paths": [
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-0dfba4dc924d9bac"
+  ],
+  "bytes": 54510256,
+  "sha256": "ca252a961261bfac577a5a45943adff1fbb8cd4a7ef9fe07da5ab291d3c760a6",
+  "phase": "Final engine source through Controller admission and seek resets: cargo test -p verse-engine --features asset-io --lib; 146 passed; executable retirement retains acceptance hash"
+}

@@ -118,3 +118,30 @@ its scripted behavior when `authored` is absent. A changed durable generation
 still requires the host's reviewed migration path. This workbench provides
 command-based editing and standalone SVG diagnostics; it does not install a
 windowed 3D editor or grant remote editing rights.
+
+Named Universal characters compile with an admitted locomotion graph. The graph
+blends idle, walk, and run by presented speed, retains start/stop transitions,
+and declares in-place root motion. Walking phase follows presented distance and
+the retained gait stride. Animation cannot supply movement to authority or
+prediction. The renderer applies turn anticipation, bounded upper-body aim, and
+two-bone foot placement before resolving equipment sockets. Terrain contacts
+come from admitted, instance-scoped collision geometry. Missing or uncertain
+support leaves the authored foot pose intact; airborne, death, and prone states
+release foot anchors.
+
+`inspect` exposes each model's graph. A model transaction can supply `graph`
+alongside `states` and `materials`; graph parameters, joint names, masks,
+transitions, and rig chains must pass admission together. Preview reports include
+animation diagnostics: semantic and graph states, selection epoch, phase,
+parameters, sampling tier, sampled bones, contacts, reach clamps, and residuals.
+The preview and renderer use the same controller.
+
+Crowd tiers sample skeletal poses on every frame, every second frame, or every fourth frame,
+selected at 20 and 60 meters from the camera. At 60 Hz these cadences are
+60, 30, and 15 poses per second. State changes, source changes,
+life changes, and seeks force a new pose. Marker cursors advance every frame.
+These tiers reduce clip and hierarchy work; GPU skinning still runs each frame.
+The admitted fixtures cover male peasant and female ranger outfits with the
+named Universal skeleton. Other skeletons need explicit joint mappings and
+acceptance evidence. This contract does not admit animation-driven gameplay
+root motion, arbitrary retargeting, or facial animation.

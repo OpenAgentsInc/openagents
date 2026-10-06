@@ -1,0 +1,6 @@
+{
+  "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-391839f822d1e00e.tmp9142fdc",
+  "sha256": "53507950dc2332ae8c19de11aaf8d1e35512acfd139049f0ee9b7de7123f142c",
+  "bytes": 251632344,
+  "reason": "Incomplete executable from the final V21 PBR linker failure. Not an accepted test executable. Retained in private RAM scratch; dependency archives and incremental cache remain in the warm target."
+}

@@ -98,6 +98,16 @@ pub struct Local {
     motion_time: f32,
 }
 impl Local {
+    /// Retain admitted observer geometry without advancing or rebinding movement.
+    pub fn observe_animation_geometry(
+        &mut self,
+        geometry: &SceneSnapshot,
+    ) -> Result<usize, String> {
+        self.collision.update(geometry)
+    }
+    pub(crate) fn animation_scene(&self) -> &physics::queries::Scene {
+        self.collision.scene()
+    }
     pub fn new(instance: u64) -> Self {
         Self {
             recovery: Default::default(),

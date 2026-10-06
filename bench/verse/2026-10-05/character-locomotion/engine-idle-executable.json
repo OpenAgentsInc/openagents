@@ -1,0 +1,77 @@
+{
+  "paths": [
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-66e3ff17b69e98ee"
+  ],
+  "sha256": "31e9def11e8aeeddba274503a7a352466ffb066361df5cf3f00963e84fc46b3e",
+  "bytes": 55831704,
+  "phase": "Harness built by V21 core cargo test after idle-phase correction; invoked directly because world compilation exhausted disk; Engine dependency feature unification differs from the earlier standalone run; before Tier overflow correction",
+  "fingerprint": {
+    "rustc": 12019306335353385202,
+    "features": "[\"asset-io\", \"default\"]",
+    "declared_features": "[\"asset-io\", \"default\"]",
+    "target": 6398142149830370332,
+    "profile": 1806959017369727498,
+    "path": 17999182064886151474,
+    "deps": [
+      [
+        1823399657867702949,
+        "png",
+        false,
+        11430875487356661559
+      ],
+      [
+        5330460842384404171,
+        "serde_json",
+        false,
+        7685306148387401572
+      ],
+      [
+        6557439603276904804,
+        "serde",
+        false,
+        15171120729002893499
+      ],
+      [
+        9723370144619655183,
+        "tempfile",
+        false,
+        13222606404012043824
+      ],
+      [
+        9857275760291862238,
+        "sha2",
+        false,
+        2787280051596936926
+      ],
+      [
+        10504718112287328430,
+        "libc",
+        false,
+        5258342769588130582
+      ],
+      [
+        14512709546334874008,
+        "glam",
+        false,
+        16430692902020687597
+      ],
+      [
+        18075512308826438882,
+        "bytemuck",
+        false,
+        4933392451057719364
+      ]
+    ],
+    "local": [
+      {
+        "CheckDepInfo": {
+          "dep_info": "debug/.fingerprint/verse-engine-66e3ff17b69e98ee/dep-test-lib-verse_engine",
+          "checksum": false
+        }
+      }
+    ],
+    "rustflags": [],
+    "config": 9396254390672932401,
+    "compile_kind": 0
+  }
+}

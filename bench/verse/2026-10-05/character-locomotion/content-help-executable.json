@@ -1,0 +1,10 @@
+{
+  "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-5fd6332413b79026",
+  "sha256": "c97a3f04ed11be93486b4def1b94a5861878c39509a812fe48fd4de988c35964",
+  "bytes": 110857320,
+  "links": [
+    "/home/christopherdavid/work/openagents-target-agent1/debug/verse-content",
+    "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-5fd6332413b79026"
+  ],
+  "reason": "Own compiled content CLI refused --help with the expected missing recipe/directory usage error (exit 1). Retired obsolete command executable; no behavioral acceptance claim."
+}

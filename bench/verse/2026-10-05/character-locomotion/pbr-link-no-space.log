@@ -1,0 +1,259 @@
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `movement_confirmations` is never used
+  --> crates/verse-world/src/play/framed_movement.rs:49:19
+   |
+ 8 | impl Game {
+   | --------- method in this implementation
+...
+49 |     pub(crate) fn movement_confirmations(&self, life: LifeId) -> Vec<crate::movement::Baseline> {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple fields are never read
+   --> crates/verse-world/src/play/multiplayer.rs:134:5
+    |
+133 | pub(crate) struct PortablePlayer {
+    |                   -------------- fields in this struct
+134 |     definition: crate::content::Character,
+    |     ^^^^^^^^^^
+135 |     catalog_remaining: BTreeMap<u8, f32>,
+    |     ^^^^^^^^^^^^^^^^^
+136 |     dice: Option<crate::spells::Dice>,
+    |     ^^^^
+137 |     combat: crate::rules::transfer::Portable,
+    |     ^^^^^^
+138 |     controls: Controls,
+    |     ^^^^^^^^
+139 |     bow_remaining: f32,
+    |     ^^^^^^^^^^^^^
+140 |     time: f32,
+    |     ^^^^
+141 |     yaw: f32,
+    |     ^^^
+142 |     appearance: verse_engine::director::Actor,
+    |     ^^^^^^^^^^
+    |
+    = note: `PortablePlayer` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `take_transfer_player`, `take_resident_player`, and `put_transfer_player` are never used
+   --> crates/verse-world/src/play/multiplayer.rs:145:19
+    |
+144 | impl Game {
+    | --------- methods in this implementation
+145 |     pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+154 |     pub(crate) fn take_resident_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+284 |     pub(crate) fn put_transfer_player(
+    |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:426:19
+     |
+ 332 | impl Game {
+     | --------- methods in this implementation
+...
+ 426 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1396 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: method `live_hostiles` is never used
+    --> crates/verse-world/src/rules.rs:1113:19
+     |
+ 225 | impl Simulation {
+     | --------------- method in this implementation
+...
+1113 |     pub(crate) fn live_hostiles(&self) -> usize {
+     |                   ^^^^^^^^^^^^^
+
+warning: fields `state` and `elapsed` are never read
+ --> crates/verse-world/src/rules/transfer.rs:5:5
+  |
+4 | pub(crate) struct Portable {
+  |                   -------- fields in this struct
+5 |     state: PlayerState,
+  |     ^^^^^
+6 |     elapsed: f32,
+  |     ^^^^^^^
+  |
+  = note: `Portable` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `defeated` is never used
+ --> crates/verse-world/src/rules/transfer.rs:9:19
+  |
+8 | impl Portable {
+  | ------------- method in this implementation
+9 |     pub(crate) fn defeated(&self) -> bool {
+  |                   ^^^^^^^^
+
+warning: method `put_player` is never used
+  --> crates/verse-world/src/rules/transfer.rs:58:19
+   |
+13 | impl Simulation {
+   | --------------- method in this implementation
+...
+58 |     pub(crate) fn put_player(&mut self, id: u32, mut portable: Portable) -> Result<(), String> {
+   |                   ^^^^^^^^^^
+
+warning: methods `fork`, `committed_controls`, `principal`, and `refresh_binding` are never used
+   --> crates/verse-world/src/service/auth.rs:139:19
+    |
+136 | impl Gateway {
+    | ------------ methods in this implementation
+...
+139 |     pub(super) fn fork(&self) -> Self {
+    |                   ^^^^
+...
+251 |     pub(super) fn committed_controls(&self) -> BTreeMap<ConnectionId, super::wire::Control> {
+    |                   ^^^^^^^^^^^^^^^^^^
+...
+550 |     pub(super) fn principal(&self, connection: ConnectionId) -> Result<Principal, String> {
+    |                   ^^^^^^^^^
+...
+554 |     pub(super) fn refresh_binding(&mut self, connection: ConnectionId) -> Result<(), String> {
+    |                   ^^^^^^^^^^^^^^^
+
+warning: method `fork` is never used
+   --> crates/verse-world/src/service/replication.rs:206:19
+    |
+205 | impl Sender {
+    | ----------- method in this implementation
+206 |     pub(super) fn fork(&self) -> Self {
+    |                   ^^^^
+
+warning: method `history_roots` is never used
+   --> crates/verse-world/src/service/rewards.rs:168:31
+    |
+167 | impl Checkpoint {
+    | --------------- method in this implementation
+168 |     pub(in crate::service) fn history_roots(&self) -> Vec<Option<[u8; 32]>> {
+    |                               ^^^^^^^^^^^^^
+
+warning: methods `revision`, `history_capacity`, and `attach` are never used
+   --> crates/verse-world/src/service/rewards.rs:246:19
+    |
+216 | impl Ledger {
+    | ----------- methods in this implementation
+...
+246 |     pub(super) fn revision(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+250 |     pub(super) fn history_capacity(&self) -> Result<bool, String> {
+    |                   ^^^^^^^^^^^^^^^^
+...
+256 |     pub(super) fn attach(&mut self, archive: history::History) -> Result<(), String> {
+    |                   ^^^^^^
+
+warning: multiple associated items are never used
+   --> crates/verse-world/src/service/rewards/history.rs:54:31
+    |
+ 53 | impl History {
+    | ------------ associated items in this implementation
+ 54 |     pub(in crate::service) fn open(path: &Path) -> Result<Self, String> {
+    |                               ^^^^
+...
+ 88 |     pub(in crate::service) fn temporary() -> Result<Self, String> {
+    |                               ^^^^^^^^^
+...
+104 |     pub(in crate::service) fn reachable(
+    |                               ^^^^^^^^^
+...
+139 |     pub(in crate::service) fn verify_node(&self, digest: [u8; 32]) -> Result<(), String> {
+    |                               ^^^^^^^^^^^
+...
+142 |     pub(super) fn same_directory(&self, other: &Self) -> bool {
+    |                   ^^^^^^^^^^^^^^
+...
+145 |     pub(in crate::service) fn defer_writes(&self) {
+    |                               ^^^^^^^^^^^^
+...
+148 |     pub(in crate::service) fn has_capacity(&self) -> Result<bool, String> {
+    |                               ^^^^^^^^^^^^
+...
+157 |     pub(in crate::service) fn synchronize(&self) -> Result<(), String> {
+    |                               ^^^^^^^^^^^
+
+warning: method `history_roots` is never used
+  --> crates/verse-world/src/service/rewards/books.rs:38:31
+   |
+37 | impl Book {
+   | --------- method in this implementation
+38 |     pub(in crate::service) fn history_roots(&self) -> [history::Root; 2] {
+   |                               ^^^^^^^^^^^^^
+
+warning: methods `realm_character`, `activate_books`, `register_book`, `take_book`, and `put_book` are never used
+   --> crates/verse-world/src/service/rewards/books.rs:43:31
+    |
+ 42 | impl Ledger {
+    | ----------- methods in this implementation
+ 43 |     pub(in crate::service) fn realm_character(&self, actor: u64) -> Option<u64> {
+    |                               ^^^^^^^^^^^^^^^
+...
+ 46 |     pub(in crate::service) fn activate_books(
+    |                               ^^^^^^^^^^^^^^
+...
+170 |     pub(in crate::service) fn register_book(
+    |                               ^^^^^^^^^^^^^
+...
+193 |     pub(in crate::service) fn take_book(
+    |                               ^^^^^^^^^
+...
+208 |     pub(in crate::service) fn put_book(
+    |                               ^^^^^^^^
+
+warning: field `owner` is never read
+   --> crates/verse-world/src/service/save.rs:110:16
+    |
+109 | pub(super) struct Prepared {
+    |                   -------- field in this struct
+110 |     pub(super) owner: [u8; 32],
+    |                ^^^^^
+
+warning: methods `instance` and `expanded` are never used
+   --> crates/verse-world/src/service/save.rs:168:19
+    |
+125 | impl Prepared {
+    | ------------- methods in this implementation
+...
+168 |     pub(super) fn instance(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+182 |     pub(super) fn expanded(&self) -> Result<serde_json::Value, String> {
+    |                   ^^^^^^^^
+
+warning: function `count_world_encoding` is never used
+   --> crates/verse-world/src/service/save.rs:236:4
+    |
+236 | fn count_world_encoding(metadata_bytes: usize, world: &str) -> Result<usize, String> {
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: method `transfer_cooldowns` is never used
+  --> crates/verse-world/src/utilities.rs:58:19
+   |
+57 | impl Controls {
+   | ------------- method in this implementation
+58 |     pub(crate) fn transfer_cooldowns(&self, source_time: f32, destination_time: f32) -> Self {
+   |                   ^^^^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib) generated 20 warnings
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+   Compiling verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+   Compiling verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+error: linking with `cc` failed: exit status: 1
+  |
+  = note:  "cc" "-m64" "/home/christopherdavid/work/openagents-target-agent1/debug/deps/rustcAwA0pt/symbols.o" "<257 object files omitted>" "-Wl,--as-needed" "-Wl,-Bstatic" "/home/christopherdavid/work/openagents-target-agent1/debug/deps/{libverse_content-6f209be3135be3ed,libserde_path_to_error-6356075b4695b9e2,libresvg-9e881a2d26c7b12a,librgb-c723f47754b2ef30,libusvg-7537f95db228fa90,libimagesize-334f541eef5bff9d,libdata_url-de546c535aeef9f6,libsimplecss-0731048338d62ea6,libroxmltree-34895674d05ab691,libsvgtypes-e2a1838df8a317fd,libkurbo-a0eb0b3ee8fdeaef,libpolycool-88a01235b2da0547,libsiphasher-bb3f4f08cf682f6c,libtiny_skia-843b1b5d6d724ac5,libtiny_skia_path-be3104fdfb548702,libstrict_num-3fb243dd812ea618,libfloat_cmp-6f8e9645314d1378,libarrayref-9202971aa5f4c9ee,libtempfile-a076c3f5c4ed8c7c,libgetrandom-76f4813be95f2963,libfastrand-d389aad8579139bd,librustix-a1e395a94f1e8a37,liblinux_raw_sys-c86bc6f78be3031d,libpollster-87809dc5714eb977,libgltf-b2d334cb7438e853,libbase64-05fb48901da6c7a8,liburlencoding-b7a1ad31fc155ade,libbyteorder-c16a13154be8bb2f,libgltf_json-d8a9723108fa946d,liblazy_static-003d0f6c880a6a99,libimage-7c84f42177e1e585,libbyteorder_lite-ccf39e239709efad,libmoxcms-c319af000b789b10,libpxfm-f96ec165ea7955a3,libzune_jpeg-191e15dd60b6a027,libzune_core-1b1f97c27b642a00}.rlib" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/{libtest-*,libgetopts-*,librustc_std_workspace_std-*}.rlib" "/home/christopherdavid/work/openagents-target-agent1/debug/deps/{libverse_gfx-c937f37a6e8c0014,libwgpu-52a1e97b7eb67465,libstatic_assertions-f44adfad20a31692,libwgpu_core-0244a0e30aed8700,libwgpu_hal-9ed52c432d3e75ac,librenderdoc_sys-25deecb8763407bb,libgpu_allocator-1799700d666e5247,libpresser-c35348461826c0f2,libkhronos_egl-905e0dbe79deebb6,libwayland_sys-f2ea896e529bacf1,libonce_cell-7f4756946a1dc156,libdlib-f52845f54b1420b2,libprofiling-ad55e11550478765,libwgpu_naga_bridge-d315052a7f08cc8c,libordered_float-0d1e22be12518b09,libgpu_descriptor-006aab69b0c10f7b,libhashbrown-bb78e362461032d7,libfoldhash-41b4c51199bfed89,libgpu_descriptor_types-4e4a99a24c7aa83f,libash-69b8d4eff9a0c40c,liblibloading-55e9e77aabaf68f9,libnaga-bd01d0522e482767,librustc_hash-1eb60a9d29db4dce,liblibm-bc874e9a9405b52f,libhexf_parse-418e3babce0f49aa,libunicode_ident-1559d01666684b40,libbit_set-08b0b3d093dcd409,libbit_vec-3704a94d8f39da54,libcodespan_reporting-6c8fbb084b3cfa9c,libunicode_width-41d6eeb370d05f22,libspirv-a0c7f800842d7331,libhalf-29e68d6748e1100d,libzerocopy-12fa92301a1ab024,libnum_traits-

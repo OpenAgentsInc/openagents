@@ -1,0 +1,47 @@
+[
+  {
+    "file": "verse_world-fc5e08f2a956db7e",
+    "sha256": "c61f12cf6bac9693eab476f16b93fdc56ea2ed61b2a4bd5f116d32f5122df225",
+    "bytes": 93055432,
+    "completed_log": "/tmp/verse-v21-world-tests.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-fc5e08f2a956db7e"
+    ]
+  },
+  {
+    "file": "verse_content-d56694e11071ac2c",
+    "sha256": "0b1f29db481c43d3a47379f92e551f24609e3be83cbd64f604ec9380ccd9f9f9",
+    "bytes": 151737240,
+    "completed_log": "/tmp/verse-v21-content-acceptance.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-d56694e11071ac2c"
+    ]
+  },
+  {
+    "file": "author-cc6ef56030ca93fa",
+    "sha256": "6f15ce4479eff102389fd0fcfc51c27d69912d2b17d1f836397ecd2967ddab6f",
+    "bytes": 11916360,
+    "completed_log": "/tmp/verse-v21-content-acceptance.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/author-cc6ef56030ca93fa"
+    ]
+  },
+  {
+    "file": "locomotion-b6de4f9e6ceed712",
+    "sha256": "aebc648b6d12e5c163ccf0bcab6de8e1b9e1f59d0c197a3da580c9921e5093c3",
+    "bytes": 130502880,
+    "completed_log": "/tmp/verse-v21-rigs-accepted-profile.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/locomotion-b6de4f9e6ceed712"
+    ]
+  },
+  {
+    "file": "verse_engine-0dfba4dc924d9bac",
+    "sha256": "4c465fc313035a26bb8238fd44380e9c93019d7cba4ae341f810a3a3fe8dbe0d",
+    "bytes": 54618608,
+    "completed_log": "/tmp/verse-v21-engine-final-pitch.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-0dfba4dc924d9bac"
+    ]
+  }
+]

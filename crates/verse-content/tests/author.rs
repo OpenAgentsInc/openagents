@@ -45,6 +45,7 @@ fn author_a_second_playable_zone_without_renderer_changes() {
         "1".as_ref(),
         "24".as_ref(),
     ]);
+    assert!(!report["animation"].as_array().unwrap().is_empty());
     assert!(
         report["actors"]
             .as_array()

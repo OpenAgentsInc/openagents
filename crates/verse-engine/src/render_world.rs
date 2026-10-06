@@ -14,6 +14,7 @@ pub struct RenderWorld<'a> {
     lighting: &'a Lighting,
     instances: ResolvedInstances<'a>,
     overlay: ResolvedOverlay<'a>,
+    animation: Option<Animation<'a>>,
 }
 impl<'a> RenderWorld<'a> {
     pub fn extract(
@@ -43,9 +44,37 @@ impl<'a> RenderWorld<'a> {
             lighting,
             instances: instances.clone(),
             overlay,
+            animation: None,
         })
     }
 
+    pub fn with_animation(
+        mut self,
+        support: &'a dyn crate::locomotion::Support,
+        controls: &'a [crate::locomotion::Control],
+    ) -> Result<Self, String> {
+        if controls.len() > 4096 {
+            return Err("Animation controls exceed the frame budget".into());
+        }
+        let mut lives = std::collections::BTreeSet::new();
+        for control in controls {
+            control.aim.validate()?;
+            if !lives.insert(control.life)
+                || !self
+                    .instances
+                    .instances()
+                    .iter()
+                    .any(|i| i.actor == Some(control.life))
+            {
+                return Err("Animation controls must name unique current actor lives".into());
+            }
+        }
+        self.animation = Some(Animation { support, controls });
+        Ok(self)
+    }
+    pub fn animation(&self) -> Option<Animation<'a>> {
+        self.animation
+    }
     /// Check the complete immutable frame before any resource writes.
     pub fn validate(&self, catalog: &Catalog) -> Result<(), String> {
         self.instances.validate(catalog)?;
@@ -62,6 +91,19 @@ impl<'a> RenderWorld<'a> {
     }
     pub fn overlay(&self) -> &ResolvedOverlay<'a> {
         &self.overlay
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Animation<'a> {
+    pub support: &'a dyn crate::locomotion::Support,
+    pub controls: &'a [crate::locomotion::Control],
+}
+impl std::fmt::Debug for Animation<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Animation")
+            .field("controls", &self.controls)
+            .finish_non_exhaustive()
     }
 }
 

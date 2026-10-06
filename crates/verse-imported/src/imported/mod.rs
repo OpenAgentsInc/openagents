@@ -26,3 +26,6 @@ pub mod remote_content;
 pub mod remote_record;
 #[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
 pub mod remote_window;
+
+#[cfg(test)]
+mod locomotion_gpu_tests;

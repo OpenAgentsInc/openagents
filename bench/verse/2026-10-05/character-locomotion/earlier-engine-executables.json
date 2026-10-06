@@ -1,0 +1,20 @@
+[
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-e910432216de9820",
+    "sha256": "9229c7644bde4fa376212be1bce614a93b01a5e52d27605923ccda580ab404b2",
+    "bytes": 35685760,
+    "completed_log": "bench/verse/2026-10-04/character-lifecycle/engine-rebased.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-e910432216de9820"
+    ]
+  },
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-284012c2309cc06e",
+    "sha256": "f717b82913814dfa135cefef61c70ecbed3f32b037c3799da08a582fbe80d849",
+    "bytes": 48227512,
+    "completed_log": "bench/verse/2026-10-04/renderer-budgets/engine-tests.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-284012c2309cc06e"
+    ]
+  }
+]

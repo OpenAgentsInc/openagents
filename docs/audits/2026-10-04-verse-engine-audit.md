@@ -162,7 +162,7 @@ Evidence labels:
 | V18 | P0 | Contained crowd recovery and a durable 20/40 battle pass the declared profile. | Recorded, code | Movement failure handling and scale acceptance | Complete ([#10637](https://github.com/OpenAgentsInc/openagents/issues/10637)), one native renderer |
 | V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Complete ([#10735](https://github.com/OpenAgentsInc/openagents/issues/10735)) |
 | V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Complete ([#10736](https://github.com/OpenAgentsInc/openagents/issues/10736)) |
-| V21 | P2 | Animation needs production locomotion and authoring support. | Code, gap | Animation and character content | Open |
+| V21 | P2 | Animation needs production locomotion and authoring support. | Code, gap | Animation and character content | In progress ([#10737](https://github.com/OpenAgentsInc/openagents/issues/10737)) |
 | V22 | P2 | Lighting paths need a common visual and performance contract. | Code, risk | Rendering and art direction | Open |
 | V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Open |
 | V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Open |
@@ -1583,6 +1583,57 @@ arbitrary skeletons.
 **Acceptance:** Different outfits and rigs move, cast, equip, die, and respawn
 on slopes and stairs without sliding, socket drift, or stale markers. Animation
 quality tiers reduce crowd cost without altering damage timing.
+
+**Status:** In progress in [#10737](https://github.com/OpenAgentsInc/openagents/issues/10737).
+
+**Remediation:** The shared Rust locomotion controller admits named root, spine,
+and two-bone leg chains against the retained skin and inverse binds. The
+character compiler uses it for the six standard Universal outfits. A speed
+blend shares normalized idle/walk/run clip phases; presented travel drives gait
+phase, with bounded turn anticipation and upper-body aim. Start/stop behavior
+uses the authored semantic transitions. Root translation and yaw remain in
+place, and no animation displacement enters authority or prediction.
+
+Foot placement queries the authority or prediction's admitted geometry without
+advancing either simulation. It retains stance contacts within reach and slope
+bounds, solves the two-bone chain, aligns the foot to support, and reports
+clamps and residuals. Missing or uncertain support leaves ordinary animation
+in control. Death, prone, airborne motion, seeks, teleports, new lives, changed
+phase owners, and graph reloads have explicit anchor and marker reset behavior.
+Equipment sockets read the final adjusted body palette.
+
+The command editor admits graph and rig edits atomically with model edits;
+preview diagnostics expose speed, turn rate, phase, source and selection epochs,
+aim, tier, sampled bones, contacts, clamps, and residuals. Failed admission
+preserves the journal and preview. The preview and renderer share the same
+controller. Crowd tiers sample clip/hierarchy poses every frame, every second
+frame, or every fourth frame, with forced samples at relevant state/source
+changes; marker cursors and contact adjustments advance every frame. GPU
+skinning still runs every frame.
+
+**Recorded verification:** The [named-rig fixtures](../../bench/verse/2026-10-05/character-locomotion/README.md)
+exercise male peasant and female ranger models through movement, casting,
+equipment sockets, death, prone, and a new life over slope and stair query
+geometry. The greatest planted-foot drift is 4.17 mm against a 5 mm bound, with
+zero socket matrix difference. Pose samples fall from 300 to 152 and 79;
+marker sequences match across tiers. The same independent combat script retains
+identical ordered authority checkpoint hashes, cast outcomes, and damage events
+across tiers. Each visual update leaves its authority checkpoint unchanged.
+The engine passes 151 tests. The optimized world suite passes 576 tests and
+three ignored helpers before the spectator geometry addition; the final
+focused terrain-query check passes against that addition. Content passes 24
+tests and its CLI workflow before the final pitch-sign correction; the final
+named-rig fixture passes against the corrected controller. Renderer library
+checks pass 78 tests with six ignored graphics checks. Native client and
+offscreen palette integration checks remain in progress.
+
+**Remaining limits:** The fixture scripts body placement rather than proving a
+complete motor traversal across terrain. Named mappings and proportion/reorder
+admission do not establish arbitrary skeleton retargeting or facial animation.
+Root motion is explicitly in place; gameplay root motion requires a future
+authority contract. The retained behavior profiles and sampling counters do
+not establish physical-device frame time, cross-build floating-point identity,
+or production character art quality. V22–V28 retain their respective scope.
 
 ### V22: Lighting needs one tested art and device contract
 

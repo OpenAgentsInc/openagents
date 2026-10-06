@@ -236,6 +236,7 @@ mod tests {
     }
 }
 
+pub mod animation_support;
 pub mod black_tentacles;
 pub mod combat;
 pub mod content;

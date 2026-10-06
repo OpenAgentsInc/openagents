@@ -1,0 +1,74 @@
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:426:19
+     |
+ 332 | impl Game {
+     | --------- methods in this implementation
+...
+ 426 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1396 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: method `live_hostiles` is never used
+    --> crates/verse-world/src/rules.rs:1113:19
+     |
+ 225 | impl Simulation {
+     | --------------- method in this implementation
+...
+1113 |     pub(crate) fn live_hostiles(&self) -> usize {
+     |                   ^^^^^^^^^^^^^
+
+warning: methods `restore_reward`, `validate_givers`, and `quest_log` are never used
+   --> crates/verse-world/src/service.rs:150:8
+    |
+100 | impl Chamber {
+    | ------------ methods in this implementation
+...
+150 |     fn restore_reward(
+    |        ^^^^^^^^^^^^^^
+...
+258 |     fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^
+...
+309 |     fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+    |        ^^^^^^^^^
+
+warning: method `validate_use` is never used
+  --> crates/verse-world/src/service/items.rs:54:19
+   |
+27 | impl Catalog {
+   | ------------ method in this implementation
+...
+54 |     pub(super) fn validate_use(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^
+
+warning: method `validate_change` is never used
+  --> crates/verse-world/src/service/outfits.rs:70:19
+   |
+33 | impl Catalog {
+   | ------------ method in this implementation
+...
+70 |     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+   |                   ^^^^^^^^^^^^^^^
+
+rustc-LLVM ERROR: IO failure on output stream: No space left on device
+warning: `verse-world` (lib test) generated 6 warnings
+error: could not compile `verse-world` (lib test); 6 warnings emitted
+
+Caused by:
+  process didn't exit successfully: `/home/christopherdavid/.rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustc --crate-name verse_world --edition=2024 crates/verse-world/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no --deny=unsafe_op_in_unsafe_fn '--deny=clippy::unimplemented' --warn=unexpected_cfgs '--deny=clippy::todo' --allow=linker_messages '--deny=clippy::dbg_macro' --check-cfg 'cfg(kani)' --test --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("service-auth", "service-net", "service-reach", "studio"))' -C metadata=417a26b991695abe -C extra-filename=-2baded014b23b14c --out-dir /home/christopherdavid/work/openagents-target-agent1/debug/deps -C incremental=/home/christopherdavid/work/openagents-target-agent1/debug/incremental -L dependency=/home/christopherdavid/work/openagents-target-agent1/debug/deps --extern glam=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libglam-9180d1aa67bc8163.rlib --extern physics=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libphysics-217025e4cfd51ff9.rlib --extern rcgen=/home/christopherdavid/work/openagents-target-agent1/debug/deps/librcgen-4740dc7916c44a02.rlib --extern serde=/home/christopherdavid/work/openagents-target-agent1/debug/deps/libserde-1d42ef77a2abe438.rlib --extern serde_json=/home/christopherdavid/work/openagents-target-agent1/de

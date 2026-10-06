@@ -18,6 +18,8 @@ pub struct PreviewReport {
     pub render_instances: usize,
     pub geometry: physics::queries::SceneSnapshot,
     pub navigation: Option<serde_json::Value>,
+    #[serde(default)]
+    pub animation: Vec<verse_engine::locomotion::Diagnostic>,
 }
 /// Candidate reload must finish before it can replace this local running world.
 pub struct Preview {
@@ -27,6 +29,15 @@ pub struct Preview {
     gateway: Gateway,
     content: [u8; 32],
     tick: u64,
+    animation_clock: std::cell::Cell<Option<f32>>,
+    diagnostics: std::cell::RefCell<Vec<verse_engine::locomotion::Diagnostic>>,
+    graphs: std::collections::HashMap<String, verse_engine::animation_graph::Semantic>,
+    animation: std::cell::RefCell<
+        std::collections::HashMap<
+            (verse_engine::core::LifeId, String),
+            verse_engine::locomotion::Controller,
+        >,
+    >,
     pub(crate) mips: verse_engine::mips::archive::Archive,
 }
 impl Preview {
@@ -86,7 +97,25 @@ impl Preview {
             content = digest.finalize().into();
         }
         let gateway = checked("content", gateway.with_content(content))?;
+        let graphs = pack
+            .models
+            .iter()
+            .filter_map(|(key, model)| model.graph.as_ref().map(|graph| (key, model, graph)))
+            .map(|(key, model, graph)| {
+                Ok((
+                    key.clone(),
+                    checked(
+                        "preview.animation.graph",
+                        verse_engine::animation_graph::Semantic::new(graph, model),
+                    )?,
+                ))
+            })
+            .collect::<Result<_>>()?;
         let preview = Self {
+            graphs,
+            animation_clock: Default::default(),
+            diagnostics: Default::default(),
+            animation: Default::default(),
             document: doc.clone(),
             pack,
             scene,
@@ -120,6 +149,7 @@ impl Preview {
         for _ in 0..ticks {
             checked("preview", self.gateway.tick(1. / 30.))?;
             self.tick += 1;
+            self.sample_animation()?;
         }
         self.report(None)
     }
@@ -208,12 +238,14 @@ impl Preview {
             "animation":a.animation,"visible":a.visible})
             })
             .collect();
+        let animation = self.sample_animation()?;
         Ok(PreviewReport {
             schema: "verse.author.preview.v1".into(),
             zone: self.document.zone.clone(),
             content: self.content,
             tick: self.tick,
             actors,
+            animation,
             quests: self
                 .gateway
                 .quest_log(self.gateway.game().player_life().actor),
@@ -226,6 +258,63 @@ impl Preview {
             )?,
             navigation,
         })
+    }
+    fn sample_animation(&self) -> Result<Vec<verse_engine::locomotion::Diagnostic>> {
+        let frame = self.gateway.game().frame();
+        if self.animation_clock.get() == Some(frame.time) {
+            return Ok(self.diagnostics.borrow().clone());
+        }
+        let instances: Vec<_> = frame
+            .actors
+            .iter()
+            .filter(|a| a.visible)
+            .map(|a| verse_engine::presentation::Instance {
+                mount: None,
+                actor: a.life,
+                model: a.actor.model.clone(),
+                transform: Mat4::from_translation(a.actor.position)
+                    * Mat4::from_rotation_y(a.actor.yaw)
+                    * Mat4::from_scale(Vec3::splat(a.actor.scale))
+                    * crate::basis(),
+                animation: a.animation,
+                time: a.animation_time,
+                animation_epoch: None,
+                emission: Vec3::ONE,
+            })
+            .collect();
+        let mut controllers = self.animation.borrow_mut();
+        controllers.retain(|(life, model), _| {
+            instances
+                .iter()
+                .any(|i| i.actor == Some(*life) && i.model == *model)
+        });
+        let mut animation = Vec::new();
+        for instance in &instances {
+            let Some(life) = instance.actor else {
+                continue;
+            };
+            let Some(graph) = self.graphs.get(&instance.model) else {
+                continue;
+            };
+            let (_, diagnostic) = checked(
+                "preview.animation.pose",
+                controllers
+                    .entry((life, instance.model.clone()))
+                    .or_default()
+                    .update(
+                        graph,
+                        instance,
+                        f64::from(frame.time),
+                        Default::default(),
+                        verse_engine::locomotion::Tier::Full,
+                        Some(&self.gateway.game().animation_support()),
+                    ),
+            )?;
+            animation.push(diagnostic);
+        }
+        *self.diagnostics.borrow_mut() = animation.clone();
+        self.animation_clock.set(Some(frame.time));
+        Ok(animation)
     }
     /// A standalone scene, collision, clearance, and timeline view; no JavaScript.
     pub fn svg(&self, navigation: Option<f64>) -> Result<String> {

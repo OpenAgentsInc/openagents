@@ -365,6 +365,44 @@ impl Session {
         self.actor(hud.life)
     }
 
+    pub fn animation_support(&self) -> verse_world::animation_support::Queries<'_> {
+        self.prediction.animation_support()
+    }
+    pub fn animation_controls(
+        &self,
+        instances: &[verse_engine::presentation::Instance],
+    ) -> Vec<verse_engine::locomotion::Control> {
+        let Some(life) = self.owned_life else {
+            return Vec::new();
+        };
+        let Some(body) = instances.iter().find(|i| i.actor == Some(life)) else {
+            return Vec::new();
+        };
+        let direction = self
+            .view
+            .target()
+            .and_then(|target| self.actor(target))
+            .map_or(self.camera.direction(), |target| {
+                target - body.transform.w_axis.truncate()
+            });
+        let horizontal = Vec3::new(direction.x, 0., direction.z).normalize_or_zero();
+        let forward = body.transform.transform_vector3(Vec3::X);
+        let forward = Vec3::new(forward.x, 0., forward.z).normalize_or_zero();
+        let yaw = forward
+            .cross(horizontal)
+            .y
+            .atan2(forward.dot(horizontal))
+            .clamp(-1.2, 1.2);
+        let pitch = direction
+            .y
+            .atan2(Vec3::new(direction.x, 0., direction.z).length())
+            .clamp(-1.2, 1.2);
+        vec![verse_engine::locomotion::Control {
+            life,
+            aim: verse_engine::locomotion::Aim { yaw, pitch },
+        }]
+    }
+
     fn actor(&self, life: LifeId) -> Option<Vec3> {
         self.view
             .replica()
@@ -793,6 +831,11 @@ impl Session {
         self.owned_teleport = teleport;
         if context != self.prediction.context() || !controlled {
             self.prediction.clear();
+        }
+        if !controlled {
+            if let Some(geometry) = collision.as_ref() {
+                self.prediction.observe_animation_geometry(geometry)?;
+            }
         }
         if controlled {
             if let (Some(baseline), Some(geometry)) = (movement, collision.as_ref()) {

@@ -973,6 +973,10 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
         });
     }
     super::original::bind_states(model);
+    model.graph = Some(verse_engine::animation_graph::Authored::from_locomotion(
+        model,
+        verse_engine::locomotion::Definition::universal(0),
+    )?);
     Ok(())
 }
 /// Retargets any named clip from the retained 43-clip library to a composed rig.

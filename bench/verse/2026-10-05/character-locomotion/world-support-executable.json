@@ -1,0 +1,11 @@
+[
+  {
+    "file": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-2baded014b23b14c",
+    "sha256": "de3f008df2beda6295e4c3bb474e4302923607b9810a70b26e8f74f935c575a6",
+    "bytes": 71460064,
+    "completed_log": "/tmp/verse-v21-world-support-retry.log",
+    "links": [
+      "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-2baded014b23b14c"
+    ]
+  }
+]

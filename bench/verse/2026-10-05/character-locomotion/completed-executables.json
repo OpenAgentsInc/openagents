@@ -1,0 +1,14 @@
+{
+  "recorded_at_utc": "2026-10-05T23:50:46.454937+00:00",
+  "retired": [
+    {
+      "paths": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/verse-host",
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_host-802d68f5e650d2ca"
+      ],
+      "sha256": "fdddf6e09cc97edb90d475389b693c6a21e8268de901cc2d48855203cd1c5f7e",
+      "bytes": 290919952,
+      "reason": "Completed V20 executable, hashed in its committed verification receipt; no visible process uses the inode; all hard links enumerated"
+    }
+  ]
+}

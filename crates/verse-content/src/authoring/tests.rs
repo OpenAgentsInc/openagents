@@ -574,6 +574,7 @@ fn numeric_keys_survive_tagged_commands_and_noncanonical_keys_are_refused() {
                 Edit::Model {
                     key: "cultist".into(),
                     edit: ModelEdit {
+                        graph: None,
                         states: None,
                         materials: BTreeMap::from([(0, Default::default())]),
                     },
@@ -636,6 +637,7 @@ fn authored_mips_survive_snapshot_and_new_material_variants_reuse_them() {
         Edit::Model {
             key: "author/box".into(),
             edit: ModelEdit {
+                graph: None,
                 states: None,
                 materials: BTreeMap::from([(
                     0,
@@ -678,4 +680,79 @@ fn authored_mips_survive_snapshot_and_new_material_variants_reuse_them() {
         prepared.mips().unwrap().identity().unwrap(),
         preview.mips.identity().unwrap()
     );
+}
+
+#[test]
+fn graph_transactions_expose_controls_and_preserve_history_on_refusal() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    input(&source);
+    let source_pack = source.join("pack.json");
+    let mut pack: Pack = serde_json::from_slice(&std::fs::read(&source_pack).unwrap()).unwrap();
+    for model in pack.models.values_mut() {
+        model.bones.push(verse_engine::assets::Bone {
+            parent: -1,
+            pivot: [0.; 3],
+        });
+        model.graph = Some(verse_engine::animation_graph::Authored::from_bindings(
+            model,
+        ));
+    }
+    std::fs::write(source_pack, serde_json::to_vec(&pack).unwrap()).unwrap();
+
+    let path = root.path().join("work");
+    let mut work = Workspace::init(&source, &path, "graph-zone".into()).unwrap();
+    let mut graph: verse_engine::animation_graph::Authored = serde_json::from_value(
+        work.inspect().unwrap()["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["key"] == "adventurer")
+            .unwrap()["graph"]
+            .clone(),
+    )
+    .unwrap();
+    graph.graph.states[0].transitions[0].seconds = 0.3;
+    work.transact(&tx(
+        1,
+        vec![Edit::Model {
+            key: "adventurer".into(),
+            edit: ModelEdit {
+                graph: Some(graph.clone()),
+                ..Default::default()
+            },
+        }],
+    ))
+    .unwrap();
+    assert_eq!(
+        work.document().models["adventurer"].graph.as_ref(),
+        Some(&graph)
+    );
+    let before = std::fs::read(path.join("journal.json")).unwrap();
+    graph.locomotion = Some(verse_engine::locomotion::Definition::universal(0));
+    let error = work
+        .transact(&tx(
+            2,
+            vec![Edit::Model {
+                key: "adventurer".into(),
+                edit: ModelEdit {
+                    graph: Some(graph),
+                    ..Default::default()
+                },
+            }],
+        ))
+        .unwrap_err();
+    assert_eq!(error.field, "models.adventurer.graph");
+    assert_eq!(std::fs::read(path.join("journal.json")).unwrap(), before);
+    let mut preview = work.preview().unwrap();
+    let sampled = preview.step(15).unwrap();
+    assert!(!sampled.animation.is_empty());
+    assert_eq!(
+        serde_json::to_value(&sampled.animation).unwrap(),
+        serde_json::to_value(preview.report(None).unwrap().animation).unwrap()
+    );
+    work.undo(2).unwrap();
+    assert!(!work.document().models.contains_key("adventurer"));
+    work.redo(3).unwrap();
+    assert!(work.document().models["adventurer"].graph.is_some());
 }

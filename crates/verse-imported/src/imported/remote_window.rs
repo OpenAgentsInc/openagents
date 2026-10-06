@@ -290,7 +290,15 @@ impl App {
         }
         renderer.resize(size.width, size.height)?;
         renderer.set_overlay_size(width, 720.);
-        renderer.draw_live(frame.view, &frame.instances, &frame.ui, &frame.lighting)?;
+        let controls = self.session.animation_controls(&frame.instances);
+        renderer.draw_live_animation(
+            frame.view,
+            &frame.instances,
+            &frame.ui,
+            &frame.lighting,
+            &self.session.animation_support(),
+            &controls,
+        )?;
         let present_started = Instant::now();
         renderer.present_window(self.presenter.as_mut().unwrap(), [size.width, size.height])?;
         if self.record.is_some() {

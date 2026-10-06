@@ -1,0 +1,22 @@
+{
+  "recorded_at_utc": "2026-10-05T23:52:15.087852+00:00",
+  "retired": [
+    {
+      "paths": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-e997d7858058f2aa"
+      ],
+      "bytes": 43731296,
+      "sha256": "6d94a797bc570e06ae72027b383ad1d1beb53242e0e31c00482003c652aa3587",
+      "phase": "V21 initial engine checks and CLI recipe, before controller reset and per-tick preview changes; superseded, not final acceptance"
+    },
+    {
+      "paths": [
+        "/home/christopherdavid/work/openagents-target-agent1/debug/verse-content",
+        "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_content-57d6466e22e4ecd7"
+      ],
+      "bytes": 261509752,
+      "sha256": "e8ddbeec9ff148c07fc03d473a114909d4bc0170eb55f8773d369e0b203c4fc3",
+      "phase": "V21 initial engine checks and CLI recipe, before controller reset and per-tick preview changes; superseded, not final acceptance"
+    }
+  ]
+}

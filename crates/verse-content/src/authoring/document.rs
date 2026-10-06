@@ -22,6 +22,8 @@ pub struct TimelineCue {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelEdit {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph: Option<verse_engine::animation_graph::Authored>,
     pub states: Option<BTreeMap<State, Binding>>,
     #[serde(deserialize_with = "verse_world::content::read_numeric_map")]
     pub materials: BTreeMap<usize, Material>,

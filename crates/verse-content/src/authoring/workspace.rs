@@ -393,7 +393,7 @@ impl Workspace {
             "vertices": model.surfaces.iter().map(|s| s.vertices.len()).sum::<usize>(),
             "surfaces": model.surfaces.iter().map(|s| &s.material).collect::<Vec<_>>(),
             "clips": model.clips.iter().map(|c| (c.id, c.duration)).collect::<Vec<_>>(),
-            "states": model.states, "sockets": model.attachments.iter().map(|a| a.id).collect::<Vec<_>>()
+            "states": model.states, "graph":model.graph, "sockets": model.attachments.iter().map(|a| a.id).collect::<Vec<_>>()
         })).collect();
         Ok(
             serde_json::json!({"schema":"verse.author.inspection.v1", "revision":self.revision(), "zone":self.document().zone,
