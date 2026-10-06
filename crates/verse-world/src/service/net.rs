@@ -70,6 +70,9 @@ pub struct Stats {
     pub simulation: Timing,
     pub capture: Timing,
     pub read_projection: Timing,
+    /// Time from transport submission to authority-loop dispatch, including queue pressure.
+    pub movement_queue_wait: Timing,
+    pub read_queue_wait: Timing,
     pub checkpoint_copy: Timing,
     pub commits: Timing,
     pub commit_preparation: Timing,
@@ -424,6 +427,7 @@ pub(super) enum Event {
         reply: oneshot::Sender<DispatchReply>,
         progress: Option<oneshot::Sender<RequestProgress>>,
         delivered_prefix: Option<Response>,
+        queued_at: Instant,
     },
     Close(ConnectionId),
 }
@@ -825,8 +829,16 @@ async fn serve_loop<F: Future<Output = ()>>(
                         let result = joined.and_then(|_| gateway.open_json(now));
                         if let Err(Ok((id, _))) = reply.send(result) {let _ = gateway.close(id);}
                     }
-                    Some(Event::Request {id, bytes, reply, progress, delivered_prefix}) => {
+                    Some(Event::Request {id, bytes, reply, progress, delivered_prefix, queued_at}) => {
                         stats.requests += 1;
+                        if let Ok(request) = Request::decode(&bytes) {
+                            let timing = match request.body {
+                                Body::BeginMovementFrames {..} | Body::MovementFrame {..} => Some(&mut stats.movement_queue_wait),
+                                Body::Snapshot {} | Body::Replicate {..} | Body::MovementCredit {} => Some(&mut stats.read_queue_wait),
+                                _ => None,
+                            };
+                            if let Some(timing) = timing { timing.record(queued_at.elapsed().as_secs_f64()); }
+                        }
                         if let Some(writer) = &writer {
                             if let Some(prefix) = delivered_prefix.as_ref() {
                                 if let Ok(request) = Request::decode(&bytes) {
@@ -1177,6 +1189,7 @@ async fn request_with_storage_backpressure(
             reply,
             progress: None,
             delivered_prefix: None,
+            queued_at: Instant::now(),
         })
         .await
         .map_err(|_| "Chamber host stopped")?;

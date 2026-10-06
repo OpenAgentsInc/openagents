@@ -153,6 +153,9 @@
           "crypt",
           "crypt-fight"
         ],
+        "dev-destruction": [
+          "verse-zone-everglade/dev-destruction"
+        ],
         "hosted-social": [
           "verse-world/service-auth"
         ],

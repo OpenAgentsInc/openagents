@@ -315,6 +315,7 @@ fn coordinator(
                         reply,
                         progress,
                         delivered_prefix: _,
+                        queued_at: _,
                     } => {
                         stats.requests += 1;
                         let result = realm.dispatch(lease, id, clock, &bytes).map(|bytes| {

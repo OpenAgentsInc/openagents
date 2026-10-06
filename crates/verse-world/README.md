@@ -1108,3 +1108,9 @@ returns its committed credit immediately if it preserves the delivered control
 prefix; otherwise, it waits for the normal durable fence. The native session preserves pending
 inputs when consuming this credit. Reads cannot renew the server's movement
 clock, increase its lead allowance, or cross a character life or control epoch.
+
+The battle harness reports bounded `movement_queue_wait` and `read_queue_wait`
+distributions from transport submission through request classification in the
+authority loop. These include channel-capacity pressure and dispatch waiting,
+not client-to-server transit, durability, or reply delivery. They retain counts
+and fixed histogram buckets rather than request contents or per-request logs.

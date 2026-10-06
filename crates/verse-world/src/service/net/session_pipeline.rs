@@ -124,6 +124,7 @@ async fn submit(
         reply,
         progress: Some(progress),
         delivered_prefix,
+        queued_at: Instant::now(),
     })
     .await
     .map_err(|_| "Chamber host stopped")?;

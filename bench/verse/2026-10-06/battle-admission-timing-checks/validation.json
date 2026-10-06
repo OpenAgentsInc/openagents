@@ -1,0 +1,28 @@
+{
+  "change": "Bounded server movement and read request queue-wait distributions, exposed in the battle report.",
+  "checks": [
+    {
+      "command": "cargo test -p verse-world --features service-net,service-reach,studio pipeline -- --test-threads=1",
+      "passed": 12
+    },
+    {
+      "command": "cargo test -p verse --no-default-features --features remote-chamber --example battle_scale",
+      "passed": 3
+    },
+    {
+      "command": "cargo fmt -p verse-world -p verse",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "python3.13 scripts/verse-runtime-contract.py --check",
+      "result": "passed after regeneration"
+    }
+  ],
+  "limits_changed": false,
+  "measurement_claim": "No new live performance qualification; the retained writer-trace 600-second failure remains unresolved.",
+  "build_concurrency": 1
+}
