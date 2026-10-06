@@ -363,12 +363,14 @@ impl Local {
             dirty_before: self.dirty,
             path: "replay",
         };
+        // An unchanged authority motor cannot rewrite processed input when a
+        // corpse or another fixed blocker appears. New geometry applies to the
+        // next integration; a changed motor still reconciles confirmed travel.
         let same_travel = baseline.profile == movement::Profile::Frames
             && self.baseline.is_some_and(|mut previous| {
                 previous.world_step = baseline.world_step;
                 previous == baseline
-            })
-            && blocking_geometry_matches;
+            });
         // Compare completed travel at its own physics step. Capsule poses from
         // another observation cannot retroactively replace a pending path that
         // this estimate already processed. Other motor state still requires replay.
@@ -1947,6 +1949,73 @@ mod tests {
             local.clear();
             assert!(local.estimates.is_empty());
         }
+    }
+
+    #[test]
+    fn unchanged_confirmation_applies_new_fixed_blockers_only_to_future_travel() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot};
+        let (mut local, mut baseline, mut geometry) = setup();
+        movement::advance(
+            &mut baseline.character,
+            local.collision.scene(),
+            Filter::blocking(7),
+            glam::DVec3::ZERO,
+            false,
+            1,
+            1. / 120.,
+        )
+        .unwrap();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        local.advance(0.1).unwrap();
+        local.advance(0.1).unwrap();
+        let before = local.character.unwrap();
+        let step = local.physics_step();
+        // A corpse appears across the path already processed. Another new
+        // blocker lies ahead, so retaining history must still update collision.
+        for (entity, min_x, max_x) in [
+            (216, 0.4, before.feet.x - 0.45),
+            (217, before.feet.x + 0.45, before.feet.x + 1.0),
+        ] {
+            geometry.colliders.push(ShapeSnapshot {
+                key: ColliderKey {
+                    life: Life {
+                        instance: 7,
+                        entity,
+                        generation: 0,
+                    },
+                    shape: 0,
+                },
+                layers: 1,
+                usage: Usage::Blocking,
+                pose: Pose::default(),
+                geometry: GeometrySnapshot::Box {
+                    min: glam::DVec3::new(min_x, 0., -0.5),
+                    max: glam::DVec3::new(max_x, 2., 0.5),
+                },
+            });
+        }
+        baseline.world_step = step;
+        local.observe(baseline, &geometry, 3, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(
+            local.character.unwrap(),
+            before,
+            "Unchanged confirmation cannot replay historical travel through a new blocker"
+        );
+        assert_eq!(local.physics_step(), step);
+        assert_eq!(local.pending(), 1);
+        local.advance(4. / 120.).unwrap();
+        let after = local.character.unwrap();
+        assert!(after.feet.x > before.feet.x + 0.05);
+        assert!(
+            after.feet.x < before.feet.x + 0.11,
+            "Future travel must stop at the new blocker: {:?}",
+            after.feet
+        );
+        assert_eq!(local.physics_step(), step + 4);
     }
 
     #[test]
