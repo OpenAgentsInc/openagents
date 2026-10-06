@@ -68,3 +68,34 @@ provider study must retain RFQ/quote timestamps, buyer acceptance outcomes,
 and incremental search, check, and coordination costs before funded adoption.
 The baseline does not satisfy that independent study.
 
+## Commercial custody and disputes
+
+Production custody is unavailable. The current fixed Lightning profile pays
+an earned obligation after acceptance and exposes neither an escrow account
+nor a reversible payment. A commercial custody adapter needs a separately
+reviewed legal custodian, supported deposit/release/refund rails, authenticated
+wallet lookups, fee enforcement, insolvency treatment, and an admitted resolver.
+Unilateral buyer or provider statements cannot authorize custody effects.
+
+The fake `markets::custody` study pins parties, distinct resolver, custody
+policy, milestone amounts, rework bound, acceptance/resolution deadlines,
+deposit, and fee budget. Milestones plus the fee reserve equal the deposit.
+Delivery and verification records do not release money without verified buyer
+acceptance; a dispute release instead requires the admitted resolver's exact
+resolution. Cancellation, rework, and failed checks do not restart deadlines
+or expand funding. LAB retains those separate review and execution records.
+
+A known failed refund leaves the liability held; an unknown release or refund
+reserves principal and fees and blocks later effects. Exact attempts replay as
+observations. Lookup may resolve the same retained attempt without resending;
+changed amount, fee, or outcome refuses. Missing parties, late resolution,
+unavailable history, uncertain custody, and unsupported rails require manual
+reconciliation while liabilities remain retained. The custodian bears custody
+and insolvency exposure; the worker bears postacceptance credit risk without
+custody. Neither a relay nor the checker acts as custodian or resolver.
+
+Run `cargo run -p pay-ledger --example custody-qualification`. It emits a
+fake deposit, unknown release, serialized restart, lookup, remainder refund,
+and conservation report. The fake model uses no wallet or production ledger.
+Its outcome evidence cannot qualify a custody provider or prove a live refund.
+

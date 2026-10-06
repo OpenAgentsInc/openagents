@@ -3,6 +3,7 @@ use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 
 pub mod bids;
+pub mod custody;
 pub mod worker;
 
 /// Check a pinned SHA-256 identity rather than accepting a mutable name.

@@ -601,3 +601,12 @@ Neither platform has a qualified public artifact from this work.
   local comparison latency; provider quote latency and all-in coordination
   cost remain unverified. Do not adopt funded bidding before that study.
 
+- Commercial custody qualification (#10727): Production escrow is unavailable.
+  Run the `custody-qualification` example for fake conservation evidence. Before
+  funding a scenario, admit a specific legal custodian and enforceable rail,
+  pin the resolver and release/refund authority, fee limits, milestones,
+  deadlines, and insolvency liability. Separately authorize one bounded
+  deposit and retain real deposit, release, refund, fees, unknown lookup, and
+  dispute records. Never infer escrow or refund support from exact Lightning
+  payments. All funded custody and dispute cases remain unverified.
+
