@@ -1,0 +1,3048 @@
+{
+  "schema": "verse.expiry.correlations.v1",
+  "matched_transitions": 19,
+  "method": "Join retained server expiry samples to retained producer epoch transitions by actor and prior epoch; exact causal packet order is not retained.",
+  "rows": [
+    {
+      "player": 4,
+      "expiry": {
+        "actor": 230,
+        "epoch": 6,
+        "authority_tick": 2405,
+        "origin": "additional_tick",
+        "world_step": 7220,
+        "confirmed_step": 7184,
+        "projected_step": 7184,
+        "received_at": 7200,
+        "applied_sequence": 454,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 69466,
+          "actor": 230,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 7148,
+          "snapshot_world_step": 7168,
+          "verified_credit": 7172,
+          "cursor": 7184,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 69498,
+          "actor": 230,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 7168,
+          "snapshot_world_step": 7192,
+          "verified_credit": 7196,
+          "cursor": 7184,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 69531,
+          "actor": 230,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 7168,
+          "snapshot_world_step": 7192,
+          "verified_credit": 7204,
+          "cursor": 7196,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 69564,
+          "actor": 230,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 7168,
+          "snapshot_world_step": 7192,
+          "verified_credit": 7204,
+          "cursor": 7208,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 69597,
+          "actor": 230,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 7168,
+          "snapshot_world_step": 7192,
+          "verified_credit": 7204,
+          "cursor": 7216,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 69630,
+          "actor": 230,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 7168,
+          "snapshot_world_step": 7192,
+          "verified_credit": 7204,
+          "cursor": 7216,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 69663,
+          "actor": 230,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 7168,
+          "snapshot_world_step": 7192,
+          "verified_credit": 7204,
+          "cursor": 7216,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 69696,
+          "actor": 230,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 7168,
+          "snapshot_world_step": 7192,
+          "verified_credit": null,
+          "cursor": 7216,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 69729,
+        "actor": 230,
+        "epoch": 7,
+        "profile": "arrival",
+        "confirmed_step": 7220,
+        "snapshot_world_step": 7220,
+        "verified_credit": 7224,
+        "cursor": null,
+        "outstanding": 1,
+        "pending": 1,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4815,
+          "p95": 202.149299,
+          "max": 1786.6738799999998
+        },
+        "events": {
+          "samples": 1271,
+          "p95": 201.55749600000001,
+          "max": 1706.656009
+        },
+        "inventory": {
+          "samples": 267,
+          "p95": 205.989477,
+          "max": 1655.757467
+        },
+        "snapshot": {
+          "samples": 1402,
+          "p95": 199.88178200000002,
+          "max": 1832.957363
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 4,
+      "expiry": {
+        "actor": 230,
+        "epoch": 8,
+        "authority_tick": 3092,
+        "origin": "additional_tick",
+        "world_step": 9968,
+        "confirmed_step": 9932,
+        "projected_step": 9932,
+        "received_at": 9936,
+        "applied_sequence": 352,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 92598,
+          "actor": 230,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9888,
+          "snapshot_world_step": 9908,
+          "verified_credit": 9920,
+          "cursor": 9932,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92664,
+          "actor": 230,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9940,
+          "cursor": 9932,
+          "outstanding": 0,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92697,
+          "actor": 230,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9940,
+          "cursor": 9944,
+          "outstanding": 1,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92730,
+          "actor": 230,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9940,
+          "cursor": 9952,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92763,
+          "actor": 230,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9940,
+          "cursor": 9952,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92796,
+          "actor": 230,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9940,
+          "cursor": 9952,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92829,
+          "actor": 230,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9964,
+          "cursor": 9952,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92862,
+          "actor": 230,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9964,
+          "cursor": 9964,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 92895,
+        "actor": 230,
+        "epoch": 9,
+        "profile": "arrival",
+        "confirmed_step": 9968,
+        "snapshot_world_step": 9968,
+        "verified_credit": 9976,
+        "cursor": null,
+        "outstanding": 1,
+        "pending": 1,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4815,
+          "p95": 202.149299,
+          "max": 1786.6738799999998
+        },
+        "events": {
+          "samples": 1271,
+          "p95": 201.55749600000001,
+          "max": 1706.656009
+        },
+        "inventory": {
+          "samples": 267,
+          "p95": 205.989477,
+          "max": 1655.757467
+        },
+        "snapshot": {
+          "samples": 1402,
+          "p95": 199.88178200000002,
+          "max": 1832.957363
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 5,
+      "expiry": {
+        "actor": 231,
+        "epoch": 6,
+        "authority_tick": 3090,
+        "origin": "additional_tick",
+        "world_step": 9960,
+        "confirmed_step": 9924,
+        "projected_step": 9924,
+        "received_at": 9944,
+        "applied_sequence": 166,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 92468,
+          "actor": 231,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9892,
+          "snapshot_world_step": 9908,
+          "verified_credit": 9912,
+          "cursor": 9924,
+          "outstanding": 1,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92500,
+          "actor": 231,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9940,
+          "cursor": 9924,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92533,
+          "actor": 231,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9948,
+          "cursor": 9936,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92565,
+          "actor": 231,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9948,
+          "cursor": 9948,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92598,
+          "actor": 231,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9948,
+          "cursor": 9960,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92631,
+          "actor": 231,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9948,
+          "cursor": 9960,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92665,
+          "actor": 231,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": 9948,
+          "cursor": 9960,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92698,
+          "actor": 231,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9912,
+          "snapshot_world_step": 9936,
+          "verified_credit": null,
+          "cursor": 9960,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 92733,
+        "actor": 231,
+        "epoch": 7,
+        "profile": "arrival",
+        "confirmed_step": 9968,
+        "snapshot_world_step": 9968,
+        "verified_credit": 9972,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4858,
+          "p95": 199.223017,
+          "max": 1816.864086
+        },
+        "events": {
+          "samples": 1270,
+          "p95": 198.887011,
+          "max": 1846.4482389999998
+        },
+        "inventory": {
+          "samples": 265,
+          "p95": 213.489231,
+          "max": 411.97958800000004
+        },
+        "snapshot": {
+          "samples": 1396,
+          "p95": 204.071853,
+          "max": 1803.839499
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 7,
+      "expiry": {
+        "actor": 233,
+        "epoch": 8,
+        "authority_tick": 3983,
+        "origin": "additional_tick",
+        "world_step": 13532,
+        "confirmed_step": 13496,
+        "projected_step": 13496,
+        "received_at": 13504,
+        "applied_sequence": 2,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 122333,
+          "actor": 233,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 13480,
+          "snapshot_world_step": 13480,
+          "verified_credit": 13484,
+          "cursor": 13496,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 122364,
+          "actor": 233,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 13480,
+          "snapshot_world_step": 13504,
+          "verified_credit": 13508,
+          "cursor": 13496,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 122397,
+          "actor": 233,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 13480,
+          "snapshot_world_step": 13504,
+          "verified_credit": 13508,
+          "cursor": 13508,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 122430,
+          "actor": 233,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 13480,
+          "snapshot_world_step": 13504,
+          "verified_credit": 13508,
+          "cursor": 13520,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 122463,
+          "actor": 233,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 13480,
+          "snapshot_world_step": 13504,
+          "verified_credit": 13508,
+          "cursor": 13520,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 122496,
+          "actor": 233,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 13480,
+          "snapshot_world_step": 13504,
+          "verified_credit": 13508,
+          "cursor": 13520,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 122530,
+          "actor": 233,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 13480,
+          "snapshot_world_step": 13504,
+          "verified_credit": 13508,
+          "cursor": 13520,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 122563,
+          "actor": 233,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 13480,
+          "snapshot_world_step": 13504,
+          "verified_credit": 13508,
+          "cursor": 13520,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 122595,
+        "actor": 233,
+        "epoch": 9,
+        "profile": "arrival",
+        "confirmed_step": 13532,
+        "snapshot_world_step": 13532,
+        "verified_credit": 13536,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4874,
+          "p95": 201.56250500000002,
+          "max": 1814.549395
+        },
+        "events": {
+          "samples": 1270,
+          "p95": 200.32422599999998,
+          "max": 1786.6316
+        },
+        "inventory": {
+          "samples": 267,
+          "p95": 210.746494,
+          "max": 1764.3524940000002
+        },
+        "snapshot": {
+          "samples": 1397,
+          "p95": 203.822485,
+          "max": 1816.672788
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 8,
+      "expiry": {
+        "actor": 234,
+        "epoch": 6,
+        "authority_tick": 3105,
+        "origin": "additional_tick",
+        "world_step": 10020,
+        "confirmed_step": 9984,
+        "projected_step": 9984,
+        "received_at": 9992,
+        "applied_sequence": 485,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 92534,
+          "actor": 234,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9940,
+          "snapshot_world_step": 9968,
+          "verified_credit": 9972,
+          "cursor": 9984,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92598,
+          "actor": 234,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9984,
+          "snapshot_world_step": 10000,
+          "verified_credit": 10000,
+          "cursor": 9984,
+          "outstanding": 0,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92632,
+          "actor": 234,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9984,
+          "snapshot_world_step": 10000,
+          "verified_credit": 10000,
+          "cursor": 9996,
+          "outstanding": 1,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92664,
+          "actor": 234,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9984,
+          "snapshot_world_step": 10000,
+          "verified_credit": 10000,
+          "cursor": 10008,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92697,
+          "actor": 234,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9984,
+          "snapshot_world_step": 10000,
+          "verified_credit": 10000,
+          "cursor": 10012,
+          "outstanding": 3,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92731,
+          "actor": 234,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9984,
+          "snapshot_world_step": 10000,
+          "verified_credit": 10000,
+          "cursor": 10012,
+          "outstanding": 3,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92764,
+          "actor": 234,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9984,
+          "snapshot_world_step": 10000,
+          "verified_credit": 10016,
+          "cursor": 10012,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 92800,
+          "actor": 234,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 9984,
+          "snapshot_world_step": 10000,
+          "verified_credit": null,
+          "cursor": 10024,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 92830,
+        "actor": 234,
+        "epoch": 7,
+        "profile": "arrival",
+        "confirmed_step": 10024,
+        "snapshot_world_step": 10024,
+        "verified_credit": 10032,
+        "cursor": null,
+        "outstanding": 1,
+        "pending": 1,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4822,
+          "p95": 200.577883,
+          "max": 1833.877249
+        },
+        "events": {
+          "samples": 1269,
+          "p95": 199.788311,
+          "max": 1762.149142
+        },
+        "inventory": {
+          "samples": 267,
+          "p95": 201.623668,
+          "max": 368.30190600000003
+        },
+        "snapshot": {
+          "samples": 1405,
+          "p95": 201.362973,
+          "max": 1823.2686039999999
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 12,
+      "expiry": {
+        "actor": 238,
+        "epoch": 4,
+        "authority_tick": 1990,
+        "origin": "additional_tick",
+        "world_step": 5560,
+        "confirmed_step": 5524,
+        "projected_step": 5524,
+        "received_at": 5536,
+        "applied_sequence": 580,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 54523,
+          "actor": 238,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 5496,
+          "snapshot_world_step": 5508,
+          "verified_credit": 5540,
+          "cursor": 5536,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 54568,
+          "actor": 238,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 5496,
+          "snapshot_world_step": 5508,
+          "verified_credit": 5540,
+          "cursor": 5548,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 54582,
+          "actor": 238,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 5496,
+          "snapshot_world_step": 5508,
+          "verified_credit": 5540,
+          "cursor": 5552,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 54615,
+          "actor": 238,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 5524,
+          "snapshot_world_step": 5544,
+          "verified_credit": 5548,
+          "cursor": 5552,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 54648,
+          "actor": 238,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 5524,
+          "snapshot_world_step": 5544,
+          "verified_credit": 5556,
+          "cursor": 5560,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 54681,
+          "actor": 238,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 5524,
+          "snapshot_world_step": 5544,
+          "verified_credit": 5556,
+          "cursor": 5568,
+          "outstanding": 5,
+          "pending": 5,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 54714,
+          "actor": 238,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 5524,
+          "snapshot_world_step": 5544,
+          "verified_credit": null,
+          "cursor": 5568,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 54748,
+          "actor": 238,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 5524,
+          "snapshot_world_step": 5544,
+          "verified_credit": null,
+          "cursor": 5568,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 54780,
+        "actor": 238,
+        "epoch": 5,
+        "profile": "arrival",
+        "confirmed_step": 5572,
+        "snapshot_world_step": 5572,
+        "verified_credit": 5572,
+        "cursor": null,
+        "outstanding": 1,
+        "pending": 1,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4814,
+          "p95": 202.75413,
+          "max": 1808.4419390000003
+        },
+        "events": {
+          "samples": 1267,
+          "p95": 201.881223,
+          "max": 1755.24949
+        },
+        "inventory": {
+          "samples": 263,
+          "p95": 216.196416,
+          "max": 1755.2569270000001
+        },
+        "snapshot": {
+          "samples": 1391,
+          "p95": 202.91226,
+          "max": 1747.584719
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 12,
+      "expiry": {
+        "actor": 238,
+        "epoch": 6,
+        "authority_tick": 2063,
+        "origin": "additional_tick",
+        "world_step": 5852,
+        "confirmed_step": 5816,
+        "projected_step": 5816,
+        "received_at": 5824,
+        "applied_sequence": 28,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 56961,
+          "actor": 238,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5800,
+          "snapshot_world_step": 5824,
+          "verified_credit": 5828,
+          "cursor": 5816,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 56992,
+          "actor": 238,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5800,
+          "snapshot_world_step": 5824,
+          "verified_credit": 5828,
+          "cursor": 5828,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57025,
+          "actor": 238,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5800,
+          "snapshot_world_step": 5824,
+          "verified_credit": 5828,
+          "cursor": 5840,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57057,
+          "actor": 238,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5800,
+          "snapshot_world_step": 5824,
+          "verified_credit": 5828,
+          "cursor": 5840,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57091,
+          "actor": 238,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5800,
+          "snapshot_world_step": 5824,
+          "verified_credit": 5828,
+          "cursor": 5840,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57123,
+          "actor": 238,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5800,
+          "snapshot_world_step": 5824,
+          "verified_credit": 5828,
+          "cursor": 5840,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57157,
+          "actor": 238,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5800,
+          "snapshot_world_step": 5824,
+          "verified_credit": null,
+          "cursor": 5840,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57189,
+          "actor": 238,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5800,
+          "snapshot_world_step": 5824,
+          "verified_credit": null,
+          "cursor": 5840,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 57222,
+        "actor": 238,
+        "epoch": 7,
+        "profile": "arrival",
+        "confirmed_step": 5856,
+        "snapshot_world_step": 5856,
+        "verified_credit": 5860,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4814,
+          "p95": 202.75413,
+          "max": 1808.4419390000003
+        },
+        "events": {
+          "samples": 1267,
+          "p95": 201.881223,
+          "max": 1755.24949
+        },
+        "inventory": {
+          "samples": 263,
+          "p95": 216.196416,
+          "max": 1755.2569270000001
+        },
+        "snapshot": {
+          "samples": 1391,
+          "p95": 202.91226,
+          "max": 1747.584719
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 12,
+      "expiry": {
+        "actor": 238,
+        "epoch": 8,
+        "authority_tick": 2766,
+        "origin": "additional_tick",
+        "world_step": 8664,
+        "confirmed_step": 8628,
+        "projected_step": 8628,
+        "received_at": 8648,
+        "applied_sequence": 386,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 80655,
+          "actor": 238,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 8600,
+          "snapshot_world_step": 8616,
+          "verified_credit": 8644,
+          "cursor": 8636,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 80686,
+          "actor": 238,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 8600,
+          "snapshot_world_step": 8616,
+          "verified_credit": 8644,
+          "cursor": 8648,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 80719,
+          "actor": 238,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 8616,
+          "snapshot_world_step": 8648,
+          "verified_credit": 8652,
+          "cursor": 8656,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 80752,
+          "actor": 238,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 8616,
+          "snapshot_world_step": 8648,
+          "verified_credit": 8652,
+          "cursor": 8664,
+          "outstanding": 5,
+          "pending": 5,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 80785,
+          "actor": 238,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 8616,
+          "snapshot_world_step": 8648,
+          "verified_credit": 8652,
+          "cursor": 8664,
+          "outstanding": 5,
+          "pending": 5,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 80817,
+          "actor": 238,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 8616,
+          "snapshot_world_step": 8648,
+          "verified_credit": 8652,
+          "cursor": 8664,
+          "outstanding": 5,
+          "pending": 5,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 80854,
+          "actor": 238,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 8616,
+          "snapshot_world_step": 8648,
+          "verified_credit": null,
+          "cursor": 8664,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 80884,
+          "actor": 238,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 8616,
+          "snapshot_world_step": 8648,
+          "verified_credit": null,
+          "cursor": 8664,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 80929,
+        "actor": 238,
+        "epoch": 9,
+        "profile": "arrival",
+        "confirmed_step": 8672,
+        "snapshot_world_step": 8672,
+        "verified_credit": 8676,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4814,
+          "p95": 202.75413,
+          "max": 1808.4419390000003
+        },
+        "events": {
+          "samples": 1267,
+          "p95": 201.881223,
+          "max": 1755.24949
+        },
+        "inventory": {
+          "samples": 263,
+          "p95": 216.196416,
+          "max": 1755.2569270000001
+        },
+        "snapshot": {
+          "samples": 1391,
+          "p95": 202.91226,
+          "max": 1747.584719
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 14,
+      "expiry": {
+        "actor": 240,
+        "epoch": 2,
+        "authority_tick": 1478,
+        "origin": "additional_tick",
+        "world_step": 3512,
+        "confirmed_step": 3476,
+        "projected_step": 3476,
+        "received_at": 3480,
+        "applied_sequence": 505,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 37258,
+          "actor": 240,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 3456,
+          "snapshot_world_step": 3480,
+          "verified_credit": 3504,
+          "cursor": 3508,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 37291,
+          "actor": 240,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 3456,
+          "snapshot_world_step": 3480,
+          "verified_credit": 3504,
+          "cursor": 3516,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 37323,
+          "actor": 240,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 3476,
+          "snapshot_world_step": 3508,
+          "verified_credit": 3508,
+          "cursor": 3516,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 37357,
+          "actor": 240,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 3476,
+          "snapshot_world_step": 3508,
+          "verified_credit": null,
+          "cursor": 3520,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 37390,
+          "actor": 240,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 3476,
+          "snapshot_world_step": 3508,
+          "verified_credit": null,
+          "cursor": 3520,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 37422,
+          "actor": 240,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 3476,
+          "snapshot_world_step": 3508,
+          "verified_credit": null,
+          "cursor": 3520,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 37455,
+          "actor": 240,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 3476,
+          "snapshot_world_step": 3508,
+          "verified_credit": null,
+          "cursor": 3520,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 37489,
+          "actor": 240,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 3476,
+          "snapshot_world_step": 3508,
+          "verified_credit": null,
+          "cursor": 3520,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 37522,
+        "actor": 240,
+        "epoch": 3,
+        "profile": "arrival",
+        "confirmed_step": 3532,
+        "snapshot_world_step": 3532,
+        "verified_credit": 3536,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4818,
+          "p95": 201.545415,
+          "max": 1818.173905
+        },
+        "events": {
+          "samples": 1266,
+          "p95": 202.93502999999998,
+          "max": 1814.66627
+        },
+        "inventory": {
+          "samples": 261,
+          "p95": 214.099652,
+          "max": 1598.9548120000002
+        },
+        "snapshot": {
+          "samples": 1391,
+          "p95": 203.56237199999998,
+          "max": 1825.819825
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 14,
+      "expiry": {
+        "actor": 240,
+        "epoch": 6,
+        "authority_tick": 2071,
+        "origin": "additional_tick",
+        "world_step": 5884,
+        "confirmed_step": 5848,
+        "projected_step": 5848,
+        "received_at": 5852,
+        "applied_sequence": 265,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 56892,
+          "actor": 240,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5820,
+          "snapshot_world_step": 5832,
+          "verified_credit": 5836,
+          "cursor": 5848,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 56959,
+          "actor": 240,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5840,
+          "snapshot_world_step": 5856,
+          "verified_credit": 5860,
+          "cursor": 5848,
+          "outstanding": 0,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 56992,
+          "actor": 240,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5840,
+          "snapshot_world_step": 5856,
+          "verified_credit": 5860,
+          "cursor": 5860,
+          "outstanding": 1,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57025,
+          "actor": 240,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5840,
+          "snapshot_world_step": 5856,
+          "verified_credit": 5860,
+          "cursor": 5872,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57058,
+          "actor": 240,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5840,
+          "snapshot_world_step": 5856,
+          "verified_credit": 5876,
+          "cursor": 5872,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57090,
+          "actor": 240,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5840,
+          "snapshot_world_step": 5856,
+          "verified_credit": 5876,
+          "cursor": 5884,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57124,
+          "actor": 240,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5840,
+          "snapshot_world_step": 5856,
+          "verified_credit": 5876,
+          "cursor": 5888,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 57157,
+          "actor": 240,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 5840,
+          "snapshot_world_step": 5856,
+          "verified_credit": 5876,
+          "cursor": 5888,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 57190,
+        "actor": 240,
+        "epoch": 7,
+        "profile": "arrival",
+        "confirmed_step": 5884,
+        "snapshot_world_step": 5884,
+        "verified_credit": 5888,
+        "cursor": null,
+        "outstanding": 2,
+        "pending": 2,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4818,
+          "p95": 201.545415,
+          "max": 1818.173905
+        },
+        "events": {
+          "samples": 1266,
+          "p95": 202.93502999999998,
+          "max": 1814.66627
+        },
+        "inventory": {
+          "samples": 261,
+          "p95": 214.099652,
+          "max": 1598.9548120000002
+        },
+        "snapshot": {
+          "samples": 1391,
+          "p95": 203.56237199999998,
+          "max": 1825.819825
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 14,
+      "expiry": {
+        "actor": 240,
+        "epoch": 8,
+        "authority_tick": 3824,
+        "origin": "additional_tick",
+        "world_step": 12896,
+        "confirmed_step": 12860,
+        "projected_step": 12860,
+        "received_at": 12872,
+        "applied_sequence": 940,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 115665,
+          "actor": 240,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 12832,
+          "snapshot_world_step": 12844,
+          "verified_credit": 12848,
+          "cursor": 12860,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 115698,
+          "actor": 240,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 12832,
+          "snapshot_world_step": 12844,
+          "verified_credit": 12876,
+          "cursor": 12860,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 115731,
+          "actor": 240,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 12840,
+          "snapshot_world_step": 12872,
+          "verified_credit": 12876,
+          "cursor": 12872,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 115764,
+          "actor": 240,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 12840,
+          "snapshot_world_step": 12872,
+          "verified_credit": 12876,
+          "cursor": 12884,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 115798,
+          "actor": 240,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 12840,
+          "snapshot_world_step": 12872,
+          "verified_credit": 12876,
+          "cursor": 12888,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 115830,
+          "actor": 240,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 12840,
+          "snapshot_world_step": 12872,
+          "verified_credit": 12876,
+          "cursor": 12888,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 115863,
+          "actor": 240,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 12840,
+          "snapshot_world_step": 12872,
+          "verified_credit": 12876,
+          "cursor": 12888,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 115896,
+          "actor": 240,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 12840,
+          "snapshot_world_step": 12872,
+          "verified_credit": 12876,
+          "cursor": 12888,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 115930,
+        "actor": 240,
+        "epoch": 9,
+        "profile": "arrival",
+        "confirmed_step": 12900,
+        "snapshot_world_step": 12900,
+        "verified_credit": 12900,
+        "cursor": null,
+        "outstanding": 1,
+        "pending": 1,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4818,
+          "p95": 201.545415,
+          "max": 1818.173905
+        },
+        "events": {
+          "samples": 1266,
+          "p95": 202.93502999999998,
+          "max": 1814.66627
+        },
+        "inventory": {
+          "samples": 261,
+          "p95": 214.099652,
+          "max": 1598.9548120000002
+        },
+        "snapshot": {
+          "samples": 1391,
+          "p95": 203.56237199999998,
+          "max": 1825.819825
+        }
+      },
+      "minimum_hp": 200
+    },
+    {
+      "player": 15,
+      "expiry": {
+        "actor": 241,
+        "epoch": 8,
+        "authority_tick": 5534,
+        "origin": "additional_tick",
+        "world_step": 19736,
+        "confirmed_step": 19700,
+        "projected_step": 19700,
+        "received_at": 19704,
+        "applied_sequence": 187,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 174242,
+          "actor": 241,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 19680,
+          "snapshot_world_step": 19704,
+          "verified_credit": 19732,
+          "cursor": 19720,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 174273,
+          "actor": 241,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 19680,
+          "snapshot_world_step": 19704,
+          "verified_credit": 19732,
+          "cursor": 19732,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 174307,
+          "actor": 241,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 19700,
+          "snapshot_world_step": 19732,
+          "verified_credit": 19732,
+          "cursor": 19744,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 174339,
+          "actor": 241,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 19700,
+          "snapshot_world_step": 19732,
+          "verified_credit": null,
+          "cursor": 19744,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 174372,
+          "actor": 241,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 19700,
+          "snapshot_world_step": 19732,
+          "verified_credit": null,
+          "cursor": 19744,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 174405,
+          "actor": 241,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 19700,
+          "snapshot_world_step": 19732,
+          "verified_credit": null,
+          "cursor": 19744,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 174439,
+          "actor": 241,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 19700,
+          "snapshot_world_step": 19732,
+          "verified_credit": null,
+          "cursor": 19744,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 174471,
+          "actor": 241,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 19700,
+          "snapshot_world_step": 19732,
+          "verified_credit": null,
+          "cursor": 19744,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 174504,
+        "actor": 241,
+        "epoch": 9,
+        "profile": "arrival",
+        "confirmed_step": 19760,
+        "snapshot_world_step": 19760,
+        "verified_credit": 19764,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4787,
+          "p95": 203.407721,
+          "max": 1823.961999
+        },
+        "events": {
+          "samples": 1270,
+          "p95": 201.58997100000002,
+          "max": 1795.432814
+        },
+        "inventory": {
+          "samples": 264,
+          "p95": 206.833771,
+          "max": 1545.5772690000001
+        },
+        "snapshot": {
+          "samples": 1393,
+          "p95": 204.340401,
+          "max": 1792.7405370000001
+        }
+      },
+      "minimum_hp": 192
+    },
+    {
+      "player": 16,
+      "expiry": {
+        "actor": 242,
+        "epoch": 6,
+        "authority_tick": 3748,
+        "origin": "additional_tick",
+        "world_step": 12592,
+        "confirmed_step": 12556,
+        "projected_step": 12556,
+        "received_at": 12564,
+        "applied_sequence": 1198,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 112893,
+          "actor": 242,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 12524,
+          "snapshot_world_step": 12540,
+          "verified_credit": 12568,
+          "cursor": 12556,
+          "outstanding": 0,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 112927,
+          "actor": 242,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 12556,
+          "snapshot_world_step": 12568,
+          "verified_credit": 12572,
+          "cursor": 12568,
+          "outstanding": 1,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 112959,
+          "actor": 242,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 12556,
+          "snapshot_world_step": 12568,
+          "verified_credit": 12572,
+          "cursor": 12580,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 112992,
+          "actor": 242,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 12556,
+          "snapshot_world_step": 12568,
+          "verified_credit": 12572,
+          "cursor": 12584,
+          "outstanding": 3,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 113025,
+          "actor": 242,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 12556,
+          "snapshot_world_step": 12568,
+          "verified_credit": 12588,
+          "cursor": 12584,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 113058,
+          "actor": 242,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 12556,
+          "snapshot_world_step": 12568,
+          "verified_credit": 12588,
+          "cursor": 12596,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 113091,
+          "actor": 242,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 12556,
+          "snapshot_world_step": 12568,
+          "verified_credit": 12588,
+          "cursor": 12600,
+          "outstanding": 5,
+          "pending": 5,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 113124,
+          "actor": 242,
+          "epoch": 6,
+          "profile": "frames",
+          "confirmed_step": 12556,
+          "snapshot_world_step": 12568,
+          "verified_credit": null,
+          "cursor": 12600,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 113157,
+        "actor": 242,
+        "epoch": 7,
+        "profile": "arrival",
+        "confirmed_step": 12596,
+        "snapshot_world_step": 12596,
+        "verified_credit": 12600,
+        "cursor": null,
+        "outstanding": 3,
+        "pending": 3,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4839,
+          "p95": 203.404504,
+          "max": 1811.1273959999999
+        },
+        "events": {
+          "samples": 1265,
+          "p95": 202.887836,
+          "max": 1795.038675
+        },
+        "inventory": {
+          "samples": 266,
+          "p95": 207.737691,
+          "max": 1330.1009829999998
+        },
+        "snapshot": {
+          "samples": 1391,
+          "p95": 203.183727,
+          "max": 1802.001688
+        }
+      },
+      "minimum_hp": 128
+    },
+    {
+      "player": 17,
+      "expiry": {
+        "actor": 243,
+        "epoch": 2,
+        "authority_tick": 3072,
+        "origin": "additional_tick",
+        "world_step": 9888,
+        "confirmed_step": 9852,
+        "projected_step": 9852,
+        "received_at": 9860,
+        "applied_sequence": 1364,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 90091,
+          "actor": 243,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 9820,
+          "snapshot_world_step": 9832,
+          "verified_credit": 9840,
+          "cursor": 9852,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 90157,
+          "actor": 243,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 9836,
+          "snapshot_world_step": 9856,
+          "verified_credit": 9864,
+          "cursor": 9852,
+          "outstanding": 0,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 90190,
+          "actor": 243,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 9836,
+          "snapshot_world_step": 9856,
+          "verified_credit": 9864,
+          "cursor": 9864,
+          "outstanding": 1,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 90223,
+          "actor": 243,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 9836,
+          "snapshot_world_step": 9856,
+          "verified_credit": 9864,
+          "cursor": 9876,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 90256,
+          "actor": 243,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 9836,
+          "snapshot_world_step": 9856,
+          "verified_credit": 9864,
+          "cursor": 9876,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 90289,
+          "actor": 243,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 9836,
+          "snapshot_world_step": 9856,
+          "verified_credit": 9880,
+          "cursor": 9876,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 90327,
+          "actor": 243,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 9836,
+          "snapshot_world_step": 9856,
+          "verified_credit": 9880,
+          "cursor": 9888,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 90355,
+          "actor": 243,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 9836,
+          "snapshot_world_step": 9856,
+          "verified_credit": null,
+          "cursor": 9892,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 90388,
+        "actor": 243,
+        "epoch": 3,
+        "profile": "arrival",
+        "confirmed_step": 9888,
+        "snapshot_world_step": 9888,
+        "verified_credit": 9888,
+        "cursor": null,
+        "outstanding": 2,
+        "pending": 2,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4832,
+          "p95": 202.584769,
+          "max": 1812.507163
+        },
+        "events": {
+          "samples": 1271,
+          "p95": 201.89209699999998,
+          "max": 1696.8606
+        },
+        "inventory": {
+          "samples": 266,
+          "p95": 208.170168,
+          "max": 1397.336028
+        },
+        "snapshot": {
+          "samples": 1391,
+          "p95": 205.75903,
+          "max": 1770.6862139999998
+        }
+      },
+      "minimum_hp": 154
+    },
+    {
+      "player": 18,
+      "expiry": {
+        "actor": 244,
+        "epoch": 2,
+        "authority_tick": 2399,
+        "origin": "additional_tick",
+        "world_step": 7196,
+        "confirmed_step": 7160,
+        "projected_step": 7160,
+        "received_at": 7168,
+        "applied_sequence": 1005,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 67552,
+          "actor": 244,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 7136,
+          "snapshot_world_step": 7168,
+          "verified_credit": 7192,
+          "cursor": 7184,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 67586,
+          "actor": 244,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 7160,
+          "snapshot_world_step": 7192,
+          "verified_credit": 7192,
+          "cursor": 7196,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 67618,
+          "actor": 244,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 7160,
+          "snapshot_world_step": 7192,
+          "verified_credit": 7192,
+          "cursor": 7204,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 67651,
+          "actor": 244,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 7160,
+          "snapshot_world_step": 7192,
+          "verified_credit": null,
+          "cursor": 7204,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 67684,
+          "actor": 244,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 7160,
+          "snapshot_world_step": 7192,
+          "verified_credit": null,
+          "cursor": 7204,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 67716,
+          "actor": 244,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 7160,
+          "snapshot_world_step": 7192,
+          "verified_credit": null,
+          "cursor": 7204,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 67749,
+          "actor": 244,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 7160,
+          "snapshot_world_step": 7192,
+          "verified_credit": null,
+          "cursor": 7204,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 67782,
+          "actor": 244,
+          "epoch": 2,
+          "profile": "frames",
+          "confirmed_step": 7160,
+          "snapshot_world_step": 7192,
+          "verified_credit": null,
+          "cursor": 7204,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 67818,
+        "actor": 244,
+        "epoch": 3,
+        "profile": "arrival",
+        "confirmed_step": 7220,
+        "snapshot_world_step": 7220,
+        "verified_credit": 7224,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4809,
+          "p95": 201.84412500000002,
+          "max": 1798.389168
+        },
+        "events": {
+          "samples": 1267,
+          "p95": 200.235043,
+          "max": 1705.5996260000002
+        },
+        "inventory": {
+          "samples": 265,
+          "p95": 206.936857,
+          "max": 1755.3847110000002
+        },
+        "snapshot": {
+          "samples": 1388,
+          "p95": 203.51015,
+          "max": 1757.4750190000002
+        }
+      },
+      "minimum_hp": 192
+    },
+    {
+      "player": 18,
+      "expiry": {
+        "actor": 244,
+        "epoch": 4,
+        "authority_tick": 2699,
+        "origin": "additional_tick",
+        "world_step": 8396,
+        "confirmed_step": 8360,
+        "projected_step": 8360,
+        "received_at": 8368,
+        "applied_sequence": 152,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 77749,
+          "actor": 244,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 8340,
+          "snapshot_world_step": 8368,
+          "verified_credit": 8392,
+          "cursor": 8396,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77781,
+          "actor": 244,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 8360,
+          "snapshot_world_step": 8392,
+          "verified_credit": 8392,
+          "cursor": 8404,
+          "outstanding": 5,
+          "pending": 5,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77815,
+          "actor": 244,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 8360,
+          "snapshot_world_step": 8392,
+          "verified_credit": 8392,
+          "cursor": 8404,
+          "outstanding": 5,
+          "pending": 5,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77848,
+          "actor": 244,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 8360,
+          "snapshot_world_step": 8392,
+          "verified_credit": null,
+          "cursor": 8404,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77880,
+          "actor": 244,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 8360,
+          "snapshot_world_step": 8392,
+          "verified_credit": null,
+          "cursor": 8404,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77913,
+          "actor": 244,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 8360,
+          "snapshot_world_step": 8392,
+          "verified_credit": null,
+          "cursor": 8404,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77946,
+          "actor": 244,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 8360,
+          "snapshot_world_step": 8392,
+          "verified_credit": null,
+          "cursor": 8404,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77993,
+          "actor": 244,
+          "epoch": 4,
+          "profile": "frames",
+          "confirmed_step": 8360,
+          "snapshot_world_step": 8392,
+          "verified_credit": null,
+          "cursor": 8404,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 78018,
+        "actor": 244,
+        "epoch": 5,
+        "profile": "arrival",
+        "confirmed_step": 8420,
+        "snapshot_world_step": 8420,
+        "verified_credit": 8424,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4809,
+          "p95": 201.84412500000002,
+          "max": 1798.389168
+        },
+        "events": {
+          "samples": 1267,
+          "p95": 200.235043,
+          "max": 1705.5996260000002
+        },
+        "inventory": {
+          "samples": 265,
+          "p95": 206.936857,
+          "max": 1755.3847110000002
+        },
+        "snapshot": {
+          "samples": 1388,
+          "p95": 203.51015,
+          "max": 1757.4750190000002
+        }
+      },
+      "minimum_hp": 192
+    },
+    {
+      "player": 18,
+      "expiry": {
+        "actor": 244,
+        "epoch": 8,
+        "authority_tick": 2901,
+        "origin": "additional_tick",
+        "world_step": 9204,
+        "confirmed_step": 9168,
+        "projected_step": 9168,
+        "received_at": 9176,
+        "applied_sequence": 66,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 84447,
+          "actor": 244,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9160,
+          "snapshot_world_step": 9180,
+          "verified_credit": 9180,
+          "cursor": 9192,
+          "outstanding": 2,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 84481,
+          "actor": 244,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9160,
+          "snapshot_world_step": 9180,
+          "verified_credit": 9200,
+          "cursor": 9192,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 84513,
+          "actor": 244,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9168,
+          "snapshot_world_step": 9200,
+          "verified_credit": 9200,
+          "cursor": 9204,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 84548,
+          "actor": 244,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9168,
+          "snapshot_world_step": 9200,
+          "verified_credit": 9200,
+          "cursor": 9212,
+          "outstanding": 4,
+          "pending": 4,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 84579,
+          "actor": 244,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9168,
+          "snapshot_world_step": 9200,
+          "verified_credit": null,
+          "cursor": 9212,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 84612,
+          "actor": 244,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9168,
+          "snapshot_world_step": 9200,
+          "verified_credit": null,
+          "cursor": 9212,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 84645,
+          "actor": 244,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9168,
+          "snapshot_world_step": 9200,
+          "verified_credit": null,
+          "cursor": 9212,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 84679,
+          "actor": 244,
+          "epoch": 8,
+          "profile": "frames",
+          "confirmed_step": 9168,
+          "snapshot_world_step": 9200,
+          "verified_credit": null,
+          "cursor": 9212,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 84712,
+        "actor": 244,
+        "epoch": 9,
+        "profile": "arrival",
+        "confirmed_step": 9224,
+        "snapshot_world_step": 9224,
+        "verified_credit": 9228,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4809,
+          "p95": 201.84412500000002,
+          "max": 1798.389168
+        },
+        "events": {
+          "samples": 1267,
+          "p95": 200.235043,
+          "max": 1705.5996260000002
+        },
+        "inventory": {
+          "samples": 265,
+          "p95": 206.936857,
+          "max": 1755.3847110000002
+        },
+        "snapshot": {
+          "samples": 1388,
+          "p95": 203.51015,
+          "max": 1757.4750190000002
+        }
+      },
+      "minimum_hp": 192
+    },
+    {
+      "player": 19,
+      "expiry": {
+        "actor": 245,
+        "epoch": 7,
+        "authority_tick": 2692,
+        "origin": "additional_tick",
+        "world_step": 8368,
+        "confirmed_step": 8332,
+        "projected_step": 8332,
+        "received_at": 8340,
+        "applied_sequence": 262,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 77187,
+          "actor": 245,
+          "epoch": 7,
+          "profile": "frames",
+          "confirmed_step": 8296,
+          "snapshot_world_step": 8312,
+          "verified_credit": 8320,
+          "cursor": 8332,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77220,
+          "actor": 245,
+          "epoch": 7,
+          "profile": "frames",
+          "confirmed_step": 8316,
+          "snapshot_world_step": 8340,
+          "verified_credit": 8344,
+          "cursor": 8332,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77253,
+          "actor": 245,
+          "epoch": 7,
+          "profile": "frames",
+          "confirmed_step": 8316,
+          "snapshot_world_step": 8340,
+          "verified_credit": 8344,
+          "cursor": 8344,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77287,
+          "actor": 245,
+          "epoch": 7,
+          "profile": "frames",
+          "confirmed_step": 8316,
+          "snapshot_world_step": 8340,
+          "verified_credit": 8344,
+          "cursor": 8356,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77320,
+          "actor": 245,
+          "epoch": 7,
+          "profile": "frames",
+          "confirmed_step": 8316,
+          "snapshot_world_step": 8340,
+          "verified_credit": 8344,
+          "cursor": 8356,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77354,
+          "actor": 245,
+          "epoch": 7,
+          "profile": "frames",
+          "confirmed_step": 8316,
+          "snapshot_world_step": 8340,
+          "verified_credit": 8344,
+          "cursor": 8356,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77385,
+          "actor": 245,
+          "epoch": 7,
+          "profile": "frames",
+          "confirmed_step": 8316,
+          "snapshot_world_step": 8340,
+          "verified_credit": 8344,
+          "cursor": 8356,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 77420,
+          "actor": 245,
+          "epoch": 7,
+          "profile": "frames",
+          "confirmed_step": 8316,
+          "snapshot_world_step": 8340,
+          "verified_credit": 8344,
+          "cursor": 8356,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 77451,
+        "actor": 245,
+        "epoch": 8,
+        "profile": "arrival",
+        "confirmed_step": 8368,
+        "snapshot_world_step": 8368,
+        "verified_credit": 8372,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4781,
+          "p95": 200.84858,
+          "max": 1828.951221
+        },
+        "events": {
+          "samples": 1266,
+          "p95": 202.361505,
+          "max": 1801.5640899999999
+        },
+        "inventory": {
+          "samples": 262,
+          "p95": 214.07685500000002,
+          "max": 1380.086912
+        },
+        "snapshot": {
+          "samples": 1392,
+          "p95": 203.76443899999998,
+          "max": 1825.844782
+        }
+      },
+      "minimum_hp": 0
+    },
+    {
+      "player": 19,
+      "expiry": {
+        "actor": 245,
+        "epoch": 9,
+        "authority_tick": 2718,
+        "origin": "additional_tick",
+        "world_step": 8472,
+        "confirmed_step": 8436,
+        "projected_step": 8436,
+        "received_at": 8448,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      "before": [
+        {
+          "elapsed_ms": 78111,
+          "actor": 245,
+          "epoch": 9,
+          "profile": "frames",
+          "confirmed_step": 8400,
+          "snapshot_world_step": 8420,
+          "verified_credit": 8448,
+          "cursor": 8436,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 78146,
+          "actor": 245,
+          "epoch": 9,
+          "profile": "frames",
+          "confirmed_step": 8400,
+          "snapshot_world_step": 8420,
+          "verified_credit": 8456,
+          "cursor": 8448,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 78177,
+          "actor": 245,
+          "epoch": 9,
+          "profile": "frames",
+          "confirmed_step": 8424,
+          "snapshot_world_step": 8448,
+          "verified_credit": 8456,
+          "cursor": 8460,
+          "outstanding": 2,
+          "pending": 2,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 78211,
+          "actor": 245,
+          "epoch": 9,
+          "profile": "frames",
+          "confirmed_step": 8424,
+          "snapshot_world_step": 8448,
+          "verified_credit": 8456,
+          "cursor": 8468,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 78244,
+          "actor": 245,
+          "epoch": 9,
+          "profile": "frames",
+          "confirmed_step": 8424,
+          "snapshot_world_step": 8448,
+          "verified_credit": 8456,
+          "cursor": 8468,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 78276,
+          "actor": 245,
+          "epoch": 9,
+          "profile": "frames",
+          "confirmed_step": 8424,
+          "snapshot_world_step": 8448,
+          "verified_credit": 8456,
+          "cursor": 8468,
+          "outstanding": 3,
+          "pending": 3,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 78309,
+          "actor": 245,
+          "epoch": 9,
+          "profile": "frames",
+          "confirmed_step": 8424,
+          "snapshot_world_step": 8448,
+          "verified_credit": null,
+          "cursor": 8468,
+          "outstanding": 1,
+          "pending": 1,
+          "input_depth": 0
+        },
+        {
+          "elapsed_ms": 78342,
+          "actor": 245,
+          "epoch": 9,
+          "profile": "frames",
+          "confirmed_step": 8424,
+          "snapshot_world_step": 8448,
+          "verified_credit": null,
+          "cursor": 8468,
+          "outstanding": 0,
+          "pending": 0,
+          "input_depth": 0
+        }
+      ],
+      "after": {
+        "elapsed_ms": 78375,
+        "actor": 245,
+        "epoch": 10,
+        "profile": "arrival",
+        "confirmed_step": 8480,
+        "snapshot_world_step": 8480,
+        "verified_credit": 8484,
+        "cursor": null,
+        "outstanding": 0,
+        "pending": 0,
+        "input_depth": 0
+      },
+      "request_turnaround_by_kind_ms": {
+        "command": {
+          "samples": 4781,
+          "p95": 200.84858,
+          "max": 1828.951221
+        },
+        "events": {
+          "samples": 1266,
+          "p95": 202.361505,
+          "max": 1801.5640899999999
+        },
+        "inventory": {
+          "samples": 262,
+          "p95": 214.07685500000002,
+          "max": 1380.086912
+        },
+        "snapshot": {
+          "samples": 1392,
+          "p95": 203.76443899999998,
+          "max": 1825.844782
+        }
+      },
+      "minimum_hp": 0
+    }
+  ],
+  "interpretation": "Matched producers have generated later contiguous intervals while the server has no queued intervals and retires the older confirmed clock. Empty producer input channels do not exclude a staged input waiting inside the worker. Request turnaround spikes and pending outcomes remain relevant hypotheses, not proven causes."
+}
