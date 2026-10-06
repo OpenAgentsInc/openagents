@@ -73,6 +73,9 @@ pub struct Smart {
     /// prompt ([`crate::correct`]).
     pub correction: Option<Correction>,
     offered: Option<(PaneId, u64)>,
+    /// Requests handed to a workshop agent (`@alice ...`), waiting for the
+    /// host's receipt.
+    pub agent_asks: Vec<Receiver<Result<String, String>>>,
 }
 
 /// The key the terminal sends instead of Enter for a line routed to a
@@ -506,6 +509,17 @@ impl super::Overlay {
         let Some(draft) = self.smart.draft.take() else {
             return;
         };
+        // `@alice ...` goes to that workshop agent through the host, not
+        // to the chat; she reports in her own thread and at her desk.
+        if let Some((agent, text)) = crate::route::agent_request(&draft.text) {
+            let receiver =
+                self.sessions()
+                    .0
+                    .ask_agent(agent, text, draft.context.directory.as_deref());
+            self.smart.agent_asks.push(receiver);
+            self.notice = Some(format!("Asked {agent} once; waiting for the host."));
+            return;
+        }
         let Some(pane) = self.panes.get(&draft.pane) else {
             return;
         };
@@ -542,6 +556,23 @@ impl super::Overlay {
     }
 
     pub fn smart_tick(&mut self) {
+        let mut answered = Vec::new();
+        self.smart
+            .agent_asks
+            .retain(|receiver| match receiver.try_recv() {
+                Ok(answer) => {
+                    answered.push(answer);
+                    false
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => true,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => false,
+            });
+        for answer in answered {
+            self.notice = Some(match answer {
+                Ok(said) => said,
+                Err(why) => format!("The agent request was not sent: {why}"),
+            });
+        }
         if let Some((pane_id, directory, summary)) = self
             .smart
             .git

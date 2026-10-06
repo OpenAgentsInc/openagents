@@ -363,6 +363,23 @@ fn assignment(word: &str) -> bool {
     })
 }
 
+/// The agent and the request of a line that starts with `@NAME `, where
+/// NAME is an agent name: 1 to 32 lowercase letters, digits, and hyphens
+/// (`docs/verse/workshop-agent.md`, "Giving it work").
+#[must_use]
+pub fn agent_request(line: &str) -> Option<(&str, &str)> {
+    let rest = line.trim().strip_prefix('@')?;
+    let (name, text) = rest.split_once(char::is_whitespace)?;
+    let named = !name.is_empty()
+        && name.len() <= 32
+        && name.as_bytes()[0].is_ascii_alphanumeric()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    let text = text.trim();
+    (named && !text.is_empty()).then_some((name, text))
+}
+
 fn path(word: &str) -> bool {
     word.starts_with("./")
         || word.starts_with("../")
@@ -390,6 +407,10 @@ pub fn classify(line: &str, first: Word) -> Decision {
     }
     // The explicit prefix: a shell comment, so nothing is lost.
     if line.starts_with("# ") || line == "#" {
+        return Decision::sure(Route::Ask);
+    }
+    // A request for a workshop agent: `@alice run the atif tests`.
+    if agent_request(line).is_some() {
         return Decision::sure(Route::Ask);
     }
     let (words, balanced, quoted) = words(line);
@@ -534,5 +555,24 @@ mod tests {
         assert_eq!(Word::parse("why: none"), Word::Missing);
         assert_eq!(Word::parse("hashed"), Word::Command);
         assert_eq!(Word::parse(""), Word::Unknown);
+    }
+
+    #[test]
+    fn an_agents_name_routes_the_line_to_her() {
+        assert_eq!(
+            agent_request("@alice run the atif tests"),
+            Some(("alice", "run the atif tests"))
+        );
+        let sure = classify("@alice run the atif tests", Word::Missing);
+        assert_eq!((sure.route, sure.sure), (Route::Ask, true));
+        for not in [
+            "@alice",
+            "@Alice run it",
+            "@ run it",
+            "email@alice run",
+            "@a/b run",
+        ] {
+            assert_eq!(agent_request(not), None, "{not}");
+        }
     }
 }

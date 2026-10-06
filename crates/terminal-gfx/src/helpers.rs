@@ -507,6 +507,51 @@ pub fn rule_command(verb: &str, id: &str, home: Option<&Path>) -> Receiver<Resul
     receiver
 }
 
+/// Hands `text` to workshop agent `agent` with `openagents agent ask`,
+/// which sends NIP-HOST `studio.agent.ask` to the host.
+pub fn ask_agent(
+    agent: &str,
+    text: &str,
+    directory: Option<&str>,
+    home: Option<&Path>,
+) -> Receiver<Result<String, String>> {
+    let (sender, receiver) = mpsc::channel();
+    let (agent, text) = (agent.to_owned(), text.to_owned());
+    let directory = directory.map(str::to_owned);
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let mut args = vec!["--json", "agent", "ask", agent.as_str(), text.as_str()];
+        if let Some(directory) = &directory {
+            args.extend(["--from", directory.as_str()]);
+        }
+        let answer = helper(
+            &args,
+            None,
+            home.as_deref(),
+            64 * 1024,
+            std::time::Duration::from_secs(20),
+        )
+        .and_then(|(stdout, stderr)| {
+            let value: serde_json::Value = serde_json::from_slice(&stdout).map_err(|_| {
+                let said = String::from_utf8_lossy(&stderr).trim().to_string();
+                if said.is_empty() {
+                    "the host did not answer".to_string()
+                } else {
+                    said
+                }
+            })?;
+            match value["error"].as_str() {
+                Some(error) => Err(error.to_string()),
+                None => Ok(format!(
+                    "Asked {agent}. She reports at her desk and in her thread."
+                )),
+            }
+        });
+        let _ = sender.send(answer);
+    });
+    receiver
+}
+
 /// Sends task command `bytes` to the task owner's `verb`. The command
 /// keeps its ID, so an unknown outcome may be retried with the same bytes.
 pub fn task_command(

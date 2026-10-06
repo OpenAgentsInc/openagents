@@ -172,6 +172,20 @@ pub trait Transport: Send + Sync {
         ));
         receiver
     }
+    /// Hands `text` to workshop agent `agent` through the host
+    /// (`studio.agent.ask`), asked from `directory`, and answers what the
+    /// host said. A mount without a host answers that it cannot.
+    fn ask_agent(
+        &self,
+        agent: &str,
+        text: &str,
+        directory: Option<&str>,
+    ) -> Receiver<Result<String, String>> {
+        let _ = (agent, text, directory);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err("this mount reaches no workshop agent".into()));
+        receiver
+    }
     fn git_summary(&self, pane: u64, directory: String) -> Receiver<(u64, String, String)>;
     fn open_link(&self, target: &str) -> Result<(), String>;
     fn clipboard(&self) -> Option<String>;

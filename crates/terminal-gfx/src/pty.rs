@@ -367,6 +367,14 @@ impl Transport for Local {
     fn task_command(&self, verb: &str, bytes: &[u8]) -> Receiver<terminal_core::run::Sent> {
         super::helpers::task_command(verb, bytes, self.helper_home.as_deref())
     }
+    fn ask_agent(
+        &self,
+        agent: &str,
+        text: &str,
+        directory: Option<&str>,
+    ) -> Receiver<Result<String, String>> {
+        super::helpers::ask_agent(agent, text, directory, self.helper_home.as_deref())
+    }
     fn git_summary(&self, pane: u64, directory: String) -> Receiver<(u64, String, String)> {
         super::helpers::git_summary(pane, directory, self.helper_home.as_deref())
     }
