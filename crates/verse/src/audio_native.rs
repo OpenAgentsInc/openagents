@@ -25,6 +25,8 @@ struct Counters {
     nonzero: AtomicU64,
     peak: AtomicU64,
     capture_dropped: AtomicU64,
+    capture_errors: AtomicU64,
+    stream_errors: AtomicU64,
     callbacks: AtomicU64,
     callback_max_ns: AtomicU64,
     deadline_overruns: AtomicU64,
@@ -63,6 +65,8 @@ pub struct Stats {
     pub nonzero_samples: u64,
     pub peak: f32,
     pub capture_dropped_blocks: u64,
+    pub capture_errors: u64,
+    pub stream_errors: u64,
     pub callbacks: u64,
     pub callback_max_ns: u64,
     pub deadline_overruns: u64,
@@ -145,6 +149,8 @@ impl Output {
             nonzero_samples: read(&c.nonzero),
             peak: f32::from_bits(read(&c.peak) as u32),
             capture_dropped_blocks: read(&c.capture_dropped),
+            capture_errors: read(&c.capture_errors),
+            stream_errors: read(&c.stream_errors),
             callbacks: read(&c.callbacks),
             callback_max_ns: read(&c.callback_max_ns),
             deadline_overruns: read(&c.deadline_overruns),
@@ -247,7 +253,7 @@ impl Output {
         workers.push(std::thread::spawn(move || {
             while !reader.closed() && reader.remaining() > 0 {
                 if reader.pump().is_err() {
-                    counters.refused.fetch_add(1, Ordering::Relaxed);
+                    counters.stream_errors.fetch_add(1, Ordering::Relaxed);
                     break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(1));
@@ -518,7 +524,7 @@ fn capture(rate: u32, counters: Arc<Counters>) -> Result<Capture, String> {
             file.flush()
         })();
         if result.is_err() {
-            counters.errors.fetch_add(1, Ordering::Relaxed);
+            counters.capture_errors.fetch_add(1, Ordering::Relaxed);
         }
     });
     Ok((Some(sender), Some(worker)))
