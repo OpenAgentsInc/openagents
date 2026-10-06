@@ -39,6 +39,10 @@ struct Fake {
     artifacts: Mutex<std::collections::BTreeMap<String, (Vec<u8>, Vec<u8>)>>,
     /// Every retained file read asked for.
     artifact_reads: Mutex<Vec<String>>,
+    /// The host's background rules, as `background list` answers them.
+    rules: Mutex<Option<serde_json::Value>>,
+    /// Every pause or resume sent: its verb and rule.
+    rule_commands: Mutex<Vec<(String, String)>>,
 }
 struct Pane {
     bridge: bool,
@@ -173,6 +177,43 @@ impl Transport for Fake {
         sender
             .send(crate::files::decode(&stdout, &stderr, path, digest))
             .unwrap();
+        receiver
+    }
+    fn read_rules(&self) -> mpsc::Receiver<crate::rules::Read> {
+        let (sender, receiver) = mpsc::channel();
+        let answer = match self.rules.lock().unwrap().clone() {
+            Some(rules) => crate::rules::decode(rules.to_string().as_bytes(), b""),
+            None => crate::rules::decode(b"", br#"{"error":"the host's rules store is locked"}"#),
+        };
+        sender.send(answer).unwrap();
+        receiver
+    }
+    fn rule_command(&self, verb: &str, id: &str) -> mpsc::Receiver<Result<(), String>> {
+        self.rule_commands
+            .lock()
+            .unwrap()
+            .push((verb.to_owned(), id.to_owned()));
+        // The host saves the rule; the next list shows it.
+        let mut rules = self.rules.lock().unwrap();
+        let answer = match rules.as_mut().and_then(|rules| {
+            rules["rules"]
+                .as_array_mut()?
+                .iter_mut()
+                .find(|rule| rule["id"] == id)
+        }) {
+            Some(rule) if id != "locked" => {
+                rule["enabled"] = serde_json::json!(verb == "resume");
+                let saved = serde_json::json!({"rule": {"id": id}}).to_string();
+                crate::rules::decode_change(saved.as_bytes(), b"", id)
+            }
+            _ => crate::rules::decode_change(
+                br#"{"error":"the rule is managed by its plugin"}"#,
+                b"",
+                id,
+            ),
+        };
+        let (sender, receiver) = mpsc::channel();
+        sender.send(answer).unwrap();
         receiver
     }
     fn task_command(&self, verb: &str, bytes: &[u8]) -> mpsc::Receiver<crate::run::Sent> {
@@ -1719,4 +1760,142 @@ fn the_files_page_shows_a_runs_retained_bytes_only_when_their_digest_holds() {
     assert!(!app.paper.files.open && app.paper.run.open);
     assert!(transport.commands.lock().unwrap().is_empty());
     assert_eq!(transport.requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn the_rules_page_shows_host_rules_and_pauses_them_only_after_confirm() {
+    use crate::input::{KeyCode, NamedKey};
+    let transport = Arc::new(Fake {
+        bridge: true,
+        ..Fake::default()
+    });
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.paper.on = true;
+    app.toggle();
+    app.ensure_started();
+    let sheet = |app: &mut Application| app.paper_sheet(120, 40, "12:00:00", "0.50");
+    let key = |app: &mut Application, named: NamedKey| press(app, KeyCode::Unidentified, named);
+    let arrow = |app: &mut Application, code: KeyCode| press(app, code, NamedKey::Unidentified);
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b]7;file:///test/work\x07\x1b]133;A\x07$ \x1b]133;B\x07".to_vec());
+    app.tick();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // A host that can't answer shows the rules as unavailable, with no
+    // control.
+    key(&mut app, NamedKey::F11);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("RULES on this computer  [unavailable]"));
+    assert!(text.contains("the host's rules store is locked"));
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert!(app.paper.rules.change.is_none());
+    key(&mut app, NamedKey::F11);
+    assert!(!app.paper.rules.open);
+
+    *transport.rules.lock().unwrap() = Some(serde_json::json!({
+        "host": "The host runs the rules (process 4242).",
+        "rules": [
+            {"id": "disk", "name": "Disk cleanup", "version": 3,
+             "digest": format!("sha256:{}", "c".repeat(64)), "enabled": true,
+             "state": {"last_check": now - 120, "next_check": now + 630,
+                       "last_run": now - 7200, "last_run_id": "run-9",
+                       "last_result": "Freed 2.1 GB.", "last_escalation": now - 86_400 * 3}},
+            {"id": "locked", "name": "Nightly fetch", "version": 1, "digest": "sha256:d",
+             "enabled": false, "plugin": "npub1x:git-fetch", "state": {}},
+            {"id": "torn", "name": "torn", "version": 0, "digest": "", "enabled": false,
+             "error": "the rule file is not JSON", "state": {}},
+        ],
+    }));
+    key(&mut app, NamedKey::F11);
+    app.tick();
+    let page = sheet(&mut app);
+    let text = page.text();
+    for row in 0..40 {
+        let row_text = page.row_text(row);
+        assert_eq!(row_text.len(), 120, "row {row}: {row_text:?}");
+        assert!(
+            row_text.chars().all(|c| (' '..='~').contains(&c)),
+            "row {row}"
+        );
+    }
+    assert!(text.contains("RULES on this computer  3 rules, 1 on  [current]"));
+    assert!(text.contains("HOST The host runs the rules (process 4242)."));
+    assert!(text.contains("> disk (Disk cleanup)  on  version 3"));
+    assert!(text.contains("last run 2 h ago: Freed 2.1 GB."));
+    assert!(
+        text.contains("checked 2 min ago, next check in 10 min, started a Coder run 3 days ago")
+    );
+    assert!(text.contains("edit: openagents background edit disk --message TEXT"));
+    assert!(text.contains("  locked (Nightly fetch)  paused  version 1"));
+    assert!(text.contains("from plugin npub1x:git-fetch"));
+    assert!(text.contains("can't be read: the rule file is not JSON"));
+    assert!(
+        page.row_text(37)
+            .starts_with("| RULES > UP DOWN pick a rule")
+    );
+    assert!(page.row_text(39).starts_with(crate::paper::RULE_KEYS));
+
+    // ENTER arms the pause; REJECT drops it and sends nothing.
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert!(
+        sheet(&mut app)
+            .row_text(37)
+            .starts_with("| RULES > pause rule disk   ENTER confirms")
+    );
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(app.paper.rules.open && app.paper.rules.change.is_none());
+    assert!(transport.rule_commands.lock().unwrap().is_empty());
+
+    // CONFIRM pauses it through the host, and the page reads the rule back.
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("PAUSE disk: done"));
+    assert!(text.contains("> disk (Disk cleanup)  paused  version 3"));
+    assert_eq!(
+        transport.rule_commands.lock().unwrap().as_slice(),
+        [("pause".to_owned(), "disk".to_owned())]
+    );
+
+    // Closing and reopening the page leaves the rule as the host keeps it.
+    key(&mut app, NamedKey::F11);
+    key(&mut app, NamedKey::F11);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("disk (Disk cleanup)  paused"));
+    assert!(text.contains("last run 2 h ago: Freed 2.1 GB."));
+    assert_eq!(transport.rule_commands.lock().unwrap().len(), 1);
+
+    // A refused change says why; a rule that can't be read can't be changed.
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert!(sheet(&mut app).row_text(37).contains("resume rule locked"));
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    assert!(
+        sheet(&mut app)
+            .text()
+            .contains("RESUME locked: refused: the rule is managed by its plugin")
+    );
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert!(
+        sheet(&mut app)
+            .text()
+            .contains("LAST A rule that can't be read can't be changed here.")
+    );
+    assert_eq!(transport.rule_commands.lock().unwrap().len(), 2);
+
+    // ESC returns to the transcript.
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(!app.paper.rules.open);
 }

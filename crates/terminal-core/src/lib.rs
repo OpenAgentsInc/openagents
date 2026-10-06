@@ -9,6 +9,7 @@ pub mod fish;
 pub mod integration;
 pub mod proposals;
 pub mod route;
+pub mod rules;
 pub mod search;
 pub mod zsh;
 

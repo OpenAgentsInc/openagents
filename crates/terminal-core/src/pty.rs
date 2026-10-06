@@ -84,6 +84,21 @@ pub trait Transport: Send + Sync {
         )));
         receiver
     }
+    /// Reads this computer's background rules from the host's own store.
+    /// A mount without one answers that it cannot.
+    fn read_rules(&self) -> Receiver<crate::rules::Read> {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err("this mount reads no background rules".into()));
+        receiver
+    }
+    /// Pauses or resumes background rule `id` (`verb` is `pause` or
+    /// `resume`) through the host's existing command.
+    fn rule_command(&self, verb: &str, id: &str) -> Receiver<Result<(), String>> {
+        let _ = (verb, id);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err("this mount changes no background rules".into()));
+        receiver
+    }
     /// Sends task command `bytes` to the task owner's `verb` (`cancel` or
     /// `correct`) and answers its receipt or refusal.
     fn task_command(&self, verb: &str, bytes: &[u8]) -> Receiver<crate::run::Sent> {

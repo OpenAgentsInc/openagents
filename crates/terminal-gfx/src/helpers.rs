@@ -288,6 +288,49 @@ pub fn read_artifact(
     receiver
 }
 
+/// Reads this computer's background rules from the host's own store.
+pub fn read_rules(home: Option<&Path>) -> Receiver<terminal_core::rules::Read> {
+    use terminal_core::rules::{READ_MAX, decode};
+    let (sender, receiver) = mpsc::channel();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let read = helper(
+            &["--json", "background", "list"],
+            None,
+            home.as_deref(),
+            READ_MAX,
+            std::time::Duration::from_secs(20),
+        )
+        .and_then(|(stdout, stderr)| decode(&stdout, &stderr));
+        let _ = sender.send(read);
+    });
+    receiver
+}
+
+/// Pauses or resumes background rule `id` through the host's existing
+/// command; `verb` is `pause` or `resume` and nothing else.
+pub fn rule_command(verb: &str, id: &str, home: Option<&Path>) -> Receiver<Result<(), String>> {
+    let (sender, receiver) = mpsc::channel();
+    let (verb, id) = (verb.to_owned(), id.to_owned());
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        if verb != "pause" && verb != "resume" {
+            let _ = sender.send(Err("only pause and resume are sent".into()));
+            return;
+        }
+        let answer = helper(
+            &["--json", "background", &verb, &id],
+            None,
+            home.as_deref(),
+            64 * 1024,
+            std::time::Duration::from_secs(20),
+        )
+        .and_then(|(stdout, stderr)| terminal_core::rules::decode_change(&stdout, &stderr, &id));
+        let _ = sender.send(answer);
+    });
+    receiver
+}
+
 /// Sends task command `bytes` to the task owner's `verb`. The command
 /// keeps its ID, so an unknown outcome may be retried with the same bytes.
 pub fn task_command(

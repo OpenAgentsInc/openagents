@@ -160,6 +160,19 @@ longer keeps are each described rather than shown. The source's own bytes
 are not retained, so a modified file shows its result. Nothing on the page
 runs, renders, or exports content, and reading changes no task or review.
 
+F11 shows this computer's background rules
+([#10668](https://github.com/OpenAgentsInc/openagents/issues/10668),
+`terminal_core::rules`), read from the host's own store through
+`openagents --json background list`: each rule's identity, version, and
+digest, whether it is on or paused, the plugin that brings it, its last
+check, last run and result, escalation, and whether a host process runs
+the rules. A rule belongs to the host, not to the page, so closing the page
+changes nothing and reopening it shows the rule's real last outcome. ENTER
+pauses or resumes the picked rule through `openagents background
+pause|resume ID`, only after CONFIRM; a refusal says why. Editing stays with
+`openagents background edit`, which the page names. There is no scheduler
+or rules store in the terminal.
+
 ## Consumers
 
 `terminal-core` is the owner of a mount's local panes. The standalone

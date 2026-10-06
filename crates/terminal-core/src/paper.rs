@@ -25,6 +25,9 @@ use std::time::Instant;
 
 /// The key strip, always shown on the sheet's last row. It fits the
 /// sheet's 120 columns; PGUP and PGDN scroll beside the scroll bar.
+/// The key strip on the rules page.
+pub const RULE_KEYS: &str = "F1 HELP  F10 QUIT  F11 RETURN  UP DOWN PICK  ENTER PAUSE OR RESUME, THEN CONFIRM  ESC REJECT OR RETURN";
+
 /// The key strip on the files page.
 pub const FILE_KEYS: &str =
     "F1 HELP  F2 RETURN  F10 QUIT  UP DOWN PICK  ENTER OPEN  ESC RETURN  PGUP PGDN SCROLL";
@@ -32,7 +35,7 @@ pub const FILE_KEYS: &str =
 /// The key strip on the run page.
 pub const RUN_KEYS: &str = "F1 HELP  F2 FILES  F7 CANCEL RUN  F9 RETURN  F10 QUIT  ENTER STEER OR CONFIRM  ESC REJECT OR RETURN  PGUP PGDN SCROLL";
 
-pub const KEYS: &str = "F1 HELP  F2 CONTEXT  F3 COPY  F4 THREAD  F5 SHELL  F6 ASK  F7 FIX  F8 PANES  F9 RUN  F10 QUIT  ENTER CONFIRM  ESC REJECT";
+pub const KEYS: &str = "F1 HELP F2 CONTEXT F3 COPY F4 THREAD F5 SHELL F6 ASK F7 FIX F8 PANES F9 RUN F10 QUIT F11 RULES ENTER CONFIRM ESC REJECT";
 
 const HELP: &[&str] = &[
     "HELP (F1 or ESC returns to the transcript)",
@@ -56,6 +59,8 @@ const HELP: &[&str] = &[
     "     confirms either one and ESC rejects it; F2 lists the files it changed,",
     "     and ENTER shows the one picked, checked against the run's digest",
     "F10  quit",
+    "F11  show this computer's background rules; F11 or ESC returns. There,",
+    "     ENTER pauses or resumes the rule picked, after ENTER confirms it",
     "",
     "A proposed command waits in the transcript. ENTER on an empty input line",
     "confirms it and runs it in your shell; ESC rejects it.",
@@ -187,6 +192,8 @@ pub struct Paper {
     pub run: crate::run::Page,
     /// The run's files page (F2 on the run page).
     pub files: crate::files::Page,
+    /// The background rules page (F11).
+    pub rules: crate::rules::Page,
     cache: Option<(u64, usize, usize, Vec<Line>)>,
 }
 
@@ -221,6 +228,7 @@ impl Default for Paper {
             thread: crate::thread::Page::default(),
             run: crate::run::Page::default(),
             files: crate::files::Page::default(),
+            rules: crate::rules::Page::default(),
             cache: None,
         }
     }
@@ -295,6 +303,17 @@ impl Application {
         match named {
             Some(NamedKey::F1) => {
                 self.paper.help = !self.paper.help;
+                return true;
+            }
+            Some(NamedKey::F11) => {
+                let page = &mut self.paper.rules;
+                page.open = !page.open;
+                if page.open {
+                    self.paper.help = false;
+                    page.dirty = true;
+                    page.change = None;
+                    self.paper_rules_poll();
+                }
                 return true;
             }
             Some(NamedKey::F2) if self.paper.files.open => {
@@ -376,6 +395,16 @@ impl Application {
                 self.paper.quit = true;
                 return true;
             }
+            Some(NamedKey::PageUp | NamedKey::PageDown) if self.paper.rules.open => {
+                let half = self.paper.grid.0 as usize / 2;
+                let page = &mut self.paper.rules;
+                page.scroll = if named == Some(NamedKey::PageUp) {
+                    page.scroll.saturating_sub(half)
+                } else {
+                    page.scroll.saturating_add(half)
+                };
+                return true;
+            }
             Some(NamedKey::PageUp) if self.paper.files.open => {
                 let half = self.paper.grid.0 as usize / 2;
                 self.paper.files.scroll = self.paper.files.scroll.saturating_sub(half);
@@ -446,6 +475,10 @@ impl Application {
             if let Some(bytes) = self.encode(key) {
                 self.send(&bytes);
             }
+            return true;
+        }
+        if self.paper.rules.open {
+            self.paper_rules_key(key.code, enter);
             return true;
         }
         if self.paper.files.open {
@@ -605,6 +638,7 @@ impl Application {
     /// F9: shows the Coder run the conversation started, or returns.
     fn paper_run_toggle(&mut self) {
         self.paper.files.open = false;
+        self.paper.rules.open = false;
         if self.paper.run.open {
             self.paper.run.open = false;
             return;
@@ -632,6 +666,102 @@ impl Application {
             None => {
                 self.notice = Some("No conversation yet; ask OpenAgents something first.".into());
             }
+        }
+    }
+
+    /// A key on the rules page: the arrows pick, ENTER arms pausing or
+    /// resuming the picked rule and then confirms it, and ESC rejects or
+    /// returns.
+    fn paper_rules_key(&mut self, code: KeyCode, enter: bool) {
+        let now = unix_now();
+        let page = &mut self.paper.rules;
+        let armed = page
+            .change
+            .as_ref()
+            .is_some_and(|change| change.state == crate::rules::Changed::Armed);
+        let count = match &page.shown {
+            Some(Ok(rules)) => rules.rules.len(),
+            _ => 0,
+        };
+        match code {
+            KeyCode::Escape if armed => page.change = None,
+            KeyCode::Escape => page.open = false,
+            KeyCode::ArrowUp if !armed => page.selected = page.selected.saturating_sub(1),
+            KeyCode::ArrowDown if !armed => {
+                page.selected = (page.selected + 1).min(count.saturating_sub(1));
+            }
+            _ if enter && armed => {
+                if page.sending.is_some() {
+                    return;
+                }
+                let Some(change) = page.change.as_mut() else {
+                    return;
+                };
+                change.state = crate::rules::Changed::Sending;
+                let (verb, id) = (change.verb, change.id.clone());
+                let sending = self.sessions().0.rule_command(verb, &id);
+                self.paper.rules.sending = Some(sending);
+            }
+            _ if enter => match page.picked() {
+                Some(rule) if rule.error.is_some() => {
+                    self.notice = Some("A rule that can't be read can't be changed here.".into());
+                }
+                Some(rule) => {
+                    page.change = Some(crate::rules::Change {
+                        id: rule.id.clone(),
+                        verb: if rule.running(now) { "pause" } else { "resume" },
+                        state: crate::rules::Changed::Armed,
+                    });
+                }
+                None => {}
+            },
+            _ => {}
+        }
+    }
+
+    /// Takes a finished read or change for the rules page, and reads the
+    /// rules again when they changed.
+    fn paper_rules_poll(&mut self) {
+        use std::sync::mpsc::TryRecvError;
+        let page = &mut self.paper.rules;
+        if let Some(sending) = &page.sending {
+            let answer = match sending.try_recv() {
+                Ok(answer) => Some(answer),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => {
+                    Some(Err("the host ended without an answer".into()))
+                }
+            };
+            if let Some(answer) = answer {
+                if let Some(change) = &mut page.change {
+                    change.state = match answer {
+                        Ok(()) => crate::rules::Changed::Done,
+                        Err(why) => crate::rules::Changed::Refused(ascii(&why)),
+                    };
+                }
+                page.sending = None;
+                page.dirty = true;
+            }
+        }
+        if let Some(reading) = &page.reading {
+            match reading.try_recv() {
+                Ok(read) => {
+                    page.shown = Some(read);
+                    page.reading = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    page.shown = Some(Err("the host ended without an answer".into()));
+                    page.reading = None;
+                }
+            }
+        }
+        if page.open && page.dirty && page.reading.is_none() {
+            let reading = self.sessions().0.read_rules();
+            let page = &mut self.paper.rules;
+            page.reading = Some(reading);
+            page.dirty = false;
+            page.reads += 1;
         }
     }
 
@@ -843,6 +973,7 @@ impl Application {
     /// to the transcript. Showing it only reads the thread.
     fn paper_thread_toggle(&mut self) {
         self.paper.files.open = false;
+        self.paper.rules.open = false;
         if self.paper.thread.open {
             self.paper.thread.open = false;
             return;
@@ -1027,6 +1158,7 @@ impl Application {
         self.paper_thread_read();
         self.paper_run_poll();
         self.paper_files_poll();
+        self.paper_rules_poll();
         let Some(pane_id) = self.paper_pane() else {
             return;
         };
@@ -1214,28 +1346,41 @@ impl Application {
                     tone: Tone::Present,
                 }]);
             }
-        } else if self.paper.files.open {
-            // A file reads from its top: the scroll counts lines down.
+        } else if self.paper.rules.open || self.paper.files.open {
+            // A list reads from its top: the scroll counts lines down.
             let mut wrapped = Vec::new();
-            for (text, tone) in crate::files::lines(&self.paper.files) {
+            let lines = if self.paper.rules.open {
+                crate::rules::lines(&self.paper.rules, unix_now())
+            } else {
+                crate::files::lines(&self.paper.files)
+            };
+            for (text, tone) in lines {
                 wrap(&line(text, tone), text_width, &mut wrapped);
             }
             let total = wrapped.len();
-            let page = &mut self.paper.files;
-            if page.viewing.is_none() {
+            let rules = self.paper.rules.open;
+            let (scroll, viewing) = if rules {
+                (&mut self.paper.rules.scroll, false)
+            } else {
+                (
+                    &mut self.paper.files.scroll,
+                    self.paper.files.viewing.is_some(),
+                )
+            };
+            if !viewing {
                 // Keep the picked file in view.
                 let header = wrapped
                     .iter()
                     .position(|line| line.text.starts_with("> "))
                     .unwrap_or(0);
-                if header < page.scroll {
-                    page.scroll = header;
-                } else if header >= page.scroll + transcript_rows {
-                    page.scroll = header + 1 - transcript_rows;
+                if header < *scroll {
+                    *scroll = header;
+                } else if header >= *scroll + transcript_rows {
+                    *scroll = header + 1 - transcript_rows;
                 }
             }
-            page.scroll = page.scroll.min(total.saturating_sub(transcript_rows));
-            let start = page.scroll;
+            *scroll = (*scroll).min(total.saturating_sub(transcript_rows));
+            let start = *scroll;
             let end = (start + transcript_rows).min(total);
             for line in &wrapped[start..end] {
                 body.push(vec![Span {
@@ -1346,6 +1491,7 @@ impl Application {
             || (self.smart.pending.is_some() && self.paper.input.is_empty())
             || (self.paper.run.open && self.paper_run_armed())
             || self.paper.files.open
+            || self.paper.rules.open
         {
             spans.push(Span {
                 text: fit(&self.paper_input_hint(), inner - label.len()),
@@ -1369,7 +1515,9 @@ impl Application {
         sheet.rows.push(border());
         sheet.rows.push(vec![Span {
             text: fit(
-                if self.paper.files.open {
+                if self.paper.rules.open {
+                    RULE_KEYS
+                } else if self.paper.files.open {
                     FILE_KEYS
                 } else if self.paper.run.open {
                     RUN_KEYS
@@ -1389,6 +1537,9 @@ impl Application {
         }
         if self.smart.pending.is_some() && self.paper.input.is_empty() {
             return ("CONFIRM? ".into(), Tone::Loud);
+        }
+        if self.paper.rules.open {
+            return ("RULES > ".into(), Tone::Quiet);
         }
         if self.paper.files.open {
             return ("FILES > ".into(), Tone::Quiet);
@@ -1418,6 +1569,16 @@ impl Application {
     }
 
     fn paper_input_hint(&self) -> String {
+        if self.paper.rules.open {
+            return match &self.paper.rules.change {
+                Some(change) if change.state == crate::rules::Changed::Armed => format!(
+                    "{} rule {}   ENTER confirms, ESC rejects",
+                    change.verb,
+                    ascii(&change.id)
+                ),
+                _ => "UP DOWN pick a rule, ENTER pauses or resumes it, ESC returns".into(),
+            };
+        }
         if self.paper.files.open {
             return if self.paper.files.viewing.is_some() {
                 "UP DOWN scroll, ESC returns to the list".into()
@@ -1540,6 +1701,13 @@ impl Application {
             fit(&format!("{context}   {last}"), width),
         ]
     }
+}
+
+/// Seconds since the epoch, for how long ago a rule ran.
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
 }
 
 fn short_home(path: &str) -> String {
