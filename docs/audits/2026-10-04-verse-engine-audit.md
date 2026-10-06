@@ -175,7 +175,7 @@ Evidence labels:
 | V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Complete for the portable combat profile ([#10742](https://github.com/OpenAgentsInc/openagents/issues/10742)) |
 | V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | Addressed [#10743](https://github.com/OpenAgentsInc/openagents/issues/10743) |
 | V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access | Addressed ([#10744](https://github.com/OpenAgentsInc/openagents/issues/10744)) |
-| V27 | P1 | Replay evidence needs explicit revision/platform guarantees. | Code, gap | Simulation and replay | Open |
+| V27 | P1 | Replay evidence needs explicit revision/platform guarantees. | Code, gap | Simulation and replay | Addressed ([#10746](https://github.com/OpenAgentsInc/openagents/issues/10746)) |
 | V28 | P1 | Status documentation trails the implementation. | Code | Runtime documentation | Open |
 
 ## Persistence, authority, and multiplayer
@@ -1954,24 +1954,53 @@ Provenance remains a declaration, not legal certification. Retained archives
 and source notices remain intact, and an operator must review license obligations
 before approving a release.
 
-### V27: Replay guarantees need a declared execution profile
+### V27: Input replay declares and checks its execution profile
 
-[`Game` checkpoint tests](../../crates/verse-world/src/play.rs) compare restored
-simulation across future ticks. Physics uses double precision and seeded dice;
-these are valuable local guarantees. The checkpoint pins rules, and saves pin
-content, but they are not a complete cross-build replay package with executable,
-toolchain, target, RNG algorithm, and ordered external input history. Wall-time
-catch-up drops are observable but not a general operational replay stream.
+Addressed by [#10746](https://github.com/OpenAgentsInc/openagents/issues/10746).
+[`replay`](../../crates/verse-world/src/replay.rs) owns a game in a bounded
+local diagnostic profile and calls its existing admission and simulation
+methods. Its closed operations cover multiplayer commands, joins, handoffs,
+movement intervals, social interaction, respawn, elapsed time, checkpoint
+commits, restoration, and shutdown. Records distinguish a rule outcome from
+whether the command consumed its admission sequence. Each actual authority
+tick has a full checkpoint observation, including each catch-up step.
 
-**Improve:** Declare supported determinism profiles and retain ordered admitted
-commands, commit/tick boundaries, executable/rules/content identity, RNG state,
-and divergence hashes. Keep input replays distinct from presentation trajectories.
-Do not promise cross-architecture bit equality without tests.
+The versioned profile binds the executable, compiler, target, build flags and
+features, rules, content, configuration, and operator-declared runtime.
+[`build.rs`](../../crates/verse-world/build.rs) captures compiler and build
+identity. The initial canonical checkpoint binds the complete SplitMix64 state,
+forced rolls, and per-caster streams. Replay requires an independently trusted
+expected profile with exact equality. No cross-build or cross-architecture bit
+equality is claimed. A hash chain and terminal seal detect incomplete or changed
+records; trusted retained trace digests provide their external integrity binding.
 
-**Acceptance:** Replay retained multi-player commands through save/restore,
-shutdown, and supported builds. Report the first divergent tick and field.
-Rejected commands, controller handoffs, and dropped elapsed time have explicit
-recorded semantics.
+The recorder uses the native host's 30 Hz `FixedSchedule` and three-step catch-up
+cap, recording dropped elapsed time. `Commit` pins an in-memory world checkpoint;
+`Restore` loads it and resets the host elapsed-time clock. `Shutdown` fences
+controllers and commits a closed segment. Private immutable file writes retain
+complete segments; the format refuses partial files. Limits are 512 records and
+64 MiB, with reserved shutdown capacity and no authoritative effects on recording
+budget errors. These logical commit markers are separate from realm storage
+revisions and storage-worker completion.
+
+[Retained evidence](../../bench/verse/2026-10-06/input-replay/README.md) binds the
+source, executable, accepted input segment, fresh-process report, and checks.
+The affected world package passes 613 tests, with three existing benchmarks
+ignored; the portable SDK compiles for Wasm. The multiplayer fixture replays 68 actual ticks through pending combat,
+checkpoint restoration, completed spellcasts, controller changes, refusals, and
+shutdown. It retains three logical commits and 0.9 seconds of explicitly dropped
+elapsed time. Focused tests cover actual primary and per-caster dice draws,
+movement intervals, profile mismatch, missing or altered records, and shutdown
+at the record cap. An injected state mismatch reports the first divergent tick
+and JSON field inside a catch-up batch.
+
+The measured execution profile is native Linux x86-64 with the pinned compiler
+and exact fixture executable. This diagnostic SDK does not automatically record
+the TLS/REACH loop, realm account or economy operations, Studio actions, or
+asynchronous storage completions. Those adapters retain their own authority and
+durability records. Presentation trajectories and client prediction histories
+remain separate formats. Full-state diagnostic segments are not an unbounded
+production event log or a raid-throughput result.
 
 ### V28: Documentation can misdirect implementation priorities
 

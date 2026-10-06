@@ -1,0 +1,6 @@
+
+running 1 test
+test replay::tests::multiplayer_inputs_replay_across_commits_restore_and_process_shutdown ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 615 filtered out; finished in 1.41s
+

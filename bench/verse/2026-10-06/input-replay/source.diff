@@ -1,0 +1,1297 @@
+diff --git a/crates/verse-world/README.md b/crates/verse-world/README.md
+index 5f11e14a88..2f8f4dcc37 100644
+--- a/crates/verse-world/README.md
++++ b/crates/verse-world/README.md
+@@ -1030,3 +1030,43 @@ avatars, remove existing members, implement a chat service, or add a phone or
+ browser moderation UI. Host operators decide what an actioned report requires;
+ report status alone does not ban an account or run a tool. World-only access
+ continues to expose seats while refusing private Studio views and operations.
++
++## Operational input replay
++
++`replay::Recorder` owns a game in a bounded local diagnostic profile. Its
++operations call the existing command admission, handoff, join, social,
++respawn, and movement-interval methods. Elapsed time uses the native host's
++`FixedSchedule` at 30 Hz with a three-step catch-up cap. A record compares every
++actual authority tick, including each tick inside a catch-up batch. Rule
++refusals retain the real admission fences and state changes.
++
++`Execution::native` hashes the executable and binds the compiler, target,
++Cargo features, optimization, debug settings, target features, and Rust flags
++captured by `build.rs`. The operator supplies content and configuration digests
++and a declared OS/CPU/runtime profile. `Execution::declared` accepts an artifact
++digest for portable adapters. Replay requires an independently trusted expected
++profile with exact equality. These declarations and hashes are not attestation,
++and no cross-build or cross-architecture equivalence is claimed.
++
++A segment binds its canonical initial checkpoint and complete SplitMix64 dice
++state, including forced rolls and per-caster streams. Ordered records carry
++outcomes, explicit admission-sequence consumption, checkpoint state, host clock, authority and physics ticks, logical
++commit revisions, and a hash chain. `Commit` pins an in-memory checkpoint;
++`Restore` loads it and resets the host elapsed-time clock. `Shutdown` fences
++controllers, commits, and closes the segment. Only a complete closed segment
++can be replayed. `Trace::write_new` syncs a private file and, on Unix, its parent
++directory; partial or altered files are refused. The trace digest must remain
++in trusted retained evidence because a hash chain alone does not authenticate
++its author.
++
++Segments permit 512 records and 64 MiB, reserving room for shutdown. Recording
++errors leave the authoritative checkpoint unchanged. Rotate diagnostic windows rather than
++using this full-state format as an unbounded production event log. Replay
++reports the first differing sequence, tick, and JSON field. Presentation
++trajectories and client prediction histories remain separate formats.
++
++The measured profile is native Linux x86-64 with the pinned compiler and exact
++fixture executable. This SDK does not automatically record the TLS/REACH loop,
++realm accounts, economy transactions, storage-worker completions, or Studio
++operations. Those adapters must retain their own authority and durability
++records; this world's logical commit marker is not a realm durable revision.
+diff --git a/crates/verse-world/build.rs b/crates/verse-world/build.rs
+new file mode 100644
+index 0000000000..87b0775233
+--- /dev/null
++++ b/crates/verse-world/build.rs
+@@ -0,0 +1,36 @@
++use std::{collections::BTreeMap, env, process::Command};
++
++fn main() {
++    println!("cargo:rerun-if-changed=build.rs");
++    let rustc = Command::new(env::var_os("RUSTC").expect("Rust compiler"))
++        .arg("--version")
++        .arg("--verbose")
++        .output()
++        .expect("Read Rust compiler identity");
++    assert!(rustc.status.success(), "Read Rust compiler identity");
++    let compiler = String::from_utf8(rustc.stdout).expect("Compiler identity is UTF-8");
++    println!(
++        "cargo:rustc-env=VERSE_REPLAY_COMPILER={}",
++        compiler.trim().replace('\n', " | ")
++    );
++    println!(
++        "cargo:rustc-env=VERSE_REPLAY_TARGET={}",
++        env::var("TARGET").expect("Cargo target")
++    );
++    let mut config = BTreeMap::new();
++    for name in [
++        "PROFILE",
++        "OPT_LEVEL",
++        "DEBUG",
++        "CARGO_ENCODED_RUSTFLAGS",
++        "CARGO_CFG_TARGET_FEATURE",
++    ] {
++        println!("cargo:rerun-if-env-changed={name}");
++        config.insert(name.to_owned(), env::var(name).unwrap_or_default());
++    }
++    for (name, value) in env::vars().filter(|(name, _)| name.starts_with("CARGO_FEATURE_")) {
++        config.insert(name, value);
++    }
++    let config = format!("{config:?}");
++    println!("cargo:rustc-env=VERSE_REPLAY_BUILD={config}");
++}
+diff --git a/crates/verse-world/src/lib.rs b/crates/verse-world/src/lib.rs
+index e8ebe91703..bc6d33aab6 100644
+--- a/crates/verse-world/src/lib.rs
++++ b/crates/verse-world/src/lib.rs
+@@ -252,6 +252,7 @@ pub mod movement;
+ pub mod play;
+ pub mod playground;
+ pub mod prediction;
++pub mod replay;
+ pub mod reverse_gravity;
+ pub mod room;
+ pub mod rules;
+diff --git a/crates/verse-world/src/replay.rs b/crates/verse-world/src/replay.rs
+new file mode 100644
+index 0000000000..e2a3b4e1c8
+--- /dev/null
++++ b/crates/verse-world/src/replay.rs
+@@ -0,0 +1,683 @@
++//! Bounded operational input replay over the owned world authority.
++//!
++//! The recorder owns its game. All mutations in this profile pass through
++//! `apply`; transport authentication and realm services remain separate.
++use crate::{
++    Command, Controller,
++    movement::frames::Frame,
++    play::{Ability, Game},
++};
++use serde::{Deserialize, Serialize};
++use serde_json::Value;
++use sha2::{Digest, Sha256};
++use std::{
++    fs::{File, OpenOptions},
++    io::{Read, Write},
++    path::Path,
++};
++use verse_engine::core::{FixedSchedule, LifeId};
++
++pub const SCHEMA: &str = "verse.input-replay.v1";
++pub const MAX_BYTES: usize = 64 * 1024 * 1024;
++pub const MAX_ENTRIES: usize = 512;
++const SHUTDOWN_RESERVE: usize = 2 * 1024 * 1024 + 8192;
++pub const RNG: &str = "splitmix64-rejection-v1; caster seed xor actor*0x9e3779b97f4a7c15";
++
++fn hash(bytes: &[u8]) -> [u8; 32] {
++    Sha256::digest(bytes).into()
++}
++fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
++    serde_json::to_vec(value).map_err(|e| format!("Cannot encode input replay: {e}"))
++}
++
++/// Exact build and operator-declared runtime compatibility, not attestation.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Execution {
++    pub executable: [u8; 32],
++    pub compiler: String,
++    pub target: String,
++    pub build: String,
++    /// Declared OS, CPU, and runtime profile; exact equality is required.
++    pub runtime: String,
++    pub configuration: [u8; 32],
++    pub content: [u8; 32],
++    pub rules: String,
++    pub rng: String,
++}
++impl Execution {
++    /// Portable adapters supply the digest of their deployed executable artifact.
++    pub fn declared(
++        executable: [u8; 32],
++        runtime: String,
++        configuration: [u8; 32],
++        content: [u8; 32],
++    ) -> Result<Self, String> {
++        let result = Self {
++            executable,
++            compiler: env!("VERSE_REPLAY_COMPILER").into(),
++            target: env!("VERSE_REPLAY_TARGET").into(),
++            build: env!("VERSE_REPLAY_BUILD").into(),
++            runtime,
++            configuration,
++            content,
++            rules: crate::play::RULES_REVISION.into(),
++            rng: RNG.into(),
++        };
++        result.validate()?;
++        Ok(result)
++    }
++    /// Hashes the native executable from its current path without retaining it.
++    pub fn native(
++        runtime: String,
++        configuration: [u8; 32],
++        content: [u8; 32],
++    ) -> Result<Self, String> {
++        let mut file = File::open(std::env::current_exe().map_err(|e| e.to_string())?)
++            .map_err(|e| e.to_string())?;
++        let mut digest = Sha256::new();
++        let mut bytes = [0u8; 64 * 1024];
++        let mut total = 0usize;
++        loop {
++            let n = file.read(&mut bytes).map_err(|e| e.to_string())?;
++            if n == 0 {
++                break;
++            }
++            total = total
++                .checked_add(n)
++                .ok_or("Executable byte budget exceeded")?;
++            if total > 1024 * 1024 * 1024 {
++                return Err("Executable byte budget exceeded".into());
++            }
++            digest.update(&bytes[..n]);
++        }
++        Self::declared(digest.finalize().into(), runtime, configuration, content)
++    }
++    fn validate(&self) -> Result<(), String> {
++        if [self.executable, self.configuration, self.content].contains(&[0; 32])
++            || self.compiler != env!("VERSE_REPLAY_COMPILER")
++            || self.target != env!("VERSE_REPLAY_TARGET")
++            || self.build != env!("VERSE_REPLAY_BUILD")
++            || self.rules != crate::play::RULES_REVISION
++            || self.rng != RNG
++            || self.runtime.is_empty()
++            || self.runtime.len() > 256
++            || self.runtime.bytes().any(|b| !(32..=126).contains(&b))
++        {
++            return Err("Unsupported input replay execution profile".into());
++        }
++        Ok(())
++    }
++}
++
++/// Local authority operations. These values confer no network admission.
++#[derive(Clone, Debug, Serialize, Deserialize)]
++#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
++pub enum Operation {
++    Command {
++        controller: Controller,
++        command: Command<Ability>,
++    },
++    Handoff {
++        life: LifeId,
++        controller: Controller,
++    },
++    Join {
++        controller: Controller,
++        spawn: [f32; 3],
++    },
++    BeginFrames {
++        controller: Controller,
++        life: LifeId,
++    },
++    Frame {
++        controller: Controller,
++        frame: Frame,
++    },
++    Social {
++        controller: Controller,
++        input: crate::play::social::Input,
++    },
++    Respawn {
++        controller: Controller,
++        life: LifeId,
++    },
++    /// The same 30 Hz, three-step catch-up schedule as the native chamber host.
++    Elapsed { seconds: f64 },
++    /// Pins an in-memory world checkpoint at the next logical commit revision.
++    Commit {},
++    /// Restores the committed checkpoint and resets the host elapsed-time clock.
++    Restore {},
++    /// Fences all controllers, commits, and seals this segment.
++    Shutdown {},
++}
++impl Operation {
++    fn envelope(&self) -> Option<(LifeId, u64, u64)> {
++        match self {
++            Self::Command { command, .. } => Some((command.actor, command.epoch, command.sequence)),
++            Self::Frame { frame, .. } => Some((frame.life, frame.epoch, frame.sequence)),
++            Self::Social { input, .. } => Some((input.life, input.epoch, input.sequence)),
++            _ => None,
++        }
++    }
++}
++#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
++#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
++pub enum Outcome {
++    Applied { value: Value },
++    Refused { reason: String },
++}
++
++#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct Observation {
++    tick: u64,
++    physics_step: u64,
++    revision: u64,
++    schedule: Value,
++    world: Value,
++}
++#[derive(Clone, Debug, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct Entry {
++    sequence: u64,
++    operation: Operation,
++    admission_consumed: Option<bool>,
++    outcome: Outcome,
++    observations: Vec<Observation>,
++    chain: [u8; 32],
++}
++#[derive(Clone, Debug, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct Header {
++    schema: String,
++    execution: Execution,
++    initial: String,
++    initial_digest: [u8; 32],
++    initial_rng: Value,
++}
++/// A complete, closed input segment. Presentation trajectories use another format.
++#[derive(Clone, Debug, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Trace {
++    header: Header,
++    entries: Vec<Entry>,
++    count: usize,
++    seal: [u8; 32],
++}
++#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
++pub struct Divergence {
++    pub sequence: u64,
++    pub tick: u64,
++    /// JSON pointer into the outcome or authoritative observation.
++    pub field: String,
++    pub expected: Value,
++    pub actual: Value,
++}
++#[derive(Clone, Debug, Serialize, Deserialize)]
++pub struct Report {
++    pub entries: usize,
++    pub ticks: u64,
++    pub commit_revision: u64,
++    pub dropped_seconds: f64,
++    pub final_world: [u8; 32],
++    pub divergence: Option<Divergence>,
++}
++
++#[derive(Clone)]
++struct State {
++    game: Game,
++    schedule: FixedSchedule,
++    revision: u64,
++    committed: Vec<u8>,
++    closed: bool,
++}
++impl State {
++    fn new(game: Game) -> Result<Self, String> {
++        let committed = game.checkpoint()?;
++        Ok(Self {
++            game,
++            schedule: FixedSchedule::new(30, 3)?,
++            revision: 0,
++            committed,
++            closed: false,
++        })
++    }
++    fn observe(&self) -> Result<Observation, String> {
++        Ok(Observation {
++            tick: self.game.authority_tick,
++            physics_step: self.game.physics_steps,
++            revision: self.revision,
++            schedule: serde_json::to_value(&self.schedule).map_err(|e| e.to_string())?,
++            world: self.game.checkpoint_parts()?.0,
++        })
++    }
++    fn commit(&mut self) -> Result<(), String> {
++        let revision = self
++            .revision
++            .checked_add(1)
++            .ok_or("Replay commit revision exhausted")?;
++        self.committed = self.game.checkpoint()?;
++        self.revision = revision;
++        Ok(())
++    }
++    fn execute(&mut self, operation: &Operation) -> Result<(Outcome, Vec<Observation>), String> {
++        if self.closed {
++            return Err("Input replay segment is closed".into());
++        }
++        let mut observations = vec![];
++        let result: Result<Value, String> = match operation {
++            Operation::Command {
++                controller,
++                command,
++            } => self
++                .game
++                .submit(*controller, command.clone())
++                .map(|()| Value::Null),
++            Operation::Handoff { life, controller } => self
++                .game
++                .handoff_player(*life, *controller)
++                .map(|()| Value::Null),
++            Operation::Join { controller, spawn } => self
++                .game
++                .add_player(*controller, (*spawn).into())
++                .and_then(|v| serde_json::to_value(v).map_err(|e| e.to_string())),
++            Operation::BeginFrames { controller, life } => self
++                .game
++                .begin_movement_frames(*controller, *life)
++                .map(|()| Value::Null),
++            Operation::Frame { controller, frame } => self
++                .game
++                .submit_movement_frame(*controller, frame.clone())
++                .map(|()| Value::Null),
++            Operation::Social { controller, input } => self
++                .game
++                .submit_social(*controller, input.clone())
++                .map(|()| Value::Null),
++            Operation::Respawn { controller, life } => self
++                .game
++                .respawn_controlled_player(*controller, *life)
++                .and_then(|v| serde_json::to_value(v).map_err(|e| e.to_string())),
++            Operation::Elapsed { seconds } => match self.schedule.advance(*seconds) {
++                Err(error) => Err(error),
++                Ok(batch) => {
++                    // Each tick remains observable even within a catch-up batch.
++                    for _ in 0..batch.steps {
++                        self.game.tick(batch.seconds, [0.; 2])?;
++                        observations.push(self.observe()?);
++                    }
++                    Ok(
++                        serde_json::json!({"steps":batch.steps,"dropped_seconds":batch.dropped_seconds}),
++                    )
++                }
++            },
++            Operation::Commit {} => {
++                self.commit()?;
++                Ok(Value::Null)
++            }
++            Operation::Restore {} => {
++                self.game = Game::restore(&self.committed)?;
++                self.schedule = FixedSchedule::new(30, 3)?;
++                Ok(Value::Null)
++            }
++            Operation::Shutdown {} => {
++                let lives: Vec<_> = self
++                    .game
++                    .controlled_effects()
++                    .map(|(life, _, _)| life)
++                    .collect();
++                for life in lives {
++                    self.game.handoff_player(life, Controller(0))?;
++                }
++                self.commit()?;
++                self.closed = true;
++                Ok(Value::Null)
++            }
++        };
++        if observations.is_empty() {
++            observations.push(self.observe()?);
++        }
++        Ok((
++            match result {
++                Ok(value) => Outcome::Applied { value },
++                Err(reason) => Outcome::Refused { reason },
++            },
++            observations,
++        ))
++    }
++}
++fn rng(game: &Game) -> Result<Value, String> {
++    Ok(serde_json::json!({"primary":game.spells.dice,"casters":game.spells.caster_dice}))
++}
++fn chain(previous: [u8; 32], entry: &Entry) -> Result<[u8; 32], String> {
++    Ok(hash(&encode(&(
++        SCHEMA,
++        previous,
++        entry.sequence,
++        &entry.operation,
++        entry.admission_consumed,
++        &entry.outcome,
++        &entry.observations,
++    ))?))
++}
++fn consumed(before: &Game, after: &Game, operation: &Operation) -> Option<bool> {
++    operation.envelope().map(|(life, epoch, sequence)| {
++        before
++            .player_admission(life.actor)
++            .zip(after.player_admission(life.actor))
++            .is_some_and(|(a, b)| {
++                a.actor() == life
++                    && b.actor() == life
++                    && a.epoch() == epoch
++                    && b.epoch() == epoch
++                    && a.accepted_sequence() < sequence
++                    && b.accepted_sequence() >= sequence
++            })
++    })
++}
++fn seal(previous: [u8; 32], count: usize) -> Result<[u8; 32], String> {
++    Ok(hash(&encode(&(
++        "verse.input-replay.end.v1",
++        previous,
++        count,
++    ))?))
++}
++
++/// Owns a bounded authority segment; budget errors leave the game unchanged.
++pub struct Recorder {
++    state: State,
++    trace: Trace,
++    previous: [u8; 32],
++    bytes: usize,
++}
++impl Recorder {
++    pub fn new(game: Game, execution: Execution) -> Result<Self, String> {
++        execution.validate()?;
++        let initial = game.checkpoint()?;
++        let restored = Game::restore(&initial)?;
++        if restored.checkpoint()? != initial {
++            return Err("Input replay requires a current canonical checkpoint".into());
++        }
++        let header = Header {
++            schema: SCHEMA.into(),
++            execution,
++            initial_digest: hash(&initial),
++            initial: String::from_utf8(initial).map_err(|e| e.to_string())?,
++            initial_rng: rng(&game)?,
++        };
++        let previous = hash(&encode(&header)?);
++        let bytes = encode(&header)?.len() + 1024;
++        Ok(Self {
++            state: State::new(game)?,
++            trace: Trace {
++                header,
++                entries: vec![],
++                count: 0,
++                seal: [0; 32],
++            },
++            previous,
++            bytes,
++        })
++    }
++    pub fn game(&self) -> &Game {
++        &self.state.game
++    }
++    /// Rule refusals are recorded outcomes; recording errors apply no effects.
++    pub fn apply(&mut self, operation: Operation) -> Result<Outcome, String> {
++        if self.trace.entries.len() >= MAX_ENTRIES
++            || (!matches!(operation, Operation::Shutdown {})
++                && self.trace.entries.len() >= MAX_ENTRIES - 1)
++        {
++            return Err("Input replay entry budget exceeded".into());
++        }
++        // Non-finite API values cannot be represented by the closed JSON profile.
++        let _: Operation = serde_json::from_slice(&encode(&operation)?)
++            .map_err(|_| "Input replay operation is not representable")?;
++        let mut next = self.state.clone();
++        let (outcome, observations) = next.execute(&operation)?;
++        let mut entry = Entry {
++            sequence: self.trace.entries.len() as u64 + 1,
++            admission_consumed: consumed(&self.state.game, &next.game, &operation),
++            operation,
++            outcome: outcome.clone(),
++            observations,
++            chain: [0; 32],
++        };
++        entry.chain = chain(self.previous, &entry)?;
++        let bytes = self
++            .bytes
++            .checked_add(encode(&entry)?.len() + 1)
++            .ok_or("Input replay byte budget exceeded")?;
++        let reserve = if matches!(entry.operation, Operation::Shutdown {}) {
++            0
++        } else {
++            SHUTDOWN_RESERVE
++        };
++        if bytes > MAX_BYTES - reserve {
++            return Err("Input replay byte budget exceeded".into());
++        }
++        self.previous = entry.chain;
++        self.bytes = bytes;
++        self.state = next;
++        self.trace.entries.push(entry);
++        Ok(outcome)
++    }
++    pub fn finish(mut self) -> Result<Trace, String> {
++        if !self.state.closed {
++            return Err("Input replay requires a recorded shutdown".into());
++        }
++        self.trace.count = self.trace.entries.len();
++        self.trace.seal = seal(self.previous, self.trace.count)?;
++        self.trace.to_json()?;
++        Ok(self.trace)
++    }
++}
++
++fn difference(expected: &Value, actual: &Value, path: &str) -> Option<(String, Value, Value)> {
++    if expected == actual {
++        return None;
++    }
++    match (expected, actual) {
++        (Value::Object(a), Value::Object(b)) => {
++            let keys: std::collections::BTreeSet<_> = a.keys().chain(b.keys()).collect();
++            for key in keys {
++                let pointer = key.replace('~', "~0").replace('/', "~1");
++                if let Some(v) = difference(
++                    a.get(key).unwrap_or(&Value::Null),
++                    b.get(key).unwrap_or(&Value::Null),
++                    &format!("{path}/{pointer}"),
++                ) {
++                    return Some(v);
++                }
++            }
++        }
++        (Value::Array(a), Value::Array(b)) => {
++            for i in 0..a.len().max(b.len()) {
++                if let Some(v) = difference(
++                    a.get(i).unwrap_or(&Value::Null),
++                    b.get(i).unwrap_or(&Value::Null),
++                    &format!("{path}/{i}"),
++                ) {
++                    return Some(v);
++                }
++            }
++        }
++        _ => {}
++    }
++    Some((path.into(), expected.clone(), actual.clone()))
++}
++impl Trace {
++    pub fn execution(&self) -> &Execution {
++        &self.header.execution
++    }
++    pub fn to_json(&self) -> Result<Vec<u8>, String> {
++        let bytes = encode(self)?;
++        if bytes.len() > MAX_BYTES {
++            return Err("Input replay byte budget exceeded".into());
++        }
++        Ok(bytes)
++    }
++    pub fn digest(&self) -> Result<[u8; 32], String> {
++        Ok(hash(&self.to_json()?))
++    }
++    pub fn from_json(bytes: &[u8]) -> Result<Self, String> {
++        if bytes.is_empty() || bytes.len() > MAX_BYTES {
++            return Err("Input replay byte budget exceeded".into());
++        }
++        let trace: Self =
++            serde_json::from_slice(bytes).map_err(|e| format!("Invalid input replay: {e}"))?;
++        if trace.to_json()? != bytes {
++            return Err("Input replay is not canonical".into());
++        }
++        trace.validate()?;
++        Ok(trace)
++    }
++    fn validate(&self) -> Result<(), String> {
++        self.header.execution.validate()?;
++        if self.header.schema != SCHEMA
++            || self.entries.is_empty()
++            || self.entries.len() > MAX_ENTRIES
++            || self.count != self.entries.len()
++            || hash(self.header.initial.as_bytes()) != self.header.initial_digest
++        {
++            return Err("Invalid or incomplete input replay".into());
++        }
++        let initial = Game::restore(self.header.initial.as_bytes())?;
++        if initial.checkpoint()? != self.header.initial.as_bytes()
++            || rng(&initial)? != self.header.initial_rng
++        {
++            return Err("Input replay initial state differs".into());
++        }
++        let mut previous = hash(&encode(&self.header)?);
++        for (i, entry) in self.entries.iter().enumerate() {
++            if entry.sequence != i as u64 + 1
++                || entry.observations.is_empty()
++                || entry.observations.len() > 3
++                || entry.chain != chain(previous, entry)?
++                || matches!(entry.operation, Operation::Shutdown {})
++                    != (i + 1 == self.entries.len())
++            {
++                return Err("Invalid input replay order or chain".into());
++            }
++            previous = entry.chain;
++        }
++        if self.seal != seal(previous, self.count)? {
++            return Err("Input replay end seal differs".into());
++        }
++        Ok(())
++    }
++    /// Compares every recorded result and authority tick on the exact profile.
++    pub fn replay(&self, expected: &Execution) -> Result<Report, String> {
++        expected.validate()?;
++        self.validate()?;
++        if &self.header.execution != expected {
++            return Err("Input replay execution identity differs".into());
++        }
++        let mut state = State::new(Game::restore(self.header.initial.as_bytes())?)?;
++        let mut report = Report {
++            entries: 0,
++            ticks: 0,
++            commit_revision: 0,
++            dropped_seconds: 0.,
++            final_world: self.header.initial_digest,
++            divergence: None,
++        };
++        for entry in &self.entries {
++            let before = state.game.authority_tick;
++            let before_game = state.game.clone();
++            let (outcome, observations) = state.execute(&entry.operation)?;
++            let expected_outcome = serde_json::json!({"outcome":entry.outcome,"admission_consumed":entry.admission_consumed});
++            let actual_outcome = serde_json::json!({"outcome":outcome,"admission_consumed":consumed(&before_game,&state.game,&entry.operation)});
++            let mut mismatch =
++                difference(&expected_outcome, &actual_outcome, "/entry").map(|d| (before, d));
++            if mismatch.is_none() {
++                for i in 0..entry.observations.len().max(observations.len()) {
++                    let a = entry
++                        .observations
++                        .get(i)
++                        .map(serde_json::to_value)
++                        .transpose()
++                        .map_err(|e| e.to_string())?
++                        .unwrap_or(Value::Null);
++                    let b = observations
++                        .get(i)
++                        .map(serde_json::to_value)
++                        .transpose()
++                        .map_err(|e| e.to_string())?
++                        .unwrap_or(Value::Null);
++                    if let Some(d) = difference(&a, &b, "/observation") {
++                        let tick = observations.get(i).map_or(before, |o| o.tick);
++                        mismatch = Some((tick, d));
++                        break;
++                    }
++                }
++            }
++            report.entries += 1;
++            if matches!(entry.operation, Operation::Elapsed { .. })
++                && state.game.authority_tick != before
++            {
++                report.ticks += observations.len() as u64;
++            }
++            report.commit_revision = state.revision;
++            if let Outcome::Applied { value } = &outcome {
++                if matches!(entry.operation, Operation::Elapsed { .. }) {
++                    report.dropped_seconds += value["dropped_seconds"]
++                        .as_f64()
++                        .ok_or("Replay schedule outcome is missing")?;
++                }
++            }
++            report.final_world = hash(&state.game.checkpoint()?);
++            if let Some((tick, (field, expected, actual))) = mismatch {
++                report.divergence = Some(Divergence {
++                    sequence: entry.sequence,
++                    tick,
++                    field,
++                    expected,
++                    actual,
++                });
++                break;
++            }
++        }
++        Ok(report)
++    }
++    /// Creates a private immutable retained segment and syncs its directory.
++    pub fn write_new(&self, path: &Path) -> Result<(), String> {
++        self.validate()?;
++        let bytes = self.to_json()?;
++        let mut options = OpenOptions::new();
++        options.write(true).create_new(true);
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::OpenOptionsExt;
++            options.mode(0o600);
++        }
++        let mut file = options.open(path).map_err(|e| e.to_string())?;
++        file.write_all(&bytes)
++            .and_then(|()| file.sync_all())
++            .map_err(|e| e.to_string())?;
++        #[cfg(unix)]
++        File::open(
++            path.parent()
++                .filter(|p| !p.as_os_str().is_empty())
++                .unwrap_or(Path::new(".")),
++        )
++        .and_then(|f| f.sync_all())
++        .map_err(|e| e.to_string())?;
++        Ok(())
++    }
++    pub fn read(path: &Path) -> Result<Self, String> {
++        let mut file = File::open(path).map_err(|e| e.to_string())?;
++        if file.metadata().map_err(|e| e.to_string())?.len() > MAX_BYTES as u64 {
++            return Err("Input replay byte budget exceeded".into());
++        }
++        let mut bytes = Vec::new();
++        Read::by_ref(&mut file)
++            .take(MAX_BYTES as u64 + 1)
++            .read_to_end(&mut bytes)
++            .map_err(|e| e.to_string())?;
++        Self::from_json(&bytes)
++    }
++}
++
++#[cfg(test)]
++mod tests;
+diff --git a/crates/verse-world/src/replay/tests.rs b/crates/verse-world/src/replay/tests.rs
+new file mode 100644
+index 0000000000..16e918b025
+--- /dev/null
++++ b/crates/verse-world/src/replay/tests.rs
+@@ -0,0 +1,500 @@
++use super::*;
++use crate::{Intent, movement::frames::Segment};
++use std::process::Command as Process;
++
++fn execution() -> Execution {
++    Execution::native(
++        "linux-x86_64; isolated replay fixture; strict build equality".into(),
++        hash(b"verse replay fixture v1; host 30Hz cap3"),
++        hash(include_bytes!(
++            "../../../../assets/verse/original/ritual.json"
++        )),
++    )
++    .unwrap()
++}
++fn game() -> Game {
++    let scene = verse_engine::director::Scene::from_json(include_bytes!(
++        "../../../../assets/verse/original/ritual.json"
++    ))
++    .unwrap();
++    let mut game = Game::combat_in(scene, false, 700).unwrap();
++    game.time = game.scene.cut_at + 1.;
++    game.handoff_player(game.player_life(), Controller(7))
++        .unwrap();
++    game
++}
++fn applied(outcome: Outcome) -> Value {
++    match outcome {
++        Outcome::Applied { value } => value,
++        other => panic!("Expected applied operation: {other:?}"),
++    }
++}
++fn command(recorder: &Recorder, actor: u64, intent: Intent<Ability>) -> Command<Ability> {
++    recorder
++        .game()
++        .player_admission(actor)
++        .unwrap()
++        .command(recorder.game().authority_tick, intent)
++        .unwrap()
++}
++fn reseal(trace: &mut Trace) {
++    let mut previous = hash(&encode(&trace.header).unwrap());
++    for entry in &mut trace.entries {
++        entry.chain = chain(previous, entry).unwrap();
++        previous = entry.chain;
++    }
++    trace.count = trace.entries.len();
++    trace.seal = seal(previous, trace.count).unwrap();
++}
++fn fixture(profile: Execution) -> Trace {
++    let mut recorder = Recorder::new(game(), profile).unwrap();
++    let primary = recorder.game().player_actor();
++    let spawn = recorder.game().actor_position(primary).unwrap() + glam::Vec3::X * 2.;
++    let second: LifeId = serde_json::from_value(applied(
++        recorder
++            .apply(Operation::Join {
++                controller: Controller(8),
++                spawn: spawn.to_array(),
++            })
++            .unwrap(),
++    ))
++    .unwrap();
++    let move_second = command(
++        &recorder,
++        second.actor,
++        Intent::Move {
++            axes: [0.4, 0.],
++            yaw: 0.,
++        },
++    );
++    applied(
++        recorder
++            .apply(Operation::Command {
++                controller: Controller(8),
++                command: move_second.clone(),
++            })
++            .unwrap(),
++    );
++    assert!(matches!(
++        recorder
++            .apply(Operation::Command {
++                controller: Controller(8),
++                command: move_second
++            })
++            .unwrap(),
++        Outcome::Refused { .. }
++    ));
++    let target = recorder.game().actor_life(2).unwrap();
++    for (actor, controller, ability) in [
++        (primary, Controller(7), Ability::Fireball),
++        (second.actor, Controller(8), Ability::MagicMissile),
++    ] {
++        let aim = (recorder.game().actor_position(target.actor).unwrap()
++            - recorder.game().actor_position(actor).unwrap())
++            * glam::Vec3::new(1., 0., 1.);
++        let c = command(
++            &recorder,
++            actor,
++            Intent::Cast {
++                ability,
++                target: Some(target),
++                aim: aim.normalize().to_array(),
++            },
++        );
++        applied(
++            recorder
++                .apply(Operation::Command {
++                    controller,
++                    command: c,
++                })
++                .unwrap(),
++        );
++    }
++    let c = command(
++        &recorder,
++        primary,
++        Intent::Cast {
++            ability: Ability::Fireball,
++            target: Some(target),
++            aim: [0., 0., -1.],
++        },
++    );
++    assert!(matches!(
++        recorder
++            .apply(Operation::Command {
++                controller: Controller(7),
++                command: c.clone()
++            })
++            .unwrap(),
++        Outcome::Refused { .. }
++    ));
++    assert_eq!(
++        recorder
++            .game()
++            .player_admission(primary)
++            .unwrap()
++            .accepted_sequence(),
++        c.sequence
++    );
++    assert_eq!(
++        recorder.trace.entries.last().unwrap().admission_consumed,
++        Some(true)
++    );
++    applied(recorder.apply(Operation::Commit {}).unwrap());
++    for _ in 0..5 {
++        applied(
++            recorder
++                .apply(Operation::Elapsed { seconds: 1. / 30. })
++                .unwrap(),
++        );
++    }
++    applied(recorder.apply(Operation::Restore {}).unwrap());
++    // Pending projectiles and held input return to the committed state.
++    applied(recorder.apply(Operation::Elapsed { seconds: 1. }).unwrap());
++    let stale = command(&recorder, second.actor, Intent::Jump);
++    applied(
++        recorder
++            .apply(Operation::Handoff {
++                life: second,
++                controller: Controller(9),
++            })
++            .unwrap(),
++    );
++    assert!(matches!(
++        recorder
++            .apply(Operation::Command {
++                controller: Controller(8),
++                command: stale
++            })
++            .unwrap(),
++        Outcome::Refused { .. }
++    ));
++    let jump = command(&recorder, second.actor, Intent::Jump);
++    applied(
++        recorder
++            .apply(Operation::Command {
++                controller: Controller(9),
++                command: jump,
++            })
++            .unwrap(),
++    );
++    for _ in 0..60 {
++        applied(
++            recorder
++                .apply(Operation::Elapsed { seconds: 1. / 30. })
++                .unwrap(),
++        );
++    }
++    assert!(recorder.game().snapshot().counters.casts > 0);
++    applied(recorder.apply(Operation::Commit {}).unwrap());
++    applied(recorder.apply(Operation::Shutdown {}).unwrap());
++    let before = recorder.game().checkpoint().unwrap();
++    assert!(
++        recorder
++            .apply(Operation::Elapsed { seconds: 1. / 30. })
++            .is_err()
++    );
++    assert_eq!(recorder.game().checkpoint().unwrap(), before);
++    recorder.finish().unwrap()
++}
++
++#[test]
++fn replay_child() {
++    let Ok(path) = std::env::var("VERSE_INPUT_REPLAY_CHILD") else {
++        return;
++    };
++    let trace = Trace::read(Path::new(&path)).unwrap();
++    let report = trace.replay(&execution()).unwrap();
++    assert!(report.divergence.is_none(), "{:?}", report.divergence);
++    assert_eq!(report.ticks, 68);
++    assert_eq!(report.commit_revision, 3);
++    assert!((report.dropped_seconds - 0.9).abs() < 1e-12);
++    assert_eq!(
++        trace.entries.last().unwrap().observations[0].world["world"]["admission"]["controller"],
++        0
++    );
++    if let Ok(path) = std::env::var("VERSE_INPUT_REPLAY_REPORT") {
++        std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
++    }
++}
++
++#[test]
++fn multiplayer_inputs_replay_across_commits_restore_and_process_shutdown() {
++    let trace = fixture(execution());
++    let root = tempfile::tempdir().unwrap();
++    let path = root.path().join("input-replay.json");
++    trace.write_new(&path).unwrap();
++    assert!(trace.write_new(&path).is_err());
++    let persisted = Trace::read(&path).unwrap();
++    assert_eq!(trace.digest().unwrap(), persisted.digest().unwrap());
++    let mut child = Process::new(std::env::current_exe().unwrap());
++    child
++        .args(["--exact", "replay::tests::replay_child", "--nocapture"])
++        .env("VERSE_INPUT_REPLAY_CHILD", &path);
++    if let Ok(output) = std::env::var("VERSE_INPUT_REPLAY_RECEIPT") {
++        let output = Path::new(&output);
++        std::fs::create_dir_all(output).unwrap();
++        trace.write_new(&output.join("input-replay.json")).unwrap();
++        std::fs::write(
++            output.join("execution.json"),
++            serde_json::to_vec_pretty(trace.execution()).unwrap(),
++        )
++        .unwrap();
++        child.env(
++            "VERSE_INPUT_REPLAY_REPORT",
++            output.join("replay-report.json"),
++        );
++    }
++    let output = child.output().unwrap();
++    assert!(
++        output.status.success(),
++        "{}\n{}",
++        String::from_utf8_lossy(&output.stdout),
++        String::from_utf8_lossy(&output.stderr)
++    );
++    #[cfg(unix)]
++    {
++        use std::os::unix::fs::PermissionsExt;
++        assert_eq!(
++            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
++            0o600
++        );
++    }
++}
++
++#[test]
++fn first_divergent_tick_and_field_include_each_catch_up_step() {
++    let mut trace = fixture(execution());
++    let entry = trace
++        .entries
++        .iter_mut()
++        .find(|e| matches!(e.operation,Operation::Elapsed { seconds } if seconds == 1.))
++        .unwrap();
++    assert_eq!(entry.observations.len(), 3);
++    let tick = entry.observations[1].tick;
++    entry.observations[1].world["world"]["time"] = Value::from(-1.);
++    let sequence = entry.sequence;
++    reseal(&mut trace);
++    let report = trace.replay(trace.execution()).unwrap();
++    let d = report.divergence.unwrap();
++    assert_eq!(d.sequence, sequence);
++    assert_eq!(d.tick, tick);
++    assert_eq!(d.field, "/observation/world/world/time");
++}
++
++#[test]
++fn profiles_chains_partial_files_and_unclosed_segments_are_refused() {
++    let trace = fixture(execution());
++    let mut foreign = trace.execution().clone();
++    foreign.executable[0] ^= 1;
++    assert!(trace.replay(&foreign).is_err());
++    for change in 0..8 {
++        let mut foreign = trace.execution().clone();
++        match change {
++            0 => foreign.compiler.push('x'),
++            1 => foreign.target.push('x'),
++            2 => foreign.rng.push('x'),
++            3 => foreign.content[0] ^= 1,
++            4 => foreign.configuration[0] ^= 1,
++            5 => foreign.build.push('x'),
++            6 => foreign.rules.push('x'),
++            _ => foreign.runtime.push('x'),
++        }
++        assert!(trace.replay(&foreign).is_err());
++    }
++    let mut truncated = trace.clone();
++    truncated.entries.pop();
++    assert!(Trace::from_json(&truncated.to_json().unwrap()).is_err());
++    let bytes = trace.to_json().unwrap();
++    assert!(Trace::from_json(&bytes[..bytes.len() / 2]).is_err());
++    let mut altered = trace.clone();
++    altered.entries[1].sequence += 1;
++    assert!(altered.replay(trace.execution()).is_err());
++    let mut altered = trace.clone();
++    altered.header.initial_rng["primary"]["state"] = Value::from(42);
++    assert!(altered.replay(trace.execution()).is_err());
++    let mut open = Recorder::new(game(), execution()).unwrap();
++    assert!(
++        open.apply(Operation::Elapsed { seconds: f64::NAN })
++            .is_err()
++    );
++    assert!(open.finish().is_err());
++    let mut unknown: Value = serde_json::from_slice(&bytes).unwrap();
++    unknown["execute"] = Value::from("private host command");
++    assert!(Trace::from_json(&serde_json::to_vec(&unknown).unwrap()).is_err());
++}
++
++#[test]
++fn interval_admission_refusals_rng_streams_and_recording_budgets_preserve_semantics() {
++    let mut g = crate::playground::Run::new(crate::spells::scenarios::area(6))
++        .unwrap()
++        .game;
++    g.spells.dice = crate::spells::Dice::new(g.spells.dice.seed);
++    g.spells.dice.force_save(101, 2).unwrap();
++    let mut r = Recorder::new(g, execution()).unwrap();
++    let primary = r.game().player_life();
++    applied(
++        r.apply(Operation::Handoff {
++            life: primary,
++            controller: Controller(7),
++        })
++        .unwrap(),
++    );
++    applied(r.apply(Operation::Elapsed { seconds: 1. / 30. }).unwrap());
++    let c = command(
++        &r,
++        primary.actor,
++        Intent::Cast {
++            ability: Ability::SpellCommand(crate::spells::command::Command::Point {
++                slot: 6,
++                point: [0, 0, 2000],
++            }),
++            target: None,
++            aim: [0., 0., -1.],
++        },
++    );
++    applied(
++        r.apply(Operation::Command {
++            controller: Controller(7),
++            command: c,
++        })
++        .unwrap(),
++    );
++    assert!(r.game().spells.dice.rolled > 0);
++    let spawn = r.game().actor_position(primary.actor).unwrap() + glam::Vec3::X * 2.;
++    let second: LifeId = serde_json::from_value(applied(
++        r.apply(Operation::Join {
++            controller: Controller(8),
++            spawn: spawn.to_array(),
++        })
++        .unwrap(),
++    ))
++    .unwrap();
++    let c = command(
++        &r,
++        second.actor,
++        Intent::Cast {
++            ability: Ability::SpellCommand(crate::spells::command::Command::Point {
++                slot: 6,
++                point: [0, 0, 2000],
++            }),
++            target: None,
++            aim: [0., 0., -1.],
++        },
++    );
++    applied(
++        r.apply(Operation::Command {
++            controller: Controller(8),
++            command: c,
++        })
++        .unwrap(),
++    );
++    assert!(r.game().spells.caster_dice[&second.actor].rolled > 0);
++    applied(r.apply(Operation::Elapsed { seconds: 1. / 30. }).unwrap());
++    let before = r.game().checkpoint().unwrap();
++    let bytes = r.bytes;
++    r.bytes = MAX_BYTES - SHUTDOWN_RESERVE - 1;
++    assert!(
++        r.apply(Operation::Handoff {
++            life: primary,
++            controller: Controller(9)
++        })
++        .is_err()
++    );
++    assert_eq!(r.game().checkpoint().unwrap(), before);
++    r.bytes = bytes;
++    assert!(matches!(
++        r.apply(Operation::Elapsed { seconds: -1. }).unwrap(),
++        Outcome::Refused { .. }
++    ));
++    applied(r.apply(Operation::Shutdown {}).unwrap());
++    let trace = r.finish().unwrap();
++    assert!(
++        trace
++            .replay(trace.execution())
++            .unwrap()
++            .divergence
++            .is_none()
++    );
++
++    let mut r = Recorder::new(game(), execution()).unwrap();
++    applied(r.apply(Operation::Elapsed { seconds: 1. / 30. }).unwrap());
++    let life = r.game().player_life();
++    applied(
++        r.apply(Operation::BeginFrames {
++            controller: Controller(7),
++            life,
++        })
++        .unwrap(),
++    );
++    let a = r.game().player_admission(life.actor).unwrap();
++    let start = r
++        .game()
++        .movement_baseline(life)
++        .unwrap()
++        .unwrap()
++        .physics_step;
++    let frame = Frame {
++        life,
++        epoch: a.epoch(),
++        sequence: 1,
++        tick: r.game().authority_tick,
++        start,
++        steps: 4,
++        segments: vec![Segment {
++            offset: 0,
++            until: start + 12,
++            axes: [0.2, 0.],
++            yaw: 0.,
++            jump: false,
++        }],
++    };
++    applied(
++        r.apply(Operation::Frame {
++            controller: Controller(7),
++            frame: frame.clone(),
++        })
++        .unwrap(),
++    );
++    assert!(matches!(
++        r.apply(Operation::Frame {
++            controller: Controller(7),
++            frame
++        })
++        .unwrap(),
++        Outcome::Refused { .. }
++    ));
++    applied(r.apply(Operation::Elapsed { seconds: 1. / 30. }).unwrap());
++    applied(r.apply(Operation::Commit {}).unwrap());
++    applied(r.apply(Operation::Restore {}).unwrap());
++    applied(r.apply(Operation::Shutdown {}).unwrap());
++    let trace = r.finish().unwrap();
++    assert!(
++        trace
++            .replay(trace.execution())
++            .unwrap()
++            .divergence
++            .is_none()
++    );
++}
++
++#[test]
++fn a_full_segment_reserves_its_shutdown_and_refuses_extra_effects() {
++    let mut r = Recorder::new(game(), execution()).unwrap();
++    for _ in 0..MAX_ENTRIES - 1 {
++        applied(r.apply(Operation::Commit {}).unwrap());
++    }
++    let before = r.game().checkpoint().unwrap();
++    assert!(r.apply(Operation::Elapsed { seconds: 1. / 30. }).is_err());
++    assert_eq!(before, r.game().checkpoint().unwrap());
++    applied(r.apply(Operation::Shutdown {}).unwrap());
++    let trace = r.finish().unwrap();
++    assert_eq!(trace.entries.len(), MAX_ENTRIES);
++    assert!(
++        trace
++            .replay(trace.execution())
++            .unwrap()
++            .divergence
++            .is_none()
++    );
++}

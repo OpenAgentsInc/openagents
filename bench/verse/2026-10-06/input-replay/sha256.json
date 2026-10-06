@@ -1,0 +1,11 @@
+{
+  "README.md": "66dfa8b7c201041538f9b6a48a09a2877f6affc03ad6974038dac71a29e2620a",
+  "checks.json": "cb79b1a731496a54a8f928b702c8fd1a523faa283ac5f5134e6ee2b4e62a2935",
+  "execution.json": "4681942e54dba55b07c7e1fd2215c26b81aef02b13d40b84d533fdf5469b630c",
+  "fixture.log": "c086c190c0f6eac4a4dbbba8b1e360a7877a24ae90cbbb2550ca60a1819f0ca8",
+  "input-replay.json.gz": "87783e09fbc6a4fc7c1dab5ce6f332b38203763e2e80bcb0dc780fd908b9adf1",
+  "package-tests.log": "bf2f21c727dc39505de46557efd5a2b52e9df7058792a76674fe3b66f4babb78",
+  "portable-check.log": "bef1c06a4ca219cf8658f7e35b5e8f39175c03975a67aa2363f6a4c0b92278f7",
+  "replay-report.json": "0fbb9b1625292eaf60ee76d971c4c31e0ccb9a80ce8d1b029ad4832c5f834b65",
+  "source.diff": "6c818405977d864ff579e3fedf9c78aab95aeb66455c17c4ef5578ea982bcba1"
+}
