@@ -27,6 +27,7 @@ pub struct Pose {
 pub struct Timing {
     recovery_blocks: u64,
     embedding_deferrals: u64,
+    horizon_pauses: u64,
     separating_steps: u64,
     last_embedding: Option<String>,
     render_floor: u64,
@@ -75,6 +76,7 @@ struct Reconciliation {
 pub struct Local {
     recovery: movement::RecoveryObservations,
     embedding_deferrals: u64,
+    horizon_pauses: u64,
     separating_steps: u64,
     last_embedding: Option<String>,
     last_reconciliation: Option<Reconciliation>,
@@ -112,6 +114,7 @@ impl Local {
         Self {
             recovery: Default::default(),
             embedding_deferrals: 0,
+            horizon_pauses: 0,
             separating_steps: 0,
             last_embedding: None,
             last_reconciliation: None,
@@ -148,6 +151,10 @@ impl Local {
         self.motion_time = 0.;
         self.moving = false;
     }
+    /// Counts frames that waited at the correction horizon for authority.
+    pub fn horizon_pauses(&self) -> u64 {
+        self.horizon_pauses
+    }
     pub fn context(&self) -> Option<(LifeId, u64)> {
         self.baseline.map(|b| (b.life, b.epoch))
     }
@@ -156,6 +163,7 @@ impl Local {
         Timing {
             recovery_blocks: self.recovery.blocks,
             embedding_deferrals: self.embedding_deferrals,
+            horizon_pauses: self.horizon_pauses,
             separating_steps: self.separating_steps,
             last_embedding: self.last_embedding.clone(),
             render_floor: self.render_floor,
@@ -765,14 +773,27 @@ impl Local {
         self.fraction += seconds * 120.;
         let steps = self.fraction.floor() as u64;
         self.fraction -= steps as f64;
+        // Wait at the bounded horizon without discarding already submitted time.
+        // Excess elapsed time cannot renew movement or accumulate a catch-up burst.
+        let room = u64::from(super::MAX_PENDING_STEPS)
+            .saturating_sub(self.step.saturating_sub(baseline.physics_step));
+        let admitted = if baseline.profile == movement::Profile::Frames {
+            steps.min(room)
+        } else {
+            if steps > room {
+                self.clear();
+                return Err("Local prediction exceeded its correction horizon".into());
+            }
+            steps
+        };
+        if admitted < steps {
+            self.horizon_pauses = self.horizon_pauses.saturating_add(1);
+            self.fraction = 0.;
+        }
         self.step = self
             .step
-            .checked_add(steps)
+            .checked_add(admitted)
             .ok_or("Local prediction clock exhausted")?;
-        if self.step.saturating_sub(baseline.physics_step) > u64::from(super::MAX_PENDING_STEPS) {
-            self.clear();
-            return Err("Local prediction exceeded its correction horizon".into());
-        }
         let mut filter = Filter::blocking(baseline.life.instance);
         filter.ignore = Some(Life {
             instance: baseline.life.instance,
@@ -1049,6 +1070,59 @@ mod tests {
             intent,
         }
     }
+    #[test]
+    fn correction_horizon_preserves_submitted_time_until_confirmation() {
+        let (mut local, mut baseline, geometry) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        for _ in 0..21 {
+            local.advance(0.1).unwrap();
+        }
+        local
+            .queue(
+                2,
+                Intent::Move {
+                    axes: [0.; 2],
+                    yaw: 0.,
+                },
+            )
+            .unwrap();
+        local.advance(4. / 120.).unwrap();
+        let end = local.physics_step();
+        assert_eq!(end, u64::from(super::super::MAX_PENDING_STEPS));
+        local
+            .grant_world_credit(baseline.life, baseline.epoch, end)
+            .unwrap();
+        for start in (0..end).step_by(4) {
+            let mut frame = local.movement_frame(start, 4).unwrap();
+            frame.sequence = start / 4 + 1;
+            local.bind_movement_frame(&frame).unwrap();
+        }
+        let character = local.character.unwrap();
+        let before = local.pose().unwrap().position;
+        for _ in 0..5 {
+            local.advance(0.1).unwrap();
+            assert_eq!(local.context(), Some((baseline.life, baseline.epoch)));
+            assert_eq!(local.physics_step(), end);
+            assert_eq!(local.pose().unwrap().position, before);
+            assert_eq!(local.pending(), 2);
+        }
+        baseline.physics_step = end;
+        baseline.world_step = end + 12;
+        baseline.applied_sequence = end / 4;
+        baseline.character = character;
+        baseline.held.refresh([0.; 2], end - 4).unwrap();
+        assert!(local.observe_applied(baseline, 3, 3).unwrap());
+        local.advance(0.).unwrap();
+        assert_eq!(local.physics_step(), end);
+        assert_eq!(local.pending(), 0);
+        local.advance(4. / 120.).unwrap();
+        assert_eq!(local.physics_step(), end + 4);
+        assert_eq!(local.pose().unwrap().position, before);
+    }
+
     #[test]
     fn partial_interval_confirmation_replays_only_unconsumed_steps() {
         let (mut local, mut baseline, geometry) = setup();

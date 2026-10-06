@@ -265,6 +265,10 @@ impl Session {
         self.prediction.last_embedding()
     }
 
+    /// Counts local frames held at the bounded prediction horizon.
+    pub fn prediction_horizon_pauses(&self) -> u64 {
+        self.prediction.horizon_pauses()
+    }
     /// Returns local prediction errors that discarded a clock or pending input.
     pub fn prediction_failures(&self) -> u64 {
         self.prediction_failures

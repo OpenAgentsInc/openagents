@@ -1,0 +1,20 @@
+{
+  "schema": "verse.check.v1",
+  "before": {
+    "test": "correction_horizon_preserves_submitted_time_until_confirmation",
+    "result": "failed",
+    "error": "Local prediction exceeded its correction horizon"
+  },
+  "after": {
+    "command": "cargo +1.97.1 test -p verse-world --features service-net prediction:: -- --test-threads=1",
+    "passed": 41,
+    "failed": 0
+  },
+  "scope": "Framed prediction pauses at the existing 256-step horizon without discarding submitted intervals or accumulating excess elapsed time. Legacy command-mode horizon retirement remains unchanged.",
+  "limitations": [
+    "Read-only pause-count accessors and the battle report consumer are queued for Linux compilation.",
+    "No battle performance improvement is established by the unit checks.",
+    "Living-player interval timeouts remain unresolved."
+  ],
+  "repair": "The first full prediction run passed 39 and failed two legacy-mode retirement assertions; restricting preservation to framed mode restored all 41 checks."
+}
