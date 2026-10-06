@@ -10,6 +10,7 @@ description = "Rust-owned read-only Coder mobile conversation state and native b
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
+terminal-gfx = { path = "../terminal-gfx", default-features = false, features = ["fonts"] }
 coder-access = { path = "../coder-access", default-features = false }
 coder-computers = { path = "../coder-computers" }
 coder-connect = { path = "../coder-connect", default-features = false }

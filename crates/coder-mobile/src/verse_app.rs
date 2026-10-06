@@ -1027,6 +1027,9 @@ impl Scene {
             12.0
         });
         verse::zones::everglade::hotbar::add_sprites(&mut atlas)?;
+        if config.computer_hud {
+            atlas.reserve_glyphs(1024)?;
+        }
         let mut zone_hud = verse::zones::hud::Hud::default();
         if config.bare {
             // Lagrange 1's panel stands above the Grid's sticks.
@@ -3003,6 +3006,13 @@ impl Scene {
             ),
             self.world.zone,
         )
+    }
+
+    pub(crate) fn prepare_terminal_glyphs(&mut self) {
+        let size = self.lifecycle.viewport().logical_size();
+        if self.computer_open {
+            self.computer_hud.prepare_glyphs(&mut self.atlas, size);
+        }
     }
 
     pub fn map_ui(&self) -> verse::ui::UiBatch {

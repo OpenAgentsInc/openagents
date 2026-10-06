@@ -13,11 +13,20 @@ struct TerminalKeyInput: UIViewRepresentable {
     let paste: (String) -> Void
 
     func makeUIView(context: Context) -> TerminalKeyView {
-        let view = TerminalKeyView()
+        let view = TerminalKeyView(frame: .zero, textContainer: nil)
         view.isAccessibilityElement = true
         view.accessibilityLabel = "Terminal input"
         view.accessibilityIdentifier = "terminal-input"
         return view
+    }
+
+    static func dismantleUIView(_ view: TerminalKeyView, coordinator: ()) {
+        view.onText = { _ in }
+        view.onKey = { _, _, _, _ in }
+        view.onPaste = { _ in }
+        view.onResign = {}
+        _ = view.resignFirstResponder()
+        view.text = ""
     }
 
     func updateUIView(_ view: TerminalKeyView, context: Context) {
@@ -33,28 +42,52 @@ struct TerminalKeyInput: UIViewRepresentable {
     }
 }
 
-final class TerminalKeyView: UIView, UIKeyInput {
+final class TerminalKeyView: UITextView, UITextViewDelegate {
     var onText: (String) -> Void = { _ in }
     var onKey: (String, Bool, Bool, Bool) -> Void = { _, _, _, _ in }
     var onPaste: (String) -> Void = { _ in }
     var onResign: () -> Void = {}
 
-    // Terminal input is exact: no correction, capitals, or smart punctuation.
-    var autocorrectionType: UITextAutocorrectionType = .no
-    var autocapitalizationType: UITextAutocapitalizationType = .none
-    var spellCheckingType: UITextSpellCheckingType = .no
-    var smartQuotesType: UITextSmartQuotesType = .no
-    var smartDashesType: UITextSmartDashesType = .no
-    var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
-    var keyboardType: UIKeyboardType = .asciiCapable
-    var returnKeyType: UIReturnKeyType = .default
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame: frame, textContainer: textContainer)
+        delegate = self
+        autocorrectionType = .no
+        autocapitalizationType = .none
+        spellCheckingType = .no
+        smartQuotesType = .no
+        smartDashesType = .no
+        smartInsertDeleteType = .no
+        keyboardType = .default
+        returnKeyType = .default
+        backgroundColor = .clear
+        textColor = .clear
+        tintColor = .clear
+    }
 
-    override var canBecomeFirstResponder: Bool { true }
-    // Always report text so Backspace reaches the shell on an empty line.
-    var hasText: Bool { true }
+    required init?(coder: NSCoder) { fatalError("Use the terminal input initializer.") }
 
-    func insertText(_ text: String) { onText(text) }
-    func deleteBackward() { onKey("backspace", false, false, false) }
+    // Marked text stays in UIKit until the IME commits it. Only committed
+    // text crosses into Rust, once; render updates never replace preedit.
+    func textViewDidChange(_ textView: UITextView) {
+        guard markedTextRange == nil, !text.isEmpty else { return }
+        let committed = text ?? ""
+        text = ""
+        onText(committed)
+    }
+
+    override func unmarkText() {
+        super.unmarkText()
+        textViewDidChange(self)
+    }
+
+    override var hasText: Bool { true }
+    override func deleteBackward() {
+        if markedTextRange != nil || !text.isEmpty {
+            super.deleteBackward()
+        } else {
+            onKey("backspace", false, false, false)
+        }
+    }
 
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
@@ -69,6 +102,10 @@ final class TerminalKeyView: UIView, UIKeyInput {
     override func paste(_ sender: Any?) { onPaste(UIPasteboard.general.string ?? "") }
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if markedTextRange != nil {
+            super.pressesBegan(presses, with: event)
+            return
+        }
         var unhandled = Set<UIPress>()
         for press in presses {
             guard let key = press.key, let name = Self.name(key) else {

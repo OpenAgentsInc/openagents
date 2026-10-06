@@ -669,8 +669,10 @@ impl VerseHandle {
                 {
                     self.reopen_for_zone()?;
                 }
+                self.scene.prepare_terminal_glyphs();
                 match self.renderer.as_mut() {
                     Some(Surface::Grid(engine)) => {
+                        engine.update_atlas(&self.scene.atlas);
                         self.rendered_zone_revision = self.scene.world.zone_revision;
                         if self.scene.in_chamber() {
                             let [w, h] = engine.size();
@@ -704,6 +706,7 @@ impl VerseHandle {
                         self.scene.frames = self.scene.frames.saturating_add(1);
                     }
                     Some(Surface::Legacy(renderer)) => {
+                        renderer.update_atlas(&self.scene.atlas);
                         renderer.set_headroom(headroom.unwrap_or(1.0) as f32);
                         if self.rendered_zone_revision != self.scene.world.zone_revision {
                             renderer.replace_world(&self.scene.world.world.mesh)?;

@@ -3085,6 +3085,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "terminal-gfx",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "verse",

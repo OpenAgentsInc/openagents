@@ -72,6 +72,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var scanner: QRScanner
     private lateinit var world: VerseSurface
     private lateinit var terminal: TerminalScreen
+    private lateinit var worldTerminalKeys: TerminalKeyView
+    private var worldTerminalFeed: String? = null
     private lateinit var connect: ConnectScreen
     private val main = Handler(Looper.getMainLooper())
     private var tab = AppTab.CODER
@@ -388,6 +390,34 @@ class MainActivity : ComponentActivity() {
         }
         if (BuildConfig.DEBUG) intent.getStringExtra("verse_script")?.let { world.script = VerseScript.parse(it) }
         page.addView(world, FrameLayout.LayoutParams(-1, -1))
+        worldTerminalKeys = TerminalKeyView(this,
+            text = { bridge.terminal(json("op" to "terminal_text", "text" to it)) },
+            key = { name, ctrl, alt, shift -> bridge.terminal(json("op" to "terminal_key", "key" to name,
+                "ctrl" to ctrl, "alt" to alt, "shift" to shift)) })
+        page.addView(worldTerminalKeys, FrameLayout.LayoutParams(1, 1))
+        world.computerCommands = { commands ->
+            for (i in 0 until commands.length()) {
+                val command = commands.optJSONObject(i) ?: continue
+                when (command.optString("kind")) {
+                    "activate" -> bridge.activate(command.optString("surface"),
+                        json("instance" to command.optString("instance"), "revision" to command.optLong("revision")),
+                        command.optString("node"))
+                    "refresh" -> bridge.refreshComputers()
+                    "terminal_resize" -> bridge.terminal(json("op" to "terminal_resize",
+                        "rows" to command.optInt("rows"), "cols" to command.optInt("cols")))
+                    "copy" -> getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText("Terminal selection", command.optString("text")))
+                    "terminal_keyboard" -> {
+                        worldTerminalKeys.requestFocus()
+                        getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                            ?.showSoftInput(worldTerminalKeys, 0)
+                    }
+                    "type", "scan" -> { select(AppTab.ACCOUNT); open(AccountRoute.COMPUTERS) }
+                    "cancel_input" -> bridge.cancel("computers", command.optString("token"))
+                }
+            }
+        }
+
         panels = VersePanels(this, world)
         panels.onTrain = { bridge.gymTrain() }
         // Bottom center, between the movement and look sticks Rust draws.
@@ -417,6 +447,21 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun renderVerse() {
+        val computerOpen = world.snapshot?.optBoolean("computer_open") == true
+        if (computerOpen) {
+            val feed = json("computers" to bridge.packet?.optJSONObject("computers"),
+                "terminal" to bridge.terminalView)
+            val encoded = feed.toString()
+            if (encoded != worldTerminalFeed) {
+                worldTerminalFeed = encoded
+                world.send(json("action" to "computer_feed", "feed" to feed), false)
+            }
+            if (bridge.packet?.optBoolean("terminal") == true) bridge.pollTerminal()
+        } else {
+            worldTerminalFeed = null
+            if (::worldTerminalKeys.isInitialized) worldTerminalKeys.clearFocus()
+        }
+
         val motion = world.snapshot?.optString("camera_mode") == "motion"
         cameraButton.contentDescription = if (motion) "Motion look" else "Touch look"
         cameraButton.setImageResource(if (motion) R.drawable.ic_motion_look else R.drawable.ic_touch_look)
@@ -780,7 +825,11 @@ class MainActivity : ComponentActivity() {
         // approves or denies it; Rust closes it.
         if (::payments.isInitialized) payments.update(packet)
         if (::walletLink.isInitialized) walletLink.update(packet)
-        terminal.update(packet?.optBoolean("terminal") == true, bridge.terminalView)
+        val gpuTerminal = tab == AppTab.VERSE && world.nativeError == null &&
+            world.snapshot?.optJSONObject("computer_hud")?.let {
+                it.optBoolean("visible")
+            } == true
+        terminal.update(packet?.optBoolean("terminal") == true && !gpuTerminal, bridge.terminalView)
         if (tab == AppTab.VERSE) renderVerse()
     }
 
@@ -908,6 +957,7 @@ class MainActivity : ComponentActivity() {
             if (route == AccountRoute.IDENTITY || route == AccountRoute.TRAINER) redrawAccountScreen()
         }
         main.removeCallbacks(tick)
+        worldTerminalKeys.clearFocus()
         world.setResumed(false)
         bridge.lifecycle(false)
         super.onPause()

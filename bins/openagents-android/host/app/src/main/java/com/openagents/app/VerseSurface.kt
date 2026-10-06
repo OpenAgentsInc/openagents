@@ -48,6 +48,7 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
     private val sensor = sensors?.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
         ?: sensors?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
     val motionAvailable get() = sensor != null
+    var computerCommands: (JSONArray) -> Unit = {}
     var snapshot: JSONObject? = null; private set
     var motionError: String? = null; private set
     var nativeError: String? = null; private set
@@ -83,6 +84,7 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
             // Avatar presence signs with its own world key, never the device key.
             // Without one, the world stays offline.
             val config = JSONObject(surfaceConfig())
+            config.put("computer_hud", true)
             runCatching { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) }
                 .onSuccess { config.put("world_secret_hex", it) }
             // The Gym's saved connection, or in a debug build the labeled
@@ -180,6 +182,7 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
             val limit = when (request.optString("action")) {
                 "gym_configure" -> 98_304
                 "studio_text" -> 65_536
+                "computer_feed" -> 640 * 1024
                 else -> 4096
             }
             require(encoded.toByteArray().size <= limit) { "The world request is too large." }
@@ -187,6 +190,9 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
             require(result.getJSONArray("position").length() == 3 &&
                 result.getString("camera_mode") in listOf("touch", "motion")) { "Invalid world view." }
             snapshot = result
+            result.optJSONArray("computer_commands")?.takeIf { it.length() > 0 }?.let { commands ->
+                post { if (!disposed && running) computerCommands(commands) }
+            }
             // Rust says whether Compare notes is on; keep it between launches.
             if (result.has("gym_notes")) {
                 val prefs = context.getSharedPreferences("verse", Context.MODE_PRIVATE)

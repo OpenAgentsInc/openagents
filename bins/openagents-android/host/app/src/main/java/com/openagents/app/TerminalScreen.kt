@@ -110,14 +110,34 @@ class TerminalKeyView(context: Context, private val text: (String) -> Unit,
             InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_FULLSCREEN or
             EditorInfo.IME_ACTION_NONE or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
-        return object : BaseInputConnection(this, false) {
+        return object : BaseInputConnection(this, true) {
+            override fun setComposingText(value: CharSequence, newCursorPosition: Int): Boolean {
+                // Native preedit never reaches the shell before commitment.
+                if (value.length > 4096) return false
+                return super.setComposingText(value, newCursorPosition)
+            }
+            override fun finishComposingText(): Boolean {
+                val committed = editable?.toString().orEmpty()
+                super.finishComposingText()
+                editable?.clear()
+                if (committed.isNotEmpty()) typed(committed)
+                return true
+            }
             override fun commitText(value: CharSequence, newCursorPosition: Int): Boolean {
+                editable?.clear()
                 typed(value.toString()); return true
             }
             override fun deleteSurroundingText(before: Int, after: Int): Boolean {
-                // Always forward Backspace, so it reaches the shell on an empty line.
-                repeat(before.coerceIn(1, 64)) { key("backspace", false, false, false) }
+                if (!editable.isNullOrEmpty()) {
+                    return super.deleteSurroundingText(before.coerceIn(0, 64), after.coerceIn(0, 64))
+                }
+                repeat(before.coerceIn(0, 64)) { key("backspace", false, false, false) }
+                repeat(after.coerceIn(0, 64)) { key("delete", false, false, false) }
                 return true
+            }
+            override fun deleteSurroundingTextInCodePoints(before: Int, after: Int): Boolean {
+                if (!editable.isNullOrEmpty()) return super.deleteSurroundingTextInCodePoints(before, after)
+                return deleteSurroundingText(before, after)
             }
             override fun performEditorAction(action: Int): Boolean { key("enter", false, false, false); return true }
             override fun sendKeyEvent(event: KeyEvent): Boolean {

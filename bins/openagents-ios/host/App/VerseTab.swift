@@ -12,6 +12,8 @@ import UIKit
 /// The fields of Coder's native Verse packet (`coder.verse.v1`) this tab reads.
 struct WorldPacket: Decodable {
     let schema: String
+    let computer_open: Bool?
+    let computer_page: String?
     let error: String?
     /// The renderer draws to an extended-range surface.
     let hdr_output: Bool?
@@ -140,6 +142,9 @@ final class VerseWorld: ObservableObject {
     @Published private(set) var gymBoard: GymBoardView?
     @Published private(set) var gymStorageError: String?
     private var gymRequestedRevision: UInt64?
+    @Published private(set) var computerOpen = false
+    @Published private(set) var computerPage = "computers"
+    var computerCommands: ([[String: Any]]) -> Void = { _ in }
     /// The RESULTS board's panel is open, with the board's anchor on screen.
     @Published private(set) var resultsOpen = false
     @Published private(set) var resultsAnchor = CGPoint(x: 0.5, y: 0.5)
@@ -290,6 +295,8 @@ final class VerseWorld: ObservableObject {
     }
 
     fileprivate func receive(_ packet: WorldPacket) {
+        computerOpen = packet.computer_open == true
+        computerPage = packet.computer_page ?? "computers"
         if cameraMode != packet.camera_mode { cameraMode = packet.camera_mode }
         if error != packet.error { error = packet.error }
         let open = packet.gym_open == true
@@ -401,6 +408,7 @@ final class VerseWorld: ObservableObject {
 }
 
 struct VerseTab: View {
+    @ObservedObject var app: MobileBridge
     /// Connects the world's studio to a paired computer by host key
     /// (`MobileBridge.studioConnect`): the host, the world's live handle
     /// when the call runs, and Rust's JSON reply.
@@ -420,6 +428,7 @@ struct VerseTab: View {
     @State private var studioDraft = ""
     /// How far the software keyboard reaches up from the screen's bottom.
     @State private var keyboard: CGFloat = 0
+    @State private var terminalTyping = false
 
     private var active: Bool { selected && phase == .active }
     private var boardOpen: Bool { world.gymOpen || world.resultsOpen || world.evalsOpen }
@@ -464,6 +473,16 @@ struct VerseTab: View {
                         .padding(.bottom, 12)
                 }
             }
+            .overlay(alignment: .topLeading) {
+                if world.computerOpen && world.computerPage == "terminal" {
+                    TerminalKeyInput(focused: $terminalTyping,
+                        text: { app.terminal(["op": "terminal_text", "text": $0]) },
+                        key: { name, ctrl, alt, shift in app.terminal(["op": "terminal_key", "key": name,
+                            "ctrl": ctrl, "alt": alt, "shift": shift]) },
+                        paste: { app.terminal(["op": "terminal_paste", "text": $0]) })
+                    .frame(width: 1, height: 1)
+                }
+            }
             .overlay(alignment: .top) {
                 // The Gym, results, EVALS, and studio panels show their own
                 // errors.
@@ -500,7 +519,33 @@ struct VerseTab: View {
             }
         }
         .background(Color.black.ignoresSafeArea())
-        .onAppear { world.syncStudio(studioComputer, connect: connectStudio) }
+        .onAppear {
+            world.syncStudio(studioComputer, connect: connectStudio)
+            world.computerCommands = runComputerCommands
+        }
+        .onDisappear { app.gpuTerminalVisible = false; terminalTyping = false }
+        .onChange(of: app.hudFeedRevision) { _, _ in feedComputer() }
+        .onChange(of: world.computerOpen) { _, open in
+            if open { feedComputer() } else { terminalTyping = false }
+            app.gpuTerminalVisible = active && open && world.error == nil
+        }
+        .onChange(of: world.error) { _, error in
+            app.gpuTerminalVisible = active && world.computerOpen && error == nil
+        }
+        .onChange(of: world.computerPage) { _, _ in
+            app.gpuTerminalVisible = active && world.computerOpen && world.error == nil
+        }
+        .onChange(of: active) { _, on in
+            app.gpuTerminalVisible = on && world.computerOpen && world.error == nil
+            if !on { terminalTyping = false }
+        }
+        .onChange(of: keyboard) { _, value in world.send(["action": "computer_keyboard", "bottom": value]) }
+        .task(id: world.computerOpen && app.packet?.terminal == true && active) {
+            while active && world.computerOpen && app.packet?.terminal == true && !Task.isCancelled {
+                app.pollTerminal()
+                try? await Task.sleep(for: .milliseconds(120))
+            }
+        }
         .onChange(of: world.inEverglade) { _, _ in world.syncStudio(studioComputer, connect: connectStudio) }
         .onChange(of: studioComputer) { _, _ in world.syncStudio(studioComputer, connect: connectStudio) }
         .onChange(of: world.studioOpen) { _, open in if !open { studioDraft = "" } }
@@ -510,6 +555,29 @@ struct VerseTab: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             keyboard = 0
+        }
+    }
+
+    private func feedComputer() {
+        if world.computerOpen { world.send(["action": "computer_feed", "feed": app.hudFeed]) }
+    }
+
+    private func runComputerCommands(_ commands: [[String: Any]]) {
+        guard active else { return }
+        for command in commands {
+            switch command["kind"] as? String {
+            case "activate": app.activateHud(command)
+            case "refresh": app.refreshComputers()
+            case "terminal_resize":
+                if let rows = command["rows"], let cols = command["cols"] {
+                    app.terminal(["op": "terminal_resize", "rows": rows, "cols": cols])
+                }
+            case "terminal_keyboard": terminalTyping = true
+            case "copy": if let text = command["text"] as? String { UIPasteboard.general.string = text }
+            case "type", "scan": app.showNativeComputers()
+            case "cancel_input": if let token = command["token"] as? String { app.cancel("computers", token: token) }
+            default: break
+            }
         }
     }
 
@@ -766,7 +834,7 @@ final class VerseWorldView: UIView {
         extent = (width, height, scale)
         if handle == nil, !creationFailed {
             configureDynamicRange(metal)
-            var configuration: [String: Any] = ["width": width, "height": height,
+            var configuration: [String: Any] = ["computer_hud": true, "width": width, "height": height,
                                                 "scale": Double(scale), "hdr": wantsHDR]
             // World presence signs with its own key, never the device key. If
             // Keychain cannot provide it, the world stays offline.
@@ -911,6 +979,7 @@ final class VerseWorldView: UIView {
         let limit: Int
         switch request["action"] as? String {
         case "gym_configure": limit = 96 * 1024
+        case "computer_feed": limit = 640 * 1024
         case "studio_text": limit = 64 * 1024
         default: limit = 4096
         }
@@ -934,6 +1003,10 @@ final class VerseWorldView: UIView {
             metal.colorspace = nil
         }
         world.receive(packet)
+        if let raw = try? JSONSerialization.jsonObject(with: Data(bytes: data, count: output.len)) as? [String: Any],
+           let commands = raw["computer_commands"] as? [[String: Any]], !commands.isEmpty {
+            DispatchQueue.main.async { [weak world = self.world] in world?.computerCommands(commands) }
+        }
         let hint = Self.hint(motionLook: packet.camera_mode == "motion")
         if accessibilityHint != hint { accessibilityHint = hint }
         syncMotion(packet)

@@ -395,6 +395,28 @@ struct ScreenRequest: Equatable {
 final class MobileBridge: ObservableObject {
     @Published private(set) var packet: AppPacket?
     @Published private(set) var terminalView: NativeView?
+    @Published private(set) var hudFeedRevision: UInt64 = 0
+    @Published var gpuTerminalVisible = false
+    private(set) var hudFeed: [String: Any] = [:]
+    private var hudBytes: [String: Data] = [:]
+
+    private func updateHud(_ name: String, value: Any?) {
+        guard let value, !(value is NSNull), JSONSerialization.isValidJSONObject(value),
+              let bytes = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else {
+            if hudFeed.removeValue(forKey: name) != nil { hudBytes.removeValue(forKey: name); hudFeedRevision &+= 1 }
+            return
+        }
+        if hudBytes[name] != bytes { hudBytes[name] = bytes; hudFeed[name] = value; hudFeedRevision &+= 1 }
+    }
+
+    func showNativeComputers() { computersRequested += 1 }
+
+    func activateHud(_ command: [String: Any]) {
+        guard let surface = command["surface"] as? String, ["computers", "terminal"].contains(surface),
+              let instance = command["instance"] as? String, let revision = command["revision"] as? NSNumber,
+              let node = command["node"] as? String else { return }
+        send(["op": "\(surface)_activate", "instance": instance, "revision": revision, "node": node])
+    }
     @Published private(set) var failure: String?
     @Published private(set) var pending = 0
     /// Counts the Coder tab's requests to open Account > Computers.
@@ -878,7 +900,7 @@ final class MobileBridge: ObservableObject {
     func terminal(_ request: [String: Any]) {
         call(request) { data in
             guard let packet = try? JSONDecoder().decode(TerminalPacket.self, from: data) else { return }
-            self.receiveTerminal(packet)
+            self.receiveTerminal(packet, raw: (try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
         }
     }
 
@@ -889,19 +911,21 @@ final class MobileBridge: ObservableObject {
         call(["op": "terminal_poll", "known": terminalRevision]) { data in
             self.terminalPolling = false
             guard let packet = try? JSONDecoder().decode(TerminalPacket.self, from: data) else { return }
-            self.receiveTerminal(packet)
+            self.receiveTerminal(packet, raw: (try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
         }
     }
 
-    private func receiveTerminal(_ packet: TerminalPacket) {
+    private func receiveTerminal(_ packet: TerminalPacket, raw: [String: Any]?) {
         guard packet.open else {
             terminalView = nil
+            updateHud("terminal", value: nil)
             terminalRevision = 0
             return
         }
         if let view = packet.view, packet.revision > terminalRevision {
             terminalRevision = packet.revision
             terminalView = view
+            updateHud("terminal", value: raw?["view"])
         }
         if packet.paste {
             terminal(["op": "terminal_paste", "text": UIPasteboard.general.string ?? ""])
@@ -915,6 +939,7 @@ final class MobileBridge: ObservableObject {
                 self.failure = "OpenAgents returned an unreadable screen."
                 return
             }
+            self.updateHud("computers", value: ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["computers"])
             self.packet = packet
             self.settleProviderKeys(packet.provider_keys)
             if let share = packet.gymPacket?.share { self.gymShare = share }
@@ -958,6 +983,7 @@ final class MobileBridge: ObservableObject {
                 self.pending -= 1
                 if let reply, let packet = try? JSONDecoder().decode(AppPacket.self, from: reply),
                    packet.schema == "openagents.mobile.v1" {
+                    self.updateHud("computers", value: ((try? JSONSerialization.jsonObject(with: reply)) as? [String: Any])?["computers"])
                     self.packet = packet
                     self.settleProviderKeys(packet.provider_keys)
                 }

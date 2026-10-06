@@ -47,6 +47,7 @@ struct VerseHudItem: Decodable, Equatable {
 /// What the HUD asks the native host to do, once each.
 struct VerseComputerCommand: Decodable {
     let kind: String
+    let text: String?
     let surface: String?
     let instance: String?
     let revision: UInt64?

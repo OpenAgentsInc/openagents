@@ -142,6 +142,8 @@ struct VerseScreen: View {
         case "terminal_resize":
             guard let rows = command.rows, let cols = command.cols else { return }
             reader.terminal(["op": "terminal_resize", "rows": rows, "cols": cols])
+        case "copy":
+            if let text = command.text { UIPasteboard.general.string = text }
         case "terminal_keyboard":
             typing = true
         default: break

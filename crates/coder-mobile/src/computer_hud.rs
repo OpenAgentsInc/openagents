@@ -151,17 +151,29 @@ pub(crate) enum Command {
         node: String,
     },
     /// Open the camera scanner for this input request.
-    Scan { token: String },
+    Scan {
+        token: String,
+    },
     /// Show the keyboard for this input request.
-    Type { token: String },
+    Type {
+        token: String,
+    },
     /// Close this input request without a value.
-    CancelInput { token: String },
+    CancelInput {
+        token: String,
+    },
     /// Ask the reader worker for a fresh Computers view.
     Refresh,
     /// The terminal page fits this grid: send it with `terminal_resize`.
-    TerminalResize { rows: u16, cols: u16 },
+    TerminalResize {
+        rows: u16,
+        cols: u16,
+    },
     /// Show the keyboard that types into the terminal.
     TerminalKeyboard,
+    Copy {
+        text: String,
+    },
 }
 
 /// What a laid-out control does.
@@ -174,6 +186,8 @@ enum Action {
     Type,
     CancelInput,
     Keyboard,
+    Select,
+    Copy,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -248,11 +262,16 @@ pub(crate) struct ComputerHud {
     /// The platform draws the panel in the world. Hosts that keep their
     /// native panel leave it off.
     enabled: bool,
+    glyphs: terminal_gfx::glyphs::Fallback,
+    glyph_cursor: usize,
     page: Page,
     feed: Checked,
     feed_error: Option<String>,
     insets: [f32; 4],
     scroll: f32,
+    selecting: bool,
+    selection: Option<(f32, f32)>,
+    pan: f32,
     screen: Option<String>,
     notice: Option<String>,
     terminal_instance: Option<String>,
@@ -270,11 +289,16 @@ impl ComputerHud {
     pub(crate) fn new(enabled: bool) -> Self {
         Self {
             enabled,
+            glyphs: terminal_gfx::glyphs::Fallback::new(),
+            glyph_cursor: 0,
             page: Page::Computers,
             feed: Checked::default(),
             feed_error: None,
             insets: [0.0; 4],
             scroll: 0.0,
+            selecting: false,
+            selection: None,
+            pan: 0.0,
             screen: None,
             notice: None,
             terminal_instance: None,
@@ -308,6 +332,8 @@ impl ComputerHud {
 
     pub(crate) fn close(&mut self) {
         self.contacts.clear();
+        self.selection = None;
+        self.selecting = false;
         self.page = Page::Computers;
     }
 
@@ -319,6 +345,8 @@ impl ComputerHud {
             return Err("No terminal is open".into());
         }
         self.contacts.clear();
+        self.selection = None;
+        self.selecting = false;
         self.scroll = 0.0;
         if page == Page::Computers && self.page != Page::Computers {
             self.outbox.push(Command::Refresh);
@@ -385,6 +413,7 @@ impl ComputerHud {
     /// Accept the reader worker's latest views. A new terminal view opens
     /// the Terminal page; a closed one returns to Computers.
     pub(crate) fn feed(&mut self, feed: Feed) -> Result<(), String> {
+        self.selection = None;
         let checked = match feed.check() {
             Ok(checked) => checked,
             Err(error) => {
@@ -405,6 +434,8 @@ impl ComputerHud {
             self.scroll = 0.0;
         }
         if terminal != self.terminal_instance {
+            self.pan = 0.0;
+            self.selecting = false;
             self.terminal_size = None;
         }
         self.terminal_instance = terminal;
@@ -506,6 +537,32 @@ impl ComputerHud {
             action: Some(Action::Close),
         });
         let mut top = y + PAD + button_h + GAP;
+        if self.page == Page::Terminal {
+            for (index, (key, label, action)) in [
+                (
+                    "hud-terminal-select",
+                    if self.selecting { "SCROLL" } else { "SELECT" },
+                    Action::Select,
+                ),
+                ("hud-terminal-copy", "COPY", Action::Copy),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                chrome.push(Laid {
+                    key: key.into(),
+                    label: label.into(),
+                    kind: Kind::Button {
+                        enabled: !matches!(action, Action::Copy) || self.selection.is_some(),
+                    },
+                    lines: vec![label.into()],
+                    rect: [x + PAD + index as f32 * 84.0, top, 78.0, button_h],
+                    action: Some(action),
+                });
+            }
+            top += button_h + GAP;
+        }
+
         let status = self
             .feed_error
             .clone()
@@ -588,6 +645,7 @@ impl ComputerHud {
         }
         let body = [x + PAD, top, w - 2.0 * PAD, (bottom - top).max(0.0)];
         let mut content = Flow::new(atlas, body[2]);
+        content.pan = self.pan.floor() as usize;
         if self.page == Page::Computers
             && let Some(qr) = &self.feed.qr
         {
@@ -690,6 +748,7 @@ impl ComputerHud {
     /// A drag scrolls the body; it never becomes a tap.
     pub(crate) fn moved(&mut self, atlas: &Atlas, size: [f32; 2], id: u64, at: [f32; 2]) {
         let max = self.max_scroll(atlas, size);
+        let (_, _, body, _) = self.layout(atlas, size);
         let Some(contact) = self.contacts.iter_mut().find(|c| c.id == id) else {
             return;
         };
@@ -698,7 +757,18 @@ impl ComputerHud {
             contact.scrolling = true;
         }
         if contact.scrolling {
-            self.scroll = (self.scroll - (at[1] - contact.last[1])).clamp(0.0, max);
+            if self.page == Page::Terminal && self.selecting && inside(body, contact.origin) {
+                self.selection = Some((
+                    contact.origin[1] - body[1] + self.scroll,
+                    at[1] - body[1] + self.scroll,
+                ));
+            } else if self.page == Page::Terminal
+                && (at[0] - contact.origin[0]).abs() > (at[1] - contact.origin[1]).abs()
+            {
+                self.pan = (self.pan - (at[0] - contact.last[0]) / atlas.advance).clamp(0.0, 240.0);
+            } else {
+                self.scroll = (self.scroll - (at[1] - contact.last[1])).clamp(0.0, max);
+            }
         }
         contact.last = at;
     }
@@ -780,8 +850,58 @@ impl ComputerHud {
                 self.pending = true;
             }
             Action::Keyboard => self.outbox.push(Command::TerminalKeyboard),
+            Action::Select => {
+                self.selecting = !self.selecting;
+                self.selection = None;
+            }
+            Action::Copy => {
+                if let Some((a, b)) = self.selection {
+                    let (_, items, _, _) = self.layout(atlas, size);
+                    let mut text = String::new();
+                    let mut last_y = None;
+                    for item in items.iter().filter(|item| {
+                        matches!(item.kind, Kind::Run { .. })
+                            && item.rect[1] + atlas.line > a.min(b)
+                            && item.rect[1] <= a.max(b)
+                    }) {
+                        if last_y.is_some_and(|y| y != item.rect[1]) {
+                            text.push('\n');
+                        }
+                        text.push_str(item.lines.first().map_or("", String::as_str));
+                        last_y = Some(item.rect[1]);
+                    }
+                    self.outbox.push(Command::Copy { text });
+                }
+            }
         }
         Some(false)
+    }
+
+    /// Prepare at most one bounded viewport of missing host glyphs per frame.
+    pub(crate) fn prepare_glyphs(&mut self, atlas: &mut Atlas, size: [f32; 2]) {
+        if self.page != Page::Terminal || !self.drawn() {
+            return;
+        }
+        let (_, items, _, _) = self.layout(atlas, size);
+        let characters = items
+            .iter()
+            .flat_map(|item| item.lines.iter())
+            .flat_map(|line| line.chars());
+        let count = characters.clone().count();
+        let budget = count.min(4096);
+        for ch in characters
+            .cycle()
+            .skip(self.glyph_cursor % count.max(1))
+            .take(budget)
+        {
+            if !self.glyphs.ensure(atlas, ch)
+                && ch > '\u{7f}'
+                && terminal_gfx::draw::box_lines(ch).is_none()
+            {
+                self.notice = Some("Some device fonts are unavailable. The native terminal screen retains the original text.".into());
+            }
+        }
+        self.glyph_cursor = (self.glyph_cursor + budget) % count.max(1);
     }
 
     /// Draw the panel in logical points, scaled to the surface.
@@ -895,14 +1015,22 @@ fn draw_laid(
             if let Some(bg) = bg {
                 ui.rect(atlas, origin[0], origin[1], w, h, bg);
             }
-            let mut x = origin[0];
-            for c in laid.lines.first().map_or("", String::as_str).chars() {
-                if !box_drawing(ui, atlas, c, [x, origin[1]], fg) {
-                    let mut buffer = [0; 4];
-                    ui.text(atlas, x, origin[1], c.encode_utf8(&mut buffer), fg);
-                }
-                x += atlas.advance;
+            if hud
+                .selection
+                .is_some_and(|(a, b)| laid.rect[1] + h > a.min(b) && laid.rect[1] <= a.max(b))
+            {
+                ui.rect(
+                    atlas,
+                    origin[0],
+                    origin[1],
+                    w,
+                    h,
+                    amber(Intensity::Half, 0.35),
+                );
             }
+            let text = laid.lines.first().map_or("", String::as_str);
+            let cells = terminal_gfx::phone::cells(text, usize::MAX);
+            terminal_gfx::phone::draw(ui, atlas, origin, &cells, fg);
         }
         Kind::Button { enabled } => {
             let [_, _, bw, bh] = laid.rect;
@@ -989,45 +1117,6 @@ fn item(laid: &Laid, frame: [f32; 4]) -> Item {
 
 /// Draws a box-drawing character the atlas lacks as lines through its cell.
 /// Returns `false` for any other character.
-fn box_drawing(
-    ui: &mut UiBatch,
-    atlas: &Atlas,
-    c: char,
-    [x, y]: [f32; 2],
-    color: [f32; 4],
-) -> bool {
-    // Which arms leave the cell's center: up, down, left, right.
-    let (up, down, left, right) = match c {
-        '─' | '━' => (false, false, true, true),
-        '│' | '┃' => (true, true, false, false),
-        '┌' | '╭' => (false, true, false, true),
-        '┐' | '╮' => (false, true, true, false),
-        '└' | '╰' => (true, false, false, true),
-        '┘' | '╯' => (true, false, true, false),
-        '├' => (true, true, false, true),
-        '┤' => (true, true, true, false),
-        '┬' => (false, true, true, true),
-        '┴' => (true, false, true, true),
-        '┼' => (true, true, true, true),
-        _ => return false,
-    };
-    let (w, h) = (atlas.advance, atlas.line);
-    let (cx, cy) = ((x + w / 2.0).floor(), (y + h / 2.0).floor());
-    if left {
-        ui.rect(atlas, x, cy, cx - x + 1.0, 1.0, color);
-    }
-    if right {
-        ui.rect(atlas, cx, cy, x + w - cx, 1.0, color);
-    }
-    if up {
-        ui.rect(atlas, cx, y, 1.0, cy - y + 1.0, color);
-    }
-    if down {
-        ui.rect(atlas, cx, cy, 1.0, y + h - cy, color);
-    }
-    true
-}
-
 /// A Rust Native color as the batch's linear RGBA.
 fn linear(color: rust_native::style::Color) -> [f32; 4] {
     let rgb = (u32::from(color.red) << 16) | (u32::from(color.green) << 8) | u32::from(color.blue);
@@ -1069,6 +1158,7 @@ fn heading(node: &Node<Value>) -> Option<String> {
 struct Flow<'a> {
     atlas: &'a Atlas,
     width: f32,
+    pan: usize,
     y: f32,
     items: Vec<Laid>,
 }
@@ -1078,6 +1168,7 @@ impl<'a> Flow<'a> {
         Self {
             atlas,
             width: width.max(atlas.advance * 8.0),
+            pan: 0,
             y: 0.0,
             items: Vec::new(),
         }
@@ -1137,6 +1228,7 @@ impl<'a> Flow<'a> {
                 _ => vec![row],
             };
             let mut col = 0usize;
+            let mut skip = self.pan;
             for run in runs {
                 let Element::Text { value, .. } = &run.element else {
                     continue;
@@ -1144,8 +1236,27 @@ impl<'a> Flow<'a> {
                 if col >= columns {
                     break;
                 }
-                let text: String = value.chars().take(columns - col).collect();
-                let cells = text.chars().count();
+                let all = terminal_gfx::phone::cells(value, usize::MAX);
+                let start = all
+                    .iter()
+                    .position(|cell| {
+                        if skip == 0 {
+                            return true;
+                        }
+                        skip = skip.saturating_sub(usize::from(cell.width));
+                        false
+                    })
+                    .unwrap_or(all.len());
+                let value: String = all[start..]
+                    .iter()
+                    .flat_map(|cell| std::iter::once(cell.ch).chain(cell.combining.iter().copied()))
+                    .collect();
+                let row = terminal_gfx::phone::cells(&value, columns - col);
+                let cells = terminal_gfx::phone::columns(&row);
+                let text: String = row
+                    .iter()
+                    .flat_map(|cell| std::iter::once(cell.ch).chain(cell.combining.iter().copied()))
+                    .collect();
                 let fg = run
                     .style
                     .foreground
@@ -1495,6 +1606,45 @@ mod tests {
             terminal: Some(serde_json::to_value(&view).unwrap()),
             ..feed(1)
         }
+    }
+
+    #[test]
+    fn host_wide_text_and_touch_selection_preserve_columns_and_copy_without_input() {
+        let size = [393.0, 852.0];
+        let atlas = atlas();
+        let mut hud = ComputerHud::new(true);
+        hud.open();
+        hud.take_commands();
+        hud.feed(terminal_feed(
+            "界e\u{301}\x1b[31mx\x1b[0m\r\nsecond".as_bytes(),
+        ))
+        .unwrap();
+        let shown = hud.snapshot(&atlas, size, true);
+        let first = shown
+            .items
+            .iter()
+            .find(|item| item.key == "terminal-row-0-0")
+            .unwrap();
+        let color = shown
+            .items
+            .iter()
+            .find(|item| item.key == "terminal-row-0-1")
+            .unwrap();
+        assert_eq!(first.label, "界e\u{301}");
+        assert_eq!(color.frame[0] - first.frame[0], 3.0 * atlas.advance);
+        hud.act(&atlas, size, "hud-terminal-select");
+        let a = [first.frame[0] + 1.0, first.frame[1] + 1.0];
+        let b = [a[0], a[1] + 2.0 * atlas.line];
+        hud.down(42, a);
+        hud.moved(&atlas, size, 42, b);
+        hud.up(&atlas, size, 42, b, false);
+        hud.act(&atlas, size, "hud-terminal-copy");
+        assert!(
+            matches!(hud.take_commands().as_slice(), [Command::Copy { text }] if text.starts_with("界e\u{301}x"))
+        );
+        // A new host projection retires the selection before it can copy changed output.
+        hud.feed(terminal_feed(b"changed")).unwrap();
+        assert!(hud.selection.is_none());
     }
 
     #[test]

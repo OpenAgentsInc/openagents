@@ -44,7 +44,7 @@ struct HomeScreen: View {
             .tint(.white)
             .preferredColorScheme(.dark)
             .fullScreenCover(isPresented: Binding(
-                get: { bridge.packet?.terminal == true },
+                get: { bridge.packet?.terminal == true && !bridge.gpuTerminalVisible },
                 set: { _ in })) {
                 TerminalScreen(bridge: bridge)
             }
