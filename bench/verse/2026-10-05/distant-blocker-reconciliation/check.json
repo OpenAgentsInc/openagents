@@ -1,0 +1,33 @@
+{
+  "schema": "verse.regression.check.v1",
+  "scenario": "A distant fixed blocker is added, moved, or removed while a newer actor capsule overlaps already processed pending travel. Geometry outside the retained path and correction region must not force retrospective crowd replay.",
+  "before": {
+    "status": "failed",
+    "test": "distant_blocking_prop_changes_preserve_completed_pending_motion",
+    "before_x": 1.92024,
+    "after_x": 0.64008003,
+    "rewind_meters": 1.28015997
+  },
+  "after": {
+    "status": "passed",
+    "prediction_tests": 45,
+    "physics_tests_passed": 133,
+    "physics_tests_ignored": 1,
+    "commands": [
+      "cargo +1.97.1 test -p physics -- --test-threads=1",
+      "cargo +1.97.1 test -p verse-world --features service-net prediction:: -- --test-threads=1"
+    ],
+    "formatting": "rustfmt +1.97.1 --edition 2024 crates/physics/src/queries/snapshot.rs crates/verse-world/src/prediction/local.rs; git diff --check"
+  },
+  "coverage": [
+    "Distant blocking additions, movements, and removals preserve completed travel.",
+    "Old and new blocker bounds catch changes into and out of the retained region.",
+    "Transformed box and triangle bounds remain conservative.",
+    "Existing nearby-wall, changed-geometry, force, support, lifecycle, and prediction-budget regressions pass."
+  ],
+  "limitations": [
+    "This reproduces the distant-blocker branch, not the exact changed collider in the battle trace.",
+    "No battle timing or correction improvement is claimed until a new measured run.",
+    "Durability tail latency and request timeouts remain unresolved."
+  ]
+}

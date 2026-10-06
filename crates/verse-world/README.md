@@ -909,8 +909,9 @@ Interval controls retain the body's admission `world_step` separately from
 completed durable `credit_step`. Credit renews permission without confirming
 travel or advancing local elapsed time. Prediction retains at most 257 motor
 states and 256 deferred physics steps. Grounded horizontal confirmations compare
-the estimate at the confirmed step; changed walls, forces, vertical motion, or
-movement policy require full replay. When unchanged walls obstruct the correction,
+the estimate at the confirmed step; changed blockers intersecting the retained
+path or correction region, forces, vertical motion, or movement policy require
+full replay. When unchanged walls obstruct the correction,
 each retained motor state receives a collision-constrained fixed-scene adjustment.
 Projected capsule changes affect future
 integration. Blocking overlap holds the estimate until authority resolves it;
@@ -922,8 +923,8 @@ cinematic director itself retains its bounded playback duration.
 
 Frame-profile input enters at the current prediction clock boundary and affects
 future integration without replaying already processed travel against newer
-crowd poses. Changed authority motor state, fixed geometry, or retired past
-input still requires reconciliation. An existing capsule overlap permits only
+crowd poses. Changed authority motor state, nearby fixed geometry, or retired
+past input still requires reconciliation. An existing capsule overlap permits only
 straight grounded motion that separates every initial contact, sweeps other
 colliders, does not increase original penetration, and retains the same fixed
 floor support. Inward movement, jumps, forces, floor loss, and opposing contacts

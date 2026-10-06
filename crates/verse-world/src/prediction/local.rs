@@ -243,6 +243,53 @@ impl Local {
     pub fn confirmed(&self) -> Option<Baseline> {
         self.baseline
     }
+    fn movement_geometry_matches(
+        &self,
+        geometry: &SceneSnapshot,
+        incoming: Option<Baseline>,
+    ) -> bool {
+        if self
+            .baseline
+            .is_none_or(|b| b.profile != movement::Profile::Frames)
+        {
+            return self.collision.blocking_geometry_matches(geometry);
+        }
+        if self.collision.blocking_geometry_matches(geometry) {
+            return true;
+        }
+        let mut min = glam::DVec3::splat(f64::INFINITY);
+        let mut max = glam::DVec3::splat(f64::NEG_INFINITY);
+        let delta = incoming
+            .and_then(|b| {
+                self.estimates
+                    .get(&b.physics_step)
+                    .map(|e| b.character.feet - e.character.feet)
+            })
+            .unwrap_or(glam::DVec3::ZERO);
+        let mut include = |feet: glam::DVec3| {
+            min = min.min(feet).min(feet + delta);
+            max = max.max(feet).max(feet + delta);
+        };
+        if let Some(baseline) = self.baseline {
+            include(baseline.character.feet);
+        }
+        if let Some(character) = self.character {
+            include(character.feet);
+        }
+        if let Some(baseline) = incoming {
+            include(baseline.character.feet);
+        }
+        for estimate in self.estimates.values() {
+            include(estimate.character.feet);
+        }
+        let settings = physics::character::Settings::default();
+        let margin = settings.radius + settings.step_height + settings.ground_snap + 1e-5;
+        self.collision.blocking_geometry_matches_in(
+            geometry,
+            min - glam::DVec3::splat(margin),
+            max + glam::DVec3::splat(margin) + glam::DVec3::Y * settings.height,
+        )
+    }
     fn observe_inner(
         &mut self,
         baseline: Baseline,
@@ -306,7 +353,7 @@ impl Local {
         }
         let reset = self.context() != Some((baseline.life, baseline.epoch));
         let blocking_geometry_matches =
-            geometry.is_none_or(|scene| self.collision.blocking_geometry_matches(scene));
+            geometry.is_none_or(|scene| self.movement_geometry_matches(scene, Some(baseline)));
         let mut reconciliation = Reconciliation {
             previous_baseline: self.baseline,
             completed_estimate: self.estimates.get(&baseline.physics_step).copied(),
@@ -571,7 +618,7 @@ impl Local {
         let replay = self
             .baseline
             .is_some_and(|b| b.profile != movement::Profile::Frames)
-            || !self.collision.blocking_geometry_matches(geometry);
+            || !self.movement_geometry_matches(geometry, None);
         self.collision.update(geometry)?;
         self.tick = tick;
         self.observation = observation;
@@ -1965,6 +2012,103 @@ mod tests {
             assert!(
                 local.pose().unwrap().position.distance(before) < 1e-7,
                 "Selection change {change} rewound completed pending movement: {before:?} -> {:?}",
+                local.pose().unwrap().position
+            );
+            assert_eq!(local.physics_step(), 36);
+            assert_eq!(local.timing().simulated, 36);
+            assert_eq!(local.pending(), 1);
+        }
+    }
+
+    #[test]
+    fn distant_blocking_prop_changes_preserve_completed_pending_motion() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        for change in 0..3 {
+            let (mut local, mut baseline, mut source) = setup();
+            let selection = ShapeSnapshot {
+                key: ColliderKey {
+                    life: Life {
+                        instance: 7,
+                        entity: 300,
+                        generation: 0,
+                    },
+                    shape: 0,
+                },
+                layers: 1,
+                usage: Usage::Blocking,
+                pose: Pose::default(),
+                geometry: GeometrySnapshot::Box {
+                    min: glam::DVec3::new(100., 0., 100.),
+                    max: glam::DVec3::new(101., 1., 101.),
+                },
+            };
+            source.colliders.push(selection.clone());
+            baseline.profile = movement::Profile::Frames;
+            baseline.epoch += 1;
+            local.observe(baseline, &source, 2, 2).unwrap();
+            local.queue(1, movement()).unwrap();
+            for _ in 0..3 {
+                local.advance(0.1).unwrap();
+            }
+            let before = local.pose().unwrap().position;
+            let completed = local.estimates[&12];
+            baseline.physics_step = 12;
+            baseline.world_step = 36;
+            baseline.character = completed.character;
+            baseline.held = completed.held;
+            baseline.policy = completed.policy;
+            baseline.yaw = completed.yaw;
+            local.observe(baseline, &source, 3, 3).unwrap();
+            local.advance(0.).unwrap();
+            let capsule =
+                physics::character::Settings::default().capsule(glam::DVec3::new(1.3, 0., 0.));
+            source.colliders.push(ShapeSnapshot {
+                key: ColliderKey {
+                    life: Life {
+                        instance: 7,
+                        entity: 216,
+                        generation: 0,
+                    },
+                    shape: 0,
+                },
+                layers: 1,
+                usage: Usage::Blocking,
+                pose: Pose::default(),
+                geometry: GeometrySnapshot::Capsule {
+                    a: capsule.a,
+                    b: capsule.b,
+                    radius: capsule.radius,
+                },
+            });
+            match change {
+                0 => {
+                    let mut added = selection.clone();
+                    added.key.life.entity += 1;
+                    source.colliders.push(added);
+                }
+                1 => {
+                    source
+                        .colliders
+                        .iter_mut()
+                        .find(|shape| shape.key == selection.key)
+                        .unwrap()
+                        .pose
+                        .position
+                        .x += 1.;
+                }
+                _ => source.colliders.retain(|shape| shape.key != selection.key),
+            }
+            baseline.physics_step = 12;
+            baseline.world_step = 36;
+            baseline.character = completed.character;
+            baseline.held = completed.held;
+            baseline.policy = completed.policy;
+            baseline.yaw = completed.yaw;
+            local.observe(baseline, &source, 4, 4).unwrap();
+            local.advance(0.).unwrap();
+            assert!(
+                local.pose().unwrap().position.distance(before) < 1e-7,
+                "Distant blocker change {change} rewound completed pending movement: {before:?} -> {:?}",
                 local.pose().unwrap().position
             );
             assert_eq!(local.physics_step(), 36);

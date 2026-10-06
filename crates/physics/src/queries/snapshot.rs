@@ -239,6 +239,74 @@ mod tests {
         scene
     }
     #[test]
+    fn regional_blockers_include_old_new_and_transformed_bounds() {
+        for geometry in [
+            GeometrySnapshot::Box {
+                min: DVec3::ZERO,
+                max: DVec3::ONE,
+            },
+            GeometrySnapshot::Triangles {
+                triangles: vec![Triangle([DVec3::ZERO, DVec3::Y, DVec3::Z])],
+            },
+        ] {
+            let mut source = SceneSnapshot {
+                instance: 7,
+                colliders: vec![ShapeSnapshot {
+                    key: key(10),
+                    layers: 1,
+                    usage: Usage::Blocking,
+                    pose: Pose {
+                        position: DVec3::X * 100.,
+                        rotation: DQuat::from_rotation_y(0.7),
+                    },
+                    geometry,
+                }],
+            };
+            let mut cache = SceneCache::new(7);
+            cache.update(&source).unwrap();
+            let min = DVec3::splat(-2.);
+            let max = DVec3::splat(2.);
+            source.colliders[0].pose.position.x += 1.;
+            assert!(cache.blocking_geometry_matches_in(&source, min, max));
+            let mut near = source.clone();
+            near.colliders[0].pose.position = DVec3::ZERO;
+            assert!(!cache.blocking_geometry_matches_in(&near, min, max));
+            cache.update(&near).unwrap();
+            assert!(!cache.blocking_geometry_matches_in(&source, min, max));
+            let empty = SceneSnapshot {
+                instance: 7,
+                colliders: vec![],
+            };
+            assert!(!cache.blocking_geometry_matches_in(&empty, min, max));
+            cache.update(&empty).unwrap();
+            assert!(!cache.blocking_geometry_matches_in(&near, min, max));
+            assert!(cache.blocking_geometry_matches_in(&source, min, max));
+        }
+        let source = SceneSnapshot {
+            instance: 7,
+            colliders: vec![ShapeSnapshot {
+                key: key(10),
+                layers: 1,
+                usage: Usage::Blocking,
+                pose: Pose {
+                    position: DVec3::ZERO,
+                    rotation: DQuat::from_rotation_z(std::f64::consts::FRAC_PI_4),
+                },
+                geometry: GeometrySnapshot::Box {
+                    min: DVec3::ZERO,
+                    max: DVec3::ONE,
+                },
+            }],
+        };
+        let cache = SceneCache::new(7);
+        assert!(!cache.blocking_geometry_matches_in(
+            &source,
+            DVec3::new(-0.8, 0., 0.),
+            DVec3::new(-0.1, 1., 1.),
+        ));
+    }
+
+    #[test]
     fn cached_capsule_pose_updates_and_shape_replacement_keep_queries_current() {
         let mut source = scene().snapshot(7).unwrap();
         let mut cache = SceneCache::new(7);
@@ -452,6 +520,78 @@ impl SceneCache {
         let mut next = snapshot.colliders.iter().filter(blocking);
         next.clone().count() == self.source.values().filter(blocking).count()
             && next.all(|shape| self.source.get(&shape.key) == Some(shape))
+    }
+    /// Compares fixed blockers that can intersect a conservative world-space region.
+    /// Both old and new bounds participate; `update` still validates every shape.
+    pub fn blocking_geometry_matches_in(
+        &self,
+        snapshot: &SceneSnapshot,
+        min: DVec3,
+        max: DVec3,
+    ) -> bool {
+        if snapshot.instance != self.instance
+            || snapshot.colliders.len() > SNAPSHOT_COLLIDERS
+            || !min.is_finite()
+            || !max.is_finite()
+            || !min.cmple(max).all()
+        {
+            return false;
+        }
+        let triangles = snapshot.colliders.iter().try_fold(0usize, |count, shape| {
+            count.checked_add(match &shape.geometry {
+                GeometrySnapshot::Triangles { triangles } => triangles.len(),
+                _ => 0,
+            })
+        });
+        if triangles.is_none_or(|count| count > SNAPSHOT_TRIANGLES) {
+            return false;
+        }
+        let intersects = |shape: &ShapeSnapshot| {
+            if shape.usage != Usage::Blocking {
+                return false;
+            }
+            let mut low = DVec3::splat(f64::INFINITY);
+            let mut high = DVec3::splat(f64::NEG_INFINITY);
+            let mut include = |point: DVec3| {
+                let point = shape.pose.point(point);
+                low = low.min(point);
+                high = high.max(point);
+            };
+            match &shape.geometry {
+                GeometrySnapshot::Capsule { .. } => return false,
+                GeometrySnapshot::Box { min, max } => {
+                    for x in [min.x, max.x] {
+                        for y in [min.y, max.y] {
+                            for z in [min.z, max.z] {
+                                include(DVec3::new(x, y, z));
+                            }
+                        }
+                    }
+                }
+                GeometrySnapshot::Triangles { triangles } => {
+                    for triangle in triangles {
+                        for point in triangle.0 {
+                            include(point);
+                        }
+                    }
+                }
+            }
+            low.cmple(max).all() && high.cmpge(min).all()
+        };
+        let next: std::collections::BTreeMap<_, _> = snapshot
+            .colliders
+            .iter()
+            .map(|shape| (shape.key, shape))
+            .collect();
+        if next.len() != snapshot.colliders.len() {
+            return false;
+        }
+        self.source.values().all(|old| {
+            let new = next.get(&old.key).copied();
+            new == Some(old) || (!intersects(old) && new.is_none_or(|new| !intersects(new)))
+        }) && next
+            .values()
+            .all(|new| self.source.contains_key(&new.key) || !intersects(new))
     }
     /// Returns the number of recompiled shapes. Validation and compilation precede mutation.
     pub fn update(&mut self, snapshot: &SceneSnapshot) -> Result<usize, String> {
