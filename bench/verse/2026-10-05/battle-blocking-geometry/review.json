@@ -1,0 +1,42 @@
+{
+  "schema": "verse.battle.review.v1",
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "main_fix": "2cca1020c1",
+  "executable_sha256": "aaf89fee2ba5367df60f9d11afdb29c470c4e0dbbcce23716def9214c0aeaf9b",
+  "duration_seconds": 120,
+  "status": "complete",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(10.0) exceeds 0, or is unavailable"
+  ],
+  "movement_expiry": 10,
+  "primary_maxima": [
+    {
+      "meters": 0.6400800347328186,
+      "path": "translation",
+      "fixed_geometry_matches": true,
+      "blocking_geometry_matches": true
+    },
+    {
+      "meters": 0.5867400169372559,
+      "path": "translation",
+      "fixed_geometry_matches": true,
+      "blocking_geometry_matches": true
+    }
+  ],
+  "p95": {
+    "frame_cpu_ms": 7.863447,
+    "gpu_scene_ms": 7.032832,
+    "applied_snapshot_age_ms": 219.121958
+  },
+  "files": {
+    "combined-blocking-geometry-01.json": "8fd578c286847c4de03b12ac781dd2864bad4636f916558cdcb9f63490fcc418",
+    "source.patch": "1770c4f7b47560230404927f66c3a3c0e1bb3322caa6b09c9048d8a4ee71ed26"
+  },
+  "limitations": [
+    "This is a 120-second run, not equivalent to the earlier 600-second failure.",
+    "No own compiler ran during measurement; the host is shared.",
+    "Offscreen rendering has no physical input-to-display measurement.",
+    "The frozen source is the retained Linux base plus the exact patch; it does not establish acceptance of every later main change."
+  ]
+}
