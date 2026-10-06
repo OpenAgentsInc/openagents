@@ -14,8 +14,10 @@ use nostr::domain::Event;
 use secp256k1::SecretKey;
 
 /// Seals share grants to their grantees under the host key.
+#[cfg(feature = "host")]
 pub struct Signer(pub SecretKey);
 
+#[cfg(feature = "host")]
 impl coder_pty::host::Authorize for Signer {
     fn authorize(&self, grant: &ShareGrant) -> Result<serde_json::Value, Refusal> {
         let event = coder_reach::artifact::seal(
