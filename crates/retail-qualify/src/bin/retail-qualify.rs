@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: retail-qualify accept [--out PATH]\n       retail-qualify plan [--plan PATH]\n       retail-qualify qualify --fake [--plan PATH] [--out PATH]\n       retail-qualify qualify --funded --confirm PLAN_DIGEST [--plan PATH]"
+        "usage: retail-qualify accept [--out PATH]\n       retail-qualify plan [--plan PATH]\n       retail-qualify qualify --fake [--plan PATH] [--out PATH]\n       retail-qualify qualify --funded --confirm PLAN_DIGEST [--plan PATH]\n       retail-qualify advertise [--contract-confirmed] [--receipt PATH] [--plan PATH]\n       retail-qualify health --journal PATH --ledger PATH"
     );
     ExitCode::from(2)
 }
@@ -94,6 +94,69 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         }
+        Some("advertise") => {
+            let plan = match load_plan(&args) {
+                Ok(plan) => plan,
+                Err(code) => return code,
+            };
+            let receipt = match flag(&args, "--receipt") {
+                Some(path) => match std::fs::read_to_string(path)
+                    .ok()
+                    .and_then(|t| serde_json::from_str(&t).ok())
+                {
+                    Some(receipt) => Some(receipt),
+                    None => {
+                        eprintln!("cannot read the receipt {path}");
+                        return ExitCode::FAILURE;
+                    }
+                },
+                None => None,
+            };
+            let gate = retail_qualify::launch::Gate {
+                contract_confirmed: args.iter().any(|a| a == "--contract-confirmed"),
+                qualification: receipt,
+                supported_plan: plan.digest(),
+                capacity: retail_cloud::offer::Capacity {
+                    running: 0,
+                    plan_starts_left: None,
+                },
+            };
+            let advertisement = retail_qualify::launch::advertise(&gate);
+            match serde_json::to_string_pretty(&advertisement) {
+                Ok(json) => write(&json, out),
+                Err(_) => ExitCode::FAILURE,
+            }
+        }
+        Some("health") => {
+            let (Some(journal), Some(ledger)) = (flag(&args, "--journal"), flag(&args, "--ledger"))
+            else {
+                return usage();
+            };
+            let opened = retail_cloud::journal::Journal::open(journal)
+                .and_then(|j| Ok((j, pay_ledger::Ledger::open(ledger)?)));
+            let Ok((journal, ledger)) = opened else {
+                eprintln!("cannot open the journal or the ledger");
+                return ExitCode::FAILURE;
+            };
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+            match retail_qualify::launch::health(&journal, &ledger, now) {
+                Ok(alerts) => {
+                    let json = serde_json::to_string_pretty(&alerts).unwrap_or_default();
+                    let code = write(&json, out);
+                    if alerts.is_empty() {
+                        code
+                    } else {
+                        ExitCode::from(4)
+                    }
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         _ => usage(),
     }
 }
@@ -114,4 +177,10 @@ fn load_plan(args: &[String]) -> Result<retail_qualify::qualify::Plan, ExitCode>
         eprintln!("cannot parse {path}: {error}");
         ExitCode::FAILURE
     })
+}
+
+fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a String> {
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1))
 }

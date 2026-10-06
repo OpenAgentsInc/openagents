@@ -676,3 +676,17 @@ This build refuses the funded step (`no_live_binding`) until those bindings
 exist. Keep the receipt, ledger rows, Boat usage, and artifacts; check the
 sandbox is deleted and nothing stays held. Real readiness, latency, Boat
 billing, and Lightning top-ups are unverified.
+
+## Launch the retail cloud service (#10724)
+
+The launch gate, monitoring, and operator runbook are on main
+([`docs/cloud/retail-operations.md`](docs/cloud/retail-operations.md));
+`retail-qualify advertise` reports `contract_unconfirmed` and advertises no
+paid computer. To launch, in order: complete "Review the first retail cloud
+contract" and "Funded retail cloud qualification" (including #10748's live
+bindings); deploy the service from current main under a separate retail
+Boat account and receiver wallet; pass `--contract-confirmed` and the
+funded receipt to the gate; check `retail-qualify health` is clean; and
+publish the contract and prices to customers. Isolated install and customer
+onboarding on the native clients, real capacity behavior, and incident
+handling on a live service are unverified.

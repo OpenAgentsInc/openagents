@@ -35,4 +35,5 @@ the GCE spot pool granted as one computer (`openagents cloud up/down/status`,
 | [Retail service](retail-service.md) | The retail flow behind the paid-availability gate: authorities, offers, holds, provisioning, credentials, dispatch, metering, teardown, cancellation, recovery, settlement, and the launch gate |
 | [Metered Lightning sessions](mpp-sessions.md) | The `openagents.mpp.lightning-session.v1` profile: deposit, frozen rate, ceiling, admitted debits, closure, and remainder refunds as liabilities |
 | [Retail qualification](retail-qualification.md) | The fake-payment acceptance run and its retained receipt, the funded-qualification runner and owner runbook, and the fail-closed launch gate |
+| [Retail operations](retail-operations.md) | The fail-closed launch gate, deployment and state compatibility, monitoring alerts, reconciling stuck funded requests, and incidents |
 | [The GCE pool](gce-pool.md) | `openagents cloud up/down/status` and `chat work --on gce`: spot hosts from the daily image granted as one computer `gce`, two runs per host, self-delete after 10 idle minutes, credentials, measurements and cost |
