@@ -252,6 +252,7 @@ pub mod movement;
 pub mod play;
 pub mod playground;
 pub mod prediction;
+pub mod replay;
 pub mod reverse_gravity;
 pub mod room;
 pub mod rules;

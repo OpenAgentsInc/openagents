@@ -1030,3 +1030,43 @@ avatars, remove existing members, implement a chat service, or add a phone or
 browser moderation UI. Host operators decide what an actioned report requires;
 report status alone does not ban an account or run a tool. World-only access
 continues to expose seats while refusing private Studio views and operations.
+
+## Operational input replay
+
+`replay::Recorder` owns a game in a bounded local diagnostic profile. Its
+operations call the existing command admission, handoff, join, social,
+respawn, and movement-interval methods. Elapsed time uses the native host's
+`FixedSchedule` at 30 Hz with a three-step catch-up cap. A record compares every
+actual authority tick, including each tick inside a catch-up batch. Rule
+refusals retain the real admission fences and state changes.
+
+`Execution::native` hashes the executable and binds the compiler, target,
+Cargo features, optimization, debug settings, target features, and Rust flags
+captured by `build.rs`. The operator supplies content and configuration digests
+and a declared OS/CPU/runtime profile. `Execution::declared` accepts an artifact
+digest for portable adapters. Replay requires an independently trusted expected
+profile with exact equality. These declarations and hashes are not attestation,
+and no cross-build or cross-architecture equivalence is claimed.
+
+A segment binds its canonical initial checkpoint and complete SplitMix64 dice
+state, including forced rolls and per-caster streams. Ordered records carry
+outcomes, explicit admission-sequence consumption, checkpoint state, host clock, authority and physics ticks, logical
+commit revisions, and a hash chain. `Commit` pins an in-memory checkpoint;
+`Restore` loads it and resets the host elapsed-time clock. `Shutdown` fences
+controllers, commits, and closes the segment. Only a complete closed segment
+can be replayed. `Trace::write_new` syncs a private file and, on Unix, its parent
+directory; partial or altered files are refused. The trace digest must remain
+in trusted retained evidence because a hash chain alone does not authenticate
+its author.
+
+Segments permit 512 records and 64 MiB, reserving room for shutdown. Recording
+errors leave the authoritative checkpoint unchanged. Rotate diagnostic windows rather than
+using this full-state format as an unbounded production event log. Replay
+reports the first differing sequence, tick, and JSON field. Presentation
+trajectories and client prediction histories remain separate formats.
+
+The measured profile is native Linux x86-64 with the pinned compiler and exact
+fixture executable. This SDK does not automatically record the TLS/REACH loop,
+realm accounts, economy transactions, storage-worker completions, or Studio
+operations. Those adapters must retain their own authority and durability
+records; this world's logical commit marker is not a realm durable revision.
