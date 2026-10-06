@@ -10360,7 +10360,7 @@
               "load"
             ],
             "usage": [
-              "load [--players N] [--wait SECONDS]"
+              "load [--players N] [--wait SECONDS] [--max-age-ms MS]"
             ],
             "forms": [
               {
@@ -10382,11 +10382,18 @@
                     "value": "SECONDS",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "max-age-ms",
+                    "value": "MS",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Listen to every pose frame in the world (default 30 s) and report each publisher's rate, gaps, and frame age; exit 1 when fewer than N publishers sent a frame.",
+            "summary": "Listen to every pose frame in the world (default 30 s) and report each publisher's rate, gaps, and frame age; exit 1 when fewer than N publishers sent a frame, or when a frame arrived more than MS after it was stamped.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -11215,6 +11222,14 @@
           "kind": "option",
           "name": "players",
           "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-age-ms",
+          "value": "MS",
           "open": true,
           "optional": true,
           "repeated": true
