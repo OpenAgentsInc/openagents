@@ -174,7 +174,7 @@ Evidence labels:
 | V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Complete for the controlled native profile ([#10739](https://github.com/OpenAgentsInc/openagents/issues/10739)) |
 | V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Complete for the portable combat profile ([#10742](https://github.com/OpenAgentsInc/openagents/issues/10742)) |
 | V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | Addressed [#10743](https://github.com/OpenAgentsInc/openagents/issues/10743) |
-| V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access | Open |
+| V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access | Addressed ([#10744](https://github.com/OpenAgentsInc/openagents/issues/10744)) |
 | V27 | P1 | Replay evidence needs explicit revision/platform guarantees. | Code, gap | Simulation and replay | Open |
 | V28 | P1 | Status documentation trails the implementation. | Code | Runtime documentation | Open |
 
@@ -1886,31 +1886,70 @@ not raid throughput, distributed failover, phone/browser UI acceptance, or a
 complete AAA class and economy system. NIP-XP work achievements retain separate
 authority from world character progression.
 
-### V26: Creator content and studio data need explicit admission
+### V26: Creator publication and account safety have explicit boundaries
 
-[`inventory`](../../crates/verse-engine/src/inventory.rs) distinguishes original,
-research, owner-supplied, capture, and redistribution provenance. It explicitly
-treats declarations as metadata rather than legal attestation. Some retained
-Ruins asset notices still identify unknown original authors/licenses. Their
-presence in an archive is not evidence of a completed shipping review.
+Addressed by [#10744](https://github.com/OpenAgentsInc/openagents/issues/10744).
+[`release`](../../crates/verse-content/src/authoring/release.rs) exports a
+bounded public runtime artifact from the existing authoring workbench. Its seal
+covers the public document, compiled pack and scene, textures, mip archive,
+content identity, and compatibility profile. Verification checks the full file
+set and redistribution dependency closure, including unused declarations. It
+refuses research/local-only provenance, unexpected files, unknown or duplicate
+runtime fields, noncanonical JSON, unsafe paths, symbolic links, changed bytes,
+and incompatible versions.
+Host templates, previews, journals, private host paths, and Studio payloads stay
+out of the export. Serving adapters receive immutable verified bytes.
 
-The zone API accepts closed supported rules, not arbitrary downloaded executable
-code. That is a useful boundary. A future creator world also needs publisher
-identity, distribution approval, content limits, compatibility, moderation, and
-revocation. Public world access must not disclose private Agent Studio panels
-or cause tool execution.
+[`publication`](../../crates/verse-content/src/authoring/publication.rs) keeps an
+operator-owned book separate from local authoring. Publisher proof signs the
+key, exact artifact identity, and configured authority; an operator separately
+enrolls the publisher and approves distribution. Submission starts pending.
+Each resolution checks approval, current enrollment, compatibility, and bytes.
+Revocation permanently refuses that publisher/artifact identity; suspension
+also refuses resolution. Review uses expected revisions; withdrawal can name the recorded artifact even
+when its files are damaged or absent. The book is bounded
+to 256 publishers, 512 entries, and 2 MiB; storage uncertainty fails closed.
+The compiler exposes the local publication command without storing signer
+secrets. The book path and mutation API remain trusted deployment authority.
 
-**Improve:** Build a release artifact inventory that validates the dependency
-closure and excludes research-only assets. Define creator publication and
-revocation separately from loading a valid pack. Preserve archives and source
-notices. Keep studio projections scoped to the viewer's grant even in a shared
-world; add account block/report and bounded abuse handling to public social
-surfaces.
+[`realm safety`](../../crates/verse-world/src/service/realm/safety.rs) derives
+the acting account from the verified connection and stores account blocks,
+report budgets, a private moderation queue, and immutable exact-retry receipts
+under the atomic realm head. Blocks apply to all characters of either account
+and fence invitations, joining a pending invitation, offers, and accepting a
+pending trade; cancellation remains available. The profile permits 64 blocks,
+128 block changes per UTC day, 16 typed reports per UTC day, and 256 open
+reports in a realm. Reports contain a reason and optional evidence digest,
+with no free text or private Studio payload. Only the local operator API and
+queued `realm::net::Control` read or resolve reports. Completion releases queue
+capacity; a delayed retry cannot reopen a report or restore an old block.
+Wire version 31 and typed SDK methods expose the public account operations.
+Active state and rates are bounded; immutable receipts remain on disk under the
+host's storage and retention policy.
 
-**Acceptance:** A release builds with private game directories absent and proves
-every shipped dependency's admission. A valid but unapproved creator pack cannot
-publish itself. A world-only viewer cannot read private studio content or invoke
-host commands through scene interaction.
+[Retained evidence](../../bench/verse/2026-10-06/publication-safety/README.md)
+binds the final source, executable, isolated release fixture, relevant checks,
+and measured limitations. The focused packages pass 607 world tests and 29
+content compiler tests. Checks cover publisher proof, unapproved publication,
+suspension, permanent withdrawal with missing files, failed-review poisoning,
+resealed hidden fields, byte substitution, symlinks, compatibility, account
+privacy, blocked contact, report quotas, completed retries, restart, and all
+five report publication crash boundaries. The actual two-listener TLS fixture
+uses typed SDK safety calls and the separate operator moderation queue.
+The existing Studio world-only denial test passes, and closed public schemas
+refuse operator, Studio, and executable scene payloads.
+
+This is a bounded native engine, publication SDK/CLI, and TLS realm profile.
+There is no public marketplace, distributed moderation service, chat system,
+automatic live-world eviction, or phone/browser moderation UI. A consumer must
+resolve again before a new distribution and stop withdrawn running worlds.
+Blocks do not hide physical avatars or remove existing group membership.
+Actioning a report records an operator verdict and grants no tool authority.
+The existing world-only Studio tests retain the observe/operate/review boundary;
+closed scene inputs cannot select host commands or private Studio operations.
+Provenance remains a declaration, not legal certification. Retained archives
+and source notices remain intact, and an operator must review license obligations
+before approving a release.
 
 ### V27: Replay guarantees need a declared execution profile
 

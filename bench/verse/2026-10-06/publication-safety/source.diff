@@ -1,0 +1,2642 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 76b0d80025..41e84ad15c 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -15069,6 +15069,7 @@ dependencies = [
+  "physics",
+  "png",
+  "resvg",
++ "secp256k1 0.31.1",
+  "serde",
+  "serde_json",
+  "serde_path_to_error",
+diff --git a/crates/verse-content/Cargo.toml b/crates/verse-content/Cargo.toml
+index 5c53df3d69..6663d6c176 100644
+--- a/crates/verse-content/Cargo.toml
++++ b/crates/verse-content/Cargo.toml
+@@ -9,7 +9,7 @@ description = "Portable content admission and Rust asset compilation for Verse"
+ [features]
+ default = []
+ compiler = ["authoring", "dep:gltf", "dep:libm", "dep:png", "dep:resvg"]
+-authoring = ["dep:png", "dep:serde", "dep:serde_path_to_error", "verse-world/service-auth"]
++authoring = ["dep:secp256k1", "dep:png", "dep:serde", "dep:serde_path_to_error", "verse-world/service-auth"]
+ 
+ [dependencies]
+ verse-engine = { path = "../verse-engine", features = ["asset-io"] }
+@@ -20,6 +20,7 @@ serde_json = "1"
+ serde = { version = "1", features = ["derive"], optional = true }
+ serde_path_to_error = { version = "0.1", optional = true }
+ sha2 = "0.10"
++secp256k1 = { version = "0.31.1", optional = true }
+ gltf = { version = "1.4.1", features = ["import", "utils", "names", "KHR_materials_emissive_strength"], optional = true }
+ libm = { version = "0.2.16", optional = true }
+ png = { version = "0.18.1", optional = true }
+diff --git a/crates/verse-content/README.md b/crates/verse-content/README.md
+index f7bdb63d01..2e790000be 100644
+--- a/crates/verse-content/README.md
++++ b/crates/verse-content/README.md
+@@ -145,3 +145,56 @@ The admitted fixtures cover male peasant and female ranger outfits with the
+ named Universal skeleton. Other skeletons need explicit joint mappings and
+ acceptance evidence. This contract does not admit animation-driven gameplay
+ root motion, arbitrary retargeting, or facial animation.
++
++## Public release and publication
++
++A local generation build does not grant public distribution approval. With
++`authoring`, `author release WORKSPACE DESTINATION` exports only the runtime
++pack, scene, public authoring document, textures, and mip archive. Its
++`release.json` binds every file's digest and length, the content identity, and
++the complete redistribution inventory. `authoring::release::verify` refuses
++unexpected files, symbolic links, unsafe paths, unknown or duplicate runtime
++fields, noncanonical JSON,
++changed bytes, unsupported compatibility profiles, research provenance, and
++local-only redistribution. It returns an immutable byte snapshot. Artifacts
++have a 640 MiB total limit and retain the runtime's smaller per-file limits.
++Host templates, local paths, previews, journals, and Studio data stay out of the
++export. The public document is intentionally visible; authors must review its
++names and dialogue before submission.
++
++`authoring::publication::Book` is a trusted local operator capability in a
++separate directory. An operator enrolls the publisher's public key; a signed
++`Submission` proves possession and binds that key, the authority ID, and the
++exact release identity. Submission starts as pending. Operator review approves
++or rejects distribution separately from runtime validity. Revocation is
++permanent for that publisher and artifact; publisher suspension also prevents
++resolution. Each `resolve` rechecks current approval, enrollment, compatibility,
++and every artifact byte. Serving adapters use the returned byte snapshot,
++rather than reopening source files. A previously returned snapshot cannot be
++mutated through the source directory; an adapter must resolve again before a
++new distribution and stop any running instance the operator withdraws.
++
++The compiler exposes the local operator command:
++
++```sh
++verse-content publication BOOK AUTHORITY_HEX COMMAND_JSON
++```
++
++The command file selects `publisher`, `submit`, `review`, `revoke`, or `resolve`.
++`publisher` takes `public`, `enabled`, and `reason`; `submit` takes a `directory`
++and signed `submission`; `review` takes `publisher`, `directory`,
++`expected_revision`, `status`, and `reason`; `revoke` takes `publisher`,
++`artifact`, `expected_revision`, and `reason`, even if the files are lost or
++damaged; `resolve` takes `publisher`,
++`artifact`, and `directory`. Reasons are printable and at most 512 bytes.
++The book admits at most 256 publishers and 512 artifact records, with a
++2 MiB state limit. Keep this directory and its mutation API under operator
++filesystem authority. Never expose enrollment or review commands to an author
++session, scene interaction, or untrusted network body. The SDK signs with a
++caller-owned key and stores no signing secret.
++
++This is a local publication and distribution contract, not a public marketplace,
++remote moderation service, or automatic live-world eviction system. Provenance
++and license fields remain declarations, not legal certification. Preserve the
++source licenses and notices and complete the release's license review before
++approving distribution.
+diff --git a/crates/verse-content/src/authoring/cli.rs b/crates/verse-content/src/authoring/cli.rs
+index 9552ca5d19..f1fd9c0996 100644
+--- a/crates/verse-content/src/authoring/cli.rs
++++ b/crates/verse-content/src/authoring/cli.rs
+@@ -95,7 +95,7 @@ pub fn session(
+ }
+ /// Dispatches the author's subcommands; all filesystem writes stay in the named workspace.
+ pub fn run(args: &[std::ffi::OsString]) -> Result<()> {
+-    let usage = "Usage: verse-content author init INPUT WORKSPACE ZONE | inspect WORKSPACE | apply WORKSPACE TRANSACTION | undo|redo WORKSPACE REVISION | preview WORKSPACE TICKS [NAV_HALF] | build WORKSPACE | edit WORKSPACE";
++    let usage = "Usage: verse-content author init INPUT WORKSPACE ZONE | inspect WORKSPACE | apply WORKSPACE TRANSACTION | undo|redo WORKSPACE REVISION | preview WORKSPACE TICKS [NAV_HALF] | build WORKSPACE | release WORKSPACE DESTINATION | edit WORKSPACE";
+     let fail = || Diagnostic::at("arguments", "$", usage);
+     let name = args.first().and_then(|s| s.to_str()).ok_or_else(fail)?;
+     if name == "init" {
+@@ -165,6 +165,10 @@ pub fn run(args: &[std::ffi::OsString]) -> Result<()> {
+             report
+         }
+         "build" if args.len() == 2 => command(&mut workspace, &mut active, &Command::Build {})?,
++        "release" if args.len() == 3 => {
++            let release = super::release::build(&workspace, Path::new(&args[2]))?;
++            serde_json::json!({"artifact":release.id(), "manifest":release.manifest()})
++        }
+         "edit" if args.len() == 2 => {
+             return session(
+                 &mut workspace,
+diff --git a/crates/verse-content/src/authoring/mod.rs b/crates/verse-content/src/authoring/mod.rs
+index 3841e3a04d..8f03413a55 100644
+--- a/crates/verse-content/src/authoring/mod.rs
++++ b/crates/verse-content/src/authoring/mod.rs
+@@ -4,6 +4,8 @@ mod document;
+ mod geometry;
+ pub use geometry::BoxGeometry;
+ mod preview;
++pub mod publication;
++pub mod release;
+ mod workspace;
+ pub use document::{Document, Edit, Journal, ModelEdit, TimelineCue, Transaction};
+ pub use preview::{Preview, PreviewReport};
+diff --git a/crates/verse-content/src/authoring/publication.rs b/crates/verse-content/src/authoring/publication.rs
+new file mode 100644
+index 0000000000..5a01a98a26
+--- /dev/null
++++ b/crates/verse-content/src/authoring/publication.rs
+@@ -0,0 +1,490 @@
++//! Operator-owned publisher enrollment, distribution review, and revocation.
++use super::{Diagnostic, Result, release, workspace};
++use secp256k1::{Keypair, Secp256k1, XOnlyPublicKey, schnorr::Signature};
++use serde::{Deserialize, Serialize};
++use sha2::{Digest, Sha256};
++use std::{
++    collections::BTreeMap,
++    fs::{File, OpenOptions},
++    path::{Path, PathBuf},
++};
++const LIMIT: usize = 2 * 1024 * 1024;
++fn error(message: impl Into<String>) -> Diagnostic {
++    Diagnostic::at("publication.json", "$", message)
++}
++fn digest_valid(id: &str) -> bool {
++    id.len() == 64
++        && id
++            .bytes()
++            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
++}
++fn text(value: &str) -> bool {
++    !value.trim().is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Submission {
++    pub authority: [u8; 32],
++    pub publisher: [u8; 32],
++    pub artifact: String,
++    pub signature: Vec<u8>,
++}
++impl Submission {
++    pub fn signing_digest(&self) -> Result<[u8; 32]> {
++        if self.authority == [0; 32] || !digest_valid(&self.artifact) {
++            return Err(error("Invalid publication authority or artifact"));
++        }
++        let mut hash = Sha256::new();
++        hash.update(b"verse.public.submission.v1\0");
++        hash.update(self.authority);
++        hash.update(self.publisher);
++        hash.update(self.artifact.as_bytes());
++        Ok(hash.finalize().into())
++    }
++    /// Caller-supplied identity key; this module stores no signing secrets.
++    pub fn sign(authority: [u8; 32], artifact: &str, key: &Keypair) -> Result<Self> {
++        let mut value = Self {
++            authority,
++            publisher: key.x_only_public_key().0.serialize(),
++            artifact: artifact.into(),
++            signature: vec![],
++        };
++        value.signature = Secp256k1::new()
++            .sign_schnorr_no_aux_rand(&value.signing_digest()?, key)
++            .to_byte_array()
++            .to_vec();
++        Ok(value)
++    }
++    fn verify(&self) -> Result<()> {
++        let public = XOnlyPublicKey::from_byte_array(self.publisher)
++            .map_err(|_| error("Invalid publisher identity"))?;
++        let bytes: [u8; 64] = self
++            .signature
++            .as_slice()
++            .try_into()
++            .map_err(|_| error("Invalid publisher signature length"))?;
++        Secp256k1::verification_only()
++            .verify_schnorr(
++                &Signature::from_byte_array(bytes),
++                &self.signing_digest()?,
++                &public,
++            )
++            .map_err(|_| error("Publisher signature does not bind this artifact and authority"))
++    }
++}
++#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Status {
++    Pending,
++    Approved,
++    Rejected,
++    Revoked,
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Entry {
++    pub submission: Submission,
++    pub status: Status,
++    pub revision: u64,
++    pub reason: String,
++}
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct Publisher {
++    public: [u8; 32],
++    enabled: bool,
++    reason: String,
++}
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct State {
++    schema: String,
++    authority: [u8; 32],
++    revision: u64,
++    publishers: BTreeMap<String, Publisher>,
++    entries: BTreeMap<String, Entry>,
++}
++/// Trusted local operator capability. Never pass its mutation methods to a scene or client.
++pub struct Book {
++    root: PathBuf,
++    _lock: File,
++    state: State,
++    poisoned: bool,
++}
++fn publisher_id(public: [u8; 32]) -> String {
++    public.iter().map(|b| format!("{b:02x}")).collect()
++}
++fn entry_id(public: [u8; 32], artifact: &str) -> String {
++    workspace::hash(
++        &[
++            b"verse.public.entry.v1\0".as_slice(),
++            &public,
++            artifact.as_bytes(),
++        ]
++        .concat(),
++    )
++}
++impl Book {
++    pub fn open(root: &Path, authority: [u8; 32]) -> Result<Self> {
++        workspace::ancestors(root)?;
++        if authority == [0; 32] {
++            return Err(error("Publication authority must be nonzero"));
++        }
++        std::fs::create_dir_all(root).map_err(|e| error(e.to_string()))?;
++        let lock_path = root.join("publication.lock");
++        if lock_path.exists()
++            && !std::fs::symlink_metadata(&lock_path)
++                .map_err(|e| error(e.to_string()))?
++                .is_file()
++        {
++            return Err(error("Publication lock must be a regular file"));
++        }
++        let mut options = OpenOptions::new();
++        options.read(true).write(true).create(true).truncate(false);
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::OpenOptionsExt;
++            options.mode(0o600);
++        }
++        let lock = options.open(lock_path).map_err(|e| error(e.to_string()))?;
++        lock.try_lock()
++            .map_err(|_| error("Another operator holds this publication book"))?;
++        let path = root.join("publication.json");
++        let state = if path.exists() {
++            super::parse::<State>("publication.json", &workspace::read(&path, LIMIT)?, LIMIT)?
++        } else {
++            let state = State {
++                schema: "verse.public.book.v1".into(),
++                authority,
++                revision: 1,
++                publishers: BTreeMap::new(),
++                entries: BTreeMap::new(),
++            };
++            workspace::create(
++                &path,
++                &serde_json::to_vec(&state).map_err(|e| error(e.to_string()))?,
++            )?;
++            workspace::sync_dir(root)?;
++            state
++        };
++        if state.schema != "verse.public.book.v1"
++            || state.authority != authority
++            || state.revision == 0
++            || state.publishers.len() > 256
++            || state.entries.len() > 512
++        {
++            return Err(error("Publication book identity or budget differs"));
++        }
++        for (id, publisher) in &state.publishers {
++            XOnlyPublicKey::from_byte_array(publisher.public)
++                .map_err(|_| error("Invalid enrolled publisher"))?;
++            if *id != publisher_id(publisher.public) || !text(&publisher.reason) {
++                return Err(error("Invalid publisher record"));
++            }
++        }
++        for (id, entry) in &state.entries {
++            entry.submission.verify()?;
++            if entry.submission.authority != authority
++                || *id != entry_id(entry.submission.publisher, &entry.submission.artifact)
++                || entry.revision == 0
++                || !text(&entry.reason)
++                || !state
++                    .publishers
++                    .contains_key(&publisher_id(entry.submission.publisher))
++            {
++                return Err(error("Invalid publication record"));
++            }
++        }
++        Ok(Self {
++            root: root.into(),
++            _lock: lock,
++            state,
++            poisoned: false,
++        })
++    }
++    fn healthy(&self) -> Result<()> {
++        if self.poisoned {
++            Err(error("Publication outcome is uncertain; reopen the book"))
++        } else {
++            Ok(())
++        }
++    }
++    fn commit(&mut self, mut next: State) -> Result<()> {
++        self.healthy()?;
++        next.revision = self
++            .state
++            .revision
++            .checked_add(1)
++            .ok_or_else(|| error("Publication revision exhausted"))?;
++        let bytes = serde_json::to_vec(&next).map_err(|e| error(e.to_string()))?;
++        if bytes.len() > LIMIT {
++            return Err(error("Publication book byte budget exceeded"));
++        }
++        if let Err(error) = workspace::atomic(&self.root.join("publication.json"), &bytes) {
++            self.poisoned = true;
++            return Err(error);
++        }
++        self.state = next;
++        Ok(())
++    }
++    /// Operator attests enrollment separately from the publisher's proof of possession.
++    pub fn publisher(&mut self, public: [u8; 32], enabled: bool, reason: &str) -> Result<()> {
++        self.healthy()?;
++        XOnlyPublicKey::from_byte_array(public).map_err(|_| error("Invalid publisher key"))?;
++        if !text(reason) {
++            return Err(error("Supply a bounded printable enrollment reason"));
++        }
++        let id = publisher_id(public);
++        if !self.state.publishers.contains_key(&id) && self.state.publishers.len() >= 256 {
++            return Err(error("Publisher budget exceeded"));
++        }
++        let mut next = self.state.clone();
++        next.publishers.insert(
++            id,
++            Publisher {
++                public,
++                enabled,
++                reason: reason.into(),
++            },
++        );
++        self.commit(next)
++    }
++    /// Signed submissions become pending; local builds and signatures cannot approve them.
++    pub fn submit(
++        &mut self,
++        submission: &Submission,
++        release: &release::Verified,
++    ) -> Result<Entry> {
++        self.healthy()?;
++        submission.verify()?;
++        if submission.authority != self.state.authority || submission.artifact != release.id() {
++            return Err(error("Submission names another authority or artifact"));
++        }
++        if !self
++            .state
++            .publishers
++            .get(&publisher_id(submission.publisher))
++            .is_some_and(|p| p.enabled)
++        {
++            return Err(error("Publisher is not enrolled or is suspended"));
++        }
++        let id = entry_id(submission.publisher, &submission.artifact);
++        if let Some(entry) = self.state.entries.get(&id) {
++            return Ok(entry.clone());
++        }
++        if self.state.entries.len() >= 512 {
++            return Err(error("Publication entry budget exceeded"));
++        }
++        let entry = Entry {
++            submission: submission.clone(),
++            status: Status::Pending,
++            revision: 1,
++            reason: "Awaiting operator distribution review".into(),
++        };
++        let mut next = self.state.clone();
++        next.entries.insert(id, entry.clone());
++        self.commit(next)?;
++        Ok(entry)
++    }
++    /// Trusted operator review; revoked artifact identities cannot be resurrected.
++    pub fn review(
++        &mut self,
++        publisher: [u8; 32],
++        release: &release::Verified,
++        expected: u64,
++        status: Status,
++        reason: &str,
++    ) -> Result<Entry> {
++        self.review_entry(publisher, release.id(), expected, status, reason)
++    }
++    /// Withdraw an enrolled artifact even when its files are damaged or absent.
++    pub fn revoke(
++        &mut self,
++        publisher: [u8; 32],
++        artifact: &str,
++        expected: u64,
++        reason: &str,
++    ) -> Result<Entry> {
++        self.review_entry(publisher, artifact, expected, Status::Revoked, reason)
++    }
++    fn review_entry(
++        &mut self,
++        publisher: [u8; 32],
++        artifact: &str,
++        expected: u64,
++        status: Status,
++        reason: &str,
++    ) -> Result<Entry> {
++        self.healthy()?;
++        if !digest_valid(artifact) {
++            return Err(error("Invalid artifact identity"));
++        }
++        if status == Status::Pending || !text(reason) {
++            return Err(error("Supply an explicit bounded moderation decision"));
++        }
++        let id = entry_id(publisher, artifact);
++        let mut entry = self
++            .state
++            .entries
++            .get(&id)
++            .cloned()
++            .ok_or_else(|| error("Publication has not been submitted"))?;
++        if entry.revision != expected || entry.status == Status::Revoked {
++            return Err(error(
++                "Publication revision is stale or permanently revoked",
++            ));
++        }
++        if status == Status::Approved
++            && !self
++                .state
++                .publishers
++                .get(&publisher_id(publisher))
++                .is_some_and(|p| p.enabled)
++        {
++            return Err(error("Publisher is suspended"));
++        }
++        entry.status = status;
++        entry.revision = entry
++            .revision
++            .checked_add(1)
++            .ok_or_else(|| error("Publication revision exhausted"))?;
++        entry.reason = reason.into();
++        let mut next = self.state.clone();
++        next.entries.insert(id, entry.clone());
++        self.commit(next)?;
++        Ok(entry)
++    }
++    /// Recheck live approval, enrollment, compatibility, and all bytes on each resolve.
++    pub fn resolve(
++        &self,
++        publisher: [u8; 32],
++        artifact: &str,
++        directory: &Path,
++    ) -> Result<release::Verified> {
++        self.healthy()?;
++        if !self
++            .state
++            .publishers
++            .get(&publisher_id(publisher))
++            .is_some_and(|p| p.enabled)
++            || !self
++                .state
++                .entries
++                .get(&entry_id(publisher, artifact))
++                .is_some_and(|e| e.status == Status::Approved)
++        {
++            return Err(error("Publication is unapproved, revoked, or suspended"));
++        }
++        let release = release::verify(directory)?;
++        if release.id() != artifact {
++            return Err(error("Publication bytes differ from the approved artifact"));
++        }
++        Ok(release)
++    }
++}
++
++#[derive(Deserialize)]
++#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
++enum Command {
++    Revoke {
++        publisher: [u8; 32],
++        artifact: String,
++        expected_revision: u64,
++        reason: String,
++    },
++    Publisher {
++        public: [u8; 32],
++        enabled: bool,
++        reason: String,
++    },
++    Submit {
++        directory: PathBuf,
++        submission: Submission,
++    },
++    Review {
++        publisher: [u8; 32],
++        directory: PathBuf,
++        expected_revision: u64,
++        status: Status,
++        reason: String,
++    },
++    Resolve {
++        publisher: [u8; 32],
++        artifact: String,
++        directory: PathBuf,
++    },
++}
++/// Local operator command. Book paths are deployment authority, never world input.
++pub fn run(args: &[std::ffi::OsString]) -> Result<()> {
++    if args.len() != 3 {
++        return Err(error(
++            "Usage: verse-content publication BOOK AUTHORITY_HEX COMMAND_JSON",
++        ));
++    }
++    let authority = args[1]
++        .to_str()
++        .ok_or_else(|| error("Authority must be hexadecimal"))?;
++    if !digest_valid(authority) {
++        return Err(error("Authority must be 32 bytes of lowercase hexadecimal"));
++    }
++    let mut id = [0; 32];
++    for (i, byte) in id.iter_mut().enumerate() {
++        *byte = u8::from_str_radix(&authority[2 * i..2 * i + 2], 16)
++            .map_err(|e| error(e.to_string()))?;
++    }
++    let command: Command = super::parse(
++        "command.json",
++        &workspace::read(Path::new(&args[2]), 64 * 1024)?,
++        64 * 1024,
++    )?;
++    let mut book = Book::open(Path::new(&args[0]), id)?;
++    let response = match command {
++        Command::Revoke {
++            publisher,
++            artifact,
++            expected_revision,
++            reason,
++        } => serde_json::to_value(book.revoke(publisher, &artifact, expected_revision, &reason)?)
++            .map_err(|e| error(e.to_string()))?,
++        Command::Publisher {
++            public,
++            enabled,
++            reason,
++        } => {
++            book.publisher(public, enabled, &reason)?;
++            serde_json::json!({"publisher":public,"enabled":enabled})
++        }
++        Command::Submit {
++            directory,
++            submission,
++        } => serde_json::to_value(book.submit(&submission, &release::verify(&directory)?)?)
++            .map_err(|e| error(e.to_string()))?,
++        Command::Review {
++            publisher,
++            directory,
++            expected_revision,
++            status,
++            reason,
++        } => serde_json::to_value(book.review(
++            publisher,
++            &release::verify(&directory)?,
++            expected_revision,
++            status,
++            &reason,
++        )?)
++        .map_err(|e| error(e.to_string()))?,
++        Command::Resolve {
++            publisher,
++            artifact,
++            directory,
++        } => {
++            let release = book.resolve(publisher, &artifact, &directory)?;
++            serde_json::json!({"artifact":release.id(),"manifest":release.manifest()})
++        }
++    };
++    println!("{}", response);
++    Ok(())
++}
++
++#[cfg(test)]
++mod tests;
+diff --git a/crates/verse-content/src/authoring/publication/tests.rs b/crates/verse-content/src/authoring/publication/tests.rs
+new file mode 100644
+index 0000000000..fa64b98434
+--- /dev/null
++++ b/crates/verse-content/src/authoring/publication/tests.rs
+@@ -0,0 +1,284 @@
++use super::*;
++use crate::authoring::{Workspace, tests::input};
++use verse_engine::{
++    assets::Pack,
++    inventory::{Asset, AssetId, Binding, Inventory, License, Origin, fingerprint},
++};
++fn key(n: u8) -> Keypair {
++    Keypair::from_secret_key(
++        &Secp256k1::new(),
++        &secp256k1::SecretKey::from_byte_array([n; 32]).unwrap(),
++    )
++}
++fn fixture(root: &Path, license: License) -> Workspace {
++    let source = root.join("input");
++    input(&source);
++    let mut pack: Pack =
++        serde_json::from_slice(&std::fs::read(source.join("pack.json")).unwrap()).unwrap();
++    let id = |s: &str| AssetId::new(s).unwrap();
++    let origin = id("fixture:source");
++    let mut assets = vec![Asset {
++        id: origin.clone(),
++        binding: Binding::Source {
++            origin: Origin {
++                creator: "OpenAgents procedural acceptance fixture".into(),
++                license,
++                revision: workspace::hash(b"procedural-fixture-v1"),
++                format: "rust".into(),
++            },
++        },
++        sha256: workspace::hash(b"procedural-fixture-v1"),
++        bytes: 21,
++        dependencies: vec![],
++    }];
++    for (name, model) in &pack.models {
++        let (sha256, bytes) = fingerprint(model).unwrap();
++        assets.push(Asset {
++            id: id(&format!("fixture:model/{name}")),
++            binding: Binding::Model { key: name.clone() },
++            sha256,
++            bytes,
++            dependencies: vec![origin.clone()],
++        });
++    }
++    for (slot, texture) in pack.textures.iter().enumerate() {
++        assets.push(Asset {
++            id: id(&format!("fixture:texture/{slot}")),
++            binding: Binding::Texture { slot },
++            sha256: texture.sha256.clone(),
++            bytes: std::fs::metadata(source.join(&texture.file)).unwrap().len(),
++            dependencies: vec![origin.clone()],
++        });
++    }
++    pack.inventory = Some(Inventory {
++        version: 1,
++        compiler: id("fixture:compiler"),
++        compiler_revision: workspace::hash(b"fixture-compiler-v1"),
++        assets,
++    });
++    std::fs::write(source.join("pack.json"), serde_json::to_vec(&pack).unwrap()).unwrap();
++    Workspace::init(&source, &root.join("workspace"), "fixture".into()).unwrap()
++}
++#[test]
++fn signed_publication_requires_separate_review_and_live_revocation_checks() {
++    let root = tempfile::tempdir().unwrap();
++    let work = fixture(root.path(), License::Apache2);
++    let path = root.path().join("release");
++    let release = release::build(&work, &path).unwrap();
++    assert!(!path.join("host-template.json").exists());
++    assert!(!path.join("preview.json").exists());
++    assert!(!path.join("author.lock").exists());
++    let publisher = key(11);
++    let public = publisher.x_only_public_key().0.serialize();
++    let submission = Submission::sign([7; 32], release.id(), &publisher).unwrap();
++    let book_path = root.path().join("operator");
++    let mut book = Book::open(&book_path, [7; 32]).unwrap();
++    assert!(Book::open(&book_path, [7; 32]).is_err());
++    assert!(book.submit(&submission, &release).is_err());
++    book.publisher(public, true, "Approved test publisher enrollment")
++        .unwrap();
++    assert!(book.resolve(public, release.id(), &path).is_err());
++    let pending = book.submit(&submission, &release).unwrap();
++    assert_eq!(pending.status, Status::Pending);
++    assert!(book.resolve(public, release.id(), &path).is_err());
++    let mut forged = submission.clone();
++    forged.signature[0] ^= 1;
++    assert!(book.submit(&forged, &release).is_err());
++    let other = Submission::sign([8; 32], release.id(), &publisher).unwrap();
++    assert!(book.submit(&other, &release).is_err());
++    assert!(
++        book.review(public, &release, 2, Status::Approved, "Review")
++            .is_err()
++    );
++    let approved = book
++        .review(
++            public,
++            &release,
++            1,
++            Status::Approved,
++            "Distribution approved for fixture",
++        )
++        .unwrap();
++    assert_eq!(book.submit(&submission, &release).unwrap(), approved);
++    let served = book.resolve(public, release.id(), &path).unwrap();
++    drop(book);
++    let mut book = Book::open(&book_path, [7; 32]).unwrap();
++    assert!(book.resolve(public, release.id(), &path).is_ok());
++    book.publisher(public, false, "Publisher suspended")
++        .unwrap();
++    assert!(book.resolve(public, release.id(), &path).is_err());
++    assert!(
++        book.review(public, &release, 2, Status::Approved, "Review")
++            .is_err()
++    );
++    book.publisher(public, true, "Publisher reinstated")
++        .unwrap();
++    book.review(public, &release, 2, Status::Revoked, "Artifact revoked")
++        .unwrap();
++    assert!(book.resolve(public, release.id(), &path).is_err());
++    assert!(
++        book.review(public, &release, 3, Status::Approved, "Review")
++            .is_err()
++    );
++    assert_eq!(
++        book.submit(&submission, &release).unwrap().status,
++        Status::Revoked
++    );
++    // A serving snapshot cannot change when the original directory changes.
++    let original = served.file("fixture.png").unwrap().to_vec();
++    std::fs::write(path.join("fixture.png"), b"substituted").unwrap();
++    assert_eq!(served.file("fixture.png").unwrap(), original);
++    assert!(release::verify(&path).is_err());
++    drop(book);
++    assert!(Book::open(&book_path, [8; 32]).is_err());
++    let book = Book::open(&book_path, [7; 32]).unwrap();
++    assert!(book.resolve(public, release.id(), &path).is_err());
++}
++#[test]
++fn local_builds_do_not_grant_distribution_and_unused_research_is_refused() {
++    for license in [License::Research, License::OwnerSuppliedLocal] {
++        let root = tempfile::tempdir().unwrap();
++        let work = fixture(root.path(), license);
++        assert_eq!(work.build().is_ok(), license == License::OwnerSuppliedLocal);
++        assert!(release::build(&work, &root.path().join("release")).is_err());
++        assert!(!root.path().join("release").exists());
++    }
++    let root = tempfile::tempdir().unwrap();
++    let work = fixture(root.path(), License::Apache2);
++    let mut pack = work.base.clone();
++    pack.inventory.as_mut().unwrap().assets.push(Asset {
++        id: AssetId::new("fixture:unused-research").unwrap(),
++        binding: Binding::Source {
++            origin: Origin {
++                creator: "Retained reference".into(),
++                license: License::Research,
++                revision: workspace::hash(b"reference"),
++                format: "reference".into(),
++            },
++        },
++        sha256: workspace::hash(b"reference"),
++        bytes: 9,
++        dependencies: vec![],
++    });
++    // Shipping admission covers unused retained declarations as well as runtime roots.
++    assert!(release::admission(&pack).is_err());
++}
++#[test]
++fn release_refuses_unsealed_files_symlinks_and_incompatible_profiles() {
++    let root = tempfile::tempdir().unwrap();
++    let work = fixture(root.path(), License::Apache2);
++    let path = root.path().join("release");
++    release::build(&work, &path).unwrap();
++    std::fs::write(path.join("private-studio.json"), b"secret").unwrap();
++    assert!(release::verify(&path).is_err());
++    std::fs::remove_file(path.join("private-studio.json")).unwrap();
++    let file = path.join("release.json");
++    let original = std::fs::read(&file).unwrap();
++    let pack_file = path.join("pack.json");
++    let original_pack = std::fs::read(&pack_file).unwrap();
++    let mut pack: serde_json::Value = serde_json::from_slice(&original_pack).unwrap();
++    pack["private_studio"] = serde_json::json!({"log":"must not be silently preserved"});
++    let altered_pack = serde_json::to_vec(&pack).unwrap();
++    let mut resealed: release::Manifest = serde_json::from_slice(&original).unwrap();
++    resealed.files.insert(
++        "pack.json".into(),
++        release::File {
++            sha256: workspace::hash(&altered_pack),
++            bytes: altered_pack.len() as u64,
++        },
++    );
++    std::fs::write(&pack_file, altered_pack).unwrap();
++    std::fs::write(&file, serde_json::to_vec(&resealed).unwrap()).unwrap();
++    assert!(release::verify(&path).is_err());
++    let mut hidden_model = pack["models"]["adventurer"].clone();
++    hidden_model["private_studio"] = serde_json::json!({"log":"hidden in a discarded duplicate"});
++    let duplicated = String::from_utf8(original_pack.clone())
++        .unwrap()
++        .replacen(
++            "\"models\": {",
++            &format!(
++                "\"models\": {{\"adventurer\":{},",
++                serde_json::to_string(&hidden_model).unwrap()
++            ),
++            1,
++        )
++        .into_bytes();
++    resealed.files.insert(
++        "pack.json".into(),
++        release::File {
++            sha256: workspace::hash(&duplicated),
++            bytes: duplicated.len() as u64,
++        },
++    );
++    std::fs::write(&pack_file, duplicated).unwrap();
++    std::fs::write(&file, serde_json::to_vec(&resealed).unwrap()).unwrap();
++    assert!(release::verify(&path).is_err());
++    std::fs::write(&pack_file, original_pack).unwrap();
++    std::fs::write(&file, &original).unwrap();
++    let mut manifest: release::Manifest = serde_json::from_slice(&original).unwrap();
++    manifest.profile.wire += 1;
++    std::fs::write(&file, serde_json::to_vec(&manifest).unwrap()).unwrap();
++    assert!(release::verify(&path).is_err());
++    std::fs::write(&file, &original).unwrap();
++    #[cfg(unix)]
++    {
++        let texture = std::fs::read(path.join("fixture.png")).unwrap();
++        std::fs::write(root.path().join("external.png"), texture).unwrap();
++        std::fs::remove_file(path.join("fixture.png")).unwrap();
++        std::os::unix::fs::symlink(root.path().join("external.png"), path.join("fixture.png"))
++            .unwrap();
++        assert!(release::verify(&path).is_err());
++    }
++}
++
++#[test]
++fn withdrawal_does_not_require_the_old_files_and_uncertain_review_fails_closed() {
++    let root = tempfile::tempdir().unwrap();
++    let work = fixture(root.path(), License::Apache2);
++    let path = root.path().join("release");
++    let release = release::build(&work, &path).unwrap();
++    let pair = key(11);
++    let public = pair.x_only_public_key().0.serialize();
++    let book_path = root.path().join("operator");
++    let mut book = Book::open(&book_path, [7; 32]).unwrap();
++    book.publisher(public, true, "Fixture enrollment").unwrap();
++    let submission = Submission::sign([7; 32], release.id(), &pair).unwrap();
++    book.submit(&submission, &release).unwrap();
++    std::fs::create_dir(book_path.join("publication.pending")).unwrap();
++    assert!(
++        book.review(public, &release, 1, Status::Approved, "Review")
++            .is_err()
++    );
++    assert!(book.resolve(public, release.id(), &path).is_err());
++    assert!(book.publisher(public, true, "Retry").is_err());
++    drop(book);
++    std::fs::remove_dir(book_path.join("publication.pending")).unwrap();
++    let mut book = Book::open(&book_path, [7; 32]).unwrap();
++    assert!(book.resolve(public, release.id(), &path).is_err());
++    book.review(
++        public,
++        &release,
++        1,
++        Status::Approved,
++        "Distribution approved",
++    )
++    .unwrap();
++    assert!(book.resolve(public, release.id(), &path).is_ok());
++    std::fs::create_dir(book_path.join("publication.pending")).unwrap();
++    assert!(
++        book.revoke(public, release.id(), 2, "Withdrawal with storage failure")
++            .is_err()
++    );
++    assert!(book.resolve(public, release.id(), &path).is_err());
++    drop(book);
++    std::fs::remove_dir(book_path.join("publication.pending")).unwrap();
++    let mut book = Book::open(&book_path, [7; 32]).unwrap();
++    std::fs::remove_dir_all(&path).unwrap();
++    book.revoke(public, release.id(), 2, "Withdraw missing artifact")
++        .unwrap();
++    assert!(
++        book.review(public, &release, 3, Status::Approved, "Cannot resurrect")
++            .is_err()
++    );
++    assert!(book.resolve(public, release.id(), &path).is_err());
++}
+diff --git a/crates/verse-content/src/authoring/release.rs b/crates/verse-content/src/authoring/release.rs
+new file mode 100644
+index 0000000000..6522e18a2d
+--- /dev/null
++++ b/crates/verse-content/src/authoring/release.rs
+@@ -0,0 +1,339 @@
++//! Complete, bounded public artifacts, separate from local generation builds.
++use super::{Document, Workspace, admit, checked, parse, workspace};
++use serde::{Deserialize, Serialize};
++use std::{collections::BTreeMap, path::Path};
++use verse_engine::{assets::Pack, director::Scene, inventory::Purpose};
++
++const LIMIT: usize = 640 * 1024 * 1024;
++const MANIFEST_LIMIT: usize = 2 * 1024 * 1024;
++const SCHEMA: &str = "verse.public.release.v1";
++fn error(message: impl Into<String>) -> super::Diagnostic {
++    super::Diagnostic::at("release.json", "$", message)
++}
++fn encode(value: &impl Serialize) -> super::Result<Vec<u8>> {
++    serde_json::to_vec(value).map_err(|e| error(e.to_string()))
++}
++fn file_limit(name: &str) -> usize {
++    if name == "pack.json" {
++        128 * 1024 * 1024
++    } else if name == verse_engine::mips::archive::PAYLOAD {
++        verse_engine::mips::archive::MAX_BYTES
++    } else if name == verse_engine::mips::archive::MANIFEST {
++        8 * 1024 * 1024
++    } else if name.ends_with(".json") {
++        MANIFEST_LIMIT
++    } else {
++        64 * 1024 * 1024
++    }
++}
++fn public_name(name: &str) -> bool {
++    !name.is_empty()
++        && name.len() <= 128
++        && name
++            .bytes()
++            .all(|b| b.is_ascii_alphanumeric() || b".-_".contains(&b))
++        && name != "."
++        && name != ".."
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Profile {
++    pub schema: String,
++    pub pack: u32,
++    pub wire: u32,
++    pub social: u32,
++}
++impl Default for Profile {
++    fn default() -> Self {
++        Self {
++            schema: "verse.closed-data.v1".into(),
++            pack: 1,
++            wire: verse_world::service::wire::VERSION as u32,
++            social: verse_world::play::social::PROFILE_REVISION as u32,
++        }
++    }
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct File {
++    pub sha256: String,
++    pub bytes: u64,
++}
++#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Manifest {
++    pub schema: String,
++    pub generation: String,
++    pub content: [u8; 32],
++    pub profile: Profile,
++    pub files: BTreeMap<String, File>,
++    /// Retained declarations, not a legal certification.
++    pub admission: serde_json::Value,
++}
++/// Immutable verified bytes. Serving adapters use this snapshot, not the source paths.
++pub struct Verified {
++    id: String,
++    manifest: Manifest,
++    files: BTreeMap<String, Vec<u8>>,
++}
++impl Verified {
++    pub fn id(&self) -> &str {
++        &self.id
++    }
++    pub fn manifest(&self) -> &Manifest {
++        &self.manifest
++    }
++    pub fn file(&self, name: &str) -> Option<&[u8]> {
++        self.files.get(name).map(Vec::as_slice)
++    }
++}
++fn names(pack: &Pack) -> super::Result<std::collections::BTreeSet<String>> {
++    let mut names: std::collections::BTreeSet<String> = [
++        "document.json",
++        "pack.json",
++        "scene.json",
++        verse_engine::mips::archive::MANIFEST,
++        verse_engine::mips::archive::PAYLOAD,
++    ]
++    .into_iter()
++    .map(String::from)
++    .collect();
++    for texture in &pack.textures {
++        if texture.file == "release.json"
++            || !public_name(&texture.file)
++            || !names.insert(texture.file.clone())
++        {
++            return Err(error("Texture path is unsafe, duplicated, or reserved"));
++        }
++    }
++    Ok(names)
++}
++pub(super) fn admission(pack: &Pack) -> super::Result<serde_json::Value> {
++    let inventory = pack
++        .inventory
++        .as_ref()
++        .ok_or_else(|| error("Public releases require an asset inventory"))?;
++    checked("inventory", inventory.verify(pack))?;
++    let admitted = checked(
++        "inventory",
++        inventory.admit(pack, Purpose::Redistribute, &inventory.roots()),
++    )?;
++    // Every compiled model and texture must reach an admitted origin; a global
++    // source declaration cannot excuse an unrelated orphan asset.
++    for asset in &inventory.assets {
++        if !matches!(
++            asset.binding,
++            verse_engine::inventory::Binding::Source { .. }
++        ) {
++            checked(
++                "inventory",
++                inventory.admit(pack, Purpose::Redistribute, std::slice::from_ref(&asset.id)),
++            )?;
++        }
++    }
++    serde_json::to_value(admitted).map_err(|e| error(e.to_string()))
++}
++fn validate_runtime(
++    pack: &Pack,
++    scene: &Scene,
++    document: &Document,
++    root: &Path,
++) -> super::Result<[u8; 32]> {
++    // Primitives are already compiled into this pack. Reapply the remaining
++    // idempotent edits and exercise the same runtime catalog admission.
++    let mut compiled = document.clone();
++    compiled.primitives.clear();
++    let (actual_pack, actual_scene, _) = admit(&compiled, pack)?;
++    if encode(&actual_pack)? != encode(pack)? || encode(&actual_scene)? != encode(scene)? {
++        return Err(error("Release values differ from their runtime document"));
++    }
++    // Rebuild primitive geometry independently so clearing its recipe cannot
++    // hide a substituted compiled model.
++    for (key, shape) in &document.primitives {
++        let mut model = super::geometry::compile(key, shape, pack.textures.len())?;
++        if let Some(edit) = document.models.get(key) {
++            if let Some(states) = &edit.states {
++                model.states = states.clone();
++            }
++            if let Some(graph) = &edit.graph {
++                model.graph = Some(graph.clone());
++            }
++            for (index, material) in &edit.materials {
++                model
++                    .surfaces
++                    .get_mut(*index)
++                    .ok_or_else(|| error("Primitive material surface is absent"))?
++                    .material = material.clone();
++            }
++        }
++        let stored = pack
++            .models
++            .get(key)
++            .ok_or_else(|| error("Compiled primitive is missing"))?;
++        if encode(&model)? != encode(stored)? {
++            return Err(error("Primitive differs from its public recipe"));
++        }
++    }
++    Ok(super::Preview::new(&compiled, pack, root)?.content())
++}
++/// Export only public runtime data. Previews, host paths, journals, and secrets stay local.
++pub fn build(workspace: &Workspace, destination: &Path) -> super::Result<Verified> {
++    workspace::ancestors(destination)?;
++    if destination.exists() {
++        return Err(error("Release destination must not exist"));
++    }
++    let build = workspace.build()?;
++    let pack: Pack = parse(
++        "pack.json",
++        &workspace::read(&build.path.join("pack.json"), 128 * 1024 * 1024)?,
++        128 * 1024 * 1024,
++    )?;
++    let admitted = admission(&pack)?;
++    let mut files = BTreeMap::new();
++    let mut total = 0usize;
++    for name in names(&pack)? {
++        let bytes = workspace::read(&build.path.join(&name), file_limit(&name))?;
++        total = total
++            .checked_add(bytes.len())
++            .ok_or_else(|| error("Release byte budget exceeded"))?;
++        if total > LIMIT {
++            return Err(error("Release byte budget exceeded"));
++        }
++        files.insert(name, bytes);
++    }
++    let manifest = Manifest {
++        schema: SCHEMA.into(),
++        generation: build.generation,
++        content: build.content,
++        profile: Profile::default(),
++        admission: admitted,
++        files: files
++            .iter()
++            .map(|(name, data)| {
++                (
++                    name.clone(),
++                    File {
++                        sha256: workspace::hash(data),
++                        bytes: data.len() as u64,
++                    },
++                )
++            })
++            .collect(),
++    };
++    let encoded = encode(&manifest)?;
++    if encoded.len() > MANIFEST_LIMIT {
++        return Err(error("Release manifest budget exceeded"));
++    }
++    std::fs::create_dir(destination).map_err(|e| error(e.to_string()))?;
++    for (name, data) in files {
++        workspace::create(&destination.join(name), &data)?;
++    }
++    workspace::create(&destination.join("release.json"), &encoded)?;
++    workspace::sync_dir(destination)?;
++    verify(destination)
++}
++/// Verify the complete directory and return a sealed byte snapshot.
++pub fn verify(root: &Path) -> super::Result<Verified> {
++    workspace::ancestors(root)?;
++    let encoded = workspace::read(&root.join("release.json"), MANIFEST_LIMIT)?;
++    let manifest: Manifest = parse("release.json", &encoded, MANIFEST_LIMIT)?;
++    if encoded != encode(&manifest)? {
++        return Err(error("Release descriptor is not canonical JSON"));
++    }
++    if manifest.schema != SCHEMA
++        || manifest.profile != Profile::default()
++        || manifest.files.len() > 517
++        || manifest.files.is_empty()
++        || manifest.generation.len() != 64
++        || !manifest
++            .generation
++            .bytes()
++            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
++        || manifest.content == [0; 32]
++    {
++        return Err(error(
++            "Unsupported release identity, compatibility profile, or file budget",
++        ));
++    }
++    let actual: std::collections::BTreeSet<_> = std::fs::read_dir(root)
++        .map_err(|e| error(e.to_string()))?
++        .map(|entry| entry.map(|e| e.file_name()))
++        .collect::<std::io::Result<_>>()
++        .map_err(|e| error(e.to_string()))?;
++    let expected: std::collections::BTreeSet<_> = manifest
++        .files
++        .keys()
++        .map(std::ffi::OsString::from)
++        .chain(std::iter::once("release.json".into()))
++        .collect();
++    if actual != expected {
++        return Err(error("Release contains unsealed or missing files"));
++    }
++    let mut total = 0usize;
++    let mut files = BTreeMap::new();
++    for (name, file) in &manifest.files {
++        if !public_name(name) || file.bytes == 0 || file.bytes > file_limit(name) as u64 {
++            return Err(error("Invalid release file name or budget"));
++        }
++        total = total
++            .checked_add(file.bytes as usize)
++            .ok_or_else(|| error("Release byte budget exceeded"))?;
++        if total > LIMIT {
++            return Err(error("Release byte budget exceeded"));
++        }
++        let data = workspace::read(&root.join(name), file.bytes as usize)?;
++        if data.len() as u64 != file.bytes || workspace::hash(&data) != file.sha256 {
++            return Err(error("Release file digest or length differs"));
++        }
++        files.insert(name.clone(), data);
++    }
++    let required = |name: &str| {
++        files
++            .get(name)
++            .ok_or_else(|| error(format!("Missing release file: {name}")))
++    };
++    let pack: Pack = parse("pack.json", required("pack.json")?, 128 * 1024 * 1024)?;
++    let scene: Scene = parse("scene.json", required("scene.json")?, 1024 * 1024)?;
++    let document: Document = parse("document.json", required("document.json")?, MANIFEST_LIMIT)?;
++    for (name, canonical) in [
++        ("pack.json", serde_json::to_vec_pretty(&pack)),
++        ("scene.json", serde_json::to_vec_pretty(&scene)),
++        ("document.json", serde_json::to_vec_pretty(&document)),
++    ] {
++        // The exporter defines canonical files. Exact encoding also refuses
++        // duplicate map entries that a permissive decoder might discard.
++        if required(name)? != &canonical.map_err(|e| error(e.to_string()))? {
++            return Err(error(
++                "Release data contains unknown, duplicate, or noncanonical fields",
++            ));
++        }
++    }
++    if manifest
++        .files
++        .keys()
++        .cloned()
++        .collect::<std::collections::BTreeSet<_>>()
++        != names(&pack)?
++        || manifest.admission != admission(&pack)?
++    {
++        return Err(error(
++            "Release dependency admission or public file set differs",
++        ));
++    }
++    for asset in &pack.inventory.as_ref().unwrap().assets {
++        if let verse_engine::inventory::Binding::Texture { slot } = asset.binding {
++            if asset.bytes != required(&pack.textures[slot].file)?.len() as u64 {
++                return Err(error("Inventory texture length differs"));
++            }
++        }
++    }
++    if validate_runtime(&pack, &scene, &document, root)? != manifest.content {
++        return Err(error("Release runtime content identity differs"));
++    }
++    let id = workspace::hash(&encode(&manifest)?);
++    Ok(Verified {
++        id,
++        manifest,
++        files,
++    })
++}
+diff --git a/crates/verse-content/src/authoring/tests.rs b/crates/verse-content/src/authoring/tests.rs
+index 8eb5f0434c..4161ba93a3 100644
+--- a/crates/verse-content/src/authoring/tests.rs
++++ b/crates/verse-content/src/authoring/tests.rs
+@@ -5,7 +5,7 @@ use verse_engine::{
+     director::{Action, Actor, Cue},
+     motion::{Binding, Mode, State},
+ };
+-fn input(path: &Path) {
++pub(super) fn input(path: &Path) {
+     std::fs::create_dir(path).unwrap();
+     let states = State::ALL
+         .into_iter()
+diff --git a/crates/verse-content/src/authoring/workspace.rs b/crates/verse-content/src/authoring/workspace.rs
+index d4cff9ed9f..ffc41e9da9 100644
+--- a/crates/verse-content/src/authoring/workspace.rs
++++ b/crates/verse-content/src/authoring/workspace.rs
+@@ -60,12 +60,12 @@ fn bytes(value: &impl Serialize, limit: usize) -> Result<Vec<u8>> {
+     }
+     Ok(value)
+ }
+-fn sync_dir(path: &Path) -> Result<()> {
++pub(crate) fn sync_dir(path: &Path) -> Result<()> {
+     File::open(path)
+         .and_then(|f| f.sync_all())
+         .map_err(|e| io(path, e))
+ }
+-fn create(path: &Path, bytes: &[u8]) -> Result<()> {
++pub(crate) fn create(path: &Path, bytes: &[u8]) -> Result<()> {
+     let mut options = OpenOptions::new();
+     options.write(true).create_new(true);
+     #[cfg(unix)]
+@@ -82,7 +82,7 @@ pub(crate) fn write_preview(path: &Path, data: &[u8]) -> Result<()> {
+     ancestors(path)?;
+     atomic(path, data)
+ }
+-fn atomic(path: &Path, bytes: &[u8]) -> Result<()> {
++pub(crate) fn atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+     let temp = path.with_extension("pending");
+     if temp.exists() {
+         std::fs::remove_file(&temp).map_err(|e| io(&temp, e))?;
+@@ -94,7 +94,7 @@ fn atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+             .ok_or_else(|| io(path, "Missing destination parent"))?,
+     )
+ }
+-fn ancestors(path: &Path) -> Result<()> {
++pub(crate) fn ancestors(path: &Path) -> Result<()> {
+     for ancestor in path.ancestors() {
+         if ancestor.as_os_str().is_empty() {
+             continue;
+diff --git a/crates/verse-content/src/main.rs b/crates/verse-content/src/main.rs
+index 6c43358a65..959591c617 100644
+--- a/crates/verse-content/src/main.rs
++++ b/crates/verse-content/src/main.rs
+@@ -3,6 +3,9 @@ fn run() -> Result<(), String> {
+     if all.first().is_some_and(|s| s == "author") {
+         return verse_content::authoring::cli::run(&all[1..]).map_err(|e| e.to_string());
+     }
++    if all.first().is_some_and(|s| s == "publication") {
++        return verse_content::authoring::publication::run(&all[1..]).map_err(|e| e.to_string());
++    }
+     let mut args = all.into_iter();
+     let name = args
+         .next()
+diff --git a/crates/verse-world/README.md b/crates/verse-world/README.md
+index e83db6daa2..c02ad76ffb 100644
+--- a/crates/verse-world/README.md
++++ b/crates/verse-world/README.md
+@@ -995,3 +995,34 @@ requests the existing ordered drain. The dedicated
+ through owner-local IPC. `service::persistence::backup` verifies and restores
+ chamber checkpoints, reachable reward history, and migration archives into new
+ storage. Offline pruning retains every current and migration history root.
++
++## Account safety in a realm
++
++Wire version 31 adds `Safety` and `SafetyAction`. The realm derives the acting
++account from the authenticated connection; clients cannot select the owner of
++its safety preferences. `service::safety` defines account blocks, typed reports,
++private projections, and exact-retry receipts. Each account can retain 64
++blocked accounts, with 128 block changes per UTC day. A block in either direction refuses new party or guild
++invitations, joining a pending invitation from that leader, new gear trade
++offers, and accepting pending trades. Cancellation remains available to release
++locks. The policy follows every character of both accounts and survives
++restart and credential recovery. Existing shared-world avatars and group
++membership remain visible; blocks grant no simulation or Studio authority.
++
++Reports carry `spam`, `harassment`, `unsafe_content`, or `cheating`, plus an
++optional nonzero evidence digest. They carry no free text or private Studio
++payload. Submission is limited to 16 reports per account per UTC day and a
++realm-wide queue of 256 open reports. The public response contains only the
++submission receipt. `Realm::pending_reports` and `resolve_report`, also exposed
++through the trusted local `realm::net::Control`, provide operator-only review.
++Completing a report releases queue capacity and retains the immutable receipt;
++retrying the old submission cannot reopen it. Record selection and receipts use
++the existing atomic realm head. Uncertain publication requires recovery. Active
++queues and submission rates are bounded; immutable receipt history remains on
++disk and requires the host's storage and retention policy.
++
++These are native realm and SDK contact controls. They do not hide physical
++avatars, remove existing members, implement a chat service, or add a phone or
++browser moderation UI. Host operators decide what an actioned report requires;
++report status alone does not ban an account or run a tool. World-only access
++continues to expose seats while refusing private Studio views and operations.
+diff --git a/crates/verse-world/src/service.rs b/crates/verse-world/src/service.rs
+index 6db88dfe4a..0fed868226 100644
+--- a/crates/verse-world/src/service.rs
++++ b/crates/verse-world/src/service.rs
+@@ -38,6 +38,7 @@ pub mod replica;
+ #[cfg(feature = "service-auth")]
+ pub mod replication;
+ pub mod rewards;
++pub mod safety;
+ #[cfg(feature = "service-auth")]
+ pub mod save;
+ #[cfg(feature = "service-client")]
+diff --git a/crates/verse-world/src/service/client.rs b/crates/verse-world/src/service/client.rs
+index 66e53bd040..934cb65d7a 100644
+--- a/crates/verse-world/src/service/client.rs
++++ b/crates/verse-world/src/service/client.rs
+@@ -271,6 +271,33 @@ impl Client {
+             _ => Err("Realm service view is missing".into()),
+         }
+     }
++    pub async fn safety(&mut self) -> Result<super::safety::View, String> {
++        match self.request_ready(Body::Safety {}).await?.body {
++            Reply::Safety { view } => Ok(view),
++            Reply::Refused { message, .. } => Err(message),
++            _ => Err("Account safety view is missing".into()),
++        }
++    }
++    pub async fn safety_action(
++        &mut self,
++        realm: [u8; 32],
++        operation: [u8; 16],
++        action: super::safety::Action,
++    ) -> Result<super::safety::Receipt, String> {
++        match self
++            .request_ready(Body::SafetyAction {
++                realm,
++                operation,
++                action,
++            })
++            .await?
++            .body
++        {
++            Reply::SafetyApplied { receipt } => Ok(receipt),
++            Reply::Refused { message, .. } => Err(message),
++            _ => Err("Account safety receipt is missing".into()),
++        }
++    }
+     pub async fn service_action(
+         &mut self,
+         realm: [u8; 32],
+@@ -629,6 +656,15 @@ impl Client {
+             (Reply::Snapshot { state }, Body::Snapshot {} | Body::Replicate { .. }) => {
+                 state.validate_control(self.instance, &r.control)
+             }
++            (Reply::Safety { view }, Body::Safety {}) => view.validate(),
++            (
++                Reply::SafetyApplied { receipt },
++                Body::SafetyAction {
++                    realm,
++                    operation,
++                    action,
++                },
++            ) => receipt.validate(*realm, receipt.account, *operation, action),
+             (Reply::Services { view }, Body::Services { character }) => {
+                 view.validate()?;
+                 if view.character != *character
+diff --git a/crates/verse-world/src/service/net/admission.rs b/crates/verse-world/src/service/net/admission.rs
+index f0880aae67..5292add0d1 100644
+--- a/crates/verse-world/src/service/net/admission.rs
++++ b/crates/verse-world/src/service/net/admission.rs
+@@ -355,7 +355,9 @@ impl Slot {
+         let (projection, cost) = match body {
+             Body::Snapshot {} => (true, 32),
+             Body::Replicate { .. } => (true, 8),
+-            Body::Inventory {} | Body::Account {} | Body::Services { .. } => (true, 8),
++            Body::Safety {} | Body::Inventory {} | Body::Account {} | Body::Services { .. } => {
++                (true, 8)
++            }
+             Body::Events { .. } => (true, 4),
+             _ => (false, 1),
+         };
+diff --git a/crates/verse-world/src/service/realm.rs b/crates/verse-world/src/service/realm.rs
+index ec7933b9c4..c893031234 100644
+--- a/crates/verse-world/src/service/realm.rs
++++ b/crates/verse-world/src/service/realm.rs
+@@ -16,6 +16,7 @@ mod disk;
+ mod lifecycle;
+ pub mod net;
+ mod registry;
++mod safety;
+ mod services;
+ mod transfer;
+ pub use registry::{Account, Character, Residence};
+@@ -101,6 +102,7 @@ pub struct Realm {
+     transfer_commit: bool,
+     lifecycle_commit: bool,
+     services_commit: bool,
++    safety_commit: bool,
+ }
+ impl Realm {
+     pub fn open(root: &Path) -> Result<Self, String> {
+@@ -569,10 +571,13 @@ impl Realm {
+                 | Body::Replicate { .. }
+                 | Body::Inventory {}
+                 | Body::Services { .. }
++                | Body::Safety {}
+                 | Body::Account {}
+                 | Body::Events { .. }
+         );
+-        let service = self.services_request(lease, id, now, &request.body);
++        let service = self
++            .services_request(lease, id, now, &request.body)
++            .or_else(|| self.safety_request(lease, id, now, &request.body));
+         let service_handled = service.is_some();
+         let response = if let Some(result) =
+             service.or_else(|| self.lifecycle_request(lease, id, now, &request.body))
+diff --git a/crates/verse-world/src/service/realm/disk.rs b/crates/verse-world/src/service/realm/disk.rs
+index 87fbfd6554..dca6cc650f 100644
+--- a/crates/verse-world/src/service/realm/disk.rs
++++ b/crates/verse-world/src/service/realm/disk.rs
+@@ -149,6 +149,7 @@ pub(super) fn open(root: &Path) -> Result<Realm, String> {
+         transfer_commit: false,
+         lifecycle_commit: false,
+         services_commit: false,
++        safety_commit: false,
+     };
+     let instances: Vec<_> = realm.manifest.instances.keys().copied().collect();
+     for id in &instances {
+@@ -218,6 +219,7 @@ fn boundary(realm: &Realm, name: &str) {
+             || realm.transfer_commit && stage == format!("transfer_{name}")
+             || realm.lifecycle_commit && stage == format!("lifecycle_{name}")
+             || realm.services_commit && stage == format!("services_{name}")
++            || realm.safety_commit && stage == format!("safety_{name}")
+     }) {
+         std::process::exit(86);
+     }
+diff --git a/crates/verse-world/src/service/realm/net.rs b/crates/verse-world/src/service/realm/net.rs
+index a512647273..effbcd42d8 100644
+--- a/crates/verse-world/src/service/realm/net.rs
++++ b/crates/verse-world/src/service/realm/net.rs
+@@ -19,6 +19,14 @@ use tokio_rustls::TlsAcceptor;
+ const QUEUE: usize = 128;
+ 
+ enum Operation {
++    Reports {
++        reply: oneshot::Sender<Result<Vec<super::super::safety::Report>, String>>,
++    },
++    ResolveReport {
++        id: [u8; 32],
++        status: super::super::safety::Status,
++        reply: oneshot::Sender<Result<super::super::safety::Report, String>>,
++    },
+     PartyLoot {
+         instance: u64,
+         grant: super::super::game_services::Loot,
+@@ -77,6 +85,21 @@ pub fn channel() -> (Control, Commands) {
+     (Control(send), Commands(receive))
+ }
+ impl Control {
++    pub async fn pending_reports(&self) -> Result<Vec<super::super::safety::Report>, String> {
++        let (reply, receive) = oneshot::channel();
++        self.send(Operation::Reports { reply }).await?;
++        receive.await.map_err(|_| "Realm operator stopped")?
++    }
++    pub async fn resolve_report(
++        &self,
++        id: [u8; 32],
++        status: super::super::safety::Status,
++    ) -> Result<super::super::safety::Report, String> {
++        let (reply, receive) = oneshot::channel();
++        self.send(Operation::ResolveReport { id, status, reply })
++            .await?;
++        receive.await.map_err(|_| "Realm operator stopped")?
++    }
+     pub async fn party_loot(
+         &self,
+         instance: u64,
+@@ -306,6 +329,12 @@ fn coordinator(
+                 }
+             }
+             Work::Operator(operation) => match operation {
++                Operation::Reports { reply } => {
++                    let _ = reply.send(realm.pending_reports());
++                }
++                Operation::ResolveReport { id, status, reply } => {
++                    let _ = reply.send(realm.resolve_report(id, status, clock));
++                }
+                 Operation::PartyLoot {
+                     instance,
+                     grant,
+diff --git a/crates/verse-world/src/service/realm/registry.rs b/crates/verse-world/src/service/realm/registry.rs
+index 218897ee75..b86ca7e1fb 100644
+--- a/crates/verse-world/src/service/realm/registry.rs
++++ b/crates/verse-world/src/service/realm/registry.rs
+@@ -29,6 +29,7 @@ pub enum Residence {
+ #[serde(tag = "record", rename_all = "snake_case", deny_unknown_fields)]
+ pub(super) enum Record {
+     Service(super::services::Record),
++    Safety(super::safety::Record),
+     Account(Account),
+     Character(Character),
+     Credential {
+@@ -180,6 +181,7 @@ pub(super) fn put(realm: &Realm, mut root: Root, records: Vec<Record>) -> Result
+     for record in records {
+         let key = match &record {
+             Record::Service(r) => r.key(),
++            Record::Safety(r) => r.key(),
+             Record::Account(a) => account_key(a.id),
+             Record::Character(c) => character_key(c.id),
+             Record::Credential { key, .. } => credential_key(*key),
+diff --git a/crates/verse-world/src/service/realm/safety.rs b/crates/verse-world/src/service/realm/safety.rs
+new file mode 100644
+index 0000000000..df02a23eda
+--- /dev/null
++++ b/crates/verse-world/src/service/realm/safety.rs
+@@ -0,0 +1,311 @@
++//! Private, restart-durable account safety records selected by the realm head.
++use super::super::safety as api;
++use super::*;
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub(super) struct Preferences {
++    account: u64,
++    blocked: Vec<u64>,
++    day: u64,
++    reports: u8,
++    #[serde(default)]
++    changes: u16,
++}
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(tag = "safety", rename_all = "snake_case", deny_unknown_fields)]
++pub(super) enum Record {
++    Preferences(Preferences),
++    Queue { ids: Vec<api::Id> },
++    Report(api::Report),
++    Receipt(api::Receipt),
++}
++fn key(domain: &[u8], value: &[u8]) -> api::Id {
++    let mut bytes = b"verse.realm.safety.v1\0".to_vec();
++    bytes.extend_from_slice(domain);
++    bytes.push(0);
++    bytes.extend_from_slice(value);
++    disk::digest(&bytes)
++}
++fn receipt_key(account: u64, operation: [u8; 16]) -> api::Id {
++    key(
++        b"receipt",
++        &[account.to_be_bytes().as_slice(), &operation].concat(),
++    )
++}
++impl Record {
++    pub(super) fn key(&self) -> api::Id {
++        match self {
++            Self::Preferences(p) => key(b"preferences", &p.account.to_be_bytes()),
++            Self::Queue { .. } => key(b"queue", &[]),
++            Self::Report(r) => key(b"report", &r.id),
++            Self::Receipt(r) => receipt_key(r.account, r.operation),
++        }
++    }
++}
++impl Realm {
++    fn safety_record(&self, id: api::Id) -> Result<Option<Record>, String> {
++        match registry::get(self, self.manifest.registry_root, id)? {
++            Some(registry::Record::Safety(r)) if r.key() == id => Ok(Some(r)),
++            None => Ok(None),
++            _ => Err("Account safety record identity differs".into()),
++        }
++    }
++    fn preferences(&self, account: u64) -> Result<Preferences, String> {
++        self.account(account)?;
++        let p = match self.safety_record(key(b"preferences", &account.to_be_bytes()))? {
++            Some(Record::Preferences(p))
++                if p.account == account && p.reports <= 16 && p.changes <= 128 =>
++            {
++                p
++            }
++            None => Preferences {
++                account,
++                blocked: vec![],
++                day: 0,
++                reports: 0,
++                changes: 0,
++            },
++            _ => return Err("Invalid account safety preferences".into()),
++        };
++        api::View {
++            realm: self.manifest.id,
++            account,
++            blocked: p.blocked.clone(),
++        }
++        .validate()?;
++        Ok(p)
++    }
++    fn safety_account(&self, lease: &Lease, connection: ConnectionId) -> Result<u64, String> {
++        let public = self.games[&lease.instance].principal(connection)?.0;
++        Ok(self
++            .account_for_key(public)?
++            .ok_or("Safety requires a current realm account")?
++            .id)
++    }
++    fn queue(&self) -> Result<Vec<api::Id>, String> {
++        match self.safety_record(key(b"queue", &[]))? {
++            Some(Record::Queue { ids: q })
++                if q.len() <= 256
++                    && q.windows(2).all(|a| a[0] < a[1])
++                    && q.iter().all(|id| *id != [0; 32]) =>
++            {
++                Ok(q)
++            }
++            None => Ok(vec![]),
++            _ => Err("Invalid safety moderation queue".into()),
++        }
++    }
++    fn safety_commit(&mut self, records: Vec<Record>) -> Result<(), String> {
++        self.manifest.registry_root = registry::put(
++            self,
++            self.manifest.registry_root,
++            records.into_iter().map(registry::Record::Safety).collect(),
++        )?;
++        self.safety_commit = true;
++        let result = self.publish(&[]);
++        self.safety_commit = false;
++        result
++    }
++    pub fn safety_view(
++        &mut self,
++        lease: &Lease,
++        connection: ConnectionId,
++        now: u64,
++    ) -> Result<api::View, String> {
++        self.check(lease, now)?;
++        let account = self.safety_account(lease, connection)?;
++        let view = api::View {
++            realm: self.manifest.id,
++            account,
++            blocked: self.preferences(account)?.blocked,
++        };
++        view.validate()?;
++        Ok(view)
++    }
++    pub fn safety_action(
++        &mut self,
++        lease: &Lease,
++        connection: ConnectionId,
++        realm: api::Id,
++        operation: [u8; 16],
++        action: api::Action,
++        now: u64,
++    ) -> Result<api::Receipt, String> {
++        self.check(lease, now)?;
++        let account = self.safety_account(lease, connection)?;
++        if realm != self.manifest.id || operation == [0; 16] {
++            return Err("Safety realm or operation identity differs".into());
++        }
++        let digest = action.digest()?;
++        if let Some(Record::Receipt(receipt)) =
++            self.safety_record(receipt_key(account, operation))?
++        {
++            receipt.validate(realm, account, operation, &action)?;
++            return Ok(receipt);
++        }
++        let target = action.target();
++        self.account(target)?;
++        if target == account {
++            return Err("Safety targets must name another account".into());
++        }
++        let mut prefs = self.preferences(account)?;
++        let day = now / 86_400_000;
++        if prefs.day != day {
++            prefs.day = day;
++            prefs.reports = 0;
++            prefs.changes = 0;
++        }
++        let mut records = vec![];
++        let outcome = match action {
++            api::Action::Block { blocked, .. } => {
++                if prefs.changes >= 128 {
++                    return Err("Account block change budget is 128 per UTC day".into());
++                }
++                prefs.changes += 1;
++                match (prefs.blocked.binary_search(&target), blocked) {
++                    (Err(index), true) => {
++                        if prefs.blocked.len() >= 64 {
++                            return Err("Account block budget exceeded".into());
++                        }
++                        prefs.blocked.insert(index, target);
++                    }
++                    (Ok(index), false) => {
++                        prefs.blocked.remove(index);
++                    }
++                    _ => (),
++                }
++                api::Outcome::Block {
++                    account: target,
++                    blocked,
++                }
++            }
++            api::Action::Report {
++                reason, evidence, ..
++            } => {
++                if prefs.reports >= 16 {
++                    return Err("Account report budget is 16 per UTC day".into());
++                }
++                let mut queue = self.queue()?;
++                if queue.len() >= 256 {
++                    return Err("Moderation queue is full; no report was admitted".into());
++                }
++                let id = api::report_id(realm, account, operation);
++                let index = queue.binary_search(&id).unwrap_err();
++                queue.insert(index, id);
++                records.push(Record::Queue { ids: queue });
++                records.push(Record::Report(api::Report {
++                    id,
++                    realm,
++                    reporter: account,
++                    target,
++                    reason,
++                    evidence,
++                    created_ms: now,
++                    status: api::Status::Open,
++                }));
++                prefs.reports += 1;
++                api::Outcome::Report { id }
++            }
++        };
++        let receipt = api::Receipt {
++            realm,
++            account,
++            operation,
++            digest,
++            outcome,
++        };
++        records.push(Record::Preferences(prefs));
++        records.push(Record::Receipt(receipt.clone()));
++        self.safety_commit(records)?;
++        Ok(receipt)
++    }
++    /// Contact admission for every character of either account; never disclose whose block matched.
++    pub(super) fn contact(&self, from: u64, to: u64) -> Result<(), String> {
++        let a = self.character(from)?.account;
++        let b = self.character(to)?.account;
++        if self.preferences(a)?.blocked.binary_search(&b).is_ok()
++            || self.preferences(b)?.blocked.binary_search(&a).is_ok()
++        {
++            Err("Contact is unavailable under account safety policy".into())
++        } else {
++            Ok(())
++        }
++    }
++    /// Local operator projection, never a public request body.
++    pub fn pending_reports(&self) -> Result<Vec<api::Report>, String> {
++        if self.poisoned {
++            return Err("Realm requires recovery after an uncertain commit".into());
++        }
++        self.queue()?
++            .into_iter()
++            .map(|id| match self.safety_record(key(b"report", &id))? {
++                Some(Record::Report(r))
++                    if r.id == id
++                        && r.realm == self.manifest.id
++                        && r.status == api::Status::Open =>
++                {
++                    Ok(r)
++                }
++                _ => Err("Moderation queue report differs".into()),
++            })
++            .collect()
++    }
++    /// A completed report retains its receipt and releases queue capacity.
++    pub fn resolve_report(
++        &mut self,
++        id: api::Id,
++        status: api::Status,
++        now: u64,
++    ) -> Result<api::Report, String> {
++        self.clock(now)?;
++        if status == api::Status::Open {
++            return Err("Supply a completed moderation verdict".into());
++        }
++        let mut report = match self.safety_record(key(b"report", &id))? {
++            Some(Record::Report(r)) if r.id == id && r.realm == self.manifest.id => r,
++            _ => return Err("Moderation report is missing".into()),
++        };
++        if report.status != api::Status::Open {
++            return if report.status == status {
++                Ok(report)
++            } else {
++                Err("Report already binds another moderation verdict".into())
++            };
++        }
++        let mut queue = self.queue()?;
++        let index = queue
++            .binary_search(&id)
++            .map_err(|_| "Report is absent from moderation queue")?;
++        queue.remove(index);
++        report.status = status;
++        self.safety_commit(vec![
++            Record::Queue { ids: queue },
++            Record::Report(report.clone()),
++        ])?;
++        Ok(report)
++    }
++    pub(super) fn safety_request(
++        &mut self,
++        lease: &Lease,
++        connection: ConnectionId,
++        now: u64,
++        body: &Body,
++    ) -> Option<Result<super::super::wire::Reply, String>> {
++        use super::super::wire::Reply;
++        match body {
++            Body::Safety {} => Some(
++                self.safety_view(lease, connection, now)
++                    .map(|view| Reply::Safety { view }),
++            ),
++            Body::SafetyAction {
++                realm,
++                operation,
++                action,
++            } => Some(
++                self.safety_action(lease, connection, *realm, *operation, action.clone(), now)
++                    .map(|receipt| Reply::SafetyApplied { receipt }),
++            ),
++            _ => None,
++        }
++    }
++}
+diff --git a/crates/verse-world/src/service/realm/services.rs b/crates/verse-world/src/service/realm/services.rs
+index 8846205ead..f769ba44df 100644
+--- a/crates/verse-world/src/service/realm/services.rs
++++ b/crates/verse-world/src/service/realm/services.rs
+@@ -287,6 +287,7 @@ impl Realm {
+                 Outcome::Group { group: g }
+             }
+             Action::Invite { group, target } => {
++                self.contact(character, target)?;
+                 self.character(target)?;
+                 let mut g = self.group(group)?;
+                 let mut m = self.member(target)?;
+@@ -306,6 +307,7 @@ impl Realm {
+             }
+             Action::Join { group } => {
+                 let mut g = self.group(group)?;
++                self.contact(character, g.leader)?;
+                 let mut m = self.member(character)?;
+                 if !g.invites.contains(&character)
+                     || !m.invites.contains(&group)
+@@ -424,6 +426,7 @@ impl Realm {
+                 {
+                     return Err("Invalid trade recipient, deadline, or empty exchange".into());
+                 }
++                self.contact(character, to)?;
+                 self.service_resident(to, now)?;
+                 let offer = Offer {
+                     id,
+@@ -467,6 +470,9 @@ impl Realm {
+                 {
+                     return Err("Trade consent is unauthorized, expired, or already settled".into());
+                 }
++                if accept {
++                    self.contact(offer.from, offer.to)?;
++                }
+                 self.settle_trade(&mut plan, &offer, accept, now)?;
+                 offer.status = if accept {
+                     Status::Accepted
+diff --git a/crates/verse-world/src/service/realm/services/tests.rs b/crates/verse-world/src/service/realm/services/tests.rs
+index 0165684e86..eb8b805bd2 100644
+--- a/crates/verse-world/src/service/realm/services/tests.rs
++++ b/crates/verse-world/src/service/realm/services/tests.rs
+@@ -471,6 +471,8 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
+         .unwrap()
+         .as_millis() as u64;
+     let (mut realm, a, b, alice, bob) = setup(&root, now);
++    let alice_account = realm.character(alice).unwrap().account;
++    let bob_account = realm.character(bob).unwrap().account;
+     let left = TcpListener::bind("127.0.0.1:0").await.unwrap();
+     let right = TcpListener::bind("127.0.0.1:0").await.unwrap();
+     let left_addr = left.local_addr().unwrap();
+@@ -668,6 +670,56 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
+         control.party_loot(1001, loot(50, party)).await.unwrap(),
+         grant
+     );
++    use crate::service::safety as safe;
++    let block = ca
++        .safety_action(
++            identity,
++            [80; 16],
++            safe::Action::Block {
++                account: bob_account,
++                blocked: true,
++            },
++        )
++        .await
++        .unwrap();
++    assert_eq!(ca.safety().await.unwrap().blocked, vec![bob_account]);
++    assert!(cb.safety().await.unwrap().blocked.is_empty());
++    let report = cb
++        .safety_action(
++            identity,
++            [81; 16],
++            safe::Action::Report {
++                account: alice_account,
++                reason: safe::Reason::Harassment,
++                evidence: Some([8; 32]),
++            },
++        )
++        .await
++        .unwrap();
++    let report_id = match report.outcome {
++        safe::Outcome::Report { id } => id,
++        _ => panic!("Expected report"),
++    };
++    assert_eq!(control.pending_reports().await.unwrap().len(), 1);
++    control
++        .resolve_report(report_id, safe::Status::Dismissed)
++        .await
++        .unwrap();
++    assert!(control.pending_reports().await.unwrap().is_empty());
++    assert_eq!(
++        cb.safety_action(
++            identity,
++            [81; 16],
++            safe::Action::Report {
++                account: alice_account,
++                reason: safe::Reason::Harassment,
++                evidence: Some([8; 32])
++            }
++        )
++        .await
++        .unwrap(),
++        report
++    );
+     drop(ca);
+     drop(cb);
+     stop.send(()).unwrap();
+@@ -710,6 +762,34 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
+         realm.party_loot(&a, loot(50, party), now + 1000).unwrap(),
+         grant
+     );
++    assert_eq!(
++        realm.safety_view(&b, ca, now + 1000).unwrap().blocked,
++        vec![bob_account]
++    );
++    assert!(realm.pending_reports().unwrap().is_empty());
++    assert_eq!(
++        realm
++            .safety_action(
++                &b,
++                ca,
++                identity,
++                [80; 16],
++                safe::Action::Block {
++                    account: bob_account,
++                    blocked: true
++                },
++                now + 1000
++            )
++            .unwrap(),
++        block
++    );
++    assert_eq!(
++        realm
++            .resolve_report(report_id, safe::Status::Dismissed, now + 1000)
++            .unwrap()
++            .target,
++        alice_account
++    );
+     let actor = realm.manifest.characters[&alice].actor;
+     assert_eq!(
+         realm.games[&1002]
+@@ -729,7 +809,8 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
+                 "guardian_level_two_with_wand": { "max_hp": 335, "max_mana": 51 },
+                 "logout_resume": true, "zone_transfer": true, "restart": true,
+                 "party_event_recipients_frozen": true, "final_character_experience": 200,
+-                "host_loot": "trusted local authored outcome adapter", "stats": stats
++                "host_loot": "trusted local authored outcome adapter", "stats": stats,
++                "account_block_private":true, "typed_report_private_queue":true, "completed_report_exact_retry":true
+             }))
+             .unwrap(),
+         )
+@@ -1040,3 +1121,396 @@ fn offers_lock_only_the_sender_and_cancel_after_requested_items_change_owner() {
+     assert_eq!(realm.item_instance(hat.id).unwrap().owner, alice);
+     assert_eq!(realm.item_instance(hat.id).unwrap().locked, None);
+ }
++
++#[test]
++fn account_blocks_fence_pending_and_new_contact_across_restart() {
++    use crate::service::safety as safe;
++    let dir = tempfile::tempdir().unwrap();
++    let root = dir.path().join("realm");
++    let (mut realm, a, b, alice, bob) = setup(&root, 0);
++    let ca = connect(&mut realm, &a, 11, 1);
++    let cb = connect(&mut realm, &b, 12, 1);
++    let aa = realm.character(alice).unwrap().account;
++    let ba = realm.character(bob).unwrap().account;
++    let party = party(&mut realm, &a, &b, ca, cb, alice, bob);
++    realm.party_loot(&a, loot(1, party), 1).unwrap();
++    let ia = item(apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        3,
++        Action::Materialize { definition: 10 },
++    ));
++    let ib = item(apply(
++        &mut realm,
++        &b,
++        cb,
++        bob,
++        2,
++        Action::Materialize { definition: 11 },
++    ));
++    let pending = offer(apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        4,
++        Action::Offer {
++            to: bob,
++            give: vec![api::Token {
++                id: ia.id,
++                version: ia.version,
++            }],
++            want: vec![api::Token {
++                id: ib.id,
++                version: ib.version,
++            }],
++            expires_ms: 1000,
++        },
++    ));
++    let block = safe::Action::Block {
++        account: aa,
++        blocked: true,
++    };
++    let first = realm
++        .safety_action(&b, cb, realm.manifest.id, [1; 16], block.clone(), 1)
++        .unwrap();
++    assert_eq!(
++        realm
++            .safety_action(&b, cb, realm.manifest.id, [1; 16], block.clone(), 1)
++            .unwrap(),
++        first
++    );
++    assert_eq!(realm.safety_view(&b, cb, 1).unwrap().blocked, vec![aa]);
++    assert_eq!(realm.safety_view(&a, ca, 1).unwrap().account, aa);
++    assert!(realm.safety_view(&a, ca, 1).unwrap().blocked.is_empty());
++    assert!(realm.contact(alice, bob).is_err());
++    assert!(realm.contact(bob, alice).is_err());
++    let refuse = dispatch(
++        &mut realm,
++        &b,
++        cb,
++        Body::ServiceAction {
++            realm: first.realm,
++            character: bob,
++            operation: [3; 16],
++            action: Action::Accept { offer: pending.id },
++        },
++        1,
++    );
++    assert!(matches!(refuse.body, Reply::Refused { .. }));
++    // A block never prevents cancellation or strands the sender's locked gear.
++    apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        5,
++        Action::Cancel { offer: pending.id },
++    );
++    assert!(realm.item_instance(ia.id).unwrap().locked.is_none());
++    apply(&mut realm, &b, cb, bob, 4, Action::Leave { group: party });
++    let refuse = dispatch(
++        &mut realm,
++        &a,
++        ca,
++        Body::ServiceAction {
++            realm: first.realm,
++            character: alice,
++            operation: [6; 16],
++            action: Action::Invite {
++                group: party,
++                target: bob,
++            },
++        },
++        1,
++    );
++    assert!(matches!(refuse.body, Reply::Refused { .. }));
++    realm
++        .logout(&b, key(12).x_only_public_key().0.serialize(), bob, 1)
++        .unwrap();
++    let extra = realm
++        .create_character(
++            &b,
++            key(12).x_only_public_key().0.serialize(),
++            [2., 0., -22.],
++            1,
++        )
++        .unwrap()
++        .0;
++    assert_eq!(realm.character(extra).unwrap().account, ba);
++    assert!(realm.contact(alice, extra).is_err());
++    let unauthenticated = realm.open_connection(&a, 1).unwrap().0;
++    assert!(
++        realm
++            .safety_action(
++                &a,
++                unauthenticated,
++                first.realm,
++                [1; 16],
++                safe::Action::Block {
++                    account: ba,
++                    blocked: true
++                },
++                1
++            )
++            .is_err()
++    );
++    drop(realm);
++    let mut realm = Realm::open(&root).unwrap();
++    let b = realm.acquire(1002, [2; 32], 2).unwrap();
++    let cb = connect(&mut realm, &b, 12, 2);
++    assert!(realm.contact(alice, bob).is_err());
++    assert_eq!(
++        realm
++            .safety_action(&b, cb, first.realm, [1; 16], block, 2)
++            .unwrap(),
++        first
++    );
++    let unblock = safe::Action::Block {
++        account: aa,
++        blocked: false,
++    };
++    realm
++        .safety_action(&b, cb, first.realm, [2; 16], unblock, 2)
++        .unwrap();
++    assert!(realm.contact(alice, bob).is_ok());
++    // A delayed retry returns the original receipt without reinstating the block.
++    realm
++        .safety_action(
++            &b,
++            cb,
++            first.realm,
++            [1; 16],
++            safe::Action::Block {
++                account: aa,
++                blocked: true,
++            },
++            2,
++        )
++        .unwrap();
++    assert!(realm.contact(alice, bob).is_ok());
++}
++
++#[test]
++fn private_reports_bound_submission_and_preserve_completed_exact_retries() {
++    use crate::service::safety as safe;
++    let dir = tempfile::tempdir().unwrap();
++    let root = dir.path().join("realm");
++    let (mut realm, a, b, alice, bob) = setup(&root, 0);
++    let ca = connect(&mut realm, &a, 11, 1);
++    let cb = connect(&mut realm, &b, 12, 1);
++    let account = realm.character(alice).unwrap().account;
++    let target = realm.character(bob).unwrap().account;
++    let realm_id = realm.manifest.id;
++    let action = safe::Action::Report {
++        account: target,
++        reason: safe::Reason::Harassment,
++        evidence: Some([9; 32]),
++    };
++    let receipt = realm
++        .safety_action(&a, ca, realm_id, [1; 16], action.clone(), 1)
++        .unwrap();
++    let id = match receipt.outcome {
++        safe::Outcome::Report { id } => id,
++        _ => panic!("Expected report"),
++    };
++    assert_eq!(realm.pending_reports().unwrap().len(), 1);
++    assert_eq!(realm.pending_reports().unwrap()[0].reporter, account);
++    assert_eq!(
++        realm
++            .safety_action(&a, ca, realm_id, [1; 16], action.clone(), 1)
++            .unwrap(),
++        receipt
++    );
++    assert!(
++        realm
++            .safety_action(
++                &a,
++                ca,
++                realm_id,
++                [1; 16],
++                safe::Action::Block {
++                    account: target,
++                    blocked: true
++                },
++                1
++            )
++            .is_err()
++    );
++    let foreign = dispatch(&mut realm, &b, cb, Body::Safety {}, 1);
++    match foreign.body {
++        Reply::Safety { view } => {
++            assert_eq!(view.account, target);
++            assert!(view.blocked.is_empty());
++        }
++        _ => panic!("Expected own safety projection"),
++    }
++    let finished = realm
++        .resolve_report(id, safe::Status::Dismissed, 1)
++        .unwrap();
++    assert_eq!(
++        realm
++            .resolve_report(id, safe::Status::Dismissed, 1)
++            .unwrap(),
++        finished
++    );
++    assert!(realm.resolve_report(id, safe::Status::Actioned, 1).is_err());
++    assert!(realm.pending_reports().unwrap().is_empty());
++    for n in 2..=16 {
++        realm
++            .safety_action(&a, ca, realm_id, [n; 16], action.clone(), 1)
++            .unwrap();
++    }
++    assert!(
++        realm
++            .safety_action(&a, ca, realm_id, [17; 16], action.clone(), 1)
++            .is_err()
++    );
++    assert_eq!(realm.pending_reports().unwrap().len(), 15);
++    assert_eq!(
++        realm
++            .safety_action(&a, ca, realm_id, [1; 16], action.clone(), 1)
++            .unwrap(),
++        receipt
++    );
++    assert_eq!(realm.pending_reports().unwrap().len(), 15);
++    drop(realm);
++    let mut realm = Realm::open(&root).unwrap();
++    let a = realm.acquire(1001, [1; 32], 2).unwrap();
++    let ca = connect(&mut realm, &a, 11, 2);
++    assert_eq!(realm.pending_reports().unwrap().len(), 15);
++    assert_eq!(
++        realm
++            .safety_action(&a, ca, realm_id, [1; 16], action.clone(), 2)
++            .unwrap(),
++        receipt
++    );
++    assert!(
++        realm
++            .safety_action(&a, ca, realm_id, [17; 16], action, 2)
++            .is_err()
++    );
++    assert_eq!(
++        realm
++            .resolve_report(id, safe::Status::Dismissed, 2)
++            .unwrap(),
++        finished
++    );
++}
++
++#[test]
++fn safety_crash_child() {
++    let Ok(root) = std::env::var("VERSE_SAFETY_CHILD_ROOT") else {
++        return;
++    };
++    let mut realm = Realm::open(Path::new(&root)).unwrap();
++    let a = realm.acquire(1001, [1; 32], 2).unwrap();
++    let b = realm.acquire(1002, [2; 32], 2).unwrap();
++    let connection = connect(&mut realm, &a, 11, 2);
++    let target = realm
++        .account_for_key(key(12).x_only_public_key().0.serialize())
++        .unwrap()
++        .unwrap()
++        .id;
++    realm
++        .safety_action(
++            &a,
++            connection,
++            realm.manifest.id,
++            [70; 16],
++            crate::service::safety::Action::Report {
++                account: target,
++                reason: crate::service::safety::Reason::Spam,
++                evidence: None,
++            },
++            2,
++        )
++        .unwrap();
++    let _ = b;
++    panic!("Safety crash boundary did not fire");
++}
++#[test]
++fn safety_receipt_preferences_and_queue_recover_at_every_publication_boundary() {
++    use crate::service::safety as safe;
++    for stage in [
++        "before_snapshots",
++        "after_snapshots",
++        "before_seal",
++        "after_seal",
++        "after_directory_sync",
++    ] {
++        let dir = tempfile::tempdir().unwrap();
++        let root = dir.path().join("realm");
++        let (realm, _, _, _, bob) = setup(&root, 0);
++        let target = realm.character(bob).unwrap().account;
++        let identity = realm.manifest.id;
++        drop(realm);
++        let output = std::process::Command::new(std::env::current_exe().unwrap())
++            .args([
++                "--exact",
++                "service::realm::services::tests::safety_crash_child",
++                "--nocapture",
++                "--test-threads=1",
++            ])
++            .env("VERSE_SAFETY_CHILD_ROOT", &root)
++            .env("VERSE_REALM_CRASH_AT", format!("safety_{stage}"))
++            .output()
++            .unwrap();
++        assert_eq!(
++            output.status.code(),
++            Some(86),
++            "{stage}: {}",
++            String::from_utf8_lossy(&output.stderr)
++        );
++        let mut realm = Realm::open(&root).unwrap();
++        let before = realm.pending_reports().unwrap();
++        assert_eq!(
++            before.len(),
++            if matches!(stage, "after_seal" | "after_directory_sync") {
++                1
++            } else {
++                0
++            }
++        );
++        let a = realm.acquire(1001, [1; 32], 3).unwrap();
++        let ca = connect(&mut realm, &a, 11, 3);
++        let action = safe::Action::Report {
++            account: target,
++            reason: safe::Reason::Spam,
++            evidence: None,
++        };
++        let receipt = realm
++            .safety_action(&a, ca, identity, [70; 16], action.clone(), 3)
++            .unwrap();
++        assert_eq!(
++            realm
++                .safety_action(&a, ca, identity, [70; 16], action, 3)
++                .unwrap(),
++            receipt
++        );
++        assert_eq!(realm.pending_reports().unwrap().len(), 1);
++    }
++}
++
++#[test]
++fn public_scene_and_wire_inputs_cannot_select_operator_or_studio_commands() {
++    for action in [
++        serde_json::json!({"type":"execute","command":"touch should-not-exist"}),
++        serde_json::json!({"type":"studio","operation":{"type":"read_log"}}),
++        serde_json::json!({"type":"toggle","object":1,"command":"touch should-not-exist"}),
++    ] {
++        assert!(serde_json::from_value::<crate::play::social::Action>(action).is_err());
++    }
++    for body in [
++        serde_json::json!({"type":"resolve_report","id":vec![1;32],"status":"dismissed"}),
++        serde_json::json!({"type":"publisher","public":vec![1;32],"enabled":true,"reason":"approve"}),
++        serde_json::json!({"type":"studio_view"}),
++    ] {
++        let bytes =
++            serde_json::to_vec(&serde_json::json!({"version":VERSION,"request_id":1,"body":body}))
++                .unwrap();
++        assert!(Request::decode(&bytes).is_err());
++    }
++}
+diff --git a/crates/verse-world/src/service/safety.rs b/crates/verse-world/src/service/safety.rs
+new file mode 100644
+index 0000000000..d95c491054
+--- /dev/null
++++ b/crates/verse-world/src/service/safety.rs
+@@ -0,0 +1,144 @@
++//! Account-owned contact blocks and bounded reports, separate from host authority.
++use serde::{Deserialize, Serialize};
++use sha2::{Digest, Sha256};
++pub type Id = [u8; 32];
++#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Reason {
++    Spam,
++    Harassment,
++    UnsafeContent,
++    Cheating,
++}
++#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Status {
++    Open,
++    Actioned,
++    Dismissed,
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
++pub enum Action {
++    Block {
++        account: u64,
++        blocked: bool,
++    },
++    Report {
++        account: u64,
++        reason: Reason,
++        evidence: Option<Id>,
++    },
++}
++impl Action {
++    pub fn target(&self) -> u64 {
++        match self {
++            Self::Block { account, .. } | Self::Report { account, .. } => *account,
++        }
++    }
++    pub fn digest(&self) -> Result<Id, String> {
++        if self.target() == 0
++            || matches!(self, Self::Report { evidence: Some(id), .. } if *id == [0;32])
++        {
++            return Err("Invalid safety target or evidence identity".into());
++        }
++        let mut hash = Sha256::new();
++        hash.update(b"verse.safety.action.v1\0");
++        hash.update(serde_json::to_vec(self).map_err(|_| "Cannot encode safety action")?);
++        Ok(hash.finalize().into())
++    }
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
++pub enum Outcome {
++    Block { account: u64, blocked: bool },
++    Report { id: Id },
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Receipt {
++    pub realm: Id,
++    pub account: u64,
++    pub operation: [u8; 16],
++    pub digest: Id,
++    pub outcome: Outcome,
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct View {
++    pub realm: Id,
++    pub account: u64,
++    pub blocked: Vec<u64>,
++}
++impl View {
++    pub fn validate(&self) -> Result<(), String> {
++        if self.realm == [0; 32]
++            || self.account == 0
++            || self.blocked.len() > 64
++            || self.blocked.iter().any(|a| *a == 0 || *a == self.account)
++            || self.blocked.windows(2).any(|a| a[0] >= a[1])
++        {
++            return Err("Invalid account safety projection".into());
++        }
++        Ok(())
++    }
++}
++/// Private operator report. The public wire exposes only its submission receipt.
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Report {
++    pub id: Id,
++    pub realm: Id,
++    pub reporter: u64,
++    pub target: u64,
++    pub reason: Reason,
++    pub evidence: Option<Id>,
++    pub created_ms: u64,
++    pub status: Status,
++}
++pub fn report_id(realm: Id, account: u64, operation: [u8; 16]) -> Id {
++    let mut hash = Sha256::new();
++    hash.update(b"verse.safety.report.v1\0");
++    hash.update(realm);
++    hash.update(account.to_be_bytes());
++    hash.update(operation);
++    hash.finalize().into()
++}
++impl Receipt {
++    pub fn validate(
++        &self,
++        realm: Id,
++        account: u64,
++        operation: [u8; 16],
++        action: &Action,
++    ) -> Result<(), String> {
++        let matches = match (&self.outcome, action) {
++            (
++                Outcome::Block {
++                    account: target,
++                    blocked,
++                },
++                Action::Block {
++                    account: requested,
++                    blocked: requested_blocked,
++                },
++            ) => target == requested && blocked == requested_blocked,
++            (Outcome::Report { id }, Action::Report { .. }) => {
++                *id == report_id(realm, account, operation)
++            }
++            _ => false,
++        };
++        if realm == [0; 32]
++            || account == 0
++            || operation == [0; 16]
++            || self.realm != realm
++            || self.account != account
++            || self.operation != operation
++            || self.digest != action.digest()?
++            || !matches
++        {
++            return Err("Account safety receipt is incompatible".into());
++        }
++        Ok(())
++    }
++}
+diff --git a/crates/verse-world/src/service/wire.rs b/crates/verse-world/src/service/wire.rs
+index 2c683bc5e3..1bc0876136 100644
+--- a/crates/verse-world/src/service/wire.rs
++++ b/crates/verse-world/src/service/wire.rs
+@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
+ use super::auth::{Challenge, ConnectionId, Gateway};
+ use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
+ 
+-pub const VERSION: u16 = 30;
++pub const VERSION: u16 = 31;
+ pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
+ pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+ 
+@@ -116,6 +116,12 @@ impl From<Input> for Command<Ability> {
+ #[derive(Clone, Debug, Serialize, Deserialize)]
+ #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+ pub enum Body {
++    Safety {},
++    SafetyAction {
++        realm: [u8; 32],
++        operation: [u8; 16],
++        action: super::safety::Action,
++    },
+     Services {
+         character: u64,
+     },
+@@ -501,6 +507,12 @@ impl Inventory {
+ #[derive(Clone, Debug, Serialize, Deserialize)]
+ #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+ pub enum Reply {
++    Safety {
++        view: super::safety::View,
++    },
++    SafetyApplied {
++        receipt: super::safety::Receipt,
++    },
+     Services {
+         view: super::game_services::View,
+     },
+@@ -741,7 +753,9 @@ impl Gateway {
+         body: Body,
+     ) -> Result<Reply, (&'static str, String)> {
+         match body {
+-            Body::Services { .. }
++            Body::Safety {}
++            | Body::SafetyAction { .. }
++            | Body::Services { .. }
+             | Body::ServiceAction { .. }
+             | Body::Account {}
+             | Body::SelectCharacter { .. }
