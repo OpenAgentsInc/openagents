@@ -17172,6 +17172,106 @@
           }
         },
         {
+          "name": "inspect",
+          "leaf": {
+            "path": [
+              "plugin",
+              "inspect"
+            ],
+            "usage": [
+              "inspect [PLUGIN] [--results DIR]..."
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "inspect"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PLUGIN",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "results",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true,
+                    "repeated": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Show each installed plugin by its exact release (version and package digest), whether it is on, and the test results under each DIR for that exact release apart from other releases.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "use",
+          "leaf": {
+            "path": [
+              "plugin",
+              "use"
+            ],
+            "usage": [
+              "use PLUGIN --version V --digest D [--request TEXT] [--in WORKSPACE] [--thread ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "use"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PLUGIN"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "version",
+                    "value": "V",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "digest",
+                    "value": "D",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "request",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "in",
+                    "value": "WORKSPACE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "thread",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run an installed plugin's workflow once through the shared route, only while exactly that release is installed and on.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "test",
           "children": [
             {
@@ -17802,6 +17902,38 @@
           "kind": "option",
           "name": "blobs-dir",
           "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "results",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "version",
+          "value": "V",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "digest",
+          "value": "D",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "thread",
+          "value": "ID",
           "open": true,
           "optional": true,
           "repeated": true

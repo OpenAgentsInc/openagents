@@ -57,6 +57,8 @@ mod plugin_local;
 mod plugin_new;
 #[cfg(unix)]
 mod plugin_registry;
+#[cfg(unix)]
+mod plugin_use;
 mod provider_key;
 mod quest;
 mod reach;

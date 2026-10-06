@@ -29,8 +29,7 @@ use std::time::Instant;
 pub const RULE_KEYS: &str = "F1 HELP  F10 QUIT  F11 RETURN  UP DOWN PICK  ENTER PAUSE OR RESUME, THEN CONFIRM  ESC REJECT OR RETURN";
 
 /// The key strip on the Gym page.
-pub const GYM_KEYS: &str =
-    "F1 HELP  F10 QUIT  F12 RETURN  UP DOWN PICK  ENTER RECOMPUTE  ESC RETURN  PGUP PGDN SCROLL";
+pub const GYM_KEYS: &str = "F1 HELP  F2 RESULTS OR PLUGINS  F10 QUIT  F12 RETURN  UP DOWN PICK  ENTER OPEN  ESC RETURN  PGUP PGDN SCROLL";
 
 /// The key strip on the files page.
 pub const FILE_KEYS: &str =
@@ -68,6 +67,8 @@ const HELP: &[&str] = &[
     "F12  show the plugin test results under this directory; F12 or ESC returns.",
     "     There, ENTER recomputes the one picked from its retained attempts and",
     "     shows whether they agree with its report. It runs and publishes nothing.",
+    "     F2 there lists the installed plugins by exact release; ENTER opens the",
+    "     newest result for exactly that release.",
     "     (The key strip is full, so F12 is named here.)",
     "",
     "A proposed command waits in the transcript. ENTER on an empty input line",
@@ -330,6 +331,10 @@ impl Application {
                     page.change = None;
                     self.paper_rules_poll();
                 }
+                return true;
+            }
+            Some(NamedKey::F2) if self.paper.gym.open => {
+                self.paper_gym_components();
                 return true;
             }
             Some(NamedKey::F2) if self.paper.files.open => {
@@ -821,26 +826,65 @@ impl Application {
         page.reading = None;
         page.scroll = 0;
         page.reads += 1;
+        page.components = false;
+        page.held = None;
+        page.holding = None;
+    }
+
+    /// F2 on the Gym page: the installed plugins by exact release, or back
+    /// to the results. Reading them only reads.
+    fn paper_gym_components(&mut self) {
+        let page = &mut self.paper.gym;
+        if page.viewing.is_some() {
+            return;
+        }
+        page.components = !page.components;
+        page.scroll = 0;
+        if !page.components {
+            return;
+        }
+        let root = page.root.clone().unwrap_or_else(|| ".".into());
+        let holding = self.sessions().0.read_components(&root);
+        let page = &mut self.paper.gym;
+        page.held = None;
+        page.holding = Some(holding);
+        page.reads += 1;
     }
 
     /// A key on the Gym page: the arrows pick or scroll, ENTER recomputes
-    /// the picked study (again, on its page), and ESC steps back.
+    /// the picked study (again, on its page) or opens the newest result for
+    /// the picked plugin's exact release, and ESC steps back.
     fn paper_gym_key(&mut self, code: KeyCode, enter: bool) {
         let page = &mut self.paper.gym;
-        let count = match &page.listed {
-            Some(Ok(studies)) => studies.studies.len(),
-            _ => 0,
+        let components = page.components && page.viewing.is_none();
+        let count = if components {
+            match &page.held {
+                Some(Ok(held)) => held.plugins.len(),
+                _ => 0,
+            }
+        } else {
+            match &page.listed {
+                Some(Ok(studies)) => studies.studies.len(),
+                _ => 0,
+            }
         };
-        let dir = match (&page.viewing, page.picked()) {
+        let dir = match (&page.viewing, components) {
             (Some(dir), _) => Some(dir.clone()),
-            (None, Some(study)) => Some(study.dir.clone()),
-            (None, None) => None,
+            (None, true) => page
+                .picked_component()
+                .and_then(|component| component.exact())
+                .map(|evidence| evidence.dir.clone()),
+            (None, false) => page.picked().map(|study| study.dir.clone()),
         };
         match code {
             KeyCode::Escape if page.viewing.is_some() => {
                 page.viewing = None;
                 page.shown = None;
                 page.reading = None;
+                page.scroll = 0;
+            }
+            KeyCode::Escape if components => {
+                page.components = false;
                 page.scroll = 0;
             }
             KeyCode::Escape => page.open = false,
@@ -850,10 +894,22 @@ impl Application {
             KeyCode::ArrowDown if page.viewing.is_some() => {
                 page.scroll = page.scroll.saturating_add(1);
             }
+            KeyCode::ArrowUp if components => {
+                page.component = page.component.saturating_sub(1);
+            }
+            KeyCode::ArrowDown if components => {
+                page.component = (page.component + 1).min(count.saturating_sub(1));
+            }
             KeyCode::ArrowUp => page.selected = page.selected.saturating_sub(1),
             KeyCode::ArrowDown => page.selected = (page.selected + 1).min(count.saturating_sub(1)),
             _ if enter => {
                 let Some(dir) = dir else {
+                    if components && page.picked_component().is_some() {
+                        self.notice = Some(
+                            "No result tested exactly this release; its test command is listed."
+                                .into(),
+                        );
+                    }
                     return;
                 };
                 if page.reading.is_some() {
@@ -873,10 +929,23 @@ impl Application {
         }
     }
 
-    /// Takes a finished listing or study for the Gym page.
+    /// Takes a finished listing, plugin read, or study for the Gym page.
     fn paper_gym_poll(&mut self) {
         use std::sync::mpsc::TryRecvError;
         let page = &mut self.paper.gym;
+        if let Some(holding) = &page.holding {
+            match holding.try_recv() {
+                Ok(read) => {
+                    page.held = Some(read);
+                    page.holding = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    page.held = Some(Err("the reader ended without an answer".into()));
+                    page.holding = None;
+                }
+            }
+        }
         if let Some(listing) = &page.listing {
             match listing.try_recv() {
                 Ok(read) => {
@@ -1724,6 +1793,8 @@ impl Application {
         if self.paper.gym.open {
             return if self.paper.gym.viewing.is_some() {
                 "UP DOWN scroll, ENTER recomputes again, ESC returns to the list".into()
+            } else if self.paper.gym.components {
+                "UP DOWN pick a plugin, ENTER opens its newest result, ESC returns".into()
             } else {
                 "UP DOWN pick a result, ENTER recomputes it, ESC returns".into()
             };

@@ -203,6 +203,77 @@ pub fn decode(stdout: &[u8], stderr: &[u8], dir: &str) -> Read {
     }
 }
 
+/// A retained result about one installed plugin.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct Evidence {
+    pub dir: String,
+    pub reported: Option<String>,
+    pub ended_at: Option<u64>,
+    /// Whether its subject is exactly the installed release.
+    pub exact: bool,
+}
+
+/// What the page names for a component; it runs none of them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct Commands {
+    pub test: Option<String>,
+    pub turn: Option<String>,
+    #[serde(rename = "use")]
+    pub use_: Option<String>,
+}
+
+/// One installed plugin by its exact release (#10664).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct Component {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub digest: String,
+    pub enabled: bool,
+    pub workflow: bool,
+    pub background: Vec<String>,
+    pub revocation: String,
+    pub evidence: Vec<Evidence>,
+    pub commands: Commands,
+}
+
+impl Component {
+    /// The newest result for exactly this release.
+    #[must_use]
+    pub fn exact(&self) -> Option<&Evidence> {
+        self.evidence
+            .iter()
+            .filter(|evidence| evidence.exact)
+            .max_by_key(|evidence| evidence.ended_at)
+    }
+}
+
+/// The installed plugins, as `plugin inspect` reads them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct Components {
+    pub plugins: Vec<Component>,
+}
+
+/// What reading the components answered.
+pub type ComponentsRead = Result<Components, String>;
+
+/// Decodes `openagents --json plugin inspect --results DIR`.
+#[must_use]
+pub fn decode_components(stdout: &[u8], stderr: &[u8]) -> ComponentsRead {
+    if stdout.len() > READ_MAX {
+        return Err("the plugins are too many to show".into());
+    }
+    match last_json(stdout) {
+        Some(value) if value.get("plugins").is_some() => {
+            serde_json::from_value(value).map_err(|_| "the plugins were not readable".into())
+        }
+        _ => Err(error_of(stdout, stderr)),
+    }
+}
+
 /// The page's state.
 #[derive(Default)]
 pub struct Page {
@@ -218,6 +289,11 @@ pub struct Page {
     pub reading: Option<Receiver<Read>>,
     pub scroll: usize,
     pub reads: u64,
+    /// F2: the installed plugins instead of the results.
+    pub components: bool,
+    pub held: Option<ComponentsRead>,
+    pub holding: Option<Receiver<ComponentsRead>>,
+    pub component: usize,
 }
 
 impl Page {
@@ -229,6 +305,122 @@ impl Page {
             _ => None,
         }
     }
+
+    /// The picked component, when the plugins are read.
+    #[must_use]
+    pub fn picked_component(&self) -> Option<&Component> {
+        match &self.held {
+            Some(Ok(held)) => held.plugins.get(self.component),
+            _ => None,
+        }
+    }
+}
+
+/// The components' text before wrapping, at `now` in Unix seconds.
+fn component_lines(page: &Page, now: u64) -> Vec<(String, crate::paper::Tone)> {
+    use crate::ascii::ascii;
+    use crate::paper::Tone;
+    let mut out = Vec::new();
+    let held = match &page.held {
+        None => {
+            out.push(("PLUGINS on this computer  [reading]".into(), Tone::Loud));
+            return out;
+        }
+        Some(Err(why)) => {
+            out.push(("PLUGINS on this computer  [unavailable]".into(), Tone::Loud));
+            out.push((
+                format!("The plugins can't be read now: {why}. F2 twice reads them again."),
+                Tone::Present,
+            ));
+            return out;
+        }
+        Some(Ok(held)) => held,
+    };
+    out.push((
+        format!(
+            "PLUGINS on this computer  {} installed  [{}]",
+            held.plugins.len(),
+            if page.holding.is_some() {
+                "reading again"
+            } else {
+                "current"
+            }
+        ),
+        Tone::Loud,
+    ));
+    out.push((
+        "Each is its exact release. Results count only for the release they tested; ENTER opens \
+         the newest one in the Gym."
+            .into(),
+        Tone::Quiet,
+    ));
+    out.push((String::new(), Tone::Quiet));
+    if held.plugins.is_empty() {
+        out.push((
+            "No plugins are installed here: openagents plugin install DIR".into(),
+            Tone::Present,
+        ));
+    }
+    for (index, component) in held.plugins.iter().enumerate() {
+        let picked = index == page.component;
+        let name = if component.name.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", ascii(&component.name))
+        };
+        out.push((
+            format!(
+                "{} {}{name}  {}  {}  package {}",
+                if picked { ">" } else { " " },
+                ascii(&component.id),
+                ascii(&component.version),
+                if component.enabled { "on" } else { "off" },
+                short(&component.digest),
+            ),
+            if picked { Tone::Loud } else { Tone::Present },
+        ));
+        let others = component.evidence.iter().filter(|e| !e.exact).count();
+        let exact = match component.exact() {
+            Some(evidence) => format!(
+                "tested: {} {} ago",
+                evidence.reported.as_deref().unwrap_or("?"),
+                evidence.ended_at.map_or_else(
+                    || "some time".into(),
+                    |at| crate::rules::span(now.saturating_sub(at))
+                )
+            ),
+            None => "not tested in this release".into(),
+        };
+        out.push((
+            format!(
+                "    {exact}; {others} results for other releases; revocation {}; {}",
+                if component.revocation == "not_checked" {
+                    "not checked here"
+                } else {
+                    component.revocation.as_str()
+                },
+                match (component.workflow, component.background.is_empty()) {
+                    (true, _) => "runs a workflow",
+                    (false, false) => "runs in the background",
+                    (false, true) => "skills only",
+                }
+            ),
+            Tone::Present,
+        ));
+        if picked {
+            for command in [
+                &component.commands.test,
+                &component.commands.turn,
+                &component.commands.use_,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                out.push((format!("    {}", ascii(command)), Tone::Quiet));
+            }
+        }
+    }
+    out
 }
 
 fn short(digest: &str) -> String {
@@ -555,6 +747,8 @@ fn study_lines(page: &Page) -> Vec<(String, crate::paper::Tone)> {
 pub fn lines(page: &Page, now: u64) -> Vec<(String, crate::paper::Tone)> {
     if page.viewing.is_some() {
         study_lines(page)
+    } else if page.components {
+        component_lines(page, now)
     } else {
         list_lines(page, now)
     }

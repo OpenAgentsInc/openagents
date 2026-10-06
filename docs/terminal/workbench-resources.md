@@ -192,6 +192,29 @@ or publishes; it names `openagents plugin test publish` and `check`. The
 120-column key strip is full, so F1 help names F12, and the page's own key
 strip names its keys.
 
+F2 on the Gym page lists the installed plugins by exact release
+([#10664](https://github.com/OpenAgentsInc/openagents/issues/10664)),
+read through `openagents --json plugin inspect --results DIR`: each
+plugin's `KEY:SLUG`, version, and package digest, whether it is on, what
+it runs, and the results that tested exactly that release apart from
+results for other releases. ENTER opens the newest exact result in the
+Gym view. A plugin with no exact result opens nothing. Revocation shows as
+not checked here, because `install` checks it against the registry. The
+page names the test, on/off, and `use` commands and runs none of them.
+Listing a plugin runs no probe or code.
+
+`openagents plugin use NAME --version V --digest D --request TEXT` reuses
+an installed plugin through the shared route: it admits a `plugin` route
+for that exact pin under `openagents_chat::route::admit` (the plugin is
+named as the request's recipient), journals it, and dispatches it through
+`openagents_chat::capability::dispatch`. The catalog it dispatches from
+holds only what `capability::reuse` admits: exactly that release,
+installed and on. Another version, rebuilt bytes, a plugin that is off or
+gone, or a revoked release is refused and nothing runs. The run is the
+read-only workflow run of `openagents plugin run`, its output is kept by
+digest, and the same request again shows the first run instead of running
+twice.
+
 ## Consumers
 
 `terminal-core` is the owner of a mount's local panes. The standalone

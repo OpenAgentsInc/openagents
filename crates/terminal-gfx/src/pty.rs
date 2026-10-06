@@ -336,6 +336,9 @@ impl Transport for Local {
     fn read_studies(&self, root: &str) -> Receiver<terminal_core::gym::ListRead> {
         super::helpers::read_studies(root, self.helper_home.as_deref())
     }
+    fn read_components(&self, root: &str) -> Receiver<terminal_core::gym::ComponentsRead> {
+        super::helpers::read_components(root, self.helper_home.as_deref())
+    }
     fn read_study(&self, dir: &str) -> Receiver<terminal_core::gym::Read> {
         super::helpers::read_study(dir, self.helper_home.as_deref())
     }

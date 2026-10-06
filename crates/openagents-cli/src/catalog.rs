@@ -90,6 +90,13 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
         in the background runs only while it is on.
   disable PLUGIN
         Turn an installed plugin off on this computer.
+  inspect [PLUGIN] [--results DIR]...
+        Show each installed plugin by its exact release (version and
+        package digest), whether it is on, and the test results under
+        each DIR for that exact release apart from other releases.
+  use PLUGIN --version V --digest D [--request TEXT] [--in WORKSPACE] [--thread ID]
+        Run an installed plugin's workflow once through the shared route,
+        only while exactly that release is installed and on.
   test run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off]
       [--concurrency N] [--grant read|write|exec|network]... [--trust]
       [--door NAME] [--eval-dir DIR] [--output-dir DIR] [--keep-temp] [--coder PATH]
@@ -135,6 +142,8 @@ pub(crate) const EXT_EFFECTS: &[Declared] = &[
     Declared::computer("installed", Effect::ReadOnly),
     Declared::computer("enable", Effect::LocalWrite),
     Declared::computer("disable", Effect::LocalWrite),
+    Declared::computer("inspect", Effect::ReadOnly),
+    Declared::computer("use", Effect::LocalWrite),
     crate::ext_eval::EFFECTS[0],
     crate::ext_eval::EFFECTS[1],
     crate::ext_eval::EFFECTS[2],
@@ -231,6 +240,10 @@ pub fn ext(output: &Output, words: &[String]) -> u8 {
     }
     #[cfg(unix)]
     if let Some(code) = crate::plugin_local::run(output, words) {
+        return code;
+    }
+    #[cfg(unix)]
+    if let Some(code) = crate::plugin_use::run(output, words) {
         return code;
     }
     run(Group::Ext, output, words)

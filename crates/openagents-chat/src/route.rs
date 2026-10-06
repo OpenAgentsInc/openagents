@@ -672,6 +672,18 @@ pub fn admit(
             id: "typesafe".to_owned(),
         },
     ];
+    // A plugin route's request goes to the plugin it runs.
+    if let RouteResult::Plugin {
+        plugin: PluginRoute::Run {
+            capability: pin, ..
+        },
+    } = result
+    {
+        recipients.push(Recipient {
+            kind: RecipientKind::Plugin,
+            id: pin.id.clone(),
+        });
+    }
     let mut context = vec![ContentClass::Message, ContentClass::Thread];
     let mut artifacts = Vec::new();
     // BYOK `mine` (#10176): the turn went with the person's keys, and the

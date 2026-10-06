@@ -50,6 +50,8 @@ struct Fake {
     /// directory read.
     study: Mutex<std::collections::BTreeMap<String, serde_json::Value>>,
     study_reads: Mutex<Vec<String>>,
+    /// What `plugin inspect` answers.
+    components: Mutex<Option<serde_json::Value>>,
 }
 struct Pane {
     bridge: bool,
@@ -201,6 +203,15 @@ impl Transport for Fake {
         let answer = match self.studies.lock().unwrap().clone() {
             Some(studies) => crate::gym::decode_list(studies.to_string().as_bytes(), b""),
             None => crate::gym::decode_list(b"", br#"{"error":"openagents is not installed"}"#),
+        };
+        sender.send(answer).unwrap();
+        receiver
+    }
+    fn read_components(&self, _root: &str) -> mpsc::Receiver<crate::gym::ComponentsRead> {
+        let (sender, receiver) = mpsc::channel();
+        let answer = match self.components.lock().unwrap().clone() {
+            Some(held) => crate::gym::decode_components(held.to_string().as_bytes(), b""),
+            None => crate::gym::decode_components(b"", br#"{"error":"no plugins store"}"#),
         };
         sender.send(answer).unwrap();
         receiver
@@ -2146,6 +2157,116 @@ fn the_gym_page_recomputes_a_retained_study_and_runs_nothing() {
     assert!(transport.requests.lock().unwrap().is_empty());
 
     press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(!app.paper.gym.open);
+}
+
+#[test]
+fn the_gym_page_lists_plugins_by_exact_release_and_opens_their_evidence() {
+    use crate::input::{KeyCode, NamedKey};
+    let transport = Arc::new(Fake {
+        bridge: true,
+        ..Fake::default()
+    });
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.paper.on = true;
+    app.toggle();
+    app.ensure_started();
+    let sheet = |app: &mut Application| app.paper_sheet(120, 40, "12:00:00", "0.50");
+    let key = |app: &mut Application, named: NamedKey| press(app, KeyCode::Unidentified, named);
+    let arrow = |app: &mut Application, code: KeyCode| press(app, code, NamedKey::Unidentified);
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b]7;file:///test/work\x07\x1b]133;A\x07$ \x1b]133;B\x07".to_vec());
+    app.tick();
+    let exact = "/test/work/results/2026-10-05T12-00-00Z";
+    *transport.studies.lock().unwrap() = Some(serde_json::json!({
+        "root": "/test/work", "studies": [],
+    }));
+    *transport.components.lock().unwrap() = Some(serde_json::json!({
+        "v": "openagents.plugin-inspect.v1",
+        "plugins": [
+            {"id": "0000:notes", "name": "Meeting notes", "version": "0.2.0",
+             "digest": format!("sha256:{}", "a".repeat(64)), "enabled": true,
+             "workflow": true, "background": [], "revocation": "not_checked",
+             "evidence": [
+                {"dir": exact, "reported": "pass", "ended_at": 1_790_000_900u64, "exact": true},
+                {"dir": "/test/work/results/old", "reported": "fail",
+                 "ended_at": 1_780_000_000u64, "exact": false},
+             ],
+             "commands": {"test": "openagents plugin test run /x/notes/0.2.0",
+                          "turn": "openagents plugin disable 0000:notes",
+                          "use": "openagents plugin use 0000:notes --version 0.2.0 --digest sha256:aaaa --request TEXT"}},
+            {"id": "0000:cleanup", "name": "Disk cleanup", "version": "1.0.0",
+             "digest": format!("sha256:{}", "b".repeat(64)), "enabled": false,
+             "workflow": false, "background": ["disk"], "revocation": "not_checked",
+             "evidence": [], "commands": {}},
+        ],
+    }));
+    transport.study.lock().unwrap().insert(
+        exact.into(),
+        study_fixture(exact, "agrees", "Better", "pass"),
+    );
+
+    key(&mut app, NamedKey::F12);
+    app.tick();
+    key(&mut app, NamedKey::F2);
+    app.tick();
+    let page = sheet(&mut app);
+    let text = page.text();
+    for row in 0..40 {
+        let row_text = page.row_text(row);
+        assert_eq!(row_text.len(), 120, "row {row}: {row_text:?}");
+    }
+    assert!(
+        text.contains("PLUGINS on this computer  2 installed  [current]"),
+        "{text}"
+    );
+    assert!(text.contains("> 0000:notes (Meeting notes)  0.2.0  on  package aaaaaaaaaaaa"));
+    assert!(text.contains("tested: pass "));
+    assert!(
+        text.contains("1 results for other releases; revocation not checked here; runs a workflow")
+    );
+    assert!(text.contains("openagents plugin use 0000:notes --version 0.2.0"));
+    assert!(text.contains("  0000:cleanup (Disk cleanup)  1.0.0  off"));
+    assert!(text.contains("not tested in this release; 0 results for other releases"));
+    assert!(page.row_text(39).starts_with(crate::paper::GYM_KEYS));
+
+    // ENTER opens the newest result for exactly this release in the Gym.
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(
+        text.contains("STUDY Better  reported pass, recomputed pass"),
+        "{text}"
+    );
+    assert_eq!(
+        transport.study_reads.lock().unwrap().as_slice(),
+        [exact.to_owned()]
+    );
+
+    // ESC returns to the plugins; a plugin with no exact result opens
+    // nothing and says so.
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(app.paper.gym.components && app.paper.gym.viewing.is_none());
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert!(app.paper.gym.viewing.is_none());
+    assert!(
+        sheet(&mut app)
+            .text()
+            .contains("No result tested exactly this release")
+    );
+    assert_eq!(transport.study_reads.lock().unwrap().len(), 1);
+    // Nothing ran, turned on, or was sent.
+    assert!(transport.commands.lock().unwrap().is_empty());
+    assert!(transport.rule_commands.lock().unwrap().is_empty());
+    assert!(transport.requests.lock().unwrap().is_empty());
+
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(!app.paper.gym.components && app.paper.gym.open);
     press(&mut app, KeyCode::Escape, NamedKey::Escape);
     assert!(!app.paper.gym.open);
 }

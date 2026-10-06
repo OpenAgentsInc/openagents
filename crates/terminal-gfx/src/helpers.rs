@@ -328,6 +328,30 @@ pub fn read_studies(root: &str, home: Option<&Path>) -> Receiver<terminal_core::
     receiver
 }
 
+/// Reads the installed plugins by exact release, with the test results
+/// under `root` for each; it runs and probes nothing.
+pub fn read_components(
+    root: &str,
+    home: Option<&Path>,
+) -> Receiver<terminal_core::gym::ComponentsRead> {
+    use terminal_core::gym::{READ_MAX, decode_components};
+    let (sender, receiver) = mpsc::channel();
+    let root = root.to_owned();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let read = helper(
+            &["--json", "plugin", "inspect", "--results", &root],
+            None,
+            home.as_deref(),
+            READ_MAX,
+            std::time::Duration::from_secs(20),
+        )
+        .and_then(|(stdout, stderr)| decode_components(&stdout, &stderr));
+        let _ = sender.send(read);
+    });
+    receiver
+}
+
 /// Recomputes the retained plugin test result in `dir` from its attempts.
 /// It runs nothing and publishes nothing.
 pub fn read_study(dir: &str, home: Option<&Path>) -> Receiver<terminal_core::gym::Read> {

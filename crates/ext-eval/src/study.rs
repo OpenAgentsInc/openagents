@@ -743,8 +743,10 @@ pub fn reopen(dir: &Path) -> Result<Study, String> {
 pub struct Listed {
     /// The results directory.
     pub dir: String,
-    /// The suite's qualified ID, from the report's profile.
+    /// The subject's DefinitionRef ID: the plugin the run measured.
     pub subject: Option<String>,
+    /// The digest of the subject's exact package record.
+    pub subject_digest: Option<String>,
     /// The report's verdict word, unchecked.
     pub reported: Option<String>,
     /// When the last run ended, Unix seconds.
@@ -788,6 +790,9 @@ pub fn list(root: &Path) -> Vec<Listed> {
             out.push(Listed {
                 dir: dir.display().to_string(),
                 subject,
+                subject_digest: report["subject"]["definition"]["artifact"]["digest"]
+                    .as_str()
+                    .map(str::to_string),
                 reported: report["verdict"].as_str().map(str::to_string),
                 ended_at: report["ended_at"].as_u64(),
             });

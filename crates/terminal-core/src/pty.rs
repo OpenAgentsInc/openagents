@@ -100,6 +100,15 @@ pub trait Transport: Send + Sync {
         let _ = sender.send(Err("this mount reads no plugin test results".into()));
         receiver
     }
+    /// Reads the installed plugins by exact release, with the test results
+    /// under `root` for each. A mount without the helper answers that it
+    /// cannot.
+    fn read_components(&self, root: &str) -> Receiver<crate::gym::ComponentsRead> {
+        let _ = root;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err("this mount reads no installed plugins".into()));
+        receiver
+    }
     /// Recomputes the retained plugin test result in `dir` from its
     /// attempts, only reading.
     fn read_study(&self, dir: &str) -> Receiver<crate::gym::Read> {

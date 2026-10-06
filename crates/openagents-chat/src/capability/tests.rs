@@ -393,3 +393,129 @@ fn a_model_fallback_stays_within_the_admission_or_is_a_new_offer() {
         Fallback::NewOffer { .. }
     ));
 }
+
+fn plugin_pin(version: &str, bytes: &[u8]) -> CapabilityPin {
+    CapabilityPin {
+        id: "local:meeting-notes".into(),
+        version: version.into(),
+        digest: Digest::of_bytes(bytes),
+    }
+}
+
+/// An installed plugin's route, admitted under the shared policy for the
+/// exact pin the person confirmed.
+fn admitted_plugin(journal: &Journal, pin: &CapabilityPin, request: &str) -> RouteRecord {
+    let situation = Situation {
+        request: request.into(),
+        thread: Some("thread-use".into()),
+        ..situation()
+    };
+    let result = RouteResult::Plugin {
+        plugin: PluginRoute::Run {
+            capability: pin.clone(),
+            arguments: json!({"request": "turn these notes into action items"}),
+        },
+    };
+    let snapshot = admit(
+        &result,
+        &situation,
+        None,
+        "turn these notes into action items",
+        None,
+    );
+    let mut record =
+        RouteRecord::received(request, situation.thread.clone(), result, snapshot, 1).unwrap();
+    record.step(Lifecycle::Proposed, "offer", 2).unwrap();
+    record
+        .step(Lifecycle::Admitted, "offer_confirmed", 3)
+        .unwrap();
+    journal.write(&record).unwrap();
+    record
+}
+
+/// Runs the installed plugin: records each run and returns its reply.
+#[derive(Default)]
+struct Installed {
+    runs: Vec<CapabilityPin>,
+}
+
+impl Runner for Installed {
+    fn run(&mut self, release: &Release, arguments: &Value) -> Result<Output, String> {
+        self.runs.push(release.pin.clone());
+        Ok(Output {
+            artifact: format!("action items for {}", arguments["request"]).into_bytes(),
+            check: CheckLabel::Pending,
+            cost_microusd: None,
+        })
+    }
+}
+
+#[test]
+fn an_installed_release_is_reused_only_while_exactly_it_is_held() {
+    let home = tempfile::tempdir().unwrap();
+    let journal = Journal::at(home.path());
+    let admitted_pin = plugin_pin("0.1.0", b"package 0.1.0");
+    let held = |pin: CapabilityPin, enabled: bool, revoked: Option<bool>| Held {
+        pin,
+        enabled,
+        revoked,
+    };
+    let dispatch_with = |held: &[Held], request: &str, runner: &mut Installed| {
+        let mut record = admitted_plugin(&journal, &admitted_pin, request);
+        let catalog = installed_catalog(held);
+        dispatch(&mut record, &catalog, runner, &journal, &mut |_, _| {}, 10).unwrap()
+    };
+    let mut runner = Installed::default();
+
+    // The exact release, on: it runs once under the shared route, with
+    // the plugin named as the request's recipient.
+    let exact = [held(admitted_pin.clone(), true, Some(false))];
+    assert_eq!(reuse(&admitted_pin, &exact), Reuse::Admitted);
+    assert!(matches!(
+        dispatch_with(&exact, "req-1", &mut runner),
+        Dispatched::Ran { .. }
+    ));
+    assert_eq!(runner.runs, vec![admitted_pin.clone()]);
+    let kept = journal.latest("thread-use", "req-1").unwrap();
+    assert!(kept.snapshot.disclosure.recipients.contains(&Recipient {
+        kind: RecipientKind::Plugin,
+        id: "local:meeting-notes".into(),
+    }));
+    assert_eq!(kept.snapshot.route.capability.as_ref(), Some(&admitted_pin));
+
+    // A newer version, or rebuilt bytes under the same version, is a
+    // change: the admitted pin is not resolved to it, and nothing runs.
+    for now in [
+        plugin_pin("0.2.0", b"package 0.2.0"),
+        plugin_pin("0.1.0", b"package 0.1.0 rebuilt"),
+    ] {
+        let changed = [held(now.clone(), true, Some(false))];
+        assert_eq!(
+            reuse(&admitted_pin, &changed),
+            Reuse::Changed { held: now.clone() }
+        );
+        assert_eq!(
+            dispatch_with(&changed, "req-2", &mut runner),
+            Dispatched::Refused(RefusalReason::RouteNotAllowed)
+        );
+    }
+    // Revoked, off, or gone: not reused.
+    for (state, word) in [
+        (
+            vec![held(admitted_pin.clone(), true, Some(true))],
+            "revoked",
+        ),
+        (
+            vec![held(admitted_pin.clone(), false, Some(false))],
+            "disabled",
+        ),
+        (Vec::new(), "missing"),
+    ] {
+        assert_eq!(reuse(&admitted_pin, &state).word(), word);
+        assert_eq!(
+            dispatch_with(&state, "req-3", &mut runner),
+            Dispatched::Refused(RefusalReason::RouteNotAllowed)
+        );
+    }
+    assert_eq!(runner.runs.len(), 1);
+}

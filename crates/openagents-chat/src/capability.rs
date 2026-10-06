@@ -376,5 +376,109 @@ pub fn fallback(
     }
 }
 
+/// A component as this computer holds it now (#10664): the exact pin of
+/// what is installed, whether it is on, and whether its release was found
+/// revoked. Discovery and listing never make one; only an install does.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Held {
+    pub pin: CapabilityPin,
+    pub enabled: bool,
+    /// `Some(true)` when a revocation of this release was found, `Some(false)`
+    /// when one was looked for and none found, and `None` when nobody looked.
+    pub revoked: Option<bool>,
+}
+
+/// Whether an admitted pin may be reused against what is held now.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reuse {
+    /// The exact admitted release is held, on, and not found revoked.
+    Admitted,
+    /// Another version or other bytes are held under the same ID: a new
+    /// offer, never the admitted one.
+    Changed { held: CapabilityPin },
+    /// The exact release is held and off.
+    Disabled,
+    /// The exact release was revoked.
+    Revoked,
+    /// Nothing with this ID is held.
+    Missing,
+}
+
+impl Reuse {
+    /// The word a surface shows.
+    #[must_use]
+    pub const fn word(&self) -> &'static str {
+        match self {
+            Self::Admitted => "admitted",
+            Self::Changed { .. } => "changed",
+            Self::Disabled => "disabled",
+            Self::Revoked => "revoked",
+            Self::Missing => "missing",
+        }
+    }
+}
+
+/// The reuse rule: an admitted pin runs again only while exactly that
+/// release is held, on, and not revoked. A newer version or rebuilt bytes
+/// under the same ID is a change the person sees, not the admitted
+/// release; nothing resolves a mutable head as the identity that runs.
+#[must_use]
+pub fn reuse(admitted: &CapabilityPin, held: &[Held]) -> Reuse {
+    let Some(found) = held.iter().find(|held| held.pin.id == admitted.id) else {
+        return Reuse::Missing;
+    };
+    if found.pin != *admitted {
+        return Reuse::Changed {
+            held: found.pin.clone(),
+        };
+    }
+    if found.revoked == Some(true) {
+        return Reuse::Revoked;
+    }
+    if !found.enabled {
+        return Reuse::Disabled;
+    }
+    Reuse::Admitted
+}
+
+/// The argument schema of an installed plugin's workflow run: the
+/// person's request, as text.
+#[must_use]
+pub fn installed_arguments() -> Arguments {
+    Arguments {
+        required: vec![("request".into(), ArgKind::String)],
+        optional: Vec::new(),
+    }
+}
+
+/// The catalog a surface dispatches installed plugins from: one release
+/// per held component that [`reuse`] admits as itself, with no fee. An
+/// installed plugin's workflow runs on this computer granted reads only,
+/// so it writes no repository and sends the request to no one but the
+/// plugin; its recipient is the plugin's own ID.
+#[must_use]
+pub fn installed_catalog(held: &[Held]) -> Catalog {
+    let releases = held
+        .iter()
+        .filter(|component| reuse(&component.pin, held) == Reuse::Admitted)
+        .map(|component| Release {
+            pin: component.pin.clone(),
+            arguments: installed_arguments(),
+            recipient: Recipient {
+                kind: route_contract::snapshot::RecipientKind::Plugin,
+                id: component.pin.id.clone(),
+            },
+            fee_sats: 0,
+            fee_payer: Payer::OpenAgents,
+            noncoding: true,
+        })
+        .collect();
+    Catalog {
+        releases,
+        excluded: Vec::new(),
+        adequate_models: Vec::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests;
