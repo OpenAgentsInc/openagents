@@ -6,7 +6,22 @@ pub struct DemoAgent {
     pub name: &'static str,
     pub task: &'static str,
     pub tokens: &'static str,
+    pub elapsed_seconds: u64,
     pub conversation: &'static [DemoMessage],
+}
+
+pub fn elapsed_time(seconds: u64) -> String {
+    let minutes = seconds / 60 % 60;
+    let hours = seconds / 3_600;
+    if hours >= 24 {
+        format!("{}d {}h {minutes}m", hours / 24, hours % 24)
+    } else if hours > 0 {
+        format!("{hours}h {minutes}m {}s", seconds % 60)
+    } else if seconds >= 60 {
+        format!("{minutes}m {}s", seconds % 60)
+    } else {
+        format!("{seconds}s")
+    }
 }
 
 pub enum DemoMessage {
@@ -65,6 +80,7 @@ pub const DEMOS: [DemoAgent; 4] = [
         name: "claude-code",
         task: "Reviewing keyboard navigation",
         tokens: "8.2k",
+        elapsed_seconds: 4_358,
         conversation: &[
             DemoMessage::User("Review the composer keyboard navigation."),
             DemoMessage::Tool(ToolCall {
@@ -102,6 +118,7 @@ pub const DEMOS: [DemoAgent; 4] = [
         name: "codex",
         task: "Checking the agent rail placement",
         tokens: "12.4k",
+        elapsed_seconds: 967,
         conversation: &[
             DemoMessage::User("Check the agent rail at wide and narrow terminal sizes."),
             DemoMessage::Tool(ToolCall {
@@ -139,6 +156,7 @@ pub const DEMOS: [DemoAgent; 4] = [
         name: "devin-cli",
         task: "Checking conversation switching",
         tokens: "4.7k",
+        elapsed_seconds: 271,
         conversation: &[
             DemoMessage::User("Keep each agent conversation's draft independent."),
             DemoMessage::Tool(ToolCall {
@@ -176,6 +194,7 @@ pub const DEMOS: [DemoAgent; 4] = [
         name: "grok-build",
         task: "Verifying the preview colors",
         tokens: "3.1k",
+        elapsed_seconds: 45,
         conversation: &[
             DemoMessage::User("Verify the terminal preview colors."),
             DemoMessage::Tool(ToolCall {

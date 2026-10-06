@@ -61,8 +61,10 @@ fn main() -> io::Result<()> {
         write!(io::stdout(), "\x1b]12;#{r:02x}{g:02x}{b:02x}\x07")?;
         io::stdout().flush()?;
         let interval = Duration::from_millis(125);
-        let mut next_tick = Instant::now() + interval;
+        let started = Instant::now();
+        let mut next_tick = started + interval;
         loop {
+            app.elapsed_seconds = started.elapsed().as_secs();
             execute!(io::stdout(), BeginSynchronizedUpdate)?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
             // Keep the block blinking while progress updates move the terminal cursor.

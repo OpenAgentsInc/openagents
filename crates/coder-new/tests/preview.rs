@@ -1,4 +1,4 @@
-use coder_new::agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS};
+use coder_new::agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS, elapsed_time};
 use coder_new::tools::{PluginCall, ToolCall, ToolKind, ToolState, tool_lines};
 use coder_new::{App, Screen, snapshot, theme, ui};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -177,7 +177,7 @@ fn composer_text(rendered: &str) -> String {
         .join("\n")
 }
 
-fn assert_agent_rail(rendered: &str) {
+fn assert_agent_rail(rendered: &str, elapsed_seconds: u64) {
     let rules = composer_rules(rendered);
     assert_eq!(rules.len(), 2);
     let (composer_bottom, rule) = rules[1];
@@ -204,10 +204,11 @@ fn assert_agent_rail(rendered: &str) {
         } else {
             task_column = Some(column);
         }
-        assert!(
-            line.trim_end()
-                .ends_with(&format!("↓ {} tokens", demo.tokens))
-        );
+        assert!(line.trim_end().ends_with(&format!(
+            "{} · ↓ {} tokens",
+            elapsed_time(demo.elapsed_seconds.saturating_add(elapsed_seconds)),
+            demo.tokens
+        )));
         assert_eq!(line.trim_end().chars().count(), right_edge);
         previous_row = row;
     }
@@ -280,7 +281,7 @@ fn four_agent_rows_show_the_current_task_and_aligned_token_counts_below_the_comp
         ["claude-code", "codex", "devin-cli", "grok-build"]
     );
     let mut app = App::default();
-    assert_agent_rail(&screen(&mut app, 110, 36));
+    assert_agent_rail(&screen(&mut app, 110, 36), app.elapsed_seconds);
 }
 
 #[test]
@@ -298,7 +299,7 @@ fn resizing_keeps_the_draft_cursor_visible_and_agent_rows_aligned() {
         assert_eq!(app.draft.cursor, draft_cursor);
         assert!(app.messages.is_empty());
         if width == 80 {
-            assert_agent_rail(&screen(&mut app, width, height));
+            assert_agent_rail(&screen(&mut app, width, height), app.elapsed_seconds);
         } else if width == 24 {
             let rendered = screen(&mut app, width, height);
             for demo in &DEMOS {
@@ -307,6 +308,7 @@ fn resizing_keeps_the_draft_cursor_visible_and_agent_rows_aligned() {
                     .find(|line| line.contains(demo.name))
                     .unwrap();
                 assert!(row.trim_end().ends_with(&format!("↓ {}", demo.tokens)));
+                assert!(!row.contains(&elapsed_time(demo.elapsed_seconds)));
             }
         }
     }
@@ -432,7 +434,7 @@ fn selecting_each_agent_loads_its_own_demo_conversation() {
         );
         assert!(!body.contains("Conversationfirst"));
         assert!(rendered.contains(&format!("❯ {}", demo.name)));
-        assert_agent_rail(&rendered);
+        assert_agent_rail(&rendered, app.elapsed_seconds);
     }
 }
 
@@ -537,7 +539,11 @@ fn selected_agent_keeps_the_rail_visible_and_tokens_aligned_after_resize() {
                     assert!(line.contains(&format!("○ {}", demo.name)));
                 }
                 let suffix = if width == 80 {
-                    format!("↓ {} tokens", demo.tokens)
+                    format!(
+                        "{} · ↓ {} tokens",
+                        elapsed_time(demo.elapsed_seconds.saturating_add(app.elapsed_seconds)),
+                        demo.tokens
+                    )
                 } else {
                     format!("↓ {}", demo.tokens)
                 };
@@ -763,4 +769,58 @@ fn edit_calls_highlight_old_and_new_code_on_bands_with_an_unpainted_gutter() {
             }
         }
     }
+}
+
+#[test]
+fn rail_elapsed_time_formats_units_and_preserves_the_clock_across_selection_and_animation() {
+    for (seconds, expected) in [
+        (0, "0s"),
+        (43, "43s"),
+        (60, "1m 0s"),
+        (3600, "1h 0m 0s"),
+        (86400, "1d 0h 0m"),
+        (90067, "1d 1h 1m"),
+    ] {
+        assert_eq!(elapsed_time(seconds), expected);
+    }
+    let mut app = App::default();
+    app.elapsed_seconds = 22;
+    app.handle(Event::Paste("retained draft".into()));
+    for width in [110, 80] {
+        let rendered = screen(&mut app, width, 36);
+        assert_agent_rail(&rendered, 22);
+        let grok = rendered
+            .lines()
+            .find(|line| line.contains("○ grok-build"))
+            .unwrap();
+        assert!(grok.contains("1m 7s · ↓"));
+    }
+    let fixed = snapshot::svg(&mut app, 110, 36);
+    assert_eq!(snapshot::svg(&mut app, 110, 36), fixed);
+    assert_eq!(app.elapsed_seconds, 22);
+    app.tick();
+    assert_eq!(app.elapsed_seconds, 22);
+    for code in [
+        KeyCode::Left,
+        KeyCode::Down,
+        KeyCode::Down,
+        KeyCode::Up,
+        KeyCode::Esc,
+    ] {
+        key(&mut app, code);
+        assert_eq!(app.elapsed_seconds, 22);
+        assert_agent_rail(&screen(&mut app, 80, 36), 22);
+    }
+    assert_eq!(app.draft.text, "retained draft");
+    let rendered = screen(&mut app, 24, 12);
+    for demo in &DEMOS {
+        let row = rendered
+            .lines()
+            .skip(composer_rules(&rendered)[1].0 + 1)
+            .find(|line| line.contains(demo.name))
+            .unwrap();
+        assert!(row.trim_end().ends_with(&format!("↓ {}", demo.tokens)));
+        assert!(!row.contains(&elapsed_time(demo.elapsed_seconds + 22)));
+    }
+    assert_eq!(app.elapsed_seconds, 22);
 }

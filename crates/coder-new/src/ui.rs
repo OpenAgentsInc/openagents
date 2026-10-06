@@ -13,7 +13,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::{
     App, Screen,
-    agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS},
+    agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS, elapsed_time},
     theme as t,
     tools::{delegation_lines, plugin_lines, tool_lines},
 };
@@ -71,21 +71,54 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         &draft,
         cursor,
     );
-    agent_rail(frame, rail, app.selected_agent);
+    agent_rail(frame, rail, app);
 }
 
-fn agent_rail(frame: &mut Frame, area: Rect, selected: Option<usize>) {
+fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
+    let name_width = (2 + DEMOS
+        .iter()
+        .map(|demo| demo.name.width())
+        .max()
+        .unwrap_or(0)) as u16;
+    let narrow = area.width < 32;
+    let token_labels: Vec<_> = DEMOS
+        .iter()
+        .map(|agent| {
+            if narrow {
+                format!("↓ {}", agent.tokens)
+            } else {
+                format!("↓ {} tokens", agent.tokens)
+            }
+        })
+        .collect();
+    let timed_labels: Vec<_> = DEMOS
+        .iter()
+        .zip(&token_labels)
+        .map(|(agent, tokens)| {
+            format!(
+                "{} · {tokens}",
+                elapsed_time(agent.elapsed_seconds.saturating_add(app.elapsed_seconds))
+            )
+        })
+        .collect();
+    let show_elapsed = usize::from(area.width)
+        >= usize::from(name_width)
+            + 1
+            + timed_labels
+                .iter()
+                .map(|text| text.width())
+                .max()
+                .unwrap_or(0);
     for (index, agent) in DEMOS.iter().enumerate() {
         let row = Rect {
             y: area.y + index as u16,
             height: 1,
             ..area
         };
-        let narrow = area.width < 32;
-        let suffix = if narrow {
-            format!("↓ {}", agent.tokens)
+        let suffix = if show_elapsed {
+            &timed_labels[index]
         } else {
-            format!("↓ {} tokens", agent.tokens)
+            &token_labels[index]
         };
         let token_width = suffix.width() as u16;
         let [activity, _gap, tokens] = Layout::horizontal([
@@ -94,19 +127,13 @@ fn agent_rail(frame: &mut Frame, area: Rect, selected: Option<usize>) {
             Constraint::Length(token_width),
         ])
         .areas(row);
-        let active = selected == Some(index);
+        let active = app.selected_agent == Some(index);
         let prefix = match (narrow, active) {
             (true, true) => "❯ ",
             (true, false) => "  ",
             (false, true) => "❯ ",
             (false, false) => "○ ",
         };
-        let name_width = (prefix.width()
-            + DEMOS
-                .iter()
-                .map(|demo| demo.name.width())
-                .max()
-                .unwrap_or(0)) as u16;
         let name = Rect {
             width: name_width.min(activity.width),
             ..activity

@@ -9,7 +9,7 @@ The first [Ratatui mockup](../../crates/coder-new/README.md) runs with
 shared near-black background.
 The [conversation preview](mockup.png) and [welcome preview](welcome.png)
 are exported from the same render function as the terminal. Four sample agent
-rows beneath the input show their current tasks and token counts.
+rows beneath the input show their current tasks, elapsed time, and token counts.
 Up/Down loads their demo conversations; Esc returns to the main conversation.
 The [selected conversation preview](agent-conversation.png) shows the active row.
 The main transcript includes Read, Search, Edit, and Run examples and four

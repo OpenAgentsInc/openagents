@@ -25,6 +25,7 @@ pub struct App {
     pub scroll: u16,
     pub selected_agent: Option<usize>,
     pub animation_frame: u8,
+    pub elapsed_seconds: u64,
     saved_chats: [Chat; 5],
 }
 
