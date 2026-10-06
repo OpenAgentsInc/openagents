@@ -3,6 +3,8 @@
 import argparse
 import hashlib
 import json
+import os
+import platform
 from pathlib import Path
 import re
 import shutil
@@ -30,6 +32,40 @@ def qualification(path, commit):
     if set(record.get("executables", {})) != set(NAMES):
         raise ValueError("Qualification must identify all three tested executables.")
     return record
+
+
+def build(args):
+    if platform.system() != "Linux" or platform.machine() != "x86_64":
+        raise ValueError("Build Linux x86-64 artifacts on that platform.")
+    repo = Path(__file__).resolve().parents[2]
+    def git(*words):
+        return subprocess.check_output(["git", *words], cwd=repo, text=True).strip()
+    commit = git("rev-parse", "HEAD")
+    if commit != git("rev-parse", "origin/main") or git("status", "--porcelain", "--untracked-files=no"):
+        raise ValueError("Build from a clean checkout of current origin/main.")
+    target = Path(os.environ.get("CARGO_TARGET_DIR", ""))
+    if not target.is_absolute() or target.resolve().is_relative_to(repo):
+        raise ValueError("Set an absolute reusable CARGO_TARGET_DIR outside the checkout.")
+    if args.out.exists():
+        raise ValueError("The artifact destination must not exist.")
+    env = dict(os.environ, OPENAGENTS_BUILD_COMMIT=commit)
+    # Separate build graphs keep the Verse runtime out of the graphical executable.
+    subprocess.run(["cargo", "build", "--locked", "--release", "-p", "terminal-app"], cwd=repo, env=env, check=True)
+    subprocess.run(["cargo", "build", "--locked", "--release", "-p", "openagents-cli", "-p", "microcoder"], cwd=repo, env=env, check=True)
+    if git("status", "--porcelain", "--untracked-files=no") or git("rev-parse", "HEAD") != commit:
+        raise ValueError("The build changed its source checkout.")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=args.out.parent) as directory:
+        pending = Path(directory)
+        for name in NAMES:
+            shutil.copy2(target / "release" / name, pending / name)
+        record = {"schema": "openagents.native-terminal.linux-build.v1", "commit": commit,
+                  "tree": git("rev-parse", "HEAD^{tree}"), "platform": "linux-x86_64",
+                  "executables": {name: digest(pending / name) for name in NAMES},
+                  "qualification": "not-run"}
+        (pending / "build-receipt.json").write_text(json.dumps(record, indent=2) + "\n")
+        pending.rename(args.out)
+    print(args.out)
 
 
 def package(args):
@@ -120,6 +156,8 @@ def publish(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    command = commands.add_parser("build")
+    command.add_argument("--out", type=Path, required=True)
     command = commands.add_parser("package")
     command.add_argument("--binaries", type=Path, required=True)
     command.add_argument("--qualification", type=Path, required=True)
@@ -129,7 +167,7 @@ def main():
     command.add_argument("--stage", type=Path, required=True)
     command.add_argument("--bucket", default="openagentsgemini-cli-releases")
     args = parser.parse_args()
-    {"package": package, "publish": publish}[args.command](args)
+    {"build": build, "package": package, "publish": publish}[args.command](args)
 
 
 if __name__ == "__main__":
