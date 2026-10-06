@@ -19,7 +19,11 @@ CHECKS = ("isolated_install", "startup_input", "request_proposal_result", "clipb
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    hasher = hashlib.sha256()
+    with path.open("rb") as source:
+        while block := source.read(1024 * 1024):
+            hasher.update(block)
+    return hasher.hexdigest()
 
 
 def qualification(path, commit):
@@ -71,6 +75,8 @@ def build(args):
 def package(args):
     commit = subprocess.check_output(["git", "rev-parse", "origin/main"], text=True).strip()
     record = qualification(args.qualification, commit)
+    if record.get("version") != args.version:
+        raise ValueError("Qualification version does not match the package.")
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.[1-9][0-9]*)?", args.version):
         raise ValueError("Invalid version.")
     # No cross-target or distribution coverage is inferred from one successful build.
@@ -115,7 +121,7 @@ def publish(args):
     stage = args.stage
     manifest = json.loads((stage / "release-manifest.json").read_text())
     record = qualification(stage / "qualification.json", manifest["commit"])
-    if any(record.get(name) != manifest.get(name) for name in ("platform", "distribution", "backend", "executables")):
+    if any(record.get(name) != manifest.get(name) for name in ("platform", "distribution", "backend", "executables", "version")):
         raise ValueError("Qualification does not match the release manifest.")
     if manifest.get("platform") != "linux-x86_64" or manifest.get("prefix") != "openagents-terminal":
         raise ValueError("Invalid Linux release manifest.")

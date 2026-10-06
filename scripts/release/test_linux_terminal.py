@@ -31,7 +31,7 @@ class LinuxTests(unittest.TestCase):
             path.write_bytes(name.encode())
             path.chmod(0o755)
         self.record = {"schema": "openagents.native-terminal.linux-qualification.v1",
-                       "commit": "a" * 40, "platform": "linux-x86_64", "distribution": "fixture",
+                       "version": "1.0.0-rc.2", "commit": "a" * 40, "platform": "linux-x86_64", "distribution": "fixture",
                        "backend": "x11", "checks": dict.fromkeys(release.CHECKS, "passed"),
                        "executables": {name: release.digest(self.binaries / name) for name in release.NAMES}}
         self.qualification = self.root / "qualification.json"

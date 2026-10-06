@@ -15,7 +15,11 @@ NAMES = ("openagents-terminal", "openagents", "microcoder")
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    hasher = hashlib.sha256()
+    with path.open("rb") as source:
+        while block := source.read(1024 * 1024):
+            hasher.update(block)
+    return hasher.hexdigest()
 
 
 def fetch(url, path):
@@ -54,7 +58,7 @@ def install(base, version, destination):
             sums.get("qualification.json") != digest(root / "qualification.json") or
             qualification.get("schema") != "openagents.native-terminal.linux-qualification.v1" or
             any(qualification.get(name) != manifest.get(name) for name in
-                ("commit", "platform", "distribution", "backend", "executables")) or
+                ("commit", "platform", "distribution", "backend", "executables", "version")) or
             any(qualification.get("checks", {}).get(name) != "passed" for name in checks)):
             raise ValueError("Qualification does not match this package.")
         fetch(f"{base}/{version}/linux-x86_64/{archive_name}", root / archive_name)
