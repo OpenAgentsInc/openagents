@@ -48,6 +48,7 @@ pub struct Options {
     pub capability_flow: Option<std::path::PathBuf>,
     /// Selected retained contribution records for the shared read-only pane.
     pub contribution_workbench: Option<std::path::PathBuf>,
+    pub quest_workbench: Option<std::path::PathBuf>,
     /// Private authenticated compute account configuration for the shared sheet.
     pub compute_workbench: Option<std::path::PathBuf>,
     /// Optional local floating studio screen, independent of work placement.
@@ -136,6 +137,7 @@ impl Default for Options {
             terminal_reference: None,
             capability_flow: None,
             contribution_workbench: None,
+            quest_workbench: None,
             compute_workbench: None,
             workbench_screen: None,
             workbench_screen_bounds: [40, 60, 900, 600],
@@ -868,6 +870,13 @@ fn terminal_overlay(options: &Options) -> Result<crate::terminal::Overlay, Strin
             .products
             .open(workbench::pane::PaneKind::Evaluation, &subject)?;
         overlay.core.paper.on = true;
+        overlay.open = true;
+    }
+    if let Some(path) = &options.quest_workbench {
+        contribution_workbench::quests::host::mount(
+            &mut overlay.core,
+            contribution_workbench::quests::host::Config::load(path)?,
+        )?;
         overlay.open = true;
     }
     if let Some(path) = &options.contribution_workbench {

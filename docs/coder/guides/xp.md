@@ -321,7 +321,7 @@ A key that already holds a live award is never signed again, so rerunning
 the job signs nothing twice. The referee also refuses a check whose key is
 linked (NIP-XP `13195`, both sides signed) to the result's trainer or the
 test set's author: the rule compares keys, and the referee compares the
-trainers behind them. Each refusal is logged once, with event IDs and the
+trainers behind them. The ledger reader enforces the same two-sided linked-self rule. Each refusal is logged once, with event IDs and the
 rule's reason, never a report's text. A template's `suite.publishers` lists
 the keys whose releases of its suite package are the starter test set;
 until it lists one, no quest is published for it.
@@ -449,3 +449,28 @@ microcoder xp link --relay wss://relay.openagents.com --trainer <trainer npub>
 Readers sum the computer key's XP into the trainer's only while both
 sides stand (NIP-XP key links, kind `13195`). `microcoder xp link --unlink`
 withdraws the computer's side.
+
+## Retained quests in the workbench
+
+The standalone native workbench and Verse accept `--quest-workbench CONFIG`.
+The private JSON configuration lists absolute `events` and `documents` paths,
+trusted `referees`, optional trusted `runners`, and the trainer's hex public key
+in `trainer`. Configuration and source files must exclude group and other access.
+Documents are exact retained evaluation manifests and admission receipts; the
+reader opens no relay and holds no signing keys.
+
+The shared mount opens each signed quest version, its retained pinned evidence,
+and separate award panes. Use the existing left/right product-pane navigation
+and refresh to inspect them. Eligibility, season, referee, exact pins, credited
+roles, revocations, and refused awards come from the signed records and existing
+XP ledger. Missing records remain unavailable. Trainer levels use
+`trainer-curve-v1`; neither XP nor levels grants execution rights or represents
+wallet funds, compute credits, or settlement receipts.
+
+Reading and refreshing execute and publish nothing. For a tutorial completion,
+use the authorized `microcoder xp reproduce` path described above. Evaluation
+checks and publication use `openagents ext eval check` and
+`openagents ext eval publish`, described in
+[Extension evaluation](../../extensions/evaluation.md#checks-adoption-and-credit).
+Knowledge publication uses `openagents kb publish`; historical screening remains
+inconclusive for transfer credit. Referee acceptance is still required.

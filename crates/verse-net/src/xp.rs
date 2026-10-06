@@ -77,32 +77,7 @@ pub fn playtest_trust() -> Option<XpTrust> {
     })
 }
 
-/// The name of the level curve [`xp_to_reach`] and [`level_of`] compute.
-/// Every display of a level names it, so two clients never show different
-/// numbers under one name; a new curve gets a new name.
-pub const CURVE: &str = "trainer-curve-v1";
-
-/// Cumulative XP needed to reach `level`. Level 1 needs nothing; level
-/// `n + 1` needs `100 · n^1.5`, rounded up: 100 XP for level 2, 283 for
-/// level 3, 520 for level 4, and 800 for level 5.
-#[must_use]
-pub fn xp_to_reach(level: u32) -> u64 {
-    if level <= 1 {
-        return 0;
-    }
-    let n = f64::from(level - 1);
-    (100.0 * n.powf(1.5)).ceil() as u64
-}
-
-/// The level `xp` reaches under [`xp_to_reach`]. Everyone starts at 1.
-#[must_use]
-pub fn level_of(xp: u64) -> u32 {
-    let mut level = 1;
-    while level < 10_000 && xp_to_reach(level + 1) <= xp {
-        level += 1;
-    }
-    level
-}
+pub use xp_ledger::levels::{CURVE, level_of, xp_to_reach};
 
 /// One quest version as the board shows it.
 #[derive(Clone, Debug, PartialEq)]

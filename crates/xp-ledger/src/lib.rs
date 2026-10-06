@@ -28,6 +28,7 @@ pub mod defaults;
 pub mod entry;
 pub mod eval;
 pub mod front;
+pub mod levels;
 pub mod trainers;
 
 pub use trainers::{Profile, Trainers};
@@ -295,6 +296,7 @@ pub fn derive_with(events: &[Event], documents: &eval::Documents, trust: &XpTrus
         .map(|(event, _)| event)
         .collect();
     let requests = eval::requests(events);
+    let trainers = Trainers::read(events);
     let mut by_id: BTreeMap<&str, &Event> = BTreeMap::new();
     for event in events {
         by_id.entry(event.id.as_str()).or_insert(event);
@@ -363,7 +365,15 @@ pub fn derive_with(events: &[Event], documents: &eval::Documents, trust: &XpTrus
             if award.rule == xp::EVAL_CHECK {
                 let result = find(&award.evidence[0].id, "result")?;
                 let check = find(&award.evidence[1].id, "check")?;
-                return eval::verify_eval_check(event, quest, result, check, &requests);
+                let checked = eval::verify_eval_check(event, quest, result, check, &requests)?;
+                let result =
+                    nostr::eval_ext::parse_publication(result).map_err(|e| e.to_string())?;
+                let check = nostr::eval_ext::parse_publication(check).map_err(|e| e.to_string())?;
+                let (checker, evaluator) =
+                    xp::eval_check::confirmed_check(&result, &check, &requests)
+                        .map_err(|e| e.to_string())?;
+                eval::distinct_trainers(&trainers, &checker, &evaluator, result.suite_author())?;
+                return Ok(checked);
             }
             if award.rule == xp::EVAL_ADOPT {
                 let release = find(&award.evidence[0].id, "defaults release")?;

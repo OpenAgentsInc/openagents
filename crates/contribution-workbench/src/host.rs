@@ -51,7 +51,7 @@ fn private_file(path: &Path, maximum: u64) -> Result<(), String> {
     }
     Ok(())
 }
-fn bytes(path: &Path, maximum: u64) -> Result<Vec<u8>, String> {
+pub(crate) fn bytes(path: &Path, maximum: u64) -> Result<Vec<u8>, String> {
     private_file(path, maximum)?;
     use std::io::Read;
     let mut bytes = Vec::new();

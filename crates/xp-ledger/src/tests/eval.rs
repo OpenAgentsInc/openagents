@@ -376,6 +376,47 @@ fn linked_keys_of_one_trainer_are_one_trainer_to_the_referee() {
     );
 }
 
+#[test]
+fn the_ledger_refuses_linked_self_checks_and_keeps_independent_credit() {
+    let w = World::new();
+    for owner in ["alice", "suite-author"] {
+        let trainer = signer(owner);
+        let bob = signer("bob");
+        let profile = sign(
+            &trainer,
+            xp::profile(trainer.pubkey(), true, &[bob.pubkey().to_owned()]).unwrap(),
+        );
+        let link = sign(
+            &bob,
+            xp::link(bob.pubkey(), Some(trainer.pubkey())).unwrap(),
+        );
+        let awards = w.awards_for(&w.check);
+        let mut events = w.events(&awards);
+        events.push(profile.clone());
+        events.push(link.clone());
+        let ledger = derive(&events, &w.trust());
+        assert!(ledger.totals.is_empty());
+        assert!(ledger.credits.is_empty());
+        assert_eq!(ledger.refused.len(), awards.len());
+        assert!(ledger.refused.iter().all(|r| r.contains("linked")));
+        events.reverse();
+        assert_eq!(derive(&events, &w.trust()), ledger);
+
+        // A profile alone does not establish a two-sided link.
+        let mut unlinked = w.events(&awards);
+        unlinked.push(profile);
+        assert_eq!(derive(&unlinked, &w.trust()).credits.len(), 3);
+
+        // A distinct trainer's check remains creditable beside refused awards.
+        let carol = published(&signer("carol"), &w.run(), Some(&w.result.id), AT + 20);
+        events.push(carol.clone());
+        events.extend(w.awards_for(&carol));
+        let independent = derive(&events, &w.trust());
+        assert_eq!(independent.totals.get(&pk("carol")), Some(&50));
+        assert_eq!(independent.credits.len(), 3);
+    }
+}
+
 fn checks_by(w: &World, labels: &[&str]) -> Vec<Event> {
     labels
         .iter()

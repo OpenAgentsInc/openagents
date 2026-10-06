@@ -1,6 +1,8 @@
 //! Read-only contribution evidence. Activity, credit, and settlement remain separate.
 use serde::{Deserialize, Serialize};
 
+pub mod quests;
+
 #[cfg(feature = "host")]
 pub mod host;
 
