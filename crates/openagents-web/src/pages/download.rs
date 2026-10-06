@@ -11,7 +11,7 @@ use crate::App;
 use crate::layout::page;
 
 /// The Coder terminal and companion OpenAgents CLI test release.
-pub(crate) const CODER_VERSION: &str = "1.0.0-rc.3";
+pub(crate) const CODER_VERSION: &str = "1.0.0-rc.4";
 pub(crate) const CODER_BASE: &str =
     "https://storage.googleapis.com/openagentsgemini-cli-releases/coder";
 pub(crate) const CODER_SH: &str = "curl -fsSL https://openagents.com/cli/install.sh | bash";
