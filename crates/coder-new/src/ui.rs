@@ -42,7 +42,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         x: area.x + 2,
         y: area.y + 1,
         width: area.width.saturating_sub(4),
-        height: area.height.saturating_sub(1),
+        height: area.height.saturating_sub(2),
     };
     let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(2));
     let rail_height = DEMOS.len() as u16;
@@ -270,19 +270,11 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         for call in &MAIN_PLUGINS {
             lines.extend(plugin_lines(call, app.animation_frame));
         }
-        lines.extend([
-            Line::default(),
-            Line::from(Span::styled(
-                "Conversation first",
-                Style::default()
-                    .fg(t::ACCENT_MODEL)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::default(),
-        ]);
+        lines.push(Line::default());
         for agent in &DEMOS {
             lines.extend(delegation_lines(agent, app.animation_frame, area.width));
         }
+        lines.push(Line::default());
         lines
     };
     for message in &app.messages {

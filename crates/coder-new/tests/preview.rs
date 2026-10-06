@@ -26,7 +26,8 @@ fn screen(app: &mut App, width: u16, height: u16) -> String {
 fn both_views_and_tiny_terminals_render() {
     let mut app = App::default();
     let conversation = screen(&mut app, 110, 36);
-    assert!(conversation.contains("Conversation first"));
+    assert!(conversation.contains("Review the terminal with four agents."));
+    assert!(!conversation.contains("Conversation first"));
     assert_eq!(composer_rules(&conversation).len(), 2);
     assert!(!conversation.contains("Sample data"));
     let body = transcript_text(&conversation);
@@ -38,6 +39,10 @@ fn both_views_and_tiny_terminals_render() {
             .iter()
             .position(|line| line.contains(&format!("Delegate {}", demo.name)))
             .unwrap();
+        if index == 0 {
+            assert!(lines[row - 1].trim().is_empty());
+            assert!(lines[row - 2].contains(MAIN_PLUGINS.last().unwrap().output));
+        }
         assert!(lines[row + 1].contains(demo.task));
         assert!(lines[row + 1].contains("Running"));
         assert!(lines[row + 1].contains(&format!("{} tokens", demo.tokens)));
@@ -75,6 +80,15 @@ fn paste_and_enter_remain_local_and_key_releases_do_not_send_twice() {
     assert!(rendered.contains("❯ first"));
     assert!(rendered.contains("second    line"));
     assert!(!rendered.contains("firstsecond"));
+    let tall = screen(&mut app, 110, 70);
+    let lines: Vec<_> = tall.lines().collect();
+    let delegation = lines
+        .iter()
+        .position(|line| line.contains("Delegate grok-build"))
+        .unwrap();
+    assert!(lines[delegation + 1].contains("Running"));
+    assert!(lines[delegation + 2].trim().is_empty());
+    assert!(lines[delegation + 3].contains("❯ first"));
     assert!(!app.handle(Event::Key(KeyEvent::new(
         KeyCode::Char('c'),
         KeyModifiers::CONTROL
@@ -419,7 +433,9 @@ fn agent_navigation_clamps_at_the_ends_and_escape_restores_main() {
     assert_eq!(app.selected_agent, Some(1));
     key(&mut app, KeyCode::Esc);
     assert_eq!(app.selected_agent, None);
-    assert!(screen(&mut app, 110, 36).contains("Conversation first"));
+    let main = screen(&mut app, 110, 36);
+    assert!(main.contains("Review the terminal with four agents."));
+    assert!(!main.contains("Conversation first"));
     assert!(app.draft.text.is_empty());
     assert!(app.messages.is_empty());
 }
@@ -512,7 +528,7 @@ fn selected_agent_keeps_the_rail_visible_and_tokens_aligned_after_resize() {
 }
 
 #[test]
-fn header_and_rail_use_compact_spacing_at_the_terminal_bottom() {
+fn header_and_rail_keep_compact_spacing_above_the_bottom_margin() {
     let mut app = App::default();
     let rendered = screen(&mut app, 110, 36);
     let lines: Vec<_> = rendered.lines().collect();
@@ -525,7 +541,8 @@ fn header_and_rail_use_compact_spacing_at_the_terminal_bottom() {
     for (index, demo) in DEMOS.iter().enumerate() {
         assert!(lines[bottom + 1 + index].starts_with(&format!("  ○ {}", demo.name)));
     }
-    assert_eq!(bottom + DEMOS.len(), lines.len() - 1);
+    assert_eq!(bottom + DEMOS.len(), lines.len() - 2);
+    assert!(lines.last().unwrap().trim().is_empty());
     assert!(!rendered.contains("6 plugins"));
     assert!(!rendered.contains("24,000 sats"));
 }

@@ -129,8 +129,8 @@ pub const DEMOS: [DemoAgent; 4] = [
             DemoMessage::User("Verify there are no blank rows between the input and the rail."),
             DemoMessage::Tool(ToolCall {
                 kind: ToolKind::Run,
-                input: "cargo test -p coder-new header_and_rail_use_compact_spacing_at_the_terminal_bottom",
-                output: "Checking consecutive rows and the final terminal row",
+                input: "cargo test -p coder-new header_and_rail_keep_compact_spacing_above_the_bottom_margin",
+                output: "Checking consecutive rows and the bottom margin",
                 state: ToolState::Running,
             }),
         ],
