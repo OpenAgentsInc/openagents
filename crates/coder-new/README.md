@@ -15,10 +15,11 @@ inserts text without sending it. PageUp/PageDown scroll the conversation;
 Ctrl+C quits. The preview makes no network requests, runs no tools, and saves
 no messages. All conversation, agent, plugin, and wallet values are sample data.
 
-The composer is a plain `❯` input between horizontal rules. Four rows below it
-show `claude-code`, `codex`, `devin-cli`, and `grok-build`, each with its current
-sample task and a token count aligned on the right. Narrow terminals truncate
-task text and shorten the token label to preserve the agent names.
+The composer is a plain `❯` input between edge-to-edge horizontal rules. Four
+rows below it show `claude-code`, `codex`, `devin-cli`, and `grok-build`. Agent
+names and current tasks occupy separate aligned columns, with token counts on
+the right. Narrow terminals truncate task text and shorten the token label to
+preserve the agent names.
 Press Down to select the first agent, then Up/Down to switch conversations.
 Selection loads that agent's demo messages immediately. Up from the first agent
 or Esc returns to the main conversation. Each conversation retains its own

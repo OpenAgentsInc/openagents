@@ -27,7 +27,7 @@ fn both_views_and_tiny_terminals_render() {
     let conversation = screen(&mut app, 110, 36);
     assert!(conversation.contains("Conversation first"));
     assert_eq!(composer_rules(&conversation).len(), 2);
-    assert!(conversation.contains("Sample data"));
+    assert!(!conversation.contains("Sample data"));
     key(&mut app, KeyCode::Tab);
     assert!(screen(&mut app, 110, 36).contains("What do you want to build?"));
     for (width, height) in [(80, 24), (40, 12), (24, 10), (23, 9), (1, 1)] {
@@ -134,19 +134,29 @@ fn assert_agent_rail(rendered: &str) {
     let rules = composer_rules(rendered);
     assert_eq!(rules.len(), 2);
     let (composer_bottom, rule) = rules[1];
-    let right_edge = rule.trim_end().chars().count();
+    let right_edge = rule.trim_end().chars().count() - 2;
     let mut previous_row = composer_bottom;
+    let mut task_column = None;
     for demo in &DEMOS {
         let (row, line) = rendered
             .lines()
             .enumerate()
+            .skip(composer_bottom + 1)
             .find(|(_, line)| {
-                line.contains(&format!("○ {}:", demo.name))
-                    || line.contains(&format!("❯ {}:", demo.name))
+                line.contains(&format!("○ {}", demo.name))
+                    || line.contains(&format!("❯ {}", demo.name))
             })
             .unwrap_or_else(|| panic!("missing agent row: {}", demo.name));
         assert!(row > previous_row);
         assert!(line.contains(demo.task));
+        assert!(!line.contains(&format!("{}:", demo.name)));
+        let task_offset = line.find(demo.task).unwrap();
+        let column = line[..task_offset].chars().count();
+        if let Some(expected) = task_column {
+            assert_eq!(column, expected);
+        } else {
+            task_column = Some(column);
+        }
         assert!(
             line.trim_end()
                 .ends_with(&format!("↓ {} tokens", demo.tokens))
@@ -163,6 +173,15 @@ fn composer_uses_two_rules_and_expands_for_a_multiline_draft() {
     let rules = composer_rules(&empty);
     assert_eq!(rules.len(), 2);
     assert_eq!(rules[1].0 - rules[0].0, 2);
+    for (_, rule) in &rules {
+        assert_eq!(*rule, "─".repeat(110));
+    }
+    assert!(empty.lines().nth(rules[0].0 + 1).unwrap().starts_with("❯ "));
+    let mut terminal = Terminal::new(TestBackend::new(110, 36)).unwrap();
+    terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
+    let cursor = terminal.get_cursor_position().unwrap();
+    assert_eq!(cursor.x, 2);
+    assert_eq!(usize::from(cursor.y), rules[0].0 + 1);
     assert!(!empty.contains(" Message "));
     assert!(!empty.chars().any(|ch| "│╭╮╰╯".contains(ch)));
 
@@ -175,12 +194,32 @@ fn composer_uses_two_rules_and_expands_for_a_multiline_draft() {
     assert_eq!(rules.len(), 2);
     assert_eq!(rules[1].0 - rules[0].0, 4);
     assert!(!expanded.chars().any(|ch| "│╭╮╰╯".contains(ch)));
-    let mut terminal = Terminal::new(TestBackend::new(110, 36)).unwrap();
     terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
     let cursor = terminal.get_cursor_position().unwrap();
     assert_eq!(usize::from(cursor.y), rules[1].0 - 1);
     assert!(cursor.x < 110);
     assert!(app.messages.is_empty());
+
+    app.draft = Default::default();
+    app.handle(Event::Paste("a".repeat(109)));
+    let wrapped = screen(&mut app, 110, 36);
+    let rules = composer_rules(&wrapped);
+    assert_eq!(rules[1].0 - rules[0].0, 3);
+    assert_eq!(
+        wrapped.lines().nth(rules[0].0 + 1).unwrap(),
+        format!("❯ {}", "a".repeat(108))
+    );
+    assert!(
+        wrapped
+            .lines()
+            .nth(rules[0].0 + 2)
+            .unwrap()
+            .starts_with("  a")
+    );
+    terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
+    let cursor = terminal.get_cursor_position().unwrap();
+    assert_eq!(cursor.x, 3);
+    assert_eq!(usize::from(cursor.y), rules[1].0 - 1);
 }
 
 #[test]
@@ -267,7 +306,7 @@ fn selecting_each_agent_loads_its_own_demo_conversation() {
             demo.name
         );
         assert!(!body.contains("Conversationfirst"));
-        assert!(rendered.contains(&format!("❯ {}:", demo.name)));
+        assert!(rendered.contains(&format!("❯ {}", demo.name)));
         assert_agent_rail(&rendered);
     }
 }
@@ -357,7 +396,7 @@ fn selected_agent_keeps_the_rail_visible_and_tokens_aligned_after_resize() {
             let rendered = screen(&mut app, width, height);
             let rules = composer_rules(&rendered);
             let bottom = rules[1].0;
-            let right_edge = rules[1].1.trim_end().chars().count();
+            let right_edge = rules[1].1.trim_end().chars().count() - 2;
             for (index, demo) in DEMOS.iter().enumerate() {
                 let (_, line) = rendered
                     .lines()
@@ -395,7 +434,7 @@ fn compact_header_and_footer_keep_the_rail_and_status_on_consecutive_rows() {
     assert!(!rendered.contains("Enter preview"));
     let bottom = composer_rules(&rendered)[1].0;
     for (index, demo) in DEMOS.iter().enumerate() {
-        assert!(lines[bottom + 1 + index].starts_with(&format!("   ○ {}:", demo.name)));
+        assert!(lines[bottom + 1 + index].starts_with(&format!("   ○ {}", demo.name)));
     }
     let status = bottom + DEMOS.len() + 1;
     assert_eq!(status, lines.len() - 1);

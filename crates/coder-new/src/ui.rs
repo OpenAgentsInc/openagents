@@ -23,6 +23,8 @@ fn span(text: impl Into<String>, color: Color) -> Span<'static> {
 
 pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
+    let terminal_width = area.width;
+    let terminal_x = area.x;
     frame.render_widget(
         Block::default().style(Style::default().bg(t::BG_BASE).fg(t::TEXT_SECONDARY)),
         area,
@@ -41,7 +43,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         width: area.width.saturating_sub(4),
         height: area.height.saturating_sub(1),
     };
-    let (draft, cursor) = app.draft.wrapped(area.width.saturating_sub(2));
+    let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(2));
     let rail_height = DEMOS.len() as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
     let reserved = rail_height + 4;
@@ -59,11 +61,18 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         Screen::Welcome => welcome(frame, body),
         Screen::Conversation => conversation(frame, body, app),
     }
-    composer_view(frame, composer, &draft, cursor);
+    composer_view(
+        frame,
+        Rect {
+            x: terminal_x,
+            width: terminal_width,
+            ..composer
+        },
+        &draft,
+        cursor,
+    );
     agent_rail(frame, rail, app.selected_agent);
 
-    let [left, right] =
-        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).areas(status);
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             span("  ◇ ", t::ACCENT_SKILL),
@@ -71,11 +80,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             span("  ·  ", t::GRAY_DIM),
             span("24,000 sats", t::GRAY_BRIGHT),
         ])),
-        left,
-    );
-    frame.render_widget(
-        Paragraph::new(span("Sample data  ", t::GRAY)).right_aligned(),
-        right,
+        status,
     );
 }
 
@@ -93,8 +98,12 @@ fn agent_rail(frame: &mut Frame, area: Rect, selected: Option<usize>) {
             format!("↓ {} tokens", agent.tokens)
         };
         let token_width = suffix.width() as u16;
-        let [activity, tokens] =
-            Layout::horizontal([Constraint::Min(1), Constraint::Length(token_width)]).areas(row);
+        let [activity, _gap, tokens] = Layout::horizontal([
+            Constraint::Min(0),
+            Constraint::Length(1),
+            Constraint::Length(token_width),
+        ])
+        .areas(row);
         let active = selected == Some(index);
         let prefix = match (narrow, active) {
             (true, true) => "❯ ",
@@ -102,9 +111,18 @@ fn agent_rail(frame: &mut Frame, area: Rect, selected: Option<usize>) {
             (false, true) => " ❯ ",
             (false, false) => " ○ ",
         };
-        let name_width = prefix.width() + agent.name.width();
-        let task_width = usize::from(activity.width).saturating_sub(name_width + 3);
-        let mut spans = vec![
+        let name_width = (prefix.width()
+            + DEMOS
+                .iter()
+                .map(|demo| demo.name.width())
+                .max()
+                .unwrap_or(0)) as u16;
+        let name = Rect {
+            width: name_width.min(activity.width),
+            ..activity
+        };
+        let task_width = activity.width.saturating_sub(name_width + 2);
+        let spans = vec![
             span(prefix, if active { t::ACCENT_MODEL } else { t::GRAY }),
             Span::styled(
                 agent.name,
@@ -117,11 +135,18 @@ fn agent_rail(frame: &mut Frame, area: Rect, selected: Option<usize>) {
                     .add_modifier(Modifier::BOLD),
             ),
         ];
+        frame.render_widget(Paragraph::new(Line::from(spans)), name);
         if task_width > 0 {
-            spans.push(span(": ", t::GRAY));
-            spans.push(span(truncate(agent.task, task_width as u16), t::GRAY));
+            let task = Rect {
+                x: activity.x + name_width + 2,
+                width: task_width,
+                ..activity
+            };
+            frame.render_widget(
+                Paragraph::new(span(truncate(agent.task, task_width), t::GRAY)),
+                task,
+            );
         }
-        frame.render_widget(Paragraph::new(Line::from(spans)), activity);
         frame.render_widget(
             Paragraph::new(span(suffix, t::GRAY)).right_aligned(),
             tokens,
