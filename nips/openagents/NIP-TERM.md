@@ -590,7 +590,8 @@ A record is `{session, revision, name, members, layout}`:
   reference, and `state`, which a write sends as null and the host sets on
   every read: `live`, `closed`, or `lost` (an earlier generation). A
   `resource` member has `resource`, a JSON object of at most 2,048 bytes
-  that the workbench resource-reference contract defines; the host stores
+  that the [workbench resource-reference contract](../../docs/terminal/workbench-resources.md)
+  defines; the host stores
   it and returns it unchanged without resolving it.
 - `layout` is `{tabs, active}`: 1 to 16 tabs, each `{name, root}` with a
   name of at most 64 bytes, and `active` the index of the selected tab. A

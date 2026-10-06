@@ -23,7 +23,9 @@ thread view and the `openagents terminal` TTY command. The
 [design principles](design-principles.md) bind the terminal's interface: one
 fixed 3:2 sheet, anchored regions, function keys, ASCII only, and no
 Markdown. The [smart terminal specification](smart-terminal.md) defines shell blocks,
-requests, proposals, and durable sessions. Those roadmap additions are
+requests, proposals, and durable sessions. Every surface names the
+resources it shows with the [workbench resource references](workbench-resources.md).
+Those roadmap additions are
 planned until their issues have retained release evidence.
 The [issue directory](issue-roadmap.md) maps the full plan to the public
 [Terminal and Workbench project](https://github.com/orgs/OpenAgentsInc/projects/20),

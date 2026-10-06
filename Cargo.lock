@@ -13640,6 +13640,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "workbench",
 ]
 
 [[package]]
@@ -17113,6 +17114,14 @@ dependencies = [
  "thiserror 2.0.20",
  "windows",
  "windows-core",
+]
+
+[[package]]
+name = "workbench"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

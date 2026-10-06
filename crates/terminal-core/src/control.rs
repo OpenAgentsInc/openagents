@@ -44,4 +44,7 @@ pub enum Request {
     Tab { action: String },
     /// Zoom the focused pane to the whole overlay, or back.
     Zoom,
+    /// Ask this mount, as the owner of its local panes, to act on a
+    /// workbench resource reference. The answer is a workbench outcome.
+    Resolve { intent: workbench::Intent },
 }

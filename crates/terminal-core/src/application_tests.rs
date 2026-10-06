@@ -796,3 +796,59 @@ fn a_full_pane_searches_within_a_frame() {
     eprintln!("worst case {worst:?}");
     assert!(worst < std::time::Duration::from_millis(250), "{worst:?}");
 }
+
+#[test]
+fn a_mount_answers_workbench_intents_for_its_own_panes_only() {
+    use crate::control::Request;
+    use workbench::{Action, Host, Intent, Kind, ResourceRef};
+    let transport = Arc::new(Fake::default());
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.toggle();
+    app.ensure_started();
+    let first = app.focus_id().unwrap();
+    app.split(Axis::Columns, &Program::Shell);
+    let reference = app.resource(first).unwrap();
+    reference.check().unwrap();
+    let status = app.status();
+    assert_eq!(
+        status["panes"][0]["resource"],
+        serde_json::to_value(&reference).unwrap()
+    );
+    assert_eq!(status["directory"]["capabilities"][0]["kind"], "terminal");
+    let resolve = |app: &mut Application, n: u8, target: ResourceRef| {
+        let intent = Intent::new(format!("{n:02x}").repeat(32), target, Action::Open);
+        app.apply(&Request::Resolve { intent }).unwrap()["state"]["kind"].clone()
+    };
+
+    // The same contract every surface sends: open focuses the pane.
+    assert_ne!(app.focus_id(), Some(first));
+    assert_eq!(resolve(&mut app, 1, reference.clone()), "opened");
+    assert_eq!(app.focus_id(), Some(first));
+
+    // A pane from an earlier run is lost, and nothing starts in its place.
+    let opened = transport.opened.load(Ordering::SeqCst);
+    let mut earlier = reference.clone();
+    earlier.generation = Some("0".repeat(64));
+    assert_eq!(resolve(&mut app, 2, earlier), "lost");
+    let mut gone = reference.clone();
+    gone.id = "999".into();
+    assert_eq!(resolve(&mut app, 3, gone), "closed");
+    assert_eq!(transport.opened.load(Ordering::SeqCst), opened);
+    assert_eq!(app.panes(), 2);
+
+    // Kinds a mount does not own are unsupported, and another owner's
+    // references are refused rather than answered.
+    let local = Host::Local {
+        instance: app.instance.clone(),
+    };
+    let thread = ResourceRef::new(Kind::Thread, local, "t1");
+    assert_eq!(resolve(&mut app, 4, thread), "unsupported");
+    let mut other = reference;
+    other.host = Host::Local {
+        instance: "1".repeat(64),
+    };
+    let intent = Intent::new("05".repeat(32), other, Action::Open);
+    let refused = app.apply(&Request::Resolve { intent }).unwrap_err();
+    assert!(refused.starts_with("identity_mismatch"), "{refused}");
+    app.shutdown();
+}

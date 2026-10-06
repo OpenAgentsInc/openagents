@@ -99,6 +99,9 @@ pub struct Application {
     pub paste_hold: Option<crate::paste::Held>,
     /// An open block search ([`crate::search`]).
     pub find: Option<crate::search::Find>,
+    /// This mount's local owner identity: the instance and generation its
+    /// panes' workbench references name ([`crate::resources`]).
+    pub instance: String,
 }
 
 impl std::fmt::Debug for Application {
@@ -144,6 +147,7 @@ impl Application {
             paper: crate::paper::Paper::default(),
             paste_hold: None,
             find: None,
+            instance: crate::resources::instance(),
         }
     }
 
@@ -541,6 +545,9 @@ impl Application {
                 tab.zoomed = !tab.zoomed;
                 Ok(self.status())
             }
+            Request::Resolve { intent } => workbench::dispatch(self, intent)
+                .map(|outcome| serde_json::to_value(outcome).unwrap_or_default())
+                .map_err(|refusal| refusal.to_string()),
         }
     }
 
@@ -581,6 +588,7 @@ impl Application {
                     "focused": focus == Some(*id),
                     "exited": pane.session.exited,
                     "rect": rect,
+                    "resource": self.resource(*id),
                 })
             })
             .collect();
@@ -591,6 +599,7 @@ impl Application {
             "tabs": tabs,
             "panes": panes,
             "notice": self.notice,
+            "directory": workbench::Owner::directory(self),
             "socket": serde_json::Value::Null,
         })
     }
