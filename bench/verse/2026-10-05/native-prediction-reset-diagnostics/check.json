@@ -1,0 +1,17 @@
+{
+  "schema": "verse.check.v1",
+  "command": "cargo +1.97.1 test -p verse-imported --features chamber-loopback imported::chamber_session -- --test-threads=1",
+  "passed": 6,
+  "failed": 0,
+  "scope": [
+    "Native movement input, render pose, binding, and acknowledgments",
+    "Teleport and retired input within the native prediction fixture",
+    "Death, respawn, reconnect, and host shutdown",
+    "Input pressure and closed update stream"
+  ],
+  "limitations": [
+    "The battle example consumer is queued for Linux compilation.",
+    "No runtime performance improvement is claimed from read-only reset diagnostics.",
+    "Incoming unrelated main changes are not automatically retested."
+  ]
+}

@@ -100,6 +100,8 @@ pub struct Session {
     pub status: String,
     pending: VecDeque<(Option<Ability>, Option<u64>)>,
     prediction: verse_world::prediction::Local,
+    prediction_failures: u64,
+    last_prediction_failure: Option<String>,
     input_token: u64,
     frame_cursor: Option<(LifeId, u64, u64)>,
     frame_bindings: BTreeMap<u64, (LifeId, u64)>,
@@ -214,6 +216,8 @@ impl Session {
             status: String::new(),
             pending: VecDeque::new(),
             prediction: verse_world::prediction::Local::new(instance),
+            prediction_failures: 0,
+            last_prediction_failure: None,
             input_token: 0,
             frame_cursor: None,
             frame_bindings: BTreeMap::new(),
@@ -259,6 +263,21 @@ impl Session {
     }
     pub fn prediction_embedding_diagnostic(&self) -> Option<&str> {
         self.prediction.last_embedding()
+    }
+
+    /// Returns local prediction errors that discarded a clock or pending input.
+    pub fn prediction_failures(&self) -> u64 {
+        self.prediction_failures
+    }
+    /// Retains the most recent local prediction error independently of UI status.
+    pub fn last_prediction_failure(&self) -> Option<&str> {
+        self.last_prediction_failure.as_deref()
+    }
+    fn discard_failed_prediction(&mut self, message: String) {
+        self.prediction_failures = self.prediction_failures.saturating_add(1);
+        self.last_prediction_failure = Some(message.clone());
+        self.prediction.clear();
+        self.status = message;
     }
 
     /// Stops the worker and waits for it; the transport closes with it.
@@ -430,8 +449,7 @@ impl Session {
                 };
                 self.input_token = token;
                 if let Err(message) = self.prediction.queue(token, intent.clone()) {
-                    self.prediction.clear();
-                    self.status = message;
+                    self.discard_failed_prediction(message);
                 }
                 return;
             }
@@ -472,8 +490,7 @@ impl Session {
                 let token = predicted.as_ref().map(|p| p.0);
                 if let Some((token, intent)) = predicted {
                     if let Err(message) = self.prediction.queue(token, intent) {
-                        self.prediction.clear();
-                        self.status = message;
+                        self.discard_failed_prediction(message);
                     }
                 }
                 self.pending.push_back((ability, token));
@@ -599,8 +616,7 @@ impl Session {
                     self.pending.retain(|(_, pending)| *pending != Some(token));
                     if self.prediction.contains(token) {
                         if let Err(message) = self.prediction.supersede(token, replacement) {
-                            self.prediction.clear();
-                            self.status = message;
+                            self.discard_failed_prediction(message);
                         }
                     }
                     if self.notes.is_some() {
@@ -652,8 +668,7 @@ impl Session {
                             && self.prediction.contains(token)
                         {
                             if let Err(message) = self.prediction.bind(token, &command) {
-                                self.prediction.clear();
-                                self.status = message;
+                                self.discard_failed_prediction(message);
                             }
                         }
                     }
@@ -1042,8 +1057,7 @@ impl Session {
             self.next_move = now + MOVE_INTERVAL;
         }
         if let Err(message) = self.prediction.advance(f64::from(dt).min(0.1)) {
-            self.prediction.clear();
-            self.status = message;
+            self.discard_failed_prediction(message);
         }
         self.send_movement_interval()
     }
