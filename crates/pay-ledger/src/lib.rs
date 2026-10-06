@@ -12,6 +12,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
 
+pub mod compute;
 pub mod payee;
 pub mod payout;
 pub mod reconcile;
@@ -30,6 +31,15 @@ pub enum Error {
     Invalid(&'static str),
     #[error("No rule is effective at this settlement time")]
     NoRule,
+    /// The same identity was used again with other terms.
+    #[error("Conflicting ledger input: {0}")]
+    Conflict(&'static str),
+    /// A hold asked for more than the account has available.
+    #[error("Insufficient purchased balance: {available_msat} msat available")]
+    Insufficient { available_msat: i64 },
+    /// The principal may not read or spend this balance.
+    #[error("Not permitted: {0}")]
+    Denied(&'static str),
 }
 
 pub fn digest(text: &str) -> String {
@@ -245,6 +255,7 @@ impl Ledger {
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.execute_batch(include_str!("schema.sql"))?;
         payout::create_table(&mut connection)?;
+        connection.execute_batch(include_str!("compute.sql"))?;
         // Existing ledgers predate plugin release attribution. Serialize the
         // check and alteration so concurrent receiver opens migrate once.
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -294,104 +305,7 @@ impl Ledger {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        // Check the key before validating the replay payload or choosing a rule.
-        if let Some(existing) = read_record(&tx, &input.key)? {
-            return Ok(existing);
-        }
-        if input.key.is_empty()
-            || input.price_msat < 0
-            || input.received_msat < 0
-            || input.received_msat > input.price_msat
-            || (input.rail == Rail::Balance) != input.key.starts_with("debit:")
-            || input.key == "debit:"
-        {
-            return Err(Error::Invalid("settlement key, rail, or amounts"));
-        }
-        let (version, text, expected): (i64, String, String) = tx.query_row(
-            "SELECT version,toml,digest FROM rule WHERE effective<=? ORDER BY effective DESC LIMIT 1",
-            [input.settled_at], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?.ok_or(Error::NoRule)?;
-        if digest(&text) != expected {
-            return Err(Error::Invalid("stored rule digest mismatch"));
-        }
-        let (rule, _) = parse_rule(&text)?;
-        let mut shares = vec![];
-        let mut short = false;
-        let allocated = match &input.split {
-            Split::Plugin { author, fee_msat } => {
-                if author.is_empty()
-                    || input.plugin_id.as_deref().is_none_or(str::is_empty)
-                    || *fee_msat < 0
-                    || *fee_msat > input.price_msat
-                {
-                    return Err(Error::Invalid("plugin id, author, or declared fee"));
-                }
-                short = input.received_msat < *fee_msat;
-                let amount = input.received_msat.min(*fee_msat);
-                shares.push((author.as_str(), "author", amount));
-                amount
-            }
-            Split::HostedResource { owner } => {
-                if owner.is_empty() {
-                    return Err(Error::Invalid("resource owner"));
-                }
-                let amount = ((input.received_msat as i128
-                    * rule.hosted_resource.resource_owner_bps as i128)
-                    / 10_000) as i64;
-                shares.push((owner.as_str(), "resource", amount));
-                amount
-            }
-            Split::OpenAgents => 0,
-        };
-        let mut openagents = input.received_msat - allocated;
-        let mut launch_match = None;
-        if let Split::Plugin { author, fee_msat } = &input.split
-            && input.received_msat > 0
-        {
-            let month = month(input.settled_at)?;
-            let until = DateTime::parse_from_rfc3339(&rule.bonus.launch_match_until)
-                .map_err(|_| Error::Invalid("bonus window"))?
-                .timestamp();
-            if input.settled_at < until {
-                let requested =
-                    (*fee_msat as i128 * rule.bonus.launch_match_bps as i128 / 10_000) as i64;
-                let mut stmt = tx.prepare("SELECT amount_msat FROM bonus WHERE party=? AND month=? AND kind='launch_match'")?;
-                let spent = stmt
-                    .query_map(params![author, month], |r| r.get::<_, i64>(0))?
-                    .try_fold(0i64, |sum, amount| amount.map(|n| sum.saturating_add(n)))?;
-                let remaining = (rule.bonus.launch_match_cap_msat_per_month as i64)
-                    .saturating_sub(spent)
-                    .max(0);
-                let amount = requested.min(openagents).min(remaining);
-                openagents -= amount;
-                shares.push((author.as_str(), "bonus", amount));
-                launch_match = Some((month, requested, amount));
-            }
-        }
-        shares.extend([
-            (OPENAGENTS, "openagents", openagents),
-            (OPENAGENTS, "lsp_fee", 0),
-            (OPENAGENTS, "provider", 0),
-        ]);
-        tx.execute("INSERT INTO settlement(payment_hash,resource,plugin_id,release_id,price_msat,received_msat,lsp_fee_msat,rail,payer_alias,settled_at,rule_version,short) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-            params![input.key,input.resource,input.plugin_id,input.release_id,input.price_msat,input.received_msat,input.price_msat-input.received_msat,input.rail.as_str(),input.payer_alias,input.settled_at,version,short])?;
-        for (party, role, amount) in shares {
-            tx.execute(
-                "INSERT INTO share(settlement,party,role,amount_msat) VALUES(?,?,?,?)",
-                params![input.key, party, role, amount],
-            )?;
-        }
-        if let Split::Plugin { author, .. } = &input.split
-            && input.received_msat > 0
-        {
-            if let Some((month, requested, amount)) = launch_match {
-                tx.execute(
-                    "INSERT INTO bonus VALUES(?,?,'launch_match',?,?,?,?,'awarded')",
-                    params![input.key, author, input.plugin_id, month, requested, amount],
-                )?;
-            }
-            first_call_bonus(&tx, &input, author, rule.bonus.first_paid_call_msat as i64)?;
-        }
-        let recorded = read_record(&tx, &input.key)?.ok_or(Error::Invalid("missing settlement"))?;
+        let recorded = record_settlement_in(&tx, input)?;
         tx.commit()?;
         Ok(recorded)
     }
@@ -622,6 +536,110 @@ fn available_shares(connection: &Connection, party: &str) -> Result<Vec<Share>> 
         })
     })?;
     Ok(rows.collect::<std::result::Result<_, _>>()?)
+}
+/// Record one settlement inside the caller's transaction. Replaying a key
+/// returns the recorded settlement unchanged.
+pub(crate) fn record_settlement_in(tx: &Connection, input: SettlementInput) -> Result<Recorded> {
+    // Check the key before validating the replay payload or choosing a rule.
+    if let Some(existing) = read_record(&tx, &input.key)? {
+        return Ok(existing);
+    }
+    if input.key.is_empty()
+        || input.price_msat < 0
+        || input.received_msat < 0
+        || input.received_msat > input.price_msat
+        || (input.rail == Rail::Balance) != input.key.starts_with("debit:")
+        || input.key == "debit:"
+    {
+        return Err(Error::Invalid("settlement key, rail, or amounts"));
+    }
+    let (version, text, expected): (i64, String, String) = tx.query_row(
+            "SELECT version,toml,digest FROM rule WHERE effective<=? ORDER BY effective DESC LIMIT 1",
+            [input.settled_at], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?.ok_or(Error::NoRule)?;
+    if digest(&text) != expected {
+        return Err(Error::Invalid("stored rule digest mismatch"));
+    }
+    let (rule, _) = parse_rule(&text)?;
+    let mut shares = vec![];
+    let mut short = false;
+    let allocated = match &input.split {
+        Split::Plugin { author, fee_msat } => {
+            if author.is_empty()
+                || input.plugin_id.as_deref().is_none_or(str::is_empty)
+                || *fee_msat < 0
+                || *fee_msat > input.price_msat
+            {
+                return Err(Error::Invalid("plugin id, author, or declared fee"));
+            }
+            short = input.received_msat < *fee_msat;
+            let amount = input.received_msat.min(*fee_msat);
+            shares.push((author.as_str(), "author", amount));
+            amount
+        }
+        Split::HostedResource { owner } => {
+            if owner.is_empty() {
+                return Err(Error::Invalid("resource owner"));
+            }
+            let amount = ((input.received_msat as i128
+                * rule.hosted_resource.resource_owner_bps as i128)
+                / 10_000) as i64;
+            shares.push((owner.as_str(), "resource", amount));
+            amount
+        }
+        Split::OpenAgents => 0,
+    };
+    let mut openagents = input.received_msat - allocated;
+    let mut launch_match = None;
+    if let Split::Plugin { author, fee_msat } = &input.split
+        && input.received_msat > 0
+    {
+        let month = month(input.settled_at)?;
+        let until = DateTime::parse_from_rfc3339(&rule.bonus.launch_match_until)
+            .map_err(|_| Error::Invalid("bonus window"))?
+            .timestamp();
+        if input.settled_at < until {
+            let requested =
+                (*fee_msat as i128 * rule.bonus.launch_match_bps as i128 / 10_000) as i64;
+            let mut stmt = tx.prepare(
+                "SELECT amount_msat FROM bonus WHERE party=? AND month=? AND kind='launch_match'",
+            )?;
+            let spent = stmt
+                .query_map(params![author, month], |r| r.get::<_, i64>(0))?
+                .try_fold(0i64, |sum, amount| amount.map(|n| sum.saturating_add(n)))?;
+            let remaining = (rule.bonus.launch_match_cap_msat_per_month as i64)
+                .saturating_sub(spent)
+                .max(0);
+            let amount = requested.min(openagents).min(remaining);
+            openagents -= amount;
+            shares.push((author.as_str(), "bonus", amount));
+            launch_match = Some((month, requested, amount));
+        }
+    }
+    shares.extend([
+        (OPENAGENTS, "openagents", openagents),
+        (OPENAGENTS, "lsp_fee", 0),
+        (OPENAGENTS, "provider", 0),
+    ]);
+    tx.execute("INSERT INTO settlement(payment_hash,resource,plugin_id,release_id,price_msat,received_msat,lsp_fee_msat,rail,payer_alias,settled_at,rule_version,short) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            params![input.key,input.resource,input.plugin_id,input.release_id,input.price_msat,input.received_msat,input.price_msat-input.received_msat,input.rail.as_str(),input.payer_alias,input.settled_at,version,short])?;
+    for (party, role, amount) in shares {
+        tx.execute(
+            "INSERT INTO share(settlement,party,role,amount_msat) VALUES(?,?,?,?)",
+            params![input.key, party, role, amount],
+        )?;
+    }
+    if let Split::Plugin { author, .. } = &input.split
+        && input.received_msat > 0
+    {
+        if let Some((month, requested, amount)) = launch_match {
+            tx.execute(
+                "INSERT INTO bonus VALUES(?,?,'launch_match',?,?,?,?,'awarded')",
+                params![input.key, author, input.plugin_id, month, requested, amount],
+            )?;
+        }
+        first_call_bonus(&tx, &input, author, rule.bonus.first_paid_call_msat as i64)?;
+    }
+    read_record(tx, &input.key)?.ok_or(Error::Invalid("missing settlement"))
 }
 fn month(at: i64) -> Result<String> {
     let at = DateTime::from_timestamp(at, 0).ok_or(Error::Invalid("settlement time"))?;
