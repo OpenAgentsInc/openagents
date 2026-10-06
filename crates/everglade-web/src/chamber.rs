@@ -608,7 +608,24 @@ pub async fn run(
                 }
                 return;
             }
-            e.prevent_default();
+            if e.ctrl_key() || e.meta_key() || e.alt_key() {
+                if !down {
+                    control(&mut p.borrow_mut(), &e.code(), false);
+                }
+                return;
+            }
+            let mapped = if p.borrow().config.bindings.is_empty() {
+                e.code() == "Space"
+            } else {
+                p.borrow()
+                    .config
+                    .bindings
+                    .iter()
+                    .any(|b| b.control == e.code())
+            };
+            if mapped {
+                e.prevent_default();
+            }
             control(&mut p.borrow_mut(), &e.code(), down);
         })?;
     }
