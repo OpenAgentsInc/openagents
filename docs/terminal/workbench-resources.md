@@ -119,8 +119,18 @@ request, and the `products` entry of its status), with TTY fallbacks for a
 thread (`openagents chat read --thread {id}`) and a run (`coder task show
 {id}`), so the Grid's overlay and the standalone window resolve the same
 resources to the same pane state. Account and receipt panes take the retail
-cloud track's adapters when those land; drawing product panes natively is
-[#10659](https://github.com/OpenAgentsInc/openagents/issues/10659).
+cloud track's adapters when those land.
+
+The sheet draws a thread natively
+([#10659](https://github.com/OpenAgentsInc/openagents/issues/10659)): F4
+shows the thread its questions go to in place of the transcript
+(`terminal_core::thread`). The mount's transport reads it through the shared
+chat client's `openagents --json chat read --thread ID`, the same thread ID
+the TTY fallback reads, so there is one client and one thread store. A read
+answers only for the thread asked; a thread the client does not keep is
+`missing`, and one it cannot read is `unavailable`. Opening, reopening, and
+refreshing only read, and ENTER on the page sends the line once, as the
+sheet's next question to that thread.
 
 ## Consumers
 

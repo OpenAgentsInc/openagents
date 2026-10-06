@@ -313,6 +313,9 @@ impl Transport for Local {
     ) -> Result<terminal_core::bridge::Connection, String> {
         super::helpers::request(request, self.helper_home.as_deref())
     }
+    fn read_thread(&self, thread: &str) -> Receiver<terminal_core::thread::Read> {
+        super::helpers::read_thread(thread, self.helper_home.as_deref())
+    }
     fn git_summary(&self, pane: u64, directory: String) -> Receiver<(u64, String, String)> {
         super::helpers::git_summary(pane, directory, self.helper_home.as_deref())
     }

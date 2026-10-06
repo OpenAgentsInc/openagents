@@ -22,6 +22,10 @@ struct Fake {
     opened: AtomicUsize,
     input: Arc<Mutex<Vec<Vec<u8>>>>,
     closed: Arc<AtomicUsize>,
+    /// What the shared client answers to reading a thread.
+    thread: Mutex<Option<Vec<u8>>>,
+    /// Every thread read asked for.
+    reads: Mutex<Vec<String>>,
 }
 struct Pane {
     bridge: bool,
@@ -121,6 +125,13 @@ impl Transport for Fake {
     }
     fn git_summary(&self, _: u64, _: String) -> mpsc::Receiver<(u64, String, String)> {
         mpsc::channel().1
+    }
+    fn read_thread(&self, thread: &str) -> mpsc::Receiver<crate::thread::Read> {
+        self.reads.lock().unwrap().push(thread.to_owned());
+        let (sender, receiver) = mpsc::channel();
+        let answer = self.thread.lock().unwrap().clone().unwrap_or_default();
+        sender.send(crate::thread::decode(&answer, thread)).unwrap();
+        receiver
     }
     fn open_link(&self, _: &str) -> Result<(), String> {
         Ok(())
@@ -994,4 +1005,150 @@ fn every_mount_resolves_product_panes_the_same_way() {
     assert!(grid.apply(&wrong).is_err());
     assert!(grid.products.close(0));
     assert_eq!(grid.products.open.len(), 5);
+}
+
+#[test]
+fn the_thread_page_reads_the_sheets_conversation_and_never_sends_on_open() {
+    use crate::input::{KeyCode, NamedKey};
+    let transport = Arc::new(Fake {
+        bridge: true,
+        ..Fake::default()
+    });
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.paper.on = true;
+    app.toggle();
+    app.ensure_started();
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b]7;file:///test/work\x07\x1b]133;A\x07$ \x1b]133;B\x07".to_vec());
+    app.tick();
+    let sheet = |app: &mut Application| app.paper_sheet(120, 40, "12:00:00", "0.50");
+    let f4 = |app: &mut Application| press(app, KeyCode::Unidentified, NamedKey::F4);
+
+    // Before any question there is no conversation, and nothing is read.
+    f4(&mut app);
+    assert!(!app.paper.thread.open);
+    assert!(sheet(&mut app).text().contains("LAST No conversation yet"));
+    assert!(transport.reads.lock().unwrap().is_empty());
+
+    // A question attaches the sheet to its thread.
+    app.paper_ask("why did that fail");
+    app.tick();
+    // The fixture answer proposes a command; REJECT it.
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(app.smart.pending.is_none());
+    let thread = transport.requests.lock().unwrap()[0].thread.clone();
+    let answer = |busy: bool| {
+        serde_json::json!({
+            "thread": thread,
+            "title": "Why the test failed",
+            "backend": "local",
+            "busy": busy,
+            "failure": null,
+            "coder": null,
+            "turns": [
+                {"role": "user", "text": "why did that fail", "request": "r1"},
+                {"role": "assistant", "text": "**It failed** because `2 + 2` is not 5 \u{2014} see [the test](src/lib.rs).\n{\"v\":1,\"commands\":[]}"},
+            ],
+            "coder_turns": [],
+        })
+        .to_string()
+        .into_bytes()
+    };
+    *transport.thread.lock().unwrap() = Some(answer(true));
+
+    // F4 shows that thread natively, plainly, with its state and the TTY
+    // command for the same thread ID; opening it sends nothing.
+    f4(&mut app);
+    assert!(app.paper.thread.open);
+    app.tick();
+    let page = sheet(&mut app);
+    let text = page.text();
+    for row in 0..40 {
+        let row_text = page.row_text(row);
+        assert_eq!(row_text.len(), 120, "row {row}: {row_text:?}");
+        assert!(
+            row_text.chars().all(|c| (' '..='~').contains(&c)),
+            "row {row}"
+        );
+    }
+    assert!(text.contains("THREAD Why the test failed  2 turns  [reply arriving]"));
+    assert!(text.contains(&format!("TTY: openagents chat read --thread {thread}")));
+    assert!(text.contains("YOU: why did that fail"));
+    assert!(
+        text.contains("OPENAGENTS: It failed because 2 + 2 is not 5 - see the test (src/lib.rs).")
+    );
+    assert!(text.contains("[a reply is arriving]"));
+    for leaked in ["**", "{\"v\"", "\u{2014}"] {
+        assert!(!text.contains(leaked), "{leaked}");
+    }
+    assert!(page.row_text(37).starts_with("| REPLY > "));
+    assert_eq!(transport.requests.lock().unwrap().len(), 1);
+    assert_eq!(transport.reads.lock().unwrap().as_slice(), [thread.clone()]);
+
+    // REJECT returns to the transcript; reopening reads the same thread
+    // again and still sends nothing.
+    *transport.thread.lock().unwrap() = Some(answer(false));
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(!app.paper.thread.open);
+    assert!(sheet(&mut app).text().contains("ASK: why did that fail"));
+    f4(&mut app);
+    app.tick();
+    assert!(sheet(&mut app).text().contains("2 turns  [current]"));
+    assert_eq!(transport.reads.lock().unwrap().len(), 2);
+    assert_eq!(transport.requests.lock().unwrap().len(), 1);
+
+    // On the page, ENTER sends the line once, to the same thread.
+    typing(&mut app, "and the sea");
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    {
+        let requests = transport.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[1].thread, thread);
+        assert!(!requests[1].new);
+        assert_eq!(requests[1].text, "and the sea");
+    }
+
+    // A thread the client does not keep is missing, and one it cannot
+    // read is unavailable; neither creates or sends anything.
+    *transport.thread.lock().unwrap() = Some(br#"{"error":"Thread not found."}"#.to_vec());
+    f4(&mut app);
+    f4(&mut app);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("[missing]"));
+    assert!(text.contains("This thread is not on this computer. Nothing was created"));
+    *transport.thread.lock().unwrap() = Some(b"not json".to_vec());
+    f4(&mut app);
+    f4(&mut app);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("[unavailable]"));
+    assert!(
+        text.contains("The thread can't be read now: the chat client's answer was not readable.")
+    );
+    assert_eq!(transport.requests.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn a_thread_read_answers_only_for_the_thread_asked() {
+    use crate::thread::{Unread, decode};
+    let ok = br#"{"thread":"t1","title":"T","busy":false,"failure":null,"turns":[{"role":"user","text":"hi"}],"coder_turns":[]}"#;
+    let thread = decode(ok, "t1").unwrap();
+    assert_eq!(thread.turns.len(), 1);
+    assert!(
+        matches!(decode(ok, "t2"), Err(Unread::Unavailable(why)) if why.contains("another thread"))
+    );
+    assert_eq!(
+        decode(br#"{"error":"openagents chat: Thread not found."}"#, "t1"),
+        Err(Unread::Missing)
+    );
+    assert!(matches!(decode(b"", "t1"), Err(Unread::Unavailable(_))));
+    assert!(matches!(
+        decode(&vec![b' '; crate::thread::READ_MAX + 1], "t1"),
+        Err(Unread::Unavailable(why)) if why.contains("too large")
+    ));
 }

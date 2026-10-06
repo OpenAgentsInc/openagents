@@ -24,7 +24,7 @@ use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
 /// The key strip, always shown on the sheet's last row.
-pub const KEYS: &str = "F1 HELP  F2 CONTEXT  F3 COPY  F5 RUN AS SHELL  F6 ASK  F7 FIX  F8 PANES  F10 QUIT  ENTER CONFIRM  ESC REJECT  PGUP PGDN SCROLL";
+pub const KEYS: &str = "F1 HELP  F2 CONTEXT  F3 COPY  F4 THREAD  F5 RUN AS SHELL  F6 ASK  F7 FIX  F8 PANES  F10 QUIT  ENTER CONFIRM  ESC REJECT  PGUP PGDN SCROLL";
 
 const HELP: &[&str] = &[
     "HELP (F1 or ESC returns to the transcript)",
@@ -35,6 +35,8 @@ const HELP: &[&str] = &[
     "",
     "F2   attach or detach the last failed command's output for the next question",
     "F3   copy the last command and its output",
+    "F4   show the conversation your questions go to; F4 or ESC returns.",
+    "     There, ENTER sends the line to that conversation",
     "F5   run the input line as a shell command, whatever its label says",
     "F6   send the input line to OpenAgents; on an empty line, ask about the",
     "     last failed command; what it already did stays done",
@@ -167,6 +169,8 @@ pub struct Paper {
     /// The proposal whose first CONFIRM warned that it may change things;
     /// the next CONFIRM runs it.
     pub warned: Option<String>,
+    /// The conversation page (F4), drawn in place of the transcript.
+    pub thread: crate::thread::Page,
     cache: Option<(u64, usize, usize, Vec<Line>)>,
 }
 
@@ -198,6 +202,7 @@ impl Default for Paper {
             latencies: Vec::new(),
             quit: false,
             warned: None,
+            thread: crate::thread::Page::default(),
             cache: None,
         }
     }
@@ -283,6 +288,10 @@ impl Application {
                 self.notice = Some("Copied the last command and its output.".into());
                 return true;
             }
+            Some(NamedKey::F4) => {
+                self.paper_thread_toggle();
+                return true;
+            }
             Some(NamedKey::F5) => {
                 let line = self.paper.input.trim().to_owned();
                 if !line.is_empty() && !self.paper_running() {
@@ -334,17 +343,23 @@ impl Application {
                 return true;
             }
             Some(NamedKey::PageUp) => {
-                self.paper.scroll = self
-                    .paper
-                    .scroll
-                    .saturating_add(self.paper.grid.0 as usize / 2);
+                let half = self.paper.grid.0 as usize / 2;
+                let scroll = if self.paper.thread.open {
+                    &mut self.paper.thread.scroll
+                } else {
+                    &mut self.paper.scroll
+                };
+                *scroll = scroll.saturating_add(half);
                 return true;
             }
             Some(NamedKey::PageDown) => {
-                self.paper.scroll = self
-                    .paper
-                    .scroll
-                    .saturating_sub(self.paper.grid.0 as usize / 2);
+                let half = self.paper.grid.0 as usize / 2;
+                let scroll = if self.paper.thread.open {
+                    &mut self.paper.thread.scroll
+                } else {
+                    &mut self.paper.scroll
+                };
+                *scroll = scroll.saturating_sub(half);
                 return true;
             }
             _ => {}
@@ -383,6 +398,11 @@ impl Application {
             if let Some(bytes) = self.encode(key) {
                 self.send(&bytes);
             }
+            return true;
+        }
+        // REJECT on the thread page returns to the transcript.
+        if self.paper.thread.open && key.code == KeyCode::Escape {
+            self.paper.thread.open = false;
             return true;
         }
         let ctrl = self.mods.control_key();
@@ -491,10 +511,71 @@ impl Application {
         if line.is_empty() {
             return;
         }
+        // On the thread page, a line is a message to that thread.
+        if self.paper.thread.open {
+            self.paper_ask(&line);
+            return;
+        }
         match route {
             Some(Route::Ask) => self.paper_ask(&line),
             _ => self.paper_shell(&line),
         }
+    }
+
+    /// F4: shows the conversation this sheet's questions go to, or returns
+    /// to the transcript. Showing it only reads the thread.
+    fn paper_thread_toggle(&mut self) {
+        if self.paper.thread.open {
+            self.paper.thread.open = false;
+            return;
+        }
+        let thread = self
+            .paper_pane()
+            .and_then(|pane| self.smart.threads.get(&pane).cloned());
+        match thread {
+            Some(thread) => {
+                self.paper.help = false;
+                self.paper.thread.show(&thread);
+                self.paper_thread_read();
+            }
+            None => {
+                self.notice = Some("No conversation yet; ask OpenAgents something first.".into());
+            }
+        }
+    }
+
+    /// Takes a finished read of the page's thread, and reads it again when
+    /// that is due.
+    fn paper_thread_read(&mut self) {
+        let page = &mut self.paper.thread;
+        if let Some(reading) = &page.reading {
+            match reading.try_recv() {
+                Ok(read) => {
+                    page.shown = Some(read);
+                    page.reading = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    page.shown = Some(Err(crate::thread::Unread::Unavailable(
+                        "the chat client ended without an answer".into(),
+                    )));
+                    page.reading = None;
+                }
+            }
+        }
+        let now = Instant::now();
+        if !self.paper.thread.due(now) {
+            return;
+        }
+        let Some(thread) = self.paper.thread.thread.clone() else {
+            return;
+        };
+        let reading = self.sessions().0.read_thread(&thread);
+        let page = &mut self.paper.thread;
+        page.reading = Some(reading);
+        page.dirty = false;
+        page.read_at = Some(now);
+        page.reads += 1;
     }
 
     /// Runs `line` in the shell, as if typed at its prompt.
@@ -625,6 +706,7 @@ impl Application {
     /// Follows the shell: new blocks, finished blocks, the command table,
     /// and the git summary; starts a queued question when the last ends.
     pub fn paper_tick(&mut self) {
+        self.paper_thread_read();
         let Some(pane_id) = self.paper_pane() else {
             return;
         };
@@ -695,6 +777,7 @@ impl Application {
                 if !text.trim().is_empty() {
                     self.paper.push(Entry::Answer(text));
                 }
+                self.paper.thread.dirty = true;
             }
             Message::Door(door) => self.paper.door = Some(ascii(door)),
             _ => {}
@@ -710,6 +793,7 @@ impl Application {
     }
 
     pub(crate) fn paper_failed(&mut self) {
+        self.paper.thread.dirty = true;
         self.paper.push(Entry::Note(
             "OpenAgents did not answer; the request ended without a reply.".into(),
         ));
@@ -810,6 +894,23 @@ impl Application {
                     tone: Tone::Present,
                 }]);
             }
+        } else if self.paper.thread.open {
+            let mut wrapped = Vec::new();
+            for (text, tone) in crate::thread::lines(&self.paper.thread) {
+                wrap(&line(text, tone), text_width, &mut wrapped);
+            }
+            let total = wrapped.len();
+            let page = &mut self.paper.thread;
+            page.scroll = page.scroll.min(total.saturating_sub(transcript_rows));
+            let end = total - page.scroll;
+            let start = end.saturating_sub(transcript_rows);
+            for line in &wrapped[start..end] {
+                body.push(vec![Span {
+                    text: line.text.clone(),
+                    tone: line.tone,
+                }]);
+            }
+            bar = Some((start, total));
         } else if let Some(pane) = screen {
             let vt = &pane.session.vt;
             for row in 0..transcript_rows.min(vt.rows()) {
@@ -916,6 +1017,9 @@ impl Application {
         }
         if self.smart.pending.is_some() && self.paper.input.is_empty() {
             return ("CONFIRM? ".into(), Tone::Loud);
+        }
+        if self.paper.thread.open {
+            return ("REPLY > ".into(), Tone::Loud);
         }
         match self.paper_route() {
             Some(Route::Ask) => ("ASK   > ".into(), Tone::Loud),

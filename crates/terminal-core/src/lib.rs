@@ -27,6 +27,7 @@ pub mod resources;
 pub mod select;
 pub mod smart;
 pub mod stats;
+pub mod thread;
 pub use application::Application as Overlay;
 pub(crate) use application::scroll;
 pub use application::{Application, HELP, PANE_BYTES, UPDATE_BUDGET};

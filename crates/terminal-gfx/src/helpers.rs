@@ -116,6 +116,61 @@ pub fn request(request: &Request, home: Option<&Path>) -> Result<Connection, Str
     })
 }
 
+/// Reads thread `thread` through the shared chat client's read command,
+/// which only reads. The answer is bounded in size and time; a client that
+/// is missing, slow, or unreadable is unavailable, never retried here.
+pub fn read_thread(thread: &str, home: Option<&Path>) -> Receiver<terminal_core::thread::Read> {
+    use terminal_core::thread::{READ_MAX, Unread, decode};
+    let (sender, receiver) = mpsc::channel();
+    let thread = thread.to_owned();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let Some(program) = crate::pty::candidates("openagents").into_iter().next() else {
+            let _ = sender.send(Err(Unread::Unavailable(
+                "the openagents command is not installed".into(),
+            )));
+            return;
+        };
+        let mut command = Command::new(program);
+        if let Some(home) = &home {
+            command.env("HOME", home);
+        }
+        let Ok(mut child) = command
+            .args(["--json", "chat", "read", "--thread", &thread])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
+            let _ = sender.send(Err(Unread::Unavailable(
+                "the chat client did not start".into(),
+            )));
+            return;
+        };
+        let Some(stdout) = child.stdout.take() else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return;
+        };
+        let (output_sender, output_receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = stdout.take(READ_MAX as u64 + 1).read_to_end(&mut bytes);
+            let _ = output_sender.send(bytes);
+        });
+        let read = match output_receiver.recv_timeout(std::time::Duration::from_secs(20)) {
+            Ok(bytes) => decode(&bytes, &thread),
+            Err(_) => Err(Unread::Unavailable(
+                "the chat client did not answer in time".into(),
+            )),
+        };
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = sender.send(read);
+    });
+    receiver
+}
+
 pub fn git_summary(
     pane_id: u64,
     directory: String,

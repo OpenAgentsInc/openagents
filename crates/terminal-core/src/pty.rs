@@ -53,6 +53,16 @@ pub trait Transport: Send + Sync {
     fn thread_program(&self) -> Option<Program>;
     fn resolve(&self, name: &str) -> Option<PathBuf>;
     fn request(&self, request: &Request) -> Result<Connection, String>;
+    /// Reads thread `thread` through the shared chat client, only reading.
+    /// A mount without a client answers that it cannot.
+    fn read_thread(&self, thread: &str) -> Receiver<crate::thread::Read> {
+        let _ = thread;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err(crate::thread::Unread::Unavailable(
+            "this mount has no chat client".into(),
+        )));
+        receiver
+    }
     fn git_summary(&self, pane: u64, directory: String) -> Receiver<(u64, String, String)>;
     fn open_link(&self, target: &str) -> Result<(), String>;
     fn clipboard(&self) -> Option<String>;
