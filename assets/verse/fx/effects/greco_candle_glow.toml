@@ -1,0 +1,19 @@
+# The halo around a candle or brazier flame in the owner's house, under
+# Everglade's daylight exposure: a small warm glow that swells and gutters
+# a little each moment. Runs until stopped.
+description = "A flickering warm halo around a candle flame in daylight."
+
+[[emitter]]
+name = "halo"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 1400.0
+rate = 14.0
+life = [0.14, 0.22]
+size = [0.05, 0.08]
+scale = [0.9, 1.05, 1.0]
+color = [1.0, 0.64, 0.3]
+alpha = [0.0, 0.8, 0.0]
+rotate = false
+priority = 3

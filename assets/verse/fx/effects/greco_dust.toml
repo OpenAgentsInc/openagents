@@ -1,0 +1,23 @@
+# Dust motes hanging in the warm light of the owner's great room: tiny
+# specks drifting and turning slowly, catching the light now and then.
+# Runs until stopped.
+description = "Dust motes drifting in a warm shaft of daylight indoors."
+
+[[emitter]]
+name = "motes"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+luminance = 70.0
+rate = 5.0
+life = [6.0, 9.0]
+shape = "sphere"
+radius = 1.1
+speed = [0.0, 0.03]
+gravity = -0.01
+drag = 0.6
+wander = 0.04
+size = [0.005, 0.011]
+color = [1.0, 0.86, 0.66]
+alpha = [[0.0, 0.0], [0.2, 0.9], [0.5, 0.3], [0.8, 1.0], [1.0, 0.0]]
+priority = 1

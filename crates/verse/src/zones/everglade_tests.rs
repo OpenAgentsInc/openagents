@@ -1257,6 +1257,33 @@ fn walk_across(from: [f32; 2], to: [f32; 2], seconds: f32) -> (Vec3, f32) {
 }
 
 #[test]
+fn the_owners_great_room_is_candlelit_and_graded_only_inside() {
+    use crate::zones::everglade::layout::estate::{GRECO_HOUSE, OWNERS_HOUSE};
+    let mut runtime = entered();
+    let idle = InputState::default();
+    let lit = |runtime: &WorldRuntime| {
+        let neon = runtime.dynamic_mesh().neon.expect("a lit stage");
+        let lamps = neon.lamps.iter().filter(|lamp| lamp.lit()).count();
+        (lamps, neon.grade.exposure)
+    };
+    // At the spawn, far from the house: Everglade's own stage.
+    runtime.tick(&idle, 0.05);
+    let (lamps, exposure) = lit(&runtime);
+    assert_eq!(lamps, 0);
+    let outside = exposure;
+    // In the great room: its candles, sconces, lamps, and brazier, and a
+    // darker grade.
+    let [x, z] = OWNERS_HOUSE.world(GRECO_HOUSE.inside.unwrap());
+    runtime.set_spawn(Vec3::new(x, 0.0, z), 1.57).unwrap();
+    for _ in 0..10 {
+        runtime.tick(&idle, 0.05);
+    }
+    let (lamps, exposure) = lit(&runtime);
+    assert!(lamps >= 8, "{lamps}");
+    assert!(exposure < outside, "{exposure}");
+}
+
+#[test]
 fn a_walker_climbs_the_owners_stair_and_walks_into_the_great_room() {
     // From Library Way's end, straight up the stair, between the round
     // columns, through the open bronze doors, to the middle of the great

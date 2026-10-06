@@ -13,8 +13,19 @@
 //! generated model, it collides by its own triangles and breaks
 //! (`demolition::carve`). It doesn't smoke: its chimneys are plain blocks
 //! on a quiet house.
+//!
+//! The house is lit like the crypt: candles, sconces, a brazier, and lamps
+//! warm the great room in pools, lanterns and uplights light the portico
+//! and the stair, and its flames and inlays glow (`Emit...` materials).
+//! [`light`] gives Everglade's stage the fixtures' point lights near the
+//! player, nearest first, so a low tier's first eight are the ones that
+//! matter, and a moodier grade while the player is in the great room;
+//! everywhere else Everglade's look is unchanged. Candle halos and dust
+//! motes run in the town's particles ([`flames`], [`dust`]).
 
 use super::generated::{GableRoof, Instance, Model};
+use crate::pbr::{Grade, Lamp, MAX_LAMPS, Neon};
+use glam::{Quat, Vec3};
 use std::f32::consts::FRAC_PI_2;
 
 /// The owner's house, in its glTF frame: +z out of the front, the origin
@@ -41,8 +52,15 @@ pub const GRECO_HOUSE: Model = Model {
         [-10.0, -1.35, -12.0, -11.6, 9.8],
         [1.35, 10.0, -12.0, -11.6, 9.8],
         [-10.0, 10.0, -25.6, -25.2, 9.8],
-        // The great room's desk, and the sofa against its west wall.
+        // The lantern posts beside the lower and upper flights.
+        [-5.12, -4.88, 0.48, 0.72, 2.3],
+        [-4.97, -4.73, -5.32, -5.08, 2.7],
+        [4.88, 5.12, 0.48, 0.72, 2.3],
+        [4.73, 4.97, -5.32, -5.08, 2.7],
+        // The great room's desk, the brazier, and the sofa against its
+        // west wall.
         [-1.4, 1.4, -22.1, -21.1, 2.38],
+        [6.95, 7.85, -19.05, -18.15, 2.6],
         [-9.25, -8.25, -20.8, -16.4, 2.44],
     ],
     roofs: &[GableRoof {
@@ -64,6 +82,227 @@ pub const OWNERS_HOUSE: Instance =
 /// The walk from Library Way's end to the foot of the stair, as a road:
 /// from, to, and half width, m.
 pub const WALK: ([f32; 2], [f32; 2], f32) = ([104.0, -29.0], [108.0, -29.0], 1.4);
+
+/// A spot kept clear for a workstation in the great room, west of the desk
+/// in front of the engraved-door wall, facing into the room (+z), in the
+/// house's frame, x and z, m. The left sconce and the tall candle stand
+/// light it.
+pub const WORKSTATION: [f32; 2] = [-4.6, -22.6];
+
+/// What gives a light in the house.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fixture {
+    /// A candelabrum's or a side table's candles.
+    Candles,
+    /// A bronze wall sconce's candle.
+    Sconce,
+    /// A floor lamp's amber shade.
+    Lamp,
+    /// The brazier's fire.
+    Brazier,
+    /// A lantern on the portico or beside the stair.
+    Lantern,
+    /// An uplight washing the facade.
+    Uplight,
+}
+
+impl Fixture {
+    /// Its linear color, candela, and range, m.
+    #[must_use]
+    pub const fn light(self) -> ([f32; 3], f32, f32) {
+        match self {
+            Self::Candles => ([1.0, 0.66, 0.34], 6_500.0, 5.0),
+            Self::Sconce => ([1.0, 0.62, 0.3], 7_000.0, 6.0),
+            Self::Lamp => ([1.0, 0.7, 0.42], 6_000.0, 6.0),
+            Self::Brazier => ([1.0, 0.5, 0.2], 22_000.0, 9.0),
+            Self::Lantern => ([1.0, 0.7, 0.4], 5_000.0, 8.0),
+            Self::Uplight => ([1.0, 0.76, 0.5], 8_000.0, 7.0),
+        }
+    }
+
+    /// Whether it lights the great room rather than the outside.
+    #[must_use]
+    pub const fn indoors(self) -> bool {
+        !matches!(self, Self::Lantern | Self::Uplight)
+    }
+
+    /// Whether it burns, and so flickers.
+    #[must_use]
+    pub const fn flame(self) -> bool {
+        !matches!(self, Self::Lamp | Self::Uplight)
+    }
+}
+
+/// The house's lights, in its frame: x, height above its base, and z, m,
+/// as `greco_house.footprint.json`'s `lights`.
+pub const LIGHTS: [(Fixture, [f32; 3]); 16] = [
+    (Fixture::Lantern, [-6.6, 4.92, -7.77]),
+    (Fixture::Uplight, [-1.9, 2.5, -10.95]),
+    (Fixture::Lantern, [-5.0, 2.02, 0.6]),
+    (Fixture::Lantern, [-4.85, 2.42, -5.2]),
+    (Fixture::Lantern, [6.6, 4.92, -7.77]),
+    (Fixture::Uplight, [1.9, 2.5, -10.95]),
+    (Fixture::Lantern, [5.0, 2.02, 0.6]),
+    (Fixture::Lantern, [4.85, 2.42, -5.2]),
+    (Fixture::Lamp, [4.6, 3.15, -23.6]),
+    (Fixture::Candles, [0.55, 2.955, -21.85]),
+    (Fixture::Sconce, [-1.85, 4.17, -24.88]),
+    (Fixture::Sconce, [1.85, 4.17, -24.88]),
+    (Fixture::Candles, [-6.3, 3.105, -24.3]),
+    (Fixture::Brazier, [7.4, 2.95, -18.6]),
+    (Fixture::Candles, [-8.7, 2.47, -15.7]),
+    (Fixture::Lamp, [-8.8, 3.15, -21.7]),
+];
+
+/// The flames, in the house's frame, for their halos.
+const FLAMES: [[f32; 3]; 11] = [
+    [0.38, 2.941, -21.85],
+    [0.55, 3.001, -21.85],
+    [0.72, 2.941, -21.85],
+    [-1.85, 4.156, -24.88],
+    [1.85, 4.156, -24.88],
+    [-6.5, 3.091, -24.3],
+    [-6.3, 3.151, -24.3],
+    [-6.1, 3.091, -24.3],
+    [7.4, 2.68, -18.6],
+    [-8.78, 2.446, -15.7],
+    [-8.61, 2.376, -15.75],
+];
+
+/// Where the house's lights reach the player at all: its outside lights
+/// within this distance of the house, m...
+const OUTDOOR_REACH: f32 = 70.0;
+/// ...and the great room's within this.
+const INDOOR_REACH: f32 = 34.0;
+
+/// The great room, in the house's frame: x, z, and height above the base
+/// from, to, m. Its floor is the podium's top, 1.6 m up; the range starts
+/// lower, so a walker the podium hasn't lifted yet counts as inside.
+const ROOM: ([f32; 2], [f32; 2], [f32; 2]) = ([-9.6, 9.6], [-25.2, -12.0], [-1.0, 6.2]);
+
+/// Motes hang in the light from the door and the tall east windows, in the
+/// house's frame.
+const DUST: [[f32; 3]; 4] = [
+    [0.0, 3.8, -14.0],
+    [0.0, 3.2, -16.6],
+    [7.5, 3.6, -15.4],
+    [7.5, 3.6, -21.8],
+];
+
+/// The great room's grade: a little darker, warmer, and more contrasty
+/// than the afternoon outside, with cool shadows against warm highlights,
+/// so the candles and lamps read as pools of light.
+const ROOM_GRADE: Grade = Grade {
+    exposure: -1.0,
+    balance: Vec3::new(1.04, 0.99, 0.92),
+    saturation: 0.92,
+    contrast: 1.2,
+    shadows: Vec3::new(0.95, 0.97, 1.05),
+    highlights: Vec3::new(1.05, 1.0, 0.93),
+    ..Grade::STAGE
+};
+
+/// A point of the house's frame, x, height, and z, in the world.
+fn world(local: [f32; 3]) -> Vec3 {
+    let [x, z] = OWNERS_HOUSE.world([local[0], local[2]]);
+    let [ax, az] = OWNERS_HOUSE.at;
+    Vec3::new(x, super::height(ax, az) + local[1], z)
+}
+
+/// A world point in the house's frame, x, height, and z.
+fn local(p: Vec3) -> [f32; 3] {
+    let [ax, az] = OWNERS_HOUSE.at;
+    let q = Quat::from_rotation_y(-OWNERS_HOUSE.yaw) * Vec3::new(p.x - ax, 0.0, p.z - az);
+    [q.x, p.y - super::height(ax, az), q.z]
+}
+
+/// Whether `p` is inside the great room.
+#[must_use]
+pub fn in_room(p: Vec3) -> bool {
+    let [x, y, z] = local(p);
+    let ([x0, x1], [z0, z1], [y0, y1]) = ROOM;
+    (x0..=x1).contains(&x) && (z0..=z1).contains(&z) && (y0..=y1).contains(&y)
+}
+
+/// The house's lamps that reach a player at `at` at `time`, s: those on
+/// the player's side of the walls first (the great room's inside it, the
+/// lanterns and uplights outside), then the nearest, at most
+/// [`MAX_LAMPS`], the flames flickering. None when the player is far from
+/// the house.
+#[must_use]
+pub fn lamps(at: Vec3, time: f32) -> Vec<Lamp> {
+    let center = world([0.0, 0.0, -14.0]);
+    let away = Vec3::new(at.x - center.x, 0.0, at.z - center.z).length();
+    let inside = in_room(at);
+    let mut lit: Vec<((bool, f32), Lamp)> = LIGHTS
+        .iter()
+        .enumerate()
+        .filter(|(_, (fixture, _))| {
+            away < if fixture.indoors() {
+                INDOOR_REACH
+            } else {
+                OUTDOOR_REACH
+            }
+        })
+        .map(|(i, &(fixture, local))| {
+            let (color, intensity, range) = fixture.light();
+            let lamp = Lamp {
+                position: world(local),
+                color,
+                intensity,
+                range,
+            };
+            let lamp = if fixture.flame() {
+                lamp.flickering(time, 40 + i as u32)
+            } else {
+                lamp
+            };
+            (
+                (
+                    fixture.indoors() != inside,
+                    lamp.position.distance_squared(at),
+                ),
+                lamp,
+            )
+        })
+        .collect();
+    lit.sort_by(|a, b| a.0.0.cmp(&b.0.0).then(a.0.1.total_cmp(&b.0.1)));
+    lit.into_iter()
+        .take(MAX_LAMPS)
+        .map(|(_, lamp)| lamp)
+        .collect()
+}
+
+/// Lights Everglade's stage `neon` for a player at `at`: the house's lamps
+/// in its free slots, and the great room's grade while the player is in
+/// it. A stage far from the house is left as it was.
+pub fn light(neon: &mut Neon, at: Vec3, time: f32) {
+    let free = neon.lamps.iter().filter(|lamp| !lamp.lit()).count();
+    let mut lamps = lamps(at, time).into_iter().take(free);
+    for slot in neon.lamps.iter_mut().filter(|lamp| !lamp.lit()) {
+        match lamps.next() {
+            Some(lamp) => *slot = lamp,
+            None => break,
+        }
+    }
+    if in_room(at) {
+        neon.grade = ROOM_GRADE;
+        neon.vignette = neon.vignette.max(0.32);
+        neon.bloom = neon.bloom.max(0.07);
+    }
+}
+
+/// Where the house's flames burn, in the world, for their halos.
+#[must_use]
+pub fn flames() -> Vec<Vec3> {
+    FLAMES.iter().copied().map(world).collect()
+}
+
+/// Where dust hangs in the great room's light, in the world.
+#[must_use]
+pub fn dust() -> Vec<Vec3> {
+    DUST.iter().copied().map(world).collect()
+}
 
 #[cfg(test)]
 mod tests {
@@ -104,6 +343,48 @@ mod tests {
                 [x0, x1, z0, z1]
             );
         }
+    }
+
+    #[test]
+    fn the_house_lights_only_near_it_nearest_first_within_the_lamp_limit() {
+        // Far off in the town, nothing.
+        assert!(lamps(Vec3::new(0.0, 0.0, -20.0), 0.0).is_empty());
+        // On the street before it, the lanterns and uplights, not the room.
+        let street = world([0.0, 0.0, 30.0]);
+        let outside = lamps(street, 0.0);
+        assert_eq!(outside.len(), 8, "{}", outside.len());
+        // In the great room, every fixture, the room's own first.
+        let inside = world([0.0, 1.8, -18.0]);
+        assert!(in_room(inside) && !in_room(street));
+        let all = lamps(inside, 3.0);
+        assert_eq!(all.len(), LIGHTS.len());
+        assert!(all.len() <= MAX_LAMPS);
+        let room = LIGHTS.iter().filter(|(f, _)| f.indoors()).count();
+        for lamp in &all[..room] {
+            assert!(in_room(lamp.position), "{:?}", lamp.position);
+        }
+        assert!(all.iter().all(Lamp::lit));
+        // The grade changes only in the room.
+        let mut neon = Neon::plaza(0.0);
+        let before = neon.grade;
+        light(&mut neon, street, 0.0);
+        assert_eq!(neon.grade, before);
+        light(&mut neon, inside, 0.0);
+        assert_eq!(neon.grade, ROOM_GRADE);
+    }
+
+    #[test]
+    fn the_workstation_spot_is_clear_and_lit() {
+        let [wx, wz] = WORKSTATION;
+        for &[x0, x1, z0, z1, _] in GRECO_HOUSE.blocks {
+            let near = wx > x0 - 1.0 && wx < x1 + 1.0 && wz > z0 - 1.0 && wz < z1 + 1.0;
+            assert!(!near, "{:?} crowds the workstation", [x0, x1, z0, z1]);
+        }
+        let lit = LIGHTS.iter().filter(|(f, at)| {
+            let (_, _, range) = f.light();
+            f.indoors() && (at[0] - wx).hypot(at[2] - wz) < range * 0.7
+        });
+        assert!(lit.count() >= 2);
     }
 
     #[test]

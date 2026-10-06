@@ -487,7 +487,8 @@ The owner's house (`layout::estate`) stands at the east end of Library
 Way, the first building in the [Greco-futurism](greco-futurism.md) style: a
 two-storey limestone estate on a podium, up a stair between hedged planter
 walls, with a columned portico, bronze circuit doors that stand open, and an
-enterable great room. It's on open ground near the clearing's edge, with the
+enterable great room lit by candles, sconces, and a brazier, with lanterns on
+the portico and the stair. It's on open ground near the clearing's edge, with the
 east woods behind it; a walk continues Library Way to its stair. It blocks
 by its own boxes, breaks like the other generated buildings, and doesn't
 smoke.

@@ -40,8 +40,10 @@ Models:
   walls, the bronze circuit door (open, its leaves swung in), lattice
   screen walls, and an enterable great room: a coffered ceiling, marble
   pilasters, a dark walnut wall with an engraved double door and
-  bookshelves, a desk, a long sofa, rugs, a lamp, and a planter. It also
-  writes `far/greco_house.glb`, the far level of detail.
+  bookshelves, a desk, a long sofa, rugs, a lamp, and a planter, lit by
+  candles, sconces, a brazier, lamps, and lanterns whose lights and flames
+  its footprint records. It also writes `far/greco_house.glb`, the far
+  level of detail.
 - Kit pieces under `kit/`, for review and later buildings: `column`,
   `pier`, `entablature_bay`, `stair_flight`, `planter_wall`,
   `circuit_door`, `lattice_screen`, `coffer_bay`, `pilaster`, `chimney`,
@@ -49,6 +51,7 @@ Models:
   and `bookshelf`.
 """
 
+import json
 import math
 import os
 import sys
@@ -75,6 +78,12 @@ GLASS = (0.10, 0.11, 0.12)
 HEDGE = (0.17, 0.29, 0.12)
 LINEN = (0.86, 0.81, 0.71)
 RUG_FIELD = (0.76, 0.58, 0.45)
+# Emitted colors: Everglade draws an `Emit...` material at 6,000 cd/m^2
+# times its linear color, so these set how brightly each glows: flames
+# past white, the cove's line soft, the inlay a faint ember.
+FLAME = (1.00, 0.82, 0.50)
+COVE = (0.30, 0.22, 0.12)
+INLAY = (0.20, 0.08, 0.03)
 
 # Heights above the ground, m.
 FORECOURT = 0.6  # The forecourt terrace, four steps up.
@@ -113,6 +122,12 @@ def materials(b):
     m["hedge"] = bl._material("GrecoHedge", color=HEDGE, rough=0.95)
     m["linen"] = bl._material("GrecoLinen", color=LINEN, rough=0.95)
     m["rug"] = bl._material("GrecoRug", color=RUG_FIELD, rough=1.0)
+    # Light the house gives (`scene::emits` draws `Emit...` glowing): candle
+    # and brazier flames, the dark wall's circuit inlay, low, and the warm
+    # line of light in the coffers' cove.
+    m["flame"] = bl._material("EmitFlame", color=FLAME, rough=0.5, emit=FLAME)
+    m["inlay"] = bl._material("EmitInlay", color=INLAY, rough=0.4, emit=INLAY)
+    m["cove"] = bl._material("EmitCove", color=COVE, rough=0.5, emit=COVE)
 
 
 WALNUT_BAND = bl.DARK_WOOD
@@ -446,7 +461,7 @@ def circuit_lines(b, xf, w, z0, h):
             for (u0, za), (u1, zb) in zip(pts, pts[1:]):
                 ua, ub = sorted((u0, u1))
                 z_0, z_1 = sorted((za, zb))
-                box(b, (ua - 0.015, -0.012, z_0 - 0.015), (ub + 0.015, 0.0, z_1 + 0.015), "copper",
+                box(b, (ua - 0.015, -0.012, z_0 - 0.015), (ub + 0.015, 0.0, z_1 + 0.015), "inlay",
                     skip="+y -x +x -z +z", xf=xf, name="CircuitLine")
 
 
@@ -573,6 +588,163 @@ def lamp(b, x, y, z0, height=1.7):
     box(b, (x - 0.025, y - 0.025, z0 + 0.04), (x + 0.025, y + 0.025, z0 + height - 0.3), "copper", skip="-z +z",
         name="LampPole")
     prism(b, (x, y), 0.22, z0 + height - 0.3, z0 + height, 8, "amber", name="EmitShade", cap=True)
+    if hasattr(b, "lights"):
+        light(b, "lamp", (x, y, z0 + height - 0.15))
+
+
+def light(b, kind, at):
+    """Records a light the zone gives the house (`layout::estate`): its
+    kind and where, in Blender coordinates."""
+    b.lights.append((kind, tuple(round(v, 3) for v in at)))
+
+
+def flame(b, x, y, z, h=0.08, r=0.024):
+    """A candle flame: a small glowing cone, and a halo the zone draws."""
+    if FAR:
+        return
+    b.solid("Flame", bl.frustum_mesh("Flame", (x, y), r, r * 0.15, z, z + h, 5, b.mats["flame"]))
+    b.flames.append((round(x, 3), round(y, 3), round(z + h * 0.45, 3)))
+
+
+def candle(b, x, y, z, h=0.22, r=0.026):
+    """A linen-white candle with its flame; returns the flame's height."""
+    prism(b, (x, y), r, z, z + h, 6, "linen", name="Candle", cap=True)
+    flame(b, x, y, z + h)
+    return z + h + 0.05
+
+
+def candelabra(b, x, y, z, arms=0.17, stem=0.32):
+    """A bronze candelabrum of three candles on a desk or a table."""
+    prism(b, (x, y), 0.09, z, z + 0.03, 8, "bronze", name="Candelabra", cap=True)
+    box(b, (x - 0.015, y - 0.015, z + 0.03), (x + 0.015, y + 0.015, z + stem), "bronze", skip="-z",
+        name="Candelabra")
+    box(b, (x - arms, y - 0.015, z + stem - 0.02), (x + arms, y + 0.015, z + stem), "bronze",
+        name="Candelabra")
+    top = z + stem
+    for dx, h in ((-arms, 0.18), (0.0, 0.24), (arms, 0.18)):
+        prism(b, (x + dx, y), 0.035, top, top + 0.025, 6, "bronze", name="Cup", cap=True)
+        flame_z = candle(b, x + dx, y, top + 0.025, h=h)
+    light(b, "candles", (x, y, flame_z))
+
+
+def floor_candelabrum(b, x, y, z0, height=1.5):
+    """A tall bronze candle stand on the floor, three candles high."""
+    box(b, (x - 0.2, y - 0.2, z0), (x + 0.2, y + 0.2, z0 + 0.05), "bronze", skip="-z", name="Stand")
+    box(b, (x - 0.025, y - 0.025, z0 + 0.05), (x + 0.025, y + 0.025, z0 + height - 0.3), "bronze",
+        skip="-z +z", name="Stand")
+    candelabra(b, x, y, z0 + height - 0.3, arms=0.2, stem=0.05)
+
+
+def sconce(b, xf, u, z):
+    """A bronze wall sconce on a wall's face: a backplate, an arm, a cup,
+    and a candle."""
+    box(b, (u - 0.08, -0.04, z - 0.24), (u + 0.08, 0.0, z + 0.2), "bronze", skip="+y", xf=xf, name="Sconce")
+    box(b, (u - 0.02, -0.26, z - 0.02), (u + 0.02, -0.04, z + 0.02), "bronze", xf=xf, name="Sconce")
+    box(b, (u - 0.07, -0.33, z - 0.05), (u + 0.07, -0.19, z + 0.02), "bronze", xf=xf, name="Sconce")
+    if FAR:
+        return
+    c = xf @ Vector((u, -0.26, z + 0.02))
+    top = candle(b, c.x, c.y, c.z, h=0.2)
+    light(b, "sconce", (c.x, c.y, top))
+
+
+def lantern(b, x, y, z, w=0.24, h=0.34):
+    """A square bronze lantern with amber glass and a stepped cap; its
+    light the zone gives. The far level keeps only the lit glass."""
+    if FAR:
+        box(b, (x - w / 2, y - w / 2, z + 0.05), (x + w / 2, y + w / 2, z + 0.05 + h), "amber", skip="-z",
+            name="LanternGlass")
+        light(b, "lantern", (x, y, z + 0.05 + h / 2))
+        return
+    box(b, (x - w / 2 - 0.03, y - w / 2 - 0.03, z), (x + w / 2 + 0.03, y + w / 2 + 0.03, z + 0.05), "bronze",
+        name="Lantern")
+    box(b, (x - w / 2, y - w / 2, z + 0.05), (x + w / 2, y + w / 2, z + 0.05 + h), "amber", skip="-z +z",
+        name="LanternGlass")
+    box(b, (x - w / 2 - 0.04, y - w / 2 - 0.04, z + 0.05 + h), (x + w / 2 + 0.04, y + w / 2 + 0.04,
+                                                                  z + 0.1 + h), "bronze", name="Lantern")
+    box(b, (x - 0.06, y - 0.06, z + 0.1 + h), (x + 0.06, y + 0.06, z + 0.18 + h), "bronze", skip="-z",
+        name="Lantern")
+    light(b, "lantern", (x, y, z + 0.05 + h / 2))
+
+
+def lantern_post(b, x, y, z0, height=1.8):
+    """A bronze post on a square foot with a lantern on top."""
+    if FAR:
+        box(b, (x - 0.045, y - 0.045, z0), (x + 0.045, y + 0.045, z0 + height), "bronze", skip="-z +z",
+            name="Post")
+        lantern(b, x, y, z0 + height)
+        return
+    box(b, (x - 0.12, y - 0.12, z0), (x + 0.12, y + 0.12, z0 + 0.12), "bronze", skip="-z", name="Post")
+    box(b, (x - 0.045, y - 0.045, z0 + 0.12), (x + 0.045, y + 0.045, z0 + height), "bronze", skip="-z +z",
+        name="Post")
+    lantern(b, x, y, z0 + height)
+    b.collide("lantern post", (x - 0.12, y - 0.12, z0), (x + 0.12, y + 0.12, z0 + height + 0.5))
+
+
+def wall_lantern(b, x, y_face, z, out=0.38):
+    """A lantern hung on a bracket from a pier's or a wall's front face
+    at y_face (facing -y)."""
+    if FAR:
+        lantern(b, x, y_face - out, z)
+        return
+    box(b, (x - 0.06, y_face - 0.04, z + 0.25), (x + 0.06, y_face, z + 0.6), "bronze", skip="+y",
+        name="Bracket")
+    box(b, (x - 0.02, y_face - out, z + 0.54), (x + 0.02, y_face - 0.04, z + 0.58), "bronze", name="Bracket")
+    lantern(b, x, y_face - out, z)
+
+
+def uplight(b, x, y, z0, toward=(0.0, 1.0)):
+    """A low bronze uplight on the floor, its warm face up, washing the
+    stone beside it; the zone's light stands a little off its face."""
+    if FAR:
+        light(b, "uplight", (x + toward[0] * 0.3, y + toward[1] * 0.3, z0 + 0.9))
+        return
+    box(b, (x - 0.16, y - 0.12, z0), (x + 0.16, y + 0.12, z0 + 0.12), "bronze", skip="-z", name="Uplight")
+    if not FAR:
+        box(b, (x - 0.12, y - 0.08, z0 + 0.12), (x + 0.12, y + 0.08, z0 + 0.125), "cove", skip="-z -x +x -y +y",
+            name="Uplight")
+    light(b, "uplight", (x + toward[0] * 0.3, y + toward[1] * 0.3, z0 + 0.9))
+
+
+def brazier(b, x, y, z0):
+    """A bronze tripod brazier with a fire burning in its bowl."""
+    for k in range(3):
+        a = 2 * math.pi * k / 3
+        lx, ly = x + 0.3 * math.cos(a), y + 0.3 * math.sin(a)
+        box(b, (lx - 0.03, ly - 0.03, z0), (lx + 0.03, ly + 0.03, z0 + 0.78), "bronze", skip="-z",
+            name="BrazierLeg")
+    b.solid("Bowl", bl.frustum_mesh("Bowl", (x, y), 0.2, 0.44, z0 + 0.72, z0 + 0.95, 8, b.mats["bronze"],
+                                    cap=True))
+    if not FAR:
+        for dx, dy, h, r in ((0.0, 0.0, 0.42, 0.13), (0.14, 0.06, 0.28, 0.09), (-0.12, 0.08, 0.3, 0.09),
+                             (0.02, -0.14, 0.26, 0.08)):
+            b.solid("Fire", bl.frustum_mesh("Fire", (x + dx, y + dy), r, r * 0.1, z0 + 0.93, z0 + 0.93 + h, 5,
+                                            b.mats["flame"]))
+        b.flames.append((round(x, 3), round(y, 3), round(z0 + 1.08, 3)))
+    light(b, "brazier", (x, y, z0 + 1.35))
+    b.collide("brazier", (x - 0.45, y - 0.45, z0), (x + 0.45, y + 0.45, z0 + 1.0))
+
+
+def side_table(b, x, y, z0):
+    """A round walnut side table on a bronze pedestal, with two candles."""
+    prism(b, (x, y), 0.3, z0 + 0.52, z0 + 0.57, 8, "walnut", name="SideTable", cap=True)
+    box(b, (x - 0.03, y - 0.03, z0), (x + 0.03, y + 0.03, z0 + 0.52), "bronze", skip="-z +z", name="SideTable")
+    prism(b, (x, y), 0.18, z0, z0 + 0.03, 8, "bronze", name="SideTable", cap=True)
+    top = z0 + 0.57
+    candle(b, x - 0.08, y, top, h=0.24)
+    candle(b, x + 0.09, y + 0.05, top, h=0.17)
+    light(b, "candles", (x, y, top + 0.3))
+
+
+def cove_light(b, x0, x1, y0, y1, z, inset=0.45, width=0.1):
+    """A warm line of light under the cove's second step, round the room."""
+    if FAR:
+        return
+    for lo, hi in (((x0 + inset, y0 + inset, z), (x1 - inset, y0 + inset + width, z + 0.01)),
+                   ((x0 + inset, y1 - inset - width, z), (x1 - inset, y1 - inset, z + 0.01)),
+                   ((x0 + inset, y0 + inset + width, z), (x0 + inset + width, y1 - inset - width, z + 0.01)),
+                   ((x1 - inset - width, y0 + inset + width, z), (x1 - inset, y1 - inset - width, z + 0.01))):
+        box(b, lo, hi, "cove", skip="+z -x +x -y +y", name="CoveLight")
 
 
 def rug(b, x0, x1, y0, y1, z, border=0.35):
@@ -738,6 +910,13 @@ def house_body(b):
     # The ceiling slab's underside, over the great room and under the
     # upper floor.
     slab(b, -hw + t, hw - t, fy + t, by - t, CEILING, "shade", down=True, name="Ceiling")
+    # Light: lanterns on the inner piers' faces, uplights washing the door
+    # and its screens, and lanterns on posts beside both flights.
+    for s in (-1, 1):
+        wall_lantern(b, s * 6.6, COLUMN_Y - COLUMN_D / 2, FLOOR + 3.1)
+        uplight(b, s * 1.9, fy - 0.35, FLOOR, toward=(0.0, -1.0))
+        lantern_post(b, s * 5.0, -0.6, 0.0)
+        lantern_post(b, s * 4.85, upper_y - 0.4, FORECOURT, height=1.6)
     # The forecourt's table and stools, to one side of the walk up the stairs.
     if not FAR:
         bench_long(b, -6.6, 3.6, FORECOURT)
@@ -787,12 +966,24 @@ def great_room(b):
     rug(b, -3.0, 3.0, 19.6, 23.8, FLOOR)
     desk(b, 0.0, 21.6, FLOOR + 0.02)
     lamp(b, 4.6, 23.6, FLOOR)
+    # Candlelight: a candelabrum on the desk, sconces flanking the engraved
+    # door, a tall candle stand lighting the workstation spot west of the
+    # desk (kept clear for a seat facing into the room), a brazier across
+    # from the sofa, and the cove's warm line round the coffers.
+    candelabra(b, 0.55, 21.85, FLOOR + 0.02 + 0.76)
+    for u in (-1.85, 1.85):
+        sconce(b, wall_face, u, FLOOR + 2.3)
+    floor_candelabrum(b, -6.3, 24.3, FLOOR)
+    brazier(b, 7.4, 18.6, FLOOR)
+    cove_light(b, x0, x1, fy, by, CEILING - 0.285)
     # The sitting room, off the entry: a long sofa with its back to the
     # west wall, facing across the room past a low table, on a second rug.
     # The walk from the door to the desk stays clear, at least 2.5 m wide.
     rug(b, -9.4, -5.6, 15.8, 21.4, FLOOR)
     sofa(b, -8.75, 18.6, FLOOR + 0.02, rot=90.0)
     low_table(b, -7.0, 18.6, FLOOR + 0.02, rot=90.0)
+    side_table(b, -8.7, 15.7, FLOOR)
+    lamp(b, -8.8, 21.7, FLOOR)
     planter(b, -8.6, 24.2, FLOOR, size=0.8, ball=1.2)
     planter(b, 8.6, 13.2, FLOOR, size=0.8, ball=1.2)
     b.inside = (0.0, 18.0)
@@ -801,6 +992,8 @@ def great_room(b):
 def new(name):
     b = bl.Building(name, {"plaster": "cream", "roof": "red", "timber": "dark"})
     b.chimneys = []
+    b.lights = []
+    b.flames = []
     materials(b)
     return b
 
@@ -991,6 +1184,15 @@ def save(b, out):
     """One object, so the glTF has one node: the pack bounds a model's nodes."""
     join(b)
     b.save(out)
+    if b.lights or b.flames:
+        # Blender (x, y, z) is glTF (x, z, -y).
+        path = os.path.join(out, b.name + ".footprint.json")
+        data = json.load(open(path))
+        data["lights"] = [{"kind": k, "at": [x, z, round(-y, 3) + 0.0]} for k, (x, y, z) in b.lights]
+        data["flames"] = [[x, z, round(-y, 3) + 0.0] for x, y, z in b.flames]
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
     for top in b.chimneys:
         print(f"CHIMNEY {b.name} {top[0]} {top[1]} {top[2]}")
     print(f"MODEL {b.name} {b.triangles()}")

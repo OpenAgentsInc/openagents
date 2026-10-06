@@ -129,8 +129,11 @@ the pack.
 | Hedge | `GrecoHedge` | 0.17, 0.29, 0.12 | 0.025, 0.068, 0.013 | Clipped hedges and shrubs |
 | Linen | `GrecoLinen` | 0.86, 0.81, 0.71 | 0.711, 0.621, 0.462 | The sofa, books |
 | Rug field | `GrecoRug` | 0.76, 0.58, 0.45 | 0.538, 0.296, 0.171 | Rug fields |
+| Flame | `EmitFlame` | 1.00, 0.82, 0.50 | 1.000, 0.638, 0.214 | Candle and brazier flames |
+| Cove light | `EmitCove` | 0.30, 0.22, 0.12 | 0.073, 0.040, 0.013 | The warm line under the coffers' cove, and the uplights' faces |
+| Inlay | `EmitInlay` | 0.20, 0.08, 0.03 | 0.033, 0.007, 0.002 | The dark wall's circuit lines, a faint ember |
 
-A model may use at most 16 materials, the pack's limit. The style uses 12.
+A model may use at most 16 materials, the pack's limit. The style uses 15.
 
 ## Materials and glow
 
@@ -145,9 +148,50 @@ A model may use at most 16 materials, the pack's limit. The style uses 12.
   lamp shades are `EmitAmber`. In a zone without that rule, the amber color
   alone carries the light: keep the panes small and set them in dark bronze
   so they still read as lit.
+- **How brightly.** An `Emit` material's linear color sets its glow:
+  flames past white, the cove's line soft, the inlay a faint ember at about
+  200 cd/m², which glows in a dim room and vanishes in sun.
 - **Glass** is opaque and dark on upper floors, which nobody enters.
   Openings on an enterable floor carry a lattice or mullions with no glass,
   so light and sight pass through.
+
+## Light
+
+A Greco-futurism interior is lit like the crypt: warm pools of light in a
+darker room, not even daylight. Its light comes from fixtures in the kit,
+each a real point light the zone gives the stage beside a glowing `Emit`
+material:
+
+| Fixture | Script function | Light | Flickers |
+| --- | --- | --- | --- |
+| Candelabrum and floor candle stand | `candelabra`, `floor_candelabrum` | 6,500 cd, 5 m | Yes |
+| Side table with candles | `side_table` | 6,500 cd, 5 m | Yes |
+| Wall sconce | `sconce` | 7,000 cd, 6 m | Yes |
+| Floor lamp | `lamp` | 6,000 cd, 6 m | No |
+| Brazier | `brazier` | 22,000 cd, 9 m | Yes |
+| Lantern, on a pier or a post | `wall_lantern`, `lantern_post` | 5,000 cd, 8 m | Yes |
+| Uplight | `uplight` | 8,000 cd, 7 m | No |
+
+- **Where the lights are.** The script records each fixture's light and
+  each flame in the model's `footprint.json` (`lights` and `flames`), in
+  the glTF frame; the zone carries them as data
+  ([`layout/estate.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/estate.rs)).
+- **Limits.** A stage carries at most 32 lamps, and the renderer shades a
+  stage's first 8 on the low tier and its first 16 on the medium tier
+  (`pbr::gpu::lamp_budget`). So the zone gives a building's lamps only
+  while the player is near it (the outside's within 70 m, the inside's
+  within 34 m), those on the player's side of the walls first, then the
+  nearest. A building lights at most 16 fixtures.
+- **Grade.** While the player is in the great room, the stage takes a
+  darker, warmer, and more contrasty grade (one stop down, cool shadows
+  against warm highlights, and a vignette), so the candles read as pools
+  of light. Everywhere else the zone's look is unchanged.
+- **Particles.** Each flame has a warm halo (`greco_candle_glow`), and a
+  few dust motes hang in the light from the door and the tall windows
+  (`greco_dust`), in the fx sprite pipeline
+  ([Particle effects](particles.md)).
+- **Destruction.** The lights stay where the fixtures stood if the house
+  breaks; they go out only with the zone.
 
 ## Scaling to Verse
 
@@ -234,10 +278,18 @@ house.
   surround, two bookcases, a desk on a rug, a long sofa against the west
   wall with a low table on a second rug, a floor lamp, and two planters.
   The walk from the door to the desk stays clear, at least 2.5 m wide, so
-  the desk and the engraved door are the view from the entrance.
-- **Budget.** 4,480 triangles near and 924 far. In Everglade it adds
-  5,019 merged triangles net, since the wild ground's foliage keeps off
-  its lot (2,750,225 to 2,755,244 of 2,900,000, after the eighth round).
+  the desk and the engraved door are the view from the entrance. West of
+  the desk, in front of the engraved-door wall, a spot stays clear and lit
+  for a workstation facing into the room (`estate::WORKSTATION`).
+- **Light.** A candelabrum on the desk, bronze sconces flanking the engraved
+  door, a tall candle stand by the workstation spot, a brazier across from
+  the sofa, candles on a side table and a lamp by the sofa, a lamp by the
+  desk, the cove's warm line round the coffers, and the dark wall's inlay
+  glowing faintly. Outside, lanterns hang on the inner piers, lanterns on
+  posts mark both flights of the stair, and uplights wash the door and its
+  screens.
+- **Budget.** 5,636 triangles near and 1,016 far, with its light
+  fixtures.
 
 Rebuild it and admit it:
 

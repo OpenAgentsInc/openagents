@@ -29,8 +29,8 @@ points them at the village set's admitted `T_Plaster_Luma.png` and
 
 | Model | Triangles | What it is |
 | --- | ---: | --- |
-| `greco_house.glb` | 4,480 | The owner's house, with `greco_house.footprint.json` |
-| `far/greco_house.glb` | 924 | Its far level of detail |
+| `greco_house.glb` | 5,636 | The owner's house, with `greco_house.footprint.json` |
+| `far/greco_house.glb` | 1,016 | Its far level of detail |
 | `kit/column.glb` | 114 | Smooth column with a square capital |
 | `kit/pier.glb` | 28 | Square pier |
 | `kit/entablature_bay.glb` | 56 | 4 m of entablature with its panel frieze |

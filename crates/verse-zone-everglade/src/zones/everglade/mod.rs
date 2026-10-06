@@ -186,6 +186,13 @@ impl Everglade {
                 crate::fx::Spawn::at(Vec3::new(x, height(x, z) + 0.5, z)),
             );
         }
+        // Halos at the owner's house's flames, and dust in its great room.
+        for at in layout::estate::flames() {
+            smoke.start("greco_candle_glow", crate::fx::Spawn::at(at));
+        }
+        for at in layout::estate::dust() {
+            smoke.start("greco_dust", crate::fx::Spawn::at(at));
+        }
         let drifts = placements.iter().filter(|p| {
             matches!(
                 p.model,
@@ -917,6 +924,13 @@ impl Everglade {
     pub fn tick(&mut self, dt: f32, at: &PlayerController, seats: &[studio::SeatFigure]) {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.rendered = self.stage(self.elapsed);
+        if self.look.is_none() {
+            // The owner's house's candles and lanterns near the player
+            // (`layout::estate`); nothing changes elsewhere.
+            if let Some(neon) = self.rendered.neon.as_mut() {
+                layout::estate::light(neon, at.pos, self.elapsed);
+            }
+        }
         if let Some(smoke) = &mut self.smoke {
             smoke.tick(dt, height);
         }
