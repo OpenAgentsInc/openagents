@@ -1,0 +1,7 @@
+{
+  "commit": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "working_tree": "clean",
+  "executable_sha256": "495cdaf344d9a5d863aa9d03b0fc702e25359adf4ee1fdf108a86cc423fb94e3",
+  "build_seconds": 462,
+  "profile": "high 2560x1440; 20 players; 40 NPCs; unchanged acceptance limits; no own compiler during measurement"
+}
