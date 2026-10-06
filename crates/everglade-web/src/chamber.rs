@@ -467,7 +467,27 @@ pub async fn run(
     panel
         .set_attribute("aria-label", "Chamber controls")
         .map_err(|_| "Cannot label chamber controls")?;
-    let _ = panel.style().set_property("font-size", "1.125rem");
+    panel
+        .set_attribute("id", "chamber-controls")
+        .map_err(|_| "Cannot identify chamber controls")?;
+    for (property, value) in [
+        ("position", "fixed"),
+        ("inset", "auto 0 0 auto"),
+        ("max-width", "min(28rem, 100vw)"),
+        ("max-height", "45vh"),
+        ("overflow", "auto"),
+        ("z-index", "1"),
+        ("padding", "0.5rem"),
+        ("box-sizing", "border-box"),
+        ("background", "rgba(14, 20, 12, 0.94)"),
+        ("color", "white"),
+        ("font-size", "1.125rem"),
+    ] {
+        panel
+            .style()
+            .set_property(property, value)
+            .map_err(|_| "Cannot lay out chamber controls")?;
+    }
     document
         .body()
         .ok_or("No page body")?
