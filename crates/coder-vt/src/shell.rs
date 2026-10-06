@@ -101,8 +101,14 @@ pub(crate) fn output_command(params: &[&[u8]]) -> Option<String> {
     if commands.next().is_some() || encoded.len() > MAX_TEXT * 3 {
         return None;
     }
-    let command = decode_percent(std::str::from_utf8(encoded).ok()?)?;
-    (!command.is_empty() && command.len() <= MAX_TEXT).then_some(command)
+    let command =
+        String::from_utf8(decode_percent_data(std::str::from_utf8(encoded).ok()?)?).ok()?;
+    (!command.is_empty()
+        && command.len() <= MAX_TEXT
+        && !command
+            .chars()
+            .any(|character| character.is_control() && character != '\n' && character != '\t'))
+    .then_some(command)
 }
 
 fn digit(byte: u8) -> Option<u8> {
@@ -144,6 +150,10 @@ fn decode_hex(hex: &[u8]) -> Option<String> {
 }
 
 fn decode_percent(text: &str) -> Option<String> {
+    printable(decode_percent_data(text)?)
+}
+
+fn decode_percent_data(text: &str) -> Option<Vec<u8>> {
     let mut bytes = Vec::with_capacity(text.len());
     let mut source = text.as_bytes().iter().copied();
     while let Some(byte) = source.next() {
@@ -153,19 +163,24 @@ fn decode_percent(text: &str) -> Option<String> {
             byte
         });
     }
-    printable(bytes)
+    Some(bytes)
 }
 
 #[cfg(test)]
 mod native_command_tests {
     use super::*;
     #[test]
-    fn native_output_command_is_bounded_printable_and_unambiguous() {
+    fn native_output_command_is_bounded_and_unambiguous() {
         assert_eq!(
             output_command(&[b"133", b"C", b"cmdline_url=printf%20hello"]),
             Some("printf hello".into())
         );
         assert_eq!(output_command(&[b"133", b"C", b"cmdline_url=%00"]), None);
+        assert_eq!(
+            output_command(&[b"133", b"C", b"cmdline_url=if%20true%0Aecho%20ok%0Aend"]),
+            Some("if true\necho ok\nend".into())
+        );
+        assert_eq!(output_command(&[b"133", b"C", b"cmdline_url=%1b"]), None);
         assert_eq!(
             output_command(&[b"133", b"C", b"cmdline_url=a", b"cmdline_url=b"]),
             None
