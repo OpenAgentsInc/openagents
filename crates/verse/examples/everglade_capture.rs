@@ -146,6 +146,26 @@ fn main() -> Result<(), String> {
     };
     runtime.settle_zone_light();
     runtime.set_spawn(at, yaw)?;
+    // With VERSE_CAPTURE_ALICE set, Alice sits at her desk as the workshop
+    // agent's resident seat does in a desktop window, with no host.
+    if std::env::var_os("VERSE_CAPTURE_ALICE").is_some() {
+        use coder_access::studio::{Activity, Role, Spend, Station};
+        let agent = zones::everglade::studio::WORKSHOP_AGENT;
+        runtime.set_studio_resident(vec![coder_access::studio::Seat {
+            seat: agent.into(),
+            role: Role::Worker,
+            route: "idle".into(),
+            look: agent.into(),
+            desk: 3,
+            activity: Activity::Idle,
+            station: Station::Desk,
+            task: None,
+            paused: false,
+            spend: Spend::default(),
+        }]);
+        runtime.update_studio(true, 0.0);
+        eprintln!("alice at {:?}", runtime.studio().seat_position(agent));
+    }
     // Kept until the shot is rendered; the recording holds no file in it.
     let _scratch = if view.starts_with("studio-") {
         Some(studio(&mut runtime, &view, frame)?)
