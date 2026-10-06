@@ -33,9 +33,9 @@ pub use format::{
 use pinned::PinnedFile;
 
 /// Exact content identity of the reviewed Everglade pack.
-pub const PACK_SHA256: &str = "47f3397f3a9edf6cb442be6abe3c84ec77486c513fbab7cbffcbb03d9f752914";
+pub const PACK_SHA256: &str = "760c51994331a5a0121ce635acf7239f8fe8acf699bc9382cab3d9f3665330a7";
 /// Transfer size of the reviewed Everglade pack.
-pub const PACK_BYTES: u64 = 11025848;
+pub const PACK_BYTES: u64 = 11036324;
 /// The most triangles the Everglade city may place where they draw: from
 /// any point in the clearing, every merged 8 m cell at the level of detail
 /// it draws at from there, in every direction and at every distance
@@ -74,6 +74,7 @@ pub const PACK_EXTENSION: &str = "vtp";
 // zones share the cache directory; arbitrary digest names are not ours.
 const EVERGLADE_PACK_HISTORY: &[&str] = &[
     PACK_SHA256,
+    "47f3397f3a9edf6cb442be6abe3c84ec77486c513fbab7cbffcbb03d9f752914",
     "13d249d9decf596a38a7195420191aef05ba1382d3a494d2456912b158b5d022",
     "07518262b981824433b7a5dfdde4ace337eec29774a78b4f3632c235271aa6ee",
     "ad2d5b83a2fd57db6de98857cfc15622b9c47f604eab07c549499cc4f8ed8d07",
