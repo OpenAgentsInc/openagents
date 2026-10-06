@@ -7,25 +7,35 @@ Press Tab to switch to the welcome view.
 ```sh
 cargo run -p coder-new
 cargo run -p coder-new -- --welcome
+cargo run -p coder-new -- --agents
 ```
 
 Type a draft, move with Left/Right or Home/End, and edit with Backspace/Delete.
 Alt+Enter adds a newline. Enter appends a local preview message. Bracketed paste
 inserts text without sending it. PageUp/PageDown scroll the conversation;
 Ctrl+C quits. The preview makes no network requests, runs no tools, and saves
-no messages. All conversation, plugin, and wallet values are sample data.
+no messages. All conversation, agent, plugin, and wallet values are sample data.
+
+Below the composer, `4 local agents` opens the background task previews for
+`claude-code`, `codex`, `devin-cli`, and `grok-build`. Press Down to select the
+footer, then Enter or Down to open the list. Up/Down select a task; Enter opens
+its progress, elapsed time, tool count, token count, and sample prompt.
+PageUp/PageDown scroll the details in narrow terminals. Left goes
+back; Esc closes the pane and restores your draft. Press x to remove the selected
+demo, or Ctrl+X then Ctrl+K to remove all demos. These controls affect only the
+preview's sample data. Restart the preview to restore the four demos.
 
 All colors are exact 24-bit RGB values from Grok Build's default Grok Night
 theme, including the focused composer border. Use a truecolor terminal to
 display them exactly. [NOTICE](NOTICE) records the source commit, `SOURCE_REV`,
-upstream source file, and license. The reference clone is at
-`/workspace/grok-build` in this cloud workspace.
+upstream source file, and license.
 
 Export the actual Ratatui buffer without an interactive terminal:
 
 ```sh
 cargo run -p coder-new -- --snapshot > docs/coder-new/mockup.svg
 cargo run -p coder-new -- --welcome --snapshot > docs/coder-new/welcome.svg
+cargo run -p coder-new -- --agents --snapshot > docs/coder-new/agents.svg
 ```
 
 The [research index](../../docs/coder-new/README.md) contains the history and

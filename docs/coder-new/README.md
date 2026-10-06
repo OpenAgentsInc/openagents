@@ -6,8 +6,9 @@ inputs, not a finished TUI spec or claims of tested replacement quality.
 
 The first [Ratatui mockup](../../crates/coder-new/README.md) runs with
 `cargo run -p coder-new`. It uses the exact Grok Build Grok Night palette.
-The [conversation preview](mockup.png) and [welcome preview](welcome.png)
-are exported from the same render function as the terminal.
+The [conversation preview](mockup.png), [welcome preview](welcome.png), and
+[background-agent preview](agents.png) are exported from the same render
+function as the terminal.
 
 1. [Claude Code replacement history and current terminal survey](claude-code-replacement-history.md)
    catalogs the retained attempts and compares today's Coder and OpenAgents
