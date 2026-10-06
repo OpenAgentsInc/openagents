@@ -404,3 +404,9 @@ retail sandboxes at once and 60 minutes a task. Confirm these choices
 before #10705 to #10711 build on them. A change is a new contract version
 (`openagents.cloud.retail.v2`), not an edit of v1. Paid availability stays
 off until the funded qualification passes.
+
+Also confirm the prices in [`docs/cloud/retail-prices.md`](docs/cloud/retail-prices.md)
+(#10706): one credit is one sat; 40 millisatoshis a second of compute (144
+sats an hour) and 100 sats of coordination per started task; nothing
+charged before the executor starts; and no payout of a purchased balance
+in v1. A different rate or refund policy is a new book version.

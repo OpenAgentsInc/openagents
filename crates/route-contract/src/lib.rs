@@ -30,6 +30,9 @@
 //!   dispatch recipient, the run and engine session, the terminal and its
 //!   generation, and workbench resources, bound to one snapshot; the
 //!   continuation and dispatch rechecks that refuse before execution.
+//! - [`price_book`]: the retail cloud price book (#10706): sats prices per
+//!   computer and task class, one credit per sat, the quote an offer shows
+//!   with the payer of every resource, and settlement for every ending.
 //! - [`eval`]: the labeled evaluation split for route families
 //!   (`fixtures/route-families-v1.json`).
 //!
@@ -43,6 +46,7 @@ pub mod digest;
 pub mod eval;
 pub mod lifecycle;
 pub mod offer;
+pub mod price_book;
 pub mod recipe;
 pub mod record;
 pub mod route;
@@ -82,3 +86,6 @@ mod tests;
 
 #[cfg(test)]
 mod binding_tests;
+
+#[cfg(test)]
+mod price_book_tests;

@@ -1,0 +1,38 @@
+{
+  "book": {
+    "schema": "openagents.cloud.price-book.v1",
+    "version": "retail-2026-10-05.1",
+    "effective_at": 1791158400,
+    "credit": { "name": "credit", "sats": 1 },
+    "classes": [
+      {
+        "computer": "retail-boat-large-v1",
+        "task": "retail-repo-change-v1",
+        "compute_msats_per_second": 40,
+        "coordination_sats": 100,
+        "max_seconds": 3600,
+        "recipient": "openagents",
+        "model": { "kind": "caller_key", "provider": "openai" }
+      }
+    ]
+  },
+  "quotes": [
+    { "why": "the class's longest task", "max_seconds": 3600, "ceiling_sats": null, "max_sats": 244, "compute_sats": 144 },
+    { "why": "a ten-minute task under a ceiling", "max_seconds": 600, "ceiling_sats": 150, "max_sats": 124, "compute_sats": 24 },
+    { "why": "an odd duration rounds up once", "max_seconds": 61, "ceiling_sats": null, "max_sats": 103, "compute_sats": 3 },
+    { "why": "a ceiling below the maximum", "max_seconds": 3600, "ceiling_sats": 200, "refused": "above_ceiling" },
+    { "why": "more seconds than the class allows", "max_seconds": 3601, "ceiling_sats": null, "refused": "out_of_bounds" },
+    { "why": "no seconds", "max_seconds": 0, "ceiling_sats": null, "refused": "out_of_bounds" }
+  ],
+  "settlements": [
+    { "why": "no sandbox started", "max_seconds": 3600, "ending": "not_started", "metered_seconds": null, "charge_sats": 0, "released_sats": 244, "held_sats": 0 },
+    { "why": "the sandbox never became reachable", "max_seconds": 3600, "ending": "provider_unavailable", "metered_seconds": null, "charge_sats": 0, "released_sats": 244, "held_sats": 0 },
+    { "why": "lost before the executor started", "max_seconds": 3600, "ending": "provider_lost_before_executor", "metered_seconds": 90, "charge_sats": 0, "released_sats": 244, "held_sats": 0 },
+    { "why": "the executor ran 61 seconds and failed its checks", "max_seconds": 3600, "ending": "executor_ended", "metered_seconds": 61, "charge_sats": 103, "released_sats": 141, "held_sats": 0 },
+    { "why": "cancelled at once after the executor started", "max_seconds": 3600, "ending": "cancelled", "metered_seconds": 0, "charge_sats": 100, "released_sats": 144, "held_sats": 0 },
+    { "why": "metered past the quote is capped by it", "max_seconds": 600, "ending": "executor_ended", "metered_seconds": 900, "charge_sats": 124, "released_sats": 0, "held_sats": 0 },
+    { "why": "lost after the executor started, usage unread", "max_seconds": 3600, "ending": "provider_lost_after_executor", "metered_seconds": null, "charge_sats": null, "released_sats": 0, "held_sats": 244 },
+    { "why": "lost after the executor started, usage read", "max_seconds": 3600, "ending": "provider_lost_after_executor", "metered_seconds": 1200, "charge_sats": 148, "released_sats": 96, "held_sats": 0 },
+    { "why": "the ending is not known", "max_seconds": 3600, "ending": "unknown", "metered_seconds": 30, "charge_sats": null, "released_sats": 0, "held_sats": 244 }
+  ]
+}
