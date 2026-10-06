@@ -16,7 +16,7 @@ compute-workbench = { path = "../compute-workbench", features = ["host"] }
 knowledge = { path = "../knowledge" }
 openagents-chat = { path = "../openagents-chat" }
 workbench = { path = "../workbench" }
-terminal-studio = { path = "../terminal-studio" }
+terminal-studio = { path = "../terminal-studio", features = ["onboarding-host"] }
 terminal-core = { path = "../terminal-core" }
 terminal-gfx = { path = "../terminal-gfx" }
 verse-gfx = { path = "../verse-gfx", default-features = false }

@@ -720,6 +720,21 @@ pub struct Store {
     fault: std::cell::Cell<Option<Fault>>,
 }
 
+/// Read a retained task without initializing, migrating, settling, or cleaning its store.
+/// This replays the owning journal and requires an existing private v3 store.
+/// Missing or legacy stores remain unchanged; no execution or write lock is acquired.
+pub fn retained_task(dir: &Path, id: &str) -> Result<Task, Error> {
+    if !identifier(id, false) {
+        return Err(Error::NotFound);
+    }
+    verify_directory(dir)?;
+    let _lock = private_open(&dir.join(LOCK_FILE), false, false)?;
+    validate_initialized(dir)?;
+    read_task_file(&dir.join(TASK_DIR).join(format!("{id}.json")), id)?
+        .map(|file| file.task)
+        .ok_or(Error::NotFound)
+}
+
 impl Store {
     /// Open or initialize a dedicated private directory outside any checkout.
     /// A write waits up to five seconds for another writer of its task.
@@ -1178,7 +1193,19 @@ fn write_marker(dir: &Path, migrated_from: Option<&str>) -> Result<(), Error> {
 /// after its migration becomes the backup; a stale legacy pending file
 /// is discarded.
 fn open_initialized(dir: &Path) -> Result<(), Error> {
+    validate_initialized(dir)?;
+    if regular_or_absent(&dir.join(LEGACY_STORE_FILE))? {
+        keep_legacy(dir)?;
+    }
+    discard_pending(dir)
+}
+
+/// Read only the current store's marker and required directory/log identities.
+fn validate_initialized(dir: &Path) -> Result<(), Error> {
     let file = private_open(&dir.join(STORE_FILE), false, false)?;
+    if file.metadata()?.len() > 64 * 1024 {
+        return Err(Error::LimitExceeded);
+    }
     let mut bytes = Vec::new();
     file.take(64 * 1024).read_to_end(&mut bytes)?;
     let value = parse_strict_bounded(&bytes, 64 * 1024)
@@ -1199,10 +1226,7 @@ fn open_initialized(dir: &Path) -> Result<(), Error> {
             "the command identity log is missing from an initialized store",
         ));
     }
-    if regular_or_absent(&dir.join(LEGACY_STORE_FILE))? {
-        keep_legacy(dir)?;
-    }
-    discard_pending(dir)
+    Ok(())
 }
 
 /// Move the migrated legacy document aside, never over an earlier backup.

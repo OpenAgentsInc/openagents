@@ -223,6 +223,8 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--gym-connection" => options.gym_connection = Some(value()?.into()),
             "--studio-sim" => options.studio_sim = true,
             "--capability-flow" => options.capability_flow = Some(value()?.into()),
+            "--onboarding-practice" => options.onboarding_practice = Some(value()?.into()),
+            "--onboarding-workbench" => options.onboarding_workbench = Some(value()?.into()),
             "--quest-workbench" => options.quest_workbench = Some(value()?.into()),
             "--contribution-workbench" => options.contribution_workbench = Some(value()?.into()),
             "--compute-workbench" => options.compute_workbench = Some(value()?.into()),

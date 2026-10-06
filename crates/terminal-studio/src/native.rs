@@ -81,11 +81,20 @@ mod tests {
     }
 }
 
-pub fn studio_read(home: Option<&Path>) -> Receiver<Result<terminal_core::studio::View, String>> {
+pub fn studio_read(
+    home: Option<&Path>,
+    #[cfg(feature = "onboarding-host")] capture: Option<
+        std::sync::Arc<crate::onboarding::host::Capture>,
+    >,
+) -> Receiver<Result<terminal_core::studio::View, String>> {
     let (tx, rx) = mpsc::channel();
     let home = home.map(Path::to_path_buf);
     std::thread::spawn(move || {
         let result = studio_snapshot(home.as_deref()).and_then(|snapshot| {
+            #[cfg(feature = "onboarding-host")]
+            if let Some(capture) = capture {
+                let _ = capture.record_snapshot(snapshot.clone());
+            }
             let mut view = crate::studio::project(
                 &snapshot,
                 &[
@@ -138,6 +147,9 @@ pub fn studio_prepare(
 pub fn studio_send(
     prepared: &terminal_core::studio::Prepared,
     home: Option<&Path>,
+    #[cfg(feature = "onboarding-host")] capture: Option<
+        std::sync::Arc<crate::onboarding::host::Capture>,
+    >,
 ) -> Receiver<Result<String, String>> {
     let (tx, rx) = mpsc::channel();
     let home = home.map(Path::to_path_buf);
@@ -164,6 +176,16 @@ pub fn studio_send(
                         error.to_string()
                     }
                 })?;
+            #[cfg(feature = "onboarding-host")]
+            let retained = capture.as_ref().map(|capture| {
+                capture.complete(&prepared.request, operation.clone(), outcome.clone())
+            });
+            #[cfg(feature = "onboarding-host")]
+            if retained.is_some_and(|r| r.is_err()) {
+                return Ok(
+                    "Host answered; onboarding evidence unavailable. No automatic replay.".into(),
+                );
+            }
             match outcome {
                 Outcome::Dispatched { receipt } => Ok(format!(
                     "Host receipt: {} {}",

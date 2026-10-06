@@ -49,6 +49,8 @@ pub struct Options {
     /// Selected retained contribution records for the shared read-only pane.
     pub contribution_workbench: Option<std::path::PathBuf>,
     pub quest_workbench: Option<std::path::PathBuf>,
+    pub onboarding_practice: Option<std::path::PathBuf>,
+    pub onboarding_workbench: Option<std::path::PathBuf>,
     /// Private authenticated compute account configuration for the shared sheet.
     pub compute_workbench: Option<std::path::PathBuf>,
     /// Optional local floating studio screen, independent of work placement.
@@ -138,6 +140,8 @@ impl Default for Options {
             capability_flow: None,
             contribution_workbench: None,
             quest_workbench: None,
+            onboarding_practice: None,
+            onboarding_workbench: None,
             compute_workbench: None,
             workbench_screen: None,
             workbench_screen_bounds: [40, 60, 900, 600],
@@ -616,6 +620,9 @@ struct App {
     panel_shift: bool,
     /// The terminal overlay (T), its panes, and their sessions.
     terminal: crate::terminal::Overlay,
+    onboarding_capture: Option<terminal_studio::onboarding::host::Capture>,
+    onboarding_pending: Option<(u64, coder_access::Operation)>,
+    onboarding_seen: Option<(String, u64)>,
     screen_mode: Option<terminal_gfx::screen::Mode>,
     screen_bounds: [u16; 4],
     screen: Option<terminal_gfx::screen::Screen>,
@@ -795,8 +802,31 @@ fn block_by_name(session: &mut Session, name: &str, block: bool) -> String {
 /// The terminal overlay, listening on its control socket so
 /// `openagents verse terminal` can drive it. A socket that cannot be
 /// bound is reported once and the overlay works from the keyboard alone.
-fn terminal_overlay(options: &Options) -> Result<crate::terminal::Overlay, String> {
-    let mut overlay = if let Some(host) = &options.terminal_host {
+fn onboarding_config(
+    options: &Options,
+) -> Result<Option<terminal_studio::onboarding::host::Config>, String> {
+    match (&options.onboarding_practice, &options.onboarding_workbench) {
+        (Some(_), Some(_)) => Err("Select either practice or retained onboarding evidence".into()),
+        (Some(root), None) => terminal_studio::onboarding::host::practice::practice(root).map(Some),
+        (None, Some(path)) => terminal_studio::onboarding::host::Config::load(path).map(Some),
+        _ => Ok(None),
+    }
+}
+fn terminal_overlay(
+    options: &Options,
+    onboarding: Option<&terminal_studio::onboarding::host::Config>,
+) -> Result<crate::terminal::Overlay, String> {
+    if onboarding.is_some() && options.terminal_host.is_some() {
+        return Err("Onboarding requires its isolated local scratch workspace".into());
+    }
+    let mut overlay = if let Some(config) = onboarding {
+        config.rows()?;
+        crate::terminal::Overlay::with(
+            &config.starter.join("home"),
+            terminal_gfx::pty::user_shell(),
+            terminal_gfx::pty::Program::Shell,
+        )
+    } else if let Some(host) = &options.terminal_host {
         let store = options
             .terminal_store
             .as_ref()
@@ -833,7 +863,16 @@ fn terminal_overlay(options: &Options) -> Result<crate::terminal::Overlay, Strin
         }
         crate::terminal::Overlay::new()
     };
-    if let Some(path) = crate::terminal::control::default_path()
+    if let Some(config) = onboarding {
+        overlay.studio_transport = std::sync::Arc::new(
+            terminal_studio::Native::new(Some(config.starter.join("home")))
+                .with_onboarding(config.clone()),
+        );
+        terminal_studio::onboarding::host::mount(&mut overlay.core, config.clone())?;
+        overlay.open = true;
+    }
+    if onboarding.is_none()
+        && let Some(path) = crate::terminal::control::default_path()
         && let Err(error) = overlay.listen(&path)
     {
         eprintln!("verse: the terminal control socket is off: {error}");
@@ -880,6 +919,16 @@ fn terminal_overlay(options: &Options) -> Result<crate::terminal::Overlay, Strin
         overlay.open = true;
     }
     if let Some(path) = &options.contribution_workbench {
+        if let Some(onboarding) = onboarding {
+            let selected = contribution_workbench::host::Config::load(path)?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            if let Some(row) = selected.read(now)?.first() {
+                onboarding.inspect_contribution(path, &row.source_record)?;
+                terminal_studio::onboarding::host::mount(&mut overlay.core, onboarding.clone())?;
+            }
+        }
         contribution_workbench::host::mount(
             &mut overlay.core,
             contribution_workbench::host::Config::load(path)?,
@@ -898,6 +947,35 @@ fn terminal_overlay(options: &Options) -> Result<crate::terminal::Overlay, Strin
 
 impl App {
     fn new(options: &Options) -> Result<Self, String> {
+        let onboarding = onboarding_config(options)?;
+        let studio_socket = if let Some(config) = &onboarding {
+            options
+                .studio_socket
+                .as_ref()
+                .map(|path| {
+                    let target = path
+                        .canonicalize()
+                        .map_err(|_| "Scratch studio socket unavailable")?;
+                    let home = config
+                        .starter
+                        .join("home")
+                        .canonicalize()
+                        .map_err(|_| "Scratch home unavailable")?;
+                    if !target.starts_with(home) {
+                        return Err(
+                            "Onboarding studio socket must be inside its scratch home".to_string()
+                        );
+                    }
+                    Ok(target)
+                })
+                .transpose()?
+        } else {
+            options
+                .studio_socket
+                .clone()
+                .or_else(openagents_connect::control::socket_path)
+                .filter(|_| !cfg!(test) || options.studio_socket.is_some())
+        };
         // Find OpenAgents Terminal for the terminal overlay ahead of time:
         // a fresh build's first run can take seconds while macOS checks it.
         #[cfg(not(test))]
@@ -979,13 +1057,7 @@ impl App {
             runtime.set_studio_source(Box::new(
                 crate::zones::everglade::studio::fixture::Background::new(2.0),
             ));
-        } else if let Some(path) = options
-            .studio_socket
-            .clone()
-            .or_else(openagents_connect::control::socket_path)
-            // A test never reaches the person's own host.
-            .filter(|_| !cfg!(test) || options.studio_socket.is_some())
-        {
+        } else if let Some(path) = studio_socket.clone() {
             // The host on this computer, the one the desktop app pairs,
             // through its control socket. Nothing connects until the player
             // enters Everglade.
@@ -1085,7 +1157,10 @@ impl App {
             studio_panel: None,
             studio_target: None,
             panel_shift: false,
-            terminal: terminal_overlay(options)?,
+            terminal: terminal_overlay(options, onboarding.as_ref())?,
+            onboarding_capture: onboarding.map(terminal_studio::onboarding::host::Capture::new),
+            onboarding_pending: None,
+            onboarding_seen: None,
             screen_mode: options.workbench_screen,
             screen_bounds: options.workbench_screen_bounds,
             screen: None,
@@ -1094,13 +1169,7 @@ impl App {
             screen_viewport: None,
             // Alice is a client of the host the studio reads, over the same
             // control socket; a test never reaches the person's own host.
-            workshop: crate::workshop::Workshop::control(
-                options
-                    .studio_socket
-                    .clone()
-                    .or_else(openagents_connect::control::socket_path)
-                    .filter(|_| !cfg!(test) || options.studio_socket.is_some()),
-            ),
+            workshop: crate::workshop::Workshop::control(studio_socket),
             workshop_send_at: None,
             terminal_press: false,
             stress: options
@@ -1163,6 +1232,36 @@ impl App {
     }
 
     fn workbench_studio(&mut self) {
+        if let (Some(capture), Some(snapshot)) = (
+            &self.onboarding_capture,
+            self.runtime.studio().source_snapshot(),
+        ) {
+            let identity = (snapshot.stream.clone(), snapshot.sequence);
+            if self.onboarding_seen.as_ref() != Some(&identity) {
+                if let Err(error) = capture.record_snapshot(snapshot.clone()) {
+                    self.terminal.paper.studio.notice =
+                        Some(format!("Onboarding evidence unavailable: {error}"));
+                }
+                self.onboarding_seen = Some(identity);
+            }
+        }
+        if let Some((ticket, _)) = &self.onboarding_pending
+            && let Some(answer) = self
+                .runtime
+                .studio()
+                .status()
+                .filter(|answer| answer.ticket == *ticket)
+        {
+            let result = answer.result.clone();
+            let (ticket, operation) = self.onboarding_pending.take().unwrap();
+            if let (Some(capture), Ok(outcome)) = (&self.onboarding_capture, result)
+                && let Err(error) =
+                    capture.complete(&format!("ticket:{ticket}"), operation, outcome)
+            {
+                self.terminal.paper.studio.notice =
+                    Some(format!("Onboarding evidence unavailable: {error}"));
+            }
+        }
         self.validate_screen();
         if self.terminal.workshop().is_none() {
             return;
@@ -1261,9 +1360,27 @@ impl App {
                 serde_json::from_slice::<coder_access::Operation>(&prepared.bytes)
                     .map_err(|e| e.to_string())
                     .and_then(|operation| {
+                        let captured_operation = operation.clone();
+                        let displayed = serde_json::from_slice::<coder_access::studio::Snapshot>(
+                            &self.terminal.paper.studio.prepare_source,
+                        )
+                        .ok();
+                        let review = self
+                            .terminal
+                            .paper
+                            .studio
+                            .prepare_review
+                            .as_ref()
+                            .and_then(|review| serde_json::from_slice(&review.source).ok());
                         self.runtime
                             .studio_send(operation)
                             .map(|id| {
+                                if let (Some(capture), Some(displayed)) =
+                                    (&self.onboarding_capture, displayed)
+                                {
+                                    capture.prepare(&format!("ticket:{id}"), displayed, review);
+                                    self.onboarding_pending = Some((id, captured_operation));
+                                }
                                 self.terminal.paper.studio.ticket = Some(id);
                                 format!("Submitted request {id}; awaiting the host's receipt.")
                             })
@@ -1388,13 +1505,29 @@ impl App {
                 Effect::Send(action) => {
                     let operation =
                         action.operation(crate::zones::everglade::studio::intents::now());
-                    let result = self.runtime.studio_send(operation).map_err(|error| {
-                        format!(
-                            "Not sent (`{}`): {}",
-                            crate::panels::studio::code_word(error.code),
-                            error.message
-                        )
-                    });
+                    let captured_operation = operation.clone();
+                    let displayed = self.runtime.studio().source_snapshot().cloned();
+                    let review = self.studio_panel.as_ref().map(|c| c.kind().clone());
+                    let review = review.as_ref().and_then(|kind| self.studio_review(kind));
+                    let result = self
+                        .runtime
+                        .studio_send(operation)
+                        .map(|ticket| {
+                            if let (Some(capture), Some(displayed)) =
+                                (&self.onboarding_capture, displayed)
+                            {
+                                capture.prepare(&format!("ticket:{ticket}"), displayed, review);
+                                self.onboarding_pending = Some((ticket, captured_operation));
+                            }
+                            ticket
+                        })
+                        .map_err(|error| {
+                            format!(
+                                "Not sent (`{}`): {}",
+                                crate::panels::studio::code_word(error.code),
+                                error.message
+                            )
+                        });
                     if let (Some(controller), Some(panel)) =
                         (&mut self.studio_panel, &mut self.panel)
                     {

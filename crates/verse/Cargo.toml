@@ -85,7 +85,7 @@ coder-access = { path = "../coder-access", default-features = false }
 coder-ui = { path = "../coder-ui" }
 terminal-control = { path = "../terminal-control" }
 terminal-gfx = { path = "../terminal-gfx", optional = true }
-terminal-studio = { path = "../terminal-studio", optional = true }
+terminal-studio = { path = "../terminal-studio", features = ["onboarding-host"], optional = true }
 workbench = { path = "../workbench", optional = true }
 coder-vt = { path = "../coder-vt", optional = true }
 rust-native = { path = "../rust-native" }

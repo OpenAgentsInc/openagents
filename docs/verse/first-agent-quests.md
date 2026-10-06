@@ -1,7 +1,43 @@
 # The Apprentice's Road: a quest line into Everglade
 
-Status: proposed, October 4, 2026. Nothing here is implemented. This is a
-speculative design for review.
+Status: the five-step native tracker and free scratch practice are implemented,
+October 6, 2026. The acts, guide character, districts, rewards, and unlocks below
+remain proposed.
+
+## Current native practice
+
+Run `verse --onboarding-practice /absolute/private/starter` or
+`openagents-terminal --onboarding-practice /absolute/private/starter`. Choose a
+new or empty directory. This creates a private starter repository with no remote,
+an inert retained Studio task, scripted decision and local merge evidence, and
+retained authored contribution metadata. It runs no model, publishes nothing,
+spends $0, and grants no XP or execution authority. The panel labels this lane
+**Simulated practice**; scripted responses never count as real completions.
+
+Reopen the same directory with the same flag, or pass
+`--onboarding-workbench /absolute/private/starter/config.json` to either app.
+Reopening reads the retained evidence and does not submit another task, run an
+engine, replay an answer, or create another commit. A partially initialized
+starter refuses automatic replay.
+
+The panel shows five objectives: open a terminal, submit a scratch Studio goal,
+answer a decision, inspect and merge exact reviewed revisions, and inspect a
+contribution or reproduction. It skips facts already true and shows the source
+references and missing prerequisites. Task completion, activity, and disappearing
+decisions cannot establish answered or reviewed objectives.
+
+For real work, use an explicitly selected owner configuration and the existing
+[Agent Studio](agent-studio.md) admission and review controls. The selected task
+store and owner stream must match the scratch workspace. The host reader accepts
+only retained tasks in the isolated repository, exact successful decision
+acknowledgments, and matching reviewed revisions with a local commit. Native
+confirmation retains these acknowledgments; the tracker itself sends nothing.
+Real model cost is unavailable until the existing plan and operator limit admit
+it. Review that cost and authority before sending any real operation. Terminal
+and contribution inspection evidence must name their exact selected owner
+source; an unavailable source remains incomplete. Onboarding awards no money,
+levels, titles, decorations, or rights.
+
 
 A new player arrives in [Everglade](everglade.md) knowing nothing about coding
 agents, hosts, or the [Agent Studio](agent-studio.md). The Apprentice's Road is

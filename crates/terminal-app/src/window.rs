@@ -21,6 +21,9 @@ pub struct Options {
     knowledge_workbench: Option<PathBuf>,
     contribution_workbench: Option<PathBuf>,
     quest_workbench: Option<PathBuf>,
+    onboarding_practice: Option<PathBuf>,
+    onboarding_workbench: Option<PathBuf>,
+    onboarding: Option<terminal_studio::onboarding::host::Config>,
     compute_workbench: Option<PathBuf>,
     knowledge_review: Option<PathBuf>,
     knowledge_operator: Option<String>,
@@ -88,7 +91,7 @@ pub fn run() -> Result<(), String> {
             }
             "--help" | "-h" => {
                 println!(
-                    "OpenAgents Terminal\nUsage: openagents-terminal [--root DIR] [--shell PATH] [--socket PATH] [--host KEY --paired-store DIR --terminal GENERATION/TERMINAL]\n\nStarts your login shell under one fixed sheet. --capability-flow DIR opens its retained capability workflow beside the shell. Type a command or a question; ENTER runs or asks. F1 shows the keys.\nCtrl+B % or \" splits; Ctrl+B c opens a tab. Cmd+Q exits on macOS.\n--root isolates shell and helper HOME for a scratch run.\nThe native package supports macOS arm64; Linux is a development platform.\n--stress-out FILE runs the shared workload; --busy N --seconds S --warmup S configure it.\n--startup-out FILE records process entry to first presented frame.\n--background opens behind the active app and keeps drawing while covered.\n--latency-out FILE records key-to-frame times on the sheet until quit."
+                    "OpenAgents Terminal\nUsage: openagents-terminal [--root DIR] [--shell PATH] [--socket PATH] [--host KEY --paired-store DIR --terminal GENERATION/TERMINAL]\n\nStarts your login shell under one fixed sheet. --capability-flow DIR opens its retained capability workflow beside the shell. Type a command or a question; ENTER runs or asks. F1 shows the keys.\nCtrl+B % or \" splits; Ctrl+B c opens a tab. Cmd+Q exits on macOS.\n--root isolates shell and helper HOME for a scratch run.\n--onboarding-practice DIR prepares a free simulated scratch path; --onboarding-workbench CONFIG reads retained owner facts.\nThe native package supports macOS arm64; Linux is a development platform.\n--stress-out FILE runs the shared workload; --busy N --seconds S --warmup S configure it.\n--startup-out FILE records process entry to first presented frame.\n--background opens behind the active app and keeps drawing while covered.\n--latency-out FILE records key-to-frame times on the sheet until quit."
                 );
                 return Ok(());
             }
@@ -122,6 +125,20 @@ pub fn run() -> Result<(), String> {
                         .ok_or("Expected retained knowledge evidence")?
                         .into(),
                 )
+            }
+            "--onboarding-practice" => {
+                options.onboarding_practice = Some(
+                    args.next()
+                        .ok_or("Expected a new scratch practice directory")?
+                        .into(),
+                );
+            }
+            "--onboarding-workbench" => {
+                options.onboarding_workbench = Some(
+                    args.next()
+                        .ok_or("Expected private onboarding configuration")?
+                        .into(),
+                );
             }
             "--quest-workbench" => {
                 options.quest_workbench = Some(
@@ -170,6 +187,39 @@ pub fn run() -> Result<(), String> {
             "--socket" => options.socket = Some(args.next().ok_or("--socket needs a path")?.into()),
             _ => return Err(format!("unknown option: {argument}")),
         }
+    }
+    if options.onboarding_practice.is_some() && options.onboarding_workbench.is_some() {
+        return Err("Select either practice or retained onboarding evidence".into());
+    }
+    options.onboarding = match (&options.onboarding_practice, &options.onboarding_workbench) {
+        (Some(root), None) => Some(terminal_studio::onboarding::host::practice::practice(root)?),
+        (None, Some(path)) => Some(terminal_studio::onboarding::host::Config::load(path)?),
+        _ => None,
+    };
+    if let Some(config) = &options.onboarding {
+        config.rows()?;
+        if options.host.is_some() || options.stress_out.is_some() {
+            return Err("Onboarding requires its isolated local scratch workspace".into());
+        }
+        let home = config.starter.join("home");
+        if options.root.as_ref().is_some_and(|root| root != &home) {
+            return Err("Onboarding shell root must be its isolated scratch home".into());
+        }
+        if let Some(socket) = &options.socket {
+            let parent = socket
+                .parent()
+                .and_then(|parent| parent.canonicalize().ok())
+                .ok_or("Scratch control socket parent unavailable")?;
+            if !socket.is_absolute()
+                || !parent.starts_with(
+                    home.canonicalize()
+                        .map_err(|_| "Scratch home unavailable")?,
+                )
+            {
+                return Err("Onboarding control socket must be inside its scratch home".into());
+            }
+        }
+        options.root = Some(home);
     }
     if options.knowledge_review.is_some()
         && (options.knowledge_operator.is_none() || options.knowledge_evaluator.is_none())
@@ -503,12 +553,17 @@ impl ApplicationHandler for App {
             } else {
                 Overlay::new()
             };
-            terminal.studio_transport = std::sync::Arc::new(terminal_studio::Native::new(
+            let mut studio_transport = terminal_studio::Native::new(
                 stress
                     .as_ref()
                     .map(|driver| driver.root().to_path_buf())
                     .or_else(|| self.options.root.clone()),
-            ));
+            );
+            if let Some(config) = &self.options.onboarding {
+                studio_transport = studio_transport.with_onboarding(config.clone());
+                terminal_studio::onboarding::host::mount(&mut terminal.core, config.clone())?;
+            }
+            terminal.studio_transport = std::sync::Arc::new(studio_transport);
             terminal.mount = Mount::Window;
             terminal.open = true;
             if let Some(path) = &self.options.knowledge_workbench {
@@ -561,6 +616,19 @@ impl ApplicationHandler for App {
                 )?;
             }
             if let Some(path) = &self.options.contribution_workbench {
+                if let Some(onboarding) = &self.options.onboarding {
+                    let selected = contribution_workbench::host::Config::load(path)?;
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |d| d.as_secs());
+                    if let Some(row) = selected.read(now)?.first() {
+                        onboarding.inspect_contribution(path, &row.source_record)?;
+                        terminal_studio::onboarding::host::mount(
+                            &mut terminal.core,
+                            onboarding.clone(),
+                        )?;
+                    }
+                }
                 contribution_workbench::host::mount(
                     &mut terminal.core,
                     contribution_workbench::host::Config::load(path)?,
