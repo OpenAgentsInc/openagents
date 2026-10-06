@@ -1,5 +1,10 @@
 # Verse
 
+The [current capability table](status.md) identifies implemented paths, platforms,
+measured acceptance, and remaining limits. The generated
+[runtime contract](runtime-contract.json) records source-owned versions and
+Cargo feature declarations.
+
 The [Verse Engine roadmap](engine/roadmap.md) sequences original content,
 owned physics reuse, and authoritative multiplayer.
 
@@ -55,8 +60,11 @@ Portals lead to separate local [zones](zones.md).
 point with restricted three-body orbital mechanics, station-keeping, and
 rigid-body EVA assembly. The **[Physics Lab](physics-lab.md)** runs each
 mechanism of the shared physics crate live, with knobs to choose a scenario
-and change its parameters. Arbitrary creator worlds, signed scene discovery,
-multiplayer zones, live Pylon state, and payment state remain unimplemented.
+and change its parameters. Authenticated chamber and hosted social instances,
+sealed authored worlds, and operator-reviewed public releases are implemented;
+see the [capability table](status.md) for their bounded profiles. Arbitrary world
+scripts, public signed instance discovery, live Pylon state, and world payment
+state remain future work.
 
 The [Coder mobile Verse home](mobile.md) shares the world simulation and renderer
 through Rust Native's generic native-surface contract. Mobile touch controls,
@@ -123,7 +131,7 @@ bird's-eye view of the OpenAgents app's world with its players walking.
 Watch is a spectator (`verse::spectator`): it subscribes to `verse-bare`
 presence and publishes nothing, so it has no avatar and is never shown or
 counted as a player. See the
-[desktop backdrop](../../crates/openagents-desktop/README.md#the-backdrop).
+[desktop Verse page](../../crates/openagents-desktop/README.md#the-verse-page).
 
 On macOS and Linux, **The Grid → Play** deliberately joins the phone's Grid
 with WASD, mouse look and orbit, jump, sprint, first person, shared bodies,

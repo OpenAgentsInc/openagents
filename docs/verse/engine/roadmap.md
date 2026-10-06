@@ -1,6 +1,10 @@
 # Verse Engine delivery roadmap
 
-Status: proposed work, October 3, 2026. This roadmap extends the
+Status: architecture direction and historical delivery plan, originally
+October 3, 2026. For implemented capabilities, platforms, measured acceptance,
+and remaining limits, use the [current status guide](../status.md). The
+[source-owned runtime contract](../runtime-contract.json) records current
+versions and Cargo feature declarations. This roadmap extends the
 [architecture](architecture.md) and the
 [#10406 authority plan](https://github.com/OpenAgentsInc/openagents/issues/10406#issuecomment-5973821300).
 The [expanded issue plan](https://github.com/OpenAgentsInc/openagents/issues/10406#issuecomment-5974013251)
@@ -23,21 +27,28 @@ mismatched humanoid clips with authored gaits and combat poses, advances gait
 clocks from admitted travel, and loads a giant locally licensed Bestiary Puglin
 for Claude. Restricted Bestiary source files remain outside the public repo.
 
-## Original scene implementation
+## Historical scene and service milestones
+
+These entries describe each issue's implementation and acceptance at its recorded
+revision, including gaps that existed then. Later work supersedes those gap
+lists; they are not current task priorities. Earlier wire and rules versions
+identify milestones, not current protocol compatibility. Retained failures and
+measurements preserve their original scope. Consult the
+[current capability table](../status.md) before selecting new work.
 
 [#10435](https://github.com/OpenAgentsInc/openagents/issues/10435) adds portable
 generation-safe entity storage, respawn life IDs, and a bounded fixed schedule.
 Native player and controller modes now share 30 Hz stepping with a three-step
 catch-up limit and recorded dropped time. Chamber arrows carry target life IDs
 and cannot damage a later respawn. This starts VE-0; #10437 extends authority
-and lifetime fencing, while physics substep integration remains.
+and lifetime fencing. #10441 later integrates owned physics substeps.
 
 [#10436](https://github.com/OpenAgentsInc/openagents/issues/10436) introduces
 the headless `verse-world` command boundary. Local human and controller ability
 requests share ownership, life, epoch, sequence, tick-window, and finite-input
 admission. Explicit control handoffs fence queued commands. #10437 extends this
-boundary to movement and owned rules. Service authentication, durable rewards,
-and replication remain required before VE-5 acceptance.
+boundary to movement and owned rules. Subsequent service milestones add
+authentication, durable rewards, and replication.
 
 [#10437](https://github.com/OpenAgentsInc/openagents/issues/10437) moves the
 project-owned chamber encounter, controller, collision/navigation admission,
@@ -50,10 +61,10 @@ nonreused combat IDs. Versioned checkpoints retain pending combat and controller
 state, and replay tests cover defeat and subsequent respawns. Dialogue, camera
 handoff, actual damage, deaths, and respawns have bounded, serialized event IDs.
 The owned chamber profile keeps ten abilities, 300,000 boss HP, and 60-second
-cultist respawns. This is local authority and checkpoint serialization; it does
-not implement transactional saves, multiplayer, rewards, or the VE-2 capsule/
-mesh controller. The broader `verse` app removed the separate Ruins zone on
-2026-10-05.
+cultist respawns. This milestone introduced local authority and checkpoint
+serialization. Later milestones add transactional saves, multiplayer, rewards,
+and the capsule/mesh controller. The broader `verse` app removed the separate
+Ruins zone on 2026-10-05.
 
 [#10426](https://github.com/OpenAgentsInc/openagents/issues/10426) implements the
 first asset-free procedural scene. The `verse_play` native example generates an
@@ -84,13 +95,12 @@ a visibility graph for a flat primitive room, not a crowd solver or navmesh.
 [#10431](https://github.com/OpenAgentsInc/openagents/issues/10431) applies static
 visibility to targeted attacks, delayed bow/cast rechecks, directional damage,
 and hostile cast/impact admission. Obstructed cultists navigate toward a firing
-position. Full projectile CCD and explosion-radius occlusion remain separate
-work; this slice does not replace the retained projectile solver.
+position. Later #10441 introduces owned projectile CCD. This visibility slice
+alone did not replace the retained projectile solver.
 
-This delivers the visual procedural milestone of VE-1/VE-3, not the complete
-VE-0–VE-6 roadmap. #10437 supplies owned headless chamber rules; service
-persistence, multiplayer, full physics, tools, and platform acceptance remain
-implementation work. #10406 and #10407 stay open for their full acceptance.
+These early changes delivered the visual procedural milestone and owned
+headless chamber rules. Later service, physics, tool, and platform work has its
+own acceptance; the [status guide](../status.md) maps those implementations.
 
 [#10438](https://github.com/OpenAgentsInc/openagents/issues/10438) adds scoped
 ray, capsule overlap, and capsule sweep queries in `physics::queries`. Validated
@@ -384,9 +394,9 @@ original-engine video lands after VE-4 using a local authority adapter; #10406
 closes only after VE-5's actual service, persistence, and multiplayer checks.
 
 Each implementation slice needs its own claimed issue and targeted tests.
-This document does not create or claim those future implementation issues.
-#10425 tracks this documentation update. Existing #10406/#10407 retain their
-scope and remain open until their implementation acceptance passes.
+This document does not create or claim future implementation issues. #10425
+tracks the original roadmap update. #10406/#10407 retain their recorded
+acceptance history; issue state is not inferred from this dated plan.
 
 ## Physics research priorities
 
@@ -450,7 +460,9 @@ Unreal an engine or asset dependency of this project.
 
 The architecture owns stable boundaries; this roadmap owns delivery order;
 #10406 owns world-service acceptance. Runtime guides describe what currently
-works. Keep Lagrange, Physics Lab, and the Genesis/Unreal research notes linked
+works; [status.md](../status.md) owns the current capability matrix and the
+generated runtime contract owns version and feature declarations. Keep Lagrange,
+Physics Lab, and the Genesis/Unreal research notes linked
 as evidence rather than duplicating historical benchmark numbers.
 
 Required checks cover pack provenance, stale handles/life IDs, collision and

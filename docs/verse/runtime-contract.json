@@ -1,0 +1,554 @@
+{
+  "contracts": {
+    "character_schema": {
+      "source": "crates/verse-world/src/service/save.rs",
+      "value": 4
+    },
+    "input_replay_schema": {
+      "source": "crates/verse-world/src/replay.rs",
+      "value": "verse.input-replay.v1"
+    },
+    "public_content_profile": {
+      "source": "crates/verse-content/src/authoring/release.rs",
+      "value": "verse.closed-data.v1"
+    },
+    "public_pack_version": {
+      "source": "crates/verse-content/src/authoring/release.rs",
+      "value": 1
+    },
+    "public_release_schema": {
+      "source": "crates/verse-content/src/authoring/release.rs",
+      "value": "verse.public.release.v1"
+    },
+    "rules_revision": {
+      "source": "crates/verse-world/src/play.rs",
+      "value": "verse-chamber-owned-v24"
+    },
+    "save_write_version": {
+      "source": "crates/verse-world/src/service/save.rs",
+      "value": 12
+    },
+    "social_profile": {
+      "source": "crates/verse-world/src/play/social.rs",
+      "value": 1
+    },
+    "wire_version": {
+      "source": "crates/verse-world/src/service/wire.rs",
+      "value": 31
+    }
+  },
+  "generator": "scripts/verse-runtime-contract.py",
+  "packages": {
+    "everglade-web": {
+      "features": {},
+      "local_dependencies": {
+        "cfg(target_arch = \"wasm32\"):coder-reach": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../coder-reach"
+        },
+        "cfg(target_arch = \"wasm32\"):verse": {
+          "default_features": false,
+          "features": [
+            "browser-chamber"
+          ],
+          "optional": false,
+          "path": "../verse"
+        },
+        "cfg(target_arch = \"wasm32\"):verse-content": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-content"
+        },
+        "cfg(target_arch = \"wasm32\"):verse-engine": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-engine"
+        },
+        "cfg(target_arch = \"wasm32\"):verse-world": {
+          "default_features": true,
+          "features": [
+            "reach-client"
+          ],
+          "optional": false,
+          "path": "../verse-world"
+        }
+      },
+      "source": "crates/everglade-web/Cargo.toml"
+    },
+    "verse": {
+      "features": {
+        "browser-chamber": [
+          "web",
+          "verse-imported/chamber-client",
+          "verse-world/reach-client"
+        ],
+        "capture": [],
+        "chamber-loopback": [
+          "remote-chamber",
+          "tokio/io-util",
+          "verse-imported/chamber-loopback"
+        ],
+        "crypt": [
+          "verse-zone-crypt/embedded"
+        ],
+        "crypt-fight": [
+          "crypt",
+          "verse-imported/crypt-fight"
+        ],
+        "default": [
+          "desktop"
+        ],
+        "desktop": [
+          "dep:winit",
+          "dep:arboard",
+          "verse-zone-everglade/desktop",
+          "model-host",
+          "xp-host",
+          "replay-host",
+          "capture",
+          "panels",
+          "studio-host",
+          "imported-desktop",
+          "terminal",
+          "crypt",
+          "crypt-fight"
+        ],
+        "hosted-social": [
+          "verse-world/service-auth"
+        ],
+        "imported-desktop": [
+          "dep:winit",
+          "capture",
+          "native-audio",
+          "imported-surface",
+          "verse-pbr/imported-desktop",
+          "verse-imported/imported-desktop"
+        ],
+        "imported-surface": [
+          "verse-pbr/imported-surface"
+        ],
+        "model-host": [
+          "dep:coder",
+          "dep:coder-delegate",
+          "verse-zone-everglade/model-host"
+        ],
+        "native-audio": [
+          "dep:cpal",
+          "dep:rtrb"
+        ],
+        "panels": [
+          "dep:rust-native-desktop",
+          "dep:openagents-chat-app"
+        ],
+        "remote-chamber": [
+          "hosted-social",
+          "verse-world/service-reach",
+          "tokio/signal",
+          "verse-imported/remote-chamber"
+        ],
+        "replay-host": [
+          "dep:gym",
+          "dep:knowledge"
+        ],
+        "studio-host": [
+          "dep:openagents-connect",
+          "verse-zone-everglade/studio-host"
+        ],
+        "terminal": [
+          "dep:terminal-studio",
+          "dep:terminal-gfx",
+          "dep:winit"
+        ],
+        "web": [
+          "wgpu/webgl",
+          "imported-surface"
+        ],
+        "xp-host": [
+          "dep:xp-ledger",
+          "verse-net/xp"
+        ]
+      },
+      "local_dependencies": {
+        "all:atif": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../atif"
+        },
+        "all:coder": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../coder"
+        },
+        "all:coder-access": {
+          "default_features": false,
+          "features": [],
+          "optional": false,
+          "path": "../coder-access"
+        },
+        "all:coder-delegate": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../coder-delegate"
+        },
+        "all:coder-ui": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../coder-ui"
+        },
+        "all:coder-vt": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../coder-vt"
+        },
+        "all:gym": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../gym"
+        },
+        "all:gym-leaderboard": {
+          "default_features": false,
+          "features": [],
+          "optional": false,
+          "path": "../gym-leaderboard"
+        },
+        "all:knowledge": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../knowledge"
+        },
+        "all:nostr": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../nostr"
+        },
+        "all:openagents-chat-app": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../openagents-chat-app"
+        },
+        "all:openagents-connect": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../openagents-connect"
+        },
+        "all:physics": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../physics"
+        },
+        "all:rust-native": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../rust-native"
+        },
+        "all:rust-native-desktop": {
+          "default_features": false,
+          "features": [],
+          "optional": true,
+          "path": "../rust-native-desktop"
+        },
+        "all:terminal-control": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../terminal-control"
+        },
+        "all:terminal-gfx": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../terminal-gfx"
+        },
+        "all:terminal-studio": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../terminal-studio"
+        },
+        "all:verse-content": {
+          "default_features": true,
+          "features": [
+            "compiler"
+          ],
+          "optional": false,
+          "path": "../verse-content"
+        },
+        "all:verse-core": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-core"
+        },
+        "all:verse-engine": {
+          "default_features": true,
+          "features": [
+            "asset-io"
+          ],
+          "optional": false,
+          "path": "../verse-engine"
+        },
+        "all:verse-gfx": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-gfx"
+        },
+        "all:verse-gym": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-gym"
+        },
+        "all:verse-imported": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-imported"
+        },
+        "all:verse-lagrange": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-lagrange"
+        },
+        "all:verse-net": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-net"
+        },
+        "all:verse-pbr": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-pbr"
+        },
+        "all:verse-world": {
+          "default_features": true,
+          "features": [
+            "studio"
+          ],
+          "optional": false,
+          "path": "../verse-world"
+        },
+        "all:verse-zone-crypt": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-zone-crypt"
+        },
+        "all:verse-zone-everglade": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-zone-everglade"
+        },
+        "all:verse-zone-grove": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-zone-grove"
+        },
+        "all:verse-zone-lab": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-zone-lab"
+        },
+        "all:verse-zone-lagrange": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-zone-lagrange"
+        },
+        "all:xp-ledger": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../xp-ledger"
+        },
+        "cfg(not(target_arch = \"wasm32\")):coder-pty": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../coder-pty"
+        },
+        "cfg(not(target_arch = \"wasm32\")):gym-bridge": {
+          "default_features": false,
+          "features": [],
+          "optional": false,
+          "path": "../gym-bridge"
+        },
+        "cfg(not(target_arch = \"wasm32\")):gym-leaderboard": {
+          "default_features": false,
+          "features": [
+            "client"
+          ],
+          "optional": false,
+          "path": "../gym-leaderboard"
+        }
+      },
+      "source": "crates/verse/Cargo.toml"
+    },
+    "verse-content": {
+      "features": {
+        "authoring": [
+          "dep:secp256k1",
+          "dep:png",
+          "dep:serde",
+          "dep:serde_path_to_error",
+          "verse-world/service-auth"
+        ],
+        "compiler": [
+          "authoring",
+          "dep:gltf",
+          "dep:libm",
+          "dep:png",
+          "dep:resvg"
+        ],
+        "default": []
+      },
+      "local_dependencies": {
+        "all:physics": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../physics"
+        },
+        "all:verse-engine": {
+          "default_features": true,
+          "features": [
+            "asset-io"
+          ],
+          "optional": false,
+          "path": "../verse-engine"
+        },
+        "all:verse-world": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-world"
+        }
+      },
+      "source": "crates/verse-content/Cargo.toml"
+    },
+    "verse-engine": {
+      "features": {
+        "asset-io": [
+          "dep:png",
+          "dep:libc"
+        ],
+        "default": []
+      },
+      "local_dependencies": {},
+      "source": "crates/verse-engine/Cargo.toml"
+    },
+    "verse-host": {
+      "features": {},
+      "local_dependencies": {
+        "all:verse-content": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-content"
+        },
+        "all:verse-engine": {
+          "default_features": true,
+          "features": [
+            "asset-io"
+          ],
+          "optional": false,
+          "path": "../verse-engine"
+        },
+        "all:verse-world": {
+          "default_features": true,
+          "features": [
+            "service-net"
+          ],
+          "optional": false,
+          "path": "../verse-world"
+        }
+      },
+      "source": "crates/verse-host/Cargo.toml"
+    },
+    "verse-world": {
+      "features": {
+        "reach-client": [
+          "service-client",
+          "dep:coder-reach"
+        ],
+        "service-auth": [
+          "dep:secp256k1",
+          "dep:getrandom"
+        ],
+        "service-client": [
+          "service-auth",
+          "dep:tokio",
+          "dep:futures-util"
+        ],
+        "service-net": [
+          "service-client",
+          "tokio/net",
+          "dep:rustls",
+          "dep:tokio-rustls"
+        ],
+        "service-reach": [
+          "service-net",
+          "dep:coder-reach"
+        ],
+        "studio": [
+          "dep:coder-access"
+        ]
+      },
+      "local_dependencies": {
+        "all:coder-access": {
+          "default_features": false,
+          "features": [],
+          "optional": true,
+          "path": "../coder-access"
+        },
+        "all:coder-reach": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../coder-reach"
+        },
+        "all:physics": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../physics"
+        },
+        "all:verse-engine": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../verse-engine"
+        }
+      },
+      "source": "crates/verse-world/Cargo.toml"
+    }
+  },
+  "schema": "verse.documentation.runtime-contract.v1",
+  "scope": "Declared source constants and Cargo feature edges; not resolved build features, compatibility admission, or platform acceptance.",
+  "toolchain": {
+    "source": "rust-toolchain.toml",
+    "value": "1.97.1"
+  }
+}

@@ -1,10 +1,10 @@
 # Verse networking, the Agent Studio, and NIPs
 
-Status: specification, October 4, 2026; the plan marks what is implemented. The
-owner asked how the Agent Studio, Everglade, and the authoritative
-multiplayer chamber added on October 4 fit together; whether Verse can run on
-Nostr alone; and which NIPs under `nips/openagents/` and `nips/block/` the
-studio should use. This page answers all three and sets the plan.
+Status reconciled October 6, 2026. This guide distinguishes implemented
+networking from the original October 4 convergence plan and future NIP mirrors.
+The [current capability table](status.md) owns runtime status and measured
+acceptance; the generated [runtime contract](runtime-contract.json) owns current
+versions and Cargo feature declarations.
 
 ## The answer
 
@@ -13,18 +13,19 @@ already decided so in several places. Nostr is the right layer for identity,
 discovery, presence, permissions, durable records, asynchronous messages,
 and wake-ups. Live simulation needs a direct authenticated channel to one
 authority. That channel is not another outside system: the repository has
-two already (NIP-REACH channels and the chamber's TLS transport). The work
-is to make them one.
+two implemented adapters: NIP-REACH channels and the chamber's TLS transport.
+They carry the same chamber wire and command boundary. The independent host
+uses TLS; OpenAgents integrates REACH and NIP-HOST admission.
 
 Why not relays for live play:
 
 - **Rate.** The relay admits 60 events a minute per key and 120 per
-  address (`crates/nostr-relay/src/gateway/config.rs`). NIP-MV already caps a
+  address by default (`crates/nostr-relay/src/gateway/config.rs`). NIP-MV already caps a
   client at 54 events a minute (`crates/verse/src/session.rs`), and asks
   relays for a separate per-second lane that this relay does not give pose
   kinds.
 - **Cost per message.** Ephemeral events still pass through a Postgres
-  transaction and `NOTIFY` fan-out (`store/mod.rs`), a database round trip per
+  transaction and `NOTIFY` fan-out (`crates/nostr-relay/src/store/mod.rs`), a database round trip per
   pose.
 - **Authority.** NIP-MV: "A signature proves who published a pose, not that
   the pose is honest. Worlds that need authoritative positions … need an
@@ -32,79 +33,46 @@ Why not relays for live play:
   engine architecture: "Nostr identity/presence and Tailscale routes do not
   substitute for world command authorization."
 
-## Three stacks today
+## Implemented networking
 
 | Stack | Carries | Identity and admission | Transport |
 | --- | --- | --- | --- |
 | NIP-MV presence | Plaza poses, entities, gestures, world chat | Nostr keys; signatures prove publication only | Relay WebSockets |
-| NIP-HOST and NIP-REACH | Coder tasks, terminals, the Agent Studio (`studio.*`) | Host-signed device grants with rights and revocation epochs | Control socket on one machine; REACH channel over iroh, TCP, or WebSocket; relay for CJ |
-| Chamber service (`crates/verse-world` `service`) | Authoritative 30 Hz combat, poses, items, outfits, progression | A static list of enrolled secp256k1 keys in the host's JSON; Schnorr challenge bound to the scene and asset digests | TLS over TCP, length-prefixed JSON (wire version 14); full snapshots polled at 20 Hz |
+| NIP-HOST and NIP-REACH | Coder tasks, terminals, the Agent Studio (`studio.*`) | Host-signed device grants with rights and revocation epochs | Same-machine control socket; REACH over iroh, TCP, or WebSocket; relay for CJ |
+| Chamber service (`verse-world::service`) | 30 Hz combat or hosted social authority, replicated poses, progression, account and realm services | Content-bound Schnorr challenge and enrolled character role; REACH also requires the NIP-HOST `world` right and current grant epoch/generation | TLS TCP or REACH TCP/WebSocket; bounded correlated duplex requests, movement confirmations, and acknowledged spatial deltas |
 
-The chamber shares only the key format with the others. It has no host
-discovery (clients are configured with an address and a certificate), no tie
-between its TLS certificate and a Nostr key, no link to grant epochs or
-revocation, one instance per process, and no browser client.
+The chamber's REACH adapter uses TCP or WebSocket; the host stack's iroh route
+does not imply chamber iroh support. Browser clients use REACH WebSocket;
+native clients can use TLS or REACH. The
+[platform guide](platform-clients.md) records configuration and tested scope.
+Realm listeners support independent instances in one bounded local realm.
+TLS clients explicitly configure certificate trust and addresses. REACH binds
+the channel to the host key and rechecks grant rights and revocation epochs;
+the application can publish instance `worlds` in the existing host directory.
+Joining still needs an enrolled world role. A directory entry or channel grant
+does not assign a character or expose Studio panels.
 
-## Compatibility
+## Convergence status and remaining proposals
 
-What already fits:
+Chamber and social presentation consume shared engine contracts and intent-only
+commands. The original convergence decisions now have the following status:
 
-- Presentation contracts. The chamber draws through
-  `verse-engine/presentation.rs`, and Everglade's player is the same
-  Universal character, so a character looks the same in both.
-- Intent-only commands. Chamber commands carry intent, never positions or
-  damage; the studio's rule is the same: the client is a view that sends
-  intents.
-
-What conflicts, and the decision for each:
-
-1. **Two authorization systems.** Chamber enrollment is a static key list;
-   studio and host access are NIP-HOST grants. **Decision:** chamber
-   admission derives from NIP-HOST grants. Joining an instance is a host
-   right (a new `world` right, or a CAP binding on the host's capability),
-   so enrollment, narrowing, and revocation epochs work the same way for
-   worlds, tasks, and the studio. The static list remains only for offline
-   test hosts.
-2. **Two transports for direct connections.** **Decision:** converge on the
-   REACH channel. It already authenticates both ends against a grant, runs
-   over iroh with TCP and WebSocket fallbacks, and so reaches browsers (the
-   web build cannot open raw TCP) and phones. The chamber's framing and wire
-   types stay; only the channel underneath changes. Its TLS certificate
-   problem disappears, because REACH binds the channel to the host's Nostr
-   key.
-3. **No discovery for chambers.** **Decision:** a host advertises a world
-   instance in its REACH directory entry, and a public world also as an
-   NIP-MV world event (`33300`) naming the instance, so clients find
-   instances the way they find hosts.
-4. **Two ways to admit content.** The chamber hashes scene, pack, and
-   textures into its login challenge; Everglade loads a pinned pack.
-   **Decision:** one content digest per zone pack, the one the pin already
-   records, used by both.
-5. **Two ways to represent agents.** Chamber players are authority-owned
-   lives; studio seats are host records each client animates with its own
-   walk timing, so two viewers would see seats in different places.
-   **Decision:** in a shared instance the authority owns seat actors. The
-   world host reads the studio snapshot (it runs beside the Coder host or
-   holds an `observe` grant on it) and drives each seat's actor toward its
-   station, so every viewer sees the same seat at the same place. A single
-   viewer with no world host keeps today's client-side walk.
-6. **Everglade's runtime is not a chamber game.** `Game::new_in` requires an
-   adventurer and hostiles, and Everglade moves on a heightfield with the
-   plaza controller. **Decision:** add a social rules profile to
-   `verse-world` (no combat requirement, heightfield ground, placement
-   blockers), so Everglade can run locally or as a hosted instance from the
-   same rules.
-7. **Disclosure.** Anyone who can walk a shared glade must not see panels
-   their grant does not allow. **Decision:** the world grant admits walking;
-   studio panels still check the viewer's NIP-HOST studio rights (`observe`
-   for boards and logs, `operate` to act, `review` to merge).
+| Decision | Implemented path | Remaining proposal or limit |
+| --- | --- | --- |
+| Host-authorized world access | NIP-HOST `world` grants, `service::reach`, per-request and timed epoch checks; configured TLS enrollment remains supported. | Static enrollment and REACH are explicit deployment choices, not interchangeable credentials. |
+| Direct channel reuse | Same chamber frames on TLS and REACH TCP/WebSocket; shared client/runtime/session on native and browser. | Chamber iroh support and automatic route selection are not established. |
+| Instance discovery | REACH directory entries carry `worlds`; the OpenAgents host can add its instance to an existing owner directory entry. | Public NIP-MV `33300` instance advertisements and a unified public world-selection flow remain proposed. Browser routes still use explicit configuration. |
+| Content identity | Login binds the admitted content digest. Hosted Everglade uses its pinned pack digest; closed authored releases seal document, pack, scene, textures, and mips with compatibility admission. | Everglade VTP and chamber JSON packs remain distinct formats; a universal signed zone distribution format is not claimed. |
+| Agent seat placement | `social::studio::StudioHost` owns shared seat motion from the co-located host snapshot; replicas draw public seat poses. | Remote Studio observation under an `observe` grant needs its own adapter; seat keys and public presence remain later work. |
+| Social rules | `play::social` hosts bounded plaza/Everglade profiles without combat requirements, through shared realm, save, command, and replication paths. | General arbitrary worlds and larger social populations require separate admission and acceptance. |
+| Panel disclosure | World walking rights remain separate from Studio `observe`, `operate`, and `review` checks. | Proposed NIP mirrors must preserve those disclosure boundaries. |
 
 ## Layering
 
 | Layer | Carries | Mechanism |
 | --- | --- | --- |
 | Identity | People, devices, agents (and seats, once they have keys) | Nostr keys; Block NIP-OA for agent attestation |
-| Discovery | Hosts, world instances, the studio's host | NIP-REACH directory; NIP-MV `33300` for public worlds |
+| Discovery | Hosts, directory-bound world instances, the studio's host | NIP-REACH directory implemented; public NIP-MV `33300` instance advertisements proposed |
 | Admission | Who may watch, act, merge, or join a world | NIP-HOST grants with rights and revocation epochs |
 | Presence | Who is on the plaza and in which instance | NIP-MV `33301` and pose frames; an instance's own snapshot wins inside it |
 | Live authority | World simulation; studio intents and updates | The chamber wire over a REACH channel; NIP-HOST `studio.*` over the same channel |
@@ -177,7 +145,11 @@ with Block RS. These events mirror host state for people and other clients.
 They never dispatch work: WORK says "a workroom mention MUST NOT dispatch
 execution".
 
-## Plan
+## Original convergence plan and implementation record
+
+This October 4 plan retains the issue-level implementation record. The table
+above describes current status; mirrors and later identity features remain
+proposals unless their entry names an implemented path.
 
 1. **Studio, now.** WS summaries and PL wakes for studio decisions; SESS
    steering acknowledgments for messages; the POL approver binding; the
@@ -197,7 +169,7 @@ execution".
    instance to the host's existing directory entry. `openagents chamber
    --reach HOST` and the `verse_remote` example join as this device with the
    grant from the computers store. TLS stays the default, `verse_host`
-   serves TLS only, and NIP-MV `33300` world events remain.
+   serves TLS only, and NIP-MV `33300` instance advertisements remain proposed.
 3. **Shared Everglade.** A social rules profile in `verse-world`; the shared
    content digest; authority-owned seat actors fed by the studio snapshot;
    panel access checked against studio rights. Implemented in rules
@@ -226,10 +198,10 @@ execution".
    the Block-lane group mirror.
 5. **Later.** Seat keys (AP, OA, GS), seats on the plaza, studio XP.
 
-The chamber's own roadmap items (subscribed deltas instead of polled full
-snapshots, client prediction, instance management) remain in
-[the engine roadmap](engine/roadmap.md) and are prerequisites for
-step 3 at more than a handful of players.
+Acknowledged spatial deltas, movement prediction, and realm instance management
+are implemented. Their [acceptance profiles](status.md) establish bounded
+workloads; the combat battle campaign does not qualify a larger social population
+or the proposed public discovery and mirror flows.
 
 
 ## Hosted social profile implementation

@@ -2,11 +2,17 @@
 
 This portable crate owns chamber authority, typed commands, controller admission,
 combat state, fixed-tick movement/collision admission, encounter AI, utility
-spells, life-fenced respawns, and serialized events and checkpoints. It has no
-GPU, socket, platform, credential, or retained Ruins dependency. The native
-chamber reads its snapshots and cinematic projection. Human and controller
-requests share admission. A trusted adapter supplies controller identity;
-this crate does not authenticate network connections.
+spells, life-fenced respawns, and serialized events and checkpoints. Its default
+build has no GPU, socket, platform, credential, or retained Ruins dependency.
+Optional service features add authentication, clients, and native transport;
+a trusted adapter binds verified identity to the same command admission.
+The native chamber reads snapshots and cinematic projections.
+
+The [current capability table](../../docs/verse/status.md) identifies implemented
+paths, platforms, acceptance, and limits. The generated
+[runtime contract](../../docs/verse/runtime-contract.json) records source-owned
+versions and Cargo features. Version numbers in milestone descriptions below
+identify when a behavior was introduced; they are not the current wire version.
 
 The `verse-chamber-owned-v24` rules profile independently implements retained
 chamber behavior; it imports no vendor source. Firebolt deals 8 damage, each of
@@ -67,8 +73,8 @@ Owned respawn and reset fence lives and commands without dropping other players.
 Native effect projections include each player's shield and light; audio routes
 projectile and shield cues by caster life. The native camera/HUD still focuses the
 primary adventurer. `player_snapshot` and `player_admission` expose actor-specific
-state to a trusted host; they do not authenticate a network caller. Additional
-catalog spells outside the original ten still need shared-caster adapters.
+state to a trusted host; they do not authenticate a network caller. The original
+kit and nine physics catalog spells use the shared per-caster authority path.
 `Game::new_in` and `Game::combat_in` bind collision, navigation, and actor lives to
 the trusted host’s selected instance. Checkpoints and combat resets preserve it;
 the existing local constructors select instance zero. Instance identity fences
@@ -78,7 +84,8 @@ A trusted transport supplies verified identities and retains opaque connection
 handles. Player commands derive controller identity from the connection;
 spectators cannot act. Reconnect, disconnect, revocation, and instance reset
 fence queued input. Only the host advances the world clock. Grants and connections
-are bounded and remain in memory; handles are adapter bindings, not bearer tokens.
+are bounded; configured persistence retains grants across restart. Connections
+and challenge state remain transient. Handles are adapter bindings, not bearer tokens.
 The optional `service-auth` feature adds `service::auth::Gateway`: enrolled
 x-only public keys sign a versioned SHA-256 challenge with secp256k1 Schnorr.
 OS-generated nonces bind each 30-second, single-use challenge to server lifetime,
@@ -86,9 +93,9 @@ instance, host-assigned connection, deadline, and key. Authenticated dispatch
 accepts a transport-retained connection handle, with no request-supplied principal
 or controller. Pending and authenticated connections share a 128-entry budget.
 The host supplies monotonic time; expired, replayed, malformed, foreign, and
-unenrolled proofs are refused. Executable/deployment integration, durable grants,
-and replication remain; this is not a Nostr authentication protocol.
-`service::wire` provides version-three JSON opening challenges and bounded request/
+unenrolled proofs are refused. Configured hosts integrate this gateway with
+durable state and replication. This challenge is separate from Nostr relay AUTH.
+`service::wire` provides versioned JSON opening challenges and bounded request/
 response messages. Requests carry correlation IDs and command life/epoch/sequence
 fences, with no caller-selected principal, controller, or connection. Replies
 include the host tick and the player’s current control state, including consumed
@@ -110,8 +117,10 @@ Temporary loopback TLS tests use generated certificates and synthetic identity
 keys. The optional `service-reach` feature adds `service::reach`: the same frames
 over a NIP-REACH direct channel (TCP or WebSocket) with no certificate, admitted
 by a NIP-HOST grant with the `world` right, rechecked before every request and on
-a timer; a granted key outside the role table joins as a spectator. Client prediction, subscribed replication, durable deployment configuration,
-and native service integration remain.
+a timer; a granted key outside the role table joins as a spectator. TLS and REACH
+clients share the duplex runtime, replication worker, prediction, and native
+session. The dedicated `verse-host` executable uses TLS; REACH remains an
+application integration.
 `service::net::AdmissionStats` retains aggregate admission/refusal and classified
 connection outcomes. The shared policy reserves at most 32 of 128 transport
 slots for pending authentication, with eight pending per IP. Principal request
@@ -130,15 +139,16 @@ ticks, player control fences, life bindings, event cursors, and response kinds.
 Commands derive their life, epoch, and next sequence from acknowledged state;
 valid gameplay refusals retain their consumed sequence. Ten-second IO deadlines,
 protocol failures, and cancellation of uncertain requests drop the socket without
-automatic replay. Poll snapshots at the replication cadence before issuing input;
-this client does not yet predict ticks or subscribe to streaming snapshots.
+automatic replay. The sequential API remains available for explicit operations;
+`client_runtime` and `worker` provide duplex scheduling, acknowledged replication,
+and input confirmations. The presentation session owns movement prediction.
 Version-two snapshots also carry life-bound actor appearances, animation selection/
 phase, health/visibility, and each player’s public shield, light, and area effects.
 The shared authority extracts these alongside the combat snapshot on the same
 tick. Client admission checks finite poses/times, actor/effect uniqueness, life
 bindings, and budgets. The primary player’s presented health now follows actual
-resources, including zero-health death poses. Version-one peers are refused;
-streaming cadence and native service rendering remain separate integration work.
+resources, including zero-health death poses. Current peers must match the
+source-owned wire version; the shared worker and native session consume these values.
 Wire version three adds a retained per-life Misty Step stamp, so short teleports
 remain discontinuities even when another ability is cast before the next snapshot.
 `service::replica::Buffer` admits snapshots atomically and retains two frames plus
@@ -147,20 +157,23 @@ wrapped yaw, and animation phase, and keep shield anchors on sampled bodies.
 Life/control changes, teleports, death/visibility, model/animation changes, and
 large displacements snap. Resources and effect status remain authoritative latest
 values. World resets require advanced lives; stale ticks, control fences, and
-generations are refused. Streaming and input prediction still remain.
+generations are refused. Acknowledged spatial updates and prediction integrate
+with this buffer through the shared worker and session.
 
 `service::event_cursor::Cursor` validates contiguous event pages and delivers
 each committed serial once. Retention gaps report the missing range explicitly.
 Instance-scoped checkpoints retain progress without dialogue or credentials;
 the TLS client’s `delivered_events` helper advances them after validation.
-Native effects/audio integration and durable client checkpoint storage remain.
+Native effects, captions, and audio consume committed deliveries. Persist client
+cursor checkpoints after consumption when an adapter needs restart continuity.
 
 `service::worker::run` owns client IO on a Tokio task outside rendering. Fixed
 queues retain ordered snapshots, events, and command outcomes with backpressure;
 33–1,000 ms polling skips missed intervals. Commands refresh admitted control
 before submission. Shutdown cancels uncertain IO without replay. Persist event
-checkpoints only after consuming their delivery. Native rendering and prediction
-still require adapters.
+checkpoints only after consuming their delivery. The shared chamber session
+connects this worker to rendering and prediction on desktop, the Rust mobile
+mount, and the browser.
 
 Wire version four also carries hostile cast telegraphs/flights and transient
 impact flashes. Presentation validates caster/target lives, finite positions,
@@ -175,8 +188,9 @@ retired corpse reappearance and resurrection of an ended life.
 `visuals::Combat` supplies read-only spell, shield, area, hostile, and impact
 values to rendering. Local extraction and validated `State::combat_visuals`
 share that contract. Native spell instances and dynamic lighting consume it;
-the local app extracts it once per frame. Remote transport mounting, HUD,
-props/blockers, and full service acceptance remain.
+the local app extracts it once per frame. The remote session mounts these values
+alongside its HUD and prop/blocker projections; measured acceptance is scoped
+in the [status guide](../../docs/verse/status.md).
 
 `service::view::View` projects interpolated remote poses and bow flights into
 native scene frames using a validated client-owned camera. Ordered events
@@ -185,8 +199,8 @@ replay cues. Respawn and world reset fence old dialogue, and retention gaps
 remain visible. The view retains bounded read-only event history for HUD/audio
 adapters. `View::damage_numbers` projects actual committed amounts onto matching
 sampled lives, including lethal damage, and expires them after 1.35 seconds.
-Local and remote values share native floating-text rendering and colors. Native
-window/transport mounting and remote action/resource HUD still remain.
+Local and remote values share native floating-text rendering and colors. The
+shared chamber session mounts the transport, view, and owned resource/action HUD.
 
 Wire version five adds `hud::Own` for the authenticated controlled life. Health,
 mana, the ten shared-kit cooldown gates, and cast progress come from that
@@ -194,14 +208,15 @@ player’s state; spectators receive no owned HUD. Client and replica admission
 match HUD life to acknowledged control and validate resources, clocks, slots,
 and cast targets. Native `owned_hud` drawing shares the local ten-slot row,
 portrait/resources, cast bar, and respawn button. Owned hit tests exclude hidden
-catalog slots and gate death/respawn controls. Remote window mounting, target
-HUD, and catalog action-bar projection remain.
+catalog slots and gate death/respawn controls. The remote session also mounts
+the target HUD and catalog action-bar projection.
 
 The remote view retains an exact-life target and cycles live hostile poses in
 stable actor order. Death events, hidden/dead snapshots, and new generations
 clear selection; friendly/foreign/stale lives are refused. Native `target_hud`
 shares local portrait/name/health drawing, hides dead targets, and rejects stale
-frame lives before drawing. Remote mounting and catalog action-bar projection remain.
+frame lives before drawing. The remote session consumes this target projection
+and the catalog action bar.
 
 Wire version six carries live physics prop box poses through presentation.
 Kinds, secured variants, dimensions, centers, and unit rotations are bounded
@@ -235,9 +250,10 @@ name), `instance` (host instance), `trust_der` (DER trust certificate path),
 `pack` (local pack manifest path), `scene` (local scene JSON path), and `dir`
 (local pack asset directory). Paths resolve from the working directory. The key
 is used during login and is not passed to the window or worker. Callers must
-supply matching original scene/assets and a configured host; automatic host
-setup, durable state/grants, remote audio, prediction, and native live
-acceptance remain.
+supply matching original scene/assets and a configured host. Durable state and
+grants require `state_dir`; remote prediction, native audio, and the bounded
+native battle profile are implemented. Route discovery and device qualification
+retain the limits in the [platform guide](../../docs/verse/platform-clients.md).
 
 Run the configured host with:
 
@@ -295,8 +311,10 @@ and `role`: `{"type":"primary"}`, `{"type":"player","spawn":[x,y,z]}`, or
 players, and 128 total enrollments are accepted. The private DER key requires
 owner-only permissions on Unix. The host loads combat authority and pack prop
 collision before serving TLS. Ctrl+C or Unix SIGTERM drains connections and
-prints final tick/request/timing statistics. Grants and world state are not yet
-saved across process restart; live native multiplayer acceptance remains.
+prints final tick/request/timing statistics. With `state_dir`, the host restores
+world state and grants and acknowledges mutations after ordered durable writes.
+Without it, the host is ephemeral. Native acceptance is limited to the profiles
+in the [status guide](../../docs/verse/status.md).
 
 Wire version eight binds content identity into the signed connection challenge.
 Configured host/client entry points hash the validated scene and compiled pack,
@@ -307,10 +325,11 @@ sends an authentication signature. Texture reads are bounded to 64 MiB each and
 512 MiB total. The portable gateway/client APIs retain an explicit unconfigured
 mode for fixtures; configured entry points require exact identity matching.
 
-Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
-Transactional saves, multiplayer
-replication, and authoring tools remain on the
-[engine roadmap](../../docs/verse/engine/roadmap.md).
+A standalone chamber revocation parks control. Realm logout and character
+selection additionally retire resident actors and reclaim dormant slots; these
+are different lifecycle operations. Transactional saves, replication, and the
+content workbench have implemented paths in the
+[current capability table](../../docs/verse/status.md).
 
 The adventurer starts with 200 HP. After defeat, **Respawn** restores health and mana at the authored spawn, returns human control, and advances the player life and command epoch. NPC health and cultist respawn deadlines remain intact.
 
@@ -685,8 +704,9 @@ automatic quest behavior. Wire version sixteen carries acceptance, giver life,
 and interaction availability. The native quest panel shows **Accept** while near
 an available giver and **Claim** for a completed accepted quest; outside range it
 asks the player to return. The network worker refreshes inventory after actions.
-Quest enrollment is permanent for the first campaign; abandonment, repeatability,
-dialogue authoring, and friendly NPC behavior remain.
+The first campaign retains its original enrollment behavior. Realm game services
+add abandonment and repeatable quest cycles; authored friendly roles and giver
+dialogue are available. These do not provide a general dialogue editor.
 Remote view admission allows giver life and interaction availability to change
 without a reward transaction. Other quest fields remain bound to the ledger
 revision. Giver generation checks survive unavailable intervals and observe
@@ -737,8 +757,9 @@ native extraction refuse missing outfit models or missing chamber animation
 states. The existing Universal pack includes six `universal-*` appearances.
 The [outfit receipt](../../bench/verse/2026-10-04/outfits/run.json) retains
 TLS ownership/restart checks, synthetic panel layouts, and an animated-model GPU
-capture. Head/main-hand attachments and resource bonuses are described below;
-other gear slots, damage/armor modifiers, and live window input acceptance remain.
+capture. The original head/main-hand slice is described below. Realm game
+services extend slots, item identity, and damage/armor modifiers; full commerce
+UI and broader device interaction acceptance remain limited.
 
 Host JSON also accepts version-one `equipment`, with up to 64 sorted, unique
 gear definitions. For example:
@@ -758,7 +779,8 @@ visible static gear for both players and spectators. The native host admits gear
 models and required sockets before serving; the renderer hides the main-hand
 model while the bow occupies the hands. The [equipment receipt](../../bench/verse/2026-10-04/equipment/run.json)
 retains TLS storage-failure/restart evidence and native rendering/panel fixtures.
-Damage/armor modifiers remain. Native attachments now consume each parent's
+Realm game services add authored damage and armor modifiers and progression
+scaling. Native attachments consume each parent's
 final blended and grounded palette through the portable leaf-mount contract.
 
 ## Realm instances and transfer
@@ -930,7 +952,8 @@ and control fences. `host::Config::social_profile` selects this profile;
 `bind_content` includes its digest in the scene/asset identity. Startup recovery
 refuses changed profiles. Host, CLI, and offline migration preparation use this
 binding. Supported older combat checkpoints remain readable under rules v24;
-wire clients use version 29.
+wire clients must match the generated
+[current wire version](../../docs/verse/runtime-contract.json).
 
 Seats are exclusive and tied to a character life. Accepted interactions stop
 queued movement and advance its control epoch. Movement and control retirement

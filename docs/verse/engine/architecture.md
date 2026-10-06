@@ -1,15 +1,18 @@
 # Verse Engine architecture
 
-Status: proposed implementation specification, October 3, 2026. This document
-records the owner's direction to build Verse Engine from scratch in Rust, with
-owned code and original assets. It specifies future work; it does not claim
-that the engine or authoring tools described below already exist.
+Status: architecture direction, originally specified October 3, 2026. This
+document records the owner's direction to build Verse Engine in Rust with owned
+code and original assets. The [current status guide](../status.md) distinguishes
+implemented paths and acceptance from proposed module boundaries and broader
+production requirements. The [generated contract](../runtime-contract.json)
+records current source-owned versions and features.
 
-The procedural visual slice is now implemented by #10426. The `verse_play`
-example runs the [original ritual pack](../../../assets/verse/original/README.md)
+The original #10426 milestone implemented the procedural visual slice. The
+`verse_play` example runs the [original ritual pack](../../../assets/verse/original/README.md)
 and records native GPU frames without Blizzard models, textures, UI art, or
-fonts. This does not complete engine extraction, physical character collision,
-or the world service milestones described below.
+fonts. That early receipt alone did not complete engine extraction, character
+collision, or world service acceptance; later implementations are indexed in
+the status guide.
 
 The first playable milestone is an original dark chamber with an adventurer,
 a large monster, robed enemies, cinematic dialogue, and combat. Its distributed
@@ -92,6 +95,10 @@ MPL-2.0. This study imports no source files, shaders, assets, or plugin ABI.
 
 ## Current project baseline
 
+The [current capability table](../status.md) identifies implementation paths,
+platforms, measured acceptance, and remaining limits. Proposed module boundaries
+below describe architecture direction, not a list of missing implementations.
+
 The [`verse` runtime](../../../crates/verse/src/runtime.rs) composes the application.
 [`verse-pbr`](../../../crates/verse-pbr/src/imported/mod.rs) owns the generic
 skeletal renderer, admitted frames, materials, shadows, lighting, and GPU
@@ -114,17 +121,18 @@ rules, life-fenced respawns, serialized events, and replayable checkpoints.
 Native rendering reads its snapshots and cinematic projection; the broad Verse
 app removed the independent Ruins zone on 2026-10-05; chamber rules no longer
 called it.
-This local authority is not an authenticated multiplayer or transactional save
-service. The imported fixture retains rectangular movement
-bounds; the original scene uses shared authored box solids with continuous
-sweeps and wall sliding for player movement and teleports. Retained collision
-has an unimplemented capsule-versus-OBB path. The existing multiplayer plaza
-presence is distinct from authoritative combat. The researched
+The optional `verse-world` service features now implement authenticated TLS and
+REACH transport, duplex clients, spatial replication, prediction, and ordered
+transactional saves. Realm services add independent instances, account/character
+lifecycle, and atomic transfer. The original scene uses the owned capsule/query
+and navigation contracts; a retained vendor collision stub does not describe
+that implementation. NIP-MV plaza presence remains separate from authoritative
+combat. The researched
 [#10406 plan](https://github.com/OpenAgentsInc/openagents/issues/10406#issuecomment-5973821300)
-remains the world-service workstream. Original content in
-[#10407](https://github.com/OpenAgentsInc/openagents/issues/10407) starts early
-through a local implementation of the same authority interface, then connects
-to the headless service.
+and original-content work in
+[#10407](https://github.com/OpenAgentsInc/openagents/issues/10407) retain their
+historical delivery context. Current acceptance and production limits are in
+the [status guide](../status.md).
 
 ## Module boundaries
 

@@ -1,5 +1,10 @@
 # Authoritative chamber clients
 
+The [current capability table](status.md) covers the engine and world services.
+The generated [runtime contract](runtime-contract.json) records current wire
+and rules versions and declared client features. Historical receipt versions
+identify their measured source rather than current protocol compatibility.
+
 The chamber mounts one `verse-world` client, worker, prediction view, and
 `verse-imported::chamber_session::Session`. Grid relay presence and the offline
 Everglade and Grove are separate modes. A reachable host grant and an enrolled

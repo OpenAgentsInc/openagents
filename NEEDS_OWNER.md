@@ -404,9 +404,11 @@ openagents.com was not redeployed. To finish:
 
 ## Upgrade Verse hosts and clients together after V18 (#10637)
 
-Wire version 29 adds applied movement confirmations to owned response controls.
-Deploy matching builds of `verse-host` and each native chamber client before
-using this protocol on a real host. The V18 capacity checks use scratch TLS
+The V18 wire-29 milestone adds applied movement confirmations to owned response
+controls. Subsequent game services and safety advance the current wire version;
+see the [generated runtime contract](docs/verse/runtime-contract.json). Deploy
+matching current builds of `verse-host` and each chamber client before using
+this protocol on a real host. The V18 capacity checks use scratch TLS
 hosts and offscreen rendering; they do not deploy or exercise owner devices.
 
 ## Review the first retail cloud contract (#10704)

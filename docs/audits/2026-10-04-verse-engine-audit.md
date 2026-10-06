@@ -6,7 +6,9 @@ Scope: engine systems, Verse worlds, authoritative gameplay, multiplayer,
 durability, content production, and desktop, mobile, and browser integration.
 Upstream crowd-recovery evidence is refreshed through
 [`148d2b6bcd`](https://github.com/OpenAgentsInc/openagents/commit/148d2b6bcd);
-remediation status identifies subsequent issue work.
+remediation status identifies subsequent issue work. All 28 recommendations have
+sequential remediation records through October 6, 2026; implemented capability
+and platform limits are indexed in the [current status guide](../verse/status.md).
 
 ## Assessment
 
@@ -16,47 +18,29 @@ control fencing, authenticated TLS transport, restart-safe character mutations,
 validated assets, layered animation, continuous character queries, and a custom
 GPU renderer. These are substantial implemented systems.
 
-The audited code does not yet establish a AAA MMORPG engine. The largest gaps
-are persistent service lifetime, movement quality under latency, replication
-scale, unified world authority, content authoring, and operating a persistent
-population. Rendering quality also needs measured budgets and a consistent
-platform contract. The first priority is to make a durable multiplayer slice
-reliable; adding visual features alone cannot establish MMORPG readiness.
+The October 4 baseline exposed gaps in persistent service lifetime, latency,
+replication, world authority, content production, and operating a population.
+The subsequent V01–V28 work addresses those recommendations through bounded
+implementations and targeted acceptance. It does not establish AAA MMORPG
+production qualification. The [current capability table](../verse/status.md)
+links implemented paths, supported platforms, measured profiles, and remaining
+limits without treating every historical gap as current work.
 
-The reward-history lifetime blocker (V01) is resolved in
-[#10573](https://github.com/OpenAgentsInc/openagents/issues/10573). V02 remediation
-in [#10574](https://github.com/OpenAgentsInc/openagents/issues/10574) adds ordered
-background storage and bounded backpressure. V03 remediation in
-[#10575](https://github.com/OpenAgentsInc/openagents/issues/10575) adds reviewed
-offline migration, retained backups, and guarded rollback. V04 remediation in
-[#10580](https://github.com/OpenAgentsInc/openagents/issues/10580) establishes a
-bounded deterministic delayed-movement profile. V05 remediation in
-[#10591](https://github.com/OpenAgentsInc/openagents/issues/10591) adds conservative
-spatial relevance, acknowledged deltas, and bounded snapshot scheduling. V06
-remediation in [#10593](https://github.com/OpenAgentsInc/openagents/issues/10593)
-adds independent instances, exclusive leases, and atomic character transfer. V07
-remediation in [#10596](https://github.com/OpenAgentsInc/openagents/issues/10596)
-adds explicit hosted social profiles and a shared native projection. V08
-remediation in [#10602](https://github.com/OpenAgentsInc/openagents/issues/10602)
-adds transport admission partitions and shared request budgets. V09 remediation
-in [#10603](https://github.com/OpenAgentsInc/openagents/issues/10603) adds stable
-accounts, durable logout and selection, key replacement, and reward participation.
-V18 remediation in [#10637](https://github.com/OpenAgentsInc/openagents/issues/10637)
-contains recoverable crowd movement and passes a declared durable 20-player/
-40-hostile profile, including three combined repeats and a ten-minute soak.
-Historical failed battles remain retained. The accepted profile uses one native
-renderer and nineteen headless clients on one machine. V20 remediation in
-[#10736](https://github.com/OpenAgentsInc/openagents/issues/10736) adds a validated
-content workbench, undoable edits, authority previews, and sealed playable
-generations. V21 remediation in
-[#10737](https://github.com/OpenAgentsInc/openagents/issues/10737) adds admitted
-locomotion, terrain contacts, aim, crowd sampling, and character diagnostics.
-V22 remediation in [#10738](https://github.com/OpenAgentsInc/openagents/issues/10738)
-adds shared shading semantics, contribution-ranked physical lamps, and tiered
-lighting references. V23 remediation in [#10739](https://github.com/OpenAgentsInc/openagents/issues/10739)
-adds admitted audio banks, streaming, priorities, captions, and native lifecycle
-handling with controlled callback evidence. Broader art, coordinated operations, device, and population
-readiness remains open in V24–V28.
+V18 passes a declared durable 20-player/40-hostile campaign, including three
+combined repeats and a ten-minute soak. Its accepted profile uses one native
+renderer and nineteen headless clients on one machine. Historical failed
+battles and a later failed blocked-write soak remain retained with their source
+and failure scope. Later correctness checks do not repeat that throughput
+campaign or establish uninterrupted operation on the latest revision.
+
+V24 adds shared authoritative clients with native loopback, Rust mobile-mount,
+and software-browser checks. V25 adds bounded durable game-service domains;
+V26 adds closed public-content publication and account safety; V27 adds input
+replay with an exact execution profile. V28 reconciles the guides and generates
+source-owned version and feature references. Physical device, larger population,
+fleet, art, and operating qualification remain explicit limits rather than open
+recommendation issues. [Owner checks](../../NEEDS_OWNER.md) retain device and
+deployment steps without holding code-complete issues open.
 
 The [engine roadmap](../verse/engine/roadmap.md) already names a battle with
 about 20 authenticated players and 40 active NPCs. That milestone now has a bounded accepted profile. Neither a 64-player admission limit nor a video with two
@@ -80,7 +64,7 @@ the source baseline. In particular, the delayed-network runs disable durable
 storage, share one GPU between three clients, and delay TCP chunks rather than
 simulate packet loss. Their CPU submission timings are not GPU execution times.
 
-The review covers the following code surfaces. Counts include inline tests and
+The original baseline review covers the following code surfaces. Counts include inline tests and
 count Rust files under each crate's `src/`; they exclude examples and vendored
 code. Counts describe scope, not coverage or quality.
 
@@ -139,6 +123,10 @@ required for broader AAA content, platforms, or MMO features after that slice.
 These priorities describe the requested destination, not an assertion that an
 existing production deployment is failing.
 
+The finding column retains baseline problems or the section's updated measured
+result. The status column records completed remediation, with its declared scope
+and remaining limits in the corresponding section.
+
 Evidence labels:
 
 - **Code:** behavior follows from the inspected implementation.
@@ -176,7 +164,7 @@ Evidence labels:
 | V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | Addressed [#10743](https://github.com/OpenAgentsInc/openagents/issues/10743) |
 | V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access | Addressed ([#10744](https://github.com/OpenAgentsInc/openagents/issues/10744)) |
 | V27 | P1 | Replay evidence needs explicit revision/platform guarantees. | Code, gap | Simulation and replay | Addressed ([#10746](https://github.com/OpenAgentsInc/openagents/issues/10746)) |
-| V28 | P1 | Status documentation trails the implementation. | Code | Runtime documentation | Open |
+| V28 | P1 | Current capabilities, versions, and historical evidence have distinct references. | Code | Runtime documentation | Addressed ([#10747](https://github.com/OpenAgentsInc/openagents/issues/10747)) |
 
 ## Persistence, authority, and multiplayer
 
@@ -1428,18 +1416,23 @@ obsolete-executable cleanup are retained separately.
 This establishes the declared single-machine profile. It does not establish
 twenty renderers, minimum-device performance, physical input-to-display latency,
 default authored combat balance, quest-giver/loot progression, browser/phone
-parity, larger realms, or multi-host operations. Matching wire-29 host/client
-deployment remains an owner step in `NEEDS_OWNER.md`. V19, V24, V25, and V27
-address the remaining operational, platform, MMO, and acceptance scope.
+parity, larger realms, or multi-host operations. Matching current host/client
+builds remains an owner step in `NEEDS_OWNER.md`; wire 29 identifies the measured
+V18 milestone, while the [generated contract](../verse/runtime-contract.json)
+records the current version. V19, V24, V25, and V27 address their respective
+operational, platform, game-service, and replay recommendations with separate
+acceptance profiles.
 
 A later [blocked-write soak](../../bench/verse/2026-10-05/battle-scale-blocked-write/soak-run.json)
 against an updated transport fails journal append/sync after 3,700 workload
 ticks and records eighteen movement expiries. The shared disk was observed at
 1.7 MiB free; exhaustion is a likely cause, not a proven errno attribution.
 Late flat memory after authority shutdown does not establish healthy sustained
-operation. The earlier accepted revision remains historical evidence; V28 must
-retain a healthy latest-revision rerun and resolve its movement expiries before
-claiming uninterrupted operation for that profile.
+operation. The accepted campaign remains evidence of its pinned revision.
+V28 records this qualification limit in the current status guide. A healthy
+latest-revision rerun must resolve and measure its movement expiries before
+claiming uninterrupted operation for that newer profile; this documentation
+remediation makes no such claim.
 
 ### V19: Live chamber diagnostics and verified recovery
 
@@ -1568,7 +1561,8 @@ algorithms, rig importers, and shaders still need engine work. Archives use
 RGBA8; compressed GPU cook targets are not implemented. The fixture proves
 content admission and recovery, not art quality, author productivity, device
 frame time, or production-scale asset builds. V21 owns locomotion and character
-authoring; V22–V28 retain their respective readiness scope.
+authoring. Later remediations retain their own profiles in the current status
+guide; these editor checks do not qualify broader production readiness.
 
 ### V21: Animation foundations need a production character workflow
 
@@ -1652,7 +1646,8 @@ admission do not establish arbitrary skeleton retargeting or facial animation.
 Root motion is explicitly in place; gameplay root motion requires a future
 authority contract. The retained behavior profiles and sampling counters do
 not establish physical-device frame time, cross-build floating-point identity,
-or production character art quality. V22–V28 retain their respective scope.
+or production character art quality. Subsequent remediations have separate
+acceptance profiles and preserve those qualification limits.
 
 ### V22: Lighting needs one tested art and device contract
 
@@ -1714,8 +1709,8 @@ The references use procedural geometry under the named lighting profiles,
 rather than complete forest or station content. Full-zone art review,
 traversal/adaptation comparisons, phone/browser measurements, and production
 frame-time targets remain broader acceptance work. No physical-device FPS or
-full-zone shadow-cost claim follows from these captures. V24 and V28 retain
-platform and readiness-reporting scope.
+full-zone shadow-cost claim follows from these captures. V24 records platform
+acceptance and V28 indexes current readiness limits.
 
 ### V23: Audio needs a content and lifecycle layer
 
@@ -2002,25 +1997,46 @@ durability records. Presentation trajectories and client prediction histories
 remain separate formats. Full-state diagnostic segments are not an unbounded
 production event log or a raid-throughput result.
 
-### V28: Documentation can misdirect implementation priorities
+### V28: Current runtime status and generated contract references
 
-[`verse-world/README.md`](../../crates/verse-world/README.md) retains earlier
-paragraphs saying persistence, native service mounting, duplex behavior, or
-prediction remain, alongside later implementation updates.
-[`networking.md`](../verse/networking.md) names wire version 14; current
-[`wire::VERSION`](../../crates/verse-world/src/service/wire.rs) is 21. Historical
-milestone entries are useful evidence, but readers need a current status distinct
-from that history.
+**Status:** Addressed in [#10747](https://github.com/OpenAgentsInc/openagents/issues/10747).
 
-**Improve:** Add a compact capability/status table owned by current runtime
-guides. Link historical implementation receipts instead of accumulating
-contradictory status paragraphs. Generate version and feature references where
-practical; keep proposed networking convergence clearly labeled.
+**Original finding:** Runtime guides retained earlier statements that persistence,
+native service mounting, duplex behavior, and prediction were unimplemented.
+The networking guide named wire 14 while the audited baseline had wire 21.
+Later milestone paragraphs did not consistently distinguish historical scope
+from current gaps.
 
-**Acceptance:** Every advertised capability identifies the implemented path,
-supported platform, measured acceptance, and remaining limitation. An engineer
-can distinguish a current gap from a dated receipt without reconstructing issue
-history.
+**Implementation:** The [current capability table](../verse/status.md) identifies
+implemented paths, platforms, measured acceptance, and remaining limits across
+authority, transport, saves, realms, rendering, physics, tools, game services,
+publication, safety, and replay. Runtime and client guides link it directly.
+The architecture and roadmap distinguish proposed direction and dated issue
+records from implemented paths. The networking guide describes TLS and REACH,
+duplex/delta clients, browser WebSocket support, host directory `worlds`, and
+hosted social profiles; public NIP-MV instance advertisements and future mirrors
+remain explicitly proposed. The world README removes superseded gap statements
+and labels milestone version numbers as historical introductions.
+
+The generated [runtime contract](../verse/runtime-contract.json) records wire 31,
+save writer 12, character schema 4, rules v24, social profile 1, replay and public
+release schemas, the pinned compiler, and Cargo feature/dependency declarations
+for six owning crates. Every value identifies its source.
+[`scripts/verse-runtime-contract.py`](../../scripts/verse-runtime-contract.py)
+generates it from Rust and Cargo sources; `--check` refuses missing or stale
+output. Ambiguous source patterns fail instead of silently selecting a value.
+The reference describes declarations, not resolved executable features or
+compatibility permission.
+
+**Acceptance and limits:** Manual generation, stale/missing-output refusal,
+ambiguous-source refusal, local link and anchor checks, version/feature source
+checks, and prose whitespace checks pass. This is documentation and reference
+tooling; no Rust behavior or benchmark acceptance changes. V18's pinned accepted
+campaign, historical failed battles, and later blocked-write failure retain
+distinct labels. Later correctness receipts do not refresh throughput. Physical
+device checks remain in `NEEDS_OWNER.md`; larger population, fleet, operating
+cost, and latest-revision uninterrupted battle qualification remain explicit.
+No transcripts, notices, or retained measurement artifacts are removed.
 
 ## Delivery order and proposed acceptance
 
