@@ -111,20 +111,7 @@ impl Hud {
                 label: c.label.clone(),
                 action: c.action,
                 enabled: visible && c.enabled,
-                cooldown: zone
-                    .combat
-                    .as_ref()
-                    .and_then(|combat| {
-                        combat.abilities.iter().find(|a| {
-                            matches!(
-                                (a.id, c.action),
-                                (verse_ruins::Spell::Firebolt, Intent::Firebolt)
-                                    | (verse_ruins::Spell::MagicMissile, Intent::MagicMissile)
-                                    | (verse_ruins::Spell::Fireball, Intent::Fireball)
-                            )
-                        })
-                    })
-                    .map_or(0.0, |a| a.cooldown_remaining),
+                cooldown: 0.0,
                 frame: [
                     x + 6.0 + (i % per_row) as f32 * (width - 12.0) / count,
                     y + caption_height + 8.0 + (i / per_row) as f32 * 50.0,

@@ -65,46 +65,8 @@ struct VerseTestZone: Decodable {
     let progress: Double
     let error: String?
     let caption: String
-    let combat: VerseTestCombat?
     let portal: VerseTestZonePortal
     let hud: VerseTestZoneHud
-}
-struct VerseTestCombat: Decodable {
-    let elapsed: Double
-    let player: VerseTestPlayer
-    let abilities: [VerseTestAbility]
-    let actors: [VerseTestActor]
-    let projectiles: [VerseTestProjectile]
-    let counters: VerseTestCombatCounters
-}
-struct VerseTestPlayer: Decodable {
-    let hp: Int32
-    let max_hp: Int32
-    let mana: Int32
-    let max_mana: Int32
-}
-struct VerseTestAbility: Decodable {
-    let id: String
-    let ready: Bool
-    let cooldown_remaining: Double
-}
-struct VerseTestActor: Decodable {
-    let id: UInt32
-    let kind: String
-    let faction: String
-    let pos: [Double]
-    let hp: Int32
-    let alive: Bool
-}
-struct VerseTestProjectile: Decodable {
-    let id: UInt32
-    let kind: String
-    let pos: [Double]
-}
-struct VerseTestCombatCounters: Decodable {
-    let casts: UInt64
-    let projectiles: UInt64
-    let hits: UInt64
 }
 struct VerseTestZonePortal: Decodable {
     let near: Bool

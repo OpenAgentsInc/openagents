@@ -1566,20 +1566,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "client_core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "data_runtime",
- "ecs_core",
- "glam",
- "log",
- "net_core",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "cmake"
 version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1807,15 +1793,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "collision_static"
-version = "0.1.0"
-dependencies = [
- "glam",
- "smallvec",
- "voxel_proxy",
-]
-
-[[package]]
 name = "combine"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1934,17 +1911,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f8f80099a98041a3d1622845c271458a2d73e688351bf3cb999266764b81d48"
 
 [[package]]
-name = "core_materials"
-version = "0.1.0"
-dependencies = [
- "core_units",
-]
-
-[[package]]
-name = "core_units"
-version = "0.1.0"
-
-[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1991,21 +1957,6 @@ name = "critical-section"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
-
-[[package]]
-name = "crossbeam-channel"
-version = "0.5.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98b0cc327b5bc766e7fda9c9260cc0fa81b43a8e240440422dff70788e3f9ef1"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "crunchy"
@@ -2237,18 +2188,6 @@ name = "data-url"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
-
-[[package]]
-name = "data_runtime"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "log",
- "serde",
- "serde_json",
- "serde_yaml",
- "toml",
-]
 
 [[package]]
 name = "debugless-unwrap"
@@ -2512,17 +2451,6 @@ dependencies = [
  "serdect 0.2.0",
  "signature 2.2.0",
  "spki 0.7.3",
-]
-
-[[package]]
-name = "ecs_core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "core_materials",
- "glam",
- "serde",
- "voxel_proxy",
 ]
 
 [[package]]
@@ -4701,16 +4629,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "metrics"
-version = "0.24.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89550ee9f79e88fef3119de263694973a8adb26c21d75322164fb8c493039fe2"
-dependencies = [
- "portable-atomic",
- "rapidhash",
-]
-
-[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4918,15 +4836,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
-]
-
-[[package]]
-name = "net_core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossbeam-channel",
- "metrics",
 ]
 
 [[package]]
@@ -7207,19 +7116,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_yaml"
-version = "0.9.34+deprecated"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
-dependencies = [
- "indexmap 2.14.2",
- "itoa",
- "ryu",
- "serde",
- "unsafe-libyaml",
-]
-
-[[package]]
 name = "serdect"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7237,26 +7133,6 @@ checksum = "66cf8fedced2fcf12406bcb34223dffb92eaf34908ede12fed414c82b7f00b3e"
 dependencies = [
  "base16ct 1.0.0",
  "serde",
-]
-
-[[package]]
-name = "server_core"
-version = "0.1.0"
-dependencies = [
- "collision_static",
- "core_materials",
- "core_units",
- "data_runtime",
- "ecs_core",
- "glam",
- "log",
- "metrics",
- "net_core",
- "rand 0.9.5",
- "tracing",
- "voxel_mesh",
- "voxel_proxy",
- "web-time",
 ]
 
 [[package]]
@@ -9045,12 +8921,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "unsafe-libyaml"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
-
-[[package]]
 name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9188,14 +9058,12 @@ dependencies = [
  "verse-lagrange",
  "verse-net",
  "verse-pbr",
- "verse-ruins",
  "verse-world",
  "verse-zone-crypt",
  "verse-zone-everglade",
  "verse-zone-grove",
  "verse-zone-lab",
  "verse-zone-lagrange",
- "verse-zone-ruins",
  "web-time",
  "webpki-roots 1.0.9",
  "wgpu",
@@ -9359,17 +9227,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "verse-ruins"
-version = "0.1.0"
-dependencies = [
- "client_core",
- "glam",
- "serde",
- "serde_json",
- "server_core",
-]
-
-[[package]]
 name = "verse-world"
 version = "0.1.0"
 dependencies = [
@@ -9468,20 +9325,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "verse-zone-ruins"
-version = "0.1.0"
-dependencies = [
- "glam",
- "libc",
- "reqwest 0.12.28",
- "sha2 0.10.9",
- "verse-core",
- "verse-pbr",
- "verse-ruins",
- "verse-world",
-]
-
-[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9496,23 +9339,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "voxel_mesh"
-version = "0.1.0"
-dependencies = [
- "glam",
- "voxel_proxy",
-]
-
-[[package]]
-name = "voxel_proxy"
-version = "0.1.0"
-dependencies = [
- "core_materials",
- "core_units",
- "glam",
 ]
 
 [[package]]

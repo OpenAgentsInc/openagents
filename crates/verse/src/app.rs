@@ -3246,7 +3246,7 @@ impl App {
         };
         let wall_dt = dt;
 
-        // Suspend the plaza before a completed download can install a ruins pose.
+        // Suspend the plaza before a completed download can install a zone pose.
         self.sync_zone_services(true);
         self.tick_ritual();
         self.runtime.zone_tick();
@@ -4497,7 +4497,7 @@ mod tests {
 
     fn offline_app() -> App {
         App::new(&Options {
-            profile: format!("ruins-test-{}", std::process::id()),
+            profile: format!("zone-test-offline-{}", std::process::id()),
             relay: None,
             ..Options::default()
         })
@@ -4586,21 +4586,26 @@ mod tests {
         assert!(!app.terminal_key(&key(KeyCode::KeyW, "w")));
     }
 
-    fn ruins_pack() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp")
+    /// The committed, pinned Everglade pack's file name and path.
+    fn everglade_pack() -> (String, std::path::PathBuf) {
+        use zones::everglade_pack::{PACK_DIRECTORY, PACK_EXTENSION, PACK_SHA256};
+        let name = format!("{PACK_SHA256}.{PACK_EXTENSION}");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(PACK_DIRECTORY)
+            .join(&name);
+        (name, path)
     }
 
     #[test]
-    fn ruins_desktop_gates_plaza_services_and_returns_to_the_same_pose() {
+    fn zone_desktop_gates_plaza_services_and_returns_to_the_same_pose() {
         let mut app = offline_app();
         let plaza = app.runtime.player;
-        app.runtime
-            .install_ruins(zones::assets::LoadedAssets::load_local(&ruins_pack()).unwrap());
+        app.runtime.install_lagrange();
         app.sync_zone_services(true);
         assert!(app.plaza_services_paused);
         assert!(app.session.is_none() && app.feed.is_none() && app.xp.is_none());
-        app.open_chat("ruins text");
+        app.open_chat("zone text");
         app.ask_agent("must not reach a model");
         app.open_picker();
         app.update_gym(true);
@@ -4693,13 +4698,16 @@ mod tests {
             crate::identity::random_hex(8)
         ));
         std::fs::create_dir_all(&cache).unwrap();
-        std::fs::copy(
-            ruins_pack(),
-            cache.join(format!("{}.vzp", zones::assets::PACK_SHA256)),
-        )
-        .unwrap();
+        let (name, pack) = everglade_pack();
+        std::fs::copy(pack, cache.join(name)).unwrap();
         app.runtime.configure_zone_cache(cache.clone());
-        app.runtime.player.pos = zones::ZoneId::Plaza.portal() + Vec3::new(0.0, 0.0, -3.0);
+        let everglade = zones::ZoneId::Plaza
+            .portals()
+            .into_iter()
+            .find(|&(zone, _)| zone == zones::ZoneId::Everglade)
+            .unwrap()
+            .1;
+        app.runtime.player.pos = everglade + Vec3::new(0.0, 0.0, -3.0);
         app.zone_action(ZoneIntent::Enter);
         assert!(app.runtime.zone_loading() && app.plaza_services_paused);
         assert!(!app.map_visible());

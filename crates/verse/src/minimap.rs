@@ -18,7 +18,7 @@ pub struct Landmark {
     pub z: f32,
 }
 
-pub const LANDMARKS: [Landmark; 12] = [
+pub const LANDMARKS: [Landmark; 11] = [
     Landmark {
         id: "computer",
         label: "Computer",
@@ -66,12 +66,6 @@ pub const LANDMARKS: [Landmark; 12] = [
         label: "Halo door",
         x: 12.0,
         z: -9.0,
-    },
-    Landmark {
-        id: "ruins",
-        label: "Ruins portal",
-        x: -12.0,
-        z: 9.0,
     },
     Landmark {
         id: "lagrange1",
@@ -297,26 +291,6 @@ impl MapHud {
                     z: portal.z - 3.0,
                 }]
             }
-            crate::zones::ZoneId::Ruins => vec![
-                Landmark {
-                    id: "return",
-                    label: "Plaza portal",
-                    x: 0.0,
-                    z: 15.0,
-                },
-                Landmark {
-                    id: "glade",
-                    label: "Glade",
-                    x: 0.0,
-                    z: 2.0,
-                },
-                Landmark {
-                    id: "grove",
-                    label: "Grove",
-                    x: 18.0,
-                    z: 0.0,
-                },
-            ],
         };
         let expanded_extra = 76.0 + landmarks.len().div_ceil(3) as f32 * 28.0;
         let [top, right, bottom, left] = self.insets;

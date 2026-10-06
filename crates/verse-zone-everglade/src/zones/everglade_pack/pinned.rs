@@ -1,6 +1,6 @@
 //! A pinned file fetched over HTTPS and kept in a content-addressed cache.
 //!
-//! These are the Ruins loader's rules in a reusable form: HTTPS only, no
+//! The rules are reusable: HTTPS only, no
 //! redirects, an exact length and SHA-256, a bounded transfer, cancellation,
 //! and an atomic, verified cache install that never follows symbolic links.
 //! Cleanup removes only this file's named earlier revisions and its own

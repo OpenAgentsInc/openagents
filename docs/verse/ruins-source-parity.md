@@ -1,6 +1,10 @@
 # Wizard Woods source audit and parity
 
-The Verse zone that runs this game is named **Ruins** (world `ruins-v1`,
+> **Removed.** The Ruins zone, its `verse-ruins` and `verse-zone-ruins`
+> crates, and its pack were removed on 2026-10-05. This audit is retained as
+> history; links to the removed code resolve only in earlier revisions.
+
+The Verse zone that ran this game was named **Ruins** (world `ruins-v1`,
 crate `verse-ruins`). Earlier builds and records call it the Atlantis forest.
 
 Issue [#9730](https://github.com/OpenAgentsInc/openagents/issues/9730) replaces the

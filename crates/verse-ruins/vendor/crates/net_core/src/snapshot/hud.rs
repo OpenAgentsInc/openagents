@@ -1,1 +1,0 @@
-//! HUD snapshot schema (scaffold).

@@ -15,96 +15,6 @@ final class ZoneUITests: XCTestCase {
         waitFor { $0.frames > 0 && $0.map.visible }
     }
 
-    func testPortalLoadsRealtimeRuinsAndHotbarThenReturnsToPlaza() throws {
-        let initial = try observation()
-        XCTAssertEqual(initial.zone.id, "plaza")
-        XCTAssertEqual(initial.zone.state, "idle")
-        XCTAssertEqual(initial.zone.progress, 0)
-        waitFor { $0.frames > initial.frames + 12 }
-        XCTAssertEqual(try observation().zone.progress, 0, "Starting Verse does not load the ruins.")
-        try approachPortal()
-        let plaza = try observation()
-        XCTAssertTrue(plaza.zone.portal.near && plaza.zone.portal.visible)
-        surface.coordinate(withNormalizedOffset: CGVector(dx: plaza.zone.portal.screen_x,
-                                                          dy: plaza.zone.portal.screen_y)).tap()
-        waitFor(timeout: 45) { $0.zone.id == "ruins" && $0.zone.state == "idle" }
-        let ruins = try observation()
-        XCTAssertFalse(ruins.gym_active)
-        XCTAssertFalse(ruins.computer_ready)
-        XCTAssertFalse(ruins.doors.hud.visible)
-        XCTAssertFalse(ruins.map.landmarks.contains { $0.id == "gym" })
-        XCTAssertTrue(ruins.map.landmarks.contains { $0.id == "return" })
-        XCTAssertTrue(ruins.map.landmarks.allSatisfy { abs($0.x) <= ruins.map.half_extent && abs($0.z) <= ruins.map.half_extent })
-        XCTAssertNil(ruins.zone.error)
-        attach("Runtime-loaded Ruins")
-
-        let initialCombat = try XCTUnwrap(ruins.zone.combat)
-        XCTAssertEqual(Set(initialCombat.abilities.map(\.id)), Set(["firebolt", "magic_missile", "fireball"]))
-        XCTAssertFalse(ruins.zone.hud.buttons.contains { ["start_encounter", "cast", "end_turn", "reset_encounter"].contains($0.action) })
-        XCTAssertTrue(initialCombat.actors.contains { $0.kind == "zombie" })
-        XCTAssertTrue(initialCombat.actors.contains { $0.kind == "wizard" && $0.faction != "player" })
-        let positions = Dictionary(uniqueKeysWithValues: initialCombat.actors.filter { $0.faction != "player" }.map { ($0.id, $0.pos) })
-        waitFor { value in
-            guard let combat = value.zone.combat, combat.elapsed > initialCombat.elapsed + 0.5 else { return false }
-            return combat.actors.contains { actor in
-                guard let old = positions[actor.id] else { return false }
-                return hypot(actor.pos[0] - old[0], actor.pos[2] - old[2]) > 0.1
-            }
-        }
-
-        // Walking and casting share the Rust simulation. The route remains
-        // active while this test taps the rendered ability, with no turn gate.
-        try walkToLandmark("grove")
-        let beforeCast = try observation()
-        let beforeCombat = try XCTUnwrap(beforeCast.zone.combat)
-        XCTAssertGreaterThanOrEqual(beforeCombat.player.mana, 5)
-        var firedObservation: VerseTestObservation?
-        try tapAction("fireball")
-        waitFor(timeout: 4) { value in
-            guard let combat = value.zone.combat,
-                  let ability = combat.abilities.first(where: { $0.id == "fireball" }) else { return false }
-            let fired = combat.counters.casts > beforeCombat.counters.casts &&
-                combat.player.mana < beforeCombat.player.mana && ability.cooldown_remaining > 0 && !ability.ready
-            if fired { firedObservation = value }
-            return fired
-        }
-        let observedFireball = try XCTUnwrap(firedObservation)
-        let fired = try XCTUnwrap(observedFireball.zone.combat)
-        XCTAssertGreaterThan(fired.counters.projectiles, beforeCombat.counters.projectiles)
-        let fireball = try XCTUnwrap(fired.abilities.first { $0.id == "fireball" })
-        let receipt: [String: Any] = [
-            "before_frame": beforeCast.frames, "after_frame": observedFireball.frames,
-            "before_position": beforeCast.position, "after_position": observedFireball.position,
-            "before_mana": beforeCombat.player.mana, "after_mana": fired.player.mana,
-            "before_cast_requests": beforeCombat.counters.casts, "after_cast_requests": fired.counters.casts,
-            "before_all_projectiles": beforeCombat.counters.projectiles, "after_all_projectiles": fired.counters.projectiles,
-            "fireball_cooldown_seconds": fireball.cooldown_remaining, "fireball_ready": fireball.ready,
-        ]
-        let receiptData = try JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])
-        let receiptAttachment = XCTAttachment(data: receiptData, uniformTypeIdentifier: "public.json")
-        receiptAttachment.name = "Player Fireball input, mana, and cooldown receipt"
-        receiptAttachment.lifetime = .keepAlways
-        add(receiptAttachment)
-        attach("Fireball hotbar during cooldown")
-        waitFor { value in
-            hypot(value.position[0] - beforeCast.position[0], value.position[2] - beforeCast.position[2]) > 0.5
-        }
-        waitFor { value in
-            value.zone.combat?.abilities.first(where: { $0.id == "fireball" })?.ready == true
-        }
-        attach("Real-time ruins and GPU ability hotbar")
-        attachObservation("Real-time combat after Fireball")
-        try tapAction("return")
-        waitFor { $0.zone.id == "plaza" && $0.zone.state == "idle" }
-        let returned = try observation()
-        XCTAssertEqual(returned.position[0], plaza.position[0], accuracy: 0.1)
-        XCTAssertEqual(returned.position[2], plaza.position[2], accuracy: 0.1)
-        XCTAssertTrue(returned.map.landmarks.contains { $0.id == "gym" })
-        XCTAssertNil(returned.zone.combat)
-        XCTAssertFalse(app.staticTexts["verse-error"].exists)
-        attach("Returned to the amber plaza")
-    }
-
     func testLagrangePortalEntersStationFliesAndReturns() throws {
         try approachPortal("lagrange1")
         let plaza = try observation()
@@ -113,7 +23,6 @@ final class ZoneUITests: XCTestCase {
                                                           dy: plaza.zone.portal.screen_y)).tap()
         waitFor { $0.zone.id == "lagrange1" && $0.zone.state == "idle" }
         let station = try observation()
-        XCTAssertNil(station.zone.combat)
         XCTAssertFalse(station.gym_active)
         XCTAssertTrue(station.map.landmarks.contains { $0.id == "jig" })
         XCTAssertTrue(station.zone.hud.buttons.contains { $0.action == "grab" })
@@ -140,7 +49,6 @@ final class ZoneUITests: XCTestCase {
                                                           dy: plaza.zone.portal.screen_y)).tap()
         waitFor { $0.zone.id == "everglade" && $0.zone.state == "idle" }
         let glade = try observation()
-        XCTAssertNil(glade.zone.combat)
         XCTAssertFalse(glade.gym_active)
         XCTAssertTrue(glade.map.landmarks.contains { $0.id == "task_wall" })
         XCTAssertTrue(glade.zone.caption.hasPrefix("Everglade"))
@@ -152,7 +60,7 @@ final class ZoneUITests: XCTestCase {
         XCTAssertEqual(returned.position[2], plaza.position[2], accuracy: 0.1)
     }
 
-    func testRulesAndArtworkNoticesShipWithoutLoadingRuins() throws {
+    func testRulesAndArtworkNoticesShipWithoutLoadingAZone() throws {
         app.openWorldComputer()
         app.buttons["computer-settings"].tap()
         let about = app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@", "verse-about", "About Verse")).firstMatch
@@ -165,7 +73,7 @@ final class ZoneUITests: XCTestCase {
         let credits = app.staticTexts["verse-credits"]
         XCTAssertTrue(credits.waitForExistence(timeout: 10))
         let loaded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            credits.label.contains("Wizards of the Coast LLC") && credits.label.contains("Apache License")
+            credits.label.contains("Wizards of the Coast LLC")
         }, object: credits)
         XCTAssertEqual(XCTWaiter.wait(for: [loaded], timeout: 10), .completed)
         XCTAssertEqual(try observation().zone.id, "plaza")
@@ -173,7 +81,7 @@ final class ZoneUITests: XCTestCase {
         attach("Bundled Verse rules and artwork notices")
     }
 
-    private func approachPortal(_ id: String = "ruins") throws {
+    private func approachPortal(_ id: String) throws {
         let compact = try observation().map
         tap(compact.frame[0] + compact.frame[2] / 2, compact.frame[1] + 12)
         waitFor { $0.map.expanded }

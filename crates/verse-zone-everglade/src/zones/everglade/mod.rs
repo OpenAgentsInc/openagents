@@ -7,7 +7,7 @@
 //! (`layout`), drawn as textured,
 //! alpha-tested cells on a lit stage, with the Task Wall, the desk
 //! monitors, and the atrium's goal board drawn by Verse (`boards`, from
-//! [`signals`]). The pack loads on portal entry, as the Ruins pack does.
+//! [`signals`]). The pack loads on portal entry.
 //! The studio's stations have fixed standing points in [`STATIONS`]; the
 //! Agent Studio's seats walk between them and the stations open its panels
 //! ([`studio`]). The player walks the shared plaza controller over the

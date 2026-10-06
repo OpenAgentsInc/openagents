@@ -10,11 +10,10 @@
 //! - The plaza, the Grid, and the Physics Lab: the world's blockers, each
 //!   up to the top of the geometry standing on it (the Gym's walls are
 //!   low), over flat ground.
-//! - Ruins: its terrain.
 //! - Lagrange 1: nothing; the player flies free.
 
 use glam::Vec3;
-use verse_world::social::sight::{Footprints, Ground, Open, Sight};
+use verse_world::social::sight::{Footprints, Open, Sight};
 
 use super::ZoneId;
 use crate::camera::{FOCUS_HEIGHT, Framing};
@@ -26,9 +25,6 @@ impl WorldRuntime {
     pub(crate) fn with_sight<R>(&self, f: impl FnOnce(&dyn Sight) -> R) -> R {
         match self.zone {
             ZoneId::Lagrange1 => f(&Open),
-            ZoneId::Ruins => f(&Ground(|x: f32, z: f32| {
-                verse_ruins::scene::Terrain::bundled().height(x, z)
-            })),
             _ => {
                 if let Some(everglade) = &self.zone_state.everglade {
                     return f(everglade.solids());

@@ -4106,70 +4106,34 @@ mod tests {
         })
         .unwrap()
     }
+    /// Where the plaza's arch to Everglade stands.
+    fn everglade_arch() -> [f32; 3] {
+        verse::zones::ZoneId::Plaza
+            .portals()
+            .into_iter()
+            .find(|&(zone, _)| zone == verse::zones::ZoneId::Everglade)
+            .unwrap()
+            .1
+            .to_array()
+    }
+
+    /// A plaza scene standing before Everglade's arch, with the committed,
+    /// pinned Everglade pack in its zone cache.
     fn cached_zone_scene() -> (Scene, tempfile::TempDir) {
+        use verse::zones::everglade_pack::{PACK_DIRECTORY, PACK_EXTENSION, PACK_SHA256};
         let cache = tempfile::tempdir().unwrap();
+        let name = format!("{PACK_SHA256}.{PACK_EXTENSION}");
         let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp");
-        std::fs::copy(
-            source,
-            cache
-                .path()
-                .join(format!("{}.vzp", verse::zones::assets::PACK_SHA256)),
-        )
-        .unwrap();
+            .join("../..")
+            .join(PACK_DIRECTORY)
+            .join(&name);
+        std::fs::copy(source, cache.path().join(name)).unwrap();
         let mut scene = scene();
         scene.world.configure_zone_cache(cache.path().to_owned());
         scene.activate(true).unwrap();
-        scene
-            .world
-            .set_spawn([-12.0, 0.0, 8.0].into(), 0.0)
-            .unwrap();
+        let [x, y, z] = everglade_arch();
+        scene.world.set_spawn([x, y, z - 4.0].into(), 0.0).unwrap();
         (scene, cache)
-    }
-
-    #[test]
-    fn ruins_hotbar_cast_keeps_a_held_movement_pointer() {
-        let (mut scene, _cache) = cached_zone_scene();
-        let pack = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp");
-        scene
-            .world
-            .install_ruins(verse::zones::assets::LoadedAssets::load_local(&pack).unwrap());
-        scene.reset_zone_inputs();
-        scene.update(1.0).unwrap();
-        scene.pointer(1, PointerPhase::Down, 60.0, 520.0).unwrap();
-        scene.pointer(1, PointerPhase::Move, 60.0, 470.0).unwrap();
-        scene.update(1.05).unwrap();
-        let before = scene.world.player.pos;
-        let before_mana = scene.zone_snapshot().combat.unwrap().player.mana;
-        let hud = scene.zone_hud_snapshot();
-        let fireball = hud.buttons.iter().find(|b| b.id == "fireball").unwrap();
-        assert!(fireball.enabled);
-        let [x, y, w, h] = fireball.frame;
-        scene
-            .pointer(2, PointerPhase::Down, x + w / 2.0, y + h / 2.0)
-            .unwrap();
-        scene
-            .pointer(2, PointerPhase::Up, x + w / 2.0, y + h / 2.0)
-            .unwrap();
-        assert!(scene.touches.contains_key(&1));
-        scene.update(1.10).unwrap();
-        let after = scene.zone_snapshot().combat.unwrap();
-        assert!(scene.world.player.pos.distance(before) > 0.1);
-        assert_eq!(after.counters.casts, 1);
-        assert!(after.player.mana < before_mana);
-        assert!(
-            after
-                .abilities
-                .iter()
-                .find(|a| serde_json::to_value(a.id).unwrap() == "fireball")
-                .unwrap()
-                .cooldown_remaining
-                > 0.0
-        );
-        scene.pointer(1, PointerPhase::Up, 60.0, 470.0).unwrap();
-        assert!(scene.touches.is_empty());
-        assert!(serde_json::to_vec(&scene.packet()).unwrap().len() < 64 * 1024);
     }
 
     #[test]
@@ -4195,10 +4159,10 @@ mod tests {
     }
 
     #[test]
-    fn zone_transition_clears_input_and_keeps_plaza_identity_out_of_ruins() {
+    fn zone_transition_clears_input_and_keeps_plaza_identity_out_of_the_zone() {
         let (mut scene, _cache) = cached_zone_scene();
         // A local socket keeps this an offline test while exercising a real
-        // Session owner that must be dropped before any ruins simulation.
+        // Session owner that must be dropped before any zone simulation.
         let relay_socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let relay = format!("wss://{}", relay_socket.local_addr().unwrap());
         scene.synthetic = false;
@@ -4222,7 +4186,7 @@ mod tests {
         assert!(!scene.jump && !scene.sprint && scene.touches.is_empty());
         assert!(!scene.motion_needed());
         assert!(!scene.packet().gym_active);
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + Duration::from_secs(180);
         let mut clock = 1.0;
         while scene.world.zone_loading() && Instant::now() < deadline {
             scene.update(clock).unwrap();
@@ -4231,14 +4195,17 @@ mod tests {
         }
         assert_eq!(
             scene.world.zone,
-            verse::zones::ZoneId::Ruins,
+            verse::zones::ZoneId::Everglade,
             "{:?}",
             scene.world.zone_snapshot(scene.aspect()).error
         );
-        // Ruins has its own shared presence world; the plaza's world stays
-        // behind the arch.
-        let session = scene.session.as_ref().expect("a Ruins presence session");
-        assert_eq!(session.world(), verse::zones::ZoneId::Ruins.world_id());
+        // Everglade has its own shared presence world; the plaza's world
+        // stays behind the arch.
+        let session = scene
+            .session
+            .as_ref()
+            .expect("an Everglade presence session");
+        assert_eq!(session.world(), verse::zones::ZoneId::Everglade.world_id());
         assert_ne!(session.world(), verse::session::WORLD);
         assert!(!scene.packet().gym_active);
         assert!(!scene.packet().computer.near);
@@ -4289,7 +4256,13 @@ mod tests {
         assert!(portal.near && portal.visible);
         let size = scene.lifecycle.viewport().logical_size();
         let point = [portal.screen_x * size[0], portal.screen_y * size[1]];
-        let anchor = verse::zones::ZoneId::Plaza.portal().with_y(2.5);
+        let anchor = verse::zones::ZoneId::Plaza
+            .portals()
+            .into_iter()
+            .find(|&(zone, _)| zone == verse::zones::ZoneId::Everglade)
+            .unwrap()
+            .1
+            .with_y(2.5);
         let obstruction = scene.world.view(scene.aspect()).eye.lerp(anchor, 0.8);
         let right = anchor.with_x(0.4).with_y(0.0).with_z(0.0);
         let up = anchor.with_x(0.0).with_y(0.5).with_z(0.0);

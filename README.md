@@ -153,7 +153,7 @@ with shared authority over an encrypted direct channel.
 | **Everglade** | A small town in a forest glade, grown toward [its city map](docs/verse/everglade-map.png): the workshop where your [Agent Studio](docs/verse/agent-studio.md) team works, plus a commons, Main Street, Makers' Hall, a library, homes, and woods. Levitate, Wind Wall, Wall of Stone, Feather Fall, and Reverse Gravity are on the hotbar. | `verse --everglade`, or [openagents.com/everglade](https://openagents.com/everglade) |
 | **The Grove** | A druid's training field with dummies to test spells on. | `verse --grove`, or `?zone=grove` on the web |
 | **The demolition yard** | Knock down cottages with a sledgehammer; walls crack, break into chunks, and roofs collapse. | `verse --demolition` |
-| **Ruins, Lagrange 1, Physics Lab** | Real-time combat in the Wizard Woods, an EVA construction station at the Sun–Earth L1 point, and live physics mechanisms. | Portals on the Grid |
+| **Lagrange 1, Physics Lab** | An EVA construction station at the Sun–Earth L1 point and live physics mechanisms. | Portals on the Grid |
 
 ### The workshop
 
@@ -427,7 +427,7 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 | [`crates/nostr`](crates/nostr/), [`crates/nostr-relay`](crates/nostr-relay/), [`crates/nostr-transport`](crates/nostr-transport/) | Nostr primitives, our relay, and authenticated transport. |
 | [`crates/push-gateway`](crates/push-gateway/) | The NIP-PL push gateway for APNs and FCM. |
 | [`crates/wallet`](crates/wallet/), [`crates/x402`](crates/x402/), [`crates/bitcoin-amount`](crates/bitcoin-amount/) | Lightning wallet, x402 over HTTP, and BIP 177 amounts. |
-| [`crates/verse`](crates/verse/), [`crates/verse-lagrange`](crates/verse-lagrange/README.md), [`crates/verse-ruins`](crates/verse-ruins/README.md), [`crates/physics`](crates/physics/) | The Verse world, its zones, and rigid-body physics. |
+| [`crates/verse`](crates/verse/), [`crates/verse-lagrange`](crates/verse-lagrange/README.md), [`crates/physics`](crates/physics/) | The Verse world, its zones, and rigid-body physics. |
 | [`crates/voyager`](crates/voyager/), [`mc-bridge`](mc-bridge/) | Minecraft agent episodes. |
 | [`crates/rust-native`](crates/rust-native/README.md) | Shared semantic views and native-renderer contracts. |
 

@@ -172,12 +172,12 @@ its own fields or exact, reviewed host profile IDs:
   authority. Pose frames alone do not authorize combat, editing, ownership,
   inventory transfer, or results accepted by another participant.
 
-The current Verse `verse.zone.v1` schema is intentionally narrower than a
-general authoring format. It has exactly `schema`, `world`, `ruleset`,
-`physics`, `asset_sha256`, and `asset_bytes`. The host admits one reviewed Ruins
-world, the original `ruins.wizard-woods.v1` real-time simulation, `ruins.heightfield.v1` terrain, and
-one pinned asset pack. Its palette, bounds, and arrivals are compiled host
-values. Its local world name is not a published `33300` address, so this local
+Verse's earlier `verse.zone.v1` schema was intentionally narrower than a
+general authoring format. It had exactly `schema`, `world`, `ruleset`,
+`physics`, `asset_sha256`, and `asset_bytes`. It admitted one reviewed Ruins
+world, which Verse removed on 2026-10-05; no current zone uses the schema.
+Zone palettes, bounds, and arrivals are compiled host values. A local world
+name is not a published `33300` address, so this local
 catalog does not yet satisfy signed scene admission. A future authoring schema
 needs its own version and validation; adding fields to a permissive JSON blob
 does not implement this profile.

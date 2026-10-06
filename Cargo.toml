@@ -1,22 +1,11 @@
 [workspace]
 members = [
     "crates/coderbench","crates/*"]
-# Retained Ruins of Atlantis source is third-party code, not first-party workspace policy.
 exclude = [
     # Its own workspace, for Breez's SQLite; see its Cargo.toml.
     "crates/openagents-mobile",
     # Vendored third-party workspaces, patched in by path; see each one.
     "vendor",
-    "crates/verse-ruins/vendor/crates/client_core",
-    "crates/verse-ruins/vendor/crates/collision_static",
-    "crates/verse-ruins/vendor/crates/core_materials",
-    "crates/verse-ruins/vendor/crates/core_units",
-    "crates/verse-ruins/vendor/crates/data_runtime",
-    "crates/verse-ruins/vendor/crates/ecs_core",
-    "crates/verse-ruins/vendor/crates/net_core",
-    "crates/verse-ruins/vendor/crates/server_core",
-    "crates/verse-ruins/vendor/crates/voxel_mesh",
-    "crates/verse-ruins/vendor/crates/voxel_proxy",
 ]
 resolver = "2"
 
@@ -84,8 +73,6 @@ opt-level = 3
 [profile.dev.package.verse-zone-lab]
 opt-level = 3
 [profile.dev.package.verse-zone-lagrange]
-opt-level = 3
-[profile.dev.package.verse-zone-ruins]
 opt-level = 3
 [profile.dev.package.physics]
 opt-level = 3

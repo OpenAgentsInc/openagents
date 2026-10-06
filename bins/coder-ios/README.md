@@ -249,13 +249,8 @@ relay transport has no visible metadata.
 
 ## Explore Verse
 
-Two arches on the plaza lead to local [zones](../../docs/verse/zones.md).
-**Ruins portal** on the expanded map leads to **Ruins**: entry downloads its
-reviewed 6.6 MB asset pack only when requested, and later visits use the
-verified cache. Ruins has its own colors, original animated wizard/zombie
-models, and the [original real-time combat](../../docs/verse/ruins-source-parity.md).
-Use the bottom hotbar to cast Firebolt, Magic Missile, and Fireball while
-monsters move and attack. **L1 portal** leads to
+Arches on the plaza lead to local [zones](../../docs/verse/zones.md). The
+Ruins zone was removed on 2026-10-05. **L1 portal** leads to
 [Lagrange 1](../../docs/verse/lagrange-1.md), a construction station at the
 Sun–Earth L1 point: fly a maneuvering pack, **Grab** parts at the depot, and
 **Latch** them into the keel jig. **Plaza** returns to your saved position at

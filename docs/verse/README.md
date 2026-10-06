@@ -50,9 +50,7 @@ level, and titles. `R` replays a retained Microcoder run as the agent's
 visits to the workbench, oracle, library, and proving ground, beside a
 ghost of Fable 5.1 low's cheapest winning run. The [Gym building](gym.md) observes host-selected Microcoder and Terminal-Bench
 records while the player is inside and supports explicitly confirmed recipes.
-Three portals lead to separate local [zones](zones.md). **Ruins** loads its
-models on entry and runs the retained
-[Wizard Woods simulation](ruins-source-parity.md) in real time.
+Portals lead to separate local [zones](zones.md).
 **[Lagrange 1](lagrange-1.md)** is a construction station at the Sun–Earth L1
 point with restricted three-body orbital mechanics, station-keeping, and
 rigid-body EVA assembly. The **[Physics Lab](physics-lab.md)** runs each
@@ -98,12 +96,11 @@ source grants, recorded charts, and bounded launch recipes.
 
 ## Portals and loaded zones
 
-Choose **Ruins portal**, **L1 portal**, or **Lab portal** on the expanded map,
-approach the arch, and select **Enter Ruins**, **Enter L1**, or **Enter Lab**.
-Ruins entry downloads and verifies its pack only when needed; later visits can
-use its disk cache. Ruins runs the original Ruins of Atlantis Wizard Woods
-combat schedule on its retained heightfield. Lagrange 1 and the Physics Lab are
-generated and open immediately.
+Choose **L1 portal**, **Lab portal**, or **Everglade portal** on the expanded
+map, approach the arch, and select **Enter L1**, **Enter Lab**, or **Enter
+Everglade**. Lagrange 1 and the Physics Lab are generated and open
+immediately. Everglade entry downloads and verifies its pack only when needed;
+later visits can use its disk cache. The Ruins zone was removed on 2026-10-05.
 **Plaza** returns and releases the active zone geometry and simulation.
 The portals are separate from the Spark and Halo local route demos.
 
@@ -115,10 +112,7 @@ contact manifolds, friction, tunneling, momentum, stacking and sleep, soft and
 hard joints, and thrusters. The HUD selects a scenario and turns its knobs;
 desktop keys 1–8 press the controls. See [Physics Lab](physics-lab.md).
 
-In Ruins, monsters approach, NPC wizards cast, and projectiles fly as the world updates.
-The phone's bottom hotbar supplies **Firebolt**, **Missile**, and **Fireball**;
-desktop retains keys 1, 2, and 3. See [zone loading and architecture](zones.md),
-[source provenance and parity](ruins-source-parity.md),
+See [zone loading and architecture](zones.md),
 [future creator rules](zone-rules.md), and
 [mobile controls](mobile.md#enter-a-zone).
 
@@ -486,8 +480,7 @@ one amber, plus `NEAR_BLACK` for its clear color, fog, and faces. `palette.rs`
 converts those values to linear light and does not restate them. The
 `every_color_is_on_the_amber_ladder` test protects the plaza geometry.
 Separately loaded zones can use their own validated colors and atmosphere;
-Ruins uses greens, earth tones, and baked model colors; Lagrange 1 uses vacuum
-black and direct sunlight. Coder's HUD
+Lagrange 1 uses vacuum black and direct sunlight. Coder's HUD
 keeps its application palette. Neither palette belongs to Rust Native.
 
 | Step | Hex | Used for |
@@ -587,8 +580,7 @@ cargo test -p verse --lib gles
 | [`verse-gfx/src/ui.rs`](../../crates/verse-gfx/src/ui.rs), [`verse-gfx/src/ui.wgsl`](../../crates/verse-gfx/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
 | [`verse-pbr/src/mesh.rs`](../../crates/verse-pbr/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
 | [`verse-gfx/src/palette.rs`](../../crates/verse-gfx/src/palette.rs) | The amber ladder in linear light. |
-| [`src/zones/`](../../crates/verse/src/zones/mod.rs) | Curated zone identities, portals, manifest admission, lazy Ruins loading, palette/fog, the Ruins hotbar, and the Lagrange 1 scene. |
-| [`verse-ruins`](../../crates/verse-ruins/) | Retained Wizard Woods ECS simulation, exact source terrain, and portable host adapter. |
+| [`src/zones/`](../../crates/verse/src/zones/mod.rs) | Curated zone identities, portals, lazy zone loading, palette/fog, the zone hotbar, and the Lagrange 1 scene. |
 | [`verse-lagrange`](../../crates/verse-lagrange/) | Sun–Earth CR3BP orbit and station-keeping, rigid bodies, and the L1 EVA construction sandbox. |
 | [`src/render.rs`](../../crates/verse/src/render.rs), [`src/shader.wgsl`](../../crates/verse/src/shader.wgsl) | Pipelines, fog, the window renderer, backend choice, and PNG capture. |
 | [`verse-gfx/src/gles.rs`](../../crates/verse-gfx/src/gles.rs), [`src/gles_tests.rs`](../../crates/verse/src/gles_tests.rs), [`src/present.wgsl`](../../crates/verse/src/present.wgsl) | OpenGL ES shader variants, their GLSL ES validation tests, and the sRGB presentation pass. |

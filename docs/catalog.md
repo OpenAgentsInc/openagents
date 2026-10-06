@@ -658,10 +658,10 @@ The following guides and plans were added after the September 29 inventory.
 | --- | --- | --- |
 | [verse/README.md](verse/README.md) | Index | Verse |
 | [verse/captures/lagrange-1-realism/README.md](verse/captures/lagrange-1-realism/README.md) | Evidence index | Lagrange 1 realism captures |
-| [verse/zones.md](verse/zones.md) | Reference / guide | Ruins and Lagrange 1 zones, and how to build and register a zone |
+| [verse/zones.md](verse/zones.md) | Reference / guide | Lagrange 1, Physics Lab, and Everglade zones, and how to build and register a zone |
 | [verse/lagrange-1.md](verse/lagrange-1.md) | Reference | Lagrange 1 orbital mechanics, station-keeping, rigid bodies, and EVA construction |
-| [verse/ruins-source-parity.md](verse/ruins-source-parity.md) | Audit | Original Wizard Woods source, mechanics, scene, and inherited defects |
-| [verse/zone-rules.md](verse/zone-rules.md) | Reference / design | Real-time Ruins gameplay, future D&D rules, and Lagrange 1 physics |
+| [verse/ruins-source-parity.md](verse/ruins-source-parity.md) | Audit (historical) | Original Wizard Woods source, mechanics, scene, and inherited defects; the Ruins zone was removed on 2026-10-05 |
+| [verse/zone-rules.md](verse/zone-rules.md) | Reference / design | Zone rules profiles, future D&D rules, and Lagrange 1 physics |
 | [verse/SRD-5.1-NOTICE.md](verse/SRD-5.1-NOTICE.md) | Attribution | SRD 5.1 license notice |
 | [verse/gym.md](verse/gym.md) | Guide | Spatial Gym observation and launch recipes |
 | [verse/mobile.md](verse/mobile.md) | Guide | Verse in Coder for iOS |

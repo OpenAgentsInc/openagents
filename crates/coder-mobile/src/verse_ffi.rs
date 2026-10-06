@@ -853,7 +853,6 @@ mod tests {
                 .unwrap();
         let text = credits["credits"].as_str().unwrap();
         assert!(text.contains("Wizards of the Coast LLC"));
-        assert!(text.contains("Apache License"));
         assert!(text.contains("Blue Marble") && text.contains("Yale Bright Star"));
         assert!(text.len() <= 32 * 1024);
         let ordinary: serde_json::Value =

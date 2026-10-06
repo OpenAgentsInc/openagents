@@ -2,7 +2,7 @@
 //!
 //! The pack holds the admitted Quaternius models with base-color textures and
 //! material flags (`format`), compiled from `assets/verse/everglade/` by
-//! `compile`. It loads under the Ruins loader's rules (`pinned`): HTTPS only,
+//! `compile`. It loads under the pinned loader's rules (`pinned`): HTTPS only,
 //! no redirects, an exact length and digest, bounded decoding, and a
 //! content-addressed disk cache. It carries no scripts, URLs, or authority.
 //!

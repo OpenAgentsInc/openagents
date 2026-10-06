@@ -95,7 +95,7 @@ Measured facts that shape the design:
 
 - Every model is meters, Y-up, with no skins, animations, or glTF extensions.
 - Foliage depends on alpha-masked, double-sided textures. Baking it to vertex
-  colors, as the Ruins pack does, turns leaf cards into solid quads, so
+  colors, as the removed Ruins pack did, turns leaf cards into solid quads, so
   Everglade needs textured, alpha-tested drawing in the zone renderer.
 - The two named kits carry about 88 MB of PNG source at 2048². Admitted
   textures are downscaled to 512² (`compile::TEXTURE_EDGE`); the timber trim
@@ -122,9 +122,8 @@ Admission follows the Fantasy Props precedent:
   steps across its own range, a fraction of a millimeter on the tallest
   building, stored in planes so that deflate compresses them about threefold;
   degenerate triangles and duplicate vertices are dropped. The pack's digest
-  and length compile into `verse`, like `PACK_SHA256` and `PACK_BYTES` for
-  Ruins.
-- The pack loads on entry through the Ruins loader's rules: HTTPS only, no
+  and length compile into `verse` as `PACK_SHA256` and `PACK_BYTES`.
+- The pack loads on entry through the pinned loader's rules: HTTPS only, no
   redirects, exact length and digest, bounded decoding, and the
   content-addressed disk cache. Committed files are the pack and the curated
   sources, not the full kits.

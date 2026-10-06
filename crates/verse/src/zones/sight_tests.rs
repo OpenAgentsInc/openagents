@@ -171,15 +171,11 @@ fn the_grids_low_walls_let_the_camera_see_over_and_the_plaza_towers_do_not() {
 }
 
 #[test]
-fn ruins_and_lagrange_frame_without_blockers() {
+fn lagrange_frames_without_blockers() {
     let runtime = WorldRuntime::new();
-    // Lagrange flies free; Ruins keeps the eye over its terrain. Neither
-    // pulls the camera in on open ground.
-    for zone in [ZoneId::Lagrange1, ZoneId::Ruins] {
-        let mut runtime = WorldRuntime::new();
-        runtime.zone = zone;
-        let framing = runtime.framing();
-        assert!(framing.eye.is_finite());
-    }
+    // Lagrange flies free; it does not pull the camera in on open ground.
+    let mut lagrange = WorldRuntime::new();
+    lagrange.zone = ZoneId::Lagrange1;
+    assert!(lagrange.framing().eye.is_finite());
     assert!(!runtime.framing().limited);
 }

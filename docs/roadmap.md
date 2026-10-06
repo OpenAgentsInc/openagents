@@ -126,12 +126,12 @@ services and cross-operator orchestration remain separate roadmap work.
 
 ### Loaded worlds and selectable rules
 
-[Ruins](verse/zones.md) is the first reviewed zone with
-runtime-only asset loading, independent presentation, isolated coordinates,
-and return to the amber plaza. Its [source port](verse/ruins-source-parity.md) retains the original
-Wizard Woods real-time ECS and player controller, with a bottom spell hotbar.
+Loaded [zones](verse/zones.md) have runtime-only asset loading, independent
+presentation, isolated coordinates, and return to the amber plaza. Ruins, the
+first reviewed zone, ran the original Wizard Woods real-time ECS
+([source port](verse/ruins-source-parity.md)); it was removed on 2026-10-05.
 A separate [fifth-edition rules profile](verse/zone-rules.md) remains design work.
-The Ruins and Lagrange 1 zones are local-only. NIP-MV's signed scene manifest is a designed
+The Lagrange 1 zone is local-only. NIP-MV's signed scene manifest is a designed
 profile; arbitrary creator worlds, shared combat authority, and published
 rule catalogs remain to be implemented.
 

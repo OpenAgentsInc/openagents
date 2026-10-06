@@ -430,29 +430,9 @@ jumping stops it. Camera input can continue while walking. See
 
 ## Enter a zone
 
-Four arches on the plaza lead to local zones: **Ruins** (west),
-**Lagrange 1** (east), the **Physics Lab** (north, behind the spawn), and
-**Everglade** (southwest).
-
-### Ruins
-
-Expand the map and choose **Ruins portal** to walk to its plaza arch.
-Tap its opening or choose **Enter Ruins** while nearby. This starts the first
-asset download; normal plaza startup and walking near the arch do not download
-the pack. Loading shows progress and **Cancel**. A failure keeps the plaza
-available with **Retry** or **Dismiss**.
-
-Ruins uses its own colors and the original Wizard Woods real-time
-simulation. Touch movement, motion look, pinch, and the map use shared Rust
-controls on the retained source heightfield. Monsters chase targets and NPC
-wizards cast as the foreground world updates. Tap **Firebolt**, **Missile**, or
-**Fireball** on the bottom hotbar while moving. HP, mana, and cooldowns reflect
-the original game state. There is no turn or movement-budget control.
-
-Choose **Plaza** to leave, including during a fight, or use the return portal.
-The app restores the saved plaza position and releases active zone geometry.
-A verified disk cache speeds later entry. No Ruins model is embedded in the
-app merely so the plaza can start.
+Three arches on the plaza lead to local zones: **Lagrange 1** (east), the
+**Physics Lab** (north, behind the spawn), and **Everglade** (southwest). The
+Ruins zone and its west arch were removed on 2026-10-05.
 
 ### Lagrange 1
 
@@ -510,13 +490,12 @@ and Everglade are shared instances: through the arch, presence re-keys to
 the zone's own NIP-MV world (`verse-lagrange-1`, `verse-everglade`, the
 `ZoneId::world_id` values), so players who walked through the same arch see
 each other, their names, and collide there, and the Grid's players don't
-leak in. On return, presence rejoins the Grid's or plaza's world. The Ruins
-and the Physics Lab stay local-only; no zone joins another relay or
+leak in. On return, presence rejoins the Grid's or plaza's world. The
+Physics Lab stays local-only; no zone joins another relay or
 publishes its coordinates as plaza movement. Simulate company in a zone with
 `openagents verse walkers 5 --world everglade`.
 Pairing and retained-chat grants remain separate. See
-[zone architecture and limits](zones.md) and
-[source mechanics and parity](ruins-source-parity.md).
+[zone architecture and limits](zones.md).
 
 ## Use the world computer
 

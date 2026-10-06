@@ -1,31 +1,10 @@
 # Zone rules and future fifth-edition profiles
 
-Wizard Woods now runs the original Ruins of Atlantis real-time combat schedule
-through [`verse-ruins`](../../crates/verse-ruins/). The supported profile
-is `ruins.wizard-woods.v1`: continuous monster movement, NPC casting,
-projectile collision, mana, cooldowns, damage, and destructible voxel ruins.
-The phone hotbar maps to the original three abilities. There are no combat
-rounds, movement budgets, or **End turn** button.
-
-This supersedes the earlier `srd-5.1-encounter-v1` demonstration. That new
-turn-based implementation did not reproduce the requested source game and is
-removed from the current runtime. Earlier verification receipts remain historical
-evidence for the earlier build; they do not verify this replacement.
-
-## Current gameplay and its boundary
-
-[The source parity audit](ruins-source-parity.md) records original tuning and
-behavior. The player starts with 100 HP and 20 mana. Firebolt costs no mana;
-Magic Missile costs 2 and emits three homing darts; Fireball costs 5 and damages
-an area. Monsters and NPC casters continue acting while the foreground surface
-updates. The host pauses the simulation with its surface lifecycle and returns
-to the plaza without requiring a win.
-
-The Ruins is local-only. Its authoritative state is one in-process source ECS
-world, not the Nostr plaza's shared pose state. A downloaded asset is data; it
-cannot replace the compiled game code. This profile is the source game's tuning,
-not a complete implementation of Dungeons & Dragons Fifth Edition. Its original
-SRD 5.2.1 references do not change that claim.
+Each loaded zone selects a closed, host-supported rules profile. The Ruins
+zone, which ran the original Ruins of Atlantis Wizard Woods real-time combat
+under the `ruins.wizard-woods.v1` profile, was removed on 2026-10-05 with the
+retained `verse-ruins` source. Combat now lives in the zones that follow the
+[combat model](combat-model.md), such as the [druid demo](druid-demo.md).
 
 ## The combat model
 
@@ -44,11 +23,11 @@ The intended authored-world contract separates these choices:
 | Asset manifest | Hashes, byte lengths, formats, decode budgets, provenance, and license notices. Assets load only when the destination is admitted. |
 | Presentation profile | World-specific colors, lighting, fog, and effects. The global plaza keeps its amber Coder appearance. |
 | Physics profile | Units, reference frame, collision and motion semantics, numerical limits, and supported integration behavior. |
-| Rules profile | Exact supported rules ID, revision, coverage, configuration, and fixtures. The current Ruins ID is `ruins.wizard-woods.v1`. |
+| Rules profile | Exact supported rules ID, revision, coverage, configuration, and fixtures. |
 | Authority profile | Local-only behavior or an explicitly admitted shared authority, with actor ownership and accepted command semantics. |
 
-A creator may eventually select a supported rules profile without adopting the
-Ruins' appearance. A scene may also select ordinary exploration without a
+A creator may eventually select a supported rules profile without adopting
+another zone's appearance. A scene may also select ordinary exploration without a
 combat profile. Unknown required profiles must refuse entry or offer an
 explicitly different supported experience; silently interpreting an unknown
 ID as default physics changes the world the creator declared.
@@ -90,12 +69,11 @@ It is local-only and keeps no state between visits.
 
 ## Sources and attribution
 
-The Ruins's source license, original notices, exact revision, and modification
-ledger are retained in [`crates/verse-ruins`](../../crates/verse-ruins/).
-The [source audit](ruins-source-parity.md) identifies the active mechanics
-rather than inferring them from the source's SRD files or design documents.
+The removed Ruins zone's [source audit](ruins-source-parity.md) is retained as
+history; its retained source, license, and modification ledger remain in the
+repository history before 2026-10-05.
 
 The earlier SRD 5.1 demo's [attribution](SRD-5.1-NOTICE.md) remains with its
-historical documentation and verification records. It does not describe the
-current Ruins' combat engine. Any future fifth-edition profile must pin its
-chosen SRD edition, preserve its attribution, and state its tested coverage.
+historical documentation and verification records. Any future fifth-edition
+profile must pin its chosen SRD edition, preserve its attribution, and state
+its tested coverage.

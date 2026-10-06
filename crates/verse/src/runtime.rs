@@ -447,7 +447,7 @@ impl WorldRuntime {
         {
             self.camera.settle(dt);
         }
-        self.ruins_tick(dt, previous);
+        self.zone_simulation_tick(dt, previous);
         self.walk_through_portals(previous.pos, dt);
         self.track_camera(dt);
         self.gait
@@ -2245,7 +2245,7 @@ mod tests {
         runtime.camera.yaw_offset = std::f32::consts::PI;
         assert!(!test(&runtime), "the camera is behind the board");
         runtime.camera.yaw_offset = 0.0;
-        runtime.zone = crate::zones::ZoneId::Ruins;
+        runtime.zone = crate::zones::ZoneId::Lagrange1;
         assert!(!test(&runtime));
     }
 

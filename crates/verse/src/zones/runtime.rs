@@ -1,9 +1,8 @@
-//! Zone transition admission and the Ruins, Lagrange 1, Physics Lab, and
-//! Everglade simulations.
+//! Zone transition admission and the Lagrange 1, Physics Lab, and Everglade
+//! simulations.
 
 use super::{
-    Control, Everglade, Intent, Lab, Lagrange, LoadState, PortalProjection, Ruins, Snapshot,
-    ZoneId, assets,
+    Control, Everglade, Intent, Lab, Lagrange, LoadState, PortalProjection, Snapshot, ZoneId,
     everglade::studio::{PanelKind, Source, Studio},
     everglade_pack,
 };
@@ -25,9 +24,7 @@ impl WorldRuntime {
         if self.is_hosted() {
             return;
         }
-        if let Some(ruins) = &mut self.zone_state.ruins {
-            ruins.move_player(&mut self.player, input, dt);
-        } else if let Some(lagrange) = &mut self.zone_state.lagrange {
+        if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.move_player(&mut self.player, input, self.camera.pitch, dt);
         } else if let Some(everglade) = &mut self.zone_state.everglade {
             // As the Grove's Giant Eagle, Jump climbs.
@@ -62,12 +59,10 @@ impl WorldRuntime {
     }
 
     /// Configure a host-owned cache directory. This does not read or fetch
-    /// assets. The Ruins and Everglade packs share it; each is named by its
-    /// own digest.
+    /// assets. Everglade's pack is named by its digest.
     pub fn configure_zone_cache(&mut self, path: std::path::PathBuf) {
         self.zone_cancel_loading();
-        self.zone_state.everglade_loader = Some(everglade_pack::Loader::new(path.clone()));
-        self.zone_state.loader = Some(assets::Loader::new(path));
+        self.zone_state.everglade_loader = Some(everglade_pack::Loader::new(path));
     }
     pub fn is_plaza(&self) -> bool {
         self.zone == ZoneId::Plaza
@@ -79,9 +74,6 @@ impl WorldRuntime {
         self.zone_state.loading == LoadState::Loading
     }
     pub fn zone_cancel_loading(&mut self) {
-        if let Some(loader) = &mut self.zone_state.loader {
-            loader.cancel();
-        }
         if let Some(loader) = &mut self.zone_state.everglade_loader {
             loader.cancel();
         }
@@ -95,11 +87,6 @@ impl WorldRuntime {
         if self.is_hosted() {
             return false;
         }
-        let ruins = self
-            .zone_state
-            .loader
-            .as_mut()
-            .and_then(assets::Loader::poll);
         let everglade = self
             .zone_state
             .everglade_loader
@@ -107,17 +94,6 @@ impl WorldRuntime {
             .and_then(everglade_pack::Loader::poll);
         if !self.zone_loading() {
             return false;
-        }
-        match ruins {
-            Some(assets::LoadEvent::Progress { received, total }) => {
-                self.zone_load_progress(received, total);
-            }
-            Some(assets::LoadEvent::Ready(assets)) => {
-                self.install_ruins(*assets);
-                return true;
-            }
-            Some(assets::LoadEvent::Failed(error)) => self.zone_load_failed(&error),
-            None => {}
         }
         match everglade {
             Some(everglade_pack::LoadEvent::Progress { received, total }) => {
@@ -148,31 +124,6 @@ impl WorldRuntime {
     pub(super) fn zone_load_failed(&mut self, error: &str) {
         self.zone_state.error = Some(error.chars().take(180).collect());
         self.zone_state.loading = LoadState::Failed;
-    }
-    /// Install already verified artwork. Offline tools use the same decoder.
-    pub fn install_ruins(&mut self, assets: assets::LoadedAssets) {
-        // A repeated completion cannot replace the saved plaza return pose.
-        if self.is_hosted() || !self.is_plaza() {
-            return;
-        }
-        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
-        let ruins = match Ruins::new(assets) {
-            Ok(ruins) => ruins,
-            Err(error) => {
-                self.zone_state.error = Some(error);
-                self.zone_state.loading = LoadState::Failed;
-                return;
-            }
-        };
-        self.world = ruins.world();
-        self.zone_state.ruins = Some(ruins);
-        self.zone = ZoneId::Ruins;
-        self.zone_state.loading = LoadState::Idle;
-        self.zone_state.error = None;
-        self.zone_state.progress = 1.0;
-        self.zone_revision = self.zone_revision.saturating_add(1);
-        let _ = self.set_spawn(Ruins::spawn(), 0.0);
-        self.camera = crate::camera::FollowCamera::default();
     }
     /// Enter the procedurally built L1 station. Nothing is downloaded.
     /// Finishes any pending zone light bake (offline captures).
@@ -531,7 +482,6 @@ impl WorldRuntime {
                 // Leaving Everglade stops the studio's observation.
                 self.zone_state.studio.set_active(false);
                 // Dropping a zone releases its decoded frames and simulation.
-                self.zone_state.ruins = None;
                 self.zone_state.lagrange = None;
                 self.zone_state.lab = None;
                 self.zone_state.everglade = None;
@@ -570,19 +520,9 @@ impl WorldRuntime {
                 self.zone_state.gate_cooldown = super::gate::COOLDOWN;
                 self.camera = crate::camera::FollowCamera::default();
             }
+            // The Grove casts these through its kit above.
             Intent::Firebolt | Intent::MagicMissile | Intent::Fireball => {
-                let spell = match intent {
-                    Intent::Firebolt => verse_ruins::Spell::Firebolt,
-                    Intent::MagicMissile => verse_ruins::Spell::MagicMissile,
-                    _ => verse_ruins::Spell::Fireball,
-                };
-                let direction = self.player.forward();
-                let origin = self.player.pos + Vec3::Y * 1.4 + direction * 0.25;
-                let ruins = self.zone_state.ruins.as_mut().ok_or("Enter Ruins first")?;
-                ruins
-                    .simulation
-                    .cast(spell, origin.to_array(), direction.to_array())?;
-                self.zone_state.error = None;
+                return Err("Enter the Grove first".into());
             }
             Intent::Forces => {
                 let lagrange = self
@@ -1189,7 +1129,6 @@ impl WorldRuntime {
                 enabled,
             })
         };
-        let combat = self.zone_state.ruins.as_ref().map(|f| f.snapshot.clone());
         let caption = if self.zone_loading() {
             add("cancel", "Cancel", Intent::Cancel, true);
             format!(
@@ -1206,30 +1145,6 @@ impl WorldRuntime {
             );
             add("cancel", "Dismiss", Intent::Cancel, true);
             format!("{} could not load", self.zone_state.destination.label())
-        } else if self.zone == ZoneId::Ruins {
-            if let Some(c) = &combat {
-                for ability in &c.abilities {
-                    let (id, label, intent) = match ability.id {
-                        verse_ruins::Spell::Firebolt => ("firebolt", "Firebolt", Intent::Firebolt),
-                        verse_ruins::Spell::MagicMissile => {
-                            ("magic_missile", "Missile", Intent::MagicMissile)
-                        }
-                        verse_ruins::Spell::Fireball => ("fireball", "Fireball", Intent::Fireball),
-                    };
-                    add(id, label, intent, ability.ready);
-                }
-                add("return", "Plaza", Intent::Return, true);
-                if c.player.hp <= 0 {
-                    "Defeated · return to Plaza".into()
-                } else {
-                    format!(
-                        "HP {} / {}   Mana {} / {}",
-                        c.player.hp, c.player.max_hp, c.player.mana, c.player.max_mana
-                    )
-                }
-            } else {
-                String::new()
-            }
         } else if let Some(lagrange) = &self.zone_state.lagrange {
             let s = lagrange.station.snapshot();
             if s.carrying.is_some() {
@@ -1408,7 +1323,7 @@ impl WorldRuntime {
                     self.zone_state.everglade_loader.is_some(),
                 );
                 "Crypt · a candlelit laboratory".into()
-            } else if self.nearest_portal().0 == ZoneId::Everglade {
+            } else {
                 add(
                     "enter",
                     "Enter Everglade",
@@ -1416,14 +1331,6 @@ impl WorldRuntime {
                     self.zone_state.everglade_loader.is_some(),
                 );
                 "Everglade · the Agent Studio's forest glade".into()
-            } else {
-                add(
-                    "enter",
-                    "Enter Ruins",
-                    Intent::Enter,
-                    self.zone_state.loader.is_some(),
-                );
-                "Ruins · load this zone".into()
             }
         } else {
             String::new()
@@ -1436,7 +1343,6 @@ impl WorldRuntime {
             error: self.zone_state.error.clone(),
             portal,
             controls,
-            combat,
             station: self
                 .zone_state
                 .lagrange
@@ -1518,9 +1424,7 @@ impl WorldRuntime {
             && !crate::runtime::mesh_occludes(entities, eye, direction, distance)
     }
     fn zone_dynamic_occludes(&self, eye: Vec3, direction: Vec3, distance: f32) -> bool {
-        if let Some(ruins) = &self.zone_state.ruins {
-            crate::runtime::mesh_occludes(ruins.dynamic(), eye, direction, distance)
-        } else if let Some(lagrange) = &self.zone_state.lagrange {
+        if let Some(lagrange) = &self.zone_state.lagrange {
             crate::runtime::mesh_occludes(lagrange.dynamic(), eye, direction, distance)
         } else if let Some(lab) = &self.zone_state.lab {
             crate::runtime::mesh_occludes(lab.dynamic(), eye, direction, distance)
@@ -1613,30 +1517,25 @@ impl WorldRuntime {
         self.zone_state.loading
     }
 
-    /// Starts loading the pack of `destination` (Ruins or Everglade). The
+    /// Starts loading Everglade's pack for `destination`. The
     /// world stays where it is until [`Self::zone_tick`] installs the zone.
     fn start_zone_load(&mut self, destination: ZoneId) -> Result<(), String> {
         if destination == ZoneId::Crypt && !super::crypt::EMBEDDED {
             return Err("This build does not carry the crypt".into());
         }
         // The Grove and the crypt walk with Everglade's character.
-        let requested = if matches!(
+        if !matches!(
             destination,
             ZoneId::Everglade | ZoneId::Grove | ZoneId::Crypt
         ) {
-            self.zone_state
-                .everglade_loader
-                .as_mut()
-                .ok_or("Zone storage is unavailable")?
-                .request()
-        } else {
-            super::Manifest::ruins()?;
-            self.zone_state
-                .loader
-                .as_mut()
-                .ok_or("Zone storage is unavailable")?
-                .request()
-        };
+            return Err("This zone has no pack to load".into());
+        }
+        let requested = self
+            .zone_state
+            .everglade_loader
+            .as_mut()
+            .ok_or("Zone storage is unavailable")?
+            .request();
         if !requested {
             return Err("Finishing the previous load; try again".into());
         }
@@ -2021,13 +1920,8 @@ impl WorldRuntime {
             .map(|(_, panel)| panel)
     }
 
-    pub(crate) fn ruins_tick(&mut self, dt: f32, _previous: PlayerController) {
+    pub(crate) fn zone_simulation_tick(&mut self, dt: f32, _previous: PlayerController) {
         self.zone_state.elapsed = (self.zone_state.elapsed + dt) % 1000.0;
-        if let Some(ruins) = &mut self.zone_state.ruins
-            && let Err(error) = ruins.tick(dt, &self.player)
-        {
-            self.zone_state.error = Some(error);
-        }
         if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.tick();
         }
@@ -2072,9 +1966,6 @@ impl WorldRuntime {
         } else {
             super::portal_mesh(self.zone, elapsed)
         };
-        if let Some(ruins) = &self.zone_state.ruins {
-            mesh.extend(ruins.dynamic());
-        }
         if let Some(lagrange) = &self.zone_state.lagrange {
             mesh.extend(lagrange.dynamic());
         }
@@ -2134,130 +2025,6 @@ impl WorldRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{controller::InputState, mesh::Mesh};
-
-    fn ruins_world() -> WorldRuntime {
-        let animation = || assets::AnimatedMesh {
-            frames: vec![Mesh::default()],
-            frame_seconds: 0.1,
-        };
-        let mut world = WorldRuntime::new();
-        world.install_ruins(assets::LoadedAssets {
-            tree: Mesh::default(),
-            wizard_still: Mesh::default(),
-            wizard: animation(),
-            zombie: animation(),
-            zombie_walk: animation(),
-        });
-        world
-    }
-
-    #[test]
-    fn ruins_runs_immediately_and_fireball_spends_mana_while_moving() {
-        let mut world = ruins_world();
-        let initial = world.zone_snapshot(1.0).combat.unwrap();
-        assert_eq!(
-            initial.actors.iter().filter(|a| a.kind == "zombie").count(),
-            35
-        );
-        assert_eq!(world.player.pos, Ruins::spawn());
-        let moving = InputState {
-            forward: true,
-            ..Default::default()
-        };
-        world.zone_intent(Intent::Fireball).unwrap();
-        world.tick(&moving, 0.05);
-        let cast = world.zone_snapshot(1.0).combat.unwrap();
-        assert!(cast.player.mana < initial.player.mana);
-        assert!(
-            cast.abilities
-                .iter()
-                .find(|a| a.id == verse_ruins::Spell::Fireball)
-                .unwrap()
-                .cooldown_remaining
-                > 0.0
-        );
-        assert!(world.player.pos.z > 0.0);
-        assert!(
-            cast.projectiles
-                .iter()
-                .any(|p| p.kind == verse_ruins::Spell::Fireball)
-        );
-        for _ in 0..80 {
-            world.tick(&moving, 0.05);
-        }
-        let later = world.zone_snapshot(1.0).combat.unwrap();
-        assert!(world.player.pos.z > 20.0, "no per-turn movement allowance");
-        assert!(
-            initial
-                .actors
-                .iter()
-                .filter(|a| a.kind == "zombie")
-                .any(|a| later.actors.iter().any(|b| b.id == a.id && b.pos != a.pos))
-        );
-        assert!(
-            later
-                .abilities
-                .iter()
-                .find(|a| a.id == verse_ruins::Spell::Fireball)
-                .unwrap()
-                .ready
-        );
-        assert!(
-            !world
-                .zone_snapshot(1.0)
-                .controls
-                .iter()
-                .any(|c| c.id.contains("turn") && c.id != "return")
-        );
-    }
-
-    #[test]
-    fn ruins_uses_source_strafe_and_terrain_camera_and_stops_defeated_players() {
-        let mut world = ruins_world();
-        let moving = InputState {
-            left: true,
-            mouse_look: true,
-            ..Default::default()
-        };
-        world.tick(&moving, 0.05);
-        assert!(world.player.pos.x.abs() > 0.1);
-        assert_eq!(world.player.yaw, 0.0);
-        world.camera.distance = crate::camera::MIN_DISTANCE;
-        world.camera.pitch = -0.6;
-        let view = world.view(1.0);
-        let floor = verse_ruins::scene::Terrain::bundled().height(view.eye.x, view.eye.z);
-        assert!(view.eye.y < 0.0, "camera follows negative terrain");
-        assert!(view.eye.y >= floor + 0.399);
-        world.zone_state.ruins.as_mut().unwrap().snapshot.player.hp = 0;
-        let before = world.player.pos;
-        world.update_player(&moving, 0.05);
-        assert_eq!(world.player.pos, before);
-        assert!(world.zone_snapshot(1.0).caption.contains("Defeated"));
-        assert!(
-            world
-                .zone_snapshot(1.0)
-                .controls
-                .iter()
-                .find(|c| c.id == "return")
-                .unwrap()
-                .enabled
-        );
-    }
-
-    #[test]
-    fn return_drops_combat_and_restores_the_plaza_pose() {
-        let mut world = WorldRuntime::new();
-        let original = world.player;
-        let mut ruins = ruins_world();
-        world.install_ruins(ruins.zone_state.ruins.take().unwrap().assets);
-        world.zone_intent(Intent::Firebolt).unwrap();
-        world.tick(&InputState::default(), 0.05);
-        world.zone_intent(Intent::Return).unwrap();
-        assert_eq!(world.player, original);
-        assert!(world.zone_snapshot(1.0).combat.is_none());
-        assert!(world.zone_state.ruins.is_none());
-    }
 
     fn command(zone: &str, cmd: &str, args: Vec<crate::mv::Arg>) -> crate::mv::Command {
         crate::mv::Command {

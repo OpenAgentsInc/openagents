@@ -626,11 +626,10 @@ uses, and marks which are implemented and which are only specified.
   is reimplemented from its `client_core`, not copied. The global plaza uses
   `coder_ui::theme::Intensity`; a palette test protects its amber geometry.
   Separately loaded zones may have their own validated colors and atmosphere.
-  Three plaza portals lead to local zones: Ruins loads a pinned asset pack only
-  on entry and runs the original real-time Wizard Woods combat through
-  `verse-ruins`; Lagrange 1 is a generated Sun–Earth L1 construction station
-  driven by `verse-lagrange`; the Physics Lab runs the `physics` crate's
-  mechanisms live with HUD knobs (`docs/verse/physics-lab.md`). Combat
+  Plaza portals lead to local zones: Lagrange 1 is a generated Sun–Earth L1
+  construction station driven by `verse-lagrange`; the Physics Lab runs the
+  `physics` crate's mechanisms live with HUD knobs (`docs/verse/physics-lab.md`);
+  Everglade loads a pinned asset pack only on entry. Combat
   everywhere follows `docs/verse/combat-model.md`: real time, MMO style, with
   SRD dice rolled behind the scenes. Read `docs/verse/zones.md` (including its guide
   to building and registering a zone) and `docs/verse/zone-rules.md` before
@@ -663,8 +662,7 @@ uses, and marks which are implemented and which are only specified.
   controls and atmosphere (`zone`), the avatar, the companion agent, the
   crowd of other players, particle effects, tooltips, scene labels, and the
   replay's places. `verse` re-exports each module under its old path.
-- `crates/verse-zone-lagrange`, `crates/verse-zone-ruins` (with the Ruins
-  pack loader), `crates/verse-zone-lab`, `crates/verse-zone-everglade`
+- `crates/verse-zone-lagrange`, `crates/verse-zone-lab`, `crates/verse-zone-everglade`
   (Everglade with its studio, demolition yard, and pinned pack), and
   `crates/verse-zone-grove` — one crate a zone, over `verse-core`, so an
   edit to a zone recompiles that crate and what depends on it. `verse`
@@ -687,12 +685,6 @@ uses, and marks which are implemented and which are only specified.
   the same origin and draws the zone with WebGPU or WebGL2.
   `scripts/build-everglade-web.sh` builds it; its README holds the page
   contract (canvas ID, output files, and pack URL).
-- `crates/verse-ruins` — the retained Ruins of Atlantis Wizard Woods ECS,
-  original player controller, and pinned terrain. Its adapter exposes portable
-  gameplay snapshots and destructible meshes. Keep source provenance and
-  modification records current; do not substitute the separate turn-based SRD
-  engine for this game. Read `docs/verse/ruins-source-parity.md` before
-  changing combat, movement, or scene inputs.
 - `crates/physics` — shared, zone-agnostic rigid-body physics for Verse:
   bodies, fixed stepping, restorable world state, and replay traces, growing
   through the Genesis port roadmap (`docs/physics/2026-09-27-genesis-port-roadmap.md`,

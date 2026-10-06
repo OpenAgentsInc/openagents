@@ -46,9 +46,9 @@ by this entry point.
 
 The shared renderer, controls, and local combat adapter remain in their current
 modules. Generic packs, animation, and cinematic contracts now live in
-`verse-engine`. Gameplay still
-uses the retained `verse-ruins` adapter; this milestone does not replace it with
-a new portable authority service.
+`verse-engine`. Gameplay used the retained `verse-ruins` adapter, which was
+removed with the Ruins zone on 2026-10-05; this milestone did not replace it
+with a new portable authority service.
 
 The scene uses an explicit `original-chamber-v1` collision profile. Player
 movement and Misty Step sweep an axis-aligned character box against the same

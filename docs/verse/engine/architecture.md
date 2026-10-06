@@ -102,9 +102,9 @@ schedule. [`verse-content`](../../../crates/verse-content/README.md) owns portab
 content admission and optional Rust compilation; [`verse-host`](../../../crates/verse-host/README.md)
 is a dedicated TLS authority executable without rendering or agent dependencies.
 The Verse application retains its original UI, game-specific frame composition,
-zones, and compatibility imports.
-[`verse-ruins`](../../../crates/verse-ruins/README.md)
-wraps retained source combat. These are useful evidence and transition paths;
+zones, and compatibility imports. The `verse-ruins` wrapper over retained
+source combat was removed with the Ruins zone on 2026-10-05. These are useful
+evidence and transition paths;
 they are not the final engine boundary.
 
 [#10437](https://github.com/OpenAgentsInc/openagents/issues/10437) now owns the
@@ -112,7 +112,8 @@ headless chamber authority in `verse-world`: shared movement/ability admission,
 independently implemented combat resources and projectiles, owned encounter
 rules, life-fenced respawns, serialized events, and replayable checkpoints.
 Native rendering reads its snapshots and cinematic projection; the broad Verse
-app retains the independent Ruins zone, but chamber rules no longer call it.
+app removed the independent Ruins zone on 2026-10-05; chamber rules no longer
+called it.
 This local authority is not an authenticated multiplayer or transactional save
 service. The imported fixture retains rectangular movement
 bounds; the original scene uses shared authored box solids with continuous

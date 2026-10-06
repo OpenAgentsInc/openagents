@@ -1,71 +1,24 @@
 use super::*;
 use crate::{controller::InputState, runtime::WorldRuntime};
 
-fn assets() -> assets::LoadedAssets {
-    assets::LoadedAssets::load_local(&std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp")).unwrap()
-}
-
-#[test]
-fn manifest_requires_the_exact_supported_profiles_and_content() {
-    let valid = Manifest::ruins().unwrap();
-    valid.validate().unwrap();
-    for field in ["schema", "world", "ruleset", "physics", "asset_sha256"] {
-        let mut v = serde_json::to_value(&valid).unwrap();
-        v[field] = "unknown".into();
-        assert!(
-            serde_json::from_value::<Manifest>(v)
-                .unwrap()
-                .validate()
-                .is_err()
-        );
-    }
-    let mut invalid = valid.clone();
-    invalid.asset_bytes += 1;
-    assert!(invalid.validate().is_err());
-    let mut v = serde_json::to_value(valid).unwrap();
-    v["script"] = "run something".into();
-    assert!(serde_json::from_value::<Manifest>(v).is_err());
-}
-
 #[test]
 fn entering_and_returning_replace_only_the_zone_and_preserve_plaza_choices() {
     let mut runtime = WorldRuntime::new();
     runtime
-        .set_spawn(glam::Vec3::new(-12.0, 0.0, 9.0), 0.7)
+        .set_spawn(glam::Vec3::new(12.0, 0.0, 9.0), 0.7)
         .unwrap();
     runtime.hold_door_item(crate::doors::DemoItem::Bolt);
     let pose = runtime.player;
     let document = runtime.doors.document();
     let plaza_bytes = runtime.world.mesh.faces.len();
-    assert!(runtime.zone_state.ruins.is_none());
     assert!(!runtime.zone_loading());
-    runtime.install_ruins(assets());
-    assert_eq!(runtime.zone, ZoneId::Ruins);
+    runtime.install_lagrange();
+    assert_eq!(runtime.zone, ZoneId::Lagrange1);
     assert_eq!(runtime.zone_revision, 1);
     assert_ne!(runtime.world.mesh.faces.len(), plaza_bytes);
     assert!(!runtime.computer(1.0).near);
     assert!(!runtime.gym(1.0).inside);
     assert!(!runtime.door(crate::doors::DoorId::Spark, 1.0).near);
-    assert!(
-        runtime.world.mesh.lit.len() * std::mem::size_of::<crate::pbr::LitVertex>()
-            < 96 * 1024 * 1024
-    );
-    // The moss-green terrain is lit geometry on the physical path.
-    assert!(
-        runtime
-            .world
-            .mesh
-            .lit
-            .iter()
-            .any(|v| v.color[1] > v.color[0])
-    );
-    let frame = runtime.zone_dynamic_mesh();
-    let key = frame.neon.and_then(|neon| neon.key).expect("a lit stage");
-    assert_eq!(key.shadow_distance, Some(80.0));
-    assert!(!key.cache_far_shadows);
-    assert!(!frame.lit.is_empty(), "the ruins and characters are lit");
-    runtime.zone_intent(Intent::Fireball).unwrap();
     runtime.tick(
         &InputState {
             forward: true,
@@ -80,7 +33,7 @@ fn entering_and_returning_replace_only_the_zone_and_preserve_plaza_choices() {
     assert_eq!(runtime.player.yaw, pose.yaw);
     assert_eq!(runtime.doors.document(), document);
     assert_eq!(runtime.world.mesh.faces.len(), plaza_bytes);
-    assert!(runtime.zone_state.ruins.is_none());
+    assert!(runtime.zone_state.lagrange.is_none());
 }
 
 #[test]
@@ -88,23 +41,24 @@ fn loading_requires_explicit_nearby_entry_and_cancellation_keeps_the_plaza() {
     let mut runtime = WorldRuntime::new();
     assert!(runtime.zone_intent(Intent::Enter).is_err());
     assert_eq!(runtime.zone, ZoneId::Plaza);
+    // Everglade's arch, without zone storage to load its pack into.
     runtime
-        .set_spawn(glam::Vec3::new(-12.0, 0.0, 9.0), 0.0)
+        .set_spawn(glam::Vec3::new(-24.0, 0.0, -27.0), 0.0)
         .unwrap();
     assert!(runtime.zone_intent(Intent::Enter).is_err());
     runtime.zone_cancel_loading();
     assert_eq!(runtime.zone_state.loading, LoadState::Idle);
-    assert!(runtime.zone_state.ruins.is_none());
+    assert!(runtime.zone_state.everglade.is_none());
 }
 
 #[test]
 fn fog_profiles_are_independent_and_bounded() {
-    assert_ne!(atmosphere(ZoneId::Ruins), atmosphere(ZoneId::Plaza));
-    atmosphere(ZoneId::Ruins).validate().unwrap();
-    let mut bad = atmosphere(ZoneId::Ruins);
+    assert_ne!(atmosphere(ZoneId::Everglade), atmosphere(ZoneId::Plaza));
+    atmosphere(ZoneId::Everglade).validate().unwrap();
+    let mut bad = atmosphere(ZoneId::Everglade);
     bad.fog_start = bad.fog_end;
     assert!(bad.validate().is_err());
-    bad = atmosphere(ZoneId::Ruins);
+    bad = atmosphere(ZoneId::Everglade);
     bad.color[1] = f32::NAN;
     assert!(bad.validate().is_err());
 }
@@ -153,7 +107,6 @@ fn the_l1_portal_enters_immediately_and_returns_to_the_plaza_pose() {
     assert_eq!(runtime.zone, ZoneId::Lagrange1);
     assert_eq!(runtime.zone_revision, 1);
     assert!(!runtime.zone_loading(), "no download for a generated zone");
-    assert!(runtime.zone_state.ruins.is_none());
     let snapshot = runtime.zone_snapshot(1.0);
     let station = snapshot.station.expect("station physics");
     assert!((1.4e6..1.6e6).contains(&station.orbit.earth_distance_km));
@@ -441,8 +394,8 @@ fn the_grid_shows_no_portal_while_it_is_hidden() {
 fn coder_plaza_arches_still_need_their_button_and_stay_amber() {
     let mut runtime = WorldRuntime::new();
     assert!(runtime.grid_gate().is_none());
-    let at = ZoneId::Plaza.portals()[1].1;
-    assert_eq!(ZoneId::Plaza.portals()[1].0, ZoneId::Lagrange1);
+    let at = ZoneId::Plaza.portals()[0].1;
+    assert_eq!(ZoneId::Plaza.portals()[0].0, ZoneId::Lagrange1);
     runtime.set_spawn(at - glam::Vec3::Z * 3.0, 0.0).unwrap();
     assert!(!walk_until_zone_changes(&mut runtime, 2.0));
     assert!(runtime.is_plaza());
@@ -524,11 +477,12 @@ fn zone_names_resolve_to_their_shared_worlds() {
         ("verse-lagrange-1", ZoneId::Lagrange1),
         ("plaza", ZoneId::Plaza),
         ("physics-lab", ZoneId::PhysicsLab),
-        ("ruins-v1", ZoneId::Ruins),
     ] {
         assert_eq!(ZoneId::from_name(name), Some(zone), "{name}");
     }
     assert_eq!(ZoneId::from_name("verse-bare"), None);
+    // The Ruins zone was removed on 2026-10-05.
+    assert_eq!(ZoneId::from_name("ruins-v1"), None);
     assert_eq!(ZoneId::Everglade.world_id(), "verse-everglade");
     assert_eq!(ZoneId::Lagrange1.world_id(), "verse-lagrange-1");
 }

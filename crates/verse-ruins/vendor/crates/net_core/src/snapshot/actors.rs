@@ -1,1 +1,0 @@
-//! Actor snapshot schema (scaffold).

@@ -13,9 +13,8 @@
 //! `R` in the world lists the retained runs that beat it.
 //! `--gym-connection <file>` supplies a signed Gym host connection. The file
 //! is read only after entering the Gym; `G` opens its board while inside.
-//! The ruins portal loads its verified artwork only on explicit entry. Click
-//! the portal or press `F` nearby; inside, `1` through `4` activate the displayed
-//! spell hotbar and return controls. Plaza subscriptions pause until you return.
+//! A portal's zone loads only on explicit entry. Click the portal or press
+//! `F` nearby. Plaza subscriptions pause until you return.
 //! `--studio-sim` plays Agent Studio's simulated team in Everglade: on first
 //! entry it records the scripted team against a scratch repository under the
 //! system's temporary directory, with no model or network. Inside, `F` at a

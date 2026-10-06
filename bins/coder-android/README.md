@@ -13,13 +13,13 @@ intents. Application state and permission checks remain in `coder-mobile`,
 `coder-connect`, and Verse. Rust Native itself contains no Coder theme, identity,
 or network implementation.
 
-The source also supports the shared [Ruins portal](../../docs/verse/zones.md),
-with entry-only asset loading, a device cache, a separate palette, and the local
-SRD 5.1 encounter. The Android adapter forwards the same typed controls and
-shows bundled notices in **About Verse**. Its latest
+The source also supports the shared [zone portals](../../docs/verse/zones.md),
+with entry-only asset loading, a device cache, and separate palettes. The
+Android adapter forwards the same typed controls and shows bundled notices in
+**About Verse**. Its latest
 [native package verification](../coder-ios/verification/2026-09-27-forest-zones/android-native-package.json)
-covers Rust/JNI, APK packaging, and 16 KiB alignment; a new Android Ruins
-emulator/device session is not part of that evidence.
+covers Rust/JNI, APK packaging, and 16 KiB alignment. The Ruins zone it
+verified was removed on 2026-10-05.
 
 ## Graphics
 

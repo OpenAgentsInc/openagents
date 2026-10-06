@@ -114,16 +114,16 @@ spell needs a shared-caster adapter"), so all of this is single-caster today.
 
 ### Voxel ruins
 
-The Ruins zone's destructible ruin is retained Ruins of Atlantis source, not
-an engine feature. `voxel_proxy::VoxelGrid` holds a 32×16×32 grid of 0.5 m
+The Ruins zone, removed on 2026-10-05, had a destructible ruin from retained
+Ruins of Atlantis source, not an engine feature. `voxel_proxy::VoxelGrid` holds a 32×16×32 grid of 0.5 m
 voxels with 8³ chunks; projectiles and explosions push `CarveRequest`s,
 `carve_sphere` clears a sphere (Fireball carves 2 m), and
 `destructible_remesh_budgeted` greedy-meshes a bounded number of dirty chunks
-per tick. The debris the source computes is discarded (`let _out = …` in
+per tick. The debris the source computed was discarded (`let _out = …` in
 `systems/destructible.rs`), so no debris bodies exist. On the Verse side,
-`Ruins::build_dynamic` (`zones/ruins.rs:239`) re-emits every ruin chunk as
-per-frame triangles with no caching and sets `cache_far_shadows: false`.
-Nothing about the ruin is networked; [the parity audit](ruins-source-parity.md)
+`Ruins::build_dynamic` re-emitted every ruin chunk as per-frame triangles
+with no caching and set `cache_far_shadows: false`. Nothing about the ruin
+was networked; [the parity audit](ruins-source-parity.md)
 also records a double-applied grid origin. This path is evidence that carving
 works, not a design to extend: voxels at 0.5 m look nothing like the kit's
 plaster and timber, and the remesh would have to rebuild textured surfaces.

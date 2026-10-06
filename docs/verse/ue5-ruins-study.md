@@ -129,7 +129,7 @@ All paths are under the repository root.
 | Textures | Virtual textures, streamed mips | PNGs in the pack, base color only in the textured path, at most 64 images of up to 2048 px; mips cooked on the CPU at upload by role (`verse_engine::mips`, audit V13). | No normal or ORM maps in the textured path, no GPU compression, no streaming. For stone, missing normal maps cost more than missing streaming. |
 | Content packaging | `.uasset` cooked per platform | VTP3 packs (`crates/verse-zone-everglade/src/zones/everglade_pack/format.rs`), compiled by `crates/verse-zone-everglade/src/zones/everglade_pack/compile.rs`, with limits `Limits::EVERGLADE`: 12 MiB pack, 480,000 triangles, 20,000 per model, 1024 px textures. | No mesh processing in the compiler. |
 | Static-to-destructible swap | Chaos geometry collections, often cached | A building stays in the merged cells until hit, then rises into a `Site` of physics bodies. Its static triangles are hidden by rewriting their indices (`IndexEdits` in `textured.rs`), and the pieces draw posed (`crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs`). Models are carved on a lattice (`carve.rs`), chunked with capped interiors (`chunks.rs`), and held by a support graph that topples unsupported pieces with `crates/physics` (`site.rs`). | Already built. See the plan. |
-| Destructible ruin | Chaos fracture | The Ruins zone's ruin is a 32 x 16 x 32 grid of 0.5 m voxels that Fireball carves (`crates/verse-ruins`, `crates/verse-zone-ruins`, `docs/verse/ruins-source-parity.md`). Source debris is discarded. | A voxel shell, not scanned-looking stone. |
+| Destructible ruin | Chaos fracture | None. The Ruins zone and its voxel ruin (a 32 x 16 x 32 grid of 0.5 m voxels that Fireball carved, `docs/verse/ruins-source-parity.md`) were removed on 2026-10-05. | No destructible ruin; the demolition swap above is the destruction path. |
 | Camera in tight spaces | Spring arm with collision | A sphere sweep through the `Sight` trait (`crates/verse-world/src/social/sight.rs`), dispatched per zone in `crates/verse/src/zones/sight.rs`. | Needed for corridors; exists. |
 | Authoring | Megascans, Quixel Bridge, MegaAssemblies | Blender scripts under `scripts/blender/` run headless and are the source of every model ([Blender pipeline](blender-pipeline.md), [asset runbook](asset-runbook.md)). The crypt lab and great crypt are Reference-mode models from primitives (`scripts/blender/chamber_lab.py`, `scripts/blender/great_crypt.py`). | No assembly concept: no reusable packed groups of models. |
 
@@ -162,9 +162,9 @@ payoff per hour, not by the external analysis's order.
    columns, arches, debris sets, and boulder assemblies in Blender in
    Reference mode, with our own or CC0 textures. Place them as one passage
    that ends in a reveal ([level design](#level-design-passages-to-a-reveal)).
-   Use the great crypt (`crates/verse-world/src/great_crypt.rs`) or the
-   Ruins zone as the host. This is the only item that changes what a player
-   sees in a day.
+   Use the great crypt (`crates/verse-world/src/great_crypt.rs`) or
+   Everglade's edge as the host; the Ruins zone was removed on 2026-10-05.
+   This is the only item that changes what a player sees in a day.
 2. **Normal maps.** The textured path reads base color only. Scanned stone
    gets most of its detail from normal maps, and a normal sample costs
    little on every tier. Add the normal image to `TexturedMaterial`, bake
@@ -350,12 +350,12 @@ silhouette and light. It also suits our renderer: in a passage, occlusion
 culling (plan item 4) cuts most of the zone, and at the reveal, far levels
 and fog carry the distance.
 
-- **Ruins zone.** The Ruins zone is a 300 m heightfield with one voxel ruin
-  (`crates/verse-zone-ruins`). Approach the ruin through a cut: two cliff
-  assemblies form a 3 m wide gully, its walls lined with broken columns,
-  turning once so the ruin is hidden until the last bend. The gully opens
-  onto the ruin across a lower plain, so the ruin is in silhouette against
-  the sky. The destructible voxel ruin stays the centerpiece.
+- **Ruins zone.** The Ruins zone, a 300 m heightfield with one voxel ruin,
+  was removed on 2026-10-05, so it no longer hosts a passage. The gully
+  composition planned for it (two cliff assemblies forming a 3 m wide gully
+  lined with broken columns, turning once so the ruin stays hidden until the
+  last bend, then opening onto the ruin in silhouette) can serve another
+  host.
 - **Great crypt.** The crypt's nave (`crates/verse-world/src/great_crypt.rs`)
   is already a long room. Add a low, narrow entry stair from the
   surface with lamps at wide spacing, so the eye adapts to dark, then open
@@ -376,8 +376,8 @@ and fog carry the distance.
 2. Which Unreal Engine do you want for the study: 5.7 from the launcher, or
    a built 5.8.3 from `~/work/UnrealEngine`, which upgrades the project?
    The launcher has no engine installed yet.
-3. Which zone hosts the first ruins passage: the Ruins zone, the great
-   crypt, or a new path at Everglade's edge?
+3. Which zone hosts the first ruins passage: the great crypt or a new path
+   at Everglade's edge? (The Ruins zone was removed on 2026-10-05.)
 4. Should the style follow Valley's desert canyon, or the 2020 reveal's
    darker stone halls and statues?
 5. Is the 600,000 drawn-triangle budget fixed for desktop, or can the High

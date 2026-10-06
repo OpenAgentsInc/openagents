@@ -6,14 +6,11 @@ use serde::{Deserialize, Serialize};
 pub use verse_zone_crypt as crypt;
 pub use verse_zone_everglade::zones::everglade;
 pub use verse_zone_everglade::zones::everglade_pack;
-pub use verse_zone_ruins::assets;
 pub mod gate;
 pub use verse_zone_grove::zones::grove;
 pub mod hud;
 pub use verse_zone_lab as lab;
 pub use verse_zone_lagrange as lagrange;
-pub mod operators;
-pub use verse_zone_ruins as ruins;
 #[cfg(test)]
 mod crypt_tests;
 #[cfg(test)]
@@ -26,6 +23,7 @@ mod grove_tests;
 mod grove_tower_tests;
 #[cfg(test)]
 mod lab_tests;
+pub mod operators;
 mod runtime;
 mod sight;
 #[cfg(test)]
@@ -42,7 +40,6 @@ pub use gate::Gate;
 pub(crate) use lab::Lab;
 pub use lab::{Kind as LabScenario, KnobView, Snapshot as LabSnapshot};
 pub(crate) use lagrange::Lagrange;
-pub(crate) use ruins::Ruins;
 
 /// Read on demand by native Settings, not repeated in each frame packet.
 pub const CREDITS: &str = concat!(
@@ -50,14 +47,10 @@ pub const CREDITS: &str = concat!(
     "bathymetry from GEBCO; Moon maps from NASA SVS CGI Moon Kit (LRO LROC and LOLA); Milky Way from ",
     "NASA SVS Deep Star Maps 2020; stars from the Yale Bright Star Catalogue (Hoffleit and Warren, ",
     "NASA ADC / CDS). Sources: https://github.com/OpenAgentsInc/openagents/tree/main/crates/verse/assets/lagrange\n\n",
-    "Ruins: the original Ruins of Atlantis Wizard Woods simulation with a mobile renderer.\n",
-    "Geometry and original animation poses are baked with sampled colors and leaf cutouts.\n",
-    "The original wizard/zombie upstream authors and separate asset licenses were not identified in the source.\n",
-    "Source and modifications: https://github.com/OpenAgentsInc/openagents/tree/main/assets/verse/ruins\n\n",
-    "\n\nRetained source project notice:\n",
-    include_str!("../../../../assets/verse/ruins/SOURCE_NOTICE"),
-    "\n\nSource repository license:\n",
-    include_str!("../../../../assets/verse/ruins/SOURCE_LICENSE"),
+    "Spells and rules: this work includes material from the System Reference Document 5.2.1 ",
+    "(\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. ",
+    "The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, ",
+    "available at https://creativecommons.org/licenses/by/4.0/legalcode.",
 );
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,7 +58,6 @@ pub const CREDITS: &str = concat!(
 pub enum ZoneId {
     #[default]
     Plaza,
-    Ruins,
     Lagrange1,
     PhysicsLab,
     Everglade,
@@ -77,9 +69,8 @@ pub enum ZoneId {
     Crypt,
 }
 impl ZoneId {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 6] = [
         Self::Plaza,
-        Self::Ruins,
         Self::Lagrange1,
         Self::PhysicsLab,
         Self::Everglade,
@@ -88,7 +79,7 @@ impl ZoneId {
     ];
 
     /// The zone a command line names, by world identifier or label
-    /// (`everglade`, `lagrange-1`, `physics-lab`, `ruins`, `plaza`).
+    /// (`everglade`, `lagrange-1`, `physics-lab`, `plaza`).
     #[must_use]
     pub fn from_name(name: &str) -> Option<Self> {
         let wanted = name.trim().to_ascii_lowercase().replace([' ', '_'], "-");
@@ -103,7 +94,6 @@ impl ZoneId {
     pub const fn world_id(self) -> &'static str {
         match self {
             Self::Plaza => "verse-plaza",
-            Self::Ruins => "ruins-v1",
             Self::Lagrange1 => "verse-lagrange-1",
             Self::PhysicsLab => "physics-lab-v1",
             Self::Everglade => "verse-everglade",
@@ -114,7 +104,6 @@ impl ZoneId {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Plaza => "Amber plaza",
-            Self::Ruins => "Ruins",
             Self::Lagrange1 => "Lagrange 1",
             Self::PhysicsLab => "Physics Lab",
             Self::Everglade => "Everglade",
@@ -125,13 +114,13 @@ impl ZoneId {
     pub const fn half_extent(self) -> f32 {
         match self {
             Self::Plaza => crate::world::HALF,
-            Self::Ruins | Self::Lagrange1 => 150.0,
+            Self::Lagrange1 => 150.0,
             Self::PhysicsLab => lab::HALF_EXTENT,
             Self::Everglade | Self::Grove => everglade::HALF_EXTENT,
             Self::Crypt => crypt::HALF_EXTENT,
         }
     }
-    /// The zone's primary portal: the plaza's Ruins arch, or a zone's return.
+    /// The zone's primary portal: the plaza's Lagrange 1 arch, or a zone's return.
     pub fn portal(self) -> glam::Vec3 {
         self.portals()[0].1
     }
@@ -140,7 +129,6 @@ impl ZoneId {
         match self {
             Self::Plaza => {
                 let mut portals = vec![
-                    (Self::Ruins, glam::Vec3::new(-12.0, 0.0, 12.0)),
                     (Self::Lagrange1, glam::Vec3::new(12.0, 0.0, 12.0)),
                     (Self::PhysicsLab, glam::Vec3::new(0.0, 0.0, -22.0)),
                     (Self::Everglade, glam::Vec3::new(-24.0, 0.0, -24.0)),
@@ -152,14 +140,6 @@ impl ZoneId {
                 }
                 portals
             }
-            Self::Ruins => vec![(
-                Self::Plaza,
-                glam::Vec3::new(
-                    0.0,
-                    verse_ruins::scene::Terrain::bundled().height(0.0, -8.0),
-                    -8.0,
-                ),
-            )],
             Self::Lagrange1 => vec![(Self::Plaza, lagrange::RETURN_PORTAL)],
             Self::PhysicsLab => vec![(Self::Plaza, lab::RETURN_PORTAL)],
             Self::Everglade => vec![(Self::Plaza, everglade::RETURN_PORTAL)],
@@ -172,7 +152,6 @@ impl ZoneId {
     pub(crate) const fn sign(self) -> &'static str {
         match self {
             Self::Plaza => "PLAZA",
-            Self::Ruins => "RUINS",
             Self::Lagrange1 => "LAGRANGE 1",
             Self::PhysicsLab => "PHYSICS LAB",
             Self::Everglade => "EVERGLADE",
@@ -194,7 +173,6 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             fog_end: crate::render::FOG_END,
             height_fog: None,
         },
-        ZoneId::Ruins => ruins::ATMOSPHERE,
         // Vacuum: no scattering. Fog only fades the edge of the 2 km sky shell.
         ZoneId::Lagrange1 => Atmosphere {
             color: [0.0, 0.0, 0.004],
@@ -256,7 +234,6 @@ pub struct Snapshot {
     pub error: Option<String>,
     pub portal: PortalProjection,
     pub controls: Vec<Control>,
-    pub combat: Option<verse_ruins::Snapshot>,
     /// Lagrange 1 physics and construction state.
     pub station: Option<verse_lagrange::Snapshot>,
     /// Physics Lab scenario, knobs, and readouts.
@@ -279,7 +256,6 @@ impl Default for Snapshot {
                 distance: 0.0,
             },
             controls: vec![],
-            combat: None,
             station: None,
             lab: None,
             caption: String::new(),
@@ -288,12 +264,10 @@ impl Default for Snapshot {
 }
 
 pub(crate) struct State {
-    loader: Option<assets::Loader>,
     everglade_loader: Option<everglade_pack::Loader>,
     loading: LoadState,
     progress: f32,
     error: Option<String>,
-    ruins: Option<Ruins>,
     lagrange: Option<Lagrange>,
     lab: Option<Lab>,
     everglade: Option<Everglade>,
@@ -329,12 +303,10 @@ pub(crate) struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            loader: None,
             everglade_loader: None,
             loading: LoadState::Idle,
             progress: 0.0,
             error: None,
-            ruins: None,
             lagrange: None,
             lab: None,
             everglade: None,
@@ -343,7 +315,7 @@ impl Default for State {
             demolition: false,
             studio: everglade::studio::Studio::default(),
             studio_notice: None,
-            destination: ZoneId::Ruins,
+            destination: ZoneId::Everglade,
             plaza_pose: None,
             elapsed: 0.0,
             gate_cooldown: 0.0,
@@ -352,39 +324,6 @@ impl Default for State {
             ritual_crossed: false,
             sight_tops: (u64::MAX, 0, Vec::new()),
         }
-    }
-}
-
-/// The first scene profile accepts reviewed assets and a closed ruleset only.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Manifest {
-    pub schema: String,
-    pub world: String,
-    pub ruleset: String,
-    pub physics: String,
-    pub asset_sha256: String,
-    pub asset_bytes: u64,
-}
-impl Manifest {
-    pub fn ruins() -> Result<Self, String> {
-        let manifest: Self =
-            serde_json::from_str(include_str!("../../../../assets/verse/ruins/zone.json"))
-                .map_err(|_| "The installed ruins definition is invalid".to_owned())?;
-        manifest.validate()?;
-        Ok(manifest)
-    }
-    pub fn validate(&self) -> Result<(), String> {
-        if self.schema != "verse.zone.v1"
-            || self.world != ZoneId::Ruins.world_id()
-            || self.ruleset != "ruins.wizard-woods.v1"
-            || self.physics != "ruins.heightfield.v1"
-            || self.asset_sha256 != assets::PACK_SHA256
-            || self.asset_bytes != assets::PACK_BYTES
-        {
-            return Err("Zone definition or ruleset is not supported by this host".into());
-        }
-        Ok(())
     }
 }
 
@@ -431,7 +370,6 @@ pub(crate) fn arch(
     );
     let color = match zone {
         ZoneId::Plaza => crate::palette::amber(Intensity::Half),
-        ZoneId::Ruins => [0.13, 0.55, 0.34],
         ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
         ZoneId::PhysicsLab => [0.3, 0.85, 1.0],
         ZoneId::Everglade | ZoneId::Grove => [0.95, 0.85, 0.4],

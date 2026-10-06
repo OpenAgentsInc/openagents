@@ -1,1 +1,0 @@
-//! Encode/decode helpers (scaffold).
