@@ -4,18 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use serde::{Deserialize, Serialize};
-
-/// What recreates a removed worktree: its repository, branch, and commit.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Undo {
-    pub repo: PathBuf,
-    pub path: PathBuf,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub branch: Option<String>,
-    pub commit: String,
-}
+pub use crate::records::Undo;
 
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     let output = Command::new("git")

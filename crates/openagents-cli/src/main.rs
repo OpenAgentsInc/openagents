@@ -47,9 +47,13 @@ mod mcp;
 mod out;
 #[cfg(unix)]
 mod pay;
+#[cfg(unix)]
 mod pay_hosted;
+#[cfg(unix)]
 mod pay_payout;
+#[cfg(unix)]
 mod pay_plugin;
+#[cfg(unix)]
 mod pay_reconcile;
 mod playtest;
 #[cfg(unix)]

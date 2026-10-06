@@ -50,7 +50,7 @@ pub(crate) fn recalibrate(
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let now = crate::wallet::date(secs);
+    let now = crate::out::date(secs);
     let (report, next) = efficiency::refit::refit(&rows, &previous, &now);
     let written = match (write, next) {
         (true, Some(file)) => Some(efficiency::refit::write(&file)?),

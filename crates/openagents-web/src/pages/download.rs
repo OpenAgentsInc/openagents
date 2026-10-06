@@ -98,6 +98,7 @@ async fn download() -> Response {
 <p>Installs <code>coder</code> and <code>openagents</code> together. \
 Run <code>coder</code> to open the new terminal, or <code>openagents --help</code> for the CLI. \
 Run the install command again to update.</p>\
+<p class=\"hint\">Windows RC: local task services and background automation require macOS or Linux.</p>\
 <details><summary>Download binaries manually</summary>{}</details>",
         coder_binaries(),
     );

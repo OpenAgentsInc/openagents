@@ -197,7 +197,7 @@ pub fn when(at: u64) -> String {
     let minutes = (at % 86_400) / 60;
     format!(
         "{} {:02}:{:02} UTC",
-        crate::wallet::date(at),
+        crate::out::date(at),
         minutes / 60,
         minutes % 60
     )

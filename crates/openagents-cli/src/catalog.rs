@@ -788,7 +788,7 @@ fn text<'a>(value: &'a Value, name: &str) -> &'a str {
 fn render_list(group: Group, value: &Value) -> String {
     let rows = render_list_rows(group, value);
     if matches!(group, Group::Ext) {
-        crate::plugin_registry::published_list_text(text(value, "relay"), &rows)
+        published_list_text(text(value, "relay"), &rows)
     } else {
         rows
     }
@@ -1330,4 +1330,10 @@ mod tests {
         );
         assert!(populated.contains("project-map"));
     }
+}
+
+pub(crate) fn published_list_text(relay: &str, rows: &str) -> String {
+    format!(
+        "Published plugins from the catalog and {relay}, not your installed plugins.\nUse `openagents plugin installed` to see plugins on this computer.\n\n{rows}"
+    )
 }

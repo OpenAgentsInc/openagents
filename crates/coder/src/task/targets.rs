@@ -1,25 +1,32 @@
 //! Reusable Cargo build slots outside task worktrees.
 
+#[cfg(unix)]
 use background::volume::{Statvfs, Volumes};
+#[cfg(unix)]
 use std::fs::{File, OpenOptions};
+#[cfg(unix)]
 use std::io::{Read, Seek, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::time::SystemTime;
 
 use super::{Error, Store};
 
+#[cfg(unix)]
 const SLOTS: usize = background::SLOTS;
+#[cfg(unix)]
 const BUDGET: u64 = 64 * 1024 * 1024 * 1024;
 
 /// Slot limits, in decimal gigabytes. Environment overrides apply on admission.
 #[derive(Clone, Copy, Debug)]
+#[cfg(unix)]
 struct Policy {
     cap: u64,
     floor: u64,
     keep: usize,
 }
 
+#[cfg(unix)]
 impl Policy {
     /// The environment first, then `coder.slot_cap_gb` and
     /// `coder.slot_free_gb` from this computer's settings, then the defaults.
@@ -69,6 +76,7 @@ fn root(store: &Path) -> PathBuf {
 }
 
 /// A slot held for the entire run. The stable lock file is never removed.
+#[cfg(unix)]
 pub struct Lease {
     pub path: PathBuf,
     lock: File,
@@ -77,6 +85,7 @@ pub struct Lease {
     cutoff: SystemTime,
 }
 
+#[cfg(unix)]
 impl Lease {
     /// Take a free slot for the repository's common Git directory.
     pub fn acquire(store: &Path, common: &Path) -> Result<Self, Error> {
@@ -135,6 +144,25 @@ impl Lease {
     }
 }
 
+/// No lease is admitted on platforms without the disk and lock monitor.
+#[cfg(not(unix))]
+pub struct Lease {
+    pub path: PathBuf,
+}
+
+#[cfg(not(unix))]
+impl Lease {
+    /// Refuses admission before creating a target directory or lock file.
+    pub fn acquire(_store: &Path, _common: &Path) -> Result<Self, Error> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Cargo build slot admission is not supported on this platform",
+        )
+        .into())
+    }
+}
+
+#[cfg(unix)]
 impl Drop for Lease {
     fn drop(&mut self) {
         // Touch the stable lock to record last use, including interrupted runs.
@@ -152,30 +180,47 @@ impl Drop for Lease {
     }
 }
 
+#[cfg(unix)]
 fn lock_path(path: &Path) -> PathBuf {
     let mut name = path.as_os_str().to_owned();
     name.push(".lock");
     PathBuf::from(name)
 }
 
+#[cfg(unix)]
 fn lock(path: &Path) -> Result<Option<File>, Error> {
     let path = lock_path(path);
     if std::fs::symlink_metadata(&path).is_ok_and(|meta| !meta.is_file()) {
         return Err(Error::UnsafePath);
     }
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true).truncate(false);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
-    }
-    let file = options.open(path)?;
+    let file = open_lock(&path, true)?;
     match file.try_lock() {
         Ok(()) => Ok(Some(file)),
         Err(std::fs::TryLockError::WouldBlock) => Ok(None),
         Err(std::fs::TryLockError::Error(error)) => Err(error.into()),
     }
+}
+
+#[cfg(unix)]
+fn open_lock(path: &Path, create: bool) -> Result<File, Error> {
+    let mut options = OpenOptions::new();
+    crate::private::file(
+        options
+            .read(true)
+            .write(true)
+            .create(create)
+            .truncate(false),
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(Error::UnsafePath);
+    }
+    Ok(file)
 }
 
 fn legacy(store: &Path, workspace: &Path) -> PathBuf {
@@ -192,6 +237,7 @@ fn legacy(store: &Path, workspace: &Path) -> PathBuf {
 
 /// Remove ended legacy builds, prune oversized idle slots, and trim the pool to 64 GiB.
 /// Unknown or live tasks, symlinks, and locked slots are never deleted.
+#[cfg(unix)]
 pub fn cleanup(store: &Path) -> Result<(), Error> {
     let tasks = Store::open(store)?.list()?;
     let active: std::collections::BTreeSet<_> = tasks
@@ -207,6 +253,16 @@ pub fn cleanup(store: &Path) -> Result<(), Error> {
     }
     maintain(&root(store), Policy::from_env()?, &Statvfs)?;
     trim(&root(store), BUDGET)
+}
+
+/// Refuses cleanup on platforms without the disk and lock monitor.
+#[cfg(not(unix))]
+pub fn cleanup(_store: &Path) -> Result<(), Error> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "Cargo build slot cleanup is not supported on this platform",
+    )
+    .into())
 }
 
 fn ended(task: &super::Task) -> bool {
@@ -246,10 +302,12 @@ pub fn facts(store: &Path) -> Result<Vec<background::TaskFact>, String> {
         .collect())
 }
 
+#[cfg(unix)]
 fn real_dir(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir())
 }
 
+#[cfg(unix)]
 fn size(path: &Path) -> Result<u64, Error> {
     Ok(background::view::slot_bytes(path)?)
 }
@@ -257,6 +315,7 @@ fn size(path: &Path) -> Result<u64, Error> {
 // The stable lock also keeps the starts of the last N builds. A Cargo cache
 // hit does not update artifact mtimes; retaining several starts keeps recent
 // build variants warm while older artifacts can be rebuilt on demand.
+#[cfg(unix)]
 fn history(lock: &mut File) -> Result<Vec<u64>, Error> {
     lock.rewind()?;
     let mut text = String::new();
@@ -264,6 +323,7 @@ fn history(lock: &mut File) -> Result<Vec<u64>, Error> {
     Ok(serde_json::from_str(&text).unwrap_or_default())
 }
 
+#[cfg(unix)]
 fn remember_build(lock: &mut File, keep: usize) -> Result<SystemTime, Error> {
     let mut builds = history(lock)?;
     builds.push(background::paths::now());
@@ -275,6 +335,7 @@ fn remember_build(lock: &mut File, keep: usize) -> Result<SystemTime, Error> {
     Ok(std::time::UNIX_EPOCH + std::time::Duration::from_secs(builds[0]))
 }
 
+#[cfg(unix)]
 fn maintain(root: &Path, policy: Policy, volumes: &dyn Volumes) -> Result<(), Error> {
     for slot in background::view::slots(root, false) {
         let Some(mut held) = lock(&slot.path)? else {
@@ -293,6 +354,7 @@ fn maintain(root: &Path, policy: Policy, volumes: &dyn Volumes) -> Result<(), Er
     Ok(())
 }
 
+#[cfg(unix)]
 fn prune(
     path: &Path,
     policy: Policy,
@@ -311,11 +373,7 @@ fn prune(
     while let Some(dir) = stack.pop() {
         let cargo_lock = dir.join(".cargo-lock");
         let _cargo = if cargo_lock.exists() {
-            let file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .custom_flags(libc::O_NOFOLLOW)
-                .open(&cargo_lock)?;
+            let file = open_lock(&cargo_lock, false)?;
             if file.try_lock().is_err() {
                 continue;
             }
@@ -350,6 +408,7 @@ fn prune(
 // Budget eviction removes the whole slot, so hold all profile locks, not
 // just the slot lease. A manually launched Cargo build may hold only its
 // profile lock.
+#[cfg(unix)]
 fn cargo_locks(path: &Path) -> Result<Vec<PathBuf>, Error> {
     let mut paths = Vec::new();
     let mut stack = vec![path.to_owned()];
@@ -371,6 +430,7 @@ fn cargo_locks(path: &Path) -> Result<Vec<PathBuf>, Error> {
     Ok(paths)
 }
 
+#[cfg(unix)]
 fn trim(root: &Path, budget: u64) -> Result<(), Error> {
     if !real_dir(root) {
         return Ok(());
@@ -426,9 +486,28 @@ fn trim(root: &Path, budget: u64) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn lock_opens_refuse_links_without_changing_their_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::write(&outside, b"keep").unwrap();
+        let linked = dir.path().join("linked.lock");
+        std::os::unix::fs::symlink(&outside, &linked).unwrap();
+        for create in [false, true] {
+            assert!(open_lock(&linked, create).is_err());
+            assert_eq!(std::fs::read(&outside).unwrap(), b"keep");
+        }
+        let missing = dir.path().join("missing");
+        let dangling = dir.path().join("dangling.lock");
+        std::os::unix::fs::symlink(&missing, &dangling).unwrap();
+        assert!(open_lock(&dangling, true).is_err());
+        assert!(!missing.exists());
+    }
 
     struct Free(u64);
     impl Volumes for Free {

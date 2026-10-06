@@ -33,6 +33,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::local::{self, Record};
+#[cfg(unix)]
 use super::{Status, Store};
 
 /// What recreates a task's removed worktree.
@@ -90,6 +91,7 @@ pub fn lock(store: &Path, task: &str) -> Result<File, String> {
 
 /// Remove `task`'s worktree when the task has ended and the worktree holds
 /// nothing unsaved; see the module docs.
+#[cfg(unix)]
 pub fn retire(store: &Path, task: &str) -> Retired {
     let Ok(_held) = lock(store, task) else {
         return Retired::Kept("its worktree lock cannot be taken".into());
@@ -163,6 +165,7 @@ pub fn retire(store: &Path, task: &str) -> Retired {
     }
 }
 
+#[cfg(unix)]
 fn git_head(worktree: &Path) -> Option<String> {
     local::git_out(worktree, &["rev-parse", "HEAD"])
         .ok()
@@ -176,6 +179,7 @@ fn git_head(worktree: &Path) -> Option<String> {
 ///
 /// # Errors
 /// Git cannot recreate it, or the record cannot be saved.
+#[cfg(unix)]
 pub fn restore(store: &Path, record: &mut Record) -> Result<(), String> {
     let Some(archived) = record.archived.clone() else {
         return Ok(());
@@ -202,6 +206,25 @@ pub fn restore(store: &Path, record: &mut Record) -> Result<(), String> {
     }
     record.archived = None;
     local::save(store, record)
+}
+
+/// Keep worktrees on platforms without the Unix retirement service.
+#[cfg(not(unix))]
+pub fn retire(_store: &Path, _task: &str) -> Retired {
+    Retired::Kept("Automatic worktree cleanup is not available on Windows".into())
+}
+
+/// Refuse to restore an archived worktree on Windows.
+///
+/// # Errors
+/// Worktree retirement is unavailable on this platform.
+#[cfg(not(unix))]
+pub fn restore(_store: &Path, record: &mut Record) -> Result<(), String> {
+    if record.archived.is_none() {
+        Ok(())
+    } else {
+        Err("Automatic worktree cleanup is not available on Windows".into())
+    }
 }
 
 /// [`restore`] under the task's lock, for a reader that needs the

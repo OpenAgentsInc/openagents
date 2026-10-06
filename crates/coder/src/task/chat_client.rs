@@ -464,6 +464,7 @@ impl Coder for Here {
 
     /// A draft `openagents background draft` kept in this user's
     /// `~/.openagents/background/drafts`, while it is fresh.
+    #[cfg(unix)]
     fn drafted(&self, id: &str) -> bool {
         background::Layout::from_env()
             .is_ok_and(|layout| background::compile::drafted(&layout, id, background::paths::now()))

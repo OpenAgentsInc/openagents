@@ -661,15 +661,18 @@ impl Extras for ProgramExtras {
         Ok(crate::efficiency::card(&crate::efficiency::report(&[])))
     }
 
+    #[cfg(unix)]
     fn watchers(&self) -> Vec<String> {
         crate::background::watchers()
     }
 
     fn worktrees(&self) -> Result<Vec<openagents_terminal::WorktreeRow>, String> {
         let store = coder::task::local::default_store();
+        #[cfg(unix)]
         let slots = background::view::slots(&background::task_targets(&store), true);
         coder::task::worktrees::list(&store).map(|projects| {
             let mut rows = worktree_rows(&projects);
+            #[cfg(unix)]
             rows.extend(slot_rows(&slots));
             rows
         })
@@ -721,6 +724,7 @@ fn worktree_rows(
 
 /// `/worktrees`: Coder's build slots after the projects, with their sizes
 /// (#10384). They are shared by every task, so `a` never archives one.
+#[cfg(unix)]
 fn slot_rows(slots: &[background::view::Slot]) -> Vec<openagents_terminal::WorktreeRow> {
     slots
         .iter()
@@ -1447,7 +1451,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod slot_row_tests {
     #[test]
     fn worktrees_lists_each_build_slot_with_its_size_and_never_archives_one() {

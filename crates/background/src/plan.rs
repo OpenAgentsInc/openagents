@@ -17,27 +17,7 @@ use crate::paths::{self, Layout, SLOTS, real_dir};
 use crate::rule::{Class, Rule, glob};
 use crate::volume::{Space, Volumes};
 
-/// What the task store says about one Coder task.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TaskFact {
-    pub id: String,
-    /// Its worktree (the task's workspace path).
-    pub worktree: PathBuf,
-    /// Its per-task Cargo target directory (the layout before slots).
-    pub target: PathBuf,
-    /// Finished or cancelled, checks not running, group clear: the
-    /// task store's own `ended` test.
-    pub ended: bool,
-    /// Its run or its checks failed.
-    #[serde(default)]
-    pub failed: bool,
-    /// It was cancelled.
-    #[serde(default)]
-    pub cancelled: bool,
-    /// It is queued or running.
-    #[serde(default)]
-    pub running: bool,
-}
+pub use crate::records::TaskFact;
 
 /// Reads the task store.
 pub trait Facts: Send + Sync {

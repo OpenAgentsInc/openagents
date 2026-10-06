@@ -1013,11 +1013,7 @@ fn publish_command(args: &Args) -> Result<Value, String> {
     }))
 }
 
-pub(crate) fn published_list_text(relay: &str, rows: &str) -> String {
-    format!(
-        "Published plugins from the catalog and {relay}, not your installed plugins.\nUse `openagents plugin installed` to see plugins on this computer.\n\n{rows}"
-    )
-}
+pub(crate) use crate::catalog::published_list_text;
 
 fn search_command(args: &Args) -> Result<Value, String> {
     let query = args.positional().join(" ");

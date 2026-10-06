@@ -436,21 +436,7 @@ fn clock(at: u64) -> String {
     format!("{:02}:{:02}", minutes / 60, minutes % 60)
 }
 
-/// `2026-10-02` for Unix seconds, in UTC.
-pub(crate) fn date(at: u64) -> String {
-    let days = i64::try_from(at / 86_400).unwrap_or(0);
-    // Howard Hinnant's civil-from-days.
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!("{year:04}-{month:02}-{day:02}")
-}
+pub(crate) use crate::out::date;
 
 fn history(args: &Args, format: Format, note: bool) -> Result<(Value, Render), Failure> {
     let limit = match args.option("limit") {

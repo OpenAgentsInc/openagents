@@ -81,10 +81,18 @@ fn resolve_plugin(target: &Path) -> Result<PathBuf, String> {
     if target.join("package.json").is_file() {
         return Ok(target.to_path_buf());
     }
-    let layout = background::Layout::from_env().map_err(|error| error.to_string())?;
-    resolve_installed(&layout, target)
+    #[cfg(unix)]
+    {
+        let layout = background::Layout::from_env().map_err(|error| error.to_string())?;
+        resolve_installed(&layout, target)
+    }
+    #[cfg(not(unix))]
+    {
+        Err("Installed plugin lookup is not available on Windows; pass a plugin directory containing package.json".into())
+    }
 }
 
+#[cfg(unix)]
 fn resolve_installed(layout: &background::Layout, target: &Path) -> Result<PathBuf, String> {
     if target.join("package.json").is_file() {
         return Ok(target.to_path_buf());
@@ -284,6 +292,7 @@ pub fn execute(dir: &Path, workspace: &Path, request: &str) -> Result<Value, Str
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn installed_names_and_parent_directories_resolve_to_the_version() {
         let home = tempfile::tempdir().unwrap();

@@ -44,6 +44,9 @@
 #   NOTARY_KEYCHAIN_PROFILE Optional saved notarytool profile.
 #   OA_DEVELOPER_ID_APPLICATION Optional Developer ID Application identity.
 #   CARGO_TARGET_DIR        Persistent build cache outside the checkout.
+#   CODER_RELEASE_WINDOWS_TARGET_DIR, CODER_RELEASE_ARM_MUSL_TARGET_DIR,
+#   CODER_RELEASE_MAC_INTEL_TARGET_DIR
+#                            Optional persistent caches for those cross builds.
 #   CODER_RELEASE_GLIBC     GNU Linux compatibility floor; default 2.28.
 #   CODER_RELEASE_ASSESS_ATTEMPTS, CODER_RELEASE_ASSESS_DELAY
 #                            Gatekeeper retries; defaults 45 and 60 seconds.
@@ -568,7 +571,13 @@ for platform in $targets; do
   case "$triple" in
     *-linux-gnu) zig_target="$triple.$glibc_version" ;;
   esac
-  out_dir="$target_dir/$triple/release"
+  platform_target_dir=$target_dir
+  case "$platform" in
+    macos-x86_64) platform_target_dir=${CODER_RELEASE_MAC_INTEL_TARGET_DIR:-$target_dir} ;;
+    windows-x86_64) platform_target_dir=${CODER_RELEASE_WINDOWS_TARGET_DIR:-$target_dir} ;;
+    linux-aarch64-musl) platform_target_dir=${CODER_RELEASE_ARM_MUSL_TARGET_DIR:-$target_dir} ;;
+  esac
+  out_dir="$platform_target_dir/$triple/release"
   for name in $(products_for "$platform"); do
     rm -f "$out_dir/$(binary_for "$name")$exe"
   done
@@ -585,7 +594,7 @@ for platform in $targets; do
   if ! (cd "$source" && CODER_BUILD_COMMIT="$sha" CODER_BUILD_DIRTY=clean \
     OPENAGENTS_RELEASE=1 \
     MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}" \
-    CARGO_TARGET_DIR="$target_dir" \
+    CARGO_TARGET_DIR="$platform_target_dir" \
     "$@") >"$build_log" 2>&1; then
     echo "  SKIP: build failed (see $build_log)"
     grep -E '^error' "$build_log" | head -5 | sed 's/^/    /'

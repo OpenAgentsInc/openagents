@@ -6,10 +6,13 @@
 //! `--json` prints the reply as it came. Nothing here opens a PTY: the
 //! panes belong to Verse, which serves the requests between frames.
 
+#[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+#[cfg(unix)]
 use verse::terminal_control::{self as control, SOCKET_ENV};
 
 use crate::{Args, Output};
@@ -44,6 +47,7 @@ const COMMANDS: &[&str] = &[
     "status", "open", "hide", "split", "focus", "close", "send", "key", "read", "tab", "zoom",
 ];
 
+#[cfg(unix)]
 pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
     let group = "verse terminal";
     let Some((command, rest)) = words.split_first() else {
@@ -103,6 +107,7 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
     0
 }
 
+#[cfg(unix)]
 fn socket(args: &Args) -> Option<PathBuf> {
     match args.option("socket") {
         Some(path) => Some(PathBuf::from(path)),
@@ -176,6 +181,7 @@ fn request(command: &str, args: &Args) -> Result<Value, String> {
 
 /// Polls `read` until the pane's text contains `--wait-for`, or `--wait`
 /// seconds pass.
+#[cfg(unix)]
 fn read_until(output: &Output, socket: &std::path::Path, request: &Value, args: &Args) -> u8 {
     let group = "verse terminal";
     let needle = args.option("wait-for").unwrap_or_default().to_owned();
@@ -328,6 +334,7 @@ mod tests {
         assert!(text.contains("~/work"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_missing_socket_fails_and_wait_for_reports_absence() {
         let dir = tempfile::tempdir().unwrap();
@@ -341,4 +348,19 @@ mod tests {
         let words: Vec<String> = ["bogus"].iter().map(|w| (*w).to_owned()).collect();
         assert_eq!(run(&output, &words), crate::out::EXIT_USAGE);
     }
+}
+
+#[cfg(not(unix))]
+pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
+    if words
+        .first()
+        .is_some_and(|word| matches!(word.as_str(), "--help" | "-h" | "help"))
+    {
+        println!("{USAGE}");
+        return 0;
+    }
+    output.fail(
+        "verse terminal",
+        "Verse terminal control is not available on Windows",
+    )
 }

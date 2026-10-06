@@ -1657,6 +1657,7 @@ mod tests {
 
 /// `chamber service`: a launchd agent or systemd user unit that runs
 /// `openagents chamber host CONFIG.json` from login on.
+#[cfg(unix)]
 mod service {
     use std::path::{Path, PathBuf};
     use std::process::Command;
@@ -1952,5 +1953,17 @@ mod service {
             );
             assert!(mac.contains("<string>/tmp/a b.json</string>"));
         }
+    }
+}
+
+#[cfg(not(unix))]
+mod service {
+    use crate::Output;
+
+    pub fn run(output: &Output, _words: &[String]) -> u8 {
+        output.fail(
+            "chamber service",
+            "Chamber service installation is not available on Windows",
+        )
     }
 }

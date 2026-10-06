@@ -8,9 +8,12 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use background::git::{self, Undo};
+#[cfg(unix)]
+use background::git;
+use background::git::Undo;
 
 use super::Store;
+#[cfg(unix)]
 use super::retire::Retired;
 
 /// One task's worktree.
@@ -124,6 +127,33 @@ fn project_of(worktree: &Path, fallback: &str) -> String {
     repo.to_string_lossy().into_owned()
 }
 
+/// Refuse worktree archival on Windows.
+///
+/// # Errors
+/// Worktree retirement is unavailable on this platform.
+#[cfg(not(unix))]
+pub fn archive(_store: &Path, _task: &str) -> Result<String, String> {
+    Err("Task worktree archival is not available on Windows".into())
+}
+
+/// Refuse worktree restoration on Windows.
+///
+/// # Errors
+/// Worktree retirement is unavailable on this platform.
+#[cfg(not(unix))]
+pub fn restore(_store: &Path, _task: &str) -> Result<String, String> {
+    Err("Task worktree restoration is not available on Windows".into())
+}
+
+/// Refuse destructive worktree cleanup on Windows.
+///
+/// # Errors
+/// Worktree retirement is unavailable on this platform.
+#[cfg(not(unix))]
+pub fn discard_unsaved(_store: &Path, _task: &str) -> Result<(), String> {
+    Err("Task worktree cleanup is not available on Windows".into())
+}
+
 /// Archive the worktree of the ended task `task`: remove it when nothing in
 /// it is unsaved, and keep what recreates it for [`restore`]. The words to
 /// show.
@@ -131,6 +161,7 @@ fn project_of(worktree: &Path, fallback: &str) -> String {
 /// # Errors
 /// The task is not over, has no worktree here, or holds something unsaved,
 /// in words for the person.
+#[cfg(unix)]
 pub fn archive(store: &Path, task: &str) -> Result<String, String> {
     let found = Store::open_waiting(store, std::time::Duration::from_secs(30))
         .and_then(|store| store.list())
@@ -162,6 +193,7 @@ pub fn archive(store: &Path, task: &str) -> Result<String, String> {
 ///
 /// # Errors
 /// It was not archived here, or Git refused.
+#[cfg(unix)]
 pub fn restore(store: &Path, task: &str) -> Result<String, String> {
     // An archive made before the run's record kept it.
     let path = undo_path(store, task);
@@ -189,6 +221,7 @@ pub fn restore(store: &Path, task: &str) -> Result<String, String> {
 ///
 /// # Errors
 /// The task is still going or has no worktree here, or Git refused.
+#[cfg(unix)]
 pub fn discard_unsaved(store: &Path, task: &str) -> Result<(), String> {
     let ended = Store::open_waiting(store, std::time::Duration::from_secs(30))
         .and_then(|store| store.list())
@@ -290,6 +323,7 @@ pub fn archived(store: &Path) -> Vec<Archived> {
     out
 }
 
+#[cfg(unix)]
 fn undo_path(store: &Path, task: &str) -> PathBuf {
     store
         .join("archived-worktrees")
