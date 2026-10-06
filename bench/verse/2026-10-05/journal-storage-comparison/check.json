@@ -1,0 +1,29 @@
+{
+  "schema": "verse.storage.probe.v1",
+  "command": "90 sequential 4096-byte appends at a minimum 33.333 ms cadence; time synchronization separately; ordinary christopherdavid process",
+  "loop_ext4_fsync": {
+    "samples": 90,
+    "p50_ms": 40.2906185190659,
+    "p95_ms": 119.38713100971654,
+    "maximum_ms": 662.1589200221933
+  },
+  "loop_ext4_fdatasync": {
+    "samples": 90,
+    "p50_ms": 39.19310597120784,
+    "p95_ms": 53.18277998594567,
+    "maximum_ms": 66.79306400474161
+  },
+  "direct_ext4_fdatasync": {
+    "samples": 90,
+    "p50_ms": 5.121632479131222,
+    "p95_ms": 5.633332009892911,
+    "maximum_ms": 5.709699005819857
+  },
+  "direct_probe": "/home/christopherdavid/work/verse-journal-direct-agent1-HU5TmEQ1/journal",
+  "setup": "Root allocated one 1 MiB extent beyond EOF in a dedicated scratch file, then transferred ownership. The probe ran as the ordinary user without capabilities. No filesystem reservations changed.",
+  "limitations": [
+    "Sequential short probes on a shared host; no causal whole-battle improvement established.",
+    "The loop filesystem uses an ext4 backing file on ext4 NVMe; direct probe bypasses that nested filesystem.",
+    "Both battle checkouts already use Linux fdatasync for journal appends."
+  ]
+}

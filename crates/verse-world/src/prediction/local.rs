@@ -2027,7 +2027,14 @@ mod tests {
         local.advance(0.).unwrap();
         assert!((local.pose().unwrap().position.x - before.x - 0.1).abs() < 1e-6);
         let settings = physics::character::Settings::default();
+        let mut previous = baseline.character.feet;
         for (step, estimate) in &local.estimates {
+            assert!(
+                estimate.character.feet.distance(previous) <= 6.4008 / 120. + 1e-5,
+                "Correction introduced a discontinuous historical step {step}: {previous:?} -> {:?}",
+                estimate.character.feet,
+            );
+            previous = estimate.character.feet;
             let overlaps = local
                 .collision
                 .scene()
