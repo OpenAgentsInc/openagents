@@ -1,5 +1,6 @@
 //! Hosted chat shared by the phone and the local desktop host.
 //! Credentials and storage stay with the caller; UI adapters receive views.
+pub mod api;
 pub mod basic_chats;
 pub mod basic_coder;
 pub mod basic_link;

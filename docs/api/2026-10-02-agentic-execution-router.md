@@ -837,3 +837,12 @@ cancel through the task owner. Rework needs remaining attempts, the
 reservation's remaining sats, or a new confirmed offer; an owned-host graph
 needs no reservation and cannot hold a paid node. Child completion grants no
 publication or spending right.
+
+Caller-scoped HTTP reads (#10701): [`openagents_chat::api`](../../crates/openagents-chat/src/api.rs)
+is a transport-free handler for runs, threads, offers, events, and
+artifacts. Every resource belongs to one caller, and another caller's
+answers 404. `runs`, `runs:read`, and `runs:cancel` are its scopes. The same
+`Idempotency-Key` and request reuse the first response; a different request
+under the key is `409 idempotency_conflict`. Creation is persisted before the
+executor is asked, events carry sequence numbers with explicit retention
+gaps, and after a restart each run follows its original task.
