@@ -19,6 +19,7 @@ host = [
     "coder-history/host",
     "coder-pty/host",
     "dep:coder-vt",
+    "dep:terminal-core",
     "tokio/signal",
     "tokio/process",
     "dep:libc",
@@ -44,6 +45,9 @@ coder-link = { path = "../coder-link" }
 coder-pty = { path = "../coder-pty", default-features = false }
 # Each terminal's authoritative emulator (host feature only).
 coder-vt = { path = "../coder-vt", optional = true }
+# The shell-integration hooks a terminal's shell starts with (host feature
+# only).
+terminal-core = { path = "../terminal-core", optional = true }
 # The host root's one generation counter, shared with the service launcher.
 coder-service = { path = "../coder-service", optional = true }
 libc = { version = "0.2", optional = true }

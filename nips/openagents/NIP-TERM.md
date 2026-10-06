@@ -726,8 +726,12 @@ and fresh snapshots for an attachment that falls behind, over direct
 channels and relays. `coder-host` advertises `term-effects` and
 `term-snapshot`. The Coder mobile terminal screen joins by snapshot with
 effects, restores through `coder_vt::Streams`, and asks for less when an
-older host refuses a feature. No host serves the block journal or session
-records yet, so a host advertises neither capability.
+older host refuses a feature. The same emulator keeps the block journal
+(`coder_vt::journal`), so the host serves the blocks feature and
+`coder-host` advertises `term-blocks`; `coder host serve --terminal-shell
+PATH` runs a zsh, bash, or fish with the shell-integration hooks that feed
+it. Every block is `unattributed`: no NIP-TERM operation starts a command
+on someone's behalf yet. No host serves session records yet.
 
 ## Conformance
 

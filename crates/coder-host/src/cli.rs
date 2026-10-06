@@ -47,7 +47,7 @@ pub const USAGE: &str = "usage: openagents host COMMAND [OPTIONS]
         [--no-telemetry]
         [--iroh [--iroh-relay URL | --no-iroh-relay] [--iroh-bind ADDR]...]
         [--control | --control-socket PATH] [--keychain | --keys DIR] [--label NAME]
-        [--studio-sim]
+        [--terminal-shell PATH] [--studio-sim]
 serve --studio-sim serves a scratch host made for the Agent Studio's
 simulated team (`openagents studio up --sim`): its scripted engine ends the
 studio's turns with no model. It needs --state, --root, and --tasks outside
@@ -742,6 +742,19 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         }
     };
     let telemetry = !options.flag("--no-telemetry");
+    // The shell terminals run, with block-journal hooks for zsh, bash, and
+    // fish; `/bin/sh` without one.
+    let terminal_shell = options
+        .one("--terminal-shell")?
+        .map(PathBuf::from)
+        .map(|shell| {
+            if shell.is_absolute() {
+                Ok(shell)
+            } else {
+                Err(usage(" --terminal-shell takes an absolute path"))
+            }
+        })
+        .transpose()?;
     let connect = connect_options(options, root)?;
     // Like `ssh`, serve defaults to OPENAGENTS_RELAY, then the public relay.
     if relays.is_empty() {
@@ -870,6 +883,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         control.tasks = tasks_dir.clone();
     }
     config.label = connect.label;
+    config.terminal_shell = terminal_shell;
     // The same override `openagents chat` honours, so a scratch host and the
     // command reach one worker.
     config.chat_door = crate::config::ChatDoor::from_env();

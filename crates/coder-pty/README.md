@@ -11,7 +11,7 @@ missed, bounded and in order.
 | Module | Feature | Platforms | What it does |
 | --- | --- | --- | --- |
 | `wire` | always | all | The NIP-TERM request, result, and frame bodies, with validation. |
-| `ext` | always | all | The NIP-TERM extensions' wire contract: features and negotiation, record streams (framing, CRC-32C, assembly, and order), the snapshot join, history, block pages, session records, and effect frames. The host serves the effects and snapshot features. |
+| `ext` | always | all | The NIP-TERM extensions' wire contract: features and negotiation, record streams (framing, CRC-32C, assembly, and order), the snapshot join, history, block pages, session records, and effect frames. The host serves the effects, snapshot, and blocks features. |
 | `emulator` | always | all | The seam for a host's authoritative emulator per terminal: output in, query replies and effects out. `coder_vt::Authority` implements it. |
 | `ring` | always | all | The bounded replay buffer: sequence numbers, discard, and missed ranges. |
 | `client` | always | all | `TerminalState` applies frames, ignores duplicates, detects lost frames, records gaps, and keeps a bounded plain-text `Screen`. |
@@ -80,6 +80,9 @@ host.attach(device, &Attach::new(request2, terminal, Mode::Interact, 0, 64 * 102
   principal's own attachment. A sink carries record streams only when it
   says so (`FrameSink::carries_records`); `deliveries` is an in-process one.
   `coder-vt`'s `tests/join.rs` checks each path on real PTYs.
+- **Block journal.** When the emulator keeps one (`Emulators::blocks`),
+  `Host::block_page` reads a page of it under the `terminal` right or the
+  observer policy, and sets each block's `retained` from the ring.
 
 ## Limits
 

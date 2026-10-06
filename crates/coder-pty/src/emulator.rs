@@ -14,14 +14,14 @@
 
 use std::sync::Arc;
 
-use crate::ext::Record;
+use crate::ext::{BlockPage, Record};
 use crate::wire::{Exit, Refusal, Size, TerminalRef};
 
 /// One terminal's authoritative emulator.
 pub trait Emulator: Send {
-    /// Applies output the terminal wrote, in order, and answers what it
-    /// caused. Parsing must stay bounded for any input.
-    fn output(&mut self, bytes: &[u8]) -> Effects;
+    /// Applies the output of sequenced frame `seq`, in order, and answers
+    /// what it caused. Parsing must stay bounded for any input.
+    fn output(&mut self, bytes: &[u8], seq: u64) -> Effects;
     /// The terminal changed size.
     fn resize(&mut self, size: Size);
 
@@ -47,6 +47,15 @@ pub trait Emulator: Send {
         read: &HistoryRead,
     ) -> Option<Result<Vec<Record>, Refusal>> {
         let _ = (terminal, read);
+        None
+    }
+
+    /// A page of the block journal: at most `limit` blocks older than
+    /// `before`, or the newest, newest first, with `retained` unset; the
+    /// host sets it from its replay buffer. `None` when this emulator keeps
+    /// no journal.
+    fn blocks(&self, before: Option<u64>, limit: u16) -> Option<Result<BlockPage, Refusal>> {
+        let _ = (before, limit);
         None
     }
 }
@@ -86,6 +95,11 @@ pub trait Emulators: Send + Sync {
     /// Whether its emulators write snapshot and history streams, so the
     /// host serves the snapshot feature.
     fn snapshots(&self) -> bool {
+        false
+    }
+    /// Whether its emulators keep a block journal, so the host serves the
+    /// blocks feature.
+    fn blocks(&self) -> bool {
         false
     }
 }

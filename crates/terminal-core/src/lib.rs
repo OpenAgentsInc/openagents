@@ -6,6 +6,7 @@ pub mod bridge;
 pub mod context;
 pub mod correct;
 pub mod fish;
+pub mod integration;
 pub mod proposals;
 pub mod route;
 pub mod search;

@@ -64,6 +64,13 @@ and reports a restored terminal at `READY` (with its `through` and any exit)
 and history pages to attach. It ignores a relay's replay of a stream it
 already finished.
 
+`Authority` also keeps the terminal's block journal (`journal`): a record for
+each command from the OSC 133, OSC 7, and command-line marks, with its
+working directory, times, exit status, sequence range, and absolute lines,
+but never its output. A command without its end mark is `abandoned`, a
+full-screen one has no output range, and at most 256 blocks are kept. Marks
+are advisory: a record never authorizes anything.
+
 Parsing holds bounded memory: an OSC string longer than a clipboard write's
 bound (1 MiB and its parameters) is abandoned, and the rest of it is dropped
 up to its terminator.

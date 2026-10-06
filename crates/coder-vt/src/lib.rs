@@ -35,6 +35,7 @@ mod authority;
 mod cell;
 mod continuation;
 pub mod input;
+pub mod journal;
 pub mod mouse;
 pub mod shell;
 pub mod snapshot;

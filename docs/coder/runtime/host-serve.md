@@ -62,6 +62,7 @@ coder host serve
 | `--tasks DIR` | `~/.openagents/tasks` | The durable task inbox. |
 | `--owner KEY` | None | Establish the owner on first start; the same owner is a no-op. |
 | `--no-telemetry` | Off | Withhold CPU and memory telemetry from presence; placement then skips the host. |
+| `--terminal-shell PATH` | `/bin/sh` without hooks | The shell a terminal's `shell` launch runs, as a login shell. zsh, bash, and fish start with the shell-integration hooks, so the terminal's block journal records each command. |
 
 Every `coder host` command also takes `--state DIR` for the access store,
 `--root DIR` for `~/.openagents/host`, and `--loopback-test`, which permits

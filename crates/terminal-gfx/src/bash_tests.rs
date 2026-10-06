@@ -192,7 +192,8 @@ fn the_startup_file_reads_the_login_profile_or_the_rc_file() {
     std::fs::write(home.path().join(".bashrc"), "fixture_from=rc\n").unwrap();
     let hooks = super::integration::Integration::bash().unwrap();
     for (login, expected) in [(true, "profile"), (false, "rc")] {
-        let (args, env) = hooks.bash_start(login);
+        let start = hooks.bash_start(login);
+        let (args, env) = (start.args, start.env);
         let output = std::process::Command::new(&bash)
             .args(&args)
             .args([

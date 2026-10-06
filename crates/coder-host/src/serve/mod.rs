@@ -60,8 +60,36 @@ const RELAY_READY_WAIT: Duration = Duration::from_secs(10);
 /// History lines each terminal's emulator keeps.
 const TERMINAL_HISTORY: usize = 1000;
 
+/// Runs `shell` for a terminal's `shell` launch, as a login shell, with the
+/// shell-integration hooks when it is zsh, bash, or fish, and answers the
+/// hooks' files for the host to keep. The user's own startup files come
+/// from the terminals' `HOME`.
+fn terminal_shell(
+    terminals: &mut coder_pty::host::Config,
+    shell: Option<&Path>,
+) -> Option<terminal_core::integration::Hooks> {
+    let shell = shell?;
+    terminals.shell = shell.to_path_buf();
+    terminals.shell_args = vec!["-l".into()];
+    terminals
+        .base_env
+        .push(("SHELL".into(), shell.display().to_string()));
+    let home = terminals
+        .base_env
+        .iter()
+        .find(|(name, _)| name == "HOME")
+        .map(|(_, home)| PathBuf::from(home))?;
+    let (hooks, start) = terminal_core::integration::Hooks::for_shell(shell, &home)?;
+    terminals.shell_args = start.args;
+    terminals.base_env.extend(start.env);
+    Some(hooks)
+}
+
 /// State every serving task shares.
 pub(crate) struct Shared {
+    /// The shell-integration files terminals start with, kept while the
+    /// host runs.
+    pub(crate) _shell_hooks: Option<terminal_core::integration::Hooks>,
     pub(crate) local_handoffs: tokio::sync::Mutex<()>,
     pub(crate) local_tasks: std::sync::Mutex<()>,
     pub(crate) local_history: std::sync::Mutex<Option<coder_connect::client::Client>>,
@@ -183,6 +211,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     let owner = authority.owner()?;
 
     let mut terminals = coder_pty::host::Config::new();
+    let shell_hooks = terminal_shell(&mut terminals, config.terminal_shell.as_deref());
     // One emulator per terminal answers its program's queries and owns its
     // side effects, so devices watching together never answer twice.
     terminals.emulator = Some(coder_vt::Authority::factory(TERMINAL_HISTORY));
@@ -212,6 +241,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         config.handshake_timeout,
     ));
     let shared = Arc::new(Shared {
+        _shell_hooks: shell_hooks,
         local_handoffs: tokio::sync::Mutex::new(()),
         local_tasks: std::sync::Mutex::new(()),
         local_history: std::sync::Mutex::new(None),
@@ -1144,6 +1174,10 @@ fn helpers_of(exe: &std::path::Path) -> Option<std::path::PathBuf> {
 #[cfg(test)]
 #[path = "summary_tests.rs"]
 mod summary_tests;
+
+#[cfg(all(test, unix))]
+#[path = "shell_tests.rs"]
+mod shell_tests;
 
 #[cfg(test)]
 mod bundle_tests {

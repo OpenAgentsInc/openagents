@@ -71,7 +71,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crate::emulator::{self, Effects, Emulator, HistoryRead};
-use crate::ext::{Effect, Features, History, Join, RecordsFrame};
+use crate::ext::{BlockPageRead, Effect, Features, History, Join, RecordsFrame};
 use crate::ring::Ring;
 use crate::wire::{
     self, Attach, Body, Cause, Close, Detach, Detached, Exit, Frame, Input, Launch, Mode, Open,
@@ -336,6 +336,10 @@ impl Config {
                 .emulator
                 .as_ref()
                 .is_some_and(|emulators| emulators.snapshots()),
+            blocks: self
+                .emulator
+                .as_ref()
+                .is_some_and(|emulators| emulators.blocks()),
             ..Features::NONE
         }
     }
@@ -921,6 +925,44 @@ impl Host {
         self.inner
             .remember(&key(principal, &request.request), body, value.clone());
         Ok((Status::Accepted, value))
+    }
+
+    /// Reads a page of a terminal's block journal. It needs the
+    /// `terminal` right, or `observe` under the observer policy. A block's
+    /// `retained` says whether the replay buffer still holds all its
+    /// output.
+    pub fn block_page(&self, principal: &str, request: &BlockPageRead) -> Outcome {
+        request.check_with(self.features())?;
+        if !self.inner.may_read(principal) {
+            return Err(Refusal::new(
+                Reason::NotAdmitted,
+                "this device may not read terminals",
+            ));
+        }
+        let terminal = self.inner.find(&request.terminal)?;
+        let state = terminal.state();
+        let mut page = match state
+            .emulator
+            .as_ref()
+            .and_then(|emulator| emulator.blocks(request.before, request.limit))
+        {
+            Some(page) => page?,
+            None => {
+                return Err(Refusal::new(
+                    Reason::UnsupportedFeature,
+                    "this host keeps no block journal",
+                ));
+            }
+        };
+        let first = state.ring.first();
+        let head = state.ring.head();
+        for block in &mut page.blocks {
+            block.retained = block.output.is_some_and(|output| {
+                first.is_some_and(|first| first <= output.from) && output.to <= head
+            });
+        }
+        drop(state);
+        Ok((Status::Accepted, Value::Blocks { page }))
     }
 
     /// Reads older history rows into a record stream on the principal's
@@ -1548,7 +1590,7 @@ fn read(terminal: &Terminal, frame_max: usize) {
                     let effects = state
                         .emulator
                         .as_mut()
-                        .map(|emulator| emulator.output(&buffer[..n]));
+                        .map(|emulator| emulator.output(&buffer[..n], seq));
                     let replies = match effects {
                         Some(effects) => state.effects(seq, effects),
                         None => Vec::new(),

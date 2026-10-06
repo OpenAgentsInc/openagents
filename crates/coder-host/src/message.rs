@@ -11,7 +11,7 @@
 //! frame starts with one flag byte: `1` when more fragments follow and `0`
 //! for the last. A message is at most [`MAX_MESSAGE_BYTES`] bytes.
 
-use coder_pty::ext::{HISTORY, History, RECORDS, RecordsFrame};
+use coder_pty::ext::{BLOCK_PAGE, BlockPageRead, HISTORY, History, RECORDS, RecordsFrame};
 use coder_pty::wire::{
     ATTACH, Attach, CLOSE, Close, DETACH, Detach, FRAME, Frame, INPUT, Input, OPEN, Open, RESIZE,
     RESULT, Reason, Refusal, Resize, SIGNAL, Signal, TerminalResult,
@@ -130,6 +130,8 @@ pub enum TermRequest {
     Close(Close),
     /// A history read (NIP-TERM's snapshot feature).
     History(History),
+    /// A block-journal page read (NIP-TERM's blocks feature).
+    BlockPage(BlockPageRead),
 }
 
 impl TermRequest {
@@ -154,6 +156,7 @@ impl TermRequest {
             SIGNAL => serde_json::from_value(value).map(Self::Signal),
             CLOSE => serde_json::from_value(value).map(Self::Close),
             HISTORY => serde_json::from_value(value).map(Self::History),
+            BLOCK_PAGE => serde_json::from_value(value).map(Self::BlockPage),
             _ => {
                 return Err(Refusal::new(
                     Reason::UnsupportedVersion,
@@ -176,6 +179,7 @@ impl TermRequest {
             Self::Signal(r) => &r.request,
             Self::Close(r) => &r.request,
             Self::History(r) => &r.request,
+            Self::BlockPage(r) => &r.request,
         }
     }
 
@@ -191,6 +195,7 @@ impl TermRequest {
             Self::Signal(_) => SIGNAL,
             Self::Close(_) => CLOSE,
             Self::History(_) => HISTORY,
+            Self::BlockPage(_) => BLOCK_PAGE,
         }
     }
 
@@ -206,6 +211,7 @@ impl TermRequest {
             Self::Signal(r) => serde_json::to_value(r),
             Self::Close(r) => serde_json::to_value(r),
             Self::History(r) => serde_json::to_value(r),
+            Self::BlockPage(r) => serde_json::to_value(r),
         };
         value.unwrap_or(Value::Null)
     }
@@ -440,5 +446,10 @@ mod tests {
         assert_eq!(request.request(), "e".repeat(64));
         let decoded = ToHost::decode(&ToHost::Terminal(request).encode());
         assert!(matches!(decoded, Ok(ToHost::Terminal(TermRequest::History(r))) if r == read));
+        let page = BlockPageRead::new("f".repeat(64), read.terminal.clone(), Some(4), 8);
+        let request = TermRequest::BlockPage(page.clone());
+        assert_eq!(request.schema(), BLOCK_PAGE);
+        let decoded = ToHost::decode(&ToHost::Terminal(request).encode());
+        assert!(matches!(decoded, Ok(ToHost::Terminal(TermRequest::BlockPage(r))) if r == page));
     }
 }

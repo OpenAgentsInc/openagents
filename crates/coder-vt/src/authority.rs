@@ -1,15 +1,17 @@
 //! A host's authoritative emulator for one terminal
 //! (`coder_pty::emulator`): the one parse of the terminal's output that
-//! answers the program's queries, reports its side effects, and writes the
-//! snapshot and history streams a joining device restores from.
+//! answers the program's queries, reports its side effects, writes the
+//! snapshot and history streams a joining device restores from, and keeps
+//! the terminal's block journal.
 
 use std::sync::Arc;
 
 use coder_pty::emulator::{Effects, Emulator, Emulators, Factory, HistoryRead};
-use coder_pty::ext::Record;
+use coder_pty::ext::{BlockPage, Record};
 use coder_pty::wire::{Exit, Refusal, Size, TerminalRef};
 
 use crate::Terminal;
+use crate::journal::Journal;
 use crate::shell::Event;
 use crate::snapshot::Binding;
 
@@ -20,6 +22,7 @@ pub struct Authority {
     bells: u64,
     title: String,
     directory: Option<String>,
+    journal: Journal,
 }
 
 /// Makes an [`Authority`] for each terminal.
@@ -36,6 +39,10 @@ impl Emulators for Authorities {
     fn snapshots(&self) -> bool {
         true
     }
+
+    fn blocks(&self) -> bool {
+        true
+    }
 }
 
 impl Authority {
@@ -47,6 +54,7 @@ impl Authority {
             bells: 0,
             title: String::new(),
             directory: None,
+            journal: Journal::default(),
         }
     }
 
@@ -62,10 +70,21 @@ impl Authority {
     pub fn terminal(&self) -> &Terminal {
         &self.terminal
     }
+
+    /// The terminal's block journal.
+    #[must_use]
+    pub fn journal(&self) -> &Journal {
+        &self.journal
+    }
 }
 
 impl Emulator for Authority {
-    fn output(&mut self, bytes: &[u8]) -> Effects {
+    fn output(&mut self, bytes: &[u8], seq: u64) -> Effects {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| {
+                u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+            });
         let terminal = &mut self.terminal;
         terminal.feed(bytes);
         let bells = terminal.bells() - self.bells;
@@ -76,6 +95,7 @@ impl Emulator for Authority {
         });
         let mut directory = None;
         for mark in terminal.take_shell_marks() {
+            self.journal.mark(&mark, seq, now, terminal);
             if let Event::Directory(dir) = mark.event
                 && self.directory.as_ref() != Some(&dir)
             {
@@ -83,6 +103,7 @@ impl Emulator for Authority {
                 directory = Some(dir);
             }
         }
+        self.journal.output(seq, terminal.alternate_screen());
         Effects {
             replies: terminal.take_replies(),
             bells: u32::try_from(bells).unwrap_or(u32::MAX),
@@ -125,5 +146,9 @@ impl Emulator for Authority {
             self.terminal
                 .history_stream(&binding, read.epoch, read.before, read.rows),
         )
+    }
+
+    fn blocks(&self, before: Option<u64>, limit: u16) -> Option<Result<BlockPage, Refusal>> {
+        Some(self.journal.page(before, limit))
     }
 }
