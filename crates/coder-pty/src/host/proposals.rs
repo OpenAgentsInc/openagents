@@ -11,6 +11,25 @@ pub(super) struct Stored {
 }
 
 impl Host {
+    /// Read the owned shell's OS directory and advisory prompt location.
+    /// This grants no input; proposal admission rechecks the prompt and directory.
+    pub fn proposal_binding(&self, reference: &TerminalRef) -> Result<proposal::Binding, Refusal> {
+        let terminal = self.inner.running(reference)?;
+        let state = terminal.state();
+        let cwd = sys::process_cwd(&terminal.process).ok_or_else(|| {
+            Refusal::new(
+                Reason::Unavailable,
+                "the host cannot inspect the shell directory",
+            )
+        })?;
+        Ok(proposal::Binding {
+            terminal: reference.terminal.clone(),
+            generation: reference.generation.clone(),
+            cwd,
+            shell_directory: state.directory.clone(),
+            context_digest: String::new(),
+        })
+    }
     /// Lists, offers, or decides an exact proposal on the terminal owner.
     /// A share grants no proposal authority. An admitted input is never replayed.
     pub fn proposal(&self, principal: &str, request: &Request) -> Outcome {
@@ -259,7 +278,7 @@ fn check_prompt(
     }) {
         return Err(stale());
     }
-    let cwd = sys::process_cwd(terminal.process.group()).ok_or_else(|| {
+    let cwd = sys::process_cwd(&terminal.process).ok_or_else(|| {
         Refusal::new(
             Reason::Unavailable,
             "the host cannot inspect the shell directory",

@@ -213,8 +213,11 @@ impl Local {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| root.to_path_buf())
         });
-        let name = shell.file_name().and_then(|name| name.to_str());
-        let integration = match name {
+        let name = shell
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(str::to_ascii_lowercase);
+        let integration = match name.as_deref() {
             Some("zsh") => super::integration::Integration::zsh()
                 .ok()
                 .inspect(|hooks| config.base_env.extend(hooks.zsh_environment(&home))),
@@ -227,6 +230,18 @@ impl Local {
                     config.shell_args = start.args;
                     config.base_env.extend(start.env);
                 }),
+            Some("pwsh" | "pwsh.exe" | "powershell" | "powershell.exe") => {
+                super::integration::Integration::powershell()
+                    .ok()
+                    .inspect(|hooks| {
+                        let start = match helper_home.as_deref() {
+                            Some(home) => hooks.powershell_isolated_start(home),
+                            None => hooks.powershell_start(),
+                        };
+                        config.shell_args = start.args;
+                        config.base_env.extend(start.env);
+                    })
+            }
             Some("fish") => super::integration::Integration::fish()
                 .ok()
                 .inspect(|hooks| {
@@ -307,12 +322,10 @@ impl Transport for Local {
                 return Err(format!("terminal attach failed: {other:?}"));
             }
         };
-        let group = self.host.process_group(&terminal);
         Ok(Box::new(LocalAttachment {
             attachment,
             terminal,
             frames,
-            group,
             host: self.host.clone(),
             ended: false,
         }))
@@ -457,7 +470,6 @@ struct LocalAttachment {
     host: Arc<Host>,
     terminal: TerminalRef,
     frames: Receiver<Frame>,
-    group: Option<i32>,
     ended: bool,
 }
 impl Attachment for LocalAttachment {
@@ -592,9 +604,6 @@ impl Attachment for LocalAttachment {
         if self.ended {
             return None;
         }
-        if self.group.is_none() {
-            self.group = self.host.process_group(&self.terminal);
-        }
         match self.frames.try_recv() {
             Ok(frame) => match frame.body {
                 Body::Output { data, .. } => Some(Event::Output(data)),
@@ -623,16 +632,11 @@ impl Attachment for LocalAttachment {
         }
     }
     fn target(&self) -> Option<terminal_core::proposals::Binding> {
-        Some(terminal_core::proposals::Binding {
-            terminal: self.terminal.terminal.clone(),
-            generation: self.terminal.generation.clone(),
-            cwd: raw_cwd(self.group?)?,
-            shell_directory: None,
-            context_digest: String::new(),
-        })
+        self.host.proposal_binding(&self.terminal).ok()
     }
     fn directory(&self) -> Option<String> {
-        cwd_of(self.group?)
+        let cwd = self.host.proposal_binding(&self.terminal).ok()?.cwd;
+        Some(short_directory(cwd))
     }
 }
 
@@ -642,48 +646,21 @@ pub fn for_user() -> Sessions {
 pub fn isolated(root: &Path, shell: PathBuf) -> Sessions {
     Sessions(Arc::new(Local::isolated(root, shell)))
 }
-/// The working directory of process `pid`, home shortened to `~`.
-fn cwd_of(pid: i32) -> Option<String> {
-    let path = raw_cwd(pid)?;
-    let home = std::env::var("HOME").ok().filter(|h| !h.is_empty());
-    Some(match home {
-        Some(home) if path == home => "~".into(),
-        Some(home) if path.starts_with(&format!("{home}/")) => format!("~{}", &path[home.len()..]),
-        _ => path,
-    })
-}
-
-#[cfg(target_os = "macos")]
-fn raw_cwd(pid: i32) -> Option<String> {
-    // SAFETY: `info` is a plain C struct the call fills, sized as passed.
-    unsafe {
-        let mut info: libc::proc_vnodepathinfo = std::mem::zeroed();
-        let size = std::mem::size_of::<libc::proc_vnodepathinfo>() as libc::c_int;
-        let got = libc::proc_pidinfo(
-            pid,
-            libc::PROC_PIDVNODEPATHINFO,
-            0,
-            (&raw mut info).cast(),
-            size,
-        );
-        if got != size {
-            return None;
-        }
-        let path = std::ffi::CStr::from_ptr(info.pvi_cdir.vip_path.as_ptr().cast());
-        Some(path.to_string_lossy().into_owned())
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn raw_cwd(pid: i32) -> Option<String> {
-    std::fs::read_link(format!("/proc/{pid}/cwd"))
+/// Shorten only the displayed path; exact proposal bindings retain the owner path.
+fn short_directory(path: String) -> String {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
         .ok()
-        .map(|p| p.display().to_string())
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn raw_cwd(_: i32) -> Option<String> {
-    None
+        .filter(|h| !h.is_empty());
+    match home {
+        Some(home) if path == home => "~".into(),
+        Some(home)
+            if path.starts_with(&format!("{home}/")) || path.starts_with(&format!("{home}\\")) =>
+        {
+            format!("~{}", &path[home.len()..])
+        }
+        _ => path,
+    }
 }
 
 /// The native profile directory, or this process's current directory.
@@ -701,7 +678,24 @@ pub fn user_shell() -> PathBuf {
     std::env::var_os("SHELL")
         .map(PathBuf::from)
         .filter(|path| path.is_absolute() && path.is_file())
-        .unwrap_or_else(|| Config::new().shell)
+        .unwrap_or_else(default_native_shell)
+}
+
+fn default_native_shell() -> PathBuf {
+    #[cfg(windows)]
+    {
+        if let Some(pwsh) = candidates("pwsh").into_iter().next() {
+            return pwsh;
+        }
+        if let Some(system) = std::env::var_os("SystemRoot") {
+            let powershell =
+                PathBuf::from(system).join("System32/WindowsPowerShell/v1.0/powershell.exe");
+            if powershell.is_file() {
+                return powershell;
+            }
+        }
+    }
+    Config::new().shell
 }
 
 #[cfg(windows)]

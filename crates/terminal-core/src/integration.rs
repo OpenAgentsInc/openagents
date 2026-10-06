@@ -2,7 +2,9 @@
 //! OSC 133, OSC 7, and OSC 777 marks without changing the user's dotfiles.
 //!
 //! zsh reads them through `ZDOTDIR`, bash through `--rcfile`, and fish
-//! through `--init-command`. Each one sources the user's own files first.
+//! through `--init-command`. PowerShell reads a `-File` script after its profiles.
+//! Scratch PowerShell uses `-NoProfile` and only its selected home's `profile.ps1`.
+//! The user's dotfiles remain unchanged.
 //! The files live in a private directory that is removed when the
 //! [`Hooks`] value drops, so a host keeps it for as long as it starts
 //! shells.
@@ -12,6 +14,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The bash startup file, read through `--rcfile` ([`crate::bash`]).
 pub const BASH_RC: &str = "bashrc";
+/// The PowerShell startup script, loaded through `-File`.
+pub const POWERSHELL_HOOK: &str = "hook.ps1";
 /// The fish hooks, sourced through `--init-command` ([`crate::fish`]).
 pub const FISH_HOOK: &str = "hook.fish";
 
@@ -35,7 +39,7 @@ impl Hooks {
     /// for another shell, or when the files cannot be written.
     #[must_use]
     pub fn for_shell(shell: &Path, home: &Path) -> Option<(Hooks, Start)> {
-        match shell.file_name()?.to_str()? {
+        match shell.file_name()?.to_str()?.to_ascii_lowercase().as_str() {
             "zsh" => {
                 let hooks = Hooks::zsh().ok()?;
                 let start = Start {
@@ -59,8 +63,50 @@ impl Hooks {
                 };
                 Some((hooks, start))
             }
+            "pwsh" | "pwsh.exe" | "powershell" | "powershell.exe" => {
+                let hooks = Hooks::powershell().ok()?;
+                let start = hooks.powershell_start();
+                Some((hooks, start))
+            }
             _ => None,
         }
+    }
+
+    /// A PowerShell script, loaded after the shell's ordinary profiles.
+    pub fn powershell() -> Result<Self, String> {
+        let hooks = Self {
+            root: directory("powershell")?,
+        };
+        std::fs::write(hooks.root.join(POWERSHELL_HOOK), crate::powershell::HOOK)
+            .map_err(|error| error.to_string())?;
+        Ok(hooks)
+    }
+    /// Keep an interactive native shell; respect its configured execution policy.
+    #[must_use]
+    pub fn powershell_start(&self) -> Start {
+        Start {
+            args: vec![
+                "-NoExit".into(),
+                "-File".into(),
+                self.root.join(POWERSHELL_HOOK).display().to_string(),
+            ],
+            env: vec![
+                ("POWERSHELL_TELEMETRY_OPTOUT".into(), "1".into()),
+                ("DOTNET_CLI_TELEMETRY_OPTOUT".into(), "1".into()),
+            ],
+        }
+    }
+
+    /// A scratch shell never resolves native user-profile folders outside its selected home.
+    #[must_use]
+    pub fn powershell_isolated_start(&self, home: &Path) -> Start {
+        let mut start = self.powershell_start();
+        start.args.insert(0, "-NoProfile".into());
+        start.env.push((
+            "OPENAGENTS_POWERSHELL_PROFILE".into(),
+            home.join("profile.ps1").display().to_string(),
+        ));
+        start
     }
 
     /// Startup files for bash: one `--rcfile` that sources the user's files
@@ -206,6 +252,32 @@ mod tests {
         assert!(fish.root.join(FISH_HOOK).is_file());
         assert!(start.args.contains(&"--init-command".to_owned()));
         assert!(Hooks::for_shell(Path::new("/bin/sh"), home).is_none());
+        let (powershell, start) =
+            Hooks::for_shell(Path::new("/isolated/PowerShell.EXE"), home).unwrap();
+        assert!(powershell.root.join(POWERSHELL_HOOK).is_file());
+        assert_eq!(
+            start.args,
+            vec![
+                "-NoExit".to_owned(),
+                "-File".to_owned(),
+                powershell.root.join(POWERSHELL_HOOK).display().to_string()
+            ]
+        );
+        assert!(
+            !start
+                .args
+                .iter()
+                .any(|a| a == "-ExecutionPolicy" || a == "-NoProfile")
+        );
+        let isolated = powershell.powershell_isolated_start(Path::new("/scratch home/ü"));
+        assert_eq!(isolated.args[0], "-NoProfile");
+        assert!(
+            isolated
+                .env
+                .iter()
+                .any(|(name, value)| name == "OPENAGENTS_POWERSHELL_PROFILE"
+                    && value.ends_with("profile.ps1"))
+        );
         // The files go when the hooks drop.
         let root = zsh.root.clone();
         drop(zsh);

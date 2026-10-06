@@ -125,6 +125,8 @@ mod sys;
 #[cfg(not(any(unix, windows)))]
 #[path = "unsupported.rs"]
 mod sys;
+#[cfg(any(windows, test))]
+mod windows_cwd;
 
 /// How long a terminal's group has to exit after a hang-up before it is
 /// killed, and how long the reader drains output after the child exits.
@@ -383,8 +385,11 @@ impl Config {
         Features {
             typist: true,
             effects: self.emulator.is_some(),
-            proposals: cfg!(any(target_os = "macos", target_os = "linux"))
-                && self.emulator.is_some(),
+            proposals: cfg!(any(
+                target_os = "macos",
+                target_os = "linux",
+                all(windows, target_arch = "x86_64")
+            )) && self.emulator.is_some(),
             snapshot: self
                 .emulator
                 .as_ref()

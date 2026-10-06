@@ -73,6 +73,18 @@ input and can use the explicit Ask action. Hide/reopen preserves local panes;
 exiting either app ends its local process groups. The chat-only `openagents terminal`
 command remains separate.
 
+Windows local shells use ConPTY. The native mount prefers installed `pwsh` or
+Windows PowerShell; an explicit `SHELL` path takes precedence, and `cmd.exe`
+remains an ordinary shell without request hooks. PowerShell with PSReadLine
+hands a bounded `# ...` line to the same request preview and records command
+blocks and results. The hook synchronizes the filesystem location with the
+process directory; proposal admission reads that directory from the owned
+process and checks the exact prompt again. Other PowerShell providers remain
+ineligible. Startup files are temporary, and execution policy stays in force.
+Scratch runs use `-NoProfile` and only their own `profile.ps1`.
+Native Windows installation, IME, clipboard, fullscreen, lifecycle qualification,
+and public artifact readback remain [owner checks](../../NEEDS_OWNER.md#standalone-linux-and-windows-qualification-10689-10690).
+
 Build the native package on the Mac with
 `scripts/release/native-terminal.py build --commit origin/main`, setting an
 absolute, reusable `CARGO_TARGET_DIR` outside the checkout. It bundles the GUI,

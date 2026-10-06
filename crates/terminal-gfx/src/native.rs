@@ -1172,3 +1172,7 @@ fn load() -> String {
     }
     format!("{:.2}", loads[0])
 }
+
+#[cfg(test)]
+#[path = "powershell_tests.rs"]
+mod powershell_tests;

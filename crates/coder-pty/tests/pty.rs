@@ -126,6 +126,32 @@ fn open(host: &Host, launch: Launch) -> TerminalRef {
     }
 }
 
+#[test]
+fn proposal_binding_reads_the_owned_directory_and_refuses_lost_or_closed_terminals() {
+    let fixture = fixture();
+    let terminal = open(&fixture.host, command(&cat(), &[]));
+    let binding = fixture.host.proposal_binding(&terminal).unwrap();
+    assert_eq!(binding.terminal, terminal.terminal);
+    assert_eq!(binding.generation, terminal.generation);
+    assert_eq!(std::path::Path::new(&binding.cwd), fixture.root.path());
+    assert!(binding.shell_directory.is_none());
+    assert!(binding.context_digest.is_empty());
+    let mut lost = terminal.clone();
+    lost.generation = "f".repeat(64);
+    assert_eq!(
+        fixture.host.proposal_binding(&lost).unwrap_err().reason,
+        Reason::Lost
+    );
+    fixture
+        .host
+        .close(OWNER, &Close::new(id(), terminal.clone()))
+        .unwrap();
+    assert_eq!(
+        fixture.host.proposal_binding(&terminal).unwrap_err().reason,
+        Reason::Closed
+    );
+}
+
 struct Reader {
     state: TerminalState,
     frames: Receiver<Frame>,

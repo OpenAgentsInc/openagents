@@ -968,7 +968,7 @@ The result value is `{kind: "proposals", page: {entries, more}}`, bounded to
 come first. The host marks a proposal uncertain before writing bytes; a partial
 or failed write remains uncertain and cannot be approved again. The existing
 block journal records the result. The feature requires a host that can inspect
-the shell's OS directory; the current adapters support macOS and Linux.
+the shell's OS directory; the adapters support macOS, Linux, and bounded native x64 Windows process inspection, while WOW64, other Windows architectures, and inaccessible or changing process records remain unavailable.
 
 ### Task shell binding
 

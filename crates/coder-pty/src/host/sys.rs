@@ -358,13 +358,15 @@ pub(super) fn random_id() -> String {
 }
 
 #[cfg(target_os = "linux")]
-pub(super) fn process_cwd(pid: i32) -> Option<String> {
+pub(super) fn process_cwd(process: &Process) -> Option<String> {
+    let pid = process.group();
     std::fs::read_link(format!("/proc/{pid}/cwd"))
         .ok()
         .map(|path| path.display().to_string())
 }
 #[cfg(target_os = "macos")]
-pub(super) fn process_cwd(pid: i32) -> Option<String> {
+pub(super) fn process_cwd(process: &Process) -> Option<String> {
+    let pid = process.group();
     // SAFETY: the OS fills this plain C structure, sized as passed.
     unsafe {
         let mut info: libc::proc_vnodepathinfo = std::mem::zeroed();
@@ -387,6 +389,6 @@ pub(super) fn process_cwd(pid: i32) -> Option<String> {
     }
 }
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-pub(super) fn process_cwd(_: i32) -> Option<String> {
+pub(super) fn process_cwd(_: &Process) -> Option<String> {
     None
 }

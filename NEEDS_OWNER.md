@@ -596,6 +596,9 @@ startup, fullscreen, Unicode/IME, clipboard, resize, process cleanup, and frame
 workload observations with executable hashes, then publish and verify the
 public installer readback. The tooling refuses qualification marked not-run.
 Neither platform has a qualified public artifact from this work.
+On Windows, include PowerShell filesystem/provider changes and the explicit
+`# ...` request, exact pending proposal, and single acknowledged command result;
+portable PowerShell fixtures and Windows cross-checks do not qualify that native path.
 
 
 - Negotiated bids (#10726): After the independent no-spend operator rehearsal

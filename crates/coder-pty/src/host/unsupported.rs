@@ -73,6 +73,6 @@ pub(super) fn random_id() -> String {
         .collect()
 }
 
-pub(super) fn process_cwd(_: i32) -> Option<String> {
+pub(super) fn process_cwd(_: &Process) -> Option<String> {
     None
 }

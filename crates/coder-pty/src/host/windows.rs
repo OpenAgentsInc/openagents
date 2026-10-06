@@ -575,6 +575,80 @@ pub(super) fn random_id() -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-pub(super) fn process_cwd(_: i32) -> Option<String> {
+#[cfg(not(target_arch = "x86_64"))]
+pub(super) fn process_cwd(_: &Process) -> Option<String> {
     None
+}
+
+/// Inspect the retained native x64 process handle, never a reopened/reused PID.
+#[cfg(target_arch = "x86_64")]
+pub(super) fn process_cwd(process: &Process) -> Option<String> {
+    use windows_sys::Win32::System::{
+        Diagnostics::Debug::ReadProcessMemory, Threading::IsWow64Process2,
+    };
+    #[repr(C)]
+    struct BasicInformation {
+        reserved: usize,
+        peb: usize,
+        reserved_pair: [usize; 2],
+        pid: usize,
+        reserved_end: usize,
+    }
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn NtQueryInformationProcess(
+            process: HANDLE,
+            class: u32,
+            information: *mut core::ffi::c_void,
+            length: u32,
+            returned: *mut u32,
+        ) -> i32;
+    }
+    let mut process_machine = 0;
+    let mut native_machine = 0;
+    // SAFETY: the retained handle remains open; both output pointers are valid.
+    if unsafe { IsWow64Process2(process.process.0, &mut process_machine, &mut native_machine) } == 0
+        || process_machine != 0
+        || native_machine != 0x8664
+    {
+        return None;
+    }
+    let mut info = BasicInformation {
+        reserved: 0,
+        peb: 0,
+        reserved_pair: [0; 2],
+        pid: 0,
+        reserved_end: 0,
+    };
+    let length = std::mem::size_of::<BasicInformation>() as u32;
+    let mut returned = 0;
+    // SAFETY: native x64 layout, initialized output buffer, exact buffer size.
+    let status = unsafe {
+        NtQueryInformationProcess(
+            process.process.0,
+            0,
+            (&raw mut info).cast(),
+            length,
+            &mut returned,
+        )
+    };
+    if status < 0 || returned != length || info.pid != process.pid as usize {
+        return None;
+    }
+    super::windows_cwd::inspect(info.peb as u64, |address, length| {
+        let mut bytes = vec![0; length];
+        let mut received = 0;
+        // SAFETY: the decoder bounds address arithmetic and the byte count;
+        // Windows validates remote memory and writes only into this sized buffer.
+        let read = unsafe {
+            ReadProcessMemory(
+                process.process.0,
+                address as usize as *const _,
+                bytes.as_mut_ptr().cast(),
+                length,
+                &mut received,
+            )
+        };
+        (read != 0 && received == length).then_some(bytes)
+    })
 }
