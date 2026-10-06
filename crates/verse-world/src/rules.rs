@@ -236,7 +236,18 @@ impl Simulation {
             || self.wind_gusts.len() > 64
             || self.burns.len() > 384
         {
-            return Err("Invalid combat checkpoint".into());
+            return Err(format!(
+                "Invalid combat checkpoint: elapsed={}, players={}, primary_absent={}, primary_hp={:?}, actors={}, flights={}, wind_walls={}, wind_gusts={}, burns={}",
+                self.elapsed,
+                self.players.len(),
+                self.primary_absent,
+                self.players.get(&0).map(|p| p.resources.hp),
+                self.actors.len(),
+                self.flights.len(),
+                self.wind_walls.len(),
+                self.wind_gusts.len(),
+                self.burns.len(),
+            ));
         }
         for (id, state) in &self.players {
             let p = &state.resources;
