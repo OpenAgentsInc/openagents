@@ -22,5 +22,10 @@ serde_json = "1"
 coder-pty = { path = "../coder-pty", features = ["host"] }
 tempfile = "3"
 
+# The scrollback budget measurement compares DEFLATE against the encoded
+# history records (#10692).
+[dev-dependencies]
+flate2 = "1"
+
 [lints]
 workspace = true

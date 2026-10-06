@@ -3130,14 +3130,11 @@ dependencies = [
 name = "coder-reach"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
- "gloo-timers",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "js-sys",
- "web-sys",
  "base64 0.22.1",
  "futures-util",
+ "getrandom 0.3.4",
+ "gloo-timers",
+ "js-sys",
  "nostr",
  "secp256k1 0.31.1",
  "serde",
@@ -3146,6 +3143,9 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -3212,6 +3212,7 @@ name = "coder-vt"
 version = "0.1.0"
 dependencies = [
  "coder-pty",
+ "flate2",
  "serde_json",
  "tempfile",
  "unicode-width",
@@ -4795,18 +4796,18 @@ name = "everglade-web"
 version = "0.1.0"
 dependencies = [
  "coder-reach",
- "serde",
- "secp256k1 0.31.1",
- "verse-engine",
- "verse-world",
- "verse-content",
  "console_error_panic_hook",
  "glam",
  "js-sys",
  "log",
  "raw-window-handle",
+ "secp256k1 0.31.1",
+ "serde",
  "serde_json",
  "verse",
+ "verse-content",
+ "verse-engine",
+ "verse-world",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -15137,7 +15138,6 @@ dependencies = [
 name = "verse-imported"
 version = "0.1.0"
 dependencies = [
- "web-time",
  "glam",
  "physics",
  "png",
@@ -15156,6 +15156,7 @@ dependencies = [
  "verse-pbr",
  "verse-world",
  "verse-zone-crypt",
+ "web-time",
  "wgpu",
  "winit",
 ]
@@ -15226,8 +15227,8 @@ dependencies = [
  "coder-reach",
  "futures-util",
  "getrandom 0.3.4",
- "gloo-timers",
  "glam",
+ "gloo-timers",
  "physics",
  "rcgen",
  "rustls",
