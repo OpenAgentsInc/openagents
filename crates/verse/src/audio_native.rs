@@ -717,6 +717,9 @@ mod tests {
         }
         let initial = music_progress.frame();
         let mut times = Vec::with_capacity(1000);
+        let mut reclaim_times = Vec::with_capacity(1000);
+        let mut reclaimed = 0u64;
+        let mut peak_backlog = 0;
         let mut operations = (0, 0);
         for _ in 0..1000 {
             while feeder.pump() > 0 {}
@@ -739,15 +742,20 @@ mod tests {
             operations.0 += a;
             operations.1 += d;
             times.push(ns);
+            peak_backlog = peak_backlog.max(retired.slots());
+            let gc_start = std::time::Instant::now();
             while let Ok(value) = retired.pop() {
                 drop(value);
+                reclaimed += 1;
             }
+            reclaim_times.push(gc_start.elapsed().as_nanos() as u64);
         }
         times.sort_unstable();
+        reclaim_times.sort_unstable();
         let stats = callback.mixer.stats;
         println!(
             "AUDIO_PROFILE {}",
-            serde_json::json!({"schema":"verse.audio.deadline.v1","bank":bank.digest,"profile":"headless-callback-debug-48k-stereo-512","samples":times.len(),"logical_voices":128,"audible_limit":32,"commands_per_callback":64,"music_streams":1,"producer":"bounded pump before callback; no device pacing","budget_ns":10666666,"p50_ns":times[499],"p95_ns":times[949],"p99_ns":times[989],"max_ns":times[999],"overruns":times.iter().filter(|&&n|n>10666666).count(),"allocations":operations.0,"deallocations":operations.1,"stream_gaps":stats.stream_gaps,"music_advanced_frames":music_progress.frame()-initial,"stolen":stats.stolen,"retirement_blocked":stats.retirement_blocked})
+            serde_json::json!({"schema":"verse.audio.deadline.v1","bank":bank.digest,"profile":"headless-callback-debug-48k-stereo-512","samples":times.len(),"logical_voices":128,"audible_limit":32,"commands_per_callback":64,"music_streams":1,"producer":"bounded pump before callback; no device pacing","budget_ns":10666666,"p50_ns":times[499],"p95_ns":times[949],"p99_ns":times[989],"max_ns":times[999],"overruns":times.iter().filter(|&&n|n>10666666).count(),"allocations":operations.0,"deallocations":operations.1,"stream_gaps":stats.stream_gaps,"music_advanced_frames":music_progress.frame()-initial,"stolen":stats.stolen,"retirement_blocked":stats.retirement_blocked,"reclaimed_sources":reclaimed,"retirement_peak_backlog":peak_backlog,"reclamation":"control-side draining of the native retirement queue","reclaim_p95_ns":reclaim_times[949],"reclaim_p99_ns":reclaim_times[989],"reclaim_max_ns":reclaim_times[999]})
         );
         assert_eq!(operations, (0, 0));
         assert_eq!(stats.stream_gaps, 0);
