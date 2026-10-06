@@ -19,6 +19,14 @@ use tokio_rustls::TlsAcceptor;
 const QUEUE: usize = 128;
 
 enum Operation {
+    Reports {
+        reply: oneshot::Sender<Result<Vec<super::super::safety::Report>, String>>,
+    },
+    ResolveReport {
+        id: [u8; 32],
+        status: super::super::safety::Status,
+        reply: oneshot::Sender<Result<super::super::safety::Report, String>>,
+    },
     PartyLoot {
         instance: u64,
         grant: super::super::game_services::Loot,
@@ -77,6 +85,21 @@ pub fn channel() -> (Control, Commands) {
     (Control(send), Commands(receive))
 }
 impl Control {
+    pub async fn pending_reports(&self) -> Result<Vec<super::super::safety::Report>, String> {
+        let (reply, receive) = oneshot::channel();
+        self.send(Operation::Reports { reply }).await?;
+        receive.await.map_err(|_| "Realm operator stopped")?
+    }
+    pub async fn resolve_report(
+        &self,
+        id: [u8; 32],
+        status: super::super::safety::Status,
+    ) -> Result<super::super::safety::Report, String> {
+        let (reply, receive) = oneshot::channel();
+        self.send(Operation::ResolveReport { id, status, reply })
+            .await?;
+        receive.await.map_err(|_| "Realm operator stopped")?
+    }
     pub async fn party_loot(
         &self,
         instance: u64,
@@ -306,6 +329,12 @@ fn coordinator(
                 }
             }
             Work::Operator(operation) => match operation {
+                Operation::Reports { reply } => {
+                    let _ = reply.send(realm.pending_reports());
+                }
+                Operation::ResolveReport { id, status, reply } => {
+                    let _ = reply.send(realm.resolve_report(id, status, clock));
+                }
                 Operation::PartyLoot {
                     instance,
                     grant,

@@ -271,6 +271,33 @@ impl Client {
             _ => Err("Realm service view is missing".into()),
         }
     }
+    pub async fn safety(&mut self) -> Result<super::safety::View, String> {
+        match self.request_ready(Body::Safety {}).await?.body {
+            Reply::Safety { view } => Ok(view),
+            Reply::Refused { message, .. } => Err(message),
+            _ => Err("Account safety view is missing".into()),
+        }
+    }
+    pub async fn safety_action(
+        &mut self,
+        realm: [u8; 32],
+        operation: [u8; 16],
+        action: super::safety::Action,
+    ) -> Result<super::safety::Receipt, String> {
+        match self
+            .request_ready(Body::SafetyAction {
+                realm,
+                operation,
+                action,
+            })
+            .await?
+            .body
+        {
+            Reply::SafetyApplied { receipt } => Ok(receipt),
+            Reply::Refused { message, .. } => Err(message),
+            _ => Err("Account safety receipt is missing".into()),
+        }
+    }
     pub async fn service_action(
         &mut self,
         realm: [u8; 32],
@@ -629,6 +656,15 @@ impl Client {
             (Reply::Snapshot { state }, Body::Snapshot {} | Body::Replicate { .. }) => {
                 state.validate_control(self.instance, &r.control)
             }
+            (Reply::Safety { view }, Body::Safety {}) => view.validate(),
+            (
+                Reply::SafetyApplied { receipt },
+                Body::SafetyAction {
+                    realm,
+                    operation,
+                    action,
+                },
+            ) => receipt.validate(*realm, receipt.account, *operation, action),
             (Reply::Services { view }, Body::Services { character }) => {
                 view.validate()?;
                 if view.character != *character

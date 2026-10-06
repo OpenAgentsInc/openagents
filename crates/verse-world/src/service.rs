@@ -38,6 +38,7 @@ pub mod replica;
 #[cfg(feature = "service-auth")]
 pub mod replication;
 pub mod rewards;
+pub mod safety;
 #[cfg(feature = "service-auth")]
 pub mod save;
 #[cfg(feature = "service-client")]

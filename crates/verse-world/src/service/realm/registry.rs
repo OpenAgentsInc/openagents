@@ -29,6 +29,7 @@ pub enum Residence {
 #[serde(tag = "record", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Record {
     Service(super::services::Record),
+    Safety(super::safety::Record),
     Account(Account),
     Character(Character),
     Credential {
@@ -180,6 +181,7 @@ pub(super) fn put(realm: &Realm, mut root: Root, records: Vec<Record>) -> Result
     for record in records {
         let key = match &record {
             Record::Service(r) => r.key(),
+            Record::Safety(r) => r.key(),
             Record::Account(a) => account_key(a.id),
             Record::Character(c) => character_key(c.id),
             Record::Credential { key, .. } => credential_key(*key),

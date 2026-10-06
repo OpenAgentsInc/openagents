@@ -4,6 +4,8 @@ mod document;
 mod geometry;
 pub use geometry::BoxGeometry;
 mod preview;
+pub mod publication;
+pub mod release;
 mod workspace;
 pub use document::{Document, Edit, Journal, ModelEdit, TimelineCue, Transaction};
 pub use preview::{Preview, PreviewReport};

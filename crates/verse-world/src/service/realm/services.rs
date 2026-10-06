@@ -287,6 +287,7 @@ impl Realm {
                 Outcome::Group { group: g }
             }
             Action::Invite { group, target } => {
+                self.contact(character, target)?;
                 self.character(target)?;
                 let mut g = self.group(group)?;
                 let mut m = self.member(target)?;
@@ -306,6 +307,7 @@ impl Realm {
             }
             Action::Join { group } => {
                 let mut g = self.group(group)?;
+                self.contact(character, g.leader)?;
                 let mut m = self.member(character)?;
                 if !g.invites.contains(&character)
                     || !m.invites.contains(&group)
@@ -424,6 +426,7 @@ impl Realm {
                 {
                     return Err("Invalid trade recipient, deadline, or empty exchange".into());
                 }
+                self.contact(character, to)?;
                 self.service_resident(to, now)?;
                 let offer = Offer {
                     id,
@@ -466,6 +469,9 @@ impl Realm {
                     || (!accept && offer.from != character && offer.to != character)
                 {
                     return Err("Trade consent is unauthorized, expired, or already settled".into());
+                }
+                if accept {
+                    self.contact(offer.from, offer.to)?;
                 }
                 self.settle_trade(&mut plan, &offer, accept, now)?;
                 offer.status = if accept {

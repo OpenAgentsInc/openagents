@@ -60,12 +60,12 @@ fn bytes(value: &impl Serialize, limit: usize) -> Result<Vec<u8>> {
     }
     Ok(value)
 }
-fn sync_dir(path: &Path) -> Result<()> {
+pub(crate) fn sync_dir(path: &Path) -> Result<()> {
     File::open(path)
         .and_then(|f| f.sync_all())
         .map_err(|e| io(path, e))
 }
-fn create(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn create(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -82,7 +82,7 @@ pub(crate) fn write_preview(path: &Path, data: &[u8]) -> Result<()> {
     ancestors(path)?;
     atomic(path, data)
 }
-fn atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     let temp = path.with_extension("pending");
     if temp.exists() {
         std::fs::remove_file(&temp).map_err(|e| io(&temp, e))?;
@@ -94,7 +94,7 @@ fn atomic(path: &Path, bytes: &[u8]) -> Result<()> {
             .ok_or_else(|| io(path, "Missing destination parent"))?,
     )
 }
-fn ancestors(path: &Path) -> Result<()> {
+pub(crate) fn ancestors(path: &Path) -> Result<()> {
     for ancestor in path.ancestors() {
         if ancestor.as_os_str().is_empty() {
             continue;

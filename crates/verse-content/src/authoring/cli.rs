@@ -95,7 +95,7 @@ pub fn session(
 }
 /// Dispatches the author's subcommands; all filesystem writes stay in the named workspace.
 pub fn run(args: &[std::ffi::OsString]) -> Result<()> {
-    let usage = "Usage: verse-content author init INPUT WORKSPACE ZONE | inspect WORKSPACE | apply WORKSPACE TRANSACTION | undo|redo WORKSPACE REVISION | preview WORKSPACE TICKS [NAV_HALF] | build WORKSPACE | edit WORKSPACE";
+    let usage = "Usage: verse-content author init INPUT WORKSPACE ZONE | inspect WORKSPACE | apply WORKSPACE TRANSACTION | undo|redo WORKSPACE REVISION | preview WORKSPACE TICKS [NAV_HALF] | build WORKSPACE | release WORKSPACE DESTINATION | edit WORKSPACE";
     let fail = || Diagnostic::at("arguments", "$", usage);
     let name = args.first().and_then(|s| s.to_str()).ok_or_else(fail)?;
     if name == "init" {
@@ -165,6 +165,10 @@ pub fn run(args: &[std::ffi::OsString]) -> Result<()> {
             report
         }
         "build" if args.len() == 2 => command(&mut workspace, &mut active, &Command::Build {})?,
+        "release" if args.len() == 3 => {
+            let release = super::release::build(&workspace, Path::new(&args[2]))?;
+            serde_json::json!({"artifact":release.id(), "manifest":release.manifest()})
+        }
         "edit" if args.len() == 2 => {
             return session(
                 &mut workspace,

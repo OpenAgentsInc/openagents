@@ -16,6 +16,7 @@ mod disk;
 mod lifecycle;
 pub mod net;
 mod registry;
+mod safety;
 mod services;
 mod transfer;
 pub use registry::{Account, Character, Residence};
@@ -101,6 +102,7 @@ pub struct Realm {
     transfer_commit: bool,
     lifecycle_commit: bool,
     services_commit: bool,
+    safety_commit: bool,
 }
 impl Realm {
     pub fn open(root: &Path) -> Result<Self, String> {
@@ -569,10 +571,13 @@ impl Realm {
                 | Body::Replicate { .. }
                 | Body::Inventory {}
                 | Body::Services { .. }
+                | Body::Safety {}
                 | Body::Account {}
                 | Body::Events { .. }
         );
-        let service = self.services_request(lease, id, now, &request.body);
+        let service = self
+            .services_request(lease, id, now, &request.body)
+            .or_else(|| self.safety_request(lease, id, now, &request.body));
         let service_handled = service.is_some();
         let response = if let Some(result) =
             service.or_else(|| self.lifecycle_request(lease, id, now, &request.body))

@@ -995,3 +995,34 @@ requests the existing ordered drain. The dedicated
 through owner-local IPC. `service::persistence::backup` verifies and restores
 chamber checkpoints, reachable reward history, and migration archives into new
 storage. Offline pruning retains every current and migration history root.
+
+## Account safety in a realm
+
+Wire version 31 adds `Safety` and `SafetyAction`. The realm derives the acting
+account from the authenticated connection; clients cannot select the owner of
+its safety preferences. `service::safety` defines account blocks, typed reports,
+private projections, and exact-retry receipts. Each account can retain 64
+blocked accounts, with 128 block changes per UTC day. A block in either direction refuses new party or guild
+invitations, joining a pending invitation from that leader, new gear trade
+offers, and accepting pending trades. Cancellation remains available to release
+locks. The policy follows every character of both accounts and survives
+restart and credential recovery. Existing shared-world avatars and group
+membership remain visible; blocks grant no simulation or Studio authority.
+
+Reports carry `spam`, `harassment`, `unsafe_content`, or `cheating`, plus an
+optional nonzero evidence digest. They carry no free text or private Studio
+payload. Submission is limited to 16 reports per account per UTC day and a
+realm-wide queue of 256 open reports. The public response contains only the
+submission receipt. `Realm::pending_reports` and `resolve_report`, also exposed
+through the trusted local `realm::net::Control`, provide operator-only review.
+Completing a report releases queue capacity and retains the immutable receipt;
+retrying the old submission cannot reopen it. Record selection and receipts use
+the existing atomic realm head. Uncertain publication requires recovery. Active
+queues and submission rates are bounded; immutable receipt history remains on
+disk and requires the host's storage and retention policy.
+
+These are native realm and SDK contact controls. They do not hide physical
+avatars, remove existing members, implement a chat service, or add a phone or
+browser moderation UI. Host operators decide what an actioned report requires;
+report status alone does not ban an account or run a tool. World-only access
+continues to expose seats while refusing private Studio views and operations.

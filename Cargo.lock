@@ -15088,6 +15088,7 @@ dependencies = [
  "physics",
  "png",
  "resvg",
+ "secp256k1 0.31.1",
  "serde",
  "serde_json",
  "serde_path_to_error",

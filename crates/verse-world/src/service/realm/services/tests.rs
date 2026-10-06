@@ -471,6 +471,8 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
         .unwrap()
         .as_millis() as u64;
     let (mut realm, a, b, alice, bob) = setup(&root, now);
+    let alice_account = realm.character(alice).unwrap().account;
+    let bob_account = realm.character(bob).unwrap().account;
     let left = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let right = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let left_addr = left.local_addr().unwrap();
@@ -668,6 +670,56 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
         control.party_loot(1001, loot(50, party)).await.unwrap(),
         grant
     );
+    use crate::service::safety as safe;
+    let block = ca
+        .safety_action(
+            identity,
+            [80; 16],
+            safe::Action::Block {
+                account: bob_account,
+                blocked: true,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(ca.safety().await.unwrap().blocked, vec![bob_account]);
+    assert!(cb.safety().await.unwrap().blocked.is_empty());
+    let report = cb
+        .safety_action(
+            identity,
+            [81; 16],
+            safe::Action::Report {
+                account: alice_account,
+                reason: safe::Reason::Harassment,
+                evidence: Some([8; 32]),
+            },
+        )
+        .await
+        .unwrap();
+    let report_id = match report.outcome {
+        safe::Outcome::Report { id } => id,
+        _ => panic!("Expected report"),
+    };
+    assert_eq!(control.pending_reports().await.unwrap().len(), 1);
+    control
+        .resolve_report(report_id, safe::Status::Dismissed)
+        .await
+        .unwrap();
+    assert!(control.pending_reports().await.unwrap().is_empty());
+    assert_eq!(
+        cb.safety_action(
+            identity,
+            [81; 16],
+            safe::Action::Report {
+                account: alice_account,
+                reason: safe::Reason::Harassment,
+                evidence: Some([8; 32])
+            }
+        )
+        .await
+        .unwrap(),
+        report
+    );
     drop(ca);
     drop(cb);
     stop.send(()).unwrap();
@@ -710,6 +762,34 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
         realm.party_loot(&a, loot(50, party), now + 1000).unwrap(),
         grant
     );
+    assert_eq!(
+        realm.safety_view(&b, ca, now + 1000).unwrap().blocked,
+        vec![bob_account]
+    );
+    assert!(realm.pending_reports().unwrap().is_empty());
+    assert_eq!(
+        realm
+            .safety_action(
+                &b,
+                ca,
+                identity,
+                [80; 16],
+                safe::Action::Block {
+                    account: bob_account,
+                    blocked: true
+                },
+                now + 1000
+            )
+            .unwrap(),
+        block
+    );
+    assert_eq!(
+        realm
+            .resolve_report(report_id, safe::Status::Dismissed, now + 1000)
+            .unwrap()
+            .target,
+        alice_account
+    );
     let actor = realm.manifest.characters[&alice].actor;
     assert_eq!(
         realm.games[&1002]
@@ -729,7 +809,8 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
                 "guardian_level_two_with_wand": { "max_hp": 335, "max_mana": 51 },
                 "logout_resume": true, "zone_transfer": true, "restart": true,
                 "party_event_recipients_frozen": true, "final_character_experience": 200,
-                "host_loot": "trusted local authored outcome adapter", "stats": stats
+                "host_loot": "trusted local authored outcome adapter", "stats": stats,
+                "account_block_private":true, "typed_report_private_queue":true, "completed_report_exact_retry":true
             }))
             .unwrap(),
         )
@@ -1039,4 +1120,397 @@ fn offers_lock_only_the_sender_and_cancel_after_requested_items_change_owner() {
         .unwrap();
     assert_eq!(realm.item_instance(hat.id).unwrap().owner, alice);
     assert_eq!(realm.item_instance(hat.id).unwrap().locked, None);
+}
+
+#[test]
+fn account_blocks_fence_pending_and_new_contact_across_restart() {
+    use crate::service::safety as safe;
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("realm");
+    let (mut realm, a, b, alice, bob) = setup(&root, 0);
+    let ca = connect(&mut realm, &a, 11, 1);
+    let cb = connect(&mut realm, &b, 12, 1);
+    let aa = realm.character(alice).unwrap().account;
+    let ba = realm.character(bob).unwrap().account;
+    let party = party(&mut realm, &a, &b, ca, cb, alice, bob);
+    realm.party_loot(&a, loot(1, party), 1).unwrap();
+    let ia = item(apply(
+        &mut realm,
+        &a,
+        ca,
+        alice,
+        3,
+        Action::Materialize { definition: 10 },
+    ));
+    let ib = item(apply(
+        &mut realm,
+        &b,
+        cb,
+        bob,
+        2,
+        Action::Materialize { definition: 11 },
+    ));
+    let pending = offer(apply(
+        &mut realm,
+        &a,
+        ca,
+        alice,
+        4,
+        Action::Offer {
+            to: bob,
+            give: vec![api::Token {
+                id: ia.id,
+                version: ia.version,
+            }],
+            want: vec![api::Token {
+                id: ib.id,
+                version: ib.version,
+            }],
+            expires_ms: 1000,
+        },
+    ));
+    let block = safe::Action::Block {
+        account: aa,
+        blocked: true,
+    };
+    let first = realm
+        .safety_action(&b, cb, realm.manifest.id, [1; 16], block.clone(), 1)
+        .unwrap();
+    assert_eq!(
+        realm
+            .safety_action(&b, cb, realm.manifest.id, [1; 16], block.clone(), 1)
+            .unwrap(),
+        first
+    );
+    assert_eq!(realm.safety_view(&b, cb, 1).unwrap().blocked, vec![aa]);
+    assert_eq!(realm.safety_view(&a, ca, 1).unwrap().account, aa);
+    assert!(realm.safety_view(&a, ca, 1).unwrap().blocked.is_empty());
+    assert!(realm.contact(alice, bob).is_err());
+    assert!(realm.contact(bob, alice).is_err());
+    let refuse = dispatch(
+        &mut realm,
+        &b,
+        cb,
+        Body::ServiceAction {
+            realm: first.realm,
+            character: bob,
+            operation: [3; 16],
+            action: Action::Accept { offer: pending.id },
+        },
+        1,
+    );
+    assert!(matches!(refuse.body, Reply::Refused { .. }));
+    // A block never prevents cancellation or strands the sender's locked gear.
+    apply(
+        &mut realm,
+        &a,
+        ca,
+        alice,
+        5,
+        Action::Cancel { offer: pending.id },
+    );
+    assert!(realm.item_instance(ia.id).unwrap().locked.is_none());
+    apply(&mut realm, &b, cb, bob, 4, Action::Leave { group: party });
+    let refuse = dispatch(
+        &mut realm,
+        &a,
+        ca,
+        Body::ServiceAction {
+            realm: first.realm,
+            character: alice,
+            operation: [6; 16],
+            action: Action::Invite {
+                group: party,
+                target: bob,
+            },
+        },
+        1,
+    );
+    assert!(matches!(refuse.body, Reply::Refused { .. }));
+    realm
+        .logout(&b, key(12).x_only_public_key().0.serialize(), bob, 1)
+        .unwrap();
+    let extra = realm
+        .create_character(
+            &b,
+            key(12).x_only_public_key().0.serialize(),
+            [2., 0., -22.],
+            1,
+        )
+        .unwrap()
+        .0;
+    assert_eq!(realm.character(extra).unwrap().account, ba);
+    assert!(realm.contact(alice, extra).is_err());
+    let unauthenticated = realm.open_connection(&a, 1).unwrap().0;
+    assert!(
+        realm
+            .safety_action(
+                &a,
+                unauthenticated,
+                first.realm,
+                [1; 16],
+                safe::Action::Block {
+                    account: ba,
+                    blocked: true
+                },
+                1
+            )
+            .is_err()
+    );
+    drop(realm);
+    let mut realm = Realm::open(&root).unwrap();
+    let b = realm.acquire(1002, [2; 32], 2).unwrap();
+    let cb = connect(&mut realm, &b, 12, 2);
+    assert!(realm.contact(alice, bob).is_err());
+    assert_eq!(
+        realm
+            .safety_action(&b, cb, first.realm, [1; 16], block, 2)
+            .unwrap(),
+        first
+    );
+    let unblock = safe::Action::Block {
+        account: aa,
+        blocked: false,
+    };
+    realm
+        .safety_action(&b, cb, first.realm, [2; 16], unblock, 2)
+        .unwrap();
+    assert!(realm.contact(alice, bob).is_ok());
+    // A delayed retry returns the original receipt without reinstating the block.
+    realm
+        .safety_action(
+            &b,
+            cb,
+            first.realm,
+            [1; 16],
+            safe::Action::Block {
+                account: aa,
+                blocked: true,
+            },
+            2,
+        )
+        .unwrap();
+    assert!(realm.contact(alice, bob).is_ok());
+}
+
+#[test]
+fn private_reports_bound_submission_and_preserve_completed_exact_retries() {
+    use crate::service::safety as safe;
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("realm");
+    let (mut realm, a, b, alice, bob) = setup(&root, 0);
+    let ca = connect(&mut realm, &a, 11, 1);
+    let cb = connect(&mut realm, &b, 12, 1);
+    let account = realm.character(alice).unwrap().account;
+    let target = realm.character(bob).unwrap().account;
+    let realm_id = realm.manifest.id;
+    let action = safe::Action::Report {
+        account: target,
+        reason: safe::Reason::Harassment,
+        evidence: Some([9; 32]),
+    };
+    let receipt = realm
+        .safety_action(&a, ca, realm_id, [1; 16], action.clone(), 1)
+        .unwrap();
+    let id = match receipt.outcome {
+        safe::Outcome::Report { id } => id,
+        _ => panic!("Expected report"),
+    };
+    assert_eq!(realm.pending_reports().unwrap().len(), 1);
+    assert_eq!(realm.pending_reports().unwrap()[0].reporter, account);
+    assert_eq!(
+        realm
+            .safety_action(&a, ca, realm_id, [1; 16], action.clone(), 1)
+            .unwrap(),
+        receipt
+    );
+    assert!(
+        realm
+            .safety_action(
+                &a,
+                ca,
+                realm_id,
+                [1; 16],
+                safe::Action::Block {
+                    account: target,
+                    blocked: true
+                },
+                1
+            )
+            .is_err()
+    );
+    let foreign = dispatch(&mut realm, &b, cb, Body::Safety {}, 1);
+    match foreign.body {
+        Reply::Safety { view } => {
+            assert_eq!(view.account, target);
+            assert!(view.blocked.is_empty());
+        }
+        _ => panic!("Expected own safety projection"),
+    }
+    let finished = realm
+        .resolve_report(id, safe::Status::Dismissed, 1)
+        .unwrap();
+    assert_eq!(
+        realm
+            .resolve_report(id, safe::Status::Dismissed, 1)
+            .unwrap(),
+        finished
+    );
+    assert!(realm.resolve_report(id, safe::Status::Actioned, 1).is_err());
+    assert!(realm.pending_reports().unwrap().is_empty());
+    for n in 2..=16 {
+        realm
+            .safety_action(&a, ca, realm_id, [n; 16], action.clone(), 1)
+            .unwrap();
+    }
+    assert!(
+        realm
+            .safety_action(&a, ca, realm_id, [17; 16], action.clone(), 1)
+            .is_err()
+    );
+    assert_eq!(realm.pending_reports().unwrap().len(), 15);
+    assert_eq!(
+        realm
+            .safety_action(&a, ca, realm_id, [1; 16], action.clone(), 1)
+            .unwrap(),
+        receipt
+    );
+    assert_eq!(realm.pending_reports().unwrap().len(), 15);
+    drop(realm);
+    let mut realm = Realm::open(&root).unwrap();
+    let a = realm.acquire(1001, [1; 32], 2).unwrap();
+    let ca = connect(&mut realm, &a, 11, 2);
+    assert_eq!(realm.pending_reports().unwrap().len(), 15);
+    assert_eq!(
+        realm
+            .safety_action(&a, ca, realm_id, [1; 16], action.clone(), 2)
+            .unwrap(),
+        receipt
+    );
+    assert!(
+        realm
+            .safety_action(&a, ca, realm_id, [17; 16], action, 2)
+            .is_err()
+    );
+    assert_eq!(
+        realm
+            .resolve_report(id, safe::Status::Dismissed, 2)
+            .unwrap(),
+        finished
+    );
+}
+
+#[test]
+fn safety_crash_child() {
+    let Ok(root) = std::env::var("VERSE_SAFETY_CHILD_ROOT") else {
+        return;
+    };
+    let mut realm = Realm::open(Path::new(&root)).unwrap();
+    let a = realm.acquire(1001, [1; 32], 2).unwrap();
+    let b = realm.acquire(1002, [2; 32], 2).unwrap();
+    let connection = connect(&mut realm, &a, 11, 2);
+    let target = realm
+        .account_for_key(key(12).x_only_public_key().0.serialize())
+        .unwrap()
+        .unwrap()
+        .id;
+    realm
+        .safety_action(
+            &a,
+            connection,
+            realm.manifest.id,
+            [70; 16],
+            crate::service::safety::Action::Report {
+                account: target,
+                reason: crate::service::safety::Reason::Spam,
+                evidence: None,
+            },
+            2,
+        )
+        .unwrap();
+    let _ = b;
+    panic!("Safety crash boundary did not fire");
+}
+#[test]
+fn safety_receipt_preferences_and_queue_recover_at_every_publication_boundary() {
+    use crate::service::safety as safe;
+    for stage in [
+        "before_snapshots",
+        "after_snapshots",
+        "before_seal",
+        "after_seal",
+        "after_directory_sync",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("realm");
+        let (realm, _, _, _, bob) = setup(&root, 0);
+        let target = realm.character(bob).unwrap().account;
+        let identity = realm.manifest.id;
+        drop(realm);
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "service::realm::services::tests::safety_crash_child",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("VERSE_SAFETY_CHILD_ROOT", &root)
+            .env("VERSE_REALM_CRASH_AT", format!("safety_{stage}"))
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(86),
+            "{stage}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let mut realm = Realm::open(&root).unwrap();
+        let before = realm.pending_reports().unwrap();
+        assert_eq!(
+            before.len(),
+            if matches!(stage, "after_seal" | "after_directory_sync") {
+                1
+            } else {
+                0
+            }
+        );
+        let a = realm.acquire(1001, [1; 32], 3).unwrap();
+        let ca = connect(&mut realm, &a, 11, 3);
+        let action = safe::Action::Report {
+            account: target,
+            reason: safe::Reason::Spam,
+            evidence: None,
+        };
+        let receipt = realm
+            .safety_action(&a, ca, identity, [70; 16], action.clone(), 3)
+            .unwrap();
+        assert_eq!(
+            realm
+                .safety_action(&a, ca, identity, [70; 16], action, 3)
+                .unwrap(),
+            receipt
+        );
+        assert_eq!(realm.pending_reports().unwrap().len(), 1);
+    }
+}
+
+#[test]
+fn public_scene_and_wire_inputs_cannot_select_operator_or_studio_commands() {
+    for action in [
+        serde_json::json!({"type":"execute","command":"touch should-not-exist"}),
+        serde_json::json!({"type":"studio","operation":{"type":"read_log"}}),
+        serde_json::json!({"type":"toggle","object":1,"command":"touch should-not-exist"}),
+    ] {
+        assert!(serde_json::from_value::<crate::play::social::Action>(action).is_err());
+    }
+    for body in [
+        serde_json::json!({"type":"resolve_report","id":vec![1;32],"status":"dismissed"}),
+        serde_json::json!({"type":"publisher","public":vec![1;32],"enabled":true,"reason":"approve"}),
+        serde_json::json!({"type":"studio_view"}),
+    ] {
+        let bytes =
+            serde_json::to_vec(&serde_json::json!({"version":VERSION,"request_id":1,"body":body}))
+                .unwrap();
+        assert!(Request::decode(&bytes).is_err());
+    }
 }

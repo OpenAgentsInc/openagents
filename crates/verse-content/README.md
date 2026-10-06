@@ -145,3 +145,56 @@ The admitted fixtures cover male peasant and female ranger outfits with the
 named Universal skeleton. Other skeletons need explicit joint mappings and
 acceptance evidence. This contract does not admit animation-driven gameplay
 root motion, arbitrary retargeting, or facial animation.
+
+## Public release and publication
+
+A local generation build does not grant public distribution approval. With
+`authoring`, `author release WORKSPACE DESTINATION` exports only the runtime
+pack, scene, public authoring document, textures, and mip archive. Its
+`release.json` binds every file's digest and length, the content identity, and
+the complete redistribution inventory. `authoring::release::verify` refuses
+unexpected files, symbolic links, unsafe paths, unknown or duplicate runtime
+fields, noncanonical JSON,
+changed bytes, unsupported compatibility profiles, research provenance, and
+local-only redistribution. It returns an immutable byte snapshot. Artifacts
+have a 640 MiB total limit and retain the runtime's smaller per-file limits.
+Host templates, local paths, previews, journals, and Studio data stay out of the
+export. The public document is intentionally visible; authors must review its
+names and dialogue before submission.
+
+`authoring::publication::Book` is a trusted local operator capability in a
+separate directory. An operator enrolls the publisher's public key; a signed
+`Submission` proves possession and binds that key, the authority ID, and the
+exact release identity. Submission starts as pending. Operator review approves
+or rejects distribution separately from runtime validity. Revocation is
+permanent for that publisher and artifact; publisher suspension also prevents
+resolution. Each `resolve` rechecks current approval, enrollment, compatibility,
+and every artifact byte. Serving adapters use the returned byte snapshot,
+rather than reopening source files. A previously returned snapshot cannot be
+mutated through the source directory; an adapter must resolve again before a
+new distribution and stop any running instance the operator withdraws.
+
+The compiler exposes the local operator command:
+
+```sh
+verse-content publication BOOK AUTHORITY_HEX COMMAND_JSON
+```
+
+The command file selects `publisher`, `submit`, `review`, `revoke`, or `resolve`.
+`publisher` takes `public`, `enabled`, and `reason`; `submit` takes a `directory`
+and signed `submission`; `review` takes `publisher`, `directory`,
+`expected_revision`, `status`, and `reason`; `revoke` takes `publisher`,
+`artifact`, `expected_revision`, and `reason`, even if the files are lost or
+damaged; `resolve` takes `publisher`,
+`artifact`, and `directory`. Reasons are printable and at most 512 bytes.
+The book admits at most 256 publishers and 512 artifact records, with a
+2 MiB state limit. Keep this directory and its mutation API under operator
+filesystem authority. Never expose enrollment or review commands to an author
+session, scene interaction, or untrusted network body. The SDK signs with a
+caller-owned key and stores no signing secret.
+
+This is a local publication and distribution contract, not a public marketplace,
+remote moderation service, or automatic live-world eviction system. Provenance
+and license fields remain declarations, not legal certification. Preserve the
+source licenses and notices and complete the release's license review before
+approving distribution.

@@ -3,6 +3,9 @@ fn run() -> Result<(), String> {
     if all.first().is_some_and(|s| s == "author") {
         return verse_content::authoring::cli::run(&all[1..]).map_err(|e| e.to_string());
     }
+    if all.first().is_some_and(|s| s == "publication") {
+        return verse_content::authoring::publication::run(&all[1..]).map_err(|e| e.to_string());
+    }
     let mut args = all.into_iter();
     let name = args
         .next()

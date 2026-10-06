@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 30;
+pub const VERSION: u16 = 31;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -116,6 +116,12 @@ impl From<Input> for Command<Ability> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Body {
+    Safety {},
+    SafetyAction {
+        realm: [u8; 32],
+        operation: [u8; 16],
+        action: super::safety::Action,
+    },
     Services {
         character: u64,
     },
@@ -501,6 +507,12 @@ impl Inventory {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
+    Safety {
+        view: super::safety::View,
+    },
+    SafetyApplied {
+        receipt: super::safety::Receipt,
+    },
     Services {
         view: super::game_services::View,
     },
@@ -741,7 +753,9 @@ impl Gateway {
         body: Body,
     ) -> Result<Reply, (&'static str, String)> {
         match body {
-            Body::Services { .. }
+            Body::Safety {}
+            | Body::SafetyAction { .. }
+            | Body::Services { .. }
             | Body::ServiceAction { .. }
             | Body::Account {}
             | Body::SelectCharacter { .. }

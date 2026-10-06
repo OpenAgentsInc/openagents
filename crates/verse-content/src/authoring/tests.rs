@@ -5,7 +5,7 @@ use verse_engine::{
     director::{Action, Actor, Cue},
     motion::{Binding, Mode, State},
 };
-fn input(path: &Path) {
+pub(super) fn input(path: &Path) {
     std::fs::create_dir(path).unwrap();
     let states = State::ALL
         .into_iter()
