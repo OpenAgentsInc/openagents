@@ -167,7 +167,12 @@ fn coder_binaries() -> String {
         "</ul><p class=\"hint\">The installers verify the \
 <a href=\"{CODER_BASE}/SHA256SUMS-coder-{CODER_VERSION}\">SHA-256 checksums</a> \
 and install the companion commands. For a manual install, download every file in your \
-platform's row into the same directory and rename each file to its command name.</p>"
+platform's row into <code>~/.openagents/bin</code>. On macOS and Linux, rename the \
+files to <code>coder</code>, <code>openagents</code>, and <code>microcoder</code>, then run \
+<code>chmod +x ~/.openagents/bin/coder ~/.openagents/bin/openagents \
+~/.openagents/bin/microcoder</code>. On Windows, use \
+<code>coder.exe</code>, <code>openagents.exe</code>, <code>microcoder.exe</code>, and \
+<code>coder-boundary.exe</code>. Add that directory to PATH or run Coder by its full path.</p>"
     ));
     body
 }
