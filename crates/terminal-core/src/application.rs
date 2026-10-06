@@ -102,6 +102,9 @@ pub struct Application {
     /// This mount's local owner identity: the instance and generation its
     /// panes' workbench references name ([`crate::resources`]).
     pub instance: String,
+    /// Product panes open beside the shells: threads, runs, and the other
+    /// workbench pane kinds, as their adapters describe them.
+    pub products: crate::resources::Products,
 }
 
 impl std::fmt::Debug for Application {
@@ -148,6 +151,7 @@ impl Application {
             paste_hold: None,
             find: None,
             instance: crate::resources::instance(),
+            products: crate::resources::Products::default(),
         }
     }
 
@@ -545,6 +549,10 @@ impl Application {
                 tab.zoomed = !tab.zoomed;
                 Ok(self.status())
             }
+            Request::Pane { pane, subject } => self
+                .products
+                .open(*pane, subject)
+                .map(|descriptor| serde_json::to_value(descriptor).unwrap_or_default()),
             Request::Resolve { intent } => workbench::dispatch(self, intent)
                 .map(|outcome| serde_json::to_value(outcome).unwrap_or_default())
                 .map_err(|refusal| refusal.to_string()),
@@ -600,6 +608,7 @@ impl Application {
             "panes": panes,
             "notice": self.notice,
             "directory": workbench::Owner::directory(self),
+            "products": self.products.status(),
             "socket": serde_json::Value::Null,
         })
     }

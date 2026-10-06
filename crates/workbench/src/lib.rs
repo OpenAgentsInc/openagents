@@ -15,6 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod pane;
+
 /// `v` of a resource reference.
 pub const RESOURCE: &str = "openagents.workbench-resource.v1";
 /// `v` of an owner's capability directory.

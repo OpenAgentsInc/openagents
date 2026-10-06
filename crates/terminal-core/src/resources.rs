@@ -86,3 +86,136 @@ impl Owner for Application {
         Outcome::new(intent, state)
     }
 }
+
+/// The most product panes a mount keeps open.
+pub const PRODUCTS_MAX: usize = 32;
+
+/// A mount's product panes: the adapters and fallbacks it describes them
+/// with, the panes open, and which has focus. Navigation, focus, and what a
+/// pane shows live here; each pane's store, execution, and the admission of
+/// its actions stay with the resource's owner, and opening a pane creates
+/// nothing there.
+#[derive(Debug)]
+pub struct Products {
+    pub panes: workbench::pane::Panes,
+    pub open: Vec<workbench::pane::PaneDescriptor>,
+    pub focus: Option<usize>,
+}
+
+impl Default for Products {
+    /// No adapter yet, and the fallbacks every mount declares: a thread
+    /// reads in `openagents chat`, and a run in `coder task show`.
+    fn default() -> Self {
+        use workbench::pane::{PaneKind, Panes, View};
+        let words = |words: &[&str]| words.iter().map(|word| (*word).to_owned()).collect();
+        let panes = Panes::new()
+            .fallback(
+                PaneKind::Thread,
+                View::Tty {
+                    command: words(&["openagents", "chat", "read", "--thread", "{id}"]),
+                },
+            )
+            .and_then(|panes| {
+                panes.fallback(
+                    PaneKind::Run,
+                    View::Tty {
+                        command: words(&["coder", "task", "show", "{id}"]),
+                    },
+                )
+            })
+            .unwrap_or_default();
+        Products {
+            panes,
+            open: Vec::new(),
+            focus: None,
+        }
+    }
+}
+
+impl Products {
+    /// Opens `subject` as a `pane`, or refreshes and focuses it when it is
+    /// already open, and answers its descriptor.
+    ///
+    /// # Errors
+    /// A subject that does not fit the kind, or too many open panes.
+    pub fn open(
+        &mut self,
+        pane: workbench::pane::PaneKind,
+        subject: &workbench::pane::Subject,
+    ) -> Result<workbench::pane::PaneDescriptor, String> {
+        let descriptor = self
+            .panes
+            .resolve(pane, subject)
+            .map_err(|refusal| refusal.to_string())?;
+        let index = match self
+            .open
+            .iter()
+            .position(|open| open.pane == pane && same(&open.subject, subject))
+        {
+            Some(index) => {
+                self.open[index] = descriptor.clone();
+                index
+            }
+            None if self.open.len() >= PRODUCTS_MAX => {
+                return Err(format!("at most {PRODUCTS_MAX} product panes are open"));
+            }
+            None => {
+                self.open.push(descriptor.clone());
+                self.open.len() - 1
+            }
+        };
+        self.focus = Some(index);
+        Ok(descriptor)
+    }
+
+    /// Describes every open pane again, as its owner sees it now.
+    pub fn refresh(&mut self) {
+        for open in &mut self.open {
+            if let Ok(descriptor) = self.panes.resolve(open.pane, &open.subject) {
+                *open = descriptor;
+            }
+        }
+    }
+
+    /// Closes pane `index`; its resource is untouched.
+    pub fn close(&mut self, index: usize) -> bool {
+        if index >= self.open.len() {
+            return false;
+        }
+        self.open.remove(index);
+        self.focus = match self.focus {
+            Some(focus) if focus == index => None,
+            Some(focus) if focus > index => Some(focus - 1),
+            other => other,
+        };
+        true
+    }
+
+    /// The open panes and the focus, as JSON for a mount's status.
+    #[must_use]
+    pub fn status(&self) -> serde_json::Value {
+        serde_json::json!({
+            "focus": self.focus,
+            "panes": self.open,
+        })
+    }
+}
+
+/// Whether two subjects name the same resource or record, at any revision.
+fn same(a: &workbench::pane::Subject, b: &workbench::pane::Subject) -> bool {
+    use workbench::pane::Subject;
+    match (a, b) {
+        (Subject::Resource { resource: a }, Subject::Resource { resource: b }) => {
+            a.same_resource(b)
+        }
+        (
+            Subject::Record {
+                host: ha, id: ia, ..
+            },
+            Subject::Record {
+                host: hb, id: ib, ..
+            },
+        ) => ha == hb && ia == ib,
+        _ => false,
+    }
+}

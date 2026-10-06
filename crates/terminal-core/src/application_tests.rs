@@ -852,3 +852,146 @@ fn a_mount_answers_workbench_intents_for_its_own_panes_only() {
     assert!(refused.starts_with("identity_mismatch"), "{refused}");
     app.shutdown();
 }
+
+/// A fixture thread owner: ready, archived (read-only), and revoked
+/// threads, by turn count.
+struct FixtureThreads;
+
+impl workbench::pane::PaneAdapter for FixtureThreads {
+    fn kind(&self) -> workbench::pane::PaneKind {
+        workbench::pane::PaneKind::Thread
+    }
+
+    fn describe(&self, subject: &workbench::pane::Subject) -> workbench::pane::Description {
+        use workbench::Revision;
+        use workbench::pane::{Description, PaneState};
+        let (turns, actions) = match subject.id() {
+            "ready" => (5, vec!["reply".to_owned()]),
+            "archived" => (2, Vec::new()),
+            "revoked" => {
+                return Description {
+                    state: PaneState::Revoked,
+                    title: "A thread".into(),
+                    detail: String::new(),
+                    actions: vec!["reply".into()],
+                };
+            }
+            _ => return Description::only(PaneState::Missing, "No such thread"),
+        };
+        if let Some(asked) = subject.revision()
+            && *asked != Revision::Counter(turns)
+        {
+            return Description::only(
+                PaneState::Stale {
+                    current: Some(Revision::Counter(turns)),
+                },
+                "A thread",
+            );
+        }
+        Description {
+            state: PaneState::Ready,
+            title: format!("Thread {}", subject.id()),
+            detail: format!("{turns} turns"),
+            actions,
+        }
+    }
+}
+
+#[test]
+fn every_mount_resolves_product_panes_the_same_way() {
+    use crate::control::Request;
+    use workbench::pane::{PaneKind, PaneState, Subject, View};
+    use workbench::{Host, Kind, ResourceRef, Revision};
+    let host = Host::Paired {
+        key: "ef".repeat(32),
+    };
+    let thread = |id: &str, revision: Option<u64>| {
+        let mut resource = ResourceRef::new(Kind::Thread, host.clone(), id);
+        resource.revision = revision.map(Revision::Counter);
+        Subject::Resource { resource }
+    };
+    let fixtures = vec![
+        (PaneKind::Thread, thread("ready", Some(5))),
+        (PaneKind::Thread, thread("archived", None)),
+        (PaneKind::Thread, thread("revoked", None)),
+        (PaneKind::Thread, thread("ready", Some(3))),
+        (PaneKind::Thread, thread("gone", None)),
+        (
+            PaneKind::Run,
+            Subject::Resource {
+                resource: ResourceRef::new(Kind::Run, host.clone(), "task-9"),
+            },
+        ),
+        (
+            PaneKind::Knowledge,
+            Subject::Record {
+                host: host.clone(),
+                id: "kb-1".into(),
+                revision: None,
+            },
+        ),
+    ];
+    // The Grid's overlay and the standalone window each mount an
+    // application with the same adapters.
+    let mount = || {
+        let mut app = Application::new(Sessions(Arc::new(Fake::default())));
+        let products = std::mem::take(&mut app.products.panes);
+        app.products.panes = products.adapter(Box::new(FixtureThreads));
+        app
+    };
+    let (mut grid, mut window) = (mount(), mount());
+    let mut states = Vec::new();
+    for (pane, subject) in &fixtures {
+        let request = Request::Pane {
+            pane: *pane,
+            subject: subject.clone(),
+        };
+        let shown = grid.apply(&request).unwrap();
+        assert_eq!(shown, window.apply(&request).unwrap());
+        let descriptor: workbench::pane::PaneDescriptor = serde_json::from_value(shown).unwrap();
+        descriptor.check().unwrap();
+        assert_eq!(&descriptor.subject, subject);
+        states.push((descriptor.state, descriptor.actions));
+    }
+    assert_eq!(states[0], (PaneState::Ready, vec!["reply".to_owned()]));
+    // Read-only and revoked panes offer no mutation.
+    assert_eq!(states[1], (PaneState::Ready, Vec::new()));
+    assert_eq!(states[2], (PaneState::Revoked, Vec::new()));
+    // A stale reference names the current turn count and creates nothing.
+    assert_eq!(
+        states[3],
+        (
+            PaneState::Stale {
+                current: Some(Revision::Counter(5))
+            },
+            Vec::new()
+        )
+    );
+    assert_eq!(states[4], (PaneState::Missing, Vec::new()));
+    // Without an adapter: the declared TTY view, or the label alone.
+    assert_eq!(
+        states[5].0,
+        PaneState::Fallback {
+            view: View::Tty {
+                command: ["coder", "task", "show", "task-9"]
+                    .map(str::to_owned)
+                    .to_vec()
+            }
+        }
+    );
+    assert_eq!(states[6].0, PaneState::Fallback { view: View::Label });
+    // Opening the same thread again refreshes its pane rather than adding
+    // one, and the status lists the open panes with the focus.
+    assert_eq!(grid.products.open.len(), 6);
+    let status = grid.status();
+    assert_eq!(status["products"]["panes"].as_array().unwrap().len(), 6);
+    assert_eq!(status["products"], window.status()["products"]);
+    // A subject that does not fit its pane is refused.
+    let wrong = Request::Pane {
+        pane: PaneKind::Knowledge,
+        subject: thread("ready", None),
+    };
+    assert!(grid.apply(&wrong).is_err());
+    assert!(grid.products.close(0));
+    assert_eq!(grid.products.open.len(), 5);
+}

@@ -47,4 +47,10 @@ pub enum Request {
     /// Ask this mount, as the owner of its local panes, to act on a
     /// workbench resource reference. The answer is a workbench outcome.
     Resolve { intent: workbench::Intent },
+    /// Open a product pane for `subject` as `pane`, or refresh it when it
+    /// is open. The answer is the pane's descriptor.
+    Pane {
+        pane: workbench::pane::PaneKind,
+        subject: workbench::pane::Subject,
+    },
 }

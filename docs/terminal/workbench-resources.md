@@ -80,6 +80,48 @@ An outcome, `openagents.workbench-outcome.v1`, has one state:
 | `unsupported` | The owner does not serve the kind or operation. |
 | `refused` | The owner refused, with a shared refusal code. |
 
+## Product panes
+
+Added 2026-10-05 ([#10646](https://github.com/OpenAgentsInc/openagents/issues/10646)).
+A product pane shows a resource beside the shells: `workbench::pane`
+defines its descriptor, `openagents.workbench-pane.v1`, and the adapter
+each domain writes for its own kind. The kinds are closed: `thread`, `run`,
+`studio`, `file`, `diff`, `artifact`, `preview`, `knowledge`, `evaluation`,
+`background`, `account`, and `receipt`. A kind that version-1 references
+name takes one as its subject (a diff and a file take a `file`, an
+artifact and a preview an `artifact`, an evaluation `evidence`); the
+others name the owner's own record by host, ID, and optional revision. A new
+kind is a new schema version.
+
+A descriptor carries the subject exactly as asked, a plain title of at most
+128 bytes, a plain detail of at most 2,048 bytes, the owner intents the pane
+offers (at most eight), and a state:
+
+| State | Meaning |
+| --- | --- |
+| `ready` | The adapter describes the resource; its actions are offered, and an empty list means read-only. |
+| `missing` | The owner keeps no such record. Nothing is created in its place. |
+| `stale` | The reference names an older revision; the owner names the current one. |
+| `revoked` | This device no longer holds the right to it. |
+| `unavailable` | The owner cannot answer now, or its adapter answered with something a pane may not show. |
+| `fallback` | No adapter here: the kind's declared view, a TTY command (`{id}` replaced) or an `https` link, or the label alone, under "No *kind* viewer here". |
+
+`Panes::resolve` is the one path: it checks that the subject fits the kind,
+asks only that kind's adapter, keeps the asked subject rather than any the
+adapter might name, and drops every action from a pane that is not ready.
+An adapter only reads; the trait gives it no way to create, start, or
+change anything, so navigation, focus, layout, and what a pane shows stay
+in the workbench, and stores, execution, and the admission of each action
+stay with the owner. `openagents_chat::pane::ThreadPanes` is the thread
+adapter, over the chat service's read operations. `terminal-core` keeps a
+mount's open product panes (`Application::products`, the `pane` control
+request, and the `products` entry of its status), with TTY fallbacks for a
+thread (`openagents chat read --thread {id}`) and a run (`coder task show
+{id}`), so the Grid's overlay and the standalone window resolve the same
+resources to the same pane state. Account and receipt panes take the retail
+cloud track's adapters when those land; drawing product panes natively is
+[#10659](https://github.com/OpenAgentsInc/openagents/issues/10659).
+
 ## Consumers
 
 `terminal-core` is the owner of a mount's local panes. The standalone

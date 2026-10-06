@@ -23,6 +23,8 @@ serde_json = "1"
 sha2 = "0.10"
 tokio = { version = "1", features = ["rt-multi-thread", "time", "io-util", "sync", "macros"] }
 uuid = { version = "1", features = ["v4"] }
+# Threads as workbench product panes (`pane`).
+workbench = { path = "../workbench" }
 
 [dev-dependencies]
 tempfile = "3"
