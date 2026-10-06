@@ -411,13 +411,21 @@ sats an hour) and 100 sats of coordination per started task; nothing
 charged before the executor starts; and no payout of a purchased balance
 in v1. A different rate or refund policy is a new book version.
 
-## One terminal reply across two devices (#10653)
+## One terminal on two devices (#10653, #10655, #10675)
 
-Hosts now answer terminal queries themselves and send bells, titles, and
-clipboard writes as NIP-TERM effect frames. After the Mac app and any
-headless hosts run a build with this change, open one terminal from two
-devices, run a program that asks for the cursor position (`vim` or `htop`
-does), and confirm it draws normally on both with no stray `R` or `c`
-characters. The PTY-level checks, including one reply for two devices and the
-clipboard reaching only the typist, run on scratch hosts in `coder-vt`'s
-`tests/authority.rs`.
+Hosts now answer terminal queries themselves, join devices by snapshot, and
+let one device type at a time. After the Mac app and any headless hosts run
+a build with these changes, open one terminal from two phones (or a phone
+and a second phone build):
+
+- Run a program that asks for the cursor position (`vim` or `htop` does) and
+  confirm it draws normally on both with no stray `R` or `c` characters.
+- Join the second device while the first prints continuously, and confirm
+  its screen matches without a gap note.
+- Type on the first device, confirm the second shows **Type here** and
+  draws at the first device's size, then tap it and confirm the second can
+  type and the first now shows **Type here**.
+
+The PTY-level checks run on scratch hosts in `coder-vt`'s
+`tests/authority.rs` and `tests/join.rs` and in `coder-pty`'s
+`tests/typist.rs`.
