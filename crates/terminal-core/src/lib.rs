@@ -33,6 +33,7 @@ pub mod pty;
 pub mod resources;
 pub mod run;
 pub mod select;
+pub mod sharing;
 pub mod smart;
 pub mod stats;
 pub mod studio;

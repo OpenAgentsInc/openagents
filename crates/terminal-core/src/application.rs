@@ -96,6 +96,7 @@ pub struct Application {
     pub typed: Instant,
     /// The fixed sheet, the default view of a mount (`paper`).
     pub paper: crate::paper::Paper,
+    pub sharing: crate::sharing::Page,
     /// A multiline clipboard paste waiting for Enter ([`crate::paste`]).
     pub paste_hold: Option<crate::paste::Held>,
     /// An open block search ([`crate::search`]).
@@ -154,6 +155,7 @@ impl Application {
             focus_sent: None,
             typed: Instant::now(),
             paper: crate::paper::Paper::default(),
+            sharing: crate::sharing::Page::default(),
             paste_hold: None,
             find: None,
             instance: crate::resources::instance(),
@@ -906,6 +908,9 @@ impl Application {
     /// Handles a key. Returns whether the overlay took it; when it did,
     /// the world must not see it.
     pub fn key(&mut self, key: &KeyIn) -> bool {
+        if self.sharing_key(key) {
+            return true;
+        }
         if matches!(key.code, KeyCode::Enter | KeyCode::NumpadEnter) {
             if key.pressed
                 && (key.repeat || key.synthetic)

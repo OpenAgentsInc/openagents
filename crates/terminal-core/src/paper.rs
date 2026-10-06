@@ -67,6 +67,7 @@ const HELP: &[&str] = &[
     "F13  show studio goals, tasks, seats, logs, and memory; ENTER prepares a",
     "     studio command, ENTER again confirms, and ESC rejects or returns.",
     "F14  show studio questions and approvals; F15 shows review controls.",
+    "F17  show private viewers, issue watch/drive shares, pause, or revoke.",
     "F16  reopen or leave retained product panes; F2 refreshes their read-only",
     "     facts, UP/DOWN picks a pane, and PGUP/PGDN scrolls. ENTER runs nothing.",
     "F12  show the plugin test results under this directory; F12 or ESC returns.",
@@ -295,7 +296,7 @@ impl Paper {
 
 impl Application {
     /// The pane the sheet shows: the focused one.
-    fn paper_pane(&self) -> Option<PaneId> {
+    pub(crate) fn paper_pane(&self) -> Option<PaneId> {
         self.focus_id()
     }
 
@@ -754,6 +755,18 @@ impl Application {
 
     /// A paste: into the input line, or to the running program.
     pub fn paper_paste(&mut self, text: &str) {
+        if self.sharing.open {
+            if self.sharing.confirmation.is_none() {
+                for ch in text.chars().filter(|ch| !ch.is_control()) {
+                    if self.paper.input.len() + ch.len_utf8() > 256 {
+                        break;
+                    }
+                    self.paper.input.push(ch);
+                }
+                self.paper.cursor = self.paper.input.chars().count();
+            }
+            return;
+        }
         if !self.paper.studio.open && self.paper_running() {
             let bytes = match self.focused_pane() {
                 Some(pane) => pane.session.vt.paste(text),
@@ -1710,6 +1723,7 @@ impl Application {
     /// Follows the shell: new blocks, finished blocks, the command table,
     /// and the git summary; starts a queued question when the last ends.
     pub fn paper_tick(&mut self) {
+        self.sharing_tick();
         let transport = self.studio_transport.clone();
         self.paper.studio.poll(transport.as_ref());
         self.paper_thread_read();
@@ -1897,7 +1911,26 @@ impl Application {
         let screen = pane.filter(|pane| pane.session.vt.alternate_screen());
         let mut body: Vec<Vec<Span>> = Vec::new();
         let mut bar: Option<(usize, usize)> = None;
-        if self.paper.help {
+        if self.sharing.open {
+            let mut wrapped = Vec::new();
+            for text in self.sharing.lines() {
+                wrap(&line(text, Tone::Present), text_width, &mut wrapped);
+            }
+            self.sharing.scroll = self
+                .sharing
+                .scroll
+                .min(wrapped.len().saturating_sub(transcript_rows));
+            for row in wrapped
+                .iter()
+                .skip(self.sharing.scroll)
+                .take(transcript_rows)
+            {
+                body.push(vec![Span {
+                    text: row.text.clone(),
+                    tone: row.tone,
+                }]);
+            }
+        } else if self.paper.help {
             for text in HELP.iter().take(transcript_rows) {
                 body.push(vec![Span {
                     text: fit(text, text_width),
@@ -2370,7 +2403,11 @@ impl Application {
         } else {
             cwd
         };
-        let first = format!("DIR {cwd}{tail}");
+        let first = if self.sharing.view.is_some() && self.sharing.pane == self.paper_pane() {
+            self.sharing.marker()
+        } else {
+            format!("DIR {cwd}{tail}")
+        };
         let second = format!(
             "REQUEST {}  QUEUE {}  PENDING {}  DOOR {}  LOAD {}  TIME {}",
             request,

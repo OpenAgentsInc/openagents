@@ -441,6 +441,43 @@ struct LocalAttachment {
     ended: bool,
 }
 impl Attachment for LocalAttachment {
+    fn sharing(
+        &self,
+        action: terminal_core::sharing::Action,
+    ) -> Option<std::sync::mpsc::Receiver<Result<Value, String>>> {
+        use coder_pty::share::{SharePause, ShareRequest, Unshare, ViewersRead};
+        use terminal_core::sharing::Action;
+        let result = match action {
+            Action::Read => self.host.viewers(
+                PRINCIPAL,
+                &ViewersRead::new(request(), self.terminal.clone()),
+            ),
+            Action::Issue {
+                grantee,
+                mode,
+                expires_at,
+            } => self.host.share(
+                PRINCIPAL,
+                &ShareRequest::new(request(), self.terminal.clone(), grantee, mode, expires_at),
+            ),
+            Action::Pause(paused) => self.host.pause(
+                PRINCIPAL,
+                &SharePause::new(request(), self.terminal.clone(), paused),
+            ),
+            Action::Revoke(Some(share)) => self.host.unshare(
+                PRINCIPAL,
+                &Unshare::one(request(), self.terminal.clone(), share),
+            ),
+            Action::Revoke(None) => self
+                .host
+                .unshare(PRINCIPAL, &Unshare::all(request(), self.terminal.clone())),
+        }
+        .map(|(_, value)| value)
+        .map_err(|why| why.detail);
+        let (send, recv) = std::sync::mpsc::channel();
+        let _ = send.send(result);
+        Some(recv)
+    }
     fn host_answers(&self) -> bool {
         true
     }

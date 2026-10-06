@@ -16,6 +16,7 @@ use std::{
 
 #[derive(Default)]
 struct Fake {
+    sharing: Arc<Mutex<Vec<crate::sharing::Action>>>,
     bridge: bool,
     output: Arc<Mutex<std::collections::VecDeque<Vec<u8>>>>,
     requests: Mutex<Vec<crate::bridge::Request>>,
@@ -65,12 +66,30 @@ struct Fake {
     effect: Mutex<Option<crate::proposals::Effect>>,
 }
 struct Pane {
+    sharing: Arc<Mutex<Vec<crate::sharing::Action>>>,
     bridge: bool,
     output: Arc<Mutex<std::collections::VecDeque<Vec<u8>>>>,
     input: Arc<Mutex<Vec<Vec<u8>>>>,
     closed: Arc<AtomicUsize>,
 }
 impl Attachment for Pane {
+    fn sharing(
+        &self,
+        action: crate::sharing::Action,
+    ) -> Option<mpsc::Receiver<Result<coder_pty::wire::Value, String>>> {
+        self.sharing.lock().unwrap().push(action);
+        let (send, recv) = mpsc::channel();
+        send.send(Ok(coder_pty::wire::Value::Viewers {
+            viewers: coder_pty::share::Viewers {
+                viewers: Vec::new(),
+                shares: Vec::new(),
+                paused: false,
+                agent: None,
+            },
+        }))
+        .unwrap();
+        Some(recv)
+    }
     fn input(&self, bytes: &[u8]) {
         self.input.lock().unwrap().push(bytes.to_vec());
     }
@@ -101,6 +120,7 @@ impl Transport for Fake {
     fn open(&self, _: &Program, _: u16, _: u16) -> Result<Box<dyn Attachment>, String> {
         self.opened.fetch_add(1, Ordering::SeqCst);
         Ok(Box::new(Pane {
+            sharing: self.sharing.clone(),
             bridge: self.bridge,
             output: self.output.clone(),
             input: self.input.clone(),
@@ -2953,4 +2973,44 @@ fn read_only_product_panes_render_in_grid_and_window_and_keys_run_nothing() {
     assert_eq!(grid.products.focus, Some(0));
     press(&mut grid, KeyCode::Unidentified, NamedKey::F2);
     assert!(fake.commands.lock().unwrap().is_empty());
+}
+
+#[test]
+fn sharing_requires_confirmation_and_never_sends_ui_text_to_the_shell() {
+    use crate::input::{KeyCode, Logical, NamedKey};
+    let transport = Arc::new(Fake::default());
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.toggle();
+    app.ensure_started();
+    let mut key = crate::KeyIn {
+        code: KeyCode::F1,
+        logical: Logical::Named(NamedKey::F17),
+        text: None,
+        plain: None,
+        pressed: true,
+        repeat: false,
+        synthetic: false,
+    };
+    assert!(app.key(&key));
+    app.sharing_tick();
+    assert_eq!(transport.sharing.lock().unwrap().len(), 1);
+    key.logical = Logical::Character("p".into());
+    app.key(&key);
+    assert_eq!(transport.sharing.lock().unwrap().len(), 1);
+    key.code = KeyCode::Enter;
+    key.logical = Logical::Named(NamedKey::Enter);
+    key.synthetic = true;
+    app.key(&key);
+    assert_eq!(transport.sharing.lock().unwrap().len(), 1);
+    key.synthetic = false;
+    app.key(&key);
+    assert_eq!(
+        transport.sharing.lock().unwrap().as_slice(),
+        &[
+            crate::sharing::Action::Read,
+            crate::sharing::Action::Pause(true)
+        ]
+    );
+    app.paper_paste("/drive abc 123\n");
+    assert!(transport.input.lock().unwrap().is_empty());
 }

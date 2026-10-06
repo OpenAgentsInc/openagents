@@ -62,6 +62,14 @@ pub trait Attachment: Send {
         None
     }
 
+    fn sharing(
+        &self,
+        action: crate::sharing::Action,
+    ) -> Option<Receiver<Result<coder_pty::wire::Value, String>>> {
+        let _ = action;
+        None
+    }
+
     fn input(&self, bytes: &[u8]);
     fn resize(&self, rows: u16, cols: u16);
     fn close(&self);
@@ -306,6 +314,12 @@ pub struct Session {
     attachment: Box<dyn Attachment>,
 }
 impl Session {
+    pub fn sharing(
+        &self,
+        action: crate::sharing::Action,
+    ) -> Option<Receiver<Result<coder_pty::wire::Value, String>>> {
+        self.attachment.sharing(action)
+    }
     pub fn offer_proposal(
         &self,
         proposal: &crate::proposals::Proposal,
