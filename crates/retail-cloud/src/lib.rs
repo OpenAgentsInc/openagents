@@ -20,6 +20,7 @@
 //! - [`provision`]: one admitted sandbox per funded execution.
 //! - [`material`]: admitted source and the customer's key, nothing else.
 //! - [`dispatch`]: one funded task, streamed by cursor.
+//! - [`meter`]: retained cumulative usage and quoted-ceiling enforcement.
 //! - [`journal`]: the durable intents and observations a restart reads.
 
 pub mod authority;
@@ -28,6 +29,7 @@ pub mod dispatch;
 pub mod fake;
 pub mod journal;
 pub mod material;
+pub mod meter;
 pub mod offer;
 pub mod provision;
 pub mod reserve;
@@ -61,7 +63,12 @@ pub enum Error {
 }
 
 /// Journal tables the modules add, created when the journal opens.
-pub(crate) const EXTRA_SCHEMAS: &[&str] = &[provision::SCHEMA, material::SCHEMA, dispatch::SCHEMA];
+pub(crate) const EXTRA_SCHEMAS: &[&str] = &[
+    provision::SCHEMA,
+    material::SCHEMA,
+    dispatch::SCHEMA,
+    meter::SCHEMA,
+];
 
 pub type Result<T> = std::result::Result<T, Error>;
 

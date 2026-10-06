@@ -1,6 +1,6 @@
 # Retail cloud prices and charge terms
 
-Status: price book `retail-2026-10-05.1`, published for implementation
+Status: price book `retail-2026-10-06.1`, published for implementation
 ([#10706](https://github.com/OpenAgentsInc/openagents/issues/10706)). Paid
 availability stays off until the funded qualification passes, and the owner
 confirms the rates and the refund policy (`NEEDS_OWNER.md`). A change is a
@@ -22,7 +22,7 @@ quotes and settles it.
   millisatoshis per second. A task's compute charge is rounded up to a whole
   sat once, at settlement, never per second or per line.
 
-## Prices in `retail-2026-10-05.1`
+## Prices in `retail-2026-10-06.1`
 
 | Line | Payer | Basis | Price |
 | --- | --- | --- | --- |
@@ -44,6 +44,8 @@ sats: 144 for compute and 100 for coordination.
 
 Work on your own computer, or one you paired, needs no purchase and is never
 quoted.
+
+The book pins exclusive sandbox allocation from dispatch until acknowledged stop: setup, readiness, and replacement before dispatch are excluded; idle and checking time after dispatch are included. `retail_cloud::meter` retains the original provider counter baseline, cumulative observations, quote digest, and model usage references; unknown readings remain held, and the admitted service stops the exact sandbox at the quoted ceiling or wall deadline.
 
 ## What a task is charged
 

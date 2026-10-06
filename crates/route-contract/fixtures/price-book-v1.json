@@ -1,14 +1,15 @@
 {
   "book": {
     "schema": "openagents.cloud.price-book.v1",
-    "version": "retail-2026-10-05.1",
-    "effective_at": 1791158400,
+    "version": "retail-2026-10-06.1",
+    "effective_at": 1791244800,
     "credit": { "name": "credit", "sats": 1 },
     "classes": [
       {
         "computer": "retail-boat-large-v1",
         "task": "retail-repo-change-v1",
         "compute_msats_per_second": 40,
+        "metering": "exclusive_dispatch_to_stop",
         "coordination_sats": 100,
         "max_seconds": 3600,
         "recipient": "openagents",

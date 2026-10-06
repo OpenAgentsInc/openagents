@@ -51,6 +51,8 @@ pub struct ClassPrice {
     pub task: String,
     /// The rented computer's metered rate.
     pub compute_msats_per_second: u64,
+    /// The billable interval and exclusive allocation rule.
+    pub metering: Metering,
     /// OpenAgents' routing and coordination charge, once per task whose
     /// executor started.
     pub coordination_sats: u64,
@@ -60,6 +62,16 @@ pub struct ClassPrice {
     pub recipient: String,
     /// The model's payer. OpenAgents charges nothing for it.
     pub model: ModelPayer,
+}
+
+/// The supported customer usage policy. Setup, readiness, replacement, and
+/// recovery before dispatch are excluded. Idle and checking time after
+/// dispatch are included until stop acknowledgment; transport loss does
+/// not stop billing. One sandbox belongs exclusively to one execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Metering {
+    ExclusiveDispatchToStop,
 }
 
 /// Who pays for model usage in this class.
@@ -196,6 +208,7 @@ impl PriceBook {
             computer: computer.clone(),
             task: task.clone(),
             max_seconds,
+            metering: class.metering,
             lines: vec![
                 QuoteLine {
                     resource: Charge::Compute,
@@ -296,6 +309,7 @@ pub struct Quote {
     pub computer: String,
     pub task: String,
     pub max_seconds: u64,
+    pub metering: Metering,
     pub lines: Vec<QuoteLine>,
     pub max_sats: u64,
     pub max_credits: u64,

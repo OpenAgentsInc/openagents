@@ -185,7 +185,7 @@ pub fn admission(
     }
 }
 
-/// The published price book, `retail-2026-10-05.1`.
+/// The published price book, `retail-2026-10-06.1`.
 ///
 /// # Panics
 ///

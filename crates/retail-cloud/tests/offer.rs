@@ -42,7 +42,7 @@ fn an_offer_names_every_charge_and_keeps_hosted_inference_separate() {
     let offer = make_offer(&book, "acct-a", "cf_1", &request(), FREE, NOW).unwrap();
     assert!(offer.offer.intact());
     assert_eq!(offer.quote.max_sats, 124);
-    assert_eq!(offer.quote.version, "retail-2026-10-05.1");
+    assert_eq!(offer.quote.version, "retail-2026-10-06.1");
     assert_eq!(offer.offer.terms.price.as_ref().unwrap().max_sats, 124);
     assert_eq!(offer.offer.terms.snapshot, offer.admission.digest());
     assert_eq!(offer.hosted_inference, HostedInference::Off);
