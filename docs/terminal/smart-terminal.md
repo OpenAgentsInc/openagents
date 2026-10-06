@@ -230,6 +230,10 @@ time on a Mac and on `coderos-4080`.
   cell model; linking libghostty would add a Zig-built C library. Neither is
   planned. If Superlogical publishes a protocol that carries libghostty
   snapshots, revisit with a spike that measures the cost.
+- **Reassessed on 2026-10-06** (#10696): neither a Superlogical protocol nor
+  a versioned libghostty snapshot format is public, so this stands. The
+  dated report is in
+  [Optional terminal research](2026-10-06-optional-research.md#superlogical-and-libghostty-interop-10696).
 - **Upstream libghostty work is prior art for `coder-vt`.** Its continuation
   record, history-page ordering, generation tracking that drops inapplicable
   pages, and two-phase render state are the designs to reimplement.

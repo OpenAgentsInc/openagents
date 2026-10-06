@@ -105,3 +105,63 @@ measured floor of 57.
 
 **What would reopen it.** A local checkpoint fine-tuned on line kinds that
 answers within the budget on the owner's computers.
+
+## Superlogical and libghostty interop (#10696)
+
+Sources were read on 2026-10-06. Only public pages were used; nothing
+unpublished was inspected or copied.
+
+**Public facts.**
+
+- Superlogical announced its company on 2026-07-29 to build a server-side
+  terminal multiplexer whose sessions hold several terminal blocks, outlive
+  the client, and reconnect from the web, macOS, and iOS, with live sharing
+  ([Runtime Wire, 2026-07-29](https://runtimewire.com/article/mitchell-hashimoto-superlogical-terminal-multiplexer);
+  [The Register, 2026-07-31](https://www.theregister.com/a/5281970)).
+- Its site publishes no protocol, API, SDK, documentation, or source. It
+  offers a waitlist for the multiplexer beta and promises to announce "any
+  OSS releases along the way" ([superlogical.com](https://superlogical.com)).
+- Superlogical says it builds on the MIT-licensed Ghostty components and
+  contributes terminal work upstream (Runtime Wire, above).
+- libghostty-vt was announced as "public alpha (not promising API
+  stability)" on 2025-09-22
+  ([libghostty is coming](https://mitchellh.com/writing/libghostty-is-coming)).
+  Its current documentation lists a terminal snapshot module ("encode and
+  incrementally restore terminal state") and an idle scrollback compression
+  example, and states that "the API is not yet stable. Breaking changes are
+  expected"
+  ([libghostty documentation](https://libghostty.tip.ghostty.org/)). It
+  publishes no versioned snapshot wire format.
+
+**Unresolved.** How Superlogical clients attach, what crosses its wire,
+whether that wire carries libghostty snapshots, its concurrent input and
+resize policy, and which side effects its server owns are all unpublished.
+
+**Contract map.** Each part of the publicly described model already has a
+Rust counterpart here; the right column is the only interop claim this
+page makes.
+
+| Public model | This repository | Compatible direction |
+| --- | --- | --- |
+| Durable sessions of several terminals | NIP-TERM sessions extension; host session records (#10652) | Shape only |
+| Raw bytes to every client, each client parses | NIP-TERM base frames with sequence numbers; `coder-vt` in every client | Shape only |
+| Restore parsed state on join, then history | NIP-TERM snapshot extension (`TERMINAL`, rows, `CONTINUATION`, `READY`, history, `FINISH`, each record tag, length, and CRC32C) | Shape only; libghostty's byte format is unpublished |
+| Server-owned side effects | NIP-TERM effects extension; `coder_vt::Authority` | Shape only |
+| One person types at a time | NIP-TERM typist extension | Shape only |
+| Live sharing | NIP-TERM shares extension (#10676) | Shape only |
+
+**Inference.** Because every contract matches in shape, a translator would
+be an adapter at the transport edge, not a redesign, if a public protocol
+appears.
+
+**Decision: no adoption and no spike.** No published protocol carries
+libghostty snapshots, and libghostty's snapshot encoding is unstable and
+unspecified, so there is nothing a pure-Rust codec could target and no
+public fixture to measure against. Wire compatibility stays unavailable;
+no Zig build, C library, or proprietary protocol enters the product. This
+blocks no roadmap work.
+
+**What would reopen it.** Superlogical publishing its protocol, or
+libghostty publishing a versioned snapshot format with fixtures. Then
+measure a Rust decoder against those fixtures for memory, build cost, and
+latency before proposing an adapter.
