@@ -1,7 +1,9 @@
 use coder_new::agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS, elapsed_time};
 use coder_new::tools::{PluginCall, ToolCall, ToolKind, ToolState, spinner, tool_lines};
 use coder_new::{App, Screen, snapshot, theme, ui};
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+};
 use ratatui::{
     Terminal,
     backend::TestBackend,
@@ -492,6 +494,45 @@ fn agent_navigation_clamps_at_the_ends_and_escape_restores_main() {
     assert!(!main.contains("Conversation first"));
     assert!(app.draft.text.is_empty());
     assert!(app.messages.is_empty());
+
+    app.handle(Event::Paste("retained draft".into()));
+    for selected in [None, Some(0), Some(1), Some(2), Some(3)] {
+        let before = screen(&mut app, 80, 18);
+        let rail = |rendered: &str| {
+            rendered
+                .lines()
+                .skip(composer_rules(rendered)[1].0 + 1)
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let wheel = |kind| {
+            Event::Mouse(MouseEvent {
+                kind,
+                column: 79,
+                row: 16,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+        assert!(app.handle(wheel(MouseEventKind::ScrollDown)));
+        let after = screen(&mut app, 80, 18);
+        assert!(app.scroll > 0);
+        assert_ne!(transcript_text(&before), transcript_text(&after));
+        assert_eq!(rail(&before), rail(&after));
+        assert_eq!(app.selected_agent, selected);
+        assert_eq!(
+            app.draft.text,
+            if selected.is_none() {
+                "retained draft"
+            } else {
+                ""
+            }
+        );
+        assert!(app.handle(wheel(MouseEventKind::ScrollUp)));
+        assert_eq!(screen(&mut app, 80, 18), before);
+        assert!(app.handle(wheel(MouseEventKind::ScrollUp)));
+        assert_eq!(app.scroll, 0);
+        key(&mut app, KeyCode::Down);
+    }
 }
 
 fn conversation_state(app: &App) -> (String, usize, Vec<String>, u16) {

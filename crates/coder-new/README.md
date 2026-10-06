@@ -60,7 +60,7 @@ cargo run -p coder-new -- --plugin-settings
 Type a draft, move with Left/Right or Home/End, and edit with Backspace/Delete.
 Alt+Enter adds a newline. Enter sends a live message or appends a demo message.
 Bracketed paste
-inserts text without sending it. PageUp/PageDown scroll the conversation;
+inserts text without sending it. Trackpad scrolling and PageUp/PageDown scroll the conversation;
 Ctrl+C quits. The demo tools and agents remain presentation fixtures; live mode
 provides OpenRouter chat, not tool execution or agent delegation.
 
@@ -74,6 +74,7 @@ The mock timers advance once per second while the preview runs. Narrow terminals
 truncate task text, shorten the token label, and omit elapsed time when needed
 to preserve the agent names.
 Press Down to select the first agent, then Up/Down to switch conversations.
+Trackpad scrolling affects only the transcript and preserves the selected agent.
 Selection loads that agent's demo messages immediately. Up from the first agent
 or Esc returns to the main conversation. Each conversation retains its own
 draft, cursor, preview messages, and scroll position while the preview is open.

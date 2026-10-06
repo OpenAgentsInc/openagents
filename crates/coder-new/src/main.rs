@@ -6,7 +6,9 @@ use std::{
 use coder_new::{App, Mode, Screen, live::Background, snapshot, ui};
 use crossterm::{
     cursor::{SetCursorStyle, Show},
-    event::{self, DisableBracketedPaste, EnableBracketedPaste},
+    event::{
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    },
     execute,
     terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate},
 };
@@ -53,7 +55,7 @@ fn main() -> io::Result<()> {
             return Err(error);
         }
     };
-    // Ratatui restores terminal modes on panic; bracketed paste needs the same cleanup.
+    // Restore mouse capture and bracketed paste with Ratatui's terminal modes on panic.
     let previous_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = restore_extras();
@@ -63,6 +65,7 @@ fn main() -> io::Result<()> {
         execute!(
             io::stdout(),
             EnableBracketedPaste,
+            EnableMouseCapture,
             SetCursorStyle::BlinkingBlock
         )?;
         let ratatui::style::Color::Rgb(r, g, b) = coder_new::theme::TEXT_SECONDARY else {
@@ -106,6 +109,7 @@ fn restore_extras() -> io::Result<()> {
         io::stdout(),
         EndSynchronizedUpdate,
         DisableBracketedPaste,
+        DisableMouseCapture,
         SetCursorStyle::DefaultUserShape,
         Show
     )?;

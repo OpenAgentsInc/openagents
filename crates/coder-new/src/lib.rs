@@ -10,7 +10,7 @@ pub mod theme;
 pub mod tools;
 pub mod ui;
 
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -259,6 +259,11 @@ impl App {
     /// Returns false when the preview should close.
     pub fn handle(&mut self, event: Event) -> bool {
         match event {
+            Event::Mouse(mouse) if self.screen == Screen::Conversation => match mouse.kind {
+                MouseEventKind::ScrollUp => self.scroll = self.scroll.saturating_sub(3),
+                MouseEventKind::ScrollDown => self.scroll = self.scroll.saturating_add(3),
+                _ => {}
+            },
             Event::Paste(text) => {
                 self.cursor_blink_frame = 0;
                 if self.screen == Screen::PluginSettings {
