@@ -1,5 +1,6 @@
 //! Application state shared by terminal mounts. Shell output grants no authority.
 
+pub mod autorun;
 pub mod bash;
 pub mod blocks;
 pub mod bridge;

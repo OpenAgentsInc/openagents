@@ -46,3 +46,17 @@ case near 880 MiB). The cheapest first step then is storing idle history
 as the encoded `HISTORY` records the snapshot writer already produces and
 restores exactly, which saves 20 times without a new codec; DEFLATE adds
 another 20 times at about 60 µs per page.
+
+## Read-only auto-run (#10695)
+
+**Decision: implemented, off by default.** `terminal_core::autorun` keeps a
+per-workspace opt-in in `~/.openagents/terminal/autorun.json` (owner-only,
+replaced atomically, never inherited from pairing, shares, or world
+membership). The prefix, then `R`, turns it on for the focused pane's
+directory or off where it is on. `Book::auto` runs a proposal without Enter
+only when it is still pending, bound to the pane's current binding, inside
+an admitted root, classed `read_only` by the shared effect boundary, and one
+plain command without substitution, expansion, redirection, pipes, or
+sequencing. Anything else stays pending for Enter, and recovery never
+replays an execution. Coder worktree policies and studio merge approval do
+not read the setting.

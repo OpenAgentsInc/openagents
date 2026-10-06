@@ -67,7 +67,7 @@ impl Worker {
                     Some("attached") => value["thread"].as_str().map(|thread| Message::Attached(thread.into())),
                     Some("answer") => value["text"].as_str().map(|text| Message::Answer(text.into())),
                     Some("door") => value["door"].as_str().map(|door| Message::Door(door.into())),
-                    Some("shell-proposal") => serde_json::from_value(value["proposal"].clone()).ok().map(|proposal| Message::Proposal(proposal, if value["effect"] == "read_only" { terminal_core::proposals::Effect::Ordinary } else { terminal_core::proposals::Effect::Destructive("This command may change files or this computer, or publish data. Press Enter again to approve it.".into()) })),
+                    Some("shell-proposal") => serde_json::from_value(value["proposal"].clone()).ok().map(|proposal| Message::Proposal(proposal, if value["effect"] == "read_only" { terminal_core::proposals::Effect::ReadOnly } else { terminal_core::proposals::Effect::Destructive("This command may change files or this computer, or publish data. Press Enter again to approve it.".into()) })),
                     _ => None,
                 };
                 if let Some(message) = message {

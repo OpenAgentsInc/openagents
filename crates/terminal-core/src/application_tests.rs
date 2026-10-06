@@ -60,6 +60,9 @@ struct Fake {
     entries: Mutex<std::collections::BTreeMap<String, serde_json::Value>>,
     hits: Mutex<Vec<serde_json::Value>>,
     goals: Mutex<Option<serde_json::Value>>,
+    /// The effect class the shared client reports for its proposal; none
+    /// is ordinary.
+    effect: Mutex<Option<crate::proposals::Effect>>,
 }
 struct Pane {
     bridge: bool,
@@ -143,7 +146,11 @@ impl Transport for Fake {
                         command: "cargo test".into(),
                         binding: request.binding.clone(),
                     },
-                    crate::proposals::Effect::Ordinary,
+                    self.effect
+                        .lock()
+                        .unwrap()
+                        .clone()
+                        .unwrap_or(crate::proposals::Effect::Ordinary),
                 ))
                 .unwrap();
         } else {
@@ -2733,4 +2740,81 @@ fn workshop_opening_is_navigation_only_and_revocation_drops_context() {
     let mut unbounded = opening;
     unbounded.workspace = Some("w".repeat(129));
     assert!(app.open_workshop(unbounded, true).is_err());
+}
+
+/// A request answered with one proposal, from an app whose auto-run
+/// setting admits `admit` and whose shared client classes the command
+/// `effect`: the input the shell received, whether Enter is still awaited,
+/// and the proposal's phase.
+fn proposed(
+    effect: crate::proposals::Effect,
+    admit: Option<&str>,
+) -> (Vec<Vec<u8>>, bool, crate::proposals::Phase) {
+    use crate::input::{KeyCode, Logical, NamedKey};
+    let transport = Arc::new(Fake {
+        bridge: true,
+        effect: Mutex::new(Some(effect)),
+        ..Fake::default()
+    });
+    let settings = tempfile::tempdir().unwrap();
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.smart.autorun = crate::autorun::AutoRun::load(settings.path().join("autorun.json"));
+    if let Some(root) = admit {
+        app.smart.autorun.admit(root, "local-user", 1).unwrap();
+    }
+    app.toggle();
+    app.ensure_started();
+    transport.output.lock().unwrap().push_back(b"\x1b]7;file:///test/work\x07\x1b]133;A\x07$ \x1b]133;B\x07cargo test\r\n\x1b]777;openagents;command;636172676f2074657374\x07\x1b]133;C\x07test failed\r\n\x1b]133;D;1\x07\x1b]133;A\x07".to_vec());
+    app.tick();
+    app.ask("why did that fail".into());
+    let mut enter = crate::KeyIn {
+        code: KeyCode::Enter,
+        logical: Logical::Named(NamedKey::Enter),
+        text: None,
+        plain: None,
+        pressed: true,
+        repeat: false,
+        synthetic: false,
+    };
+    app.key(&enter);
+    enter.pressed = false;
+    app.key(&enter);
+    app.tick();
+    let phase = app
+        .smart
+        .book
+        .entries
+        .values()
+        .next()
+        .map(|entry| entry.phase.clone())
+        .unwrap();
+    let input = transport.input.lock().unwrap().clone();
+    (input, app.smart.pending.is_some(), phase)
+}
+
+#[test]
+fn only_an_admitted_read_only_proposal_runs_without_enter() {
+    use crate::proposals::{Effect, Phase};
+    // By default every proposal waits for Enter, read-only or not.
+    let (input, pending, phase) = proposed(Effect::ReadOnly, None);
+    assert!(input.is_empty());
+    assert!(pending);
+    assert_eq!(phase, Phase::Pending);
+    // Opted in for this workspace, a read-only proposal runs once.
+    let (input, pending, phase) = proposed(Effect::ReadOnly, Some("/test/work"));
+    assert_eq!(input, vec![b"cargo test\r".to_vec()]);
+    assert!(!pending);
+    assert!(matches!(phase, Phase::Executing { .. }));
+    // Another workspace's opt-in, or a command not classed read-only,
+    // leaves it pending.
+    for (effect, admit) in [
+        (Effect::ReadOnly, "/test/other"),
+        (Effect::Ordinary, "/test/work"),
+        (Effect::Destructive("changes files".into()), "/test/work"),
+    ] {
+        let (input, pending, phase) = proposed(effect, Some(admit));
+        assert!(input.is_empty(), "{admit}");
+        assert!(pending);
+        assert_eq!(phase, Phase::Pending);
+    }
 }

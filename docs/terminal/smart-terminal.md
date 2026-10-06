@@ -485,7 +485,11 @@ offered.
   proposes nothing.
 - A proposal into your live shell always waits for your key. An opt-in
   setting may auto-run proposals whose effect class is `read_only`, matching
-  the router's gate for the desktop and terminal chat.
+  the router's gate for the desktop and terminal chat. It is off by default
+  and admitted per workspace root (the prefix, then `R`), recorded in
+  `~/.openagents/terminal/autorun.json`; only an exact pending revision bound
+  to the current pane, classed read-only, and written as one plain command
+  runs (`terminal_core::autorun`, #10695).
 - Coder runs are unchanged: they start under the router's dispatch, work in
   their own worktree, and approve every step (#10104). The difference is
   where they run: a Coder run touches its worktree, a proposal touches your

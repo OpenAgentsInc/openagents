@@ -79,6 +79,9 @@ impl std::fmt::Debug for Overlay {
         self.core.fmt(f)
     }
 }
+/// Where a mount keeps the read-only auto-run opt-in, under its home.
+pub const AUTORUN_FILE: &str = ".openagents/terminal/autorun.json";
+
 impl Default for Overlay {
     fn default() -> Self {
         Self::new()
@@ -86,11 +89,22 @@ impl Default for Overlay {
 }
 impl Overlay {
     pub fn new() -> Self {
-        Self::mount(terminal_core::Application::new(pty::for_user()))
+        #[cfg_attr(test, allow(unused_mut))]
+        let mut core = terminal_core::Application::new(pty::for_user());
+        // The read-only auto-run opt-in lives beside the user's other
+        // OpenAgents state; tests never read the real home.
+        #[cfg(not(test))]
+        if let Some(home) = std::env::var_os("HOME") {
+            core.smart.autorun = terminal_core::autorun::AutoRun::load(
+                std::path::Path::new(&home).join(AUTORUN_FILE),
+            );
+        }
+        Self::mount(core)
     }
     pub fn with(root: &std::path::Path, shell: std::path::PathBuf, first: Program) -> Self {
         let mut core = terminal_core::Application::new(pty::isolated(root, shell));
         core.first = Some(first);
+        core.smart.autorun = terminal_core::autorun::AutoRun::load(root.join(AUTORUN_FILE));
         Self::mount(core)
     }
     pub fn mount(core: terminal_core::Application) -> Self {

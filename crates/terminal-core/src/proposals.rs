@@ -29,6 +29,10 @@ pub struct Proposal {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Effect {
+    /// The shared effect boundary classed the command read-only. Enter
+    /// treats it as ordinary; only this class can auto-run
+    /// ([`crate::autorun`]).
+    ReadOnly,
     Ordinary,
     Destructive(String),
     Denied(String),
@@ -157,6 +161,61 @@ impl Book {
             return Err("a second explicit key is required");
         }
         let identity = digest(&(&entry.proposal, principal, nonce));
+        entry.phase = Phase::Executing {
+            approval: identity.clone(),
+        };
+        let mut bytes = entry.proposal.command.as_bytes().to_vec();
+        bytes.push(b'\r');
+        Ok(Approval::Input { identity, bytes })
+    }
+
+    /// Admits a proposal without Enter under the auto-run opt-in: only a
+    /// still-pending proposal bound to `current`, in a workspace `setting`
+    /// admits, whose command the policy classes read-only and is one plain
+    /// invocation. Anything else is refused and the proposal stays pending
+    /// for Enter, unchanged.
+    pub fn auto(
+        &mut self,
+        key: &str,
+        current: &Binding,
+        nonce: &str,
+        policy: &dyn Policy,
+        setting: &crate::autorun::AutoRun,
+    ) -> Result<Approval, &'static str> {
+        if nonce.is_empty() {
+            return Err("approval identity is required");
+        }
+        let entry = self.entries.get_mut(key).ok_or("proposal not found")?;
+        if entry.phase != Phase::Pending {
+            return Err("only a pending proposal can auto-run");
+        }
+        if &entry.proposal.binding != current {
+            return Err("proposal target or displayed context changed");
+        }
+        let binding = &entry.proposal.binding;
+        let admission = setting
+            .admitting(&binding.cwd)
+            .filter(|_| {
+                binding
+                    .shell_directory
+                    .as_deref()
+                    .is_none_or(|directory| setting.admitting(directory).is_some())
+            })
+            .ok_or("auto-run is off for this workspace")?;
+        if policy.effect(&entry.proposal.command) != Effect::ReadOnly {
+            return Err("only a read-only command can auto-run");
+        }
+        if !crate::autorun::plain(&entry.proposal.command) {
+            return Err("only one plain command can auto-run");
+        }
+        let identity = digest(&(
+            &entry.proposal,
+            "auto-run",
+            &admission.root,
+            &admission.admitted_by,
+            setting.revision(),
+            nonce,
+        ));
         entry.phase = Phase::Executing {
             approval: identity.clone(),
         };
@@ -372,6 +431,80 @@ mod tests {
         book.complete(&key, &identity, block).unwrap();
         assert!(
             book.enter(&key, &binding, "user", "two", &ReadOnly)
+                .is_err()
+        );
+    }
+
+    struct Classed(Effect);
+    impl Policy for Classed {
+        fn effect(&self, _: &str) -> Effect {
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn auto_run_needs_the_opt_in_a_read_only_class_and_a_plain_pending_command() {
+        let settings = tempfile::tempdir().unwrap();
+        let mut setting = crate::autorun::AutoRun::load(settings.path().join("autorun.json"));
+        let read_only = Classed(Effect::ReadOnly);
+        let proposal = proposal();
+        let binding = proposal.binding.clone();
+        let mut book = Book::default();
+        let key = book.offer(proposal.clone()).unwrap();
+        // Off by default.
+        assert!(
+            book.auto(&key, &binding, "n1", &read_only, &setting)
+                .is_err()
+        );
+        setting.admit("/tmp", "local-user", 1).unwrap();
+        // Not read-only, or not the current binding: it stays pending.
+        for effect in [
+            Effect::Ordinary,
+            Effect::Destructive("x".into()),
+            Effect::Denied("x".into()),
+        ] {
+            assert!(
+                book.auto(&key, &binding, "n1", &Classed(effect), &setting)
+                    .is_err()
+            );
+        }
+        let mut stale = binding.clone();
+        stale.cwd = "/tmp/other".into();
+        assert!(book.auto(&key, &stale, "n1", &read_only, &setting).is_err());
+        assert_eq!(book.entries[&key].phase, Phase::Pending);
+        // A substitution never auto-runs, even classed read-only.
+        let mut substituted = proposal.clone();
+        substituted.id = "other".into();
+        substituted.command = "cat $(which sh)".into();
+        let other = book.offer(substituted).unwrap();
+        assert!(
+            book.auto(&other, &binding, "n1", &read_only, &setting)
+                .is_err()
+        );
+        // The admitted exact revision runs once; nothing replays it.
+        let Approval::Input { bytes, .. } = book
+            .auto(&key, &binding, "n1", &read_only, &setting)
+            .unwrap()
+        else {
+            panic!("expected input")
+        };
+        assert_eq!(bytes, b"cargo test\r");
+        assert!(
+            book.auto(&key, &binding, "n2", &read_only, &setting)
+                .is_err()
+        );
+        book.recover();
+        assert!(
+            book.auto(&key, &binding, "n3", &read_only, &setting)
+                .is_err()
+        );
+        // Revoking applies to the next proposal.
+        let mut next = proposal;
+        next.revision = 2;
+        let next = book.offer(next).unwrap();
+        setting.revoke("/tmp/repo").unwrap();
+        assert!(
+            book.auto(&next, &binding, "n4", &read_only, &setting)
                 .is_err()
         );
     }

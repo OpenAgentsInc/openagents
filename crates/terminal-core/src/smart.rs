@@ -58,6 +58,9 @@ pub struct Smart {
     pub git: Option<Receiver<(PaneId, String, String)>>,
     pub book: Book,
     pub policy: Policies,
+    /// The read-only auto-run opt-in ([`crate::autorun`]); off unless the
+    /// mount loads an admission.
+    pub autorun: crate::autorun::AutoRun,
     pub pending: Option<(PaneId, String)>,
     pub workers: Vec<Worker>,
     pub threads: std::collections::BTreeMap<PaneId, String>,
@@ -630,6 +633,9 @@ impl super::Overlay {
                         if self.paper.on {
                             self.paper_offered(&key, &command);
                         }
+                        if self.auto_run(pane_id, &key) {
+                            continue;
+                        }
                         self.smart.pending = Some((pane_id, key));
                         self.notice =
                             Some("Pending command: Enter approves; Esc dismisses.".into());
@@ -653,6 +659,75 @@ impl super::Overlay {
             self.ask(request);
         }
         self.offer_after_missing_command();
+    }
+
+    /// Runs a just-offered proposal without Enter when the auto-run
+    /// opt-in admits it, and answers whether it did. The pane must sit at
+    /// an empty prompt; anything [`Book::auto`] refuses stays pending.
+    fn auto_run(&mut self, pane_id: PaneId, key: &str) -> bool {
+        self.smart.autorun.reload();
+        if self.smart.autorun.workspaces().is_empty() {
+            return false;
+        }
+        let Some(entry) = self.smart.book.entries.get(key) else {
+            return false;
+        };
+        let Some(pane) = self.panes.get(&pane_id) else {
+            return false;
+        };
+        let blocks = &pane.session.blocks;
+        if !blocks.at_prompt || blocks.buffer.as_deref().is_some_and(|b| !b.is_empty()) {
+            return false;
+        }
+        let Some(binding) = pane
+            .session
+            .binding(entry.proposal.binding.context_digest.clone())
+        else {
+            return false;
+        };
+        let after = blocks.records.back().map_or(0, |block| block.id);
+        let Ok(crate::proposals::Approval::Input { identity, bytes }) = self.smart.book.auto(
+            key,
+            &binding,
+            &id(),
+            &self.smart.policy,
+            &self.smart.autorun,
+        ) else {
+            return false;
+        };
+        self.smart.execution = Some((pane_id, key.to_owned(), identity, after));
+        self.notice =
+            Some("Ran a read-only command: auto-run is on here (prefix R turns it off).".into());
+        self.send_to(pane_id, &bytes);
+        true
+    }
+
+    /// The prefix's `R`: turns read-only auto-run on for the focused
+    /// pane's directory, or off when it is on there.
+    pub fn toggle_autorun(&mut self) {
+        let Some(cwd) = self
+            .focus_id()
+            .and_then(|pane| self.panes.get(&pane))
+            .and_then(|pane| pane.session.binding(String::new()))
+            .map(|binding| binding.cwd)
+        else {
+            self.notice = Some("Auto-run needs a shell pane with a known directory.".into());
+            return;
+        };
+        self.smart.autorun.reload();
+        let at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis() as u64);
+        self.notice = Some(match self.smart.autorun.revoke(&cwd) {
+            Ok(true) => "Auto-run is off: every proposal waits for Enter.".into(),
+            Ok(false) => match self.smart.autorun.admit(&cwd, "local-user", at) {
+                Ok(()) => format!(
+                    "Auto-run is on for {cwd}: exact read-only proposals run without Enter. Prefix R turns it off."
+                ),
+                Err(why) => why,
+            },
+            Err(why) => why,
+        });
     }
 
     pub fn block_move(&mut self, previous: bool) {
