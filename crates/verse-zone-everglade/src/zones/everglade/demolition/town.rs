@@ -1027,7 +1027,7 @@ impl Town {
             wield: 0.0,
             swarm: Swarm::default(),
             bombardiers: Vec::new(),
-            rebuild: 45.0,
+            rebuild: 180.0,
             floaters: Vec::new(),
             clock: 0.0,
         };
@@ -1168,7 +1168,7 @@ impl Town {
     }
 
     /// Starts five independent casters against this town's buildings.
-    /// The castle rebuilds every 45 seconds to keep the bombardment running.
+    /// The castle rebuilds every three minutes to keep the bombardment running.
     pub fn start_bombardment(&mut self, positions: [Vec3; 5]) {
         self.bombardiers = positions
             .into_iter()
@@ -1180,7 +1180,7 @@ impl Town {
                 target: i,
             })
             .collect();
-        self.rebuild = 45.0;
+        self.rebuild = 180.0;
     }
 
     /// Where the camera is this frame, shaken by the meteors' blasts.
@@ -1217,7 +1217,7 @@ impl Town {
         self.wreck.site = Wreck::empty_site(&self.wreck.floors);
         self.wreck.refs.clear();
         self.swarm.reset();
-        self.rebuild = 45.0;
+        self.rebuild = 180.0;
         for (i, caster) in self.bombardiers.iter_mut().enumerate() {
             caster.swarm.reset();
             caster.due = 1.0 + i as f32 * 0.6;

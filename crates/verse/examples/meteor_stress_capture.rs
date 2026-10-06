@@ -35,13 +35,20 @@ fn main() -> Result<(), String> {
     zones::everglade::hotbar::add_sprites(&mut atlas)?;
     let mut ui = verse::ui::UiBatch::default();
     if let Some(bar) = runtime.everglade_hotbar() {
-        zones::everglade::hotbar::draw(&mut ui, &atlas, [1280.0, 800.0], 14.0, &bar);
+        zones::everglade::hotbar::draw_ordered(
+            &mut ui,
+            &atlas,
+            [1280.0, 800.0],
+            14.0,
+            &bar,
+            &runtime.everglade_hotbar_order(),
+        );
     }
     ui.text(
         &atlas,
         20.0,
         20.0,
-        "Meteor Stress Test · 5 casters · R: rebuild · 6: Meteor Swarm",
+        "Meteor Stress Test · 5 casters · R: rebuild · 1: Meteor Swarm",
         [1.0, 0.8, 0.4, 1.0],
     );
     verse::render::capture_with_atmosphere(

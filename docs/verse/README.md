@@ -662,4 +662,4 @@ Run `verse --meteor-stress-test` to open the standalone Meteor Stress Test.
 The castle uses the Grove’s concrete tower kit, with five NPCs continuously
 casting Meteor Swarm at its walls and turrets. Press **6** and click a surface
 to cast your own swarm, **R** to rebuild, or **1** to levitate. The castle
-rebuilds every 45 seconds; this zone runs offline.
+rebuilds every three minutes; Meteor Swarm is on key `1`. This zone runs offline.

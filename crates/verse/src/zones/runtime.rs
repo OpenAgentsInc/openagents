@@ -830,6 +830,15 @@ impl WorldRuntime {
                 .map(|_| ()),
         )
     }
+    /// Source slot indices in the zone's displayed hotbar order.
+    pub fn everglade_hotbar_order(&self) -> [usize; super::everglade::hotbar::COUNT] {
+        if self.zone == ZoneId::MeteorStressTest {
+            [5, 1, 2, 3, 4, 0, 6]
+        } else {
+            [0, 1, 2, 3, 4, 5, 6]
+        }
+    }
+
     /// Everglade's hotbar of movement and spells, in
     /// [`super::everglade::hotbar::SLOTS`] order, or `None` outside Everglade.
     #[must_use]
@@ -869,7 +878,7 @@ impl WorldRuntime {
         let meteor = swarm.map_or(on(false, false), |s| {
             on(s.ready || s.targeting, s.targeting || s.casting.is_some())
         });
-        Some([
+        let slots = [
             levitate,
             feather,
             wind,
@@ -877,7 +886,8 @@ impl WorldRuntime {
             stone,
             meteor,
             on(glade.town().is_some(), wielding),
-        ])
+        ];
+        Some(self.everglade_hotbar_order().map(|index| slots[index]))
     }
 
     /// How far Meteor Swarm's blasts shake the camera this frame, in the
@@ -1302,7 +1312,7 @@ impl WorldRuntime {
                 .and_then(Everglade::town)
                 .map_or([0, 0], |town| town.bombardment());
             format!(
-                "Meteor Stress Test · {} casters · {} meteors in flight · 6: cast · R: rebuild · automatic rebuild every 45 s",
+                "Meteor Stress Test · {} casters · {} meteors in flight · 1: cast · R: rebuild · automatic rebuild every 3 min",
                 counts[0], counts[1]
             )
         } else if self.zone_state.crypt.is_some() {

@@ -76,17 +76,6 @@ pub const SLOTS: [(Intent, &str, Tip); COUNT] = [
     ),
 ];
 
-/// Each slot's keys, for its card.
-const KEYS: [&str; COUNT] = [
-    "Hold 1 or L",
-    "Key 2",
-    "Key 3",
-    "Key 4",
-    "Key 5",
-    "Key 6",
-    "Key 7",
-];
-
 /// Whether a slot can be used now, whether its toggle or spell is on, and
 /// the fraction of its cooldown left (always 0 in Everglade; the Grove's
 /// bar shares this type).
@@ -161,8 +150,17 @@ pub fn slot_under(point: [f32; 2], size: [f32; 2], bottom: f32) -> Option<usize>
 /// that it has no cooldown.
 #[must_use]
 pub fn card(index: usize) -> Option<Card> {
+    card_with_key(index, index)
+}
+
+fn card_with_key(index: usize, displayed: usize) -> Option<Card> {
     let (intent, _, tip) = SLOTS.get(index)?;
-    let mut card = Card::of(*tip).detail(KEYS[index], palette::KEY);
+    let key = if *intent == Intent::Levitate {
+        format!("Hold {} or L", displayed + 1)
+    } else {
+        format!("Key {}", displayed + 1)
+    };
+    let mut card = Card::of(*tip).detail(key, palette::KEY);
     if super::spells::Spell::of(*intent).is_some() {
         card = card.detail("No cooldown", palette::TIME);
     }
@@ -178,7 +176,22 @@ pub fn card(index: usize) -> Option<Card> {
 
 /// Draws slot `index`'s card over the tray into `ui`, kept on screen.
 pub fn draw_tip(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, index: usize) {
-    let Some(card) = card(index) else {
+    draw_tip_ordered(ui, atlas, size, bottom, index, &[0, 1, 2, 3, 4, 5, 6]);
+}
+
+/// Draws a card with its displayed key in a reordered tray.
+pub fn draw_tip_ordered(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    size: [f32; 2],
+    bottom: f32,
+    index: usize,
+    order: &[usize; COUNT],
+) {
+    let Some(&source) = order.get(index) else {
+        return;
+    };
+    let Some(card) = card_with_key(source, index) else {
         return;
     };
     let [x, _, w, _] = slot_rect_of(size, bottom, COUNT, index);
@@ -216,9 +229,22 @@ pub fn hit_of(point: [f32; 2], size: [f32; 2], bottom: f32, count: usize) -> Opt
 
 /// Draws the tray with `slots` (in [`SLOTS`] order) into `ui`.
 pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots: &[Slot; COUNT]) {
+    draw_ordered(ui, atlas, size, bottom, slots, &[0, 1, 2, 3, 4, 5, 6]);
+}
+
+/// Draws a tray with its icons in `order` and states in displayed order.
+pub fn draw_ordered(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    size: [f32; 2],
+    bottom: f32,
+    slots: &[Slot; COUNT],
+    order: &[usize; COUNT],
+) {
     let keys: Vec<String> = (1..=COUNT).map(|n| n.to_string()).collect();
-    let sprites: Vec<(&str, &str)> = SLOTS
+    let sprites: Vec<(&str, &str)> = order
         .iter()
+        .map(|&index| &SLOTS[index])
         .zip(&keys)
         .map(|((_, sprite, _), key)| (*sprite, key.as_str()))
         .collect();

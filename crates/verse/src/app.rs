@@ -2351,7 +2351,10 @@ impl App {
         if self.runtime.in_demolition() {
             return zones::everglade::demolition::hotbar::hit(at, size, HOTBAR_BOTTOM);
         }
-        zones::everglade::hotbar::hit(at, size, HOTBAR_BOTTOM)
+        zones::everglade::hotbar::hit_of(at, size, HOTBAR_BOTTOM, zones::everglade::hotbar::COUNT)
+            .map(|index| {
+                zones::everglade::hotbar::SLOTS[self.runtime.everglade_hotbar_order()[index]].0
+            })
     }
 
     fn map_visible(&self) -> bool {
@@ -2453,9 +2456,15 @@ impl App {
             }
             return;
         }
-        // Everglade's Levitate, 1 or L: holding it rises, letting go hovers,
+        // Holding the zone's Levitate key or L rises; letting go hovers,
         // and a tap while hovering falls.
-        if matches!(code, KeyCode::Digit1 | KeyCode::KeyL)
+        if (code == KeyCode::KeyL
+            || code
+                == if self.runtime.zone == zones::ZoneId::MeteorStressTest {
+                    KeyCode::Digit6
+                } else {
+                    KeyCode::Digit1
+                })
             && self.in_bare_everglade()
             && !self.runtime.in_demolition()
             && (!pressed || (!self.chat.open && !self.map.expanded))
@@ -2581,10 +2590,10 @@ impl App {
                     return self.zone_action(ZoneIntent::Rebuild);
                 }
             }
-            // 2 to 5 cast the hotbar's spells, 6 aims Meteor Swarm, and 7
-            // swings the sledgehammer.
+            // Number keys follow the zone's displayed spell order.
             if self.in_bare_everglade() {
                 let slot = match code {
+                    KeyCode::Digit1 => Some(0),
                     KeyCode::Digit2 => Some(1),
                     KeyCode::Digit3 => Some(2),
                     KeyCode::Digit4 => Some(3),
@@ -2593,9 +2602,9 @@ impl App {
                     KeyCode::Digit7 => Some(6),
                     _ => None,
                 };
-                if let Some((intent, ..)) =
-                    slot.and_then(|i| zones::everglade::hotbar::SLOTS.get(i))
-                {
+                if let Some((intent, ..)) = slot.and_then(|i| {
+                    zones::everglade::hotbar::SLOTS.get(self.runtime.everglade_hotbar_order()[i])
+                }) {
                     self.zone_action(*intent);
                     return;
                 }
@@ -3668,20 +3677,22 @@ impl App {
                     // The bar is laid out in logical points; this batch is
                     // in pixels.
                     let mut bar = crate::ui::UiBatch::default();
-                    zones::everglade::hotbar::draw(
+                    zones::everglade::hotbar::draw_ordered(
                         &mut bar,
                         atlas,
                         size.map(|v| v / self.scale),
                         HOTBAR_BOTTOM,
                         &slots,
+                        &self.runtime.everglade_hotbar_order(),
                     );
                     if let Some(index) = tip {
-                        zones::everglade::hotbar::draw_tip(
+                        zones::everglade::hotbar::draw_tip_ordered(
                             &mut bar,
                             atlas,
                             size.map(|v| v / self.scale),
                             HOTBAR_BOTTOM,
                             index,
+                            &self.runtime.everglade_hotbar_order(),
                         );
                     }
                     // Meteor Swarm's help and cast bar over the tray.
@@ -3700,14 +3711,14 @@ impl App {
                             atlas,
                             20.0,
                             20.0,
-                            "Meteor Stress Test · 5 casters · castle rebuilds every 45 s",
+                            "Meteor Stress Test · 5 casters · castle rebuilds every 3 min",
                             [1.0, 0.8, 0.4, 1.0],
                         );
                         bar.text(
                             atlas,
                             20.0,
                             20.0 + atlas.line,
-                            "WASD: approach · 6: Meteor Swarm · click: cast · R: rebuild · 1: levitate",
+                            "WASD: approach · 1: Meteor Swarm · click: cast · R: rebuild · 6: levitate",
                             [0.9, 0.9, 0.9, 1.0],
                         );
                     }

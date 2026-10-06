@@ -156,6 +156,9 @@ mod integration_tests {
         let mut runtime = WorldRuntime::new();
         runtime.install_meteor_stress_test(&pack);
         assert_eq!(runtime.zone, ZoneId::MeteorStressTest);
+        let order = runtime.everglade_hotbar_order();
+        assert_eq!(everglade::hotbar::SLOTS[order[0]].0, Intent::MeteorSwarm);
+        assert_eq!(everglade::hotbar::SLOTS[order[5]].0, Intent::Levitate);
         let town = runtime
             .zone_state
             .everglade
