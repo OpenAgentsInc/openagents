@@ -35,6 +35,10 @@ struct Fake {
     receipt: Mutex<Option<String>>,
     /// Every task command sent: its verb and exact bytes.
     commands: Mutex<Vec<(String, Vec<u8>)>>,
+    /// What the task owner answers to reading a retained file, by path.
+    artifacts: Mutex<std::collections::BTreeMap<String, (Vec<u8>, Vec<u8>)>>,
+    /// Every retained file read asked for.
+    artifact_reads: Mutex<Vec<String>>,
 }
 struct Pane {
     bridge: bool,
@@ -148,6 +152,26 @@ impl Transport for Fake {
         let (stdout, stderr) = self.run.lock().unwrap().clone().unwrap_or_default();
         sender
             .send(crate::run::decode(&stdout, &stderr, task))
+            .unwrap();
+        receiver
+    }
+    fn read_artifact(
+        &self,
+        _: &str,
+        path: &str,
+        digest: &str,
+    ) -> mpsc::Receiver<crate::files::Read> {
+        self.artifact_reads.lock().unwrap().push(path.to_owned());
+        let (stdout, stderr) = self
+            .artifacts
+            .lock()
+            .unwrap()
+            .get(path)
+            .cloned()
+            .unwrap_or_default();
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(crate::files::decode(&stdout, &stderr, path, digest))
             .unwrap();
         receiver
     }
@@ -1497,4 +1521,202 @@ fn a_run_read_answers_only_for_the_run_asked() {
         decode_receipt(br#"{"command_id":"other","status":"cancelled"}"#, b"", "c"),
         Sent::Unknown("the task owner's answer was not readable".into())
     );
+}
+
+#[test]
+fn the_files_page_shows_a_runs_retained_bytes_only_when_their_digest_holds() {
+    use crate::files::digest;
+    use crate::input::{KeyCode, NamedKey};
+    let transport = Arc::new(Fake {
+        bridge: true,
+        ..Fake::default()
+    });
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.paper.on = true;
+    app.toggle();
+    app.ensure_started();
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b]7;file:///test/work\x07\x1b]133;A\x07$ \x1b]133;B\x07".to_vec());
+    app.tick();
+    let sheet = |app: &mut Application| app.paper_sheet(120, 40, "12:00:00", "0.50");
+    let key = |app: &mut Application, named: NamedKey| press(app, KeyCode::Unidentified, named);
+    let arrow = |app: &mut Application, code: KeyCode| press(app, code, NamedKey::Unidentified);
+
+    app.paper_ask("greet the studio");
+    app.tick();
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    let thread = transport.requests.lock().unwrap()[0].thread.clone();
+    *transport.thread.lock().unwrap() = Some(
+        serde_json::json!({
+            "thread": thread, "title": "Greeting", "busy": false, "turns": [],
+            "coder": {"host": "local", "task": "task-1"},
+        })
+        .to_string()
+        .into_bytes(),
+    );
+    let greeting = b"Hello, studio\n\tand welcome\n".to_vec();
+    let logo = vec![0x89, 0x50, 0xff, 0xfe];
+    let entry = |path: &str, state: &str, bytes: Option<&[u8]>| {
+        serde_json::json!({
+            "path": path, "state": state, "link_target": null,
+            "digest": bytes.map(digest), "bytes": bytes.map(<[u8]>::len),
+        })
+    };
+    let manifest = serde_json::json!({
+        "schema": "openagents.coder.task-artifacts.v1",
+        "source_snapshot": format!("sha256:{}", "a".repeat(64)),
+        "candidate_snapshot": format!("sha256:{}", "b".repeat(64)),
+        "complete": false,
+        "omitted_changes": 0,
+        "changes": [
+            {"change": "created", "path": "greeting.txt"},
+            {"change": "modified", "path": "README.md"},
+            {"change": "renamed", "from": "old.txt", "to": "big.txt", "altered": true},
+            {"change": "removed", "path": "gone.txt"},
+            {"change": "created", "path": "logo.png"},
+            {"change": "created", "path": "../escape"},
+            {"change": "created", "path": "lost.txt"},
+        ],
+        "entries": [
+            entry("greeting.txt", "retained", Some(&greeting)),
+            entry("README.md", "retained", Some(b"recorded")),
+            entry("big.txt", "unavailable_or_over_limit", None),
+            entry("gone.txt", "removed", None),
+            entry("logo.png", "retained", Some(&logo)),
+            entry("../escape", "retained", Some(b"x")),
+            entry("lost.txt", "retained", Some(b"lost")),
+        ],
+    });
+    let mut view: serde_json::Value = serde_json::from_slice(&run_view(
+        "task-1",
+        "opencode",
+        "finished",
+        serde_json::json!({"state": "sealed", "total_steps": 0, "steps": []}),
+    ))
+    .unwrap();
+    view["artifacts"] = manifest;
+    *transport.run.lock().unwrap() = Some((view.to_string().into_bytes(), Vec::new()));
+    let answer = |path: &str, bytes: &[u8]| {
+        (
+            serde_json::json!({"path": path, "digest": digest(bytes), "bytes": bytes})
+                .to_string()
+                .into_bytes(),
+            Vec::new(),
+        )
+    };
+    let refusal = |code: &str, message: &str| {
+        (
+            Vec::new(),
+            serde_json::json!({"error": {"code": code, "message": message}})
+                .to_string()
+                .into_bytes(),
+        )
+    };
+    {
+        let mut artifacts = transport.artifacts.lock().unwrap();
+        artifacts.insert("greeting.txt".into(), answer("greeting.txt", &greeting));
+        // The store's bytes moved on from what the run recorded.
+        artifacts.insert("README.md".into(), answer("README.md", b"edited later"));
+        artifacts.insert("logo.png".into(), answer("logo.png", &logo));
+        artifacts.insert("../escape".into(), refusal("unsafe_path", "unsafe path"));
+        artifacts.insert("lost.txt".into(), refusal("not_found", "not found"));
+    }
+
+    key(&mut app, NamedKey::F9);
+    app.tick();
+    key(&mut app, NamedKey::F9);
+    app.tick();
+    assert!(
+        sheet(&mut app)
+            .text()
+            .contains("ARTIFACTS 7 retained, 7 changes")
+    );
+
+    // F2 lists the run's changes from its own manifest.
+    key(&mut app, NamedKey::F2);
+    assert!(app.paper.files.open);
+    let list = sheet(&mut app);
+    let text = list.text();
+    assert!(text.contains("FILES of run task-1  7 changes  [incomplete]"));
+    assert!(text.contains("SOURCE sha256:aaaaaaaaaaaa  RESULT sha256:bbbbbbbbbbbb"));
+    assert!(text.contains("> created  greeting.txt  retained 27 bytes"));
+    assert!(text.contains("  renamed  big.txt (from old.txt)  unavailable or over limit"));
+    assert!(
+        list.row_text(37)
+            .starts_with("| FILES > UP DOWN pick a file")
+    );
+    assert!(list.row_text(39).starts_with(crate::paper::FILE_KEYS));
+    for row in 0..40 {
+        let row_text = list.row_text(row);
+        assert_eq!(row_text.len(), 120, "row {row}: {row_text:?}");
+        assert!(
+            row_text.chars().all(|c| (' '..='~').contains(&c)),
+            "row {row}"
+        );
+    }
+
+    // ENTER shows the picked file, line-numbered and literal, once its
+    // digest holds.
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("FILE greeting.txt  [digest checked]"));
+    assert!(text.contains("CHANGE created  sha256:"));
+    assert!(text.contains("1 | Hello, studio"));
+    assert!(text.contains("2 |     and welcome"));
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(app.paper.files.open && app.paper.files.viewing.is_none());
+
+    // Bytes that moved on from the recorded digest are not shown.
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("FILE README.md  [changed]"));
+    assert!(!text.contains("edited later"));
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+
+    // An over-limit or removed file is described without a read.
+    let reads = transport.artifact_reads.lock().unwrap().len();
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("FILE big.txt  [unavailable or over limit]"));
+    assert!(text.contains("CHANGE renamed from old.txt"));
+    assert!(text.contains("Over the retained bound"));
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert!(sheet(&mut app).text().contains("The run removed this file"));
+    assert_eq!(transport.artifact_reads.lock().unwrap().len(), reads);
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+
+    // Binary bytes are described, a forbidden path is refused, and a file
+    // the store no longer keeps is missing.
+    for (expected, absent) in [
+        (
+            "Binary content, 4 bytes; this page shows text only.",
+            "\u{fffd}",
+        ),
+        ("The task owner refused the read: unsafe path.", "1 | x"),
+        ("The task store no longer keeps these bytes.", "1 | lost"),
+    ] {
+        arrow(&mut app, KeyCode::ArrowDown);
+        press(&mut app, KeyCode::Enter, NamedKey::Enter);
+        app.tick();
+        let text = sheet(&mut app).text();
+        assert!(text.contains(expected), "{expected}");
+        assert!(!text.contains(absent), "{absent}");
+        press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    }
+
+    // ESC steps back to the run; reading files sent nothing.
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(!app.paper.files.open && app.paper.run.open);
+    assert!(transport.commands.lock().unwrap().is_empty());
+    assert_eq!(transport.requests.lock().unwrap().len(), 1);
 }

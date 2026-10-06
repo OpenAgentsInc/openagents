@@ -260,6 +260,34 @@ pub fn read_run(task: &str, home: Option<&Path>) -> Receiver<terminal_core::run:
     receiver
 }
 
+/// Reads retained file `path` of run `task` through the task owner, which
+/// reads only by manifest path, and checks it against `digest`.
+pub fn read_artifact(
+    task: &str,
+    path: &str,
+    digest: &str,
+    home: Option<&Path>,
+) -> Receiver<terminal_core::files::Read> {
+    use terminal_core::files::{READ_MAX, Unread, decode};
+    let (sender, receiver) = mpsc::channel();
+    let (task, path, digest) = (task.to_owned(), path.to_owned(), digest.to_owned());
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let read = match helper(
+            &["--json", "task", "artifact", &task, "--path", &path],
+            None,
+            home.as_deref(),
+            READ_MAX,
+            std::time::Duration::from_secs(20),
+        ) {
+            Ok((stdout, stderr)) => decode(&stdout, &stderr, &path, &digest),
+            Err(why) => Err(Unread::Unavailable(why)),
+        };
+        let _ = sender.send(read);
+    });
+    receiver
+}
+
 /// Sends task command `bytes` to the task owner's `verb`. The command
 /// keeps its ID, so an unknown outcome may be retried with the same bytes.
 pub fn task_command(

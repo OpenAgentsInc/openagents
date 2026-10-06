@@ -73,6 +73,17 @@ pub trait Transport: Send + Sync {
         )));
         receiver
     }
+    /// Reads retained file `path` of Coder run `task` through the task
+    /// owner, which reads only by manifest path; `digest` is what the
+    /// manifest names. A mount without a task owner answers that it cannot.
+    fn read_artifact(&self, task: &str, path: &str, digest: &str) -> Receiver<crate::files::Read> {
+        let _ = (task, path, digest);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err(crate::files::Unread::Unavailable(
+            "this mount has no task owner".into(),
+        )));
+        receiver
+    }
     /// Sends task command `bytes` to the task owner's `verb` (`cancel` or
     /// `correct`) and answers its receipt or refusal.
     fn task_command(&self, verb: &str, bytes: &[u8]) -> Receiver<crate::run::Sent> {

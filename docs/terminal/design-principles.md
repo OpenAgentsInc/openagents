@@ -39,7 +39,9 @@ The owner's words, verbatim:
   lifecycle, engine, checks, cost, artifacts, the child runs its trace
   records, and its steps. The input line becomes `STEER >`; ENTER steers
   with the line and F7 cancels, each only after CONFIRM, and the key strip
-  names the page's own keys while it is shown.
+  names the page's own keys while it is shown. F2 there lists the files
+  the run changed, and ENTER shows one, line-numbered and only after its
+  bytes match the run's recorded digest.
 - **State is always visible.** The status area shows the directory, the git
   branch and whether it has changes, the last exit status, whether a request
   is running, the queue, pending proposals, where requests go, the load

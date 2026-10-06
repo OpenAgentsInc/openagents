@@ -319,6 +319,14 @@ impl Transport for Local {
     fn read_run(&self, task: &str) -> Receiver<terminal_core::run::Read> {
         super::helpers::read_run(task, self.helper_home.as_deref())
     }
+    fn read_artifact(
+        &self,
+        task: &str,
+        path: &str,
+        digest: &str,
+    ) -> Receiver<terminal_core::files::Read> {
+        super::helpers::read_artifact(task, path, digest, self.helper_home.as_deref())
+    }
     fn task_command(&self, verb: &str, bytes: &[u8]) -> Receiver<terminal_core::run::Sent> {
         super::helpers::task_command(verb, bytes, self.helper_home.as_deref())
     }

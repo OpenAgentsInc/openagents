@@ -25,8 +25,12 @@ use std::time::Instant;
 
 /// The key strip, always shown on the sheet's last row. It fits the
 /// sheet's 120 columns; PGUP and PGDN scroll beside the scroll bar.
+/// The key strip on the files page.
+pub const FILE_KEYS: &str =
+    "F1 HELP  F2 RETURN  F10 QUIT  UP DOWN PICK  ENTER OPEN  ESC RETURN  PGUP PGDN SCROLL";
+
 /// The key strip on the run page.
-pub const RUN_KEYS: &str = "F1 HELP  F7 CANCEL RUN  F9 RETURN  F10 QUIT  ENTER STEER OR CONFIRM  ESC REJECT OR RETURN  PGUP PGDN SCROLL";
+pub const RUN_KEYS: &str = "F1 HELP  F2 FILES  F7 CANCEL RUN  F9 RETURN  F10 QUIT  ENTER STEER OR CONFIRM  ESC REJECT OR RETURN  PGUP PGDN SCROLL";
 
 pub const KEYS: &str = "F1 HELP  F2 CONTEXT  F3 COPY  F4 THREAD  F5 SHELL  F6 ASK  F7 FIX  F8 PANES  F9 RUN  F10 QUIT  ENTER CONFIRM  ESC REJECT";
 
@@ -49,7 +53,8 @@ const HELP: &[&str] = &[
     "F8   switch to panes and tabs; F8 there returns to this sheet",
     "F9   show the Coder run the conversation started; F9 or ESC returns.",
     "     There, ENTER steers it with the line and F7 cancels it; ENTER",
-    "     confirms either one and ESC rejects it",
+    "     confirms either one and ESC rejects it; F2 lists the files it changed,",
+    "     and ENTER shows the one picked, checked against the run's digest",
     "F10  quit",
     "",
     "A proposed command waits in the transcript. ENTER on an empty input line",
@@ -180,6 +185,8 @@ pub struct Paper {
     pub thread: crate::thread::Page,
     /// The run page (F9), drawn in place of the transcript.
     pub run: crate::run::Page,
+    /// The run's files page (F2 on the run page).
+    pub files: crate::files::Page,
     cache: Option<(u64, usize, usize, Vec<Line>)>,
 }
 
@@ -213,6 +220,7 @@ impl Default for Paper {
             warned: None,
             thread: crate::thread::Page::default(),
             run: crate::run::Page::default(),
+            files: crate::files::Page::default(),
             cache: None,
         }
     }
@@ -289,6 +297,14 @@ impl Application {
                 self.paper.help = !self.paper.help;
                 return true;
             }
+            Some(NamedKey::F2) if self.paper.files.open => {
+                self.paper.files.open = false;
+                return true;
+            }
+            Some(NamedKey::F2) if self.paper.run.open => {
+                self.paper_files_open();
+                return true;
+            }
             Some(NamedKey::F2) => {
                 self.paper.attach = !self.paper.attach;
                 return true;
@@ -360,6 +376,16 @@ impl Application {
                 self.paper.quit = true;
                 return true;
             }
+            Some(NamedKey::PageUp) if self.paper.files.open => {
+                let half = self.paper.grid.0 as usize / 2;
+                self.paper.files.scroll = self.paper.files.scroll.saturating_sub(half);
+                return true;
+            }
+            Some(NamedKey::PageDown) if self.paper.files.open => {
+                let half = self.paper.grid.0 as usize / 2;
+                self.paper.files.scroll = self.paper.files.scroll.saturating_add(half);
+                return true;
+            }
             Some(NamedKey::PageUp) => {
                 let half = self.paper.grid.0 as usize / 2;
                 let scroll = if self.paper.run.open {
@@ -420,6 +446,10 @@ impl Application {
             if let Some(bytes) = self.encode(key) {
                 self.send(&bytes);
             }
+            return true;
+        }
+        if self.paper.files.open {
+            self.paper_files_key(key.code, enter);
             return true;
         }
         // On the run page, CONFIRM sends an armed command, and REJECT
@@ -574,6 +604,7 @@ impl Application {
 
     /// F9: shows the Coder run the conversation started, or returns.
     fn paper_run_toggle(&mut self) {
+        self.paper.files.open = false;
         if self.paper.run.open {
             self.paper.run.open = false;
             return;
@@ -600,6 +631,106 @@ impl Application {
             }
             None => {
                 self.notice = Some("No conversation yet; ask OpenAgents something first.".into());
+            }
+        }
+    }
+
+    /// F2 on the run page: lists the files the run changed, from its own
+    /// manifest.
+    fn paper_files_open(&mut self) {
+        let run = match (&self.paper.run.task, &self.paper.run.shown) {
+            (Some((task, host)), Some(Ok(run))) if host == "local" => Some((task.clone(), run)),
+            _ => None,
+        };
+        let Some((task, run)) = run else {
+            self.notice = Some("The run's files show once the run is read here.".into());
+            return;
+        };
+        let manifest = run
+            .artifacts
+            .as_ref()
+            .and_then(crate::files::Manifest::from_view);
+        self.paper.files.show(&task, manifest);
+    }
+
+    /// A key on the files page: the arrows pick or scroll, ENTER opens the
+    /// picked file or reads it again, and ESC steps back.
+    fn paper_files_key(&mut self, code: KeyCode, enter: bool) {
+        let page = &mut self.paper.files;
+        let count = page.manifest.as_ref().map_or(0, |m| m.changes.len());
+        match code {
+            KeyCode::Escape if page.viewing.is_some() => {
+                page.viewing = None;
+                page.shown = None;
+                page.reading = None;
+                page.scroll = 0;
+            }
+            KeyCode::Escape => page.open = false,
+            KeyCode::ArrowUp if page.viewing.is_some() => {
+                page.scroll = page.scroll.saturating_sub(1);
+            }
+            KeyCode::ArrowDown if page.viewing.is_some() => {
+                page.scroll = page.scroll.saturating_add(1);
+            }
+            KeyCode::ArrowUp => page.selected = page.selected.saturating_sub(1),
+            KeyCode::ArrowDown => {
+                page.selected = (page.selected + 1).min(count.saturating_sub(1));
+            }
+            _ if enter => {
+                let again = matches!(page.shown, Some(Err(crate::files::Unread::Unavailable(_))));
+                if page.viewing.is_none() && count > 0 {
+                    page.viewing = Some(page.selected);
+                    page.shown = None;
+                    page.scroll = 0;
+                    self.paper_files_read();
+                } else if again && page.reading.is_none() {
+                    self.paper_files_read();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Reads the viewed file's retained bytes, when it has some.
+    fn paper_files_read(&mut self) {
+        let page = &self.paper.files;
+        let (Some(task), Some(change)) = (
+            page.task.clone(),
+            page.viewing
+                .and_then(|index| page.manifest.as_ref()?.changes.get(index).cloned()),
+        ) else {
+            return;
+        };
+        if crate::files::unreadable(&change).is_some() {
+            return;
+        }
+        let digest = change.digest.clone().unwrap_or_default();
+        let reading = self
+            .sessions()
+            .0
+            .read_artifact(&task, &change.path, &digest);
+        let page = &mut self.paper.files;
+        page.shown = None;
+        page.reading = Some(reading);
+        page.reads += 1;
+    }
+
+    /// Takes a finished file read.
+    fn paper_files_poll(&mut self) {
+        let page = &mut self.paper.files;
+        if let Some(reading) = &page.reading {
+            match reading.try_recv() {
+                Ok(read) => {
+                    page.shown = Some(read);
+                    page.reading = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    page.shown = Some(Err(crate::files::Unread::Unavailable(
+                        "the task owner ended without an answer".into(),
+                    )));
+                    page.reading = None;
+                }
             }
         }
     }
@@ -711,6 +842,7 @@ impl Application {
     /// F4: shows the conversation this sheet's questions go to, or returns
     /// to the transcript. Showing it only reads the thread.
     fn paper_thread_toggle(&mut self) {
+        self.paper.files.open = false;
         if self.paper.thread.open {
             self.paper.thread.open = false;
             return;
@@ -894,6 +1026,7 @@ impl Application {
     pub fn paper_tick(&mut self) {
         self.paper_thread_read();
         self.paper_run_poll();
+        self.paper_files_poll();
         let Some(pane_id) = self.paper_pane() else {
             return;
         };
@@ -1081,6 +1214,36 @@ impl Application {
                     tone: Tone::Present,
                 }]);
             }
+        } else if self.paper.files.open {
+            // A file reads from its top: the scroll counts lines down.
+            let mut wrapped = Vec::new();
+            for (text, tone) in crate::files::lines(&self.paper.files) {
+                wrap(&line(text, tone), text_width, &mut wrapped);
+            }
+            let total = wrapped.len();
+            let page = &mut self.paper.files;
+            if page.viewing.is_none() {
+                // Keep the picked file in view.
+                let header = wrapped
+                    .iter()
+                    .position(|line| line.text.starts_with("> "))
+                    .unwrap_or(0);
+                if header < page.scroll {
+                    page.scroll = header;
+                } else if header >= page.scroll + transcript_rows {
+                    page.scroll = header + 1 - transcript_rows;
+                }
+            }
+            page.scroll = page.scroll.min(total.saturating_sub(transcript_rows));
+            let start = page.scroll;
+            let end = (start + transcript_rows).min(total);
+            for line in &wrapped[start..end] {
+                body.push(vec![Span {
+                    text: line.text.clone(),
+                    tone: line.tone,
+                }]);
+            }
+            bar = Some((start, total));
         } else if self.paper.run.open || self.paper.thread.open {
             let mut wrapped = Vec::new();
             let lines = if self.paper.run.open {
@@ -1182,6 +1345,7 @@ impl Application {
         if self.paper_running()
             || (self.smart.pending.is_some() && self.paper.input.is_empty())
             || (self.paper.run.open && self.paper_run_armed())
+            || self.paper.files.open
         {
             spans.push(Span {
                 text: fit(&self.paper_input_hint(), inner - label.len()),
@@ -1204,7 +1368,16 @@ impl Application {
         sheet.rows.push(framed(spans));
         sheet.rows.push(border());
         sheet.rows.push(vec![Span {
-            text: fit(if self.paper.run.open { RUN_KEYS } else { KEYS }, columns),
+            text: fit(
+                if self.paper.files.open {
+                    FILE_KEYS
+                } else if self.paper.run.open {
+                    RUN_KEYS
+                } else {
+                    KEYS
+                },
+                columns,
+            ),
             tone: Tone::Quiet,
         }]);
         sheet
@@ -1216,6 +1389,9 @@ impl Application {
         }
         if self.smart.pending.is_some() && self.paper.input.is_empty() {
             return ("CONFIRM? ".into(), Tone::Loud);
+        }
+        if self.paper.files.open {
+            return ("FILES > ".into(), Tone::Quiet);
         }
         if self.paper.run.open {
             return if self.paper_run_armed() {
@@ -1242,6 +1418,13 @@ impl Application {
     }
 
     fn paper_input_hint(&self) -> String {
+        if self.paper.files.open {
+            return if self.paper.files.viewing.is_some() {
+                "UP DOWN scroll, ESC returns to the list".into()
+            } else {
+                "UP DOWN pick a file, ENTER shows it, ESC returns to the run".into()
+            };
+        }
         if self.paper.run.open
             && let Some(command) = &self.paper.run.command
             && command.state == crate::run::Sent::Armed

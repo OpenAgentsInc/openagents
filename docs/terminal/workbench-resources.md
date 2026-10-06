@@ -147,6 +147,19 @@ is a retry the owner deduplicates. A cancel the owner accepted shows as
 requested until the run acknowledges it. A run on another host is neither
 read nor controlled here, and an ended run offers no controls.
 
+F2 on the run page lists the files the run changed
+([#10661](https://github.com/OpenAgentsInc/openagents/issues/10661),
+`terminal_core::files`), from the run's own artifact manifest: each change
+and the state of its retained bytes, with the source and result snapshot
+digests. ENTER shows the picked file, read through the task owner by
+manifest path (`openagents --json task artifact ID --path P`), and only
+after its bytes match the digest the manifest records; bytes that moved on
+show as changed. Text is literal, line-numbered, and ASCII; binary content,
+an over-limit or removed file, a refused path, and a file the store no
+longer keeps are each described rather than shown. The source's own bytes
+are not retained, so a modified file shows its result. Nothing on the page
+runs, renders, or exports content, and reading changes no task or review.
+
 ## Consumers
 
 `terminal-core` is the owner of a mount's local panes. The standalone
