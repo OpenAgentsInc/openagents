@@ -6,21 +6,27 @@ rust-version.workspace = true
 publish.workspace = true
 description = "Shared terminal glyph renderer and native local-session adapters."
 
+[features]
+default = ["native"]
+native = ["fonts", "dep:terminal-control", "dep:winit", "dep:arboard", "dep:libc", "coder-pty/host"]
+fonts = ["dep:memmap2", "dep:swash"]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-terminal-control = { path = "../terminal-control" }
+terminal-control = { path = "../terminal-control", optional = true }
 terminal-core = { path = "../terminal-core" }
 coder-vt = { path = "../coder-vt" }
-coder-pty = { path = "../coder-pty" }
+coder-pty = { path = "../coder-pty", default-features = false }
 coder-ui = { path = "../coder-ui" }
 verse-gfx = { path = "../verse-gfx", default-features = false }
-winit = "0.30.12"
-arboard = "3.6.1"
-memmap2 = "0.9"
-libc = "0.2"
+winit = { version = "0.30.12", optional = true }
+arboard = { version = "3.6.1", optional = true }
+memmap2 = { version = "0.9", optional = true }
+libc = { version = "0.2", optional = true }
 serde_json = "1"
 bytemuck = "1.25"
-swash = "0.2.10"
+swash = { version = "0.2.10", optional = true }
+unicode-width = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

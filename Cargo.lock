@@ -13643,6 +13643,7 @@ dependencies = [
  "tempfile",
  "terminal-control",
  "terminal-core",
+ "unicode-width",
  "verse-gfx",
  "winit",
 ]

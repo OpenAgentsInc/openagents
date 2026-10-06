@@ -20,6 +20,11 @@ use verse_gfx::ui::Atlas;
 /// Fonts tried after Fira Mono, in order, with the face index in a
 /// collection. Missing files are skipped.
 const FONTS: &[(&str, u32)] = &[
+    ("/system/fonts/NotoSansCJK-Regular.ttc", 0),
+    ("/system/fonts/NotoSansSymbols-Regular-Subsetted.ttf", 0),
+    ("/system/fonts/NotoColorEmoji.ttf", 0),
+    ("/System/Library/Fonts/LanguageSupport/PingFang.ttc", 0),
+    ("/System/Library/Fonts/CoreUI/AppleColorEmoji.ttc", 0),
     ("/System/Library/Fonts/Menlo.ttc", 0),
     ("/System/Library/Fonts/Apple Symbols.ttf", 0),
     ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
