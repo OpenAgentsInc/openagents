@@ -1,0 +1,176 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 120,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "ab37e50acc746b332add13d5b7765238004229be2538ff9bfa40fa1c591a8868",
+  "acceptance": "passed",
+  "failures": [],
+  "movement_expiry": 0,
+  "storage_paused_seconds": 0.06746970199999999,
+  "workload_ticks": 3597,
+  "native_segments": [
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0,
+      "correction_meters": {
+        "samples": 1341,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.020509613677859306,
+        "maximum": 0.1983063668012619
+      }
+    },
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0,
+      "correction_meters": {
+        "samples": 1026,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.05333995819091797,
+        "p99": 0.5062294006347656,
+        "maximum": 0.640080451965332
+      }
+    }
+  ],
+  "render_windows": [
+    {
+      "end_seconds": 30.208829635,
+      "frame_cpu_ms": {
+        "samples": 1783,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 3.105693,
+        "p95": 4.2656979999999995,
+        "p99": 5.196692,
+        "maximum": 6.574358
+      },
+      "gpu_scene_ms": {
+        "samples": 1782,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 4.415488,
+        "p95": 6.3744,
+        "p99": 8.24832,
+        "maximum": 10.537984
+      },
+      "applied_snapshot_age_ms": {
+        "samples": 1783,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 92.870531,
+        "p95": 192.389263,
+        "p99": 225.757554,
+        "maximum": 291.55897400000003
+      }
+    },
+    {
+      "end_seconds": 60.210638771,
+      "frame_cpu_ms": {
+        "samples": 1800,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 3.395794,
+        "p95": 5.375822,
+        "p99": 6.344533,
+        "maximum": 9.141408
+      },
+      "gpu_scene_ms": {
+        "samples": 1800,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 5.026816,
+        "p95": 6.616064,
+        "p99": 7.202816,
+        "maximum": 11.311104
+      },
+      "applied_snapshot_age_ms": {
+        "samples": 1800,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 108.253621,
+        "p95": 193.5228,
+        "p99": 241.15598699999998,
+        "maximum": 325.754119
+      }
+    },
+    {
+      "end_seconds": 90.226774713,
+      "frame_cpu_ms": {
+        "samples": 1800,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 3.495476,
+        "p95": 5.254275999999999,
+        "p99": 6.290182,
+        "maximum": 8.933755000000001
+      },
+      "gpu_scene_ms": {
+        "samples": 1800,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 4.992,
+        "p95": 6.467584,
+        "p99": 8.997888,
+        "maximum": 12.407808
+      },
+      "applied_snapshot_age_ms": {
+        "samples": 1800,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 104.895291,
+        "p95": 207.32556899999997,
+        "p99": 325.171032,
+        "maximum": 609.254424
+      }
+    },
+    {
+      "end_seconds": 120.022904717,
+      "frame_cpu_ms": {
+        "samples": 1788,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 3.524312,
+        "p95": 6.383705,
+        "p99": 8.995997000000001,
+        "maximum": 10.818190000000001
+      },
+      "gpu_scene_ms": {
+        "samples": 1788,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 4.96128,
+        "p95": 6.455296,
+        "p99": 8.899584,
+        "maximum": 12.350464
+      },
+      "applied_snapshot_age_ms": {
+        "samples": 1788,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 105.435022,
+        "p95": 207.25917099999998,
+        "p99": 255.001951,
+        "maximum": 289.155089
+      }
+    }
+  ],
+  "files": {
+    "report.json": "c7c0716d4290717c6b878e858e513a5c6fe68969968934af3f98c744917e4b9a",
+    "source.patch": "9e3032b4de104d4052bfbc7656f1f14c03cc6698f123bb530b8bc6fc0af01ab5"
+  },
+  "environment": "Ordinary christopherdavid process without capabilities; direct ext4 NVMe scratch storage; high-quality 2560x1440 licensed scene and unchanged delayed 20-player/40-hostile workload.",
+  "limitations": [
+    "One 120-second pass does not establish sustained acceptance. A ten-minute soak is running separately.",
+    "No own compiler ran during measurement; the host is shared.",
+    "The comparison checkout retains its source base and own patches; it is not a current-main host deployment.",
+    "Offscreen rendering does not measure physical input-to-display latency."
+  ]
+}
