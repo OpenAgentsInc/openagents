@@ -458,3 +458,13 @@ software WebGL2 checks. The 1000-by-800 CSS viewport
 passes authority movement and stopped input after adaptive graphics resolution;
 full-resolution software rendering failed that budget before the fix. They do not cover these physical
 checks. Retain per-device evidence and file a new issue for any defect.
+
+## Everglade workbench opening (#10647)
+
+In a current desktop build with the studio source connected, stand at a
+studio desk and open `T`, then hide it and use `Shift+F`. Confirm both show
+the same goal, seat, and task in the sheet status. Shift-click a seat to
+select it; ordinary clicks and `F` still open studio panels. Opening must
+not start a goal or task. Confirm that leaving Everglade clears the context.
+The isolated adapter and fake-transport checks cover identity, denied
+observation, restart, and repeated opening; this visible-window check remains.

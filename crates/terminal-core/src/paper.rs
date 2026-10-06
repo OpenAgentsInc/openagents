@@ -2170,6 +2170,10 @@ impl Application {
             }
             None => "CONTEXT directory only".into(),
         };
+        let context = self.workshop().map_or_else(
+            || context.clone(),
+            |opening| format!("{} | {context}", opening.label()),
+        );
         let last = match (&self.notice, self.last_block()) {
             (_, Some(block)) if block.status == Some(127) => match self
                 .smart

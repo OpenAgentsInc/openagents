@@ -650,3 +650,16 @@ fn viewers_of_a_hosted_instance_draw_the_authoritys_seats() {
     let home = ground(standing(At::Podium, 1, 0, 1).0);
     assert!(a.seat_position("ada").unwrap().distance(home) > 1.0);
 }
+
+#[test]
+fn navigation_uses_only_the_source_snapshot_not_resident_seats() {
+    let mut studio = Studio::default();
+    studio.active = true;
+    let source = snapshot(1, vec![seat("lead", 0, Activity::Idle)]);
+    studio.apply(source.clone(), &[]);
+    studio.set_resident(vec![seat("resident", 3, Activity::Idle)]);
+    assert_eq!(studio.source_snapshot(), Some(&source));
+    assert_eq!(studio.snapshot().unwrap().view.seats.len(), 2);
+    studio.set_active(false);
+    assert!(studio.source_snapshot().is_none());
+}

@@ -35,10 +35,15 @@ already specifies.
 
 The [terminal workbench roadmap](../terminal/workbench-roadmap.md) delivers
 the same application in the Grid and a standalone install first, then
-opens it against this workshop's studio resources. A desk computer, `T`,
-or another entry point selects context; terminal furniture and floating
-windows remain a separate design choice. The studio stays authoritative
-for team work, decisions, and reviewed merges.
+opens it against this workshop's studio resources. At a studio station,
+`T` or `Shift+F` opens the shared sheet with existing goal, seat, and task
+references; Shift-clicking a station or seat does the same. Ordinary `F`
+and clicks retain the studio panels. The sheet names the selected context
+in its status area; detailed studio panes are a later adapter. Opening
+submits no work and grants no shell or review rights. Leaving the studio,
+losing observation rights, or a changed host stream drops the private
+context. Terminal furniture and floating windows remain separate design
+choices. The studio stays authoritative for decisions and reviewed merges.
 
 ![Everglade: a city for building things together](everglade-map.png)
 

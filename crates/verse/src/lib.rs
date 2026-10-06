@@ -72,6 +72,8 @@ pub mod spectator;
 pub use verse_pbr::streaming;
 #[cfg(all(feature = "terminal", not(target_arch = "wasm32")))]
 pub mod terminal;
+#[cfg(all(feature = "terminal", not(target_arch = "wasm32")))]
+pub mod workbench_opening;
 #[cfg(unix)]
 pub use terminal_control;
 pub use verse_core::tooltip;

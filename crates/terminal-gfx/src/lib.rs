@@ -11,7 +11,7 @@ use pty::Program;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 pub use terminal_core::{
-    HELP, PANE_BYTES, UPDATE_BUDGET, copy, layout, mouse, paper, select, stats,
+    HELP, PANE_BYTES, UPDATE_BUDGET, copy, layout, mouse, opening, paper, select, stats,
 };
 use ui::{Atlas, UiBatch, UiVertex};
 pub use verse_gfx::ui;

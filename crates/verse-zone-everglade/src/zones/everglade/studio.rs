@@ -1076,6 +1076,13 @@ impl Studio {
         self.snapshot.as_ref()
     }
 
+    /// The source's own snapshot, excluding this viewer's resident seats.
+    /// Private consumers must check the source's observation rights.
+    #[must_use]
+    pub fn source_snapshot(&self) -> Option<&Snapshot> {
+        self.hosted.as_ref().filter(|_| self.active)
+    }
+
     /// The studio's view, while active and loaded.
     #[must_use]
     pub fn view(&self) -> Option<&View> {

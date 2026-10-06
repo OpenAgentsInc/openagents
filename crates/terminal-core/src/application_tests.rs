@@ -2692,3 +2692,45 @@ fn a_block_is_shared_only_as_the_consented_static_excerpt() {
     assert!(transport.input.lock().unwrap().is_empty());
     assert!(transport.requests.lock().unwrap().is_empty());
 }
+
+#[test]
+fn workshop_opening_is_navigation_only_and_revocation_drops_context() {
+    use crate::opening::{Host, Kind, Opening, ResourceRef, StudioPart};
+    let transport = Arc::new(Fake::default());
+    let mut app = Application::new(Sessions(transport.clone()));
+    let host = Host::Local {
+        instance: "a".repeat(64),
+    };
+    let opening = Opening {
+        v: crate::opening::OPENING.into(),
+        host: host.clone(),
+        stream: "ab".into(),
+        workspace: Some("app".into()),
+        goal: Some(ResourceRef::new(Kind::Studio, host, "goal-1").studio(StudioPart::Goal)),
+        seat: None,
+        task: None,
+        thread: None,
+        review: None,
+    };
+    app.open_workshop(opening.clone(), true).unwrap();
+    app.open_workshop(opening.clone(), true).unwrap();
+    assert_eq!(app.workshop(), Some(&opening));
+    assert!(
+        app.paper_sheet(120, 40, "12:00:00", "0.5")
+            .text()
+            .contains("STUDIO app goal goal-1")
+    );
+    assert_eq!(transport.opened.load(Ordering::SeqCst), 0);
+    assert!(transport.requests.lock().unwrap().is_empty());
+    assert!(transport.commands.lock().unwrap().is_empty());
+    assert!(app.open_workshop(opening.clone(), false).is_err());
+    assert!(app.workshop().is_none());
+    let mut forged = opening.clone();
+    forged.goal.as_mut().unwrap().host = Host::Local {
+        instance: "b".repeat(64),
+    };
+    assert!(app.open_workshop(forged, true).is_err());
+    let mut unbounded = opening;
+    unbounded.workspace = Some("w".repeat(129));
+    assert!(app.open_workshop(unbounded, true).is_err());
+}

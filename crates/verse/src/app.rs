@@ -994,6 +994,21 @@ impl App {
     /// one of a burst, unless muted, and raises a desktop notice for it
     /// while the window is not in front.
     fn studio_signals(&mut self) {
+        // A revoked grant or a changed host process drops private context.
+        if self.terminal.workshop().is_some_and(|opening| {
+            !self
+                .runtime
+                .studio()
+                .rights()
+                .contains(&coder_access::Right::Observe)
+                || self
+                    .runtime
+                    .studio()
+                    .source_snapshot()
+                    .is_none_or(|snapshot| snapshot.stream != opening.stream)
+        }) {
+            self.terminal.clear_workshop();
+        }
         use crate::zones::everglade::signals::{Signal, deliver};
         let events = self.runtime.take_studio_events();
         let Some(signal) = Signal::most_urgent(events.iter().map(|e| e.signal)) else {
@@ -1309,9 +1324,58 @@ impl App {
     /// Opens the terminal overlay with focus, or hides it. Hidden, its
     /// sessions keep running until Verse exits.
     fn toggle_terminal(&mut self) {
+        if !self.terminal.open {
+            if let Some(kind) = self.runtime.studio_panel_here()
+                && self.runtime.studio().source_snapshot().is_some()
+                && self
+                    .runtime
+                    .studio()
+                    .rights()
+                    .contains(&coder_access::Right::Observe)
+            {
+                self.open_workbench(kind);
+                return;
+            }
+            self.terminal.clear_workshop();
+        }
         self.terminal.toggle();
         if self.terminal.focused {
             self.take_keys_for_terminal();
+        }
+    }
+
+    /// Opens the shared sheet at existing studio references. Admission is
+    /// checked again on every opening; no goal or task is submitted.
+    fn open_workbench(&mut self, kind: StudioPanel) {
+        if !self
+            .runtime
+            .studio()
+            .rights()
+            .contains(&coder_access::Right::Observe)
+        {
+            self.terminal.clear_workshop();
+            self.terminal.notice = Some("studio observation is not admitted".into());
+            return;
+        }
+        let review = self.studio_review(&kind);
+        let studio = self.runtime.studio();
+        let opening = studio
+            .source_snapshot()
+            .ok_or_else(|| "the studio is unavailable".to_owned())
+            .and_then(|snapshot| {
+                crate::workbench_opening::context(
+                    snapshot,
+                    &studio.rights(),
+                    &kind,
+                    review.as_ref(),
+                )
+            });
+        match opening.and_then(|opening| self.terminal.open_workshop(opening, true)) {
+            Ok(()) => self.take_keys_for_terminal(),
+            Err(reason) => {
+                self.terminal.clear_workshop();
+                self.terminal.notice = Some(reason);
+            }
         }
     }
 
@@ -2611,7 +2675,7 @@ impl App {
             }
             // In Everglade the interact key next to the workshop agent
             // opens her panel; elsewhere it opens the station in reach.
-            if code == KeyCode::KeyF && self.near_workshop_agent() {
+            if code == KeyCode::KeyF && !self.keys.shift && self.near_workshop_agent() {
                 self.workshop.open = true;
                 self.keys = Keys::default();
                 self.climb = 0.0;
@@ -2620,7 +2684,11 @@ impl App {
             if code == KeyCode::KeyF
                 && let Some(kind) = self.runtime.studio_panel_here()
             {
-                self.open_studio_panel(kind);
+                if self.keys.shift {
+                    self.open_workbench(kind);
+                } else {
+                    self.open_studio_panel(kind);
+                }
                 return;
             }
             // In Everglade J opens the waiting decisions, and V mutes the
@@ -3057,7 +3125,11 @@ impl App {
             let tapped = tap.released(self.cursor.map(|v| v / self.scale), Instant::now());
             if let Some(kind) = studio {
                 if tapped {
-                    self.open_studio_panel(kind);
+                    if self.keys.shift {
+                        self.open_workbench(kind);
+                    } else {
+                        self.open_studio_panel(kind);
+                    }
                 }
             } else if tapped && self.portal_at_cursor() {
                 self.zone_action(if self.runtime.is_plaza() {

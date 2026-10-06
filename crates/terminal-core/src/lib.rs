@@ -25,6 +25,7 @@ pub mod keys;
 pub mod knowledge;
 pub mod layout;
 pub mod mouse;
+pub mod opening;
 pub mod paper;
 pub mod paste;
 pub mod pty;

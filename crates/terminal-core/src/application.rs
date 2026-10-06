@@ -108,6 +108,7 @@ pub struct Application {
     /// Static excerpts this mount exported this session, by identity
     /// only ([`crate::excerpt`]); the content went to the caller.
     pub exports: Vec<crate::excerpt::Exported>,
+    pub(crate) workshop: Option<crate::opening::Opening>,
 }
 
 impl std::fmt::Debug for Application {
@@ -156,6 +157,7 @@ impl Application {
             instance: crate::resources::instance(),
             products: crate::resources::Products::default(),
             exports: Vec::new(),
+            workshop: None,
         }
     }
 
@@ -687,6 +689,7 @@ impl Application {
             "notice": self.notice,
             "directory": workbench::Owner::directory(self),
             "products": self.products.status(),
+            "workshop": self.workshop,
             "exports": self.exports,
             "socket": serde_json::Value::Null,
         })
