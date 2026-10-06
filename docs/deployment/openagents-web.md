@@ -102,9 +102,8 @@ These pages need nothing more than this repository and the public buckets:
   characters, a secret) so a visitor keeps one signing key; it needs no
   model key, since the chat worker holds its own.
 - `/download`: the one download page (`src/pages/download.rs`): the
-  notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`,
-  OpenAgents Terminal's install commands, and one link to build everything
-  else from source. It was `/install` until 2026-10-01; `/install` and
+  Coder installers and companion binaries for macOS, Linux, and Windows.
+  It was `/install` until 2026-10-01; `/install` and
   `/desktop` redirect here permanently (`308`), and the guide
   `/docs/install` to `/docs/download`.
 - `/terms` and `/privacy`: the published text, last updated 2026-09-03,
@@ -184,7 +183,7 @@ These need accounts, sessions, or payments, or are internal:
    and the PowerShell form) stop working, and old docs and blog links
    answer `404`. That is an owner decision: accept the break, or restore a
    redirect to the bucket before cutover.
-6. Update `/download` for each desktop release (`MAC_VERSION` and `MAC_DMG`).
+6. Update `/download` for each Coder release (`CODER_VERSION` and its bundle).
 7. When this server serves openagents.com, update the `INVARIANTS.md` row
    for the connect link, which names `coder-serve` as the server of
    `/connect`.
