@@ -1,0 +1,35 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 120,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "88a51639e8b01163dae46e18988b2a0ef8b809d2165a2fe00c775cf7b698a011",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(1.0) exceeds 0, or is unavailable"
+  ],
+  "movement_expiry": 1,
+  "native_segments": [
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0
+    },
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0
+    }
+  ],
+  "files": {
+    "report.json": "14657d9e16b528b8e9d1074dc0ac0bb56e64fc762a7da4ac7babf31a0175ad9f",
+    "source.patch": "fcacc8a8b2448cdda3da7075fd575c716e964e905980fb2c4553015228c291d9"
+  },
+  "limitations": [
+    "One headless expiry fails the unchanged zero-expiry gate; no sustained acceptance is claimed.",
+    "The recorder and headless scheduling changes do not establish a production native performance improvement.",
+    "High-quality 2560x1440 licensed scene, ordinary unprivileged process, direct NVMe scratch storage, shared host, no own concurrent compiler.",
+    "Comparison source uses the retained base and own patches; this is not a current-main host deployment or physical input-to-display measurement."
+  ]
+}
