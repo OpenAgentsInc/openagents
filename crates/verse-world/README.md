@@ -459,7 +459,9 @@ pipeline work. A refused interval stops the worker and requires reconnection;
 uncertain transmission is never replayed. An explicit storage refusal consumes
 no frame, and the serial SDK can retry that exact envelope through its bounded
 storage-backpressure path. Snapshot recording counts reset reasons separately
-from ordinary corrections and retains bounded discontinuity traces.
+from ordinary corrections and retains bounded discontinuity traces. The battle
+recorder keeps correction details typed during play and serializes them when it
+builds the report, preserving every retained detail and acceptance measurement.
 
 [`prediction::latency`](src/prediction/latency.rs) uses the actual authority and
 local motor with 30 Hz world ticks, 120 Hz local steps, ordered delayed input and

@@ -1,0 +1,34 @@
+{
+  "changes": [
+    "Compare outer-band equipment through exact typed equality instead of JSON trees.",
+    "Retain bounded correction evidence as typed records and serialize it when building the report."
+  ],
+  "source_sha256": {
+    "crates/verse-world/src/service/replication/spatial.rs": "f9f0fe7f8ba671bc1ea5b041f0cf5784275f1fdef7edc0324df11ee5de350f3e",
+    "crates/verse-world/src/service/replication/tests.rs": "c193588992c204f86f49f9fa10c039e9820cad92a311885cf3bdb5f03c28ac0f",
+    "crates/verse/examples/common/battle_native_player.rs": "31cc18899a187cf5dcbe51526fc80ca93774cb470a9a80531b270c78f49fcde8"
+  },
+  "checks": [
+    {
+      "command": "cargo test -p verse-world --features service-net,service-reach,studio replication -- --test-threads=1",
+      "passed": 17
+    },
+    {
+      "command": "cargo test -p verse --no-default-features --features remote-chamber --example battle_scale",
+      "passed": 3
+    },
+    {
+      "command": "cargo fmt -p verse-world -p verse",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "resolved_check_failure": "The initial new equipment test moved only the presentation actor and left its snapshot outside relevance. Both fixture positions are corrected; all 17 checks pass.",
+  "aborted_check": "A duplicate run after an edit-script assertion was stopped with exit 143; it is not counted as a passed check.",
+  "limits_changed": false,
+  "measurement_claim": "These changes have not received a new live performance qualification. The admission-timing 120-second passing receipt predates them; the earlier 600-second failure remains unresolved.",
+  "build_concurrency": 1
+}

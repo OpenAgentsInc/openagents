@@ -218,8 +218,7 @@ pub(crate) fn scoped(
                         && p.health == pose.health
                         && p.teleport_stamp == pose.teleport_stamp
                         && p.outfit_model == pose.outfit_model
-                        && serde_json::to_value(&p.equipment).ok()
-                            == serde_json::to_value(&pose.equipment).ok()
+                        && p.equipment == pose.equipment
                 }) {
                     pose.actor.position = old.actor.position;
                     pose.actor.yaw = old.actor.yaw;

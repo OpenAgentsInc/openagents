@@ -649,3 +649,70 @@ fn near_band_history_skip_preserves_packets_across_distance_and_ack_changes() {
         receiver.admit(&actual, 120, tick, &control).unwrap();
     }
 }
+
+#[test]
+fn outer_equipment_changes_bypass_transform_throttle() {
+    let mut g = gateway(&[key(1), key(2), key(3)]);
+    let connection = join(&mut g, 3);
+    let mut previous = state(&mut g, connection);
+    add_far(&mut previous, 1);
+    previous.snapshot.actors.last_mut().unwrap().pos = [50., 0., -22.];
+    let pose = previous.presentation.actors.last_mut().unwrap();
+    pose.actor.position = glam::Vec3::new(50., 0., -22.);
+    pose.equipment = vec![crate::service::equipment::Gear {
+        id: 1,
+        name: "Staff".into(),
+        slot: crate::service::equipment::Slot::MainHand,
+        model: "adventurer".into(),
+        offset: [0; 3],
+        health: 0,
+        mana: 0,
+    }];
+    let mut current = previous.clone();
+    current
+        .presentation
+        .actors
+        .last_mut()
+        .unwrap()
+        .actor
+        .position
+        .x = 51.;
+    current.snapshot.actors.last_mut().unwrap().pos = [51., 0., -22.];
+    let retained = scope(current.clone(), &None, Some(&previous), 1).unwrap();
+    assert_eq!(
+        retained
+            .presentation
+            .actors
+            .last()
+            .unwrap()
+            .actor
+            .position
+            .x,
+        50.
+    );
+    current.presentation.actors.last_mut().unwrap().equipment[0].offset[0] = 10;
+    let changed = scope(current.clone(), &None, Some(&previous), 1).unwrap();
+    assert_eq!(
+        changed.presentation.actors.last().unwrap().actor.position.x,
+        51.
+    );
+    current
+        .presentation
+        .actors
+        .last_mut()
+        .unwrap()
+        .equipment
+        .clear();
+    let unequipped = scope(current, &None, Some(&previous), 1).unwrap();
+    assert_eq!(
+        unequipped
+            .presentation
+            .actors
+            .last()
+            .unwrap()
+            .actor
+            .position
+            .x,
+        51.
+    );
+}

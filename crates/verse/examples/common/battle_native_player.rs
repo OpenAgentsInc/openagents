@@ -5,7 +5,7 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot};
 use verse::{
-    imported::chamber_session::{Frame, Note, Session},
+    imported::chamber_session::{CorrectionDetail, Frame, Note, Session},
     profiling::FrameProfile,
 };
 use verse_engine::{assets::Pack, director::Scene};
@@ -19,6 +19,13 @@ use verse_world::{
         worker::{self, Input, Observer, Update},
     },
 };
+
+#[derive(serde::Serialize)]
+struct RecordedCorrection {
+    seconds: f64,
+    distance: f64,
+    detail: Box<CorrectionDetail>,
+}
 
 #[derive(Clone, serde::Serialize)]
 struct FrameTrace {
@@ -92,7 +99,7 @@ pub async fn player(
     let mut trace = Vec::new();
     let mut omitted_observer = 0u64;
     let mut correction_trace = Vec::new();
-    let mut maximum_correction_detail: Option<serde_json::Value> = None;
+    let mut maximum_correction_detail: Option<RecordedCorrection> = None;
     let mut omitted_corrections = 0u64;
     let mut omitted_taps = 0u64;
     let mut frame = 0u64;
@@ -179,10 +186,10 @@ pub async fn player(
         for note in session.take_notes() {match note {
           Note::Correction {distance,discontinuity:false,detail}=>{
             measurements.record(frame,"prediction_correction_meters",distance);window.record(frame,"prediction_correction_meters",distance);
-            if maximum_correction_detail.as_ref().is_none_or(|record|record["distance"].as_f64().is_none_or(|previous|distance>previous)) {
-              maximum_correction_detail=Some(serde_json::json!({"seconds":began.elapsed().as_secs_f64(),"distance":distance,"detail":detail.clone()}));
+            if maximum_correction_detail.as_ref().is_none_or(|record|distance>record.distance) {
+              maximum_correction_detail=Some(RecordedCorrection {seconds:began.elapsed().as_secs_f64(),distance,detail:detail.clone()});
             }
-            if distance>0.25 {if correction_trace.len()<32 {correction_trace.push(serde_json::json!({"seconds":began.elapsed().as_secs_f64(),"distance":distance,"detail":detail}));} else {omitted_corrections+=1;}}
+            if distance>0.25 {if correction_trace.len()<32 {correction_trace.push(RecordedCorrection {seconds:began.elapsed().as_secs_f64(),distance,detail});} else {omitted_corrections+=1;}}
           },
           Note::Reset(reason)=>{measurements.record(frame,"prediction_reset",1.);if trace.len()<32 {trace.push(serde_json::json!({"reset":reason,"seconds":began.elapsed().as_secs_f64()}));}},
           Note::Refusal(detail)=>{refusals+=1;if trace.len()<32 {trace.push(detail);}},
