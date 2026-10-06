@@ -17,6 +17,7 @@
 //!   admitted and checked independently before every side effect.
 //! - [`offer`]: immutable retail offers and their one funded request.
 //! - [`reserve`]: the funded request's hold in the central ledger.
+//! - [`provision`]: one admitted sandbox per funded execution.
 //! - [`journal`]: the durable intents and observations a restart reads.
 
 pub mod authority;
@@ -24,6 +25,7 @@ pub mod contract;
 pub mod fake;
 pub mod journal;
 pub mod offer;
+pub mod provision;
 pub mod reserve;
 pub mod topup;
 
@@ -52,7 +54,7 @@ pub enum Error {
 }
 
 /// Journal tables the modules add, created when the journal opens.
-pub(crate) const EXTRA_SCHEMAS: &[&str] = &[];
+pub(crate) const EXTRA_SCHEMAS: &[&str] = &[provision::SCHEMA];
 
 pub type Result<T> = std::result::Result<T, Error>;
 

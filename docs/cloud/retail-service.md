@@ -89,3 +89,39 @@ digest (`mismatch`), or any changed price, source, recipient, or provider
 (`changed`). The first confirmation records exactly one funded request with
 its execution identity in the journal; a repeated confirmation, even after a
 restart, returns that same funded request and reserves nothing more.
+
+## Provisioning
+
+[`retail_cloud::provision`](../../crates/retail-cloud/src/provision.rs)
+
+`Provider` is the provider seam: create a sandbox from an exact
+`CreateSpec`, find one by its provisioning identity, read its state, delete
+it, and read its billed seconds. The v1 class pins one Boat `large` sandbox
+per task from the daily template `oa-coder-main-<date>`, started with no
+account environment (`no_env`), labeled with the customer's account and the
+provisioning identity `<execution>#<attempt>`, with a lifetime of the quoted
+seconds plus 20 minutes. Tests use `retail_cloud::fake::FakeProvider`; a live
+Boat binding runs only in the owner's funded qualification
+(`NEEDS_OWNER.md`).
+
+`advance` moves one funded execution forward by one observation and is safe
+to repeat after any crash:
+
+| State | Meaning |
+| --- | --- |
+| `intent` | Recorded before any provider call |
+| `creating` | A create call went out and its answer is not known; the next step looks the sandbox up by its provisioning identity instead of creating another |
+| `starting` | The sandbox exists and is not reachable yet |
+| `ready` | Reachable; provisioning is done |
+| `refused` | The provider refused the start for plan or capacity limits; no charge |
+| `unavailable` | Not reachable after the one replacement; no charge |
+
+- Nothing calls the provider without the provision authorities and a live
+  hold for the funded request.
+- A failed listing is not proof of absence: the state stays `creating`, and
+  nothing is created.
+- A sandbox that is not reachable within 10 minutes, or whose restore
+  failed, is deleted and replaced once under attempt 2; the replacement's
+  cost is the operator's. Abandoned sandboxes are kept in the journal for
+  teardown.
+- Nothing widens the provider or the computer class automatically.
