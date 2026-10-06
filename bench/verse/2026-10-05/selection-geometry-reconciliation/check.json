@@ -1,0 +1,44 @@
+{
+  "schema": "verse.targeted.check.v1",
+  "source_base": "2628e9431b",
+  "source_sha256": {
+    "crates/physics/src/queries/snapshot.rs": "a939789765dc75530ed81ef2089012cc5878c2c0bdff37796c4d98393748c30a",
+    "crates/verse-world/src/prediction/local.rs": "f2ad93dc69292149c3f32273f689c8b4a8ae79f612429b89892d06ccaec96110"
+  },
+  "before": {
+    "test": "selection_only_changes_preserve_completed_pending_motion",
+    "status": "failed",
+    "selection_change": "addition",
+    "before_position": [
+      1.92024,
+      0,
+      0
+    ],
+    "after_position": [
+      0.64008003,
+      0,
+      0
+    ],
+    "correction_meters": 1.28015997,
+    "baseline": "identical repeated confirmation"
+  },
+  "after": {
+    "regression": "passed for addition, movement, and removal",
+    "blocking_control_test": "passed",
+    "cargo_command": "cargo +1.97.1 test -p physics -p verse-world --features verse-world/service-net --lib -- --test-threads=1",
+    "physics_passed": 133,
+    "verse_world_initial_passed": 573,
+    "verse_world_initial_failed": 6,
+    "verse_world_ignored": 3,
+    "failed_subset_retry_passed": 6,
+    "verse_world_final_passed": 579,
+    "retry_environment": "TMPDIR set to the canonical physical macOS temporary directory",
+    "retry_reason": "All six failures rejected the symlink in the default macOS temporary path. The same compiled test binary passed those cases with the canonical path.",
+    "formatting": "rustfmt --edition 2024 on the two changed Rust files; git diff --check passed"
+  },
+  "limitations": [
+    "The combined 20-player, 40-NPC battle has not yet been measured with this fix.",
+    "The prior 600-second report did not retain which fixed collider changed; this regression does not establish the cause of its maximum correction.",
+    "Authority history, command age, and queue bounds remain unchanged."
+  ]
+}

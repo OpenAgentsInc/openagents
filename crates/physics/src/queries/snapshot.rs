@@ -439,6 +439,20 @@ impl SceneCache {
                 .into_iter()
                 .all(|shape| self.source.get(&shape.key) == Some(shape))
     }
+    /// Compares fixed character blockers; other query usages do not affect movement.
+    /// Capsule poses remain separate, and `update` validates every shape.
+    pub fn blocking_geometry_matches(&self, snapshot: &SceneSnapshot) -> bool {
+        if snapshot.instance != self.instance {
+            return false;
+        }
+        let blocking = |shape: &&ShapeSnapshot| {
+            shape.usage == Usage::Blocking
+                && !matches!(shape.geometry, GeometrySnapshot::Capsule { .. })
+        };
+        let mut next = snapshot.colliders.iter().filter(blocking);
+        next.clone().count() == self.source.values().filter(blocking).count()
+            && next.all(|shape| self.source.get(&shape.key) == Some(shape))
+    }
     /// Returns the number of recompiled shapes. Validation and compilation precede mutation.
     pub fn update(&mut self, snapshot: &SceneSnapshot) -> Result<usize, String> {
         snapshot.validate(self.instance)?;
@@ -513,5 +527,64 @@ impl SceneCache {
             self.source.get_mut(&shape.key).unwrap().pose = shape.pose;
         }
         Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod blocking_cache_tests {
+    use super::*;
+
+    #[test]
+    fn nonblocking_changes_preserve_character_geometry_but_blockers_invalidate_it() {
+        let shape = |entity, usage| ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity,
+                    generation: 0,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Box {
+                min: DVec3::ZERO,
+                max: DVec3::ONE,
+            },
+        };
+        let source = SceneSnapshot {
+            instance: 7,
+            colliders: vec![shape(1, Usage::Blocking), shape(2, Usage::Selection)],
+        };
+        let mut cache = SceneCache::new(7);
+        cache.update(&source).unwrap();
+        assert!(cache.blocking_geometry_matches(&source));
+        for usage in [Usage::Selection, Usage::Trigger, Usage::Damage] {
+            let mut changed = source.clone();
+            changed.colliders[1].usage = usage;
+            changed.colliders[1].pose.position.x = 10.;
+            assert!(!cache.fixed_geometry_matches(&changed));
+            assert!(cache.blocking_geometry_matches(&changed));
+        }
+        let mut changed = source.clone();
+        changed.colliders.pop();
+        assert!(cache.blocking_geometry_matches(&changed));
+        changed.colliders.push(shape(3, Usage::Selection));
+        assert!(cache.blocking_geometry_matches(&changed));
+        changed.colliders[1].usage = Usage::Blocking;
+        assert!(!cache.blocking_geometry_matches(&changed));
+        let mut changed = source.clone();
+        changed.colliders[0].pose.position.x = 1.;
+        assert!(!cache.blocking_geometry_matches(&changed));
+        changed = source.clone();
+        changed.colliders[0].usage = Usage::Selection;
+        assert!(!cache.blocking_geometry_matches(&changed));
+        changed = source.clone();
+        changed.colliders.remove(0);
+        assert!(!cache.blocking_geometry_matches(&changed));
+        changed = source.clone();
+        changed.instance = 8;
+        assert!(!cache.blocking_geometry_matches(&changed));
     }
 }
