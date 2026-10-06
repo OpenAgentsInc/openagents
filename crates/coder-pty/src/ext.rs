@@ -51,6 +51,12 @@ pub const BLOCK_PAGE: &str = "openagents.terminal-block-page.v1";
 pub const SESSION_READ: &str = "openagents.terminal-session-read.v1";
 /// `v` of a session write.
 pub const SESSION_WRITE: &str = "openagents.terminal-session-write.v1";
+/// `v` of a session list.
+pub const SESSION_LIST: &str = "openagents.terminal-session-list.v1";
+/// `v` of a session removal.
+pub const SESSION_REMOVE: &str = "openagents.terminal-session-remove.v1";
+/// The most sessions a host keeps.
+pub const SESSIONS_MAX: usize = 64;
 /// `v` of a take: an attachment becomes the typist.
 pub const TAKE: &str = "openagents.terminal-take.v1";
 /// `v` of a release: the typist gives the role up.
@@ -1654,6 +1660,98 @@ impl SessionWrite {
             ))
         }
     }
+}
+
+/// List the host's sessions.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionList {
+    pub v: String,
+    pub requires: Vec<String>,
+    pub request: String,
+}
+
+impl SessionList {
+    #[must_use]
+    pub fn new(request: impl Into<String>) -> Self {
+        SessionList {
+            v: SESSION_LIST.into(),
+            requires: vec![SESSIONS.into()],
+            request: request.into(),
+        }
+    }
+
+    pub fn check(&self) -> Result<(), Refusal> {
+        self.check_with(Features::ALL)
+    }
+
+    pub fn check_with(&self, features: Features) -> Result<(), Refusal> {
+        ext_header(
+            &self.v,
+            SESSION_LIST,
+            &self.requires,
+            &self.request,
+            SESSIONS,
+            features,
+        )
+    }
+}
+
+/// Remove one session record at revision `base`. Its terminals keep
+/// running; removing a session closes nothing.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionRemove {
+    pub v: String,
+    pub requires: Vec<String>,
+    pub request: String,
+    pub session: String,
+    pub base: u64,
+}
+
+impl SessionRemove {
+    #[must_use]
+    pub fn new(request: impl Into<String>, session: impl Into<String>, base: u64) -> Self {
+        SessionRemove {
+            v: SESSION_REMOVE.into(),
+            requires: vec![SESSIONS.into()],
+            request: request.into(),
+            session: session.into(),
+            base,
+        }
+    }
+
+    pub fn check(&self) -> Result<(), Refusal> {
+        self.check_with(Features::ALL)
+    }
+
+    pub fn check_with(&self, features: Features) -> Result<(), Refusal> {
+        ext_header(
+            &self.v,
+            SESSION_REMOVE,
+            &self.requires,
+            &self.request,
+            SESSIONS,
+            features,
+        )?;
+        common_id(&self.session, "session")?;
+        if self.base == 0 {
+            return Err(Refusal::malformed(
+                "a removal names the revision it removes",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// One session as a list shows it: no members or layout.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionEntry {
+    pub session: String,
+    pub revision: u64,
+    pub name: String,
+    pub members: u16,
 }
 
 /// What the host knows of a terminal member when it reads a session.

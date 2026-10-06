@@ -47,6 +47,9 @@ pub(crate) fn run(
         }
     }
     let pty = &shared.pty;
+    if let Some(outcome) = session(shared, principal, request, now) {
+        return TerminalResult::from_outcome(id, outcome);
+    }
     let outcome = match request {
         TermRequest::Open(r) => pty.open(principal, r),
         TermRequest::Attach(r) => pty.attach(principal, r, sink()),
@@ -60,6 +63,64 @@ pub(crate) fn run(
         TermRequest::Seat(r) => pty.seat(principal, r),
         TermRequest::Share(r) => pty.share(principal, r),
         TermRequest::Unshare(r) => pty.unshare(principal, r),
+        TermRequest::SessionRead(_)
+        | TermRequest::SessionWrite(_)
+        | TermRequest::SessionList(_)
+        | TermRequest::SessionRemove(_) => unreachable!("answered above"),
     };
     TerminalResult::from_outcome(id, outcome)
+}
+
+/// Answers a session-record request: it needs the `terminal` right, and a
+/// share never reaches it. Reading a session opens nothing; each terminal
+/// member reads as the terminal host knows it now.
+fn session(
+    shared: &Arc<Shared>,
+    principal: &str,
+    request: &TermRequest,
+    now: u64,
+) -> Option<coder_pty::host::Outcome> {
+    use coder_pty::ext::{Features, MemberState};
+    let features = Features {
+        sessions: true,
+        ..shared.pty.features()
+    };
+    let checked = match request {
+        TermRequest::SessionRead(r) => r.check_with(features),
+        TermRequest::SessionWrite(r) => r.check_with(features),
+        TermRequest::SessionList(r) => r.check_with(features),
+        TermRequest::SessionRemove(r) => r.check_with(features),
+        _ => return None,
+    };
+    if let Err(refusal) = checked {
+        return Some(Err(refusal));
+    }
+    if !shared
+        .authority
+        .holds(principal, coder_access::Right::Terminal, now)
+    {
+        return Some(Err(Refusal::new(
+            Reason::NotAdmitted,
+            "session records need the terminal right",
+        )));
+    }
+    let pty = &shared.pty;
+    let state = |terminal: &coder_pty::wire::TerminalRef| {
+        if terminal.generation != pty.generation() {
+            return MemberState::Lost;
+        }
+        match pty.head(terminal) {
+            Ok((_, true)) => MemberState::Live,
+            Err(refusal) if refusal.reason == Reason::Lost => MemberState::Lost,
+            Ok((_, false)) | Err(_) => MemberState::Closed,
+        }
+    };
+    let books = &shared.sessions;
+    Some(match request {
+        TermRequest::SessionRead(r) => books.read(r, state),
+        TermRequest::SessionWrite(r) => books.write(principal, r, state),
+        TermRequest::SessionList(r) => books.list(r),
+        TermRequest::SessionRemove(r) => books.remove(principal, r),
+        _ => return None,
+    })
 }

@@ -110,6 +110,8 @@ pub(crate) struct Shared {
     /// The nudges this process answered, so a relay reconnect's catch-up
     /// answers each once.
     pub(crate) nudges: std::sync::Mutex<relay::Answered>,
+    /// Terminal session records, beside the access store.
+    pub(crate) sessions: crate::terminal_sessions::Book,
     /// The iroh endpoint, once bound.
     pub(crate) iroh: std::sync::OnceLock<iroh::Listener>,
     /// Woken when a local action changed the grants, so open channels
@@ -242,6 +244,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         Grants(authority.clone()),
         config.handshake_timeout,
     ));
+    let sessions = crate::terminal_sessions::Book::beside(&config.access);
     let shared = Arc::new(Shared {
         _shell_hooks: shell_hooks,
         local_handoffs: tokio::sync::Mutex::new(()),
@@ -264,6 +267,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         listen,
         listen_websocket,
         nudges: std::sync::Mutex::new(relay::Answered::default()),
+        sessions,
         iroh: std::sync::OnceLock::new(),
         grants_changed: tokio::sync::Notify::new(),
         restart: tokio::sync::watch::channel(false).0,
@@ -374,6 +378,13 @@ impl Running {
     #[must_use]
     pub fn generation(&self) -> u64 {
         self.shared.config.generation
+    }
+
+    /// How many terminals the host holds, running or ended. A host-local
+    /// diagnostic.
+    #[must_use]
+    pub fn terminals(&self) -> usize {
+        self.shared.pty.terminals()
     }
 
     /// The grant store this host serves from.

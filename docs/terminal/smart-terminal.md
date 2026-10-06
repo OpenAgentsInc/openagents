@@ -716,7 +716,7 @@ Superlogical half.
 | Native thread view | `coder-terminal` components | Crossterm-free feature; `Buffer` to grid | 2 |
 | Host authority parse and effects | Client-side replies | Host `coder-vt`, effect ownership, clients stop answering | 1 to 2 |
 | Snapshot on join and history | Ring replay with gaps | `coder-vt` serialize and restore, snapshot and history frames, NIP-TERM text, conformance tests | 3 to 4 |
-| Sessions and saved layouts | Layout tree in Verse | Host session record, layouts on the host, restore | 1 to 2 |
+| Sessions and saved layouts | Host session records with list, read, write, and remove (#10652) | Clients that save and restore layouts from them | 1 |
 | Typist | Nothing | Host seat, take and release, pan rule, title badge | 1 |
 | Shares | Share grant, enforcement, and the relay guest in `coder-pty` and `coder-host` (NIP-TERM [Shares](../../nips/openagents/NIP-TERM.md#shares), #10676) | Pause and viewer list (#10681) | 1 to 2 |
 | Block journal on host | Nothing | Journal, NIP-TERM reads | 1 |

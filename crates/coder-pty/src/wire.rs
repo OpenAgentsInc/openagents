@@ -717,6 +717,10 @@ pub enum Value {
     Session {
         record: crate::ext::SessionRecord,
     },
+    /// The host's sessions in ID order, without members or layout.
+    Sessions {
+        sessions: Vec<crate::ext::SessionEntry>,
+    },
     /// A share the host issued (NIP-TERM's shares feature): its terms, and
     /// the host-signed envelope sealed to the grantee that carries them.
     Shared {

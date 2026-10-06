@@ -589,3 +589,128 @@ async fn an_unenrolled_device_watches_one_shared_terminal_from_the_share_on() {
     assert!(revoked);
     fixture.running.shutdown().await;
 }
+
+/// Two devices reopen one saved session without starting anything; after
+/// the host restarts the layout and references remain and the old terminal
+/// reads lost, and a share opens no session.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_saved_session_reopens_on_two_devices_and_survives_a_restart() {
+    use coder_host::pty::ext::{
+        Layout, Member, MemberState, Node, SessionList, SessionRead, SessionRecord, SessionRemove,
+        SessionWrite, Tab,
+    };
+
+    let mut fixture = fixture(3).await;
+    let phone = fixture.enroll(Rights::standard()).await;
+    let laptop = fixture.enroll(Rights::standard()).await;
+    let watcher = fixture.enroll(Rights::new([Right::Observe]).unwrap()).await;
+    let direct = fixture.direct(&phone).await;
+    let reference = open_terminal(&fixture, &direct).await;
+    let record = SessionRecord {
+        session: None,
+        revision: 0,
+        name: "build".into(),
+        members: vec![
+            Member::Terminal {
+                member: 1,
+                terminal: reference.clone(),
+                state: None,
+            },
+            Member::Resource {
+                member: 2,
+                resource: serde_json::json!({"kind": "thread", "thread": "7".repeat(64)}),
+            },
+        ],
+        layout: Layout {
+            tabs: vec![Tab {
+                name: "main".into(),
+                root: Node::Split {
+                    axis: coder_host::pty::ext::Axis::Columns,
+                    ratio: 600,
+                    first: Box::new(Node::Pane { member: 1 }),
+                    second: Box::new(Node::Pane { member: 2 }),
+                },
+            }],
+            active: 0,
+        },
+    };
+    let written = direct
+        .terminal(TermRequest::SessionWrite(SessionWrite::new(
+            coder_host::reach::new_id(),
+            None,
+            0,
+            record.clone(),
+        )))
+        .await
+        .unwrap();
+    let Some(Value::Session { record: saved }) = written.value else {
+        panic!("write: {written:?}")
+    };
+    let session = saved.session.clone().unwrap();
+    assert_eq!(saved.members[0].state(), Some(MemberState::Live));
+
+    let terminals = fixture.running.terminals();
+    let read = |link: Link| {
+        let session = session.clone();
+        async move {
+            let result = link
+                .terminal(TermRequest::SessionRead(SessionRead::new(
+                    coder_host::reach::new_id(),
+                    session,
+                )))
+                .await
+                .unwrap();
+            (link, result)
+        }
+    };
+    let (_, from_laptop) = read(fixture.direct(&laptop).await).await;
+    let Some(Value::Session { record: reopened }) = from_laptop.value else {
+        panic!("read: {from_laptop:?}")
+    };
+    assert_eq!(reopened.layout, record.layout);
+    assert_eq!(reopened.members[1], record.members[1]);
+    assert_eq!(
+        fixture.running.terminals(),
+        terminals,
+        "reading opened nothing"
+    );
+
+    // Sessions need the terminal right.
+    let (_, refused) = read(fixture.direct(&watcher).await).await;
+    assert_eq!(refused.reason, Some(Reason::NotAdmitted));
+
+    // The host restarts with a new generation; the record stays.
+    drop(direct);
+    let access = fixture.temp.path().join("access");
+    fixture.running.shutdown().await;
+    let mut config = Config::new(access, vec![fixture.relay.clone()], 4);
+    config.policy = POLICY;
+    fixture.running = coder_host::start(config, Arc::new(NoTasks)).await.unwrap();
+    let (link, after) = read(fixture.direct(&phone).await).await;
+    let Some(Value::Session { record: restored }) = after.value else {
+        panic!("read after restart: {after:?}")
+    };
+    assert_eq!(restored.members[0].state(), Some(MemberState::Lost));
+    assert_eq!(restored.layout, record.layout);
+    let listed = link
+        .terminal(TermRequest::SessionList(SessionList::new(
+            coder_host::reach::new_id(),
+        )))
+        .await
+        .unwrap();
+    let Some(Value::Sessions { sessions }) = listed.value else {
+        panic!("list: {listed:?}")
+    };
+    assert_eq!(sessions.len(), 1);
+    let removed = link
+        .terminal(TermRequest::SessionRemove(SessionRemove::new(
+            coder_host::reach::new_id(),
+            session,
+            restored.revision,
+        )))
+        .await
+        .unwrap();
+    assert_eq!(removed.status, Status::Accepted, "{removed:?}");
+    fixture.running.shutdown().await;
+}

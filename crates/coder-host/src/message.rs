@@ -12,7 +12,9 @@
 //! for the last. A message is at most [`MAX_MESSAGE_BYTES`] bytes.
 
 use coder_pty::ext::{
-    BLOCK_PAGE, BlockPageRead, HISTORY, History, RECORDS, RELEASE, RecordsFrame, Seat, TAKE,
+    BLOCK_PAGE, BlockPageRead, HISTORY, History, RECORDS, RELEASE, RecordsFrame, SESSION_LIST,
+    SESSION_READ, SESSION_REMOVE, SESSION_WRITE, Seat, SessionList, SessionRead, SessionRemove,
+    SessionWrite, TAKE,
 };
 use coder_pty::share::{SHARE, ShareRequest, UNSHARE, Unshare};
 use coder_pty::wire::{
@@ -142,6 +144,11 @@ pub enum TermRequest {
     Share(ShareRequest),
     /// The end of one share, or of every share of a terminal.
     Unshare(Unshare),
+    /// Session records (NIP-TERM's sessions feature).
+    SessionRead(SessionRead),
+    SessionWrite(SessionWrite),
+    SessionList(SessionList),
+    SessionRemove(SessionRemove),
 }
 
 impl TermRequest {
@@ -170,6 +177,10 @@ impl TermRequest {
             TAKE | RELEASE => serde_json::from_value(value).map(Self::Seat),
             SHARE => serde_json::from_value(value).map(Self::Share),
             UNSHARE => serde_json::from_value(value).map(Self::Unshare),
+            SESSION_READ => serde_json::from_value(value).map(Self::SessionRead),
+            SESSION_WRITE => serde_json::from_value(value).map(Self::SessionWrite),
+            SESSION_LIST => serde_json::from_value(value).map(Self::SessionList),
+            SESSION_REMOVE => serde_json::from_value(value).map(Self::SessionRemove),
             _ => {
                 return Err(Refusal::new(
                     Reason::UnsupportedVersion,
@@ -196,6 +207,10 @@ impl TermRequest {
             Self::Seat(r) => &r.request,
             Self::Share(r) => &r.request,
             Self::Unshare(r) => &r.request,
+            Self::SessionRead(r) => &r.request,
+            Self::SessionWrite(r) => &r.request,
+            Self::SessionList(r) => &r.request,
+            Self::SessionRemove(r) => &r.request,
         }
     }
 
@@ -216,6 +231,10 @@ impl TermRequest {
             Self::Seat(_) => RELEASE,
             Self::Share(_) => SHARE,
             Self::Unshare(_) => UNSHARE,
+            Self::SessionRead(_) => SESSION_READ,
+            Self::SessionWrite(_) => SESSION_WRITE,
+            Self::SessionList(_) => SESSION_LIST,
+            Self::SessionRemove(_) => SESSION_REMOVE,
         }
     }
 
@@ -235,6 +254,10 @@ impl TermRequest {
             Self::Seat(r) => serde_json::to_value(r),
             Self::Share(r) => serde_json::to_value(r),
             Self::Unshare(r) => serde_json::to_value(r),
+            Self::SessionRead(r) => serde_json::to_value(r),
+            Self::SessionWrite(r) => serde_json::to_value(r),
+            Self::SessionList(r) => serde_json::to_value(r),
+            Self::SessionRemove(r) => serde_json::to_value(r),
         };
         value.unwrap_or(Value::Null)
     }

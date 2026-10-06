@@ -55,6 +55,8 @@ pub mod tasks;
 #[cfg(feature = "host")]
 pub mod telemetry;
 #[cfg(feature = "host")]
+pub mod terminal_sessions;
+#[cfg(feature = "host")]
 mod tls;
 #[cfg(feature = "host")]
 pub mod wallet_link;
@@ -87,8 +89,9 @@ pub const PROTOCOL_VERSION: u32 = coder_reach::PROTOCOL_VERSION;
 /// says it can page through a terminal's block journal; `term-typist` says
 /// one attachment types at a time, and take and release move the role;
 /// `term-shares` says a device with `terminal` can share one terminal with
-/// another device key to watch or drive.
-pub const CAPABILITIES: [&str; 12] = [
+/// another device key to watch or drive; `term-sessions` says the host keeps
+/// session records with their members and default layout across restarts.
+pub const CAPABILITIES: [&str; 13] = [
     "activity-summary",
     "direct-tcp",
     "relay-control",
@@ -101,6 +104,7 @@ pub const CAPABILITIES: [&str; 12] = [
     coder_pty::ext::CAPABILITY_BLOCKS,
     coder_pty::ext::CAPABILITY_TYPIST,
     coder_pty::share::CAPABILITY_SHARES,
+    coder_pty::ext::CAPABILITY_SESSIONS,
 ];
 
 /// Why a host or client operation failed. Messages carry no key, grant,

@@ -635,6 +635,21 @@ session can be listed and laid out without disclosing what ran in it. A
 host bounds the number of sessions per owner and refuses above it as
 `limit_exceeded`.
 
+`openagents.terminal-session-list.v1` has the same `requires` and
+`request`. Its value is `{kind: "sessions", sessions}`: every session as
+`{session, revision, name, members}`, with the member count and no members
+or layout. `openagents.terminal-session-remove.v1` has the same `requires`,
+`request`, `session`, and `base`, the revision it removes; another revision
+refuses as `stale`. Its value is `done`. Both require the `terminal` right,
+and a [share](#shares) reaches no session operation.
+
+Reading, listing, and removing a session start, attach to, and close
+nothing. A client that closes a pane or a window detaches from its
+terminal; closing the terminal, stopping a task, and removing the session
+stay separate operations. After a host restart a session keeps its layout
+and references, and its terminals read `lost`; a client offers a new shell
+rather than presenting the old one as resumed.
+
 ### Effects
 
 A host that serves `openagents.terminal-effects.v1` runs one authoritative
@@ -847,7 +862,11 @@ it, shows a **Type here** control while another device types, and draws at
 that device's size around the cursor. Every resident host serves shares
 (`term-shares`), signing each grant with its host key; `coder_host::client::Guest`
 is a share holder without a grant, reaching the shared terminal over a relay.
-No host serves session records yet.
+Every resident host serves session records (`term-sessions`): one private
+file beside its access store, replaced whole by a rename, so a crash leaves
+one revision or the other. A file the host cannot read, or one a newer
+host wrote, refuses every session operation as `unavailable` and is left
+untouched.
 
 ## Conformance
 
