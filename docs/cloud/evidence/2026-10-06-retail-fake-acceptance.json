@@ -1,0 +1,104 @@
+{
+  "schema": "openagents.cloud.retail-acceptance.v1",
+  "simulation": true,
+  "label": "SIMULATION: fake wallet, fake Boat, fake sandbox, and fake task owner. No real payment, credential, machine, or owner chat was used.",
+  "limits": {
+    "contract": "openagents.cloud.retail.v1",
+    "computer_class": "retail-boat-large-v1",
+    "task_class": "retail-repo-change-v1",
+    "price_book": "retail-2026-10-06.1",
+    "task_seconds_max": 3600,
+    "sandboxes_max": 4,
+    "checks_max": 8,
+    "retention_days": 30
+  },
+  "cases": [
+    {
+      "name": "checked_patch",
+      "passed": true,
+      "failure": null,
+      "executors_started": 1,
+      "sandboxes_created": 1,
+      "sandboxes_left_running": 0,
+      "charge_msat": 103000,
+      "held_msat": 0,
+      "settled_msat": 103000,
+      "conserved": true,
+      "restarts": 0
+    },
+    {
+      "name": "duplicate_confirmation_and_crash_before_credit",
+      "passed": true,
+      "failure": null,
+      "executors_started": 1,
+      "sandboxes_created": 1,
+      "sandboxes_left_running": 0,
+      "charge_msat": 102000,
+      "held_msat": 0,
+      "settled_msat": 102000,
+      "conserved": true,
+      "restarts": 1
+    },
+    {
+      "name": "lost_create_and_dispatch_acknowledgments_across_restarts",
+      "passed": true,
+      "failure": null,
+      "executors_started": 1,
+      "sandboxes_created": 1,
+      "sandboxes_left_running": 0,
+      "charge_msat": 103000,
+      "held_msat": 0,
+      "settled_msat": 103000,
+      "conserved": true,
+      "restarts": 2
+    },
+    {
+      "name": "cancel_after_start_with_a_lost_stop_reply",
+      "passed": true,
+      "failure": null,
+      "executors_started": 1,
+      "sandboxes_created": 1,
+      "sandboxes_left_running": 0,
+      "charge_msat": 102000,
+      "held_msat": 0,
+      "settled_msat": 102000,
+      "conserved": true,
+      "restarts": 1
+    },
+    {
+      "name": "provider_lost_after_start_keeps_the_hold_until_usage_reads",
+      "passed": true,
+      "failure": null,
+      "executors_started": 1,
+      "sandboxes_created": 1,
+      "sandboxes_left_running": 0,
+      "charge_msat": 124000,
+      "held_msat": 0,
+      "settled_msat": 124000,
+      "conserved": true,
+      "restarts": 0
+    },
+    {
+      "name": "client_disappears_and_the_service_cleans_up",
+      "passed": true,
+      "failure": null,
+      "executors_started": 1,
+      "sandboxes_created": 1,
+      "sandboxes_left_running": 0,
+      "charge_msat": null,
+      "held_msat": 124000,
+      "settled_msat": 0,
+      "conserved": true,
+      "restarts": 1
+    }
+  ],
+  "measurements": {
+    "readiness_seconds": 10,
+    "first_event_seconds": 23,
+    "checked_completion_seconds": 86,
+    "cancel_acknowledgment_seconds": 2,
+    "orphan_cleanup_seconds": 31
+  },
+  "views_agree": true,
+  "passed": true
+}

@@ -11984,6 +11984,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "retail-qualify"
+version = "0.1.0"
+dependencies = [
+ "compute-workbench",
+ "pay-ledger",
+ "retail-cloud",
+ "route-contract",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "rfc6979"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
