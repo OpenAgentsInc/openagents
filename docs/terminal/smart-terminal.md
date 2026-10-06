@@ -589,6 +589,33 @@ Rules:
   presence, world chat, Verse replays, and logs, as the in-world terminal
   already requires.
 
+#### Static block excerpts
+
+Implemented 2026-10-06
+([#10697](https://github.com/OpenAgentsInc/openagents/issues/10697),
+`terminal_core::excerpt`). A block can leave the terminal as a static
+excerpt, `openagents.terminal-excerpt.v1`: the scrubbed command, its exit
+status and duration, the first 20 and last 20 output lines (each at most
+200 characters), how many lines were left out between them, whether the
+terminal still held the whole output, and its source: the mount instance,
+the block number, and a digest over the scrubbed block. A digest over the
+excerpt's own content lets a recipient check it with
+`excerpt::verify` without reaching the terminal; the sharer, who still has
+the block, checks the source with `excerpt::same_source`. It holds no
+working directory, environment, other block or pane, clipboard content, or
+undisplayed output. A running block, a full-screen program's block, and a
+block without a command are refused.
+
+Sharing is two steps through the mount's control request. `{"op":
+"excerpt", "block": N}` answers the preview (the excerpt, its plain text,
+and its digest); `{"op": "excerpt", "block": N, "consent": DIGEST}` exports
+exactly that excerpt to the caller and records its digest, block, and time
+in the status's `exports`. Consent to a preview that changed since, such as
+output that left retention, refuses. An excerpt is static: it is not a
+watch or drive share, it grants no input, task, review, or spending right,
+and nothing about it reaches presence. The recipient keeps the excerpt;
+the mount keeps only its identity for the session.
+
 ### Safety
 
 - **Rights stay the host's.** `terminal`, `observe`, and terminal shares are

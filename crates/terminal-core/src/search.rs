@@ -306,6 +306,7 @@ mod tests {
             output: output.into(),
             truncated: false,
             collapsed: false,
+            alternate: false,
         }
     }
 

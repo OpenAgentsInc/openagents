@@ -17,6 +17,7 @@ pub mod application;
 pub mod ascii;
 pub mod control;
 pub mod copy;
+pub mod excerpt;
 pub mod files;
 pub mod gym;
 pub mod input;

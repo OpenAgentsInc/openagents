@@ -1014,6 +1014,7 @@ fn a_full_pane_searches_within_a_frame() {
             output: output.clone(),
             truncated: false,
             collapsed: false,
+            alternate: false,
         });
     }
     let query = crate::search::Query::parse("needle status:fail");
@@ -2609,4 +2610,85 @@ fn knowledge_and_plans_are_cited_at_exact_versions_and_sent_as_previewed() {
     assert!(message.contains(preview.trim_end()), "{message}");
     drop(requests);
     assert!(app.paper.gym.knowledge.cited.is_empty());
+}
+
+#[test]
+fn a_block_is_shared_only_as_the_consented_static_excerpt() {
+    let transport = Arc::new(Fake {
+        bridge: true,
+        ..Fake::default()
+    });
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.toggle();
+    app.ensure_started();
+    let request = |text: &str| -> crate::control::Request { serde_json::from_str(text).unwrap() };
+    // Two finished blocks, one with a secret in its command, then a
+    // full-screen program that is still running.
+    transport.output.lock().unwrap().push_back(
+        b"\x1b]7;file:///home/ana/private\x07\x1b]133;A\x07$ \x1b]133;B\x07\x1b]777;openagents;command;6563686f206f6b\x07\x1b]133;C\x07ok\r\n\x1b]133;D;0\x07\x1b]133;A\x07$ \x1b]133;B\x07\x1b]777;openagents;command;6661696c\x07\x1b]133;C\x07boom\r\n\x1b]133;D;1\x07\x1b]133;A\x07$ \x1b]133;B\x07".to_vec(),
+    );
+    app.tick();
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b]777;openagents;command;746f70\x07\x1b]133;C\x07\x1b[?1049h".to_vec());
+    app.tick();
+    let preview = app
+        .apply(&request(r#"{"op": "excerpt", "block": 2}"#))
+        .unwrap();
+    assert_eq!(preview["state"], "preview");
+    let excerpt: crate::excerpt::Excerpt =
+        serde_json::from_value(preview["excerpt"].clone()).unwrap();
+    crate::excerpt::verify(&excerpt).unwrap();
+    assert_eq!(excerpt.command, "fail");
+    assert_eq!(excerpt.head, vec!["boom".to_owned()]);
+    assert_eq!(excerpt.status, Some(1));
+    let json = preview.to_string();
+    assert!(
+        !json.contains("/home/ana") && !json.contains("echo ok"),
+        "{json}"
+    );
+    // Nothing is recorded until the preview is consented to.
+    assert!(app.status()["exports"].as_array().unwrap().is_empty());
+    assert!(
+        app.apply(&request(
+            r#"{"op": "excerpt", "block": 2, "consent": "sha256:00"}"#
+        ))
+        .unwrap_err()
+        .contains("changed since that preview")
+    );
+    let consent = preview["consent"].as_str().unwrap();
+    let exported = app
+        .apply(&request(&format!(
+            r#"{{"op": "excerpt", "block": 2, "consent": "{consent}"}}"#
+        )))
+        .unwrap();
+    assert_eq!(exported["state"], "exported");
+    assert_eq!(exported["excerpt"], preview["excerpt"]);
+    assert_eq!(exported["text"], preview["text"]);
+    // The second fixture: the first block, by default the newest finished.
+    let first = app
+        .apply(&request(r#"{"op": "excerpt", "block": 1}"#))
+        .unwrap();
+    assert_eq!(first["excerpt"]["command"], "echo ok");
+    let newest = app.apply(&request(r#"{"op": "excerpt"}"#)).unwrap();
+    assert_eq!(newest["excerpt"]["source"]["block"], 2);
+    let exports = app.status()["exports"].clone();
+    assert_eq!(exports.as_array().unwrap().len(), 1);
+    assert_eq!(exports[0]["digest"], consent);
+    // The running full-screen block and an evicted one refuse.
+    assert!(
+        app.apply(&request(r#"{"op": "excerpt", "block": 3}"#))
+            .unwrap_err()
+            .contains("still running")
+    );
+    assert!(
+        app.apply(&request(r#"{"op": "excerpt", "block": 9}"#))
+            .unwrap_err()
+            .contains("no longer holds block 9")
+    );
+    // Sharing sent nothing to the shell or to a thread.
+    assert!(transport.input.lock().unwrap().is_empty());
+    assert!(transport.requests.lock().unwrap().is_empty());
 }

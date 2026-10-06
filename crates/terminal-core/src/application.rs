@@ -105,6 +105,9 @@ pub struct Application {
     /// Product panes open beside the shells: threads, runs, and the other
     /// workbench pane kinds, as their adapters describe them.
     pub products: crate::resources::Products,
+    /// Static excerpts this mount exported this session, by identity
+    /// only ([`crate::excerpt`]); the content went to the caller.
+    pub exports: Vec<crate::excerpt::Exported>,
 }
 
 impl std::fmt::Debug for Application {
@@ -152,6 +155,76 @@ impl Application {
             find: None,
             instance: crate::resources::instance(),
             products: crate::resources::Products::default(),
+            exports: Vec::new(),
+        }
+    }
+
+    /// The `excerpt` control request: the preview of a finished block's
+    /// static excerpt, or, with `consent` naming that preview's digest,
+    /// the exported excerpt.
+    ///
+    /// # Errors
+    ///
+    /// No such pane or block, a block that can't be excerpted, or consent
+    /// to another preview than the current one.
+    fn excerpt(
+        &mut self,
+        pane: Option<u64>,
+        block: Option<u64>,
+        consent: Option<&str>,
+    ) -> Result<serde_json::Value, String> {
+        let id = match pane {
+            Some(id) => id,
+            None => self
+                .tabs
+                .get(self.active)
+                .map(|tab| tab.layout.focus())
+                .ok_or("no pane is open")?,
+        };
+        let pane = self.panes.get(&id).ok_or_else(|| format!("no pane {id}"))?;
+        let blocks = &pane.session.blocks;
+        let found = match block {
+            Some(number) => blocks
+                .get(number)
+                .ok_or_else(|| format!("pane {id} no longer holds block {number}"))?,
+            None => blocks
+                .records
+                .iter()
+                .rev()
+                .find(|block| block.end.is_some())
+                .ok_or_else(|| format!("pane {id} has no finished block"))?,
+        };
+        let excerpt = crate::excerpt::excerpt(found, &self.instance, &smart::scrub)?;
+        let preview = crate::excerpt::text(&excerpt);
+        match consent {
+            None => Ok(serde_json::json!({
+                "state": "preview",
+                "excerpt": excerpt,
+                "text": preview,
+                "consent": excerpt.digest,
+            })),
+            Some(digest) if digest == excerpt.digest => {
+                let at_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(0));
+                self.exports.push(crate::excerpt::Exported {
+                    digest: excerpt.digest.clone(),
+                    block: excerpt.source.block,
+                    at_ms,
+                });
+                if self.exports.len() > 64 {
+                    self.exports.remove(0);
+                }
+                Ok(serde_json::json!({
+                    "state": "exported",
+                    "excerpt": excerpt,
+                    "text": preview,
+                    "retention": "the recipient keeps the excerpt; this mount keeps only its digest for the session",
+                }))
+            }
+            Some(_) => Err(
+                "the excerpt changed since that preview; preview it again before sharing".into(),
+            ),
         }
     }
 
@@ -549,6 +622,11 @@ impl Application {
                 tab.zoomed = !tab.zoomed;
                 Ok(self.status())
             }
+            Request::Excerpt {
+                pane,
+                block,
+                consent,
+            } => self.excerpt(*pane, *block, consent.as_deref()),
             Request::Pane { pane, subject } => self
                 .products
                 .open(*pane, subject)
@@ -609,6 +687,7 @@ impl Application {
             "notice": self.notice,
             "directory": workbench::Owner::directory(self),
             "products": self.products.status(),
+            "exports": self.exports,
             "socket": serde_json::Value::Null,
         })
     }

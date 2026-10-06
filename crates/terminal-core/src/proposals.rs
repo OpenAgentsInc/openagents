@@ -360,6 +360,7 @@ mod tests {
             output: "failed".into(),
             truncated: false,
             collapsed: false,
+            alternate: false,
         };
         assert!(book.complete(&key, "forged", block.clone()).is_err());
         let mut wrong_directory = block.clone();

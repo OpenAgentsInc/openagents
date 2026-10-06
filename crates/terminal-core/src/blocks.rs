@@ -29,6 +29,10 @@ pub struct Block {
     pub output: String,
     pub truncated: bool,
     pub collapsed: bool,
+    /// The command entered the alternate screen while it ran: its output
+    /// is a full-screen program's, not lines.
+    #[serde(default)]
+    pub alternate: bool,
 }
 
 #[derive(Default)]
@@ -53,6 +57,12 @@ impl Blocks {
     pub fn update(&mut self, vt: &mut Terminal, now_ms: u64) {
         for mark in vt.take_shell_marks() {
             self.apply(mark, vt, now_ms);
+        }
+        if vt.alternate_screen()
+            && let Some(id) = self.active
+            && let Some(block) = self.records.iter_mut().find(|block| block.id == id)
+        {
+            block.alternate = true;
         }
     }
 
@@ -120,6 +130,7 @@ impl Blocks {
                     output: String::new(),
                     truncated: false,
                     collapsed: false,
+                    alternate: false,
                 });
                 self.active = Some(id);
             }

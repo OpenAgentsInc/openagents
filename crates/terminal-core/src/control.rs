@@ -47,6 +47,18 @@ pub enum Request {
     /// Ask this mount, as the owner of its local panes, to act on a
     /// workbench resource reference. The answer is a workbench outcome.
     Resolve { intent: workbench::Intent },
+    /// A static excerpt of block `block` (the newest finished one when
+    /// absent) of the focused pane, or of pane `pane`. Without `consent`
+    /// the answer is the preview; with `consent` naming the preview's
+    /// digest, the excerpt is exported and its identity recorded.
+    Excerpt {
+        #[serde(default)]
+        pane: Option<u64>,
+        #[serde(default)]
+        block: Option<u64>,
+        #[serde(default)]
+        consent: Option<String>,
+    },
     /// Open a product pane for `subject` as `pane`, or refresh it when it
     /// is open. The answer is the pane's descriptor.
     Pane {
